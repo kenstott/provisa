@@ -21,7 +21,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.paging import paging_row
 from provisa.core import domain_policy
-from provisa.core.models import Table
+from provisa.core.models import DataContract, Table
 from provisa.core.numeric_type import ReportedNumericMalformed, stored_type_of
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
@@ -327,6 +327,42 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     refuse_taken_sql_addresses([*others, candidate], rules)
 
 
+async def _contract_for_save(conn: "Connection", table: Table) -> DataContract | None:
+    """REQ-2158: the contract the table's save stores, checked against the stored one and the
+    columns it saves (provisa.core.data_contracts)."""
+    from provisa.core import data_contracts
+
+    stored = (
+        await conn.execute_core(
+            select(registered_tables.c.product_id, registered_tables.c.contract).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+            )
+        )
+    ).fetchone()
+    existing = await stored_column_types(conn, table.source_id, table.schema_name, table.table_name)
+    column_types: dict[str, str] = {}
+    for col in table.columns:
+        declared_type = getattr(col, "data_type", None) or existing.get(col.name)
+        if not declared_type:
+            continue  # refused by name where the columns are written (REQ-1426)
+        try:
+            column_types[col.name] = stored_type_of(declared_type)
+        except ReportedNumericMalformed as malformed:
+            raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
+    return data_contracts.for_save(
+        product_id=getattr(table, "product_id", None),
+        is_checker=getattr(table, "dq_contract", None) is not None,
+        schema_name=table.schema_name,
+        table_name=table.table_name,
+        declared=getattr(table, "contract", None),
+        stored=None if stored is None else stored.contract,
+        stored_product_id=None if stored is None else stored.product_id,
+        column_types=column_types,
+    )
+
+
 async def _upsert(conn: "Connection", table: Table) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     await _require_free_sql_address(conn, table, domain_id)
@@ -365,6 +401,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 f"table {table.table_name} is in domain {domain_id!r} but data product "
                 f"{product_id!r} belongs to domain {product['domain_id']!r}"
             )
+    contract = await _contract_for_save(conn, table)  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -385,6 +422,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
         "product_id": getattr(table, "product_id", None),  # REQ-1634
+        "contract": contract.model_dump() if contract is not None else None,  # REQ-2158
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
         "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963
@@ -458,6 +496,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
         "product_id",
+        "contract",  # REQ-2158
         "materialize",
         "mv_refresh_interval",
         "mv_debounce_quiet",

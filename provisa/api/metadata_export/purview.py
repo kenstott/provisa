@@ -172,7 +172,6 @@ def product_body(
     parts = [product.description]
     for heading, text in (
         ("Limitations", product.limitations),
-        ("Service level", product.sla),
         ("Support", product.support),
         ("Support contact", product.support_contact),
         ("Version", product.version),

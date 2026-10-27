@@ -123,9 +123,9 @@ ON CONFLICT (id) DO NOTHING;
 -- REQ-1634: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
 -- already has the underlying source of truth -- team_role/owner_role resolve to individuals
 -- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
--- inputPorts/outputPorts are derived from existing tag assignments/glossary/lineage rather
--- than stored here, and sla/support stay prose because a product spans multiple tables and a
--- structured SLA can't unambiguously attribute which member it describes.
+-- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
+-- and support stays prose. REQ-2158: each output port is a member table, whose declared contract
+-- (registered_tables.contract) holds the SLA.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
@@ -143,7 +143,6 @@ CREATE TABLE IF NOT EXISTS data_products (
     status_by     TEXT,
     status_at     TIMESTAMPTZ,
     successor_id  TEXT REFERENCES data_products(id) ON DELETE SET NULL,
-    sla           TEXT,
     support       TEXT,
     support_contact TEXT,
     custom_properties JSONB NOT NULL DEFAULT '{}'
@@ -162,7 +161,6 @@ DO $$ BEGIN
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_by TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS successor_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS sla TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support_contact TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS custom_properties JSONB NOT NULL DEFAULT '{}';
@@ -229,6 +227,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2158: a data product member's ODCS contract (its output port), declared and versioned on
+    -- its own: {version, status, description, terms, sla, schema}; NULL for a table in no product.
+    contract    JSONB,
     UNIQUE (source_id, schema_name, table_name)
 );
 

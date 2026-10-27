@@ -32,6 +32,7 @@ from tests.integration.metadata_export_server import (
     GLOSSARY_TERM,
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
+    ORDERS_CONTRACT,
     PRODUCT,
     PRODUCT_FIELDS,
     RLS_FILTER,
@@ -215,13 +216,14 @@ async def test_each_member_carries_its_odcs_contract(published, token):
     # OpenMetadata 2.0.5 keeps no imported ODCS ``version``: its import keeps the contract
     # entity's own revision and its export reports that (ODCSConverter.toODCS/fullReplace).
     assert odcs["version"] == str(contract["version"])
-    # What Provisa sent, as OpenMetadata keeps it: the member's name, the product's status
+    # What Provisa sent, as OpenMetadata keeps it: the member's name, its contract's status
     # (active is OpenMetadata's APPROVED, and back), and the description's three parts in one.
+    terms = ORDERS_CONTRACT["terms"]
     assert odcs["name"] == "orders"
-    assert odcs["status"] == PRODUCT_FIELDS["status"]
+    assert odcs["status"] == ORDERS_CONTRACT["status"]
     assert odcs["description"] == {
-        "purpose": f"{PRODUCT_FIELDS['purpose']}\n\n**Limitations:**\n"
-        f"{PRODUCT_FIELDS['limitations']}\n\n**Usage:**\n{PRODUCT_FIELDS['usage']}"
+        "purpose": f"{ORDERS_CONTRACT['description']}\n\n**Limitations:**\n"
+        f"{terms['limitations']}\n\n**Usage:**\n{terms['usage']}"
     }
     (schema,) = odcs["schema"]
     columns = {p["name"]: p for p in schema["properties"]}

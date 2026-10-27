@@ -41,11 +41,13 @@ import type { DescribeColumn } from "../../components/lineage/column-description
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
+import { ContractView } from "./ContractView";
 import { ClampedDetail } from "./ClampedDetail";
 import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
+  coreContracts,
   coreGraph,
   modelName,
   type CoreEdge,
@@ -344,6 +346,7 @@ export function DataProductDetailPanel({
   // REQ-2160: the owner sees every row; any other reader the product's promises.
   const shownDqRows: readonly (typeof DQ_ROWS)[number][] = owner ? DQ_ROWS : ["promises"];
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
+  const contracts = coreContracts(core); // REQ-2158
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
@@ -372,7 +375,6 @@ export function DataProductDetailPanel({
     },
     { label: t("dataProductsTab.supportLabel"), value: product.support },
     { label: t("dataProductsTab.supportContactLabel"), value: product.supportContact },
-    { label: t("dataProductsTab.slaLabel"), value: product.sla },
     { label: t("dataProductsTab.purposeLabel"), value: product.purpose },
     { label: t("dataProductsTab.limitationsLabel"), value: product.limitations },
     { label: t("dataProductsTab.usageLabel"), value: product.usage },
@@ -591,6 +593,20 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
+          </DetailCard>
+        )}
+        {contracts.length > 0 && (
+          <DetailCard
+            section="contracts"
+            testId={`data-product-card-contracts-${p.id}`}
+            label={t("dataProductsTab.contract.label")}
+            hint={t("dataProductsTab.contract.hint")}
+          >
+            <Stack gap="md">
+              {contracts.map((c) => (
+                <ContractView key={c.tableId} contract={c} />
+              ))}
+            </Stack>
           </DetailCard>
         )}
         {(outputTables !== undefined || core.commands !== undefined) && (

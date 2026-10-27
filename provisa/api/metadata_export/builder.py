@@ -163,6 +163,7 @@ def _table_assets(
                 table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
             ),
             is_view=table.view_sql is not None,
+            contract=table.contract,  # REQ-2158
         )
         for table in tables
     ]
@@ -229,7 +230,6 @@ def _data_product_assets(
                 usage=product.usage,
                 version=product.version,
                 status=product.status,
-                sla=product.sla,
                 support=product.support,
                 custom_properties=dict(product.custom_properties),
                 owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),

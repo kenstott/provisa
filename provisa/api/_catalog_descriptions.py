@@ -188,6 +188,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
+        # REQ-2158
+        "contract": "A data product member's contract: its version, status, terms, service "
+        "levels and the columns it promises; empty for a table in no product",
     },
     # REQ-2126
     "data_product_edges": {
@@ -235,7 +238,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status_reason": "Why the product was deprecated or retired",
         "retire_on": "When a deprecated product is planned to retire",
         "successor_id": "The product that took a retired product's members",
-        "sla": "The service level the product is held to",
         "support": "Where to get support for the product",
         "support_contact": "Who to contact for support",
         "custom_properties": "The product's own named properties",

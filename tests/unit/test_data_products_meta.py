@@ -47,7 +47,6 @@ PRODUCT_FIELDS = [
     "status_reason",
     "retire_on",
     "successor_id",
-    "sla",
     "support",
     "support_contact",
     "custom_properties",

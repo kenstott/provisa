@@ -22,8 +22,6 @@
     "versionLabel": "Version",
     "versionPlaceholder": "e.g. 1.2.0",
     "statusLabel": "Status",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Service-level commitments for this product",
     "supportLabel": "Support",
     "supportPlaceholder": "How to get help with this product",
     "supportContactLabel": "Support contact",
@@ -156,6 +154,38 @@
     "findingFix_member_deprecated": "Open {{table}}",
     "findingFix_retirement_blocked": "Choose a successor…",
     "findingFix_domain_steward_unset": "Open domain {{domain}}",
-    "findingFix_successor_retired": "Open {{successor}}"
+    "findingFix_successor_retired": "Open {{successor}}",
+    "contract": {
+      "label": "Contracts",
+      "hint": "Each output port's contract: what it promises, at its own version",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposed",
+        "draft": "Draft",
+        "active": "Active",
+        "deprecated": "Deprecated",
+        "retired": "Retired"
+      },
+      "usage": "Usage",
+      "limitations": "Limitations",
+      "noticePeriod": "Notice period",
+      "noticePeriodPlaceholder": "e.g. P3M",
+      "column": "Column",
+      "type": "Type",
+      "required": "Never null",
+      "yes": "Yes",
+      "versionLabel": "Contract version",
+      "statusLabel": "Contract status",
+      "descriptionLabel": "What it is for",
+      "columnsLabel": "Promised columns",
+      "columnsHelp": "No longer promising a column, or changing its type, needs a new version.",
+      "requiredLabel": "Never null",
+      "slaLabel": "Service levels",
+      "slaProperty": "Property",
+      "slaValue": "Value",
+      "slaUnit": "Unit",
+      "slaRemove": "Remove service level",
+      "slaAdd": "Add service level"
+    }
   }
 }

@@ -552,9 +552,7 @@ class DataProduct(BaseModel):  # REQ-1634
     status_reason: str | None = None
     retire_on: date | None = None
     successor: str | None = None
-    # Prose, not structured: a product spans multiple member tables and a structured SLA
-    # can't unambiguously say which member it describes.
-    sla: str | None = None
+    # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
@@ -571,6 +569,57 @@ class DataProduct(BaseModel):  # REQ-1634
         if self.successor is not None and self.status != "retired":
             raise ValueError("successor is the data product a retired one's members moved to")
         return self
+
+
+#: REQ-2158: the states of an ODCS contract.
+CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
+#: REQ-2158: the version a member's contract is created at, as a draft.
+FIRST_CONTRACT_VERSION = "0.1.0"
+
+
+class ContractColumn(BaseModel):  # REQ-2158
+    """A column an output port promises: the member's column, of the type it is stored as."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    description: str | None = None
+    required: bool = False  # ODCS: the column is never null
+
+
+class ContractSlaProperty(BaseModel):  # REQ-2158
+    """One declared ODCS service-level property (availability, retention, ...). Freshness is
+    not declared here: it is the member's declared freshness, read when the contract is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    property: str = Field(min_length=1)
+    value: str | int | float | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+class ContractTerms(BaseModel):  # REQ-2158
+    model_config = ConfigDict(extra="forbid")
+
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
+
+
+class DataContract(BaseModel):  # REQ-2158
+    """A data product member's ODCS contract: its output port, versioned on its own. Its promises
+    are the checks the product owns on the member (REQ-2157), read when the contract is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    status: Literal["proposed", "draft", "active", "deprecated", "retired"] = "draft"
+    description: str | None = None
+    terms: ContractTerms = Field(default_factory=ContractTerms)
+    sla: list[ContractSlaProperty] = Field(default_factory=list)
+    columns: list[ContractColumn] = Field(default_factory=list)
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -1665,6 +1714,9 @@ class Table(
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
+    # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
+    # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
+    contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.

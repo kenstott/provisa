@@ -19,6 +19,8 @@ import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
+  useSaveDataContract,
+  type DataContractInput,
   useDataProductFindings,
   useDataProductStatus,
 } from "../hooks/useDataProductMutations";
@@ -36,6 +38,8 @@ import { catalogTableName, lineageRelationLabel, relationName } from "../naming"
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
+import { coreContracts } from "./data-products/productCore";
+import { contractChanged } from "./data-products/contractDraft";
 import { ProductMapButton } from "../components/graph3d/GraphPanel";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -137,6 +141,9 @@ export function DataProductsPage() {
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
+  // REQ-2158: the open product's contracts as edited, by table id; each changed one is saved.
+  const [contractDrafts, setContractDrafts] = useState<Record<number, DataContractInput>>({});
+  const { saveDataContract } = useSaveDataContract();
   // REQ-1659: `?product=<id>` is the deep link a catalog listing (Snowflake Horizon's
   // documentation box, Analytics Hub) carries back to this page; it names the product to open and
   // wins over the last-expanded row remembered in localStorage.
@@ -170,6 +177,8 @@ export function DataProductsPage() {
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
   const core = useProductCore(expanded, coreVersion);
+  // REQ-2158: the open product's contracts, read with its panel core.
+  const contracts = core.data ? coreContracts(core.data) : [];
   const reader = useMetaReader();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -252,7 +261,6 @@ export function DataProductsPage() {
       limitations: p.limitations,
       usage: p.usage,
       version: p.version ?? "",
-      sla: p.sla ?? "",
       support: p.support ?? "",
       supportContact: p.supportContact ?? "",
       // The editor works on Record<string, string>; ODPS customProperties values are
@@ -263,6 +271,7 @@ export function DataProductsPage() {
     });
     setSelectedTableIds(memberTables(p.id).map((tb) => String(tb.id)));
     setSelectedFunctionNames(memberFunctions(p.id).map((fn) => fn.name));
+    setContractDrafts({});
     setMsg("");
   };
 
@@ -286,7 +295,6 @@ export function DataProductsPage() {
       limitations: form.limitations.trim(),
       usage: form.usage.trim(),
       version: form.version.trim() || null,
-      sla: form.sla.trim() || null,
       support: form.support.trim() || null,
       supportContact: form.supportContact.trim() || null,
       customProperties: form.customProperties,
@@ -346,6 +354,20 @@ export function DataProductsPage() {
       const refreshed = await fetchActions();
       setFunctions(refreshed.functions);
     }
+    // REQ-2158: each changed contract is saved on its own; a refusal names the contract and keeps
+    // the form open with what was entered.
+    const refused: string[] = [];
+    for (const c of contracts) {
+      const draft = contractDrafts[c.tableId];
+      if (draft === undefined || !contractChanged(c, draft)) continue;
+      const saved = await saveDataContract(c.tableId, draft);
+      if (!saved.success) refused.push(saved.message);
+    }
+    if (refused.length > 0) {
+      setMsg(refused.join("\n"));
+      products.reload();
+      return;
+    }
     products.reload();
     setCoreVersion((v) => v + 1);
     closeForm();
@@ -391,6 +413,9 @@ export function DataProductsPage() {
       msg={msg}
       onSave={handleSave}
       onCancel={closeForm}
+      contracts={editingId !== null ? contracts : []}
+      contractDrafts={contractDrafts}
+      setContractDrafts={setContractDrafts}
       focus={formFocus}
     />
   );

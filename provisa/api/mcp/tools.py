@@ -877,7 +877,6 @@ async def create_data_product(  # REQ-1855
     limitations: str = "",
     usage: str = "",
     version: str | None = None,
-    sla: str | None = None,
     support: str | None = None,
 ) -> dict:
     """Create or replace a data product by id (an id that already exists is overwritten in
@@ -929,7 +928,6 @@ async def create_data_product(  # REQ-1855
                 if stored is not None
                 else {}
             ),
-            sla=sla,
             support=support,
         )
         await data_product_repo.upsert(conn, model)

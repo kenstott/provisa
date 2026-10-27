@@ -22,8 +22,6 @@
     "versionLabel": "גרסה",
     "versionPlaceholder": "לדוגמה: 1.2.0",
     "statusLabel": "סטטוס",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "התחייבויות רמת שירות למוצר זה",
     "supportLabel": "תמיכה",
     "supportPlaceholder": "כיצד לקבל עזרה עם מוצר זה",
     "supportContactLabel": "איש קשר לתמיכה",
@@ -156,6 +154,38 @@
     "findingFix_member_deprecated": "פתח את {{table}}",
     "findingFix_retirement_blocked": "בחר מחליף…",
     "findingFix_domain_steward_unset": "פתח את הדומיין {{domain}}",
-    "findingFix_successor_retired": "פתח את {{successor}}"
+    "findingFix_successor_retired": "פתח את {{successor}}",
+    "contract": {
+      "label": "חוזי נתונים",
+      "hint": "החוזה של כל יציאת פלט: מה שהוא מבטיח, בגרסה משלו",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "מוצע",
+        "draft": "טיוטה",
+        "active": "פעיל",
+        "deprecated": "הוצא משימוש",
+        "retired": "פרוש"
+      },
+      "usage": "שימוש",
+      "limitations": "מגבלות",
+      "noticePeriod": "תקופת הודעה מוקדמת",
+      "noticePeriodPlaceholder": "למשל P3M",
+      "column": "עמודה",
+      "type": "סוג",
+      "required": "אף פעם לא null",
+      "yes": "כן",
+      "versionLabel": "גרסת החוזה",
+      "statusLabel": "סטטוס החוזה",
+      "descriptionLabel": "למה הוא משמש",
+      "columnsLabel": "עמודות מובטחות",
+      "columnsHelp": "הפסקת ההבטחה של עמודה, או שינוי הסוג שלה, דורשים גרסה חדשה.",
+      "requiredLabel": "אף פעם לא null",
+      "slaLabel": "רמות שירות",
+      "slaProperty": "מאפיין",
+      "slaValue": "ערך",
+      "slaUnit": "יחידה",
+      "slaRemove": "הסרת רמת שירות",
+      "slaAdd": "הוספת רמת שירות"
+    }
   }
 }

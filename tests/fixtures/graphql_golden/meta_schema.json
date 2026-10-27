@@ -8,81 +8,6 @@
     {
      "fields": [
       {
-       "name": "ont__domains",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__Domains"
-         }
-        }
-       }
-      },
-      {
-       "name": "ont__experts",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__Experts"
-         }
-        }
-       }
-      },
-      {
-       "name": "ont__termEdges",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermEdges"
-         }
-        }
-       }
-      },
-      {
-       "name": "ont__termRefs",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermRefs"
-         }
-        }
-       }
-      },
-      {
-       "name": "ont__terms",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__Terms"
-         }
-        }
-       }
-      },
-      {
        "name": "m__dataProductEdges",
        "type": {
         "kind": "LIST",
@@ -168,6 +93,81 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__EffectiveColumnTags"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__glossaryTermDomains",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermDomains"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__glossaryTermEdges",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermEdges"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__glossaryTermExperts",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermExperts"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__glossaryTermRefs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermRefs"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__glossaryTerms",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTerms"
          }
         }
        }
@@ -425,10 +425,24 @@
     {
      "fields": [
       {
-       "name": "domainId",
+       "name": "aliases",
        "type": {
         "kind": "SCALAR",
         "name": "String"
+       }
+      },
+      {
+       "name": "direct",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "hops",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
        }
       },
       {
@@ -439,21 +453,49 @@
        }
       },
       {
-       "name": "tenantId",
+       "name": "kind",
        "type": {
         "kind": "SCALAR",
         "name": "String"
        }
       },
       {
-       "name": "termDomains",
+       "name": "pathCount",
+       "type": {
+        "kind": "SCALAR",
+        "name": "BigInt"
+       }
+      },
+      {
+       "name": "productId",
        "type": {
         "kind": "SCALAR",
         "name": "String"
        }
       },
       {
-       "name": "termId",
+       "name": "relationshipIds",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "supportingTables",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "targetProductId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "targetTableId",
        "type": {
         "kind": "SCALAR",
         "name": "Int"
@@ -482,21 +524,385 @@
        }
       },
       {
-       "name": "_meta",
+       "name": "product",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__DataProducts"
+       }
+      },
+      {
+       "name": "targetProduct",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__DataProducts"
+       }
+      },
+      {
+       "name": "targetTable",
        "type": {
         "kind": "OBJECT",
         "name": "M__RegisteredTables"
        }
+      }
+     ],
+     "name": "M__DataProductEdges"
+    },
+    {
+     "fields": [
+      {
+       "name": "customProperties",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
       },
       {
-       "name": "term",
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "limitations",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "ownerRole",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "purpose",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "retireOn",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Date"
+       }
+      },
+      {
+       "name": "status",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "statusReason",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "successorId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "support",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "supportContact",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "teamRole",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "usage",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "version",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "edges",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProductEdges"
+         }
+        }
+       }
+      },
+      {
+       "name": "domain",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "M__Domains"
+       }
+      },
+      {
+       "name": "memberTables",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RegisteredTables"
+         }
+        }
+       }
+      },
+      {
+       "name": "tags",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TagAssignments"
+         }
+        }
+       }
+      },
+      {
+       "name": "commands",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TrackedFunctions"
+         }
+        }
        }
       }
      ],
-     "name": "ONT__Domains"
+     "name": "M__DataProducts"
+    },
+    {
+     "fields": [
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "graphqlAlias",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "orgId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "parentDomainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "steward",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "dataProducts",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProducts"
+         }
+        }
+       }
+      },
+      {
+       "name": "registeredTables",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RegisteredTables"
+         }
+        }
+       }
+      },
+      {
+       "name": "rlsRules",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RlsRules"
+         }
+        }
+       }
+      },
+      {
+       "name": "trackedFunctions",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TrackedFunctions"
+         }
+        }
+       }
+      },
+      {
+       "name": "trackedWebhooks",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TrackedWebhooks"
+         }
+        }
+       }
+      }
+     ],
+     "name": "M__Domains"
     },
     {
      "fields": [
@@ -533,6 +939,13 @@
        "type": {
         "kind": "SCALAR",
         "name": "DateTime"
+       }
+      },
+      {
+       "name": "contract",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
        }
       },
       {
@@ -691,21 +1104,6 @@
        }
       },
       {
-       "name": "glossaryRefs",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermRefs"
-         }
-        }
-       }
-      },
-      {
        "name": "checkedBy",
        "type": {
         "kind": "LIST",
@@ -731,7 +1129,7 @@
        "name": "classTerm",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "M__GlossaryTerms"
        }
       },
       {
@@ -774,6 +1172,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__DqRules"
+         }
+        }
+       }
+      },
+      {
+       "name": "glossaryRefs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermRefs"
          }
         }
        }
@@ -888,6 +1301,499 @@
     {
      "fields": [
       {
+       "name": "definition",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "deprecated",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "exportExcluded",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "grounded",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "identityGap",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "isAbstract",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "isRooted",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "live",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "refCount",
+       "type": {
+        "kind": "SCALAR",
+        "name": "BigInt"
+       }
+      },
+      {
+       "name": "retireOn",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Date"
+       }
+      },
+      {
+       "name": "retired",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "status",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "statusReason",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "termDomains",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "domains",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermDomains"
+         }
+        }
+       }
+      },
+      {
+       "name": "edgesIn",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermEdges"
+         }
+        }
+       }
+      },
+      {
+       "name": "edgesOut",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermEdges"
+         }
+        }
+       }
+      },
+      {
+       "name": "experts",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermExperts"
+         }
+        }
+       }
+      },
+      {
+       "name": "refs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermRefs"
+         }
+        }
+       }
+      },
+      {
+       "name": "tables",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RegisteredTables"
+         }
+        }
+       }
+      },
+      {
+       "name": "termTags",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TagAssignments"
+         }
+        }
+       }
+      }
+     ],
+     "name": "M__GlossaryTerms"
+    },
+    {
+     "fields": [
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "termDomains",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "termId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "term",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__GlossaryTerms"
+       }
+      }
+     ],
+     "name": "M__GlossaryTermDomains"
+    },
+    {
+     "fields": [
+      {
+       "name": "fromTerm",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "fromTermDomains",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "fromTermId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "relType",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "toTerm",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "toTermDomains",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "toTermId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "sourceTerm",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__GlossaryTerms"
+       }
+      },
+      {
+       "name": "targetTerm",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__GlossaryTerms"
+       }
+      }
+     ],
+     "name": "M__GlossaryTermEdges"
+    },
+    {
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "kind",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "termId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "termName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "userId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__GlossaryTermExperts"
+    },
+    {
+     "fields": [
+      {
        "name": "columnKey",
        "type": {
         "kind": "SCALAR",
@@ -987,13 +1893,6 @@
        }
       },
       {
-       "name": "_meta",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
        "name": "registeredTable",
        "type": {
         "kind": "OBJECT",
@@ -1011,11 +1910,11 @@
        "name": "term",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "M__GlossaryTerms"
        }
       }
      ],
-     "name": "ONT__TermRefs"
+     "name": "M__GlossaryTermRefs"
     },
     {
      "fields": [
@@ -1140,21 +2039,6 @@
        }
       },
       {
-       "name": "glossaryRef",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermRefs"
-         }
-        }
-       }
-      },
-      {
        "name": "effectiveTags",
        "type": {
         "kind": "LIST",
@@ -1165,6 +2049,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__EffectiveColumnTags"
+         }
+        }
+       }
+      },
+      {
+       "name": "glossaryRef",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__GlossaryTermRefs"
          }
         }
        }
@@ -1588,968 +2487,6 @@
     {
      "fields": [
       {
-       "name": "customProperties",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "domainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "limitations",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "name",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "ownerRole",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "purpose",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "retireOn",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Date"
-       }
-      },
-      {
-       "name": "sla",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "status",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "statusReason",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "successorId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "support",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "supportContact",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "teamRole",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "usage",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "version",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "edges",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__DataProductEdges"
-         }
-        }
-       }
-      },
-      {
-       "name": "domain",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Domains"
-       }
-      },
-      {
-       "name": "memberTables",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__RegisteredTables"
-         }
-        }
-       }
-      },
-      {
-       "name": "tags",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TagAssignments"
-         }
-        }
-       }
-      },
-      {
-       "name": "commands",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TrackedFunctions"
-         }
-        }
-       }
-      }
-     ],
-     "name": "M__DataProducts"
-    },
-    {
-     "fields": [
-      {
-       "name": "aliases",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "direct",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "hops",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "kind",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "pathCount",
-       "type": {
-        "kind": "SCALAR",
-        "name": "BigInt"
-       }
-      },
-      {
-       "name": "productId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "relationshipIds",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "supportingTables",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "targetProductId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "targetTableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "product",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
-       }
-      },
-      {
-       "name": "targetProduct",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
-       }
-      },
-      {
-       "name": "targetTable",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      }
-     ],
-     "name": "M__DataProductEdges"
-    },
-    {
-     "fields": [
-      {
-       "name": "description",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "graphqlAlias",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "orgId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "parentDomainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "steward",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "dataProducts",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__DataProducts"
-         }
-        }
-       }
-      },
-      {
-       "name": "registeredTables",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__RegisteredTables"
-         }
-        }
-       }
-      },
-      {
-       "name": "rlsRules",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__RlsRules"
-         }
-        }
-       }
-      },
-      {
-       "name": "trackedFunctions",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TrackedFunctions"
-         }
-        }
-       }
-      },
-      {
-       "name": "trackedWebhooks",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TrackedWebhooks"
-         }
-        }
-       }
-      }
-     ],
-     "name": "M__Domains"
-    },
-    {
-     "fields": [
-      {
-       "name": "actionName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "description",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "domainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "filterExpr",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "roleId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "tagId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "why",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "domain",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Domains"
-       }
-      },
-      {
-       "name": "registeredTable",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
-       "name": "role",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Roles"
-       }
-      }
-     ],
-     "name": "M__RlsRules"
-    },
-    {
-     "fields": [
-      {
-       "name": "capabilities",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "description",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "domainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "orgId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "domain",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Domains"
-       }
-      },
-      {
-       "name": "rlsRules",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__RlsRules"
-         }
-        }
-       }
-      }
-     ],
-     "name": "M__Roles"
-    },
-    {
-     "fields": [
-      {
-       "name": "arguments",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "createdAt",
-       "type": {
-        "kind": "SCALAR",
-        "name": "DateTime"
-       }
-      },
-      {
-       "name": "description",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "domainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "functionName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "kind",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "name",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "productId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "returnSchema",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "returns",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "schemaName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "sourceId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "updatedAt",
-       "type": {
-        "kind": "SCALAR",
-        "name": "DateTime"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "product",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
-       }
-      },
-      {
-       "name": "domain",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Domains"
-       }
-      }
-     ],
-     "name": "M__TrackedFunctions"
-    },
-    {
-     "fields": [
-      {
-       "name": "arguments",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "createdAt",
-       "type": {
-        "kind": "SCALAR",
-        "name": "DateTime"
-       }
-      },
-      {
-       "name": "description",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "domainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "inlineReturnType",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "kind",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "method",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "name",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "returns",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "timeoutMs",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "updatedAt",
-       "type": {
-        "kind": "SCALAR",
-        "name": "DateTime"
-       }
-      },
-      {
-       "name": "url",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "domain",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__Domains"
-       }
-      }
-     ],
-     "name": "M__TrackedWebhooks"
-    },
-    {
-     "fields": [
-      {
        "name": "checkedAt",
        "type": {
         "kind": "SCALAR",
@@ -2713,465 +2650,6 @@
       }
      ],
      "name": "M__SensitiveCoverage"
-    },
-    {
-     "fields": [
-      {
-       "name": "definition",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "deprecated",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "exportExcluded",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "grounded",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "identityGap",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "isAbstract",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "isClass",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "isProperty",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "isRooted",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "live",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "name",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "refCount",
-       "type": {
-        "kind": "SCALAR",
-        "name": "BigInt"
-       }
-      },
-      {
-       "name": "retireOn",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Date"
-       }
-      },
-      {
-       "name": "retired",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "status",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "statusReason",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "termDomains",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_meta",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
-       "name": "domains",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__Domains"
-         }
-        }
-       }
-      },
-      {
-       "name": "edgesIn",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermEdges"
-         }
-        }
-       }
-      },
-      {
-       "name": "edgesOut",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermEdges"
-         }
-        }
-       }
-      },
-      {
-       "name": "experts",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__Experts"
-         }
-        }
-       }
-      },
-      {
-       "name": "refs",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "ONT__TermRefs"
-         }
-        }
-       }
-      },
-      {
-       "name": "tables",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__RegisteredTables"
-         }
-        }
-       }
-      },
-      {
-       "name": "termTags",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TagAssignments"
-         }
-        }
-       }
-      }
-     ],
-     "name": "ONT__Terms"
-    },
-    {
-     "fields": [
-      {
-       "name": "fromTerm",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "fromTermDomains",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "fromTermId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "relType",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "toTerm",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "toTermDomains",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "toTermId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_meta",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
-       "name": "sourceTerm",
-       "type": {
-        "kind": "OBJECT",
-        "name": "ONT__Terms"
-       }
-      },
-      {
-       "name": "targetTerm",
-       "type": {
-        "kind": "OBJECT",
-        "name": "ONT__Terms"
-       }
-      }
-     ],
-     "name": "ONT__TermEdges"
-    },
-    {
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "kind",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "termId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "termName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "userId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_meta",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      }
-     ],
-     "name": "ONT__Experts"
     },
     {
      "fields": [
@@ -3614,6 +3092,215 @@
     {
      "fields": [
       {
+       "name": "actionName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "filterExpr",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "roleId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tableId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "tagId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "why",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "domain",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Domains"
+       }
+      },
+      {
+       "name": "registeredTable",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__RegisteredTables"
+       }
+      },
+      {
+       "name": "role",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Roles"
+       }
+      }
+     ],
+     "name": "M__RlsRules"
+    },
+    {
+     "fields": [
+      {
+       "name": "capabilities",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "orgId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "domain",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Domains"
+       }
+      },
+      {
+       "name": "rlsRules",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RlsRules"
+         }
+        }
+       }
+      }
+     ],
+     "name": "M__Roles"
+    },
+    {
+     "fields": [
+      {
        "name": "id",
        "type": {
         "kind": "SCALAR",
@@ -3651,6 +3338,270 @@
       }
      ],
      "name": "M__Sources"
+    },
+    {
+     "fields": [
+      {
+       "name": "arguments",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "createdAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "functionName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "kind",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "productId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "returnSchema",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "returns",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "schemaName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "sourceId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "updatedAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "product",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__DataProducts"
+       }
+      },
+      {
+       "name": "domain",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Domains"
+       }
+      }
+     ],
+     "name": "M__TrackedFunctions"
+    },
+    {
+     "fields": [
+      {
+       "name": "arguments",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "createdAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "inlineReturnType",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "kind",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "method",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "returns",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "timeoutMs",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "updatedAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
+      {
+       "name": "url",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "domain",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Domains"
+       }
+      }
+     ],
+     "name": "M__TrackedWebhooks"
     },
     {
      "fields": [
@@ -4065,31 +4016,6 @@
  },
  "root_fields": [
   {
-   "domain_id": "ontology",
-   "graphql_field": "ont__domains",
-   "table_name": "_domains"
-  },
-  {
-   "domain_id": "ontology",
-   "graphql_field": "ont__experts",
-   "table_name": "_experts"
-  },
-  {
-   "domain_id": "ontology",
-   "graphql_field": "ont__termEdges",
-   "table_name": "_term_edges"
-  },
-  {
-   "domain_id": "ontology",
-   "graphql_field": "ont__termRefs",
-   "table_name": "_term_refs"
-  },
-  {
-   "domain_id": "ontology",
-   "graphql_field": "ont__terms",
-   "table_name": "_terms"
-  },
-  {
    "domain_id": "meta",
    "graphql_field": "m__dataProductEdges",
    "table_name": "data_product_edges"
@@ -4118,6 +4044,31 @@
    "domain_id": "meta",
    "graphql_field": "m__effectiveColumnTags",
    "table_name": "effective_column_tags"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__glossaryTermDomains",
+   "table_name": "glossary_term_domains"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__glossaryTermEdges",
+   "table_name": "glossary_term_edges"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__glossaryTermExperts",
+   "table_name": "glossary_term_experts"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__glossaryTermRefs",
+   "table_name": "glossary_term_refs"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__glossaryTerms",
+   "table_name": "glossary_terms"
   },
   {
    "domain_id": "meta",

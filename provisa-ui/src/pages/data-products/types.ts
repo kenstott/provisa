@@ -20,7 +20,6 @@ export interface DataProductForm {
   limitations: string;
   usage: string;
   version: string;
-  sla: string;
   support: string;
   supportContact: string;
   customProperties: Record<string, string>;
@@ -36,7 +35,6 @@ export const EMPTY_FORM: DataProductForm = {
   limitations: "",
   usage: "",
   version: "",
-  sla: "",
   support: "",
   supportContact: "",
   customProperties: {},

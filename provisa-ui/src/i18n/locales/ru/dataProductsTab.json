@@ -22,8 +22,6 @@
     "versionLabel": "Версия",
     "versionPlaceholder": "напр. 1.2.0",
     "statusLabel": "Статус",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Обязательства по уровню обслуживания для этого продукта",
     "supportLabel": "Поддержка",
     "supportPlaceholder": "Как получить помощь по этому продукту",
     "supportContactLabel": "Контакт поддержки",
@@ -156,6 +154,38 @@
     "findingFix_member_deprecated": "Открыть {{table}}",
     "findingFix_retirement_blocked": "Выбрать преемника…",
     "findingFix_domain_steward_unset": "Открыть домен {{domain}}",
-    "findingFix_successor_retired": "Открыть {{successor}}"
+    "findingFix_successor_retired": "Открыть {{successor}}",
+    "contract": {
+      "label": "Контракты данных",
+      "hint": "Контракт каждого выходного порта: что он обещает, в собственной версии",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Предложен",
+        "draft": "Черновик",
+        "active": "Активен",
+        "deprecated": "Устарел",
+        "retired": "Выведен из эксплуатации"
+      },
+      "usage": "Использование",
+      "limitations": "Ограничения",
+      "noticePeriod": "Срок уведомления",
+      "noticePeriodPlaceholder": "напр. P3M",
+      "column": "Столбец",
+      "type": "Тип",
+      "required": "Никогда не null",
+      "yes": "Да",
+      "versionLabel": "Версия контракта",
+      "statusLabel": "Статус контракта",
+      "descriptionLabel": "Для чего он",
+      "columnsLabel": "Обещанные столбцы",
+      "columnsHelp": "Чтобы перестать обещать столбец или изменить его тип, нужна новая версия.",
+      "requiredLabel": "Никогда не null",
+      "slaLabel": "Уровни обслуживания",
+      "slaProperty": "Свойство",
+      "slaValue": "Значение",
+      "slaUnit": "Единица",
+      "slaRemove": "Удалить уровень обслуживания",
+      "slaAdd": "Добавить уровень обслуживания"
+    }
   }
 }

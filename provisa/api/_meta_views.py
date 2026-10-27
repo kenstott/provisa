@@ -537,6 +537,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
     # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
+    # REQ-2158: contract, a product member's declared contract, is last too.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -561,7 +562,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
                (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_outcome,
                (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
-                   AS latest_run_at
+                   AS latest_run_at,
+               -- A product member's contract, its output port; last, as above.
+               rt.contract
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
@@ -577,7 +580,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "data_products": """
         CREATE OR REPLACE VIEW data_products_meta AS
         SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
-               version, status, status_reason, retire_on, successor_id, sla, support,
+               version, status, status_reason, retire_on, successor_id, support,
                support_contact, custom_properties
         FROM data_products
     """,

@@ -22,8 +22,6 @@
     "versionLabel": "Version",
     "versionPlaceholder": "z. B. 1.2.0",
     "statusLabel": "Status",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Service-Level-Zusagen für dieses Produkt",
     "supportLabel": "Support",
     "supportPlaceholder": "Wie Sie Hilfe zu diesem Produkt erhalten",
     "supportContactLabel": "Support-Kontakt",
@@ -156,6 +154,38 @@
     "findingFix_member_deprecated": "{{table}} öffnen",
     "findingFix_retirement_blocked": "Nachfolger wählen…",
     "findingFix_domain_steward_unset": "Domäne {{domain}} öffnen",
-    "findingFix_successor_retired": "{{successor}} öffnen"
+    "findingFix_successor_retired": "{{successor}} öffnen",
+    "contract": {
+      "label": "Data Contracts",
+      "hint": "Der Contract jedes Output-Ports: was er zusichert, in eigener Version",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Vorgeschlagen",
+        "draft": "Entwurf",
+        "active": "Aktiv",
+        "deprecated": "Veraltet",
+        "retired": "Außer Betrieb"
+      },
+      "usage": "Verwendung",
+      "limitations": "Einschränkungen",
+      "noticePeriod": "Kündigungsfrist",
+      "noticePeriodPlaceholder": "z. B. P3M",
+      "column": "Spalte",
+      "type": "Typ",
+      "required": "Nie null",
+      "yes": "Ja",
+      "versionLabel": "Contract-Version",
+      "statusLabel": "Contract-Status",
+      "descriptionLabel": "Wofür er dient",
+      "columnsLabel": "Zugesicherte Spalten",
+      "columnsHelp": "Eine Spalte nicht mehr zuzusichern oder ihren Typ zu ändern erfordert eine neue Version.",
+      "requiredLabel": "Nie null",
+      "slaLabel": "Service-Level",
+      "slaProperty": "Eigenschaft",
+      "slaValue": "Wert",
+      "slaUnit": "Einheit",
+      "slaRemove": "Service-Level entfernen",
+      "slaAdd": "Service-Level hinzufügen"
+    }
   }
 }

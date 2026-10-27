@@ -22,8 +22,6 @@
     "versionLabel": "Versão",
     "versionPlaceholder": "ex.: 1.2.0",
     "statusLabel": "Status",
-    "slaLabel": "SLA",
-    "slaPlaceholder": "Compromissos de nível de serviço deste produto",
     "supportLabel": "Suporte",
     "supportPlaceholder": "Como obter ajuda com este produto",
     "supportContactLabel": "Contato de suporte",
@@ -156,6 +154,38 @@
     "findingFix_member_deprecated": "Abrir {{table}}",
     "findingFix_retirement_blocked": "Escolher um sucessor…",
     "findingFix_domain_steward_unset": "Abrir o domínio {{domain}}",
-    "findingFix_successor_retired": "Abrir {{successor}}"
+    "findingFix_successor_retired": "Abrir {{successor}}",
+    "contract": {
+      "label": "Contratos de dados",
+      "hint": "O contrato de cada porta de saída: o que promete, com versão própria",
+      "versionBadge": "v{{version}}",
+      "status": {
+        "proposed": "Proposto",
+        "draft": "Rascunho",
+        "active": "Ativo",
+        "deprecated": "Obsoleto",
+        "retired": "Retirado"
+      },
+      "usage": "Uso",
+      "limitations": "Limitações",
+      "noticePeriod": "Prazo de aviso prévio",
+      "noticePeriodPlaceholder": "ex.: P3M",
+      "column": "Coluna",
+      "type": "Tipo",
+      "required": "Nunca nulo",
+      "yes": "Sim",
+      "versionLabel": "Versão do contrato",
+      "statusLabel": "Status do contrato",
+      "descriptionLabel": "Para que serve",
+      "columnsLabel": "Colunas prometidas",
+      "columnsHelp": "Deixar de prometer uma coluna, ou mudar seu tipo, exige uma nova versão.",
+      "requiredLabel": "Nunca nulo",
+      "slaLabel": "Níveis de serviço",
+      "slaProperty": "Propriedade",
+      "slaValue": "Valor",
+      "slaUnit": "Unidade",
+      "slaRemove": "Remover nível de serviço",
+      "slaAdd": "Adicionar nível de serviço"
+    }
   }
 }

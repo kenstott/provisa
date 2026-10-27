@@ -95,7 +95,6 @@ const PRODUCT_ROW = {
   status_reason: null,
   retire_on: null,
   successor_id: null,
-  sla: null,
   support: null,
   support_contact: null,
   custom_properties: '{"tier":"gold"}',
@@ -123,7 +122,7 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
     expect(q?.sql).toBe(
-      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "sla", "support", "support_contact", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
+      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "support", "support_contact", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
     );
     expect(q?.jsonapi).toBe("/data/jsonapi/meta/data_products?filter[id]=c360");
   });

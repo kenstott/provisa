@@ -136,7 +136,6 @@ async def _the_data_product_holds_its_members_and_fields(published: dict) -> Non
         "odps.usage": PRODUCT_FIELDS["usage"],
         "odps.version": PRODUCT_FIELDS["version"],
         "odps.status": PRODUCT_FIELDS["status"],
-        "odps.sla": PRODUCT_FIELDS["sla"],
         "odps.support": PRODUCT_FIELDS["support"],
         "odps.supportContact": PRODUCT_FIELDS["support_contact"],
         "odps.custom.cost_center": "CC-42",

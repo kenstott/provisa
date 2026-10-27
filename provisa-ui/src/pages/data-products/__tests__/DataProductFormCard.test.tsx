@@ -27,7 +27,6 @@ const INPUT_TESTIDS = [
   "data-product-limitations-input",
   "data-product-usage-input",
   "data-product-version-input",
-  "data-product-sla-input",
   "data-product-support-input",
   "data-product-support-contact-input",
   "data-product-tables-input",
@@ -46,7 +45,6 @@ const PANELS: Record<string, string[]> = {
     "data-product-team-input",
     "data-product-support-input",
     "data-product-support-contact-input",
-    "data-product-sla-input",
   ],
   description: [
     "data-product-purpose-input",

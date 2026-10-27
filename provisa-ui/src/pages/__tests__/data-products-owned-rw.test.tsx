@@ -120,6 +120,7 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: saves.create, loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: saves.update, loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
+  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),

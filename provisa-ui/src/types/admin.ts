@@ -113,11 +113,47 @@ export interface DataProduct {
   retireOn?: string | null;
   /** The product a retired one's members moved to. */
   successorId?: string | null;
-  sla?: string | null;
   support?: string | null;
   /** The support contact (email or URL) a catalog listing requires. */
   supportContact?: string | null;
   customProperties: Record<string, unknown>;
+}
+
+// REQ-2158: a column an output port promises, of the type it is stored as.
+export interface ContractColumn {
+  name: string;
+  type: string;
+  description?: string | null;
+  required: boolean;
+}
+
+// REQ-2158: a declared ODCS service-level property; freshness is the member's own.
+export interface ContractSlaProperty {
+  property: string;
+  value?: unknown;
+  unit?: string | null;
+  description?: string | null;
+}
+
+export interface ContractTerms {
+  usage?: string | null;
+  limitations?: string | null;
+  noticePeriod?: string | null;
+}
+
+// REQ-2158: a product member's contract, its output port, versioned on its own.
+export interface DataContract {
+  tableId: number;
+  sourceId: string;
+  schemaName: string;
+  tableName: string;
+  contractId: string;
+  version: string;
+  status: string;
+  description?: string | null;
+  terms: ContractTerms;
+  sla: ContractSlaProperty[];
+  columns: ContractColumn[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.

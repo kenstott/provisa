@@ -180,7 +180,47 @@ class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
 
 
 @strawberry.type
-class DataProductType:  # REQ-1634
+class ContractColumnType:  # REQ-2158
+    name: str
+    type: str
+    description: str | None = None
+    required: bool = False
+
+
+@strawberry.type
+class ContractSlaPropertyType:  # REQ-2158
+    property: str
+    value: JsonScalar | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+@strawberry.type
+class ContractTermsType:  # REQ-2158
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None
+
+
+@strawberry.type
+class DataContractType:  # REQ-2158
+    """A product member's contract, its output port: what it promises, at its own version."""
+
+    table_id: int
+    source_id: str
+    schema_name: str
+    table_name: str
+    contract_id: str
+    version: str
+    status: str
+    description: str | None
+    terms: ContractTermsType
+    sla: list[ContractSlaPropertyType]
+    columns: list[ContractColumnType]
+
+
+@strawberry.type
+class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
     name: str
@@ -190,11 +230,11 @@ class DataProductType:  # REQ-1634
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    sla: str | None = None
     support: str | None = None
     # REQ-1635: the support contact (email or URL) a catalog listing requires.
     support_contact: str | None = None
     custom_properties: JsonScalar
+    contracts: list[DataContractType] = strawberry.field(default_factory=list)  # REQ-2158
     # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
     status: str = "draft"
     status_reason: str | None = None
@@ -1051,7 +1091,6 @@ class DataProductInput:  # REQ-1634
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    sla: str | None = None
     support: str | None = None
     # REQ-1635: the support contact (email or URL) a catalog listing requires.
     support_contact: str | None = None
@@ -1059,6 +1098,39 @@ class DataProductInput:  # REQ-1634
     # default value, and the standard introspection query (which asks every input's defaultValue)
     # then answered with an error. Absent or null means no custom properties.
     custom_properties: JsonScalar | None = None
+
+
+@strawberry.input
+class ContractColumnInput:  # REQ-2158
+    name: str
+    type: str
+    description: str | None = None
+    required: bool = False
+
+
+@strawberry.input
+class ContractSlaPropertyInput:  # REQ-2158
+    property: str
+    value: JsonScalar | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+@strawberry.input
+class ContractTermsInput:  # REQ-2158
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None
+
+
+@strawberry.input
+class DataContractInput:  # REQ-2158
+    version: str
+    status: str
+    description: str | None = None
+    terms: ContractTermsInput
+    sla: list[ContractSlaPropertyInput]
+    columns: list[ContractColumnInput]
 
 
 @strawberry.input
