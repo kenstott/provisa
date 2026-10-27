@@ -412,6 +412,11 @@ class TranslatorExprContext:
         registered = self.property_type(exp.column(node.obj.name), node.name)
         return temporal.kind_of_type(registered) if registered else None
 
+    def parameter_value(self, name: str) -> object:
+        if name not in self._t._params:
+            raise CypherTranslateError(f"The parameter ${name} was not supplied")
+        return self._t._params[name]
+
     def resolve_parameter(self, name: str) -> exp.Expression:
         from provisa.gql import spatial, temporal
 
@@ -486,11 +491,17 @@ class TranslatorExprContext:
         if name == "exists":  # exists(x) → x IS NOT NULL — the only fn on an arbitrary expression
             return exp.Not(this=exp.Is(this=args[0], expression=exp.Null()))
         var = self._arg_var(args[0]) if args else None
+        result = None
+        if var is not None:
+            result = self._graph_scalar_fn(name, var)
+            if result is None:
+                result = self._graph_json_fn(name, var)
+        if result is None and name == "keys" and len(args) == 1:
+            # keys() of a map -- a literal, a parameter, a variable bound to one, or null -- is the
+            # map's own keys, in order (null for null).
+            return _anon("map_keys", args[0])
         if var is None:
             raise NotImplementedError(f"graph function {name!r} needs a variable argument")
-        result = self._graph_scalar_fn(name, var)
-        if result is None:
-            result = self._graph_json_fn(name, var)
         if result is None:
             raise NotImplementedError(f"graph function {name!r} unresolved for {var!r}")
         return result

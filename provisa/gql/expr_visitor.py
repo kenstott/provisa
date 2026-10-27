@@ -130,6 +130,10 @@ class ExprContext(Protocol):
         """A ``$param`` reference — the positional placeholder it binds to."""
         ...
 
+    def parameter_value(self, name: str) -> object:
+        """The value the client gives ``$name``."""
+        ...
+
     def temporal_kind(self, expr: CypherExpr) -> str | None:
         """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
@@ -579,6 +583,15 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if node.name.lower() == "keys" and len(node.args) == 1:
+            given = node.args[0]
+            if isinstance(given, MapLiteral):
+                return exp.Array(expressions=[exp.Literal.string(k) for k, _ in given.entries])
+            if isinstance(given, Parameter):
+                value = self._ctx.parameter_value(given.name)
+                if isinstance(value, dict):
+                    # The map the client gives: its keys, as it gives them.
+                    return exp.Array(expressions=[exp.Literal.string(str(k)) for k in value])
         if (
             node.name.lower() == "reverse"
             and len(node.args) == 1
@@ -679,6 +692,13 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
+        if (
+            isinstance(node.obj, (MapLiteral, Variable))
+            and isinstance(node.index, Literal)
+            and node.index.kind == "string"
+        ):
+            # m['k'] is m.k: the key's value as it is, not its JSON.
+            return self.lower(Property(obj=node.obj, name=str(node.index.value)))
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
         idx = self.lower(node.index)
