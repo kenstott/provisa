@@ -550,6 +550,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "XID": BVType.OID,
     "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
     "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
+    "REGPROC": BVType.REGPROC,
+    "REGTYPE": BVType.REGTYPE,
 }
 _INT_TYPES = {
     "INTEGER",
@@ -600,9 +602,43 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
 
 
 _WIRE_FAMILIES = (
-    frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID}),
+    frozenset(
+        {BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID, BVType.REGPROC, BVType.REGTYPE}
+    ),
     frozenset({BVType.REAL, BVType.FLOAT}),
 )
+
+
+def _reg_text(names: dict[int, str]) -> Callable[[Any], str]:  # REQ-2167
+    """A reg* type's text form, as regprocout / regtypeout write it: the object's name, "-" for
+    0, and the number itself for an oid that names no object. A value already in its text form
+    (a source's own reg* column, read as text) is that text."""
+
+    def text(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if value == 0:
+            return "-"
+        return names[value] if value in names else str(value)
+
+    return text
+
+
+def _reg_binary(value: Any) -> bytes:
+    if isinstance(value, str):
+        raise TypeError(f"a reg* value read as its text form {value!r} has no binary form here")
+    return value.to_bytes(4, "big", signed=False)
+
+
+def _register_reg_types() -> None:
+    from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
+
+    type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
+    BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
+    BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
+
+
+_register_reg_types()
 
 
 def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167

@@ -23,6 +23,7 @@ from provisa.pgwire.server import ProvisaQueryResult
 
 SQL_IDENTIFIER, CHARACTER_DATA, YES_OR_NO, CARDINAL_NUMBER = 13302, 13300, 13310, 13297
 OID, NAME, CHAR, TEXT, INT4, INT8, FLOAT8, TIMESTAMPTZ = 26, 19, 18, 25, 23, 20, 701, 1184
+REGPROC, REGTYPE = 24, 2206
 
 
 def _state():
@@ -136,6 +137,8 @@ _STORED_AS_POSTGRESQL_DOES = frozenset(
         "boolean",
         "text[]",
         "smallint[]",
+        "regproc",
+        "regtype",
     }
 )
 
@@ -153,3 +156,27 @@ def test_every_served_catalog_column_of_a_stored_type_is_postgresqls():
             if pg_type in _STORED_AS_POSTGRESQL_DOES and served.get(column, pg_oid) != pg_oid:
                 differing.append(f"{schema}.{relation}.{column}: {served[column]}, not {pg_type}")
     assert differing == []
+
+
+def _wire(sql: str) -> list[tuple[int, str, bytes]]:
+    """Each column of the first row as (type OID, text form, binary form)."""
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    result = ProvisaQueryResult(answer(sql, "testrole", _state()), sql)
+    row = next(iter(result.rows()))
+    out = []
+    for i, value in enumerate(row):
+        bvtype = result.column(i)[1]
+        oid = result.column_type_oid(i)
+        _own_oid, text, binary = BVTYPE_TO_PGTYPE[bvtype]
+        out.append((_own_oid if oid is None else oid, text(value), binary(value)))
+    return out
+
+
+def test_a_regproc_is_its_function_name_as_text_and_its_oid_as_binary():
+    assert _wire("SELECT amhandler FROM pg_catalog.pg_am WHERE amname = 'btree'") == [
+        (REGPROC, "bthandler", (330).to_bytes(4, "big"))
+    ]
+    assert _wire("SELECT typinput FROM pg_catalog.pg_type WHERE oid = 23") == [
+        (REGPROC, "-", (0).to_bytes(4, "big"))
+    ]

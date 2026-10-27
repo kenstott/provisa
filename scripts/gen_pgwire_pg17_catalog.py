@@ -57,6 +57,14 @@ select json_object_agg(proname, rettype order by proname) from (
 ) f
 """
 
+# Each pg_catalog function's regproc text form (its name, schema-qualified where the name alone
+# would not find it uniquely), as regprocout writes it.
+_PROC_NAMES_SQL = """
+select json_object_agg(p.oid::int, p.oid::regproc::text order by p.oid)
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'pg_catalog'
+"""
+
 STATIC_TABLES = ("sql_features", "sql_implementation_info", "sql_parts", "sql_sizing")
 
 
@@ -77,6 +85,7 @@ def main() -> None:
     shapes = json.loads(_psql(prefix, _SHAPES_SQL))
     types = json.loads(_psql(prefix, _TYPES_SQL))
     function_returns = json.loads(_psql(prefix, _FUNCTION_RETURNS_SQL))
+    proc_names = json.loads(_psql(prefix, _PROC_NAMES_SQL))
     static = {}
     for table in STATIC_TABLES:
         cols = [
@@ -91,8 +100,15 @@ def main() -> None:
         )
         static[table] = rows
 
+    # The file's canary stamp is kept across regenerations.
+    canary = [
+        line
+        for line in (OUT_PATH.read_text().splitlines() if OUT_PATH.exists() else [])
+        if line.startswith("# Canary:")
+    ]
     lines = [
         "# Copyright (c) 2026 Kenneth Stott",
+        *canary[:1],
         "#",
         "# This source code is licensed under the Business Source License 1.1",
         "# found in the LICENSE file in the root directory of this source tree.",
@@ -108,7 +124,8 @@ def main() -> None:
         "the rows PostgreSQL itself fixes for the information_schema tables on its SQL conformance.",
         "TYPES: each type's oid -> (namespace, typname, typlen, typtype, typcategory, typnotnull,",
         "typbasetype, typbyval, typalign, typstorage, typelem, typdelim, format_type). FUNCTION_RETURNS:",
-        'a pg_catalog function\'s return type, where every overload of its name returns the same one."""',
+        "a pg_catalog function's return type, where every overload of its name returns the same one.",
+        'PROC_NAMES: a pg_catalog function\'s oid -> its regproc text form."""',
         "",
         "# fmt: off",
         f"PG_VERSION = {version!r}",
@@ -138,6 +155,10 @@ def main() -> None:
     lines.append("")
     lines.append("FUNCTION_RETURNS: dict[str, str] = {")
     lines.extend(f"    {name!r}: {rettype!r}," for name, rettype in function_returns.items())
+    lines.append("}")
+    lines.append("")
+    lines.append("PROC_NAMES: dict[int, str] = {")
+    lines.extend(f"    {int(oid)}: {name!r}," for oid, name in proc_names.items())
     lines.append("}")
     lines.append("# fmt: on")
     OUT_PATH.write_text("\n".join(lines) + "\n")
