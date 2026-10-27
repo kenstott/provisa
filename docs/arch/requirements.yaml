@@ -89231,3 +89231,34 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And GraphQL types ip as IPAddress
 
     And a SQL filter ip = ''10.0.0.1'' compares it as text'
+- id: REQ-2172
+  value: 'Cypher queries that work with dates, times and durations run on Provisa as written.'
+  status: proposed
+  target: 2026-Q4
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: cypher-and-graph-analytics-endpoint
+  priority: SHOULD
+  type: behavioral
+  description: 'Cypher''s temporal values are read as openCypher defines them. A duration is a value
+    of its own (months, days, seconds and nanoseconds), written in the answer in ISO-8601 (P..T..), with
+    its properties (years, quarters, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds,
+    nanoseconds and the openCypher OfX properties). It is built by duration(''P..'') and duration({..})
+    from a map, and by duration.between, duration.inMonths, duration.inDays and duration.inSeconds. Arithmetic
+    adds a duration to or subtracts one from a date, time, local time, local date time or date time, and
+    adds, subtracts, multiplies and divides durations. The temporal values date, time, localtime, localdatetime
+    and datetime are also built from a map of components (date({year: 1984, month: 10, day: 11}), the
+    week, ordinal and quarter forms, and time and datetime with a timezone), and each type''s truncate
+    function (date.truncate, datetime.truncate and so on) truncates to a unit, so these are no longer
+    refused by name. A duration is lowered onto the engine''s own interval type where it has one (DuckDB
+    INTERVAL, PostgreSQL interval, Trino interval day to second and interval year to month); where an
+    engine cannot hold a duration (a duration with both months and seconds on Trino, or nanoseconds beyond
+    the engine''s precision), the statement is refused naming the duration, and the difference is listed
+    on the Cypher Conformance page. (Maintainer, 2026-10-27.)'
+  scenario: 'Given the Cypher surface
+
+    When RETURN duration.between(date(''1984-10-11''), date(''2015-06-24'')) AS d runs
+
+    Then d is ''P30Y8M13D''
+
+    And RETURN date({year: 1984, month: 10, day: 11}) + duration(''P1M'') AS d answers ''1984-11-11'''
