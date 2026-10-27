@@ -3492,7 +3492,7 @@ A source connector must explicitly support DML (INSERT, UPDATE, DELETE) to be wr
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Relationships in Cypher cannot be written. They are derived from foreign-key joins in the semantic layer, not stored edges. CREATE, SET, and DELETE cannot target relationship entities. Attempting to write a relationship is a hard error at translation time.
+Relationships in Cypher cannot be written. They are derived from foreign-key joins in the semantic layer, not stored edges. CREATE, SET, and DELETE cannot target relationship entities. Attempting to write a relationship is a hard error at translation time. (Amended 2026-10-27, JUNCTION RELATIONSHIPS ARE WRITABLE:) Maintainer 2026-10-27: a relationship backed by a registered junction table ([REQ-1586](#REQ-1586)) is a row of that table, so Cypher writes it as one. CREATE of such a relationship between two matched nodes inserts the junction row (its two keys and any properties given), DELETE of it deletes that row, and SET of its properties updates that row; each is governed exactly like any other table write on the junction table (write grants, row rules, masks, the role's admission). A relationship backed by a foreign key or by columns on one of its end tables stays read-only through Cypher, and writing one is refused by name as before. The rule that write clauses never create new labels or relationship types ([REQ-661](#REQ-661)) is unchanged: only registered junction relationships are writable.
 
 **Use case:** Relationship immutability prevents accidental FK manipulation and keeps relationship metadata consistent with the declared join paths.
 
