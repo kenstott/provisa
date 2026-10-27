@@ -52,6 +52,7 @@
       "mailboxes_failed": "Postvakken waarvan het lezen halverwege is mislukt: {{total}}. Wat ervan is gelezen blijft bewaard en het lezen gaat verder bij de volgende vernieuwing. Het zijn: {{accounts}}",
       "place_not_kept": "Deze kopie is volledig, maar er kon niet worden vastgehouden tot waar de leesactie kwam, dus de volgende controle op wijzigingen vraagt de leesactie opnieuw aan: {{reason}}",
       "indexes_not_planned": "Deze kopie is volledig en leesbaar, maar de indexen ervan konden niet worden gepland; ze wordt dus zonder indexen gelezen tot ze opnieuw wordt opgebouwd: {{reason}}",
+      "column_not_landed": "Kolom {{column}} ({{subtype}}) staat niet in deze kopie: {{reader}} kan deze niet als {{subtype}} lezen, dus is deze weggelaten en wordt het lezen ervan geweigerd.",
       "andMore": "{{ids}} en nog {{more}}",
       "other": "De laatste build meldde: {{code}}"
     },

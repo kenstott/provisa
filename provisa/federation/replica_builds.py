@@ -31,7 +31,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from provisa.federation import replica_state
-from provisa.federation.data_replicator import BuildOutcome, Progress, data_replicator
+from provisa.federation.data_replicator import (
+    BuildOutcome,
+    Progress,
+    data_replicator,
+    not_landed_notes,
+)
 from provisa.federation.replica_runner import ReplicaRunner, engine_job_key
 from provisa.federation.data_replicator import Method, SourceCaps, SourceRead, TargetLoad
 from provisa.federation.replica_errors import BuildFailure
@@ -342,6 +347,7 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
                 source, address, args.columns, args.pk_columns, landing_filter=args.landing_filter
             ),
             built_columns=[[name, ir_type] for name, ir_type in args.columns],
+            notes=(*outcome.notes, *not_landed_notes(args.not_landed)),  # REQ-2171
         )
 
 
@@ -395,6 +401,7 @@ async def _build_by_pipeline(
             source, address, args.columns, args.pk_columns, landing_filter=args.landing_filter
         ),
         built_columns=[[name, ir_type] for name, ir_type in args.columns],
+        notes=(*outcome.notes, *not_landed_notes(args.not_landed)),  # REQ-2171
     )
 
 

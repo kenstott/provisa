@@ -24,6 +24,7 @@ from provisa.compiler.naming import (
     source_to_catalog,
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
+from provisa.compiler.native_subtype import SubtypeColumns
 from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
 from provisa.compiler.sql_where import META_QUERY_NAME
 from provisa.compiler.sql_types import (
@@ -591,6 +592,34 @@ def _nested_columns(
     return out
 
 
+def _subtype_columns(
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    physical_map: dict[str, str],
+) -> SubtypeColumns:
+    """REQ-2171: every registered column whose subtype has semantics of its own, keyed like
+    ``_nested_columns``. All registered tables: a column's subtype is a fact of the table."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.core.ir_types import SUBTYPES
+
+    assert isinstance(si, SchemaInput)
+    out: SubtypeColumns = {}
+    for td in si.tables:
+        for col in td.get("columns") or []:
+            subtype = col.get("subtype")
+            if not subtype or SUBTYPES[subtype].semantics is None:
+                continue
+            key = (
+                td["schema_name"].lower(),
+                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+            )
+            phys = col["column_name"]
+            names = out.setdefault(key, {})
+            names[phys.lower()] = subtype
+            names[(col.get("alias") or apply_sql_name(phys)).lower()] = subtype
+    return out
+
+
 def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
 ) -> (
@@ -628,6 +657,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
 
     ctx.epoch_columns = _epoch_columns(si, physical_map)
     ctx.nested_columns = _nested_columns(si, physical_map)
+    ctx.subtype_columns = _subtype_columns(si, physical_map)
 
     _register_relationship_joins(si, ctx, table_lookup, physical_map)
 

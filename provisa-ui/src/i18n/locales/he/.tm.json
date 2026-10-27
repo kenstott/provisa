@@ -4264,6 +4264,7 @@
   "he/replicaBuild.json::replicaBuild.none": "No replica has been built for this table.",
   "he/replicaBuild.json::replicaBuild.note.andMore": "{{ids}} and {{more}} more",
   "he/replicaBuild.json::replicaBuild.note.indexes_not_planned": "This copy is complete and readable, but its indexes could not be planned, so it is read without them until it is built again: {{reason}}",
+  "he/replicaBuild.json::replicaBuild.note.column_not_landed": "Column {{column}} ({{subtype}}) is not in this copy: {{reader}} has no way to read it as a {{subtype}}, so it is left out, and a read of it is refused.",
   "he/replicaBuild.json::replicaBuild.note.mailboxes_at_quota": "Mailboxes left out, because they are at their storage quota and Microsoft will not track their changes until space is freed: {{total}}. They are: {{accounts}}",
   "he/replicaBuild.json::replicaBuild.note.mailboxes_failed": "Mailboxes whose read failed part way: {{total}}. What was read of them is kept and their read continues at the next refresh. They are: {{accounts}}",
   "he/replicaBuild.json::replicaBuild.note.mailboxes_left_out": "Mailboxes left out, because Microsoft or Google says they are not there or may not be read: {{total}}. They are: {{accounts}}",

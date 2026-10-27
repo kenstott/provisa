@@ -436,6 +436,20 @@ describe("replicaNoteLines", () => {
     ]);
   });
 
+  it("names a subtyped column left out of the copy, its subtype and the reader (REQ-2171)", () => {
+    const noted = build({
+      buildNotes: [
+        {
+          code: "replication.column_not_landed",
+          params: { column: "span", subtype: "int4range", reader: "duckdb" },
+        },
+      ],
+    });
+    expect(replicaNoteLines(noted, t)).toEqual([
+      'replicaBuild.note.column_not_landed {"column":"span","subtype":"int4range","reader":"duckdb"}',
+    ]);
+  });
+
   it("gives a line for each thing the build had to say, in the order it said them", () => {
     const noted = build({
       buildNotes: [

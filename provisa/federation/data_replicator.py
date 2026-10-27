@@ -261,6 +261,20 @@ def mailboxes_left_out_note(accounts: list[str]) -> BuildNote | None:
     )
 
 
+#: REQ-2171: a subtyped column left out of the replica: a reader of its source has no form to
+#: land it in as the subtype defines (never another form). A read of it is refused by name.
+COLUMN_NOT_LANDED = "replication.column_not_landed"
+
+
+def not_landed_notes(not_landed: tuple[tuple[str, str, str], ...]) -> list[BuildNote]:
+    """One note per subtyped column the build left out: the column, its subtype, and the reader
+    with no form to land it in."""
+    return [
+        BuildNote(COLUMN_NOT_LANDED, {"column": column, "subtype": subtype, "reader": reader})
+        for column, subtype, reader in not_landed
+    ]
+
+
 MAILBOXES_AT_QUOTA = "replication.mailboxes_at_quota"
 
 #: The build completed, but its source could not keep where the read reached (its
