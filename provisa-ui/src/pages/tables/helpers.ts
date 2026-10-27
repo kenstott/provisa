@@ -45,6 +45,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     pushDebounceMaxDelay: t.pushDebounceMaxDelay,
     mvConsistency: t.mvConsistency,
     mvPreprocess: t.mvPreprocess || null, // REQ-957
+    mvHoldOnFailingChecks: t.mvHoldOnFailingChecks, // REQ-2133
     businessKey: t.businessKey, // REQ-2109
     validTime: t.validTime, // REQ-2109
     recordedTime: t.recordedTime, // REQ-2109
@@ -58,10 +59,8 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     mvAllowedLateness: t.mvAllowedLateness, // REQ-961
     mvExpectedEvents: t.mvExpectedEvents, // REQ-961
     mvBusinessDayGrain: t.mvBusinessDayGrain, // REQ-962
-    // REQ-1634. REQ-1443 clause 10: a checker table (the only kind registration lets carry a
-    // contract) inherits its product from the table it scans; the server derives what it shows
-    // as productId and refuses one on the row, so the payload never carries it back.
-    productId: t.dqContract ? null : t.productId,
+    // REQ-1634. REQ-1443 PRODUCT ASSIGNMENT: a checker table's product is its own, as any member's.
+    productId: t.productId,
     enableAggregates: t.enableAggregates,
     enableGroupBy: t.enableGroupBy,
     // REQ-1141: the table's load protection, saved with it (left out, the update cleared it).

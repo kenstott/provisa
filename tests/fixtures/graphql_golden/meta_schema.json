@@ -83,21 +83,6 @@
        }
       },
       {
-       "name": "m__columnLineageEdges",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__ColumnLineageEdges"
-         }
-        }
-       }
-      },
-      {
        "name": "m__dataProductEdges",
        "type": {
         "kind": "LIST",
@@ -604,6 +589,20 @@
        "type": {
         "kind": "SCALAR",
         "name": "Int"
+       }
+      },
+      {
+       "name": "latestOutcome",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "latestRunAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
        }
       },
       {
@@ -1156,21 +1155,6 @@
        }
       },
       {
-       "name": "downstream",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__ColumnLineageEdges"
-         }
-        }
-       }
-      },
-      {
        "name": "effectiveTags",
        "type": {
         "kind": "LIST",
@@ -1214,156 +1198,9 @@
          }
         }
        }
-      },
-      {
-       "name": "upstream",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__ColumnLineageEdges"
-         }
-        }
-       }
       }
      ],
      "name": "M__TableColumns"
-    },
-    {
-     "fields": [
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "sourceColumn",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "sourceColumnKey",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "sourceColumnName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "sourceRelation",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "sourceTableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "targetColumn",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "targetColumnKey",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "targetColumnName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "targetRelation",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "targetTableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "via",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "viaKind",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "source",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__TableColumns"
-       }
-      },
-      {
-       "name": "target",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__TableColumns"
-       }
-      }
-     ],
-     "name": "M__ColumnLineageEdges"
     },
     {
      "fields": [
@@ -1978,13 +1815,6 @@
        }
       },
       {
-       "name": "direction",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "hops",
        "type": {
         "kind": "SCALAR",
@@ -2041,24 +1871,10 @@
        }
       },
       {
-       "name": "targetRelation",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "targetTableId",
        "type": {
         "kind": "SCALAR",
         "name": "Int"
-       }
-      },
-      {
-       "name": "vias",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
        }
       },
       {
@@ -4272,11 +4088,6 @@
    "domain_id": "ontology",
    "graphql_field": "ont__terms",
    "table_name": "_terms"
-  },
-  {
-   "domain_id": "meta",
-   "graphql_field": "m__columnLineageEdges",
-   "table_name": "column_lineage_edges"
   },
   {
    "domain_id": "meta",

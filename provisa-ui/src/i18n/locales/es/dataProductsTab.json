@@ -103,7 +103,7 @@
         "dataQuality": "Calidad de datos"
       },
       "dataQualityEmpty": "Sin análisis de calidad",
-      "dataQualityHint": "Tablas de verificación cuyos contratos analizan los puertos de salida de este producto. Cada una registra una fila por comprobación y ejecución; la pertenencia sigue a la tabla analizada.",
+      "dataQualityHint": "Las comprobaciones del producto: sus expectativas sobre sus entradas, sus promesas sobre sus tablas miembro y las comprobaciones relacionadas que otros (o nadie) hacen sobre ambas. Abra una comprobación para leer sus resultados.",
       "dqRulesAria": "Mostrar las reglas de calidad de {{table}}",
       "dqRulesTitle": "Reglas de calidad — {{table}}",
       "dqRulesEmpty": "El contrato no define comprobaciones",
@@ -113,8 +113,6 @@
       "lineageEmpty": "Sin linaje",
       "lineageLoading": "Cargando linaje…",
       "lineageHint": "Grafo de linaje de columnas que muestra las tablas de este producto como el endpoint publicado, más todas las tablas de origen usadas para derivarlas. Solo informativo: requiere la capacidad view_governance.",
-      "inputPortsEmpty": "No se registran entradas de origen",
-      "inputPortsHint": "Las tablas que este producto lee directamente, según el linaje. Despliegue una tabla para ver las columnas que lee. Requiere la capacidad view_governance.",
       "outputPortsHint": "La superficie consultable de este producto: sus tablas miembro y sus comandos. Encontrará consultas de ejemplo para cada una en Patrones de acceso.",
       "customPropertiesEmpty": "Sin propiedades personalizadas",
       "lineageLaneUpstream": "Aguas arriba, salto {{n}}",

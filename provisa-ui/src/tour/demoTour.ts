@@ -121,6 +121,15 @@ export interface DemoTourStepDef {
   /** REQ-2084: the demo's notebook (notebook.ipynb): its cells added to the Notebook tab's open
    *  notebook and run there, in the visitor's browser. */
   notebook?: true;
+  /** REQ-2172: a question handed to the MCP explorer: its agent answers it live, as the role the
+   *  header acts as, its tool calls shown as they run. */
+  mcp?: string;
+  /** REQ-2172: the explain of the last run_sql call the explorer's agent made: the statement it
+   *  sent and the one that ran, governed for the role. */
+  mcp_explain?: true;
+  /** REQ-2172: the explorer's Connect Claude Desktop panel, opened: the same server, for the
+   *  visitor's own agent. */
+  mcp_connect?: true;
   /** A question for Polly: the panel opens on it and its stored `answer`, as an exchange. */
   polly?: string;
   /** REQ-2012: Polly's answer to `polly`, stored when the demo's template was built. */
@@ -136,6 +145,9 @@ export interface DemoTourStepDef {
 
 /** View Profile Runs' close button: a graph step leaves the window as it found it. */
 const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
+
+/** A Mantine modal's close button: an explain step leaves the explorer as it found it. */
+const MODAL_CLOSE = ".mantine-Modal-close";
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
@@ -314,6 +326,34 @@ function demoTourStep(
       readySelector: '[data-testid="notebook-answer"]',
       element: '[data-testid="notebook-answer"]',
       waitMs: NOTEBOOK_WAIT_MS,
+    };
+  }
+  if (def.mcp !== undefined) {
+    // Handed to the explorer, which sends it once and marks the page when the answer is in.
+    return {
+      ...page,
+      openQuery: { stateKey: "mcpQuestion", text: def.mcp },
+      readySelector: '[data-testid="mcp-explore"][data-answered]',
+      element: ".mcp-chat-wrap",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.mcp_explain === true) {
+    // Act, then explain: the tour opens the last run_sql call's explain; Next closes it.
+    return {
+      ...page,
+      clickBefore: "[data-mcp-explain-last]",
+      readySelector: '[data-testid="mcp-explain-ran"]',
+      element: '[data-testid="mcp-explain-panel"]',
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: MODAL_CLOSE,
+    };
+  }
+  if (def.mcp_connect === true) {
+    return {
+      ...page,
+      navState: { mcpConnect: true },
+      element: '[data-testid="mcp-connect-config"], [data-testid="mcp-connect-off"]',
     };
   }
   if (def.group_by !== undefined) {

@@ -207,6 +207,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
+    mv_hold_on_failing_checks BOOLEAN NOT NULL DEFAULT false,  -- REQ-2133: built-in preflight
     business_key JSONB,  -- REQ-2109: columns identifying the same thing across versions
     valid_time TEXT,  -- REQ-2109: the column holding the date the business gives the record
     recorded_time TEXT,  -- REQ-2109: the column holding when this version was entered or changed
@@ -959,6 +960,16 @@ CREATE TABLE IF NOT EXISTS lineage_edges (
 CREATE TABLE IF NOT EXISTS checker_targets (
     table_id         INTEGER PRIMARY KEY,
     checked_table_id INTEGER NOT NULL
+);
+
+-- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
+-- no row has never run; the dry run writes none.
+CREATE TABLE IF NOT EXISTS checker_latest_runs (
+    table_id  INTEGER PRIMARY KEY,
+    scan_id   TEXT NOT NULL,
+    scan_time TIMESTAMPTZ NOT NULL,
+    outcome   TEXT NOT NULL CONSTRAINT checker_latest_runs_outcome_check
+              CHECK (outcome IN ('pass', 'fail'))
 );
 
 -- Relationship Discovery Candidates (Phase R)

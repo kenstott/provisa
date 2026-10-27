@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:agentdata/1-revenue-by-customer.graphql",
+  "root_field": "s__viewRevenueByCustomer"
+ }
+]

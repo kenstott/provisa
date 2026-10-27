@@ -557,6 +557,9 @@ Each step has:
 | `as_recorded` | an ISO 8601 time | SQL explorer's "As recorded at" picker; the statements after it read bitemporal views as Provisa had recorded them then |
 | `as_recorded_from` | `{step: <an earlier sql step's key>, row: <0-based>, column: <a column it returns>}` | SQL explorer's "As recorded at" picker, set to that value of the earlier step's answer when the step runs |
 | `notebook` | `true` | Notebook tab: the demo's `notebook.ipynb` cells added to the open notebook and run |
+| `mcp` | a natural-language question | MCP explorer (`/explore`): its agent answers live, as the header's role, its tool calls shown as they run |
+| `mcp_explain` | `true` | MCP explorer: the explain of the agent's last `run_sql` call, the statement it sent beside the statement that ran for the role |
+| `mcp_connect` | `true` | MCP explorer: the Connect Claude Desktop panel, opened |
 
 A `polly` step is answered once when the demo's bundle is built (Polly asked through OpenRouter on
 the sandbox's model, `OPENROUTER_API_KEY` given to the build; the answers are stored beside the
@@ -573,6 +576,14 @@ them to a visitor who skipped the tour ("Add the demo's notebook"). The tour tes
 when the demo ships no notebook, when its first code cell does not import `provisa_client` and
 call `provisa_client.sign_in()`, and when a statement it reads (`provisa_client.query("...")`)
 names anything but the demo's own tables and views.
+
+An `mcp` step hands its question to the MCP explorer, which shows what an outside agent sees over
+Provisa's MCP server; unlike a `polly` step, the agent answers it live, on the sandbox's model. The
+step waits until the answer is in. An `mcp_explain` step opens the explain of the last `run_sql`
+call that answer made: the statement the agent sent, and the statement the pipeline ran for the
+role, with the row filters and masks governance added. Next closes it. The tour test refuses an
+`mcp_explain` step with no `mcp` step before it, and any of the three off `/explore`. The
+`agentdata` demo walks all three.
 
 An `as_recorded_from` step is for a time Provisa stamps, which the tour cannot know when it is
 written: a recording time, read from the answer of a `sql` step before it. The tour runner runs

@@ -13,9 +13,8 @@
 // words; the colours are the lifecycle's.
 
 import { Badge } from "@mantine/core";
+import type { LifecycleStatus } from "../../types/lifecycle";
 import { Tip } from "../Tip";
-
-export type LifecycleStatus = "draft" | "live" | "deprecated" | "retired";
 
 const COLOUR: Record<LifecycleStatus, string> = {
   draft: "yellow",

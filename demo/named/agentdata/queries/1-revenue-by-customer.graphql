@@ -1,0 +1,10 @@
+# What each customer's orders came to, the largest first: the BI analyst's view, which a support
+# agent's role cannot read.
+query RevenueByCustomer {
+  s__viewRevenueByCustomer(order_by: [{ revenue: desc }], limit: 20) {
+    name
+    region
+    orders
+    revenue
+  }
+}

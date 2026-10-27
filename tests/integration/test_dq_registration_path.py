@@ -168,15 +168,15 @@ async def test_a_checker_table_registered_without_a_contract_is_rejected(control
             await apply_dq_registration(conn, _results_table(contract=None))
 
 
-async def test_a_checker_table_declaring_its_own_product_is_rejected(control_plane):
-    """REQ-1443 clause 10: the same rule the YAML loader applies — the product is the scanned
-    table's, derived at read time, never a column on the results table."""
+async def test_a_checker_table_keeps_the_product_it_is_assigned_to(control_plane):
+    """REQ-1443 PRODUCT ASSIGNMENT: the same rule the YAML loader applies -- a checker table is
+    assigned to a product as any member is."""
     async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         model = _results_table()
         model.product_id = "orders-product"
-        with pytest.raises(ValueError, match="cannot declare product_id"):
-            await apply_dq_registration(conn, model)
+        await apply_dq_registration(conn, model)
+        assert model.product_id == "orders-product"
 
 
 async def test_a_contract_on_a_non_checker_source_is_rejected(control_plane):

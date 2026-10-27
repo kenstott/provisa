@@ -197,6 +197,8 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "registerTableForm.aliasLabel": "registration's SQL alias: shown in Identity as SQL Alias",
       "registerTableForm.descriptionLabel":
         "registration's description: shown in Identity as Description",
+      "registerTableForm.checkReasonLabel":
+        "a checker's claim, its registration's description: shown in Identity as Description",
       "registerTableForm.cacheTtlLabel":
         "registration's cache TTL: shown in Load and timeliness as Cache TTL",
       "registerTableForm.neo4jTableNameLabel": "a neo4j table's name: shown in Identity as Table",

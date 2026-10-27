@@ -57,7 +57,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .graph-sidebar-tab:hover {
@@ -156,7 +158,10 @@
   font-weight: 500;
   font-family: "SF Mono", "Fira Code", monospace;
 }
-.graph-label-pill--all:hover { background: var(--border); color: var(--text); }
+.graph-label-pill--all:hover {
+  background: var(--border);
+  color: var(--text);
+}
 
 .graph-label-pill--highlight {
   outline: 2px solid #fff;
@@ -221,7 +226,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.graph-rel-badge:hover { background: var(--border); border-color: #6366f1; color: #a5b4fc; }
+.graph-rel-badge:hover {
+  background: var(--border);
+  border-color: #6366f1;
+  color: #a5b4fc;
+}
 
 .graph-prop-key-list {
   display: flex;
@@ -242,7 +251,10 @@
 }
 .graph-prop-key-tag--clickable {
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 .graph-prop-key-tag--clickable:hover {
   background: var(--border);
@@ -268,7 +280,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   border: 1px solid transparent;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .graph-history-item:hover {
@@ -319,7 +333,9 @@
   justify-content: center;
   border-radius: 3px;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .graph-fav-item:hover .graph-fav-del {
@@ -346,7 +362,9 @@
   justify-content: center;
   border-radius: 3px;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .graph-fav-item:hover .graph-fav-run,
@@ -501,7 +519,6 @@
   display: flex;
   flex-direction: column;
 }
-
 
 .gf-frame--drag-over {
   border-color: var(--accent, #6366f1);
@@ -706,8 +723,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .gf-header-actions {
@@ -716,7 +738,6 @@
   align-items: center;
   gap: 0.25rem;
 }
-
 
 .gf-icon-btn {
   width: 26px;
@@ -730,7 +751,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .gf-icon-btn:hover {
@@ -792,7 +815,9 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .gf-view-bar-btn:hover {
@@ -826,11 +851,18 @@
   align-items: flex-start;
   gap: 0.5rem;
 }
-.gf-error-text { flex: 1; }
-.gf-error-violations { margin: 0.35rem 0 0; padding-inline-start: 1.1rem; }
+.gf-error-text {
+  flex: 1;
+}
+.gf-error-violations {
+  margin: 0.35rem 0 0;
+  padding-inline-start: 1.1rem;
+}
 
 /* REQ-1224: a result delivered to a file, said where the graph would be. */
-.gf-redirect { margin: 0.75rem 1rem; }
+.gf-redirect {
+  margin: 0.75rem 1rem;
+}
 .gf-error-copy-btn {
   flex-shrink: 0;
   opacity: 0;
@@ -843,7 +875,9 @@
   line-height: 1;
   transition: opacity 0.15s;
 }
-.gf-error--copyable:hover .gf-error-copy-btn { opacity: 1; }
+.gf-error--copyable:hover .gf-error-copy-btn {
+  opacity: 1;
+}
 
 /* ── Graph area ─────────────────────────────────────────────────────────────────── */
 .gf-graph-area {
@@ -964,7 +998,7 @@
   min-width: 80px;
   z-index: 9999;
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .gf-dl-item {
@@ -1230,7 +1264,9 @@ button.gf-overview-chip {
   border-radius: 3px;
   color: var(--text);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .gf-insp-alias-save:hover:not(:disabled) {
@@ -1310,7 +1346,9 @@ button.gf-overview-chip {
   padding: 2px;
   border-radius: 3px;
   opacity: 0;
-  transition: opacity 0.12s, color 0.12s;
+  transition:
+    opacity 0.12s,
+    color 0.12s;
   display: inline-flex;
   align-items: center;
 }
@@ -1378,7 +1416,6 @@ button.gf-overview-chip {
   flex: 1;
   min-height: 0;
 }
-
 
 .gf-json-copy-btn {
   position: absolute;
@@ -1513,7 +1550,7 @@ button.gf-overview-chip {
   border-radius: 6px;
   padding: 0.5rem;
   width: 350px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .node-ctx-title {
@@ -1823,7 +1860,9 @@ button.gf-overview-chip {
   align-items: flex-start;
   justify-content: center;
   padding-top: 6px;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 .gf-insp-show-btn:hover {
   color: var(--text);
@@ -1876,7 +1915,9 @@ button.gf-overview-chip {
   font-size: 1rem;
   cursor: pointer;
   letter-spacing: 2px;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .rel-ctx-style-btn:hover {
@@ -1903,7 +1944,7 @@ button.gf-overview-chip {
   display: grid;
   grid-template-columns: repeat(8, 18px);
   gap: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
 .gf-color-swatch {
@@ -1917,7 +1958,7 @@ button.gf-overview-chip {
 
 .gf-color-swatch:hover {
   transform: scale(1.2);
-  border-color: rgba(255,255,255,0.4);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /* ── Node context menu ───────────────────────────────────────────────────────── */
@@ -1926,7 +1967,7 @@ button.gf-overview-chip {
   z-index: 900;
   pointer-events: none;
   transform: translate(-50%, -50%);
-  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6));
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
 }
 
 .gf-node-ring-menu svg g[style*="pointer"] path:first-child {
@@ -1945,7 +1986,7 @@ button.gf-overview-chip {
   border-radius: 6px;
   padding: 4px 0;
   min-width: 160px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   pointer-events: all;
 }
 
@@ -1962,7 +2003,7 @@ button.gf-overview-chip {
 }
 
 .gf-node-ctx-item:hover {
-  background: rgba(255,255,255,0.07);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .gf-node-ctx-item--danger {
@@ -1970,7 +2011,7 @@ button.gf-overview-chip {
 }
 
 .gf-node-ctx-item--danger:hover {
-  background: rgba(248,113,113,0.12);
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .gf-node-ctx-divider {
@@ -2001,7 +2042,7 @@ button.gf-overview-chip {
   border-radius: 6px;
   padding: 4px 0;
   min-width: 180px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   z-index: 1001;
 }
 
@@ -2010,14 +2051,14 @@ button.gf-overview-chip {
 }
 
 .gf-node-ctx-submenu-wrap:hover > .gf-node-ctx-item {
-  background: rgba(255,255,255,0.07);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 /* ── Native filter modal ───────────────────────────────────────────────── */
 .nf-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2032,7 +2073,7 @@ button.gf-overview-chip {
   min-width: 300px;
   max-width: 440px;
   width: 100%;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .nf-modal-title {
@@ -2116,7 +2157,7 @@ button.gf-overview-chip {
   min-width: 360px;
   max-width: 460px;
   width: 100%;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .neo4j-modal-summary {

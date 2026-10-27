@@ -133,13 +133,12 @@
     "mvPrimaryKeyDerived": "行識別キー（下のカラム一覧の主キーチェックボックスから）:",
     "mvPrimaryKeyMissing": "upsertと増分メンテナンスには行識別キーが必要です。下のカラム一覧でキーとなるカラムを主キーとしてマークしてください。",
     "preprocessLabel": "事前チェック（Python）",
-    "preprocessHelp": "ビューSQLの後、着地の前に実行される任意の事前チェックです。preflight(streams, ctx)を定義し、判定を返します — 続行するにはctx.ok()、拒否するにはctx.abort(reason)（エラー + 下流をポイズン）、着地せずに保留するにはctx.quarantine(reason)。streamsは入力ノードをキーとする辞書です: streams[\"schema.table\"]がその入力の行を遅延的に生成するため、マテリアライズせずに入力を検査できます。チェックは検査のみを行い、行を変換しません（変換はSQLまたは外部プロセッサに置いてください）。SQLで表現可能なチェック — 1つの入力の行に対するif any(...)/all(...) — は、その入力に対するカウントプローブとしてエンジンにプッシュダウンされるため、10億行にもスケールします。それ以外はArrowバッチとして各入力をストリーミングし、短絡評価します。致命的でない勧告にはctx.warn(reason)を呼び出します。決定的でなければなりません — 時計、乱数、インポート、IOは不可 — 保存時に純粋性が検査され、非決定的または安全でないチェックは拒否されます。",
+    "preprocessHelp": "ビューSQLの後、着地の前に実行される任意の事前チェックです。preflight(streams, ctx)を定義し、判定を返します — 続行するにはctx.ok()、拒否するにはctx.abort(reason)（エラー + 下流をポイズン）、着地せずに保留するにはctx.quarantine(reason)。streamsは入力ノードをキーとする辞書です: streams[\"schema.table\"]がその入力の行を遅延的に生成するため、マテリアライズせずに入力を検査できます。チェックは検査のみを行い、行を変換しません（変換はSQLまたは外部プロセッサに置いてください）。SQLで表現可能なチェック — 1つの入力の行に対するif any(...)/all(...) — は、その入力に対するカウントプローブとしてエンジンにプッシュダウンされるため、10億行にもスケールします。それ以外はArrowバッチとして各入力をストリーミングし、短絡評価します。致命的でない勧告にはctx.warn(reason)を呼び出します。Provisaのサービス（dqを含む）を呼び出すために、モジュールprovisa_servicesを1つだけインポートできます。このようなチェックは常にストリーミングで実行され、その判定はリフレッシュ時点の状態です。それ以外の場合は決定的でなければなりません — 時計、乱数、他のインポート、IOは不可 — 保存時に純粋性が検査され、非決定的または安全でないチェックは拒否されます。",
     "preprocessAria": "MV事前チェックPythonソース",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "データプロダクト",
     "dataProductNone": "なし",
     "dataProductDesc": "カタログに公開され、Atlas、{{atlan}} などにエクスポートされます。",
-    "dataProductInherited": "このコントラクトがスキャンするテーブルから継承",
     "enableAggregatesLabel": "集計を有効化",
     "enableAggregatesDesc": "（GraphQLで_aggregateルートフィールドを公開）",
     "enableGroupByLabel": "Group Byを有効化",
@@ -280,6 +279,11 @@
     "timeTravelSectionHelp": "バイテンポラルは、いつ起きたかと、いつ記録されたかの両方を保持します。これにより、ある日付時点のデータや、ある日付に記録されていたとおりのデータを読み取れます。ビジネスキー、有効時間、記録時間を列に対応付けてください。バージョンの保持方法は Provisa が決めます。",
     "timeTravelLabel": "履歴を保持",
     "timeTravelOff": "オフ",
-    "timeTravelBitemporal": "バイテンポラル"
+    "timeTravelBitemporal": "バイテンポラル",
+    "holdOnFailingChecksLabel": "チェック失敗時に保留",
+    "holdOnFailingChecksHelp": "このビューの入力のいずれかをスキャンするチェッカーテーブルの最新の実行が失敗した場合、リフレッシュを中止し、以前のコピーを保持します。上のプリフライトチェックより前に実行され、両方が続行する必要があります。",
+    "holdOnFailingChecksShowCode": "コードを表示",
+    "holdOnFailingChecksHideCode": "コードを非表示",
+    "holdOnFailingChecksCodeHelp": "このオプションが適用するチェックです。変更するには上のプリフライトチェックにコピーしてください。"
   }
 }

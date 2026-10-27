@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} is running.",
     "toolDoneTooltip": "{{name}} finished. Its result was handed back to the assistant.",
     "toolErrorTooltip": "{{name}} failed. The assistant received the error and may retry with different arguments.",
-    "roleNoteHelpTitle": "The role this session runs as"
+    "roleNoteHelpTitle": "The role this session runs as",
+    "toolExplainTooltip": "{{name}} finished. Click to see the statement it sent and the one that ran.",
+    "explainTitle": "What the agent's query ran",
+    "explainSent": "The statement the agent sent",
+    "explainRan": "The statement that ran, governed for {{role}}"
   }
 }
