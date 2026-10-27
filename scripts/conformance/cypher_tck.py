@@ -67,10 +67,21 @@ class Scenario:
 _STEP = re.compile(r"^\s*(Given|When|Then|And|But)\s+(.*?)\s*:?\s*$")
 
 
+#: Gherkin's escapes in a table cell: \\ for a backslash, \| for a bar, \n for a newline.
+_CELL_ESCAPES = {"\\": "\\", "|": "|", "n": "\n"}
+
+
 def _cells(line: str) -> list[str]:
     inner = line.strip()[1:-1]
     cells, cur, quote = [], [], None
-    for ch in inner:
+    chars = iter(inner)
+    for ch in chars:
+        if ch == "\\":
+            # A cell's own escape, undone before the value is read (a Cypher string's escapes
+            # are tck_value's): \\\\ in a cell is the two characters \\ of the value's text.
+            nxt = next(chars, "")
+            cur.append(_CELL_ESCAPES.get(nxt, ch + nxt))
+            continue
         if quote:
             cur.append(ch)
             if ch == quote:
@@ -205,7 +216,11 @@ class _Value:
             return ("path", self.s[start : self.i - 1])
         if ch in "'\"":
             return self._string(ch)
-        word = re.match(r"-?[A-Za-z0-9_.+]+(?:[eE][-+]?\d+)?", self.s[self.i :])
+        # A number (1e-305 and .5 included) before a word, or the word's e reads as the number's.
+        word = re.match(
+            r"-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?(?![A-Za-z_])|-?[A-Za-z0-9_.+]+",
+            self.s[self.i :],
+        )
         if word is None:
             raise ValueError(f"unreadable value at {self.i} in {self.s!r}")
         tok = word.group(0)
@@ -233,7 +248,14 @@ class _Value:
         while self.s[self.i] != quote:
             if self.s[self.i] == "\\":
                 self.i += 1
-                out.append({"n": "\n", "t": "\t"}.get(self.s[self.i], self.s[self.i]))
+                code = self.s[self.i]
+                if code in "uU":
+                    width = 4 if code == "u" else 8
+                    out.append(chr(int(self.s[self.i + 1 : self.i + 1 + width], 16)))
+                    self.i += width
+                else:
+                    escapes = {"n": "\n", "t": "\t", "b": "\b", "f": "\f", "r": "\r"}
+                    out.append(escapes.get(code, code))
             else:
                 out.append(self.s[self.i])
             self.i += 1

@@ -271,3 +271,20 @@ def test_an_expected_value_below_the_microsecond_is_named():
     assert tck._below_the_microsecond(["d.nanosecond"], [["645876123"]])
     assert not tck._below_the_microsecond(["t"], [["'12:31:14.645876'"]])
     assert not tck._below_the_microsecond(["d.nanosecond"], [["645876000"]])
+
+
+def test_a_cell_s_own_escapes_are_undone_before_its_value_is_read():
+    # Gherkin's \\ is a backslash and \| a bar in a table cell (Literals6 [5]): the cell
+    # 'a\\\\b' is the Cypher string 'a\\b', whose value is a\b.
+    (cell,) = tck._cells(r"| 'a\\\\b\'c' |")
+    assert tck.tck_value(cell) == "a\\b'c"
+    assert tck._cells(r"| 'x\|y' | 2 |") == ["'x|y'", "2"]
+    assert tck.tck_value("'\\u01FF'") == "ǿ"
+
+
+@pytest.mark.parametrize(
+    ("text", "value"), [("1e-305", 1e-305), ("-1e-305", -1e-305), (".5", 0.5), ("0x1F", 31)]
+)
+def test_a_number_s_exponent_is_its_own(text, value):
+    # Literals5: 1e-305 is a number, not the word 1e and a stray -305.
+    assert tck.tck_value(text) == value

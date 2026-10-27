@@ -846,6 +846,11 @@ class ExprLowering:
             value = self.lower(node.args[0])
             by = "max_by" if node.name.lower() == "max" else "min_by"
             return _anon(by, value, _anon("json_order_key", value.copy()))
+        if node.name.lower() == "range" and len(node.args) == 3:
+            step = node.args[2]
+            if isinstance(step, Literal) and step.kind == "number" and step.value == 0:
+                # openCypher's ArgumentError (NumberOutOfRange): a range never steps by 0.
+                raise CypherTranslateError("range() takes a step other than 0, e.g. range(2, 8, 1)")
         if node.name.lower() in ("tostring", "tostringornull") and len(node.args) == 1:
             given = node.args[0]
             if (

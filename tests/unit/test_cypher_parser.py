@@ -169,6 +169,12 @@ def test_unbounded_variable_length_rejected():
         parse_cypher("MATCH (n:Person)-[*]->(m:Company) RETURN n")
 
 
+def test_unbounded_variable_length_written_out_rejected():
+    # [*..] is [*] written out (REQ-348; openCypher TCK Match5 [2]).
+    with pytest.raises(CypherParseError, match="Unbounded variable-length pattern"):
+        parse_cypher("MATCH (n:Person)-[*..]->(m:Company) RETURN n")
+
+
 def test_missing_return_rejected():
     with pytest.raises(CypherParseError, match="RETURN"):
         parse_cypher("MATCH (n:Person) WHERE n.age > 30")
