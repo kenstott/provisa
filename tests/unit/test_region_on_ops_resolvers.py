@@ -18,6 +18,13 @@ from types import SimpleNamespace
 import pytest
 
 from tests.unit.gate_identity import grant
+from tests.unit.gate_identity import serve_every_column
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every table is read here: which tables a caller reads is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 class _Conn:

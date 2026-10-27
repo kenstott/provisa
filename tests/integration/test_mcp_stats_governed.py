@@ -61,7 +61,7 @@ def server():
             "visible_to": _ROLES,
             "masks": [
                 {"to": ["org_admin"], "mask": None},
-                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                {"mask": {"type": "constant", "value": "***"}},
             ],
         },
         {"name": "amount", "data_type": "double", "visible_to": _ROLES},

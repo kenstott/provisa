@@ -17,14 +17,18 @@ IR, compiled to one semantic SQL statement by the back end Cypher shares, and ru
 pipeline every read takes -- governed whole, routed and audited as any query is. The caller is
 authenticated, and its role settled, as on /data/cypher. The answer is written in the media type
 the request accepts (provisa.sparql_query.results); a statement warning (a path cut at the depth
-limit) rides the X-Provisa-Warnings header as on every HTTP surface.
+limit) rides the X-Provisa-Warnings header as on every HTTP surface. A query opts into the
+response cache as SQL and Cypher do, in its own comment syntax (``# @provisa cache=true``, REQ-544),
+and X-Provisa-Stats: true answers its time split (REQ-1911).
 """
 
 # Requirements: REQ-2135, REQ-2141
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -106,9 +110,16 @@ async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> 
 async def sparql_query(request: Request) -> Response:  # REQ-2135
     """Answer a SPARQL SELECT, ASK or CONSTRUCT over the semantic model, for the caller's role."""
     from provisa.api.app import state
-    from provisa.api.rest.cypher_router import _dict_rows, _run_plan, access_violations
+    from provisa.api.rest.cypher_router import (
+        _dict_rows,
+        _run_plan,
+        access_violations,
+        statement_stats,
+    )
     from provisa.api.role_surface import role_surface
-    from provisa.compiler.directives import NO_CACHE_HINT
+    from provisa.cache.middleware import build_cache_headers
+    from provisa.compiler.directives import cache_hint_for, request_cache_hint
+    from provisa.executor import stats as query_stats
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.gql.assembler import assemble_rows, take_cut
     from provisa.gql.graph_rewriter import apply_graph_rewrites
@@ -145,6 +156,19 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     except CypherTranslateError as exc:
         return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
 
+    # REQ-544: the query's `# @provisa cache` opt-in, its x-provisa-cache headers and its
+    # Cache-Control header; two that disagree are refused (400), naming them.
+    try:
+        cache_hint = request_cache_hint(cache_hint_for("sparql", query), request.headers)
+    except ValueError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    # REQ-1911: X-Provisa-Stats: true answers the statement's time split with it.
+    stats_enabled = request.headers.get("x-provisa-stats", "").lower() == "true"
+    if stats_enabled:
+        query_stats.begin()
+    t0 = time.perf_counter()
+    physical_sql = ""
+    cache_entry = None
     rows: list[dict] = [compiled.empty_row] if compiled.empty_row is not None else []
     if not compiled.empty:
         assert compiled.ast is not None
@@ -165,7 +189,10 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
                 semantic_sql,
                 role_id,
                 buffered=True,
-                cache_hint=NO_CACHE_HINT,
+                cache_hint=cache_hint,
+                # REQ-1897: an opted-in read that hits is answered from the cache before routing;
+                # _run_plan, the terminal, serves that plan.
+                serve_cached=True,
                 sdl_joins=False,
             )
         except ComplexityLimitExceeded:
@@ -178,6 +205,8 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         if isinstance(executed, Response):
             return executed
         rows = assemble_rows(take_cut(_dict_rows(executed), plan.warnings), graph_vars)
+        physical_sql = plan.physical_sql or plan.exec_sql or ""
+        cache_entry = executed.cache_entry
 
     if compiled.form == "ASK":
         body = write_ask(bool(rows), fmt)
@@ -185,7 +214,24 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         body = write_construct(rows, vocab.base, vocab.prefixes, fmt)
     else:
         body = write_select(compiled.variables, rows, vocab.base, fmt)
-    return Response(content=body, media_type=media)
+    # REQ-536: HIT (with the entry's age) when the rows came from the response cache, else MISS.
+    headers = build_cache_headers(cache_entry)
+    if stats_enabled:
+        stats = statement_stats("sparql", len(rows), physical_sql, t0)
+        if stats is not None:
+            body, stats_headers = with_stats(body, media, stats)
+            headers = {**headers, **stats_headers}
+    return Response(content=body, media_type=media, headers=headers)
+
+
+def with_stats(body: bytes, media: str, stats: dict) -> tuple[bytes, dict[str, str]]:
+    """``body`` with the statement's provisa_stats: beside ``head`` and ``results`` in a SPARQL JSON
+    result, else (a format with nowhere for them) in the X-Provisa-Stats response header."""
+    if media == "application/sparql-results+json":
+        doc = json.loads(body)
+        doc["provisa_stats"] = stats
+        return json.dumps(doc).encode(), {}
+    return body, {"X-Provisa-Stats": json.dumps(stats)}
 
 
 @router.get("/data/sparql/vocabulary")

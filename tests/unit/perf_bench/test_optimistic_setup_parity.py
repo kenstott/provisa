@@ -237,9 +237,10 @@ def test_contract_request_equals_the_pre_contract_request(
 
 
 def test_every_client_transport_has_a_golden_request() -> None:
-    # MCP came after the contract, so it has no pre-contract request to equal: its request is
-    # checked against a real MCP server (test_mcp_client.py).
-    assert set(ol.CLIENTS) - {"mcp"} == set(GOLDEN)
+    # MCP and SPARQL came after the contract, so they have no pre-contract request to equal: MCP's
+    # is checked against a real MCP server (test_mcp_client.py), SPARQL's rendering in
+    # test_sparql_transport.py and against a real server in test_bench_features_e2e.py.
+    assert set(ol.CLIENTS) - {"mcp", "sparql"} == set(GOLDEN)
 
 
 def test_endpoints_come_from_the_contract() -> None:

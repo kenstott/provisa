@@ -46,6 +46,8 @@
     "nextPage": "עמוד הבא",
     "firstPage": "עמוד ראשון",
     "lastPage": "עמוד אחרון",
+    "listedElsewhere": "רשום בדומיינים אחרים",
+    "listedElsewhereHint": "שמות שדומיינים אחרים מציגים. בקשו גישה מאותו דומיין כדי לקרוא אותם.",
     "pageOf": "עמוד {{page}} / {{totalPages}}",
     "loadFailed": "לא ניתן לטעון את הטבלאות הרשומות: {{message}}",
     "editViewDefinitionTitle": "עריכת הגדרת ה-view",

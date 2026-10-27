@@ -255,6 +255,9 @@ def _authenticate529(shared_data: dict, control_plane, *, user: str = "alice") -
         org_id="default",
         # The simple provider keeps its users' ids on the platform plane.
         admin_db=platform_db(control_plane),
+        # the bound org's settings and config, as every org runtime carries them (REQ-2078)
+        settings_overrides={},
+        config=None,
     )
     handler = _handler529(shared_data)
     ctx = cast(Any, _Ctx529(user))

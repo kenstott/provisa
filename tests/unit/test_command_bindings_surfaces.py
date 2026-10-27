@@ -33,7 +33,7 @@ _SCHEMA = {
     "name": "meta_schema",
     "domain_id": "sales",
     "kind": "query",
-    "visible_to": [],
+    "visible_to": ["seller"],
     "arguments": [],
     "returns": "",
     "language_bindings": {
@@ -47,7 +47,7 @@ _ENRICH = {
     "name": "enrich",
     "domain_id": "sales",
     "kind": "query",
-    "visible_to": [],
+    "visible_to": ["seller"],
     "arguments": [],
     "returns": "",
     "language_bindings": {"sql": {"name": "enrich_rows"}, "graphql": {"name": "enrichRows"}},

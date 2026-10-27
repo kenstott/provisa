@@ -257,7 +257,9 @@ def _write_through_harness(monkeypatch, tmp_path, stamps: list[int]):
 
     monkeypatch.setattr("provisa.core.env_project.model_stamp", _stamp)
     monkeypatch.setattr(env_repo, "project", _model)
-    monkeypatch.setattr(env_repo, "dump", lambda _m: {"sales/domain.yaml": "id: sales\n"})
+    monkeypatch.setattr(
+        env_repo, "dump_reusing", lambda _m, _last: ({"sales/domain.yaml": "id: sales\n"}, {})
+    )
     monkeypatch.setattr("provisa.core.env_store.set_position", _set_position)
     monkeypatch.setattr("provisa.core.env_store.set_drifted", _nothing)
     monkeypatch.setattr("provisa.core.env_ci.announce", _nothing)

@@ -395,24 +395,13 @@ def _is_bwd_for_candidate(
     return backward
 
 
-def _optional_vars(clauses: "list[MatchClause]") -> "set[str]":
-    """Return variables first introduced by OPTIONAL MATCH (not already bound by MATCH)."""
-    seen: set[str] = set()
-    optional_only: set[str] = set()
-    for clause in clauses:
-        if not isinstance(clause.pattern, PathPattern):
-            continue
-        new_in_clause = set()
-        for node in clause.pattern.nodes:
-            if node.variable:
-                new_in_clause.add(node.variable)
-        for rel in clause.pattern.rels:
-            if rel.variable:
-                new_in_clause.add(rel.variable)
-        if clause.optional:
-            optional_only.update(new_in_clause - seen)
-        seen.update(new_in_clause)
-    return optional_only
+def _clause_vars(clause: "MatchClause") -> "set[str]":
+    """The node and relationship variables a MATCH or OPTIONAL MATCH clause's pattern names."""
+    if not isinstance(clause.pattern, PathPattern):
+        return set()
+    return {n.variable for n in clause.pattern.nodes if n.variable} | {
+        r.variable for r in clause.pattern.rels if r.variable
+    }
 
 
 def _join_alias(table_expr: "exp.Expression") -> "str | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -430,60 +419,46 @@ def _split_and(expr: "exp.Expression") -> "list[exp.Expression]":  # pyright: ig
 
 def _fold_where_into_optional_joins(
     where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    optional_vars: "set[str]",
+    step_vars: "set[str]",
     joins: "list[dict]",
 ) -> "tuple[list[dict], exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Fold WHERE conditions referencing optional variables into the relevant LEFT JOIN ON clauses.
+    """An OPTIONAL MATCH's own WHERE in the ON of the last LEFT JOIN the match introduces
+    (``step_vars``: its variables not bound before it). openCypher scopes the WHERE to the match,
+    so every conjunct conditions it, whatever it names, and none removes a row (REQ-345): as a
+    global WHERE it would turn the LEFT JOIN into an inner one. A ``_nf_`` condition stays in the
+    WHERE, where nf_extractor strips it before the SQL runs.
 
-    Cypher semantics: WHERE after OPTIONAL MATCH constrains the optional pattern.
-    In SQL this must be an ON condition, not a global WHERE — a global WHERE turns
-    a LEFT JOIN into an implicit INNER JOIN, filtering out rows where the optional
-    variable is NULL and eliminating the base MATCH rows.
-
-    Each AND conjunct is assigned only to the LEFT JOIN that introduces its
-    last-referenced optional variable, so a condition on variable `c` is never
-    placed in an earlier join (e.g. `b`) where `c` is not yet in scope.
-
-    Returns (modified_joins, remaining_where_or_None).
+    Returns (modified_joins, what stays in the WHERE).
     """
-    where_sql = where_expr.sql(dialect="postgres")
-    referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_sql)}
-    if not referenced:
+    order = {
+        alias: i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and (alias := _join_alias(join["table"])) in step_vars
+    }
+    if not order:
+        # The OPTIONAL MATCH is the statement's FROM, not a join: there is no join to condition,
+        # so its WHERE filters its own rows, as it always has here.
         return joins, where_expr
-
-    # Build position map for LEFT JOIN aliases so we can find the "last" one.
-    join_order: dict[str, int] = {}
-    for i, join in enumerate(joins):
-        alias = _join_alias(join["table"])
-        if alias:
-            join_order[alias] = i
-
-    # Split into individual AND conjuncts, route each to the appropriate join.
-    conjuncts = _split_and(where_expr)
-    alias_to_conjuncts: dict[str, list] = {}
-    remaining_conjuncts: list = []
-
-    for cond in conjuncts:
-        cond_text = cond.sql(dialect="postgres")
-        # _nf_ conditions must stay in WHERE so nf_extractor can strip them before SQL execution.
-        if "_nf_" in cond_text:
-            remaining_conjuncts.append(cond)
+    last = max(order, key=lambda a: order[a])
+    by_target: dict[str, list] = {}
+    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
+    for cond in _split_and(where_expr):
+        text = cond.sql(dialect="postgres")
+        if "_nf_" in text:
+            remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
             continue
-        refs = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", cond_text)}
-        refs_in_joins = refs & set(join_order.keys())
-        if refs_in_joins:
-            target = max(refs_in_joins, key=lambda v: join_order[v])
-            alias_to_conjuncts.setdefault(target, []).append(cond)
-        else:
-            remaining_conjuncts.append(cond)
-
+        # The join of the last of the match's variables it names, where they are all in scope;
+        # one naming none of them conditions the match's last join.
+        named = [a for a in order if re.search(rf"\b{re.escape(a)}\b", text)]
+        target = max(named, key=lambda a: order[a]) if named else last
+        by_target.setdefault(target, []).append(cond)
+    if not by_target:
+        return joins, remaining
     modified: list[dict] = []
     for join in joins:
-        alias = _join_alias(join["table"])
-        if alias in alias_to_conjuncts and join["join_type"] == "LEFT":
-            existing_on = join["on"]
-            new_on = existing_on
-            for cond in alias_to_conjuncts[alias]:
+        if (target := _join_alias(join["table"])) in by_target:
+            new_on = join["on"]
+            for cond in by_target[target]:
                 if new_on is None or (
                     hasattr(new_on, "sql") and new_on.sql() in ("TRUE", "true", "1 = 1")
                 ):
@@ -493,12 +468,33 @@ def _fold_where_into_optional_joins(
             modified.append({**join, "on": new_on})
         else:
             modified.append(join)
+    return _one_join_per_junction_row(modified, set(by_target)), remaining
 
-    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
-    for cond in remaining_conjuncts:
-        remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
 
-    return _one_join_per_junction_row(modified, set(alias_to_conjuncts)), remaining
+def _optional_step_matches_whole(joins: "list[dict]", step_vars: "set[str]") -> "list[dict]":
+    """An OPTIONAL MATCH's pattern -- each of its hops and comma-separated parts, and its own WHERE
+    -- matches whole or not at all: where only part of it matches, every variable it introduces is
+    null (REQ-345). As plain LEFT JOINs a row would keep the hops that matched beside nulls for the
+    rest. Each of the match's joins but the last holds the next as an EXISTS, built from the last
+    back, so a join matches only where all of the pattern after it does."""
+    span = [
+        i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and _join_alias(join["table"]) in step_vars
+    ]
+    if len(span) < 2:
+        return joins
+    out = list(joins)
+    for k in range(span[-1] - 1, span[0] - 1, -1):
+        after = out[k + 1]
+        rest = exp.select(exp.Literal.number(1)).from_(after["table"].copy())
+        if after["on"] is not None:
+            rest = rest.where(after["on"].copy())
+        on = out[k]["on"]
+        whole = exp.Exists(this=rest)
+        bare = on is None or (isinstance(on, exp.Boolean) and on.this is True)
+        out[k] = {**out[k], "on": whole if bare else exp.And(this=on, expression=whole)}
+    return out
 
 
 def _one_join_per_junction_row(joins: "list[dict]", constrained: "set[str]") -> "list[dict]":

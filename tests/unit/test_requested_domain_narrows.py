@@ -34,10 +34,10 @@ from provisa.security.rights import reaches_all_domains, reaches_domain
 
 CACHE: dict[str, Any] = {
     "tables": [
-        {"id": 1, "domain_id": "sales", "name": "orders"},
-        {"id": 2, "domain_id": "finance", "name": "ledger"},
-        {"id": 3, "domain_id": "meta", "name": "registered_tables_meta"},
-        {"id": 4, "domain_id": "ops", "name": "queries"},
+        {"id": 1, "domain_id": "sales", "name": "orders", "source_id": "pg"},
+        {"id": 2, "domain_id": "finance", "name": "ledger", "source_id": "pg"},
+        {"id": 3, "domain_id": "meta", "name": "registered_tables_meta", "source_id": "pg"},
+        {"id": 4, "domain_id": "ops", "name": "queries", "source_id": "pg"},
     ],
     "relationships": [],
     "column_types": {},

@@ -1692,25 +1692,17 @@
         "title": "I totali di un giorno",
         "description": "Il 1° ottobre come risulta ora. Per ogni filiale, prodotto e valuta vede che cosa è entrato, che cosa è uscito e il netto. Uno strumento di BI collegato via pgwire esegue questo stesso SQL."
       },
-      "bankingAsReported": {
-        "title": "Come comunicato alla chiusura",
-        "description": "Registrato al è ora impostato sulla chiusura del 1° ottobre. Uno strumento di BI fa lo stesso con SET provisa.as_recorded nella sua sessione pgwire. Registrato al filtra le transazioni su updated_at e i totali giornalieri sulla chiusura di ogni giorno, così vede le cifre che la banca ha comunicato quella sera."
-      },
       "bankingReported": {
         "title": "Che cosa è stato comunicato",
-        "description": "I totali corporate del 1° e del 2 ottobre, come comunicati alla chiusura del 1° ottobre. Il totale in GBP di Londra contiene ancora il pagamento poi stornato. Il 2 ottobre non era ancora chiuso, quindi non ha cifre."
-      },
-      "bankingAsRestated": {
-        "title": "Come rettificato in seguito",
-        "description": "Registrato al passa alla chiusura del 12 ottobre, l'ultima dei trenta giorni. A quel punto lo storno inserito il 6 ottobre e l'operazione tardiva inserita il 7 ottobre sono entrambi registrati."
+        "description": "I totali corporate del 1° e del 2 ottobre, come comunicati alla chiusura del 1° ottobre: l'argomento as_recorded della vista li legge come erano registrati allora, e uno strumento di BI via pgwire fa lo stesso con SET provisa.as_recorded. Il totale in GBP di Londra contiene ancora il pagamento poi stornato. Il 2 ottobre non era ancora chiuso, quindi non ha cifre."
       },
       "bankingRestated": {
         "title": "Che cosa dice ora",
-        "description": "Lo stesso SQL. Il totale del 1° ottobre di Londra non contiene più il pagamento stornato, e il totale in USD del 2 ottobre di Edimburgo ora include l'operazione tardiva. Le versioni comunicate a ogni chiusura restano accanto a quelle rettificate, e recorded_at mostra quando ciascuna è stata registrata."
+        "description": "Lo stesso SQL con as_recorded alla chiusura del 12 ottobre, l'ultimo dei trenta giorni. Il totale del 1° ottobre di Londra non contiene più il pagamento stornato, e il totale in USD del 2 ottobre di Edimburgo ora include l'operazione tardiva. Le versioni comunicate a ogni chiusura restano accanto a quelle rettificate, e recorded_at mostra quando ciascuna è stata registrata."
       },
       "bankingAsOpsSql": {
         "title": "Di nuovo operations",
-        "description": "L'explorer ora viene eseguito come operations, sempre registrato alla chiusura del 12 ottobre."
+        "description": "L'explorer ora viene eseguito come operations."
       },
       "bankingPostings": {
         "title": "Le registrazioni dietro un totale",

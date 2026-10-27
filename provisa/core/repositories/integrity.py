@@ -368,7 +368,7 @@ def _matches(reference: Reference, value: Any, wanted: Any) -> bool:
         members = value[reference.path] if reference.path is not None else value
         return wanted in members
     if reference.match is Match.MASK_TO:
-        return any(wanted in entry["to"] for entry in value)
+        return any(wanted in (entry.get("to") or ()) for entry in value)
     relations, metric_names = names_in_sql(value)
     return wanted in (metric_names if reference.to == "metric" else relations)
 

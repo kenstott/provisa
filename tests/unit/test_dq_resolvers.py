@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 import yaml
 
+from provisa.api.admin.catalog_scope import CatalogScope
 from provisa.api.admin._dq_resolvers import (
     build_check,
     check_catalog_for,
@@ -176,12 +177,52 @@ class _Conn:
 
 @pytest.fixture(autouse=True)
 def _governed_orders():
-    """The dataset resolves against the compiled contexts — the pgwire names — not a catalog read."""
+    """The dataset resolves against the model-wide compiled context — the pgwire names — not a
+    catalog read."""
     from provisa.api.app import state
 
-    state.contexts = dq_contexts((1, "wh", "sales", "sales", "orders"))
+    state.view_context = dq_contexts((1, "wh", "sales", "sales", "orders"))["analyst"]
     yield
-    state.contexts = {}
+    state.view_context = None
+
+
+# A caller nothing narrows: which columns a caller is served is the next test's subject.
+_WHOLE = CatalogScope(whole=True, reach=None, served={}, governance=True, role=None)
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_offers_only_the_columns_its_caller_is_served():
+    """REQ-2152: table_registration opens the picker; it offers the columns the caller's acting
+    role is served, and a dataset it is served none of reads as one that resolves nowhere."""
+    rows = [
+        {"column_name": "amount", "data_type": "numeric"},
+        {"column_name": "margin", "data_type": "numeric"},
+    ]
+    seller = CatalogScope(
+        whole=False,
+        reach=None,
+        served={1: {"amount"}},
+        governance=False,
+        role="seller",
+        compiled=frozenset({1}),
+    )
+    catalog = await check_catalog_for(
+        cast("Connection", _Conn(_Rows(rows))),
+        checker="soda",
+        dataset="provisa/sales/orders",
+        scope=seller,
+    )
+    assert [c["name"] for c in catalog["columns"]] == ["amount"]
+    outsider = CatalogScope(
+        whole=False, reach=None, served={}, governance=False, role="o", compiled=frozenset({1})
+    )
+    catalog = await check_catalog_for(
+        cast("Connection", _Conn(_Rows(rows))),
+        checker="soda",
+        dataset="provisa/sales/orders",
+        scope=outsider,
+    )
+    assert "resolves to no governed table" in catalog["error"] and catalog["columns"] == []
 
 
 @pytest.mark.asyncio
@@ -195,7 +236,7 @@ async def test_the_catalog_scopes_each_column_to_its_own_type():
         ),
     )
     catalog = await check_catalog_for(
-        cast("Connection", conn), checker="soda", dataset="provisa/sales/orders"
+        cast("Connection", conn), checker="soda", dataset="provisa/sales/orders", scope=_WHOLE
     )
     assert catalog["error"] is None
     offered = {c["name"]: [k["check_type"] for k in c["checks"]] for c in catalog["columns"]}
@@ -207,7 +248,7 @@ async def test_the_catalog_scopes_each_column_to_its_own_type():
 async def test_dataset_scoped_checks_come_back_beside_the_columns():
     conn = _Conn(_Rows([{"column_name": "amount", "data_type": "numeric"}]))
     catalog = await check_catalog_for(
-        cast("Connection", conn), checker="soda", dataset="provisa/sales/orders"
+        cast("Connection", conn), checker="soda", dataset="provisa/sales/orders", scope=_WHOLE
     )
     assert "row_count" in [k["check_type"] for k in catalog["dataset_checks"]]
 
@@ -218,7 +259,7 @@ async def test_a_dataset_that_resolves_nowhere_says_so_and_offers_no_columns():
     dataset line rather than wondering why the column picker is empty."""
     conn = _Conn()
     catalog = await check_catalog_for(
-        cast("Connection", conn), checker="soda", dataset="provisa/sales/invoices"
+        cast("Connection", conn), checker="soda", dataset="provisa/sales/invoices", scope=_WHOLE
     )
     assert "resolves to no governed table" in catalog["error"]
     assert catalog["columns"] == []
@@ -228,7 +269,7 @@ async def test_a_dataset_that_resolves_nowhere_says_so_and_offers_no_columns():
 @pytest.mark.asyncio
 async def test_an_unknown_checker_offers_nothing_at_all():
     catalog = await check_catalog_for(
-        cast("Connection", _Conn()), checker="deequ", dataset="provisa/sales/orders"
+        cast("Connection", _Conn()), checker="deequ", dataset="provisa/sales/orders", scope=_WHOLE
     )
     assert "unknown data-quality checker" in catalog["error"]
     assert catalog["dataset_checks"] == []

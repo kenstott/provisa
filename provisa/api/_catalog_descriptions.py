@@ -39,6 +39,7 @@ _META: dict[str, str] = {
     "roles": "The role hierarchy queries execute under; a role inherits its parent's grants",
     "roles_domain_access": "Which domains each role may reach — one row per role/domain pair",
     "roles_parents": "Which roles each role inherits from — one row per role/parent pair",
+    "listed_names": "The names of listed columns in domains the reader does not reach — names only",
     "tracked_webhooks": "HTTP endpoints registered as callable functions in the model",
     "tracked_functions": "Source-native and Provisa-defined functions exposed as callable "
     "commands in the model",
@@ -276,8 +277,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "is_alternate_key": "Whether the column uniquely identifies a row without being the "
         "primary key",
         "object_fields": "Field definitions for a structured (object) column",
-        "visible_to": "Roles that may select this column; empty means unrestricted outside "
-        "lockdown domains",
+        "visible_to": "Roles that may select this column; empty means no role",
         "tenant_id": _TENANT,
     },
     "domains": {
@@ -341,6 +341,13 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "capabilities": "Platform capabilities the role holds beyond data access",
         "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
         "tenant_id": _TENANT,
+    },
+    "listed_names": {
+        "id": "The column's identity: its table's id and its name",
+        "listed_domain": "The domain the listed table is in",
+        "table_name": "The listed table's name",
+        "column_name": "The listed column's name",
+        "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
     },
     "roles_parents": {
         "id": "Composite key of the role and a role it inherits from",

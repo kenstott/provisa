@@ -236,7 +236,35 @@ def test_a_source_error_while_fetching_fails_the_request_and_keeps_the_connectio
     assert "SELECT 1/0" in pg.statements  # an ordinary error leaves the prepared statement usable
 
 
-def test_a_stale_prepared_statement_is_forgotten_so_the_next_run_prepares_again():
+def test_a_statement_deallocated_behind_the_passthrough_is_prepared_again_and_run():
+    """The connection's driver runs DEALLOCATE ALL after a ROLLBACK (psycopg does), so a statement
+    kept prepared here can be gone at Bind (26000). Nothing was handed on yet: it is prepared again
+    on the same connection and run once more."""
+    row = _data_row(1, [b"7"])
+    gone = _msg(
+        b"E", b'SERROR\x00C26000\x00Mprepared statement "_provisa_pt_0" does not exist\x00\x00'
+    )
+    one_column = _PARSE_OK + _PARAMS_NONE + _row_description([("x", 23)])
+    pg = _FakePostgres(
+        [
+            ("PDH", one_column),
+            ("BES", gone + _READY),
+            ("PDH", one_column),
+            ("BES", _BIND_OK + row + _msg(b"C", b"SELECT 1\x00") + _READY),
+        ]
+    )
+    try:
+        cursor = open_passthrough(pg.borrow, "SELECT x FROM t", [], [0], [23]).cursor
+        assert cursor.fetch(10) == [row]
+    finally:
+        pg.finish()
+    assert pg.released == [False]
+    assert "SELECT x FROM t" in pg.statements
+
+
+def test_a_statement_whose_columns_changed_at_its_source_is_refused_not_run():
+    """A stale statement (0A000: the source's plan changed type) prepared again describes other
+    columns than the client was told: the run is refused and the connection closed."""
     pg = _FakePostgres(
         [
             ("PDH", _PARSE_OK + _PARAMS_NONE + _row_description([("x", 23)])),
@@ -245,15 +273,17 @@ def test_a_stale_prepared_statement_is_forgotten_so_the_next_run_prepares_again(
                 _msg(b"E", b"SERROR\x00C0A000\x00Mcached plan must not change result type\x00\x00")
                 + _READY,
             ),
+            ("PDH", _PARSE_OK + _PARAMS_NONE + _row_description([("x", 20)])),
+            ("S", _READY),
         ]
     )
     try:
         cursor = open_passthrough(pg.borrow, "SELECT x FROM t", [], [0], [23]).cursor
-        with pytest.raises(PassthroughFailure, match="cached plan"):
+        with pytest.raises(PassthroughFailure, match="columns changed"):
             cursor.fetch(10)
     finally:
         pg.finish()
-    assert pg.statements == {}
+    assert pg.released == [True]
 
 
 def test_a_source_error_at_prepare_fails_the_request():

@@ -223,10 +223,10 @@ Die Sicht liest die Aktualisierungsdatensätze in `"ops"."traces"` und antwortet
 
 ## Eine Sicht, wie sie stand und wie sie erfasst wurde {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Eine Sicht, die die Spalten ihrer Quelle als `business_key`, `valid_time` und `recorded_time` abbildet, behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
+Ein einfacher Lesevorgang liefert den aktuellen Stand. Zwei Argumente der Sicht, dort geschrieben, wo die Anweisung sie nennt, lesen ihre Vergangenheit:
 
-- `X-Provisa-As-Of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum.
-- `X-Provisa-As-Recorded` liest sie so, wie Provisa sie zu einem Zeitpunkt erfasst hatte. Später erfasste Versionen bleiben außen vor, sodass eine später erfasste Korrektur die Wiedergabe der Vergangenheit nicht ändert.
+- `as_of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum: `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` liest sie so, wie Provisa sie zu einem Zeitpunkt erfasst hatte. Später erfasste Versionen bleiben außen vor, sodass eine später erfasste Korrektur die Wiedergabe der Vergangenheit nicht ändert.
 
 Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt die drei Deklarationen mit Beispielen und jede Oberfläche, die die beiden Werte annimmt.
 

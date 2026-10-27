@@ -34,7 +34,7 @@ import { fetchMetadataExport } from "../api/metadataExport";
 const config: MetadataExportState["config"] = {
   enabled: true,
   reconcile_cron: "0 * * * *",
-  targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false }],
+  targets: [{ catalog: "marquez", datazone_project_id: "", delta_share: false, role: "steward" }],
 };
 
 const STATES: Record<string, MetadataExportState> = {
@@ -43,6 +43,7 @@ const STATES: Record<string, MetadataExportState> = {
     required_tier: "premium",
     providers: ["openlineage"],
     beta_providers: [],
+    publishable_roles: ["steward"],
     config,
     last_publish: null,
   },
@@ -51,6 +52,7 @@ const STATES: Record<string, MetadataExportState> = {
     required_tier: "premium",
     providers: ["openlineage"],
     beta_providers: [],
+    publishable_roles: ["steward"],
     config: { ...config, enabled: false, targets: [] },
     last_publish: null,
   },
@@ -59,6 +61,7 @@ const STATES: Record<string, MetadataExportState> = {
     required_tier: "premium",
     providers: [],
     beta_providers: [],
+    publishable_roles: ["steward"],
     config,
     last_publish: null,
   },

@@ -80,7 +80,7 @@ class TestConfigLoading:
         )
         st = AppState()
         st.config = config
-        st.contexts = {"analyst": SimpleNamespace(tables={"orders": meta})}
+        st.view_context = SimpleNamespace(tables={"orders": meta})
         st.approval_hook = None
         st.table_approval_hooks = {}
         st.source_approval_hooks = {}

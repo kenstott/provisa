@@ -153,7 +153,8 @@ export function OssieInterchangePanel() {
             columns: tbl.columns.map((c) => ({
               name: c.name,
               alias: c.alias ?? undefined,
-              visibleTo: ["*"],
+              // Registration grants read to the registrant and Viewer (REQ-2154).
+              visibleTo: [],
               dataType: c.datatype ?? undefined,
               description: c.description ?? undefined,
               isPrimaryKey: c.is_primary_key,

@@ -173,6 +173,13 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
+class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
+    domain_id: str
+    table_name: str
+    column_names: list[str]
+
+
+@strawberry.type
 class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
@@ -360,10 +367,11 @@ def _dq_dataset_of(table_id: int) -> str | None:
     from provisa.api.app import state
     from provisa.dq.contract import meta_dataset
 
-    for ctx in state.contexts.values():
-        for meta in ctx.tables.values():
-            if meta.table_id == table_id:
-                return meta_dataset(meta)
+    # The model-wide context: every table, with no role's surface built to read it.
+    ctx = state.view_context
+    for meta in ctx.tables.values() if ctx is not None else []:
+        if meta.table_id == table_id:
+            return meta_dataset(meta)
     return None
 
 
@@ -486,6 +494,22 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         return await summarize_table_policy(self)
 
     @strawberry.field
+    def time_travel(self) -> str | None:  # REQ-1163
+        """How the relation travels in time: "bitemporal" (it takes as_of and as_recorded),
+        "snapshot" (an Iceberg or Delta table: as_recorded alone), or null (it keeps no versions).
+        The SQL explorer's time pickers write the arguments on exactly these relations."""
+        from provisa.api.app import state
+        from provisa.mv.time_travel import relation_kinds
+
+        row = {
+            "id": self.id,
+            "source_id": self.source_id,
+            "table_name": self.table_name,
+            "view_sql": self.view_sql,
+        }
+        return relation_kinds(state, [row]).get(self.id)
+
+    @strawberry.field
     def graphql_field_name(self) -> str | None:  # REQ-1634: GraphQL Queries panel
         """This table's root query field name in the compiled data-plane GraphQL schema, so the
         Data Product GraphQL Queries panel can build a runnable example query without duplicating
@@ -510,10 +534,12 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
 
         from provisa.api.app import state
         from provisa.core.schema_org import registered_tables
-        from provisa.dq.contract import contract_dataset, resolve_contract_target
+        from provisa.dq.contract import contract_dataset, model_contexts, resolve_contract_target
 
         checker = state.source_types[self.source_id]
-        meta = resolve_contract_target(contract_dataset(self.dq_contract, checker), state.contexts)
+        meta = resolve_contract_target(
+            contract_dataset(self.dq_contract, checker), model_contexts(state)
+        )
         if state.model_db is None:
             raise RuntimeError("tenant database not connected")
         async with state.model_db.acquire() as conn:
@@ -565,7 +591,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
                 scan_time=c["scan_time"].isoformat() if c["scan_time"] else None,
             )
             for c in found
-            if scope.lists_table(c["table_id"], c["domain_id"])
+            if scope.lists_table(c["table_id"])
         ]
 
 
@@ -580,7 +606,7 @@ class MaskSpecType:  # REQ-2059: how a mask entry masks the value
 
 @strawberry.type
 class MaskEntryType:  # REQ-2059: one entry of a column's ordered mask list
-    to: list[str]  # grant entries, composites included; "*" is everyone
+    to: list[str] | None = None  # grant entries, composites included; None: every other reader
     mask: MaskSpecType | None = None  # None: the readers it is for read the column unmasked
     why: JsonScalar | None = None  # REQ-2094: why the entry is what it is
 
@@ -596,7 +622,7 @@ class MaskSpecInput:  # REQ-2059
 
 @strawberry.input
 class MaskEntryInput:  # REQ-2059
-    to: list[str]
+    to: list[str] | None = None  # None: every other reader, the list's last entry (REQ-2153)
     mask: MaskSpecInput | None = None
     why: JsonScalar | None = None  # REQ-2094: the reason, purpose, bases and review-by date given
 
@@ -605,7 +631,7 @@ def mask_entry_types(masks: list[dict]) -> list[MaskEntryType]:
     """A stored mask list (REQ-2059) as the admin API answers it."""
     return [
         MaskEntryType(
-            to=list(e["to"]),
+            to=None if e.get("to") is None else list(e["to"]),
             mask=None if e["mask"] is None else MaskSpecType(**e["mask"]),
             why=e.get("why"),
         )
@@ -617,7 +643,7 @@ def mask_entries_of(masks: list[MaskEntryInput]) -> list[dict]:
     """A mask list as sent (REQ-2059), as the model takes it."""
     return [
         {
-            "to": list(e.to),
+            "to": None if e.to is None else list(e.to),
             "mask": None
             if e.mask is None
             else {
@@ -988,6 +1014,10 @@ class SourceInput:  # REQ-012
     cache_enabled: bool = True
     cache_ttl: int | None = None
     replicate: int | None = None  # REQ-826: None = Default; -1 never, N hot, 0 always
+    # REQ-2109's rule for a source: the naming convention, which also has a mutation of its own
+    # (updateSourceNaming), travels with the source, so the form's save is one mutation and one
+    # schema rebuild. Left out (UNSET), a create inherits and an update keeps the stored one.
+    gql_naming_convention: str | None = strawberry.UNSET
     # REQ-1921: the region the admin form starts this source's new tables in (None = the
     # connected one). Ignored by updateSource: it changes through setSourceRegion.
     region: str | None = None
@@ -1539,7 +1569,7 @@ class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bou
     description: str | None = None
     ai_context: str | None = None  # REQ-1319: definition text for AI consumers
     # Null for a caller without view_governance (REQ-1134, REQ-1958).
-    visible_to: list[str] | None = strawberry.field(default_factory=lambda: ["*"])
+    visible_to: list[str] | None = None
     from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
 
 
@@ -1550,7 +1580,8 @@ class MetricInput:  # REQ-1317
     datatype: str | None = None
     description: str | None = None
     ai_context: str | None = None  # REQ-1319
-    visible_to: list[str] = strawberry.field(default_factory=lambda: ["*"])
+    # REQ-1317: None at create is the acting role and Viewer; the roles named otherwise.
+    visible_to: list[str] | None = None
 
 
 @strawberry.input

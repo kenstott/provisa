@@ -508,13 +508,22 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
         # target's catalog serves the snapshot's domains, so its tables are published to it.
         domains = sorted({t.domain_id for t in snapshot.tables})
         return MetadataExportConfig(
-            enabled=True, targets=[{"catalog": target_id} for target_id in exporters]
+            enabled=True,
+            targets=[{"catalog": target_id, "role": "steward"} for target_id in exporters],
         ), [
             MetadataExportTarget(
-                id=target_id, provider="atlas", endpoint="https://catalog.example", domains=domains
+                id=target_id,
+                provider="atlas",
+                endpoint="https://catalog.example",
+                domains=domains,
+                role="steward",
             )
             for target_id in exporters
         ]
+
+    async def _reads_everything(state, role):
+        # The role reads every column here: what a role is sent is test_metadata_export_scope.
+        return lambda table: None
 
     async def _model(*args, **kwargs):
         # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a
@@ -522,6 +531,8 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
         return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
 
     monkeypatch.setattr(publishing, "_export_config", _export_config)
+    monkeypatch.setattr(publishing, "role_reader", _reads_everything)
+    monkeypatch.setattr(publishing, "role_reach", lambda state, role: lambda domain_id: True)
     monkeypatch.setattr(publishing, "_model_for_export", _model)
     monkeypatch.setattr(
         publishing,

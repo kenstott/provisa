@@ -133,7 +133,8 @@ def test_a_rebuilds_masking_rules_carry_the_meta_roles_masks():
     state = SimpleNamespace(
         meta_roles={_META: ("a", "b"), "meta:a+gone": ("a", "gone")}, meta_qualifiers={}
     )
-    masked_to_all = [{"to": ["*"], "mask": {"type": "constant", "value": "MASKED"}}]
+    # REQ-2153: the last entry, with no ``to``, is for every other reader.
+    masked_to_all = [{"to": None, "mask": {"type": "constant", "value": "MASKED"}}]
     unmasked_to_b = [{"to": ["b"], "mask": None}, *masked_to_all]
     masked = [
         (1, "ssn", masked_to_all, "varchar"),

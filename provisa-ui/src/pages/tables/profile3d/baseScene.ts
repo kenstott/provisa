@@ -14,6 +14,11 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { FrameLoop } from "./frameLoop";
+import { TurnPause } from "./turnPause";
+
+/** How often a stage that only turns is drawn (20 frames a second). */
+const TURN_FRAME_MS = 50;
 
 export interface SceneTheme {
   canvas: string;
@@ -99,7 +104,9 @@ export abstract class BaseScene<H> {
     start: number;
     dur: number;
   } | null = null;
-  private frame = 0;
+  /** Frames drawn on demand, and none while the stage cannot be seen (frameLoop.ts). */
+  private frames: FrameLoop;
+  private seen: IntersectionObserver;
   private ray = new THREE.Raycaster();
   private down: { x: number; y: number } | null = null;
   private dragging = false;
@@ -110,6 +117,14 @@ export abstract class BaseScene<H> {
   private floorShown = true;
   /** Set while an export drives the camera (orbit()): the loop then draws nothing of its own. */
   private held = false;
+  /** When the loop last drew: a stage that only turns is drawn at TURN_FRAME_MS, not every frame. */
+  private drawnAt = 0;
+  /** Set while the loop updates the orbit: the change it reports is the loop's own. */
+  private updating = false;
+  /** Whether the stage is asked to turn (setRotate); it turns while the page is in use. */
+  private turnAsked = false;
+  /** Stops the turn while nobody uses the page (turnPause.ts). */
+  private turnPause: TurnPause;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -126,6 +141,10 @@ export abstract class BaseScene<H> {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // The light and the content hold still in the world while the camera moves (a drag, the
+    // stage turning), so the shadow map is drawn again only when what is drawn changes (loop()):
+    // a full extra pass per frame otherwise, the larger part of a turning stage's cost.
+    this.renderer.shadowMap.autoUpdate = false;
     // The theme's colours are sRGB (CSS tokens), which three.js takes into linear space; the output
     // is converted back, or every colour lands far darker than its token and the stage reads black.
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -136,6 +155,13 @@ export abstract class BaseScene<H> {
     this.controls.minDistance = 2;
     this.controls.maxDistance = 120;
     this.controls.autoRotateSpeed = 0.6;
+    this.frames = new FrameLoop(this.loop);
+    this.turnPause = new TurnPause(() => this.applyTurn());
+    // The view moved by hand (a drag, the wheel): draw it. The loop's own update() (the turn, the
+    // orbit settling) is a move it already draws, not a change to draw again.
+    this.controls.addEventListener("change", () => {
+      if (!this.updating) this.frames.invalidate();
+    });
     this.scene.add(this.hemi);
     this.sun.position.set(-9, 15, 11);
     this.sun.castShadow = true;
@@ -147,7 +173,16 @@ export abstract class BaseScene<H> {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas.parentElement as HTMLElement);
     this.resize();
-    this.frame = requestAnimationFrame(this.loop);
+    // Nothing is drawn while the stage is off screen or the page is hidden.
+    let inView = true;
+    const shown = () => this.frames.setShown(inView && !document.hidden);
+    this.seen = new IntersectionObserver((entries) => {
+      inView = entries.some((e) => e.isIntersecting);
+      shown();
+    });
+    this.seen.observe(canvas);
+    document.addEventListener("visibilitychange", shown);
+    this.disposers.push(() => document.removeEventListener("visibilitychange", shown));
   }
 
   // ---------- for subclasses ----------
@@ -158,8 +193,17 @@ export abstract class BaseScene<H> {
   protected abstract applyTheme(): void;
   /** Free everything the subclass built. */
   protected abstract disposeContent(): void;
-  /** Called once per frame before rendering. */
+  /** Called once per frame drawn, before rendering. */
   protected onFrame(): void {}
+  /** Whether the scene's own animation (onFrame) still moves: frames are drawn while it does. */
+  protected animating(): boolean {
+    return false;
+  }
+
+  /** What is drawn changed: draw it on the next frame. Every change to the scene calls it. */
+  invalidate() {
+    this.frames.invalidate();
+  }
   /** Called once per frame after the labels are placed, before rendering (REQ-2128: a scene may
    * hide labels that would collide). */
   protected onLabelsPlaced(): void {}
@@ -206,6 +250,7 @@ export abstract class BaseScene<H> {
       this.camera.position.copy(pos);
       this.controls.target.copy(tgt);
       this.tween = null;
+      this.invalidate();
       return;
     }
     this.tween = {
@@ -216,6 +261,7 @@ export abstract class BaseScene<H> {
       start: performance.now(),
       dur: 750,
     };
+    this.invalidate();
   }
 
   protected get aspect(): number {
@@ -246,16 +292,19 @@ export abstract class BaseScene<H> {
     this.theme = theme;
     this.applyBaseTheme();
     this.applyTheme();
+    this.invalidate();
   }
 
   /** Draws the floor grid, or leaves it out. */
   setGrid(shown: boolean) {
     this.floorShown = shown;
     if (this.floor) this.floor.visible = shown;
+    this.invalidate();
   }
 
   setRotate(on: boolean) {
-    this.controls.autoRotate = on && !this.reduced;
+    this.turnAsked = on;
+    this.applyTurn();
   }
 
   /** The stage's background, in the theme: what an export fills behind the frame. */
@@ -300,7 +349,6 @@ export abstract class BaseScene<H> {
   orbit(scale: number): Orbit {
     const position = this.camera.position.clone();
     const target = this.controls.target.clone();
-    const rotating = this.controls.autoRotate;
     const usual = this.renderer.getPixelRatio();
     const offset = position.clone().sub(target);
     this.held = true;
@@ -322,10 +370,10 @@ export abstract class BaseScene<H> {
         this.camera.position.copy(position);
         this.controls.target.copy(target);
         this.camera.lookAt(target);
-        this.controls.autoRotate = rotating;
         this.renderer.setPixelRatio(usual);
         this.resize();
         this.held = false;
+        this.applyTurn();
       },
     };
   }
@@ -428,7 +476,9 @@ export abstract class BaseScene<H> {
   }
 
   dispose() {
-    cancelAnimationFrame(this.frame);
+    this.frames.dispose();
+    this.turnPause.dispose();
+    this.seen.disconnect();
     this.resizeObserver.disconnect();
     this.disposers.forEach((d) => d());
     this.disposeContent();
@@ -438,6 +488,13 @@ export abstract class BaseScene<H> {
   }
 
   // ---------- internals ----------
+
+  /** Turns while asked to, motion is not reduced and the page is in use; an export holds it. */
+  private applyTurn() {
+    if (this.held) return;
+    this.controls.autoRotate = this.turnAsked && !this.reduced && !this.turnPause.paused;
+    this.invalidate();
+  }
 
   private applyBaseTheme() {
     const th = this.theme;
@@ -514,11 +571,14 @@ export abstract class BaseScene<H> {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.frames.invalidate();
   }
 
-  private loop = (now: number) => {
-    this.frame = requestAnimationFrame(this.loop);
-    if (this.held) return;
+  /** One frame: advance what moves, and draw when it moved or ``changed``. Answers whether
+   * anything still moves (a tween, the orbit settling or turning, the scene's own animation). */
+  private loop = (now: number, changed: boolean): boolean => {
+    if (this.held) return false; // an export drives the frames (orbit())
+    let moving = false;
     if (this.tween) {
       const tw = this.tween;
       const k = Math.min(1, (now - tw.start) / tw.dur);
@@ -526,11 +586,25 @@ export abstract class BaseScene<H> {
       this.camera.position.lerpVectors(tw.p0, tw.p1, e);
       this.controls.target.lerpVectors(tw.t0, tw.t1, e);
       if (k >= 1) this.tween = null;
+      moving = true;
     }
-    this.controls.update();
-    this.onFrame();
-    this.placeLabels();
-    this.renderer.render(this.scene, this.camera);
+    this.updating = true;
+    if (this.controls.update()) moving = true;
+    this.updating = false;
+    const animating = this.animating();
+    if (this.controls.autoRotate || animating) moving = true;
+    if (changed || animating) this.renderer.shadowMap.needsUpdate = true;
+    // Only turning: the orbit still advances every frame, but it is drawn at a slower rate --
+    // a turn reads as smooth at it, at a third of the cost.
+    const turningOnly = moving && !changed && !animating && !this.tween && !this.dragging;
+    if (turningOnly && now - this.drawnAt < TURN_FRAME_MS) return moving;
+    if (moving || changed) {
+      this.drawnAt = now;
+      this.onFrame();
+      this.placeLabels();
+      this.renderer.render(this.scene, this.camera);
+    }
+    return moving;
   };
 
   /** Puts every pinned label where the camera now sees its point. */

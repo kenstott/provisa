@@ -185,11 +185,18 @@ def usable_commands(
 
 
 def command_named(state, role_id: str | None, language: str, name: str) -> str:
-    """The command ``name`` calls in ``language`` for ``role_id`` -- its registered name -- or the
-    one unknown-command answer when no command the role may use is bound to it there."""
+    """The command ``name`` calls in ``language`` -- its registered name -- or the unknown-command
+    answer when no command is bound to it there. Whether the role may call it is the one command
+    admission's (``invoke_tracked_function``), which answers a command it may not use the same."""
+    from provisa.core.command_bindings import bound
+
     if role_id is None:
         raise unknown_command(name)
-    command = usable_commands(state, role_id, language=language).get(name)
+    pools = [
+        *(getattr(state, "tracked_functions", None) or {}).values(),
+        *(getattr(state, "tracked_webhooks", None) or {}).values(),
+    ]
+    command = bound(pools, language).get(name)
     if command is None:
         raise unknown_command(name)
     return command["name"]

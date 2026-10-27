@@ -32,7 +32,7 @@ _SAMPLE = {
     "name": "sample_rows",
     "domain_id": "sales",
     "kind": "query",
-    "visible_to": [],
+    "visible_to": ["seller"],
     "arguments": [
         {"name": "table", "type": "text"},
         {"name": "size", "type": "integer", "default": 10},
@@ -147,7 +147,7 @@ def test_the_grpc_argument_with_a_default_is_optional():
             "name": "sample_rows",
             "kind": "query",
             "domain_id": "sales",
-            "visible_to": [],
+            "visible_to": ["admin"],  # _make_si's role
             "arguments": [
                 {"name": "table", "type": "String"},
                 {"name": "size", "type": "Int", "default": 10},

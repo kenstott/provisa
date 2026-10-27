@@ -16,6 +16,7 @@ fingerprint, never reaches the server's log."""
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import secrets
 import subprocess
 import time
@@ -38,7 +39,7 @@ from provisa.transpiler.transpile import rewrite_json_object_to_build_object, tr
 pytestmark = [pytest.mark.integration]
 
 _ROOT = Path(__file__).resolve().parents[2]
-_IMAGE = "provisa-pg-plpython-test:16"
+_IMAGE = "provisa-pg-plpython-test:16"  # tagged further by its requirements
 
 
 def _docker(*args: str) -> str:
@@ -54,17 +55,33 @@ def key(tmp_path_factory):
     return value, directory
 
 
-@pytest.fixture(scope="module")
-def pg(key):
+def _build_image(context: Path) -> str:
+    """The image, with provisa's runtime dependencies at uv.lock's versions, tagged by them."""
+    requirements = subprocess.run(
+        [
+            "uv", "export", "--frozen", "--no-dev", "--no-hashes", "--no-header",
+            "--no-emit-workspace", "--no-emit-package", "pgserver",
+            "--no-emit-package", "provisa-notebook",
+        ],
+        cwd=_ROOT, capture_output=True, text=True, check=True,
+    ).stdout  # fmt: skip
+    (context / "requirements.txt").write_text(requirements)
+    tag = f"{_IMAGE}-{hashlib.sha256(requirements.encode()).hexdigest()[:12]}"
     _docker(
         "build",
         "-q",
         "-t",
-        _IMAGE,
+        tag,
         "-f",
         str(_ROOT / "docker/pg-plpython-test.Dockerfile"),
-        str(_ROOT / "docker"),
+        str(context),
     )
+    return tag
+
+
+@pytest.fixture(scope="module")
+def pg(key, tmp_path_factory):
+    image = _build_image(tmp_path_factory.mktemp("pg-plpython-image"))
     name = f"provisa-pg-plpython-{uuid.uuid4().hex[:8]}"
     _docker(
         "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::5432",
@@ -73,7 +90,7 @@ def pg(key):
         "-e", "PYTHONPATH=/provisa",
         "-v", f"{_ROOT}:/provisa:ro",
         "-v", f"{key[1]}:/keys:ro",
-        _IMAGE,
+        image,
     )  # fmt: skip
     try:
         port = int(_docker("port", name, "5432/tcp").strip().rsplit(":", 1)[1])

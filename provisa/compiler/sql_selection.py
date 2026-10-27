@@ -35,6 +35,7 @@ from provisa.compiler.sql_rewrite import (
     _q,
     _sql_str_literal,
     _table_ref,
+    travel_ref,
 )
 
 from provisa.compiler.sql_where import (
@@ -82,11 +83,11 @@ def _lateral_join(
         and "where" in args
         and where_names_relationship(args["where"], relationships.ctx, relationships.type_name)
     )
-    rows = f" {_q(join_alias)}" if related else ""
-    sql = (
-        f"LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}{rows}"
-        f" WHERE {_lat_tgt_expr} = {src_expr}"
-    )
+    # REQ-1163: a target read at its own time is read under the join's alias, which its time is
+    # kept by (provisa.mv.time_travel).
+    target = travel_ref(_table_ref(join_meta.target, use_catalog), field_node, variables)
+    rows = f" {_q(join_alias)}" if related or target.endswith(")") else ""
+    sql = f"LEFT JOIN LATERAL (SELECT * FROM {target}{rows} WHERE {_lat_tgt_expr} = {src_expr}"
     if "where" in args:
         where_sql = _compile_where(
             args["where"],
@@ -211,7 +212,10 @@ def _build_rel_json_kv(
                     sub_join_meta.target_column_type,
                     sub_join_meta.source_column_type,
                 )
-            sub_from = f"{_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}"
+            sub_from = (
+                f"{travel_ref(_table_ref(sub_join_meta.target, use_catalog), sel, variables)}"
+                f" {_q(sub_alias)}"
+            )
             sub_where = f"{sub_tgt} = {sub_src}"
             sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
             # Prefer child_src_val (explicit varchar constant) over sub_src. Fall back to
@@ -452,7 +456,8 @@ def _collect_nested_columns(
                     nested_join_meta.target.type_name,
                     nested_join_meta.target,
                     nested_alias,
-                    f"{_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}",
+                    f"{travel_ref(_table_ref(nested_join_meta.target, use_catalog), nested_sel, variables)}"
+                    f" {_q(nested_alias)}",
                     f"{tgt_expr} = {src_expr}",
                     nested_join_meta.cardinality,
                     _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit,
@@ -475,7 +480,8 @@ def _collect_nested_columns(
                 )
             else:
                 join_clauses.append(
-                    f"LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}"
+                    f"LEFT JOIN "
+                    f"{travel_ref(_table_ref(nested_join_meta.target, use_catalog), nested_sel, variables)}"
                     f" {_q(nested_alias)}"
                     f" ON {src_expr} = {tgt_expr}"
                 )

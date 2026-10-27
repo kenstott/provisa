@@ -164,8 +164,9 @@ def _dialect_supports(i: RouteInputs) -> str | None:
     from provisa.transpiler.dialect_capabilities import unsupported
 
     sid = _primary(i)
-    if i.source_types.get(sid, "") in API_SOURCES | CODE_SOURCES:
-        return None  # no SQL is sent to it: its access path is the API caller, the code function
+    if i.source_types.get(sid, "") in API_SOURCES:
+        return None  # no SQL is sent to it: its access path is the API caller
+    # REQ-2100: a code source runs the statement in DuckDB over its functions' rows.
     dialect = i.source_dialects.get(sid) or ""
     construct = unsupported(i.statement, dialect, json_path=i.json_path)
     if construct is None:

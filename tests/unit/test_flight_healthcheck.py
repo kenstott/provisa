@@ -47,8 +47,9 @@ def test_the_report_of_a_worker_with_no_control_plane_has_the_health_shape(monke
             )
         )
     )
+    # A dependency that is not ok makes the report degraded, never healthy (REQ-1900).
     assert report == {
-        "status": "ok",
+        "status": "degraded",
         "dependencies": {"postgres": "unavailable"},
         "workers": {"ready": 1, "expected": 1},
         "config": None,

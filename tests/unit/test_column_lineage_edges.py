@@ -150,7 +150,7 @@ def _ctx() -> CompilationContext:
 
 def _gov(capabilities: list[str], domain_access: list[str]):
     role = {"id": "analyst", "capabilities": capabilities, "domain_access": domain_access}
-    open_column = [{"column_name": "id", "visible_to": []}]
+    open_column = [{"column_name": "id", "visible_to": ["analyst"]}]
     tables = [
         {"id": _EDGES_TID, "columns": [{"column_name": "via", "data_type": "varchar"}]},
         {"id": A, "domain_id": "sales", "columns": open_column},

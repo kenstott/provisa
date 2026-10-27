@@ -39,6 +39,7 @@ def _schema_input(convention: str, *, kind: str = "mutation") -> SchemaInput:
                 "returns": "",
                 "domain_id": "pets",  # a command sits in a domain (REQ-1531)
                 "kind": kind,
+                "visible_to": ["admin"],  # REQ-2153: a command's list names its roles
             }
         ],
         webhooks=[],
@@ -108,7 +109,7 @@ def test_a_source_operation_command_named_with_a_trailing_number_is_a_mutation_f
                 "returns": "",
                 "domain_id": "pet-store",
                 "kind": "mutation",
-                "visible_to": [],
+                "visible_to": ["org_admin"],
                 "writable_by": ["org_admin"],
             }
         ],

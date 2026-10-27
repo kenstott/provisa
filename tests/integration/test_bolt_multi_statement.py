@@ -40,7 +40,7 @@ _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
 _ROLES = ["org_admin", "clerk"]
 _MASKED = [
     {"to": ["org_admin"], "mask": None},
-    {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+    {"mask": {"type": "constant", "value": "***"}},
 ]
 
 _ORDERS = "MATCH (o:Orders) RETURN o.id AS id, o.email AS email ORDER BY id"

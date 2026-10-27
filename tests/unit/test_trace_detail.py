@@ -528,3 +528,14 @@ def test_stage_events_are_debug_detail_only_inside_a_request(traced):
             otel_compat.clear_trace_detail()
     events = [e.name for e in exporter.get_finished_spans()[0].events]
     assert events == ["pipeline.stage:transpile"]
+
+
+def test_a_request_scope_ends_with_its_request_span(traced):
+    """REQ-1910: the HTTP hook binds the request span for the life of the request's task and never
+    resets it. Once that span has ended, the context serves no request: what runs in it afterwards
+    (the next test's pipeline, in-process) is traced as work outside a request."""
+    tracer, _ = traced
+    with tracer.start_as_current_span("POST /data/sql", kind=SpanKind.SERVER) as server:
+        otel_compat.bind_request_span(server, "http")
+        assert otel_compat.in_request_scope()
+    assert not otel_compat.in_request_scope()

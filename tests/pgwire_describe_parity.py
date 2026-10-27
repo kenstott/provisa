@@ -93,7 +93,13 @@ def registered_shape(sql: str, registry: dict[str, list[tuple[str, str]]]) -> li
         i: [ColumnMetadata(column_name=c, data_type=t, is_nullable=True) for c, t in cols]
         for i, cols in enumerate(registry.values(), 1)
     }
-    ctx = SimpleNamespace(physical_to_sql={}, virtual_columns={}, columns_outside_relation=set())
+    ctx = SimpleNamespace(
+        physical_to_sql={},
+        virtual_columns={},
+        columns_outside_relation=set(),
+        tables={},
+        nested_columns={},
+    )
     return derive_result_shape(sql, table_map, ctx, column_types)
 
 

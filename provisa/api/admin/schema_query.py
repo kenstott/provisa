@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
@@ -68,6 +69,7 @@ from provisa.api.admin.types import (
     CrawledTableType,
     CrawlResultType,
     DataProductType,
+    ListedNamesType,
     DomainType,
     GovDataSubjectsType,
     GovDataSubjectType,
@@ -217,7 +219,7 @@ def _dq_kind(kind: dict) -> DqCheckKindType:  # REQ-1443 clause 7
 async def _listed_tables(conn: Any, scope: CatalogScope) -> list[tuple[int, str]]:
     """(table id, domain id) of every registered table the caller is answered (REQ-1958)."""
     _res = await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
-    return [(r.id, r.domain_id) for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)]
+    return [(r.id, r.domain_id) for r in _res.fetchall() if scope.lists_table(r.id)]
 
 
 async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
@@ -225,7 +227,7 @@ async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
     _res = await conn.execute_core(
         select(registered_tables.c.id, registered_tables.c.domain_id, registered_tables.c.source_id)
     )
-    return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)}
+    return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id)}
 
 
 async def _listed_relationships(
@@ -235,17 +237,15 @@ async def _listed_relationships(
     column, its target table and column where it has one, and the table it goes through."""
     if scope.whole:
         return rows
-    _res = await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
-    domain_of = {r.id: r.domain_id for r in _res.fetchall()}
 
     def _lists(table_id: int | None, column: str | None) -> bool:
         if table_id is None:
             return True  # no such end: a relationship to a function has no target table
-        if table_id not in domain_of:
-            return False
+        if column == _HAS_TABLE_KEY:
+            column = None  # a HAS_TABLE row anchors the table itself, by its id: no column
         # A composite key lists its columns comma-separated (REQ-1586).
         columns = [c.strip() for c in column.split(",")] if column else [None]
-        return all(scope.lists_column(table_id, domain_of[table_id], c) for c in columns)
+        return all(scope.lists_column(table_id, c) for c in columns)
 
     return [
         r
@@ -260,7 +260,16 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
     """``table`` as the caller is answered it (REQ-1958): the columns it administers or is
     served, and grant lists, mask settings and the view's SQL only with ``view_governance``
     (REQ-1134)."""
-    columns = scope.columns(table.id, table.domain_id)
+    columns = scope.answered_columns(
+        {
+            "id": table.id,
+            "domain_id": table.domain_id,
+            "columns": [
+                {"column_name": c.column_name, "visible_to": c.visible_to, "scope": c.scope}
+                for c in table.columns
+            ],
+        }
+    )
     if columns is not None:
         table.columns = [c for c in table.columns if c.column_name in columns]
     if not scope.governance:
@@ -273,18 +282,20 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
 
 
 def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
-    """REQ-1958: a metric is listed to its administrator, and to a caller whose acting role it is
-    granted to."""
+    """REQ-1958: a metric is listed to a caller whose acting role it is granted to; administering
+    metrics does not widen it (REQ-2152)."""
     from provisa.api.app import state
     from provisa.security.meta_role import acting_roles
 
     scope = catalog_scope(info)
-    if scope.whole or has_capability(info, "table_registration"):
+    if scope.whole:
         return True
     granted = list(row["visible_to"])
-    if "*" in granted:
-        return scope.role is not None and scope.role in state.contexts
     return scope.role is not None and any(r in granted for r in acting_roles(state, scope.role))
+
+
+#: The source "column" of a HAS_TABLE row: the table's own id, a literal, no column of it.
+_HAS_TABLE_KEY = "__table_id__"
 
 
 async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType]:
@@ -321,7 +332,7 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             source_table_name=r.table_name,
             source_domain_id=r.domain_id or "",
             target_table_name=meta_table_name,
-            source_column="__table_id__",
+            source_column=_HAS_TABLE_KEY,
             target_column="id",
             cardinality="many-to-one",
             materialize=False,
@@ -343,6 +354,25 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
         )
         for r in src_res.fetchall()
     ]
+
+
+def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
+    """Whether the caller is served a column of every registered table named ``name`` (a name
+    held by a table it is not served is not told) -- for the observability lists, which name
+    tables rather than address them (REQ-2152, ruling Q3)."""
+    ids: dict[str, list[int]] = {}
+    # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
+    # its stored columns (catalog_scope), so its builds are its readers' as well.
+    for t in [*state.tables, *state.role_build_inputs["draft_tables"]]:
+        ids.setdefault(t["table_name"], []).append(t["id"])
+
+    def _reads(name: str) -> bool:
+        if scope.whole:
+            return True
+        bare = name.split(".")[-1]
+        return bare in ids and all(scope.lists_table(i) for i in ids[bare])
+
+    return _reads
 
 
 async def _table_region_maps(
@@ -476,9 +506,9 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
-        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Their administrator
-        (``table_registration``, the right that saves one) sees every metric; anyone else the
-        metrics its acting role is granted (``visible_to``; a meta-role by any member)."""
+        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
+        metrics its acting role is granted (``visible_to``; a meta-role by any member), the
+        right that saves one included (REQ-2152)."""
         from provisa.core.repositories import metric as metric_repo
 
         pool = await _get_pool()
@@ -663,6 +693,49 @@ class Query:  # REQ-021, REQ-042
                 for r in rows
                 if scope.lists_domain(r["id"], r["id"] in holding)
             ]
+
+    @strawberry.field
+    async def listed_names(self, info: StrawberryInfo) -> list[ListedNamesType]:  # REQ-2153
+        """The names of the listed columns of domains the caller does not reach: each table's
+        name and its listed columns' names, and nothing more. What the caller reaches is in
+        ``tables``."""
+        _resolve_admin_context(info)
+        scope = catalog_scope(info)
+        if scope.whole or scope.reach is None:
+            return []  # nothing is outside the caller's reach
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        table_columns.c.column_name,
+                    )
+                    .select_from(
+                        registered_tables.join(
+                            table_columns, table_columns.c.table_id == registered_tables.c.id
+                        )
+                    )
+                    .where(
+                        table_columns.c.scope == "listed",
+                        registered_tables.c.draft.is_(False),
+                        registered_tables.c.domain_id.not_in(sorted(scope.reach)),
+                    )
+                    .order_by(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        table_columns.c.column_name,
+                    )
+                )
+            ).fetchall()
+        named: dict[tuple[str, str], list[str]] = {}
+        for r in rows:
+            named.setdefault((r.domain_id, r.table_name), []).append(r.column_name)
+        return [
+            ListedNamesType(domain_id=domain, table_name=table, column_names=columns)
+            for (domain, table), columns in named.items()
+        ]
 
     @strawberry.field
     async def data_products(self, info: StrawberryInfo) -> list[DataProductType]:  # REQ-1634
@@ -851,12 +924,15 @@ class Query:  # REQ-021, REQ-042
                     ).where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
                 )
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
-                # REQ-1958: the caller is answered the tables it administers or is served.
+                # REQ-1958, REQ-2152: the caller is answered the tables it is served; one the last
+                # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
-                listed = [r for r in rows if scope.lists_table(r["id"], r["domain_id"])]
+                listed = [
+                    r for r in rows if scope.lists_table(r["id"]) or r["id"] not in scope.compiled
+                ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
-                return [
+                answered = [
                     _trim_table(
                         scope,
                         await _fetch_table_with_columns(
@@ -865,6 +941,7 @@ class Query:  # REQ-021, REQ-042
                     )
                     for r in listed
                 ]
+                return [t for t in answered if scope.whole or t.columns]
 
     @strawberry.field
     async def relationships(
@@ -1394,6 +1471,13 @@ class Query:  # REQ-021, REQ-042
         from provisa.mv.bitemporal_capture import logged_table_id
 
         names = {row["id"]: row["table_name"] for row in state.tables}
+        # REQ-2152 (Q3): only the materialized views over tables the caller reads.
+        reads = _names_read(state, catalog_scope(info))
+
+        def _readable(mv: Any) -> bool:
+            over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
+            return all(reads(name) for name in over)
+
         return [
             MVType(
                 id=mv.id,
@@ -1409,6 +1493,7 @@ class Query:  # REQ-021, REQ-042
                 version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
             for mv in state.mv_registry._mvs.values()
+            if _readable(mv)
         ]
 
     @strawberry.field
@@ -1634,7 +1719,10 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await check_catalog_for(
-                cast("Connection", conn), checker=checker, dataset=dataset
+                cast("Connection", conn),
+                checker=checker,
+                dataset=dataset,
+                scope=catalog_scope(info),
             )
         return DqCheckCatalogType(
             dataset_checks=[_dq_kind(k) for k in result["dataset_checks"]],
@@ -1752,7 +1840,12 @@ class Query:  # REQ-021, REQ-042
 
         # REQ-595: the acting org's entries in the acting environment, no other org's.
         counts = await state.response_cache_store.table_entry_counts(cache_place(state))
-        return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
+        scope = catalog_scope(info)  # REQ-2152 (Q3): only the tables the caller reads
+        return [
+            CacheTableStatType(table_id=tid, cached_entries=n)
+            for tid, n in counts.items()
+            if scope.lists_table(tid)
+        ]
 
     @strawberry.field
     async def region_choices(self) -> RegionChoicesType:  # REQ-1921
@@ -1824,6 +1917,7 @@ class Query:  # REQ-021, REQ-042
                 return by_id.get(e["table_id"])
             return by_key.get((e["catalog"], e["schema"], e["table_name"]))
 
+        reads = _names_read(state, catalog_scope(info))  # REQ-2152 (Q3)
         return [
             HotTableStatType(
                 table_name=e["table_name"],
@@ -1834,6 +1928,7 @@ class Query:  # REQ-021, REQ-042
                 region=_region_of(e),
             )
             for e, kind in entries
+            if reads(e["table_name"])
         ]
 
     @strawberry.field
@@ -1859,6 +1954,7 @@ class Query:  # REQ-021, REQ-042
         failure = replica_converge.last_error.get(current_org.get(None))
         # REQ-1922: stamp each replica with its table's stored home region (key is source/schema/table).
         _, by_key = await _table_region_maps(state)
+        reads = _names_read(state, catalog_scope(info))
         return ReplicaBuildsType(
             builds=[
                 ReplicaBuildType(
@@ -1869,6 +1965,7 @@ class Query:  # REQ-021, REQ-042
                     region=by_key.get((record.key[0], record.key[1], record.key[2])),
                 )
                 for record in records
+                if reads(record.key[2])  # REQ-2152 (Q3): only the tables the caller reads
             ],
             convergence_error=failure["cause"] if failure else None,
             convergence_error_at=failure["at"].isoformat() if failure else None,
@@ -1920,8 +2017,12 @@ class Query:  # REQ-021, REQ-042
         runs = await last_runs(state)
         org_id = require_current_org()
         scheduler = state._scheduler
+        reads = _names_read(state, catalog_scope(info))
         result = []
         for row in rows:
+            # REQ-2152 (Q3): a trigger on a table's change or event names that table.
+            if row["on_table"] is not None and not reads(row["on_table"]):
+                continue
             job = (
                 scheduler.get_job(trigger_job_id(row["id"], org_id))
                 if scheduler is not None
@@ -2032,11 +2133,16 @@ class Query:  # REQ-021, REQ-042
         this must be asked BEFORE the save."""
         require_capability(info, "table_registration")
         from provisa.api.admin.column_dependents import dependents_for
+        from provisa.api.admin.read_rights import reader_for
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             found = await dependents_for(
-                conn, int(table_id), renamed=list(renamed or []), removed=list(removed or [])
+                conn,
+                int(table_id),
+                renamed=list(renamed or []),
+                removed=list(removed or []),
+                reader=reader_for(info),
             )
         return [
             ColumnDependentsType(

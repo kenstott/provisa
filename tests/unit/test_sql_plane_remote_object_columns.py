@@ -83,7 +83,7 @@ def test_select_star_expands_to_the_columns_the_relation_holds_and_runs():
         "source_id": "graphql-demo",
         "domain_id": "d",
         "columns": [
-            {"column_name": c.column_name, "data_type": c.data_type, "visible_to": []}
+            {"column_name": c.column_name, "data_type": c.data_type, "visible_to": ["r"]}
             for c in _column_types()[PETS]
         ],
     }

@@ -20,6 +20,18 @@ Postgres extensions are not loadable via `CREATE EXTENSION`. Where an extension 
 
 Extension functions (`pg_trgm`, `pg_vector`, PostGIS, etc.) are not available unless exposed as commands. TBD: specific cases from CI.
 
+### Server version
+
+`server_version_num` reports `140000` and `version()` reports PostgreSQL 14. Clients choose their catalog queries by this number, and the catalog queries Provisa answers are the ones PostgreSQL 14 clients send.
+
+## Known anomalies
+
+### Numeric precision on DuckDB
+
+A PostgreSQL `numeric` column declared without a precision is registered as `numeric(38, s)`, where `s` is the largest scale found among its values (10 for a table with no rows). The DuckDB engine reads it exactly up to 38 significant digits. A value with more digits is rounded to 38.
+
+Workaround: declare the column with its precision and scale at the source, or read the table through the PostgreSQL engine.
+
 ## Tools
 
 | Tool | Version | Date | Method |

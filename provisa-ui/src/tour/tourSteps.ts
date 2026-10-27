@@ -75,25 +75,15 @@ export interface TourStep {
    * opens its own statement.
    */
   openQuery?: {
-    // "role": a set of roles the SQL explorer runs as (REQ-2057). "asOf"/"asRecorded": the SQL
-    // explorer's time-travel pickers (REQ-1163).
-    stateKey:
-      | "sql"
-      | "query"
-      | "openApiUrl"
-      | "jsonapiUrl"
-      | "grpcMethod"
-      | "role"
-      | "asOf"
-      | "asRecorded";
+    // "role": a set of roles the SQL explorer runs as (REQ-2057). "params": the value bound to the
+    // SQL explorer's next statement's $1 (REQ-2083).
+    stateKey: "sql" | "query" | "openApiUrl" | "jsonapiUrl" | "grpcMethod" | "role" | "params";
     text: string;
     /** REQ-2083: the text is a value of an earlier tour statement's answer, read when the step
-     *  runs: `sql` run again as it ran (role, time travel), row `row`'s `column`. */
+     *  runs: `sql` run again as it ran (its role), row `row`'s `column`. */
     from?: {
       sql: string;
       role?: string;
-      asOf?: string;
-      asRecorded?: string;
       row: number;
       column: string;
     };

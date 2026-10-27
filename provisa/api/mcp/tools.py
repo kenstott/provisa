@@ -256,6 +256,26 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
         "unique_constraints": _unique_constraints(state, role, schema, table),  # REQ-1093
+        "time_travel": _time_travel(state, role, schema, table),  # REQ-1163
+    }
+
+
+def _time_travel(state: Any, role: str, schema: str, table: str) -> dict | None:
+    """REQ-1163: how the table travels in time, for an agent writing a read of it: the arguments
+    its reference takes in SQL (``"schema"."table"(as_recorded => '2026-10-01T17:00:00')``) and in
+    GraphQL; None when it keeps no versions."""
+    from provisa.mv.time_travel import relation_kinds
+
+    meta = _find_role_table(state.contexts[role], schema, table)
+    if meta is None:
+        return None
+    rows = [r for r in getattr(state, "tables", None) or [] if r["id"] == meta.table_id]
+    kind = relation_kinds(state, rows).get(meta.table_id)
+    if kind is None:
+        return None
+    return {
+        "kind": kind,
+        "arguments": ["as_of", "as_recorded"] if kind == "bitemporal" else ["as_recorded"],
     }
 
 
@@ -505,16 +525,21 @@ async def list_glossary_terms(
     edge-connected to one), deprecated or retired -- so you can tell them apart without a second
     call; see create/update below for what 'finalizing' a term means."""
     require_role(role, state)
-    from provisa.api.admin.glossary_router import _require_glossary_read, _view_scope
+    from provisa.api.admin.glossary_router import (
+        _require_glossary_read,
+        _view_scope,
+        counted_as_served,
+    )
     from provisa.core.repositories import glossary as glossary_repo
 
     _require_glossary_read(request)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        return await glossary_repo.list_terms(
+        terms = await glossary_repo.list_terms(
             conn, q=q, include_deprecated=include_deprecated, domains=_view_scope(request, None)
         )
+        return await counted_as_served(conn, request, terms)
 
 
 async def create_glossary_term(
@@ -939,21 +964,24 @@ async def upsert_metric(  # REQ-1856
     references (e.g. "SUM(orders.amount) - SUM(orders.refunds)") — must parse under sqlglot and
     contain at least one aggregate function, or this raises. `ai_context` is definition text
     written for AI consumers (yourself and other agents) — fill it in with what the metric means
-    and when to use it, not just a repeat of the expression. `visible_to` defaults to every role
-    (["*"]) if omitted."""
+    and when to use it, not just a repeat of the expression. `visible_to` defaults to the acting
+    role and the standard Viewer role (every role built on Viewer) if omitted."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.models import Metric as MetricModel
     from provisa.core.repositories import metric as metric_repo
 
     require_capability_request(request, "table_registration")
+    from provisa.security.default_grant import default_read_grant as _default_read_grant
+
     model = MetricModel(
         name=name,
         expression=expression,
         datatype=datatype,
         description=description,
         ai_context=ai_context,
-        visible_to=list(visible_to) if visible_to else ["*"],
+        # REQ-1317: one created with no roles named is read by the acting role and Viewer.
+        visible_to=list(visible_to) if visible_to else _default_read_grant(role),
     )
     pool = state.model_db
     assert pool is not None
@@ -1250,14 +1278,14 @@ async def explain_sql(state: Any, role: str, sql: str) -> dict:
 
 
 def _visible_metrics(state: Any, role: str) -> list[Any]:
-    """Config metrics whose ``visible_to`` contains "*" or ``role`` (REQ-1319).
+    """Config metrics whose ``visible_to`` names ``role`` (REQ-1319, REQ-1317).
 
     Sourced from the loaded config (``state.config.metrics``) — the same reachable
     config object _domain_descriptions reads domains from.
     """
     config = getattr(state, "config", None)
     metrics = getattr(config, "metrics", None) or []
-    return [m for m in metrics if "*" in m.visible_to or role in m.visible_to]
+    return [m for m in metrics if role in m.visible_to]
 
 
 def list_metrics(state: Any, role: str) -> list[dict]:

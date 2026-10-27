@@ -617,3 +617,42 @@ def test_the_wait_budget_is_asked_for_at_wait_time(front):
     finally:
         release.set()
         holder.join(10)
+
+
+def test_a_long_wait_for_a_thread_logs_what_holds_them_and_still_serves(front, caplog):
+    """A request still waiting for a thread after the report delay names, in the server log, the
+    requests that hold every thread: a stall says what stalled it while it lasts, not only when a
+    request is finally refused. The request waits on and is served when a thread frees."""
+    release = threading.Event()
+
+    async def hold(scope, receive, send):
+        release.wait(10)
+        await _echo(scope, receive, send)
+
+    pool = RequestThreadPool(max_threads=1, wait_s=10.0, report_after_s=0.2)
+    middleware = RequestThreadMiddleware(hold, pool=pool)
+    busy = front(body=[b"x"])
+    held = busy.scope()
+    held["path"] = "/data/sql"
+    holder = threading.Thread(
+        target=lambda: asyncio.run_coroutine_threadsafe(
+            middleware(held, busy.receive, busy.send), busy.loop
+        ).result(15)
+    )
+    holder.start()
+    time.sleep(0.1)
+    waiting = front(body=[b"y"])
+    with caplog.at_level("WARNING", logger="provisa.core.request_thread"):
+        waiter = threading.Thread(target=waiting.call, args=(middleware,))
+        waiter.start()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not any(
+            "still waiting" in r.getMessage() for r in caplog.records
+        ):
+            time.sleep(0.02)
+        release.set()
+        waiter.join(10)
+        holder.join(10)
+    line = next(r.getMessage() for r in caplog.records if "still waiting" in r.getMessage())
+    assert re.search(r"serving \[POST /data/sql for \d+s\]; 1 waiting", line), line
+    assert waiting.sent[0]["status"] == 200

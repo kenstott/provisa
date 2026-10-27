@@ -542,20 +542,28 @@ def _build_stats_content(
     """Build response content dict, optionally including query stats."""
     content: dict = {"columns": columns, "rows": serializable_rows}
     if stats_enabled:
-        from provisa.api.app import state  # noqa: PLC0415
-
-        _qs_mod.record(
-            field="cypher",
-            source=state.federation_engine.name,
-            strategy="federated",
-            elapsed_ms=(_time.perf_counter() - t0) * 1000,
-            rows=len(serializable_rows),
-            physical_sql=physical_sql,
-        )
-        qs = _qs_mod.current()
-        if qs is not None:
-            content["provisa_stats"] = qs.to_dict()
+        stats = statement_stats("cypher", len(serializable_rows), physical_sql, t0)
+        if stats is not None:
+            content["provisa_stats"] = stats
     return content
+
+
+def statement_stats(field: str, rows: int, physical_sql: str, t0: float) -> dict | None:
+    """A graph statement's provisa_stats (X-Provisa-Stats: true): its execution since ``t0``
+    recorded as one entry on the federation engine, beside what the pipeline recorded. Shared by
+    the Cypher and SPARQL endpoints."""
+    from provisa.api.app import state  # noqa: PLC0415
+
+    _qs_mod.record(
+        field=field,
+        source=state.federation_engine.name,
+        strategy="federated",
+        elapsed_ms=(_time.perf_counter() - t0) * 1000,
+        rows=rows,
+        physical_sql=physical_sql,
+    )
+    qs = _qs_mod.current()
+    return qs.to_dict() if qs is not None else None
 
 
 async def _each_statement(

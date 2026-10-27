@@ -32,6 +32,7 @@ from provisa.api.admin import types as admin_types
 from provisa.api.errors import ApiError
 from provisa.api.mcp import chat, model_tool_specs, model_tools
 from provisa.profiler.governance import ColumnRule
+from tests.unit.gate_identity import serve_every_column
 
 _ROLES = {
     "viewer": {"capabilities": ["query_development"]},
@@ -49,6 +50,12 @@ _ROLES = {
 
 
 # -- a stand-in model database ----------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 class _Row(tuple):
@@ -792,8 +799,9 @@ async def test_propose_fakes_refuses_an_unprofiled_table(monkeypatch, app_state,
 
 async def test_propose_fakes_returns_proposals_and_saves_nothing(monkeypatch, app_state, acme):
     _use_db(monkeypatch, app_state, {})
+    # Proposals.columns maps each column to its proposal (fakes.propose.Proposals).
     proposed = SimpleNamespace(
-        run_id="r2", columns=[{"column": "email", "fake": "email()"}], unmatched_pii=[]
+        run_id="r2", columns={"email": {"fake": "email()"}}, unmatched_pii=[]
     )
     with (
         patch(
@@ -808,7 +816,7 @@ async def test_propose_fakes_returns_proposals_and_saves_nothing(monkeypatch, ap
         out = await model_tools.propose_fakes(app_state, "steward", _request("steward"), 7)
     assert out == {
         "runId": "r2",
-        "columns": [{"column": "email", "fake": "email()"}],
+        "columns": {"email": {"fake": "email()"}},
         "unmatchedPii": [],
     }
     save.assert_not_called()

@@ -222,6 +222,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         GOVERNANCE_META_COLUMNS,
         GOVERNANCE_META_ROWS,
         META_DOMAIN_ID,
+        LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
         Capability,
         column_served,
@@ -297,6 +298,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 for c in cols
                 if column_served(_subject, _tbl_domain, c, reaches=_reaches)
             }
+            # A parameter column is an argument, not data: it carries no grant of its own, and a
+            # role served the table's data may pass it (REQ-1614, as the schema build serves it),
+            # or its condition would read NULL and the argument never reach the source (REQ-1986).
+            if visible - {c["column_name"] for c in cols if c.get("native_filter_type")}:
+                visible |= {c["column_name"] for c in cols if c.get("native_filter_type")}
             all_visible = len(visible) == len(cols)
             if not _reaches and served_across_domains(_subject, tbl):
                 _public.add(table_id)
@@ -403,6 +409,25 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
+
+    # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
+    # is in registered_tables_meta / table_columns_meta -- by the same WHERE-injection.
+    from provisa.compiler.sql_literals import sql_literal
+
+    for tm in ctx.tables.values():
+        if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+            continue
+        if getattr(tm, "table_name", "") != LISTED_NAMES_VIEW:
+            continue
+        if readable_in is None:
+            predicate = "1 = 0"  # the reader reaches every domain: nothing is outside its reach
+        elif readable_in:
+            reached = ", ".join(sql_literal(d, "postgres") for d in sorted(readable_in))
+            predicate = f"listed_domain NOT IN ({reached})"
+        else:
+            continue  # the reader reaches no domain: every listed name is outside its reach
+        existing = gov.rls_rules.get(tm.table_id)
+        gov.rls_rules[tm.table_id] = f"({existing}) AND ({predicate})" if existing else predicate
 
     # REQ-971: mask pushdown/streaming decision. When a masked table's connector cannot push
     # the predicate down and cannot stream, fail loud here rather than silently inlining an

@@ -9,12 +9,14 @@
 // permission from the copyright holder.
 
 // A column's ordered mask list: each entry names the readers it is for (grant entries, composites
-// included, "*" for everyone) and the mask they read the column through, or none. A reader reads
-// the column through the first entry it holds; a reader holding none reads it unmasked.
+// included) and the mask they read the column through, or none. A reader reads the column through
+// the first entry it holds; a reader holding none reads it unmasked. The list's last entry may name
+// no readers (``to`` null): it is for every other reader, and a list holds at most one.
 
 import type { TFunction } from "i18next";
 import { grantLabel } from "./grants";
 
+/** The picker's choice for every other reader, which a list stores as ``to: null``. */
 export const EVERYONE = "*";
 
 export type MaskKind = "regex" | "constant" | "truncate";
@@ -28,21 +30,32 @@ export interface MaskSpec {
 }
 
 export interface MaskEntry {
-  to: string[];
+  /** The readers the entry is for; null: every other reader (the list's last entry). */
+  to: string[] | null;
   mask: MaskSpec | null;
+}
+
+/** The picker's value for an entry's readers: every other reader shows as its one choice. */
+export function pickedReaders(to: string[] | null): string[] {
+  return to === null ? [EVERYONE] : to;
+}
+
+/** An entry's readers as picked: choosing every other reader is the entry for all of them. */
+export function readersOf(picked: string[]): string[] | null {
+  return picked.includes(EVERYONE) ? null : picked;
 }
 
 /** A new list: one entry, for everyone, masking to NULL -- so a reader the list does not name is
  *  masked, not left unmasked. */
 export function newMaskList(): MaskEntry[] {
-  return [{ to: [EVERYONE], mask: { type: "constant", value: null } }];
+  return [{ to: null, mask: { type: "constant", value: null } }];
 }
 
 /** ``list`` with a new, empty entry before its final entry for everyone (else at its end). */
 export function withNewEntry(list: MaskEntry[]): MaskEntry[] {
   const entry: MaskEntry = { to: [], mask: null };
   const last = list[list.length - 1];
-  if (last && last.to.includes(EVERYONE)) return [...list.slice(0, -1), entry, last];
+  if (last && last.to === null) return [...list.slice(0, -1), entry, last];
   return [...list, entry];
 }
 
@@ -63,9 +76,10 @@ export function maskValueOf(text: string): string | number | null {
 }
 
 /** Who an entry is for, as a reader reads it. */
-export function maskToLabel(to: string[], t: TFunction): string {
+export function maskToLabel(to: string[] | null, t: TFunction): string {
+  if (to === null) return t("maskList.everyone");
   if (to.length === 0) return t("maskList.nobody");
-  return to.map((e) => (e === EVERYONE ? t("maskList.everyone") : grantLabel(e, t))).join(", ");
+  return to.map((e) => grantLabel(e, t)).join(", ");
 }
 
 /** What an entry does, as a reader reads it. */

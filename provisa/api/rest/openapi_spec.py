@@ -34,6 +34,7 @@ from graphql import (
 from provisa.api._query_helpers import native_arguments
 from provisa.api.rest.generator import _agg_fields_map
 from provisa.api.role_surface import role_surface
+from provisa.security.mutation_authz import command_assigned
 
 _WHERE_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"]
 
@@ -437,8 +438,7 @@ def generate_rest_openapi_spec(
         cmd_domain = fn.get("domain_id", "")
         if domain_filter is not None and cmd_domain not in domain_filter:
             continue
-        visible_to = fn.get("visible_to") or []
-        if visible_to and role_id not in visible_to:
+        if not command_assigned(fn, role_id):  # REQ-2153: an empty list names no role
             continue
         _seen_cmd.add(fn["name"])
 

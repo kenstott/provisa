@@ -454,7 +454,7 @@ metrics = Table(
     Column("datatype", Text),
     Column("description", Text),
     Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
-    Column("visible_to", JSON, nullable=False, default=lambda: ["*"], server_default='["*"]'),
+    Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("from_fact", Text),
 )
 

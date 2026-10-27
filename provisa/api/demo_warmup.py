@@ -50,9 +50,9 @@ def tour_requests(
     ``(what, method, path, body, travel, roles)``. A step that runs nothing (a page, a source, a
     term), a Polly step (answered when the bundle was built) and a subscription send none.
 
-    ``travel`` is the SQL explorer's time travel a statement runs under, as the steps before it set
-    it (``as_of``, ``as_recorded``, ``as_recorded_from``; demoTour.ts): :func:`travel_headers`
-    turns it into the request's headers once the statements before it have answered.
+    ``travel`` is the value an ``as_recorded_from`` step before a statement binds to its $1
+    (REQ-2083; demoTour.ts) -- the statement names it as a relation's time-travel argument
+    (REQ-1163): :func:`bound_params` reads it from the answers of the statements before it.
 
     ``roles`` is the X-Provisa-Role the visitor's page sends it with, as the steps before it chose
     (provisa-ui/src/tour/demoTour.ts): the page opens acting as "Role: All", ``all_roles`` (every
@@ -73,14 +73,8 @@ def tour_requests(
     for step in demo_tour(directory):
         key = step["key"]
         page = step.get("route", page)
-        if "as_of" in step:
-            travel["as_of"] = step["as_of"]
-        if "as_recorded" in step:
-            travel.pop("as_recorded_from", None)
-            travel["as_recorded"] = step["as_recorded"]
         if "as_recorded_from" in step:
-            travel.pop("as_recorded", None)
-            travel["as_recorded_from"] = step["as_recorded_from"]
+            travel = {"as_recorded_from": step["as_recorded_from"]}
         if "role" in step:
             if "," in step["role"] or page == "/sql":
                 sql_role = chosen(step["role"])
@@ -88,8 +82,9 @@ def tour_requests(
                 app_role = chosen(step["role"])
         if "sql" in step:
             out.append(
-                (key, "POST", "/data/sql", {"sql": step["sql"]}, dict(travel), sql_role or app_role)
+                (key, "POST", "/data/sql", {"sql": step["sql"]}, travel, sql_role or app_role)
             )
+            travel = {}  # bound to this statement alone, as the page sends it
         if "cypher" in step:
             out.append((key, "POST", "/data/cypher", {"query": step["cypher"]}, {}, app_role))
         if "example" in step and not _is_subscription(examples[step["example"]]):
@@ -105,19 +100,15 @@ def tour_requests(
     return out
 
 
-def travel_headers(travel: dict[str, Any], answers: dict[str, list[dict]]) -> dict[str, str]:
-    """``travel``'s headers (REQ-1163): an ``as_recorded_from`` is the value the earlier statement
-    it names answered, in ``answers`` (its rows, by step key), as the page reads it when it runs."""
-    headers: dict[str, str] = {}
-    if "as_of" in travel:
-        headers["X-Provisa-As-Of"] = str(travel["as_of"])
-    if "as_recorded" in travel:
-        headers["X-Provisa-As-Recorded"] = str(travel["as_recorded"])
-    if "as_recorded_from" in travel:
-        taken = travel["as_recorded_from"]
-        rows = answers[taken["step"]]
-        headers["X-Provisa-As-Recorded"] = str(rows[taken["row"]][taken["column"]])
-    return headers
+def bound_params(travel: dict[str, Any], answers: dict[str, list[dict]]) -> list[str]:
+    """The values ``travel`` binds to a statement's placeholders (REQ-2083): an
+    ``as_recorded_from`` is the value the earlier statement it names answered, in ``answers`` (its
+    rows, by step key), as the page reads it when it runs; none without one."""
+    if "as_recorded_from" not in travel:
+        return []
+    taken = travel["as_recorded_from"]
+    rows = answers[taken["step"]]
+    return [str(rows[taken["row"]][taken["column"]])]
 
 
 def _is_subscription(query: str) -> bool:
@@ -145,11 +136,12 @@ async def _warm(
         answers: dict[str, list[dict]] = {}
         for what, method, path, body, travel, roles in tour_requests(directory, all_roles):
             try:
+                params = bound_params(travel, answers)
                 resp = await client.request(
                     method,
                     path,
-                    json=body,
-                    headers={**sent, **travel_headers(travel, answers), "X-Provisa-Role": roles},
+                    json={**body, "params": params} if params and body is not None else body,
+                    headers={**sent, "X-Provisa-Role": roles},
                     timeout=None,
                 )
             except Exception:

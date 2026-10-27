@@ -9,11 +9,16 @@
 # permission from the copyright holder.
 
 """A code source's proxy (REQ-2100, REQ-1756): the one thing in Provisa that calls a code
-table's function. Its plan gives the function its read's arguments and the values the statement's
-predicates give the parameters the function declares a pushdown for (codesource.pushdown); its
-call is made once per argument set, in the source's worker or its image, and the rows are checked
-against the table's declared columns. v1: a code source declares no capability, so its rows are
-never the complete dataset: they are landed, and the engine runs the statement over them."""
+table's function.
+
+Anything that reaches a code source is single-source: a direct read of its tables, or the part of
+a statement an engine pushes to it. So a code source answers its own statements: each table's
+function is called with its read's arguments, and DuckDB applies the governed statement to the
+rows (codesource.direct for a direct read, the image's pgwire front end for the part an engine
+pushes). Its plan of a read of its own tables is the complete dataset; nothing is landed. A
+statement across sources is the engine's, which attaches a built source's image and pushes its
+part, or lands a dev-mode source's rows (its call made once per argument set, the rows checked
+against the table's declared columns)."""
 
 from __future__ import annotations
 
@@ -24,14 +29,23 @@ from provisa.federation.connector_contract import Plan, Read, SourceContract
 
 class CodeProxy(SourceContract):
     async def plan(self, state: Any, read: Read, ctx: Any = None) -> Plan:
-        from provisa.codesource.table import pushed_arguments
+        from provisa.codesource.attach import answered_live
 
-        pushed = await pushed_arguments(state, read.table, read.name, read.statement)
-        return Plan(
-            read=read,
-            arguments={**pushed, **(read.arguments or {})},
-            incomplete_because="a code source declares no capability",
-        )
+        # The function is given its read's arguments, its inputs (REQ-2100: what the statement
+        # asks of its rows reaches it as its read context, on a direct or attached read). A
+        # statement that reads this source's tables alone (routing's one_source gate) is answered
+        # whole by DuckDB over their rows -- when the table is answered from its function. One
+        # the operator floors on its replica, or that declares a landing TTL, is read from its
+        # landed rows, which the engine reads.
+        arguments = dict(read.arguments or {})
+        if not answered_live(state, read.table):
+            return Plan(
+                read=read,
+                arguments=arguments,
+                complete_dataset=False,
+                incomplete_because="its rows are read from where they landed",
+            )
+        return Plan(read=read, arguments=arguments, complete_dataset=True)
 
     async def call(self, state: Any, plan: Plan) -> Any:
         from provisa.codesource.table import read

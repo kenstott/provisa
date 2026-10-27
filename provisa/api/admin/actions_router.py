@@ -445,6 +445,15 @@ async def reclassify_webhook(request: Request, name: str, body: KindInput):  # R
     return await _reclassify(request, tracked_webhooks, name, body.kind)
 
 
+def _created_grant(request: Request, named: list[str]) -> list[str]:  # REQ-2154
+    """Who a command being created reaches: the roles it names, or, naming none, the role
+    registering it and Viewer -- the registration grant a table or a metric is created with."""
+    from provisa.api.admin.capabilities import acting_role_of_request
+    from provisa.security.default_grant import default_read_grant
+
+    return list(named) if named else default_read_grant(acting_role_of_request(request))
+
+
 @router.post("/functions")
 async def create_function(
     request: Request,
@@ -472,7 +481,7 @@ async def create_function(
         function_name=body.functionName,
         returns=body.returns,
         arguments=[FunctionArgument(**a) for a in _args_from_ui(body.arguments)],
-        visible_to=body.visibleTo,
+        visible_to=_created_grant(request, body.visibleTo),
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
@@ -669,7 +678,7 @@ async def create_webhook(
                 "returns": body.returns,
                 "inline_return_type": body.inlineReturnType,
                 "arguments": body.arguments,
-                "visible_to": body.visibleTo,
+                "visible_to": _created_grant(request, body.visibleTo),
                 "domain_id": body.domainId,
                 "description": body.description,
                 "kind": body.kind,

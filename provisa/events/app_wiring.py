@@ -76,17 +76,6 @@ async def _load_calendar_registry(db: Any) -> Any:
     return registry
 
 
-def _mv_pk(mv: Any) -> list[str]:
-    """REQ-970: the derived table's PK — operator-declared ``primary_key`` or inferred from an
-    unambiguous GROUP BY (``[]`` when neither)."""
-    from provisa.events.lineage import infer_pk
-
-    declared = list(getattr(mv, "primary_key", []) or [])
-    if declared:
-        return declared
-    return infer_pk(mv.sql) if getattr(mv, "sql", None) else []
-
-
 async def _reconcile_mv_store_schemas(
     engine: Any, mvs: list[Any], mv_cols: dict[str, list[tuple[str, str]]], log: Any
 ) -> None:
@@ -97,6 +86,8 @@ async def _reconcile_mv_store_schemas(
     boundary: a store/table not yet reachable is skipped (the per-fire persist_land re-creates if
     absent regardless)."""
     from sqlalchemy.exc import SQLAlchemyError
+
+    from provisa.mv.store_shape import view_key
 
     for mv in mvs:
         key = view_node(mv)
@@ -113,7 +104,7 @@ async def _reconcile_mv_store_schemas(
                 schema=mv.target_schema,
                 table=mv.target_table,
                 columns=cols,
-                pk_columns=_mv_pk(mv) or None,
+                pk_columns=view_key(mv) or None,
             )
         except SQLAlchemyError:
             log.warning("event loop: MV %s store-schema reconcile skipped (store not ready)", key)
@@ -726,10 +717,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # columns (QueryResult.column_types), which we translate native→IR (REQ-846). Done here
         # (async) so the sync mv_columns callable below is a pure lookup. Best-effort per MV — one
         # whose sources are not yet reachable is skipped and binds on a later boot.
-        from provisa.core.ir_types import to_ir
 
         _mv_cols: dict[str, list[tuple[str, str]]] = {}
-        _dialect = engine.engine.dialect
         _unbuilt = {view_node(m) for m in mvs if getattr(m, "last_refresh_at", None) is None}
         for _m in mvs:
             _sql = getattr(_m, "sql", None)
@@ -749,27 +738,25 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 # pipeline, so a table it reads is read as a direct statement reads it -- a search
                 # table under its arguments among them -- never its physical SQL as written.
                 from provisa.mv.governed_build import view_shape_sql
+                from provisa.mv.store_shape import output_columns
 
-                _probe = await engine.execute_engine(
-                    # Its columns alone: never its rows, a column transform's among them.
-                    f"SELECT * FROM ({await view_shape_sql(_m, engine)}) AS _mv_probe LIMIT 0",
+                _cols = await output_columns(
+                    engine,
+                    await view_shape_sql(_m, engine),
                     authorization=system_auth("event signal"),
                 )
+            except ValueError:
+                log.warning("event loop: MV %s has an unmapped output type — skipping", _key)
+                continue
             except Exception:
                 log.exception("event loop: MV %s not introspectable yet — skipping", _key)
                 continue
-            if _probe.column_types is None:
+            if _cols is None:
                 log.warning(
                     "event loop: engine returned no column types for MV %s — skipping", _key
                 )
                 continue
-            try:
-                _mv_cols[_key] = [
-                    (n, to_ir(t, _dialect))
-                    for n, t in zip(_probe.column_names, _probe.column_types)
-                ]
-            except ValueError:
-                log.warning("event loop: MV %s has an unmapped output type — skipping", _key)
+            _mv_cols[_key] = _cols
 
         # REQ-970: reconcile each derived node's store table to its SELECT-derived schema (existing
         # reconcile_table machinery). REQ-965: build the demand-driven per-shape emit router. Both in

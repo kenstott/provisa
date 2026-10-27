@@ -117,7 +117,10 @@ class _State:
         self.contexts = {role: _context(served) for role, served in _SERVED.items()}
         self.meta_roles = {_META: ("hr_reader", "seller")}
         self.metrics = {
-            "net": types.SimpleNamespace(description="net", ai_context=None, visible_to=["*"]),
+            # REQ-2153: a metric for every role names them.
+            "net": types.SimpleNamespace(
+                description="net", ai_context=None, visible_to=["seller", "hr_reader"]
+            ),
             "pay": types.SimpleNamespace(
                 description="pay", ai_context=None, visible_to=["hr_reader"]
             ),
@@ -266,7 +269,7 @@ def test_a_role_is_listed_only_its_own_tables_columns_and_commands(monkeypatch):
     ):
         with pytest.raises(flight.FlightServerError, match="not found"):
             call()
-    # A metric granted to every role is found.
+    # A metric granted to the role is found.
     srv.get_flight_info(sam, flight.FlightDescriptor.for_path("metrics", "net"))
 
 

@@ -105,8 +105,7 @@ tables:
     visible_to: [data_steward, ops_analyst]
     masks:
     - to: [data_steward]
-    - to: ['*']
-      mask: {type: constant, value: withheld}
+    - mask: {type: constant, value: withheld}
   - {name: branch, data_type: varchar, description: The branch the account is held at, visible_to: [data_steward, ops_analyst]}
   - {name: product, data_type: varchar, description: 'The account''s product: current, savings, staff or corporate', visible_to: [data_steward, ops_analyst]}
   - {name: currency, data_type: varchar, description: The account's currency, visible_to: [data_steward, ops_analyst]}
@@ -142,8 +141,7 @@ tables:
     visible_to: [data_steward, ops_analyst]
     masks:
     - to: [data_steward]
-    - to: ['*']
-      mask: {type: constant, value: withheld}
+    - mask: {type: constant, value: withheld}
   - {name: status, data_type: varchar, description: booked or reversed, visible_to: [data_steward, ops_analyst]}
   - {name: updated_at, data_type: timestamp, description: When this version was entered (UTC), visible_to: [data_steward, ops_analyst]}
 rls_rules:

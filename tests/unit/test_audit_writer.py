@@ -672,3 +672,33 @@ def test_the_role_grants_a_served_statement_used_are_recorded_once_a_day(store):
     finally:
         w.close(5.0)
     assert marked == [(usage_db, "alice", ["analyst", "auditor"])]
+
+
+def test_the_writer_s_own_work_exports_no_trace(store, monkeypatch):
+    """REQ-1910: the writer's inserts and Hot counts follow requests already answered; traced,
+    each became a root of its own in whichever request's window it ran, so it is not traced."""
+    from opentelemetry.instrumentation.utils import is_instrumentation_enabled
+
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
+    counts = _Counts()
+    seen: list[bool] = []
+    insert = store.insert
+
+    async def _insert(db, rows):
+        seen.append(is_instrumentation_enabled())
+        await insert(db, rows)
+
+    add = counts.add
+    counts.add = lambda hits, interval: (
+        seen.append(is_instrumentation_enabled()),
+        add(hits, interval),
+    )[1]
+    w = AuditWriter(
+        capacity=1000, batch_size=100, interval_s=0.05, retry_s=0.05, insert=_insert
+    ).start()
+    try:
+        w.enqueue(_record(1, hot_counts=counts, route="engine"))
+        assert w.flush(5.0)
+    finally:
+        w.close(5.0)
+    assert seen and not any(seen), seen

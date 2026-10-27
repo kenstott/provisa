@@ -58,6 +58,10 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
     )
 
 
+#: Every role: each standard role (REQ-2155) descends from viewer; the config's roles are named.
+EVERYONE = ["viewer", "itest_analyst", "admin"]
+
+
 def governed_config() -> ProvisaConfig:
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
@@ -70,26 +74,25 @@ def governed_config() -> ProvisaConfig:
             _table(
                 "orders",
                 [
-                    Column(name="id", data_type="integer", visible_to=["itest_analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=EVERYONE),
                     Column(
                         name="amount",
                         data_type="numeric",
-                        visible_to=["itest_analyst", "admin"],
+                        visible_to=EVERYONE,
                         description="Order total in cents",
                     ),
                     Column(
                         name="customer_id",
                         data_type="integer",
-                        visible_to=["itest_analyst", "admin"],
+                        visible_to=EVERYONE,
                     ),
                     Column(
                         name="ssn",
                         data_type="text",
-                        visible_to=["itest_analyst", "admin"],
+                        visible_to=EVERYONE,
                         masks=[
                             {"to": ["admin"], "mask": None},
                             {
-                                "to": ["*"],
                                 "mask": {
                                     "type": "regex",
                                     "pattern": MASK_PATTERN,
@@ -104,15 +107,15 @@ def governed_config() -> ProvisaConfig:
             _table(
                 "customers",
                 [
-                    Column(name="id", data_type="integer", visible_to=["itest_analyst", "admin"]),
-                    Column(name="name", data_type="text", visible_to=["itest_analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=EVERYONE),
+                    Column(name="name", data_type="text", visible_to=EVERYONE),
                 ],
             ),
             _table(
                 "order_totals",
                 [
-                    Column(name="id", data_type="integer", visible_to=["itest_analyst", "admin"]),
-                    Column(name="net", data_type="numeric", visible_to=["itest_analyst", "admin"]),
+                    Column(name="id", data_type="integer", visible_to=EVERYONE),
+                    Column(name="net", data_type="numeric", visible_to=EVERYONE),
                 ],
                 view_sql="SELECT orders.id AS id, orders.amount * 2 AS net FROM orders",
             ),

@@ -2275,9 +2275,9 @@ def test_where_after_optional_match_does_not_filter_base_rows():
 
 
 def test_where_on_required_match_variable_is_not_guarded():
-    """WHERE referencing only a required MATCH variable should remain a plain WHERE.
-
-    No IS NULL guard needed — required MATCH variables are never NULL.
+    """An OPTIONAL MATCH's WHERE is its condition, never a filter of the rows: a condition on
+    a required MATCH variable conditions the optional join (every n is kept, c null where it does
+    not hold). No IS NULL guard is needed: required MATCH variables are never NULL.
     """
     lm = _make_label_map()
     ast = parse_cypher(
@@ -2294,6 +2294,9 @@ def test_where_on_required_match_variable_is_not_guarded():
         f"WHERE on required MATCH variable must not add IS NULL guard: {sql}"
     )
     assert "30" in sql, f"WHERE condition should still appear in SQL: {sql}"
+    assert " WHERE " not in sql.upper(), (
+        f"the condition must be the LEFT JOIN's, not a WHERE: {sql}"
+    )
 
 
 def _make_label_map_bidir_multi_hop() -> CypherLabelMap:

@@ -957,7 +957,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     # _populate_pg_roles_and_database — partial/mock states carry no metrics list.
     _metrics_attr = getattr(getattr(state, "config", None), "metrics", None)
     all_metrics = _metrics_attr if isinstance(_metrics_attr, list) else []
-    metrics = [m for m in all_metrics if "*" in m.visible_to or role_id in m.visible_to]
+    metrics = [m for m in all_metrics if role_id in m.visible_to]
     idx = _build_catalog_index(ctx, col_types, metrics)
 
     row_counts = _row_counts_for(role_id, ctx, idx, getattr(state, "engine_conn", None))

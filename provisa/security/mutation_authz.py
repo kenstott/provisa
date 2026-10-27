@@ -148,9 +148,8 @@ class CommandNotFound(LookupError):
 
 def command_assigned(command: dict, role_id: str) -> bool:
     """Whether ``command`` is assigned to ``role_id``: its one list of assigned roles,
-    ``visible_to`` — empty assigns it to every role."""
-    assigned = command.get("visible_to") or []
-    return not assigned or role_id in assigned
+    ``visible_to``, names it. Empty assigns it to no role (REQ-1317, REQ-2154)."""
+    return role_id in (command.get("visible_to") or ())
 
 
 def command_reachable(command: dict, role: dict) -> bool:

@@ -51,6 +51,7 @@ import { joinStatements, toStatementResult, type StatementResult } from "./sql/s
 import { ViewModal } from "./sql/ViewModal";
 import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
+import { withTimeTravel } from "./sql/timeTravelArgs";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
@@ -111,11 +112,14 @@ export function SqlPage() {
     tab: tabs.find((t) => t.id === activeTabId)!.title,
   });
   const [role, setRole] = useState("org_admin");
-  // REQ-1163: the time travel statements run with over bitemporal views -- as of a time on each
-  // view's clock, as recorded at a time -- each an ISO 8601 time, or none.
+  // REQ-1163: the time pickers' last picks -- as of a time on each relation's valid time, as
+  // recorded at a time -- each an ISO 8601 time, or none. A pick is written into the statement as
+  // the arguments of each relation that travels in time (timeTravelArgs); the text is what runs.
   const [asOf, setAsOf] = useState<string | null>(null);
   const [asRecorded, setAsRecorded] = useState<string | null>(null);
-  const timeTravel = useMemo(() => ({ asOf, asRecorded }), [asOf, asRecorded]);
+  // REQ-2083: the values of the next run's $1…$n placeholders, handed by a tour step that took
+  // them from an earlier answer; sent with that run, then dropped.
+  const [boundParams, setBoundParams] = useState<string[]>([]);
   // REQ-1620: under the app-wide "Role: All" the acting set is EVERY active role, sent as one
   // comma-separated X-Provisa-Role so the union of their visibility is queryable. The picker
   // offers that set as its own entry; picking a single role previews that role alone.
@@ -348,7 +352,7 @@ export function SqlPage() {
   const fetchExpansion = useCallback(async (): Promise<{ text: string; isError: boolean }> => {
     const inner = sqlText.trim().replace(/;+$/, "");
     try {
-      const plan = await explainSql(inner, role, false, timeTravel);
+      const plan = await explainSql(inner, role, false);
       if (plan.semantic_sql === null) {
         return { text: t("sqlPage.expansionNoMetric"), isError: true };
       }
@@ -356,7 +360,7 @@ export function SqlPage() {
     } catch (e) {
       return { text: e instanceof Error ? e.message : String(e), isError: true };
     }
-  }, [sqlText, role, timeTravel, t]);
+  }, [sqlText, role, t]);
 
   const handleShowExpansion = useCallback(async () => {
     setExpansionOpen(true);
@@ -534,17 +538,12 @@ export function SqlPage() {
     autoRun?: boolean;
     viewTable?: RegisteredTable;
     role?: string;
-    asOf?: string;
-    asRecorded?: string;
+    params?: string[];
   }>((payload) => {
     if (payload.viewTable) setViewTable(payload.viewTable);
-    // A demo tour's time-travel steps (REQ-1163) set the explorer's pickers.
-    if (payload.asOf != null) {
-      setAsOf(payload.asOf);
-      return;
-    }
-    if (payload.asRecorded != null) {
-      setAsRecorded(payload.asRecorded);
+    // REQ-2083: a demo tour's step hands the next statement its bound values.
+    if (payload.params != null) {
+      setBoundParams(payload.params);
       return;
     }
     if (payload.role != null) {
@@ -712,7 +711,7 @@ export function SqlPage() {
     setAnalyzing(true);
     setAnalyzeError("");
     try {
-      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false, timeTravel);
+      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false);
       setAnalyzePlan(plan);
     } catch (e) {
       setAnalyzePlan(null);
@@ -721,7 +720,7 @@ export function SqlPage() {
       setAnalyzing(false);
     }
     setResultTab("analyze");
-  }, [sqlText, role, timeTravel]);
+  }, [sqlText, role]);
 
   // One statement's result, of the batch's, into the result shown (grid, profile, export).
   const showStatement = useCallback(
@@ -760,7 +759,8 @@ export function SqlPage() {
       // Each statement is sampled on its own, so the batch is split as the server splits it; the
       // server answers one result per statement (runSqlEach answers a failure as its error).
       const sent = (await splitSql(aliased)).map((s) => wrapSampledSql(s, sampleMode, sampleSize));
-      run = await runSqlEach(joinStatements(sent), role, statsEnabled, timeTravel);
+      run = await runSqlEach(joinStatements(sent), role, statsEnabled, boundParams);
+      setBoundParams([]);
     } catch (e) {
       // The split refused: said as the run's error.
       run = { answers: [], error: e instanceof Error ? e.message : String(e) };
@@ -807,7 +807,7 @@ export function SqlPage() {
     activeTabId,
     statsEnabled,
     resetGrid,
-    timeTravel,
+    boundParams,
     showStatement,
   ]);
 
@@ -1031,9 +1031,16 @@ export function SqlPage() {
               roles={roleOptions}
               setRole={setRole}
               asOf={asOf}
-              setAsOf={setAsOf}
+              setAsOf={(v) => {
+                setAsOf(v);
+                setSqlText((text) => withTimeTravel(text, tables, { asOf: v, asRecorded }));
+              }}
               asRecorded={asRecorded}
-              setAsRecorded={setAsRecorded}
+              setAsRecorded={(v) => {
+                setAsRecorded(v);
+                setSqlText((text) => withTimeTravel(text, tables, { asOf, asRecorded: v }));
+              }}
+              boundParams={boundParams}
               viewTable={viewTable}
               viewSaving={viewSaving}
               setViewSaving={setViewSaving}

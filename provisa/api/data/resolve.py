@@ -20,8 +20,8 @@ it. A composite key is ``pk=<v1>,<v2>`` in the model's key-column order, each va
 percent-encoded. The column may also be written as the REQ-1385 fragment ``#field:<column>``;
 the path form is canonical. With no column the whole governed row is returned.
 
-There is one function here, :func:`resolve`, and every surface (the GraphQL ``resolve`` field,
-REST ``GET /data/rest/resolve``, the MCP ``resolve`` tool) is a thin wrapper over it. It builds
+There is one function here, :func:`resolve`, and every surface (the GraphQL ``_resolve`` field,
+REST ``GET /data/rest/_resolve``, the MCP ``_resolve`` tool) is a thin wrapper over it. It builds
 ONE ``SELECT`` over the table's semantic name with the key values as bound parameters and hands
 it to the settled pipeline (``_govern_and_route`` then ``_execute_plan``). Role scoping, RLS,
 masking, the row cap, the audit record and its provenance all come from that path; nothing here
@@ -214,15 +214,13 @@ async def resolve(
     org_id: str | None,
     as_of: str | None = None,
     as_recorded: str | None = None,
-    as_of_literal: str | None = None,
     session_vars: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Dereference ``uri`` for ``role_id`` through the one query pipeline (REQ-1365).
 
     ``org_id`` is the caller's org; an address in another org is refused. ``as_of`` is an ISO
     8601 point in time on the view's clock and ``as_recorded`` one on Provisa's record (REQ-1163),
-    both validated here; ``as_of_literal`` is the canonical value a surface has already validated
-    (the GraphQL endpoint's ``X-Provisa-As-Of`` and ``X-Provisa-As-Recorded``). Returns
+    both validated here. Returns
     ``{"uri", "as_of", "columns", "row"}`` with ``row`` None when the key matches nothing the
     caller may see; for an as-of range (REQ-2064), ``versions`` -- every version of the row in
     force within it -- in place of ``row``."""
@@ -230,6 +228,7 @@ async def resolve(
 
     from provisa.mv.bitemporal import AsOf, request_as_of
 
+    as_of_literal = None
     if as_of is not None or as_recorded is not None:
         try:
             # Validated SQL timestamp literals, in the canonical form (REQ-1163).
@@ -301,11 +300,9 @@ async def execute_resolve_fields(
     variables: dict | None,
     *,
     org_id: str | None,
-    as_of: str | None,
 ) -> dict[str, Any]:
-    """Answer each ``resolve`` root selection, keyed by its response name. ``as_of`` is the
-    request's already-validated time travel; a field's own ``as_of``/``as_recorded`` arguments win
-    over it."""
+    """Answer each ``_resolve`` root selection, keyed by its response name, at the time its own
+    ``as_of``/``as_recorded`` arguments say (REQ-1163)."""
     from provisa.compiler.sql_where import _extract_value
 
     data: dict[str, Any] = {}
@@ -317,14 +314,12 @@ async def execute_resolve_fields(
             {a.name.value: _extract_value(a.value, variables) for a in selection.arguments},
         )
         key = selection.alias.value if selection.alias else selection.name.value
-        own, own_recorded = args.get("as_of"), args.get("as_recorded")
         data[key] = await resolve(
             state,
             role_id,
             args["uri"],
             org_id=org_id,
-            as_of=own,
-            as_recorded=own_recorded,
-            as_of_literal=None if (own or own_recorded) else as_of,
+            as_of=args.get("as_of"),
+            as_recorded=args.get("as_recorded"),
         )
     return data

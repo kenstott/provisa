@@ -13,6 +13,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { LIVE_MODEL_YAML } from "./e2e/liveModel";
 
 // Load root .env so live-backend tests receive AWS credentials
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -290,6 +291,7 @@ if (IS_RUNNER) {
   for (const b of CORE_BACKENDS) {
     fs.mkdirSync(path.dirname(b.configPath), { recursive: true });
     fs.copyFileSync(path.resolve(__dirname, "../config/provisa-install.yaml"), b.configPath);
+    fs.appendFileSync(b.configPath, LIVE_MODEL_YAML);
   }
 }
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
@@ -651,12 +653,17 @@ export default defineConfig({
               ...PROVISIONING_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
+            // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
+            // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
+            // turning for a whole test held SwiftShader's GPU process at most of a core.
+            use: { reducedMotion: "reduce" },
           },
           {
             // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
             name: "core-provisioning",
             testMatch: PROVISIONING_SPECS,
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
+            use: { reducedMotion: "reduce" },
           },
         ]
       : []),

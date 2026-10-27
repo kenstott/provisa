@@ -28,6 +28,8 @@
     "noTargets": "尚未有目標。請加入此組織要發佈到的目錄。",
     "catalog": "目錄",
     "catalogHelp": "在 管理 → 目錄 中連接的目錄。",
+    "role": "以角色發佈",
+    "roleHelp": "目錄只會收到此角色可讀取的內容。",
     "betaProvider": "{{name}}（測試版）"
   }
 }

@@ -33,8 +33,16 @@ from provisa.core.repositories import identity
 from provisa.core.repositories import relationship as relationship_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, registered_tables, sources
+from tests.unit.gate_identity import serve_every_column
 
 SCHEMA = "org_default"
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 def _tbl(name: str, *, unique: list[str] | None = None) -> Table:

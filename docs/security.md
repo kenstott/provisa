@@ -247,14 +247,12 @@ tables:
         visible_to: [admin, analyst, viewer]
         masks:
           - to: [admin]               # admin sees raw value (no mask)
-          - to: ["*"]                 # everyone else sees it masked
-            mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+          - mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}  # every other reader sees it masked
       - name: salary
         visible_to: [admin, hr]
         masks:
           - to: [admin, hr]           # admin and hr see real value
-          - to: ["*"]                 # all other visible roles see 0
-            mask: {type: constant, value: 0}
+          - mask: {type: constant, value: 0}  # every other reader sees 0
       - name: created_at
         visible_to: [hr, viewer]      # every role built on viewer can read
     write_grants:
@@ -320,13 +318,13 @@ Masking is defined as an ordered list on each column. The first entry the reader
 | `constant` | Any | Literal value (`NULL`, `0`, a custom string) |
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
 
-Each entry has a `to` list naming the readers it targets, and an optional `mask`. An entry with no `mask` means unmasked for those readers. `*` in `to` matches every reader.
+Each entry has a `to` list naming the readers it targets, and an optional `mask`. An entry with no `mask` means unmasked for those readers. The list's last entry may leave out `to`; it is for every other reader, and a list holds at most one such entry.
 
 The mask expression is pushed into the SQL SELECT projection. The database returns the masked value; unmasked data never crosses the wire for masked roles. Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent value inference through filtering.
 
 **A mask covers every name of the column, not a related column.** A column read by its alias or its physical name is masked alike. A mask does not hide a key that an approved relationship joins to a column the role can see: the join compares the real values, so the related column shows what the masked key holds. Mask the related column too, or don't approve the relationship for that role.
 
-**No entry held means unmasked.** A reader that holds no entry reads the column unmasked. End a list with a `*` entry when every reader should have some mask applied. The column editor warns when a list lacks a `*` entry (`unlisted_unmasked`).
+**No entry held means unmasked.** A reader that holds no entry reads the column unmasked. End a list with an entry that has no `to` when every reader should have some mask applied. The column editor warns when a list has no such entry (`unlisted_unmasked`).
 
 **Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first. That is how restriction works here.
 
@@ -335,17 +333,15 @@ The mask expression is pushed into the SQL SELECT projection. The database retur
 **Checking access.** `POST /admin/masks/check` accepts a mask list and an optional set of roles, and returns which entry applies for those roles plus any entries no reader can reach. Gated by `masking_config`.
 
 ```yaml
-# email column: analyst+region__eu sees raw; everyone else sees masked
+# email column: analyst+region__eu sees raw; every other reader sees it masked
 masks:
   - to: [analyst+region__eu]          # composite: analyst AND in EU region
-  - to: ["*"]                         # all others
-    mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}
+  - mask: {type: regex, pattern: "(.).*@", replace: "$1***@"}  # every other reader
 
-# hire_date column: hr sees raw; all other visible roles see year only
+# hire_date column: hr sees raw; every other reader sees the year only
 masks:
   - to: [hr]
-  - to: ["*"]
-    mask: {type: truncate, precision: year}
+  - mask: {type: truncate, precision: year}
 ```
 
 ## Governing Action Responses

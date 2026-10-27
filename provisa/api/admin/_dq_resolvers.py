@@ -75,7 +75,7 @@ def _kind_document(kind: Any) -> dict:
     }
 
 
-async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -> dict:
+async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str, scope: Any) -> dict:
     """The checks the picker may offer, scoped to the columns of the contract's own dataset.
 
     The scoping input is the DATASET the contract names, not a table the panel was handed: the
@@ -87,17 +87,28 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
     """
     from provisa.api.app import state
     from provisa.dq.catalog import check_catalog, checks_for_column
-    from provisa.dq.contract import ContractError, resolve_contract_target
+    from provisa.dq.contract import ContractError, model_contexts, resolve_contract_target
 
     try:
         kinds = check_catalog(checker)
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": [], "columns": []}
     dataset_checks = [_kind_document(k) for k in kinds if k.scope == "dataset"]
+    from provisa.api.admin.read_rights import served_columns_of
+
     try:
-        target = resolve_contract_target(dataset, state.contexts)
+        target = resolve_contract_target(dataset, model_contexts(state))
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": dataset_checks, "columns": []}
+    # REQ-2152: only the columns the caller is served; a dataset it is served none of is
+    # answered as one that resolves to no governed table.
+    served = await served_columns_of(conn, scope, target.table_id)
+    if served == set():
+        return {
+            "error": f"contract dataset {dataset!r} resolves to no governed table",
+            "dataset_checks": dataset_checks,
+            "columns": [],
+        }
     columns = (
         await conn.execute_core(
             select(table_columns.c.column_name, table_columns.c.data_type)
@@ -117,6 +128,7 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
                 ],
             }
             for c in columns
+            if served is None or c._mapping["column_name"] in served
         ],
     }
 
@@ -167,7 +179,12 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
     straight into the response, so a dry run costs one scan and changes nothing.
     """
     from provisa.api.app import state
-    from provisa.dq.contract import ContractError, contract_dataset, resolve_contract_target
+    from provisa.dq.contract import (
+        ContractError,
+        contract_dataset,
+        model_contexts,
+        resolve_contract_target,
+    )
     from provisa.dq.registration import is_checker_source_type
     from provisa.dq.runner import CheckerError, run_contract
 
@@ -189,7 +206,7 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
 
     try:
         dataset = contract_dataset(contract_text, checker)
-        target = resolve_contract_target(dataset, state.contexts)
+        target = resolve_contract_target(dataset, model_contexts(state))
     except ContractError as exc:
         return {"success": False, "message": str(exc)}
     async with bound_to_request_org():

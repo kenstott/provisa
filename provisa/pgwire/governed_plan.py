@@ -65,7 +65,10 @@ def _rebuild_in_progress() -> bool:
 
 def governance_anchors(state: Any, role_id: str) -> tuple[Any, ...]:
     """The objects governance reads for a role — compared by identity."""
-    surface = state.surfaces[role_id]  # one snapshot: context and row filters of one build
+    from provisa.api.role_surface import built_surface
+
+    # One snapshot: context and row filters of one build.
+    surface = built_surface(state.surfaces[role_id])
     return (
         surface.context,
         surface.rls,

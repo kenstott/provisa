@@ -239,7 +239,11 @@ def test_a_stored_command_keeps_its_bindings():
 
 
 def _sql_state(**roles) -> SimpleNamespace:
-    fn = {**_function(), "language_bindings": {"sql": {"name": "join_text"}}, "visible_to": []}
+    fn = {
+        **_function(),
+        "language_bindings": {"sql": {"name": "join_text"}},
+        "visible_to": list(roles),
+    }
     return SimpleNamespace(
         tracked_functions={"text_join": fn},
         roles={rid: {"id": rid, "domain_access": access} for rid, access in roles.items()},
