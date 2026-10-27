@@ -1355,11 +1355,16 @@ def subquery_statement(kind: str, body: str) -> CypherAST:
     text = body.strip()
     if text.startswith("("):
         text = "MATCH " + text
-    if kind in ("EXISTS", "COUNT") and "RETURN" not in text.upper():
+    returns_one = kind in ("EXISTS", "COUNT") and "RETURN" not in text.upper()
+    if returns_one:
         text = text + " RETURN 1"
     elif kind == "COLLECT" and "RETURN" not in text.upper():
         text = text + " RETURN *"
-    return _parse_statement(text)
+    ast = _parse_statement(text)
+    if returns_one:
+        assert ast.return_clause is not None
+        ast.return_clause.items[0].name = ""  # a RETURN the statement does not write names nothing
+    return ast
 
 
 def extract_parameters(query: str) -> list[str]:  # REQ-571

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
@@ -47,22 +47,6 @@ _GRAPH_FUNCTIONS = {
     "startnode": "NODE",
     "endnode": "NODE",
 }
-
-
-def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
-    """The property names two items of ``return_clause`` would both be named by: an unaliased
-    ``var.prop`` is named ``prop``, which another such item or another item's own name may also
-    be (#259)."""
-    from collections import Counter
-
-    names: Counter[str] = Counter()
-    for item in return_clause.items:
-        if item.alias:
-            names[item.alias] += 1
-            continue
-        found = _variable_property(item.expression)
-        names[found[1] if found else item.name.strip()] += 1
-    return frozenset(name for name, count in names.items() if count > 1)
 
 
 #: The built-in property every node has (REQ-2136): its key. The one name a label need not publish.
@@ -573,32 +557,25 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         self,
         expr: CypherExpr,
         alias: str | None,
-        shared: frozenset[str] = frozenset(),
         written: str = "",
     ) -> exp.Expr:
-        """Emit SELECT expression for a property access or arbitrary expression. An unaliased
-        property is named by the property, or, where another item of the RETURN would take the
-        same name (``shared``), as Cypher clients name it: ``var.prop`` (#259)."""
+        """Emit SELECT expression for a property access or arbitrary expression. Unaliased, it is
+        named as the statement writes it, as openCypher names a column: ``a.name``, ``min(x)``."""
         from provisa.gql.translator_types import GraphVarKind
 
         parsed = self._parse_expr(expr)
+        name = alias or (written if written and not isinstance(expr, Variable) else None)
         _prop_m = _variable_property(expr)
-        _cypher_alias: str | None = None
         if _prop_m:
             _var, _prop = _prop_m
             _info = self._var_table.get(_var)
-            if _info and _info[1] and _prop in _info[1].properties:
-                _cypher_alias = f"{_var}.{_prop}" if _prop in shared else _prop
-                if _prop in _info[1].map_properties:
-                    # REQ-1991: returned as a map on every engine, whatever form it arrives in.
-                    self._graph_vars[(alias or _prop).lower()] = GraphVarKind.MAP
+            if _info and _info[1] and _prop in _info[1].map_properties:
+                # REQ-1991: returned as a map on every engine, whatever form it arrives in.
+                self._graph_vars[(name or _prop).lower()] = GraphVarKind.MAP
         if alias:
             return exp.alias_(parsed, alias)
-        if _cypher_alias:
-            return exp.alias_(parsed, _cypher_alias)
-        if written and _prop_m is None and not isinstance(expr, (Variable, Literal)):
-            # An unaliased expression (min(x), count(a) > 1) is named as the statement writes it.
-            return exp.alias_(parsed, written, quoted=True)
+        if name:
+            return exp.alias_(parsed, name, quoted=True)
         return parsed
 
     def _select_varlen_rel_var(
@@ -637,7 +614,6 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
 
         exprs: list[exp.Expr] = []
         passthrough_vars = getattr(self, "_passthrough_vars", set())
-        shared = _shared_property_names(return_clause)
 
         for item in return_clause.items:
             expr = item.expression
@@ -692,6 +668,6 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     self._graph_vars[alias.lower()] = GraphVarKind[kind]
 
             # Property access or expression
-            exprs.append(self._select_prop_expr(expr, alias, shared, item.name.strip()))
+            exprs.append(self._select_prop_expr(expr, alias, item.name.strip()))
 
         return exprs
