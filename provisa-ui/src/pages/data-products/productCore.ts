@@ -29,7 +29,7 @@ import {
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
-import type { LifecycleStatus } from "../../components/lifecycle/StatusBadge";
+import type { LifecycleStatus } from "../../types/lifecycle";
 
 /** The product row's own fields, as data_products_meta names them. */
 export const PRODUCT_FIELDS = [
