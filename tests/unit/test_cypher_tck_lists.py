@@ -175,3 +175,12 @@ def test_return_star_returns_its_columns_by_name():
 )
 def test_an_item_of_a_list_of_several_types_answers_its_value(query, rows):
     assert _answer(query) == rows
+
+
+@pytest.mark.parametrize("args", ["0, 0, 0", "2, 8, 0", "-2, 8, 0", "2, -8, 0"])
+def test_a_range_never_steps_by_zero(args):
+    # List11 [4]: openCypher's ArgumentError, NumberOutOfRange.
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match="step other than 0"):
+        _rows(f"RETURN range({args}) AS r")
