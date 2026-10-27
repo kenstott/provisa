@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "Domains",
+    "classes": "Classes",
+    "properties": "Properties",
+    "relationships": "Relationships",
+    "concepts": "Concepts",
+    "prefixes": "Prefixes",
+    "none": "Nothing here for your role.",
+    "domainTip": "Declares this domain's prefix and narrows the lists to its vocabulary ({{namespace}}).",
+    "domainPicked": "The lists show {{namespace}} only. Click again for every domain.",
+    "classTerm": "Class term {{term}}",
+    "tableClass": "A table's own class",
+    "propertyTerm": "Property term {{term}}",
+    "columnPredicate": "Column {{column}}"
+  }
+}

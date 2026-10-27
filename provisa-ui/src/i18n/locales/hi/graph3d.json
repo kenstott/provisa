@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "डेटा प्रोडक्ट और उनके घटकों का 3D ग्राफ़",
-    "panelTitle": "नॉलेज ग्राफ़",
-    "expandTitle": "{{product}}: नॉलेज ग्राफ़",
+    "panelTitle": "ग्राफ़",
+    "expandTitle": "{{product}}: ग्राफ़",
     "productMap": "प्रोडक्ट मैप",
     "preset": "प्रीसेट",
-    "preset_knowledge": "नॉलेज ग्राफ़",
+    "preset_all": "सभी",
     "preset_ontology": "ऑन्टोलॉजी",
-    "preset_productMap": "प्रोडक्ट मैप",
-    "preset_lineage": "लिनिएज",
+    "preset_products": "प्रोडक्ट",
     "layers": "लेयर",
     "layer_products": "प्रोडक्ट और डोमेन",
     "layer_tables": "सदस्य टेबल",
@@ -96,7 +95,6 @@
     "openAsQueryFocused": "खोज या फ़ोकस का पड़ोस अभी एक क्वेरी के रूप में व्यक्त नहीं किया जा सकता।",
     "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
     "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
-    "openAsQuerySparqlLater": "SPARQL उसका endpoint उपलब्ध होने पर खुलेगा।",
     "layersMenu": "परतें",
     "termsMenu": "शब्द",
     "menuAll": "सभी",
@@ -109,6 +107,8 @@
     "overBudget": "{{count}} मिलान; खोज सीमित करें या कोई डोमेन चुनें",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "उन तालिकाओं में आधारित जो अभी एक ही एंटिटी के रूप में लिंक नहीं हैं: {{tables}}",
-    "status_draft": "ड्राफ़्ट"
+    "status_draft": "ड्राफ़्ट",
+    "openAsQueryNoSparql": "इस क्वेरी का कोई SPARQL रूप नहीं है।",
+    "openAsQuerySparqlRoots": "इस क्वेरी का हर रूट अपनी अलग SPARQL क्वेरी है: उन्हें एक-एक करके पढ़ने के लिए GraphQL खोलें।"
   }
 }

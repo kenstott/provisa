@@ -215,6 +215,13 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # preprocess(rows, ctx) -> rows. Run after the MV SQL and before land. None = identity.
     # Purity-checked at registration and compiled to a callable at boot (provisa.mv.preprocess).
     preprocess: str | None = None
+    # REQ-2133: the registered view table this build is of (None for a configured or automatic
+    # view, which is no table), its data product, and its Hold on failing checks option: a built-in
+    # preflight that holds a refresh while a checker scanning one of its nearest physical inputs
+    # failed its latest run, combined with ``preprocess`` (both must continue).
+    table_id: int | None = None
+    product_id: str | None = None
+    hold_on_failing_checks: bool = False
 
     # REQ-877 (MAY): opt-in per-MV ROW-LEVEL delta capture. Off by default (the hash/diff path is the
     # expensive case). When on, each refresh that changed rows appends insert/update/delete events to

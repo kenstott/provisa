@@ -36,7 +36,7 @@ JSON_OBJECT = "a JSON object"
 JSON_PATH = "JSON path extraction"
 ENGINE_FUNCTION = "an engine-only function"
 SIMILARITY = "cosine_similarity"
-DURATION = "a duration (an interval of months, days and seconds)"  # REQ-2172
+DURATION = "a duration (an interval of months, days and seconds)"  # REQ-2173
 
 _RELATIONAL = frozenset({CTE, JOIN, GROUP_BY, WINDOW, SCALAR_SUBQUERY, EXISTS})
 _JSON = frozenset({JSON_AGGREGATE, JSON_OBJECT})

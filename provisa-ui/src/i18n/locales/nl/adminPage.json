@@ -208,6 +208,13 @@
     "colParentDomain": "Bovenliggend domein",
     "parentDomainHint": "Een rol met toegang tot het bovenliggende domein bereikt ook dit domein.",
     "noParentDomain": "Geen bovenliggend",
-    "stewardInherited": "overgenomen"
+    "stewardInherited": "overgenomen",
+    "apolloSubgraph": "Apollo Federation-subgraaf",
+    "apolloSubgraphEnabled": "Aanbieden als subgraaf",
+    "apolloSubgraphEnabledHint": "Voegt _service en _entities toe aan /data/graphql voor de onderstaande rol, zodat een Apollo Router deze organisatie kan samenstellen tot een supergraaf.",
+    "apolloSubgraphName": "Naam van de subgraaf",
+    "apolloSubgraphNameHint": "De naam waaronder de supergraaf deze subgraaf kent.",
+    "apolloSubgraphRole": "Treedt op als rol",
+    "apolloSubgraphRoleHint": "Een supergraaf kan de identiteit van zijn aanroeper niet doorgeven, dus de router meldt zich aan als deze rol en elke opgehaalde entiteit wordt beheerd als deze rol: met de rijregels, maskers en zichtbaarheid van die rol."
   }
 }

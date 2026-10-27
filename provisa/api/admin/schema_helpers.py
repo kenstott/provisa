@@ -124,35 +124,32 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
     row = dict(_r._mapping) if _r is not None else None
     if not row or row["type"] != "openapi" or not row["path"]:
         return False
-    try:
-        from provisa.core.secrets import resolve_secrets as _resolve_secrets
-        from provisa.openapi.exclusions import load_source_spec
+    from provisa.core.secrets import resolve_secrets as _resolve_secrets
+    from provisa.openapi.exclusions import load_source_spec
 
-        resolved_path = _resolve_secrets(row["path"])
-        # REQ-1957: without what the source's own exclusions name.
-        spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id)
-        servers = spec.get("servers", [])
-        base_url = servers[0].get("url", "") if servers else ""
-        if (
-            base_url
-            and not base_url.startswith(("http://", "https://"))
-            and resolved_path.startswith(("http://", "https://"))
-        ):
-            from urllib.parse import urljoin
+    resolved_path = _resolve_secrets(row["path"])
+    # REQ-1957: without what the source's own exclusions name.
+    spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id)
+    servers = spec.get("servers", [])
+    base_url = servers[0].get("url", "") if servers else ""
+    if (
+        base_url
+        and not base_url.startswith(("http://", "https://"))
+        and resolved_path.startswith(("http://", "https://"))
+    ):
+        from urllib.parse import urljoin
 
-            base_url = urljoin(resolved_path, base_url)
-        if not hasattr(state, "openapi_specs"):
-            state.openapi_specs = {}
-        state.openapi_specs[source_id] = {
-            "spec_path": row["path"],
-            "spec": spec,
-            "base_url": base_url,
-            "domain_id": "",
-            "cache_ttl": 300,
-        }
-        return True
-    except Exception:
-        return False
+        base_url = urljoin(resolved_path, base_url)
+    if not hasattr(state, "openapi_specs"):
+        state.openapi_specs = {}
+    state.openapi_specs[source_id] = {
+        "spec_path": row["path"],
+        "spec": spec,
+        "base_url": base_url,
+        "domain_id": "",
+        "cache_ttl": 300,
+    }
+    return True
 
 
 async def _rebuild_schemas():
@@ -529,6 +526,7 @@ async def _fetch_table_with_columns(
         push_debounce_max_delay=float(row.get("push_debounce_max_delay") or 5.0),  # REQ-1733
         mv_consistency=row.get("mv_consistency") or "shared",  # REQ-879
         mv_preprocess=row.get("mv_preprocess"),  # REQ-957
+        mv_hold_on_failing_checks=bool(row["mv_hold_on_failing_checks"]),  # REQ-2133
         business_key=list(row.get("business_key") or []),  # REQ-2109
         valid_time=row.get("valid_time"),  # REQ-2109
         recorded_time=row.get("recorded_time"),  # REQ-2109

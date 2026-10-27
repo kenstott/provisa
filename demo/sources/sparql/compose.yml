@@ -16,6 +16,11 @@ services:
     image: atomgraph/fuseki:latest
     restart: unless-stopped
     command: ["--mem", "/provisa"]
+    environment:
+      # The image's own JVM options (a fixed 4 GB heap) unless the caller sizes it: the UI e2e's
+      # provisioning lane runs it beside every other demo source on a 16 GB runner and sets 512 MB
+      # (provisa-ui/e2e/demo-source-containers.ts); the default keeps a demo install as it was.
+      JAVA_OPTIONS: "${PROVISA_DEMO_SPARQL_JAVA_OPTIONS:--Xmx4096m -Xms4096m}"
     ports:
       - "${PROVISA_DEMO_SPARQL_PORT:-23030}:3030"
     healthcheck:

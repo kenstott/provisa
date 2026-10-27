@@ -153,8 +153,7 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
-            # REQ-1592: model-report column, kept. REQ-1443 clause 10: a checker table's flag is
-            # the one it inherits from the table it scans.
+            # REQ-1592: model-report column, kept.
             data_product=product_ids[table_ref(table).parts] is not None,
             # REQ-1652: every declared key column, technical-tagged or not -- the physical table
             # carries it whether or not the Data Product exposes it.
@@ -187,26 +186,6 @@ def _contract_target(
     return checker, by_physical[(meta.source_id, meta.schema_name, meta.table_name)]
 
 
-def _effective_product_ids(
-    config: ProvisaConfig, contexts: Mapping
-) -> dict[tuple[str, ...], str | None]:  # REQ-1443 clause 10
-    """Every registered table's data-product membership, keyed by :func:`table_ref` parts.
-
-    A checker table's membership is DERIVED: it belongs to whatever product the table its contract
-    scans belongs to, because its rows are observations about that table and publish nowhere else.
-    Registration refuses a stored ``product_id`` on a checker table
-    (:func:`provisa.dq.registration.derive_checker_table`), so this map is the only place the two
-    are joined. Every other table's membership is its own ``product_id``.
-    """
-    product_ids: dict[tuple[str, ...], str | None] = {
-        table_ref(table).parts: table.product_id for table in config.tables
-    }
-    for results, contract in _checker_tables(config):
-        _, observed = _contract_target(config, results, contract, contexts)
-        product_ids[table_ref(results).parts] = observed.product_id
-    return product_ids
-
-
 def _data_product_assets(
     config: ProvisaConfig,
     exported: list[Table],
@@ -219,7 +198,9 @@ def _data_product_assets(
     from provisa.core.mail import data_product_page_url
 
     # A product with no exported members does not build: publishing an empty listing would tell
-    # the catalog about a product with nothing behind it.
+    # the catalog about a product with nothing behind it. A retired one builds all the same
+    # (REQ-1634 STATUS): its members went to its successor, and each catalog is told it is retired
+    # rather than left listing it as it last saw it.
     members_by_product: dict[str, list[Table]] = {}
     for table in exported:
         product_id = product_ids[table_ref(table).parts]
@@ -228,7 +209,7 @@ def _data_product_assets(
     assets: list[DataProductAsset] = []
     for product in config.data_products:
         members = members_by_product.get(product.id, [])
-        if not members:
+        if not members and product.status != "retired":
             continue
         assets.append(
             DataProductAsset(
@@ -243,7 +224,6 @@ def _data_product_assets(
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
-                publish=product.publish,
                 team_role=product.team_role,
                 limitations=product.limitations,
                 usage=product.usage,
@@ -730,8 +710,9 @@ def build_snapshot(
     # REQ-1592: the model report projects the SAME governance over every registered table — it is a
     # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
     # and reads the Data Product flag off each row instead.
-    # REQ-1443 clause 10: a checker table publishes with the product of the table it scans.
-    product_ids = _effective_product_ids(config, contexts)
+    # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
+    # product it is assigned to.
+    product_ids = {table_ref(table).parts: table.product_id for table in config.tables}
     exported = [
         table
         for table in config.tables

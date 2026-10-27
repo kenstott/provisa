@@ -40,6 +40,7 @@ export const GROUPS = [
   { id: "backend",      label: "App backends" },
   { id: "bi",           label: "BI across sources" },
   { id: "data-science", label: "Data science access" },
+  { id: "agents",       label: "Give an agent your data" },
   { id: "provision",    label: "Data provisioning" },
   { id: "public-data",  label: "New or changing sources" },
   { id: "compliance",   label: "Compliance and audit" },

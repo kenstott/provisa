@@ -1082,14 +1082,27 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
         return None
 
     t = source_type.lower()
-    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift"):
-        # cockroachdb/yugabytedb/greenplum/redshift: same wire-compatible grouping as
-        # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
-        # through to the generic engine-catalog fallback (empty pre-registration), leaving the
-        # Register Table TABLE picker permanently empty even once the schema picker itself
-        # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
-        # appeared in the table select without this; redshift's regclass/pg_class support is
-        # identical to upstream Postgres's for this already-schema-scoped query).
+    if t == "redshift":
+        # Redshift has no text-to-regclass cast ("cannot cast type text to regclass"), so the
+        # postgres-wire listing below failed and the Register Table picker stayed empty. Its
+        # tables and their comments are read from the pg_catalog it keeps.
+        result = await pool.execute(
+            source_id,
+            "SELECT c.relname, d.description FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "LEFT JOIN pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
+            "WHERE n.nspname = $1 AND c.relkind = 'r' ORDER BY c.relname",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+
+    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum"):
+        # cockroachdb/yugabytedb/greenplum: same wire-compatible grouping as native_schemas's
+        # postgres-wire branch — were missing from this tuple, so each fell through to the
+        # generic engine-catalog fallback (empty pre-registration), leaving the Register Table
+        # TABLE picker permanently empty even once the schema picker itself worked (verified
+        # live: cockroachdb's schema list resolves fine, but "widgets" never appeared in the
+        # table select without this).
         result = await pool.execute(
             source_id,
             "SELECT table_name, obj_description("
@@ -2112,10 +2125,13 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t in ("fabric", "synapse"):
         from provisa.api.admin.types import AvailableTableType
 
+        # A Synapse serverless pool holds no tables of its own, only views and external tables,
+        # so its views are what it offers; a Fabric warehouse offers its base tables.
+        kinds = "'BASE TABLE', 'VIEW'" if t == "synapse" else "'BASE TABLE'"
         result = await pool.execute(
             source_id,
             "SELECT TABLE_NAME, NULL FROM INFORMATION_SCHEMA.TABLES "
-            "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+            f"WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN ({kinds}) ORDER BY TABLE_NAME",
             [schema_name],
         )
         return [AvailableTableType(name=row[0], comment=None) for row in result.rows]

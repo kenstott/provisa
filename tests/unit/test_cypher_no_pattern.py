@@ -112,7 +112,7 @@ def test_a_time_value_is_written_in_the_answer_as_iso_8601():
 
 
 def test_a_temporal_value_built_from_a_map_is_that_value():
-    """REQ-2172: a map of components builds the value (it was refused by name before)."""
+    """REQ-2173: a map of components builds the value (it was refused by name before)."""
     import datetime
 
     assert _rows("RETURN localtime({hour: 10, minute: 35}) AS t") == [(datetime.time(10, 35),)]

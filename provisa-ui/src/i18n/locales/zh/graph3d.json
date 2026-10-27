@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "数据产品及其组成部分的 3D 图",
-    "panelTitle": "知识图谱",
-    "expandTitle": "{{product}}：知识图谱",
+    "panelTitle": "图",
+    "expandTitle": "{{product}}：图",
     "productMap": "产品地图",
     "preset": "预设",
-    "preset_knowledge": "知识图谱",
+    "preset_all": "全部",
     "preset_ontology": "本体",
-    "preset_productMap": "产品地图",
-    "preset_lineage": "血缘",
+    "preset_products": "产品",
     "layers": "图层",
     "layer_products": "产品和域",
     "layer_tables": "成员表",
@@ -96,7 +95,6 @@
     "openAsQueryFocused": "搜索或聚焦的邻域目前还无法用一个查询表达。",
     "openAsQueryCompiling": "正在编译查询…",
     "openAsQueryNoCypher": "此查询没有 Cypher 形式。",
-    "openAsQuerySparqlLater": "SPARQL 将在其端点可用后开放。",
     "layersMenu": "图层",
     "termsMenu": "术语",
     "menuAll": "全部",
@@ -109,6 +107,8 @@
     "overBudget": "{{count}} 个匹配；请缩小搜索范围或选择一个域",
     "domainCount": "{{domain}}（{{count}}）",
     "unlinkedTables": "锚定在尚未关联为同一实体的表上：{{tables}}",
-    "status_draft": "草稿"
+    "status_draft": "草稿",
+    "openAsQueryNoSparql": "此查询没有 SPARQL 形式。",
+    "openAsQuerySparqlRoots": "此查询的每个根都是一个单独的 SPARQL 查询：请打开 GraphQL 逐个读取。"
   }
 }

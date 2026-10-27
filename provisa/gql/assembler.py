@@ -164,7 +164,7 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return _json_maps(col, value)
     if kind == GraphVarKind.JSON_LIST:
         return _json_list(col, value)
-    if kind == GraphVarKind.DURATION:  # REQ-2172
+    if kind == GraphVarKind.DURATION:  # REQ-2173
         from provisa.gql.temporal import iso_duration
 
         months, days, micros = (int(v) for v in value)
@@ -577,7 +577,7 @@ def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
         return {k: to_serializable(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [to_serializable(i) for i in obj]
-    if isinstance(obj, (datetime.date, datetime.time)):  # REQ-2172: as Cypher writes it
+    if isinstance(obj, (datetime.date, datetime.time)):  # REQ-2173: as Cypher writes it
         from provisa.gql.temporal import cypher_text
 
         return cypher_text(obj)

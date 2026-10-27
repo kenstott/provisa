@@ -1,14 +1,13 @@
 {
   "graph3d": {
     "canvasLabel": "Grafo 3D dos produtos de dados e do que os compõe",
-    "panelTitle": "Grafo de conhecimento",
-    "expandTitle": "{{product}}: grafo de conhecimento",
+    "panelTitle": "Grafo",
+    "expandTitle": "{{product}}: grafo",
     "productMap": "Mapa de produtos",
     "preset": "Predefinição",
-    "preset_knowledge": "Grafo de conhecimento",
+    "preset_all": "Tudo",
     "preset_ontology": "Ontologia",
-    "preset_productMap": "Mapa de produtos",
-    "preset_lineage": "Linhagem",
+    "preset_products": "Produtos",
     "layers": "Camadas",
     "layer_products": "Produtos e domínios",
     "layer_tables": "Tabelas membro",
@@ -96,7 +95,6 @@
     "openAsQueryFocused": "A vizinhança da pesquisa ou do foco ainda não é expressável como uma só consulta.",
     "openAsQueryCompiling": "Compilando a consulta…",
     "openAsQueryNoCypher": "Esta consulta não tem forma Cypher.",
-    "openAsQuerySparqlLater": "SPARQL abrirá quando seu endpoint estiver disponível.",
     "layersMenu": "Camadas",
     "termsMenu": "Termos",
     "menuAll": "todos",
@@ -109,6 +107,8 @@
     "overBudget": "{{count}} correspondências; refine a busca ou escolha um domínio",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Ancorado em tabelas ainda não ligadas como a mesma entidade: {{tables}}",
-    "status_draft": "Rascunho"
+    "status_draft": "Rascunho",
+    "openAsQueryNoSparql": "Esta consulta não tem forma SPARQL.",
+    "openAsQuerySparqlRoots": "Cada raiz desta consulta é sua própria consulta SPARQL: abra o GraphQL para lê-las uma a uma."
   }
 }

@@ -208,6 +208,13 @@
     "colParentDomain": "דומיין אב",
     "parentDomainHint": "תפקיד שקיבל גישה לדומיין האב מגיע גם לדומיין זה.",
     "noParentDomain": "ללא אב",
-    "stewardInherited": "בירושה"
+    "stewardInherited": "בירושה",
+    "apolloSubgraph": "תת-גרף של Apollo Federation",
+    "apolloSubgraphEnabled": "הפעל כתת-גרף",
+    "apolloSubgraphEnabledHint": "מוסיף את _service ו-_entities אל /data/graphql עבור התפקיד שלהלן, כדי ש-Apollo Router יוכל להרכיב את הארגון הזה לסופר-גרף.",
+    "apolloSubgraphName": "שם תת-הגרף",
+    "apolloSubgraphNameHint": "השם שבו הסופר-גרף מכיר את תת-הגרף הזה.",
+    "apolloSubgraphRole": "פועל בתפקיד",
+    "apolloSubgraphRoleHint": "סופר-גרף אינו יכול להעביר את זהות הקורא שלו, ולכן הנתב מתחבר בתפקיד הזה וכל ישות שהוא מאחזר מנוהלת כתפקיד זה: לפי כללי השורות, המיסוך והנראות שלו."
   }
 }

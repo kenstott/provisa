@@ -23,7 +23,7 @@
 // PROVISA_E2E_DEMO_PREFIX overrides it; default is unchanged so every existing caller (CI,
 // local runs) behaves exactly as before.
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -49,6 +49,9 @@ export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_REDIS_PORT: String(E2E_REDIS_PORT),
   PROVISA_DEMO_CASSANDRA_PORT: String(E2E_CASSANDRA_PORT),
   PROVISA_DEMO_SPARQL_PORT: String(E2E_SPARQL_PORT),
+  // The image's default is a fixed 4 GB heap, for an in-memory graph of a few thousand triples:
+  // the provisioning lane's runner (16 GB) ran out of memory with every demo source up (run 40115205350).
+  PROVISA_DEMO_SPARQL_JAVA_OPTIONS: "-Xmx512m -Xms128m",
   PROVISA_DEMO_PROMETHEUS_PORT: String(E2E_PROMETHEUS_PORT),
   PROVISA_DEMO_CHINOOK_PORT: String(E2E_CHINOOK_PORT),
   PROVISA_DEMO_SPLUNK_PORT: String(E2E_SPLUNK_PORT),
@@ -75,18 +78,22 @@ export type DemoSource = (typeof DEMO_SOURCES)[number];
 
 const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
-const ENV_ARGS = Object.entries(DEMO_SOURCE_ENV)
-  .map(([k, v]) => `--env ${k}=${v}`)
-  .join(" ");
 // REQ-1772: see module comment above.
 export const DEMO_PREFIX = process.env.PROVISA_E2E_DEMO_PREFIX ?? "provisa-e2e";
 
+/** provision.py's arguments, one element each: never joined into a shell line, where a value
+ * with a space (the Fuseki JVM options) split into two arguments (run 40119276840). */
+export function provisionArgv(cmd: "up" | "down", names: readonly string[]): string[] {
+  const env = Object.entries(DEMO_SOURCE_ENV).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
+  return [PROVISION, cmd, "--prefix", DEMO_PREFIX, ...env, ...names];
+}
+
 function provision(cmd: "up" | "down", names: readonly DemoSource[]): void {
   if (names.length === 0) return;
-  execSync(
-    `"${PYTHON}" "${PROVISION}" ${cmd} --prefix ${DEMO_PREFIX} ${ENV_ARGS} ${names.join(" ")}`,
-    { stdio: "pipe", env: { ...process.env, ...DEMO_SOURCE_ENV } },
-  );
+  execFileSync(PYTHON, provisionArgv(cmd, names), {
+    stdio: "pipe",
+    env: { ...process.env, ...DEMO_SOURCE_ENV },
+  });
 }
 
 /**

@@ -32,7 +32,7 @@ class GraphVarKind(str, Enum):
     # A list literal of values of several types ([1, 'a', true]): each value JSON-encoded, so the
     # list is one engine type; the answer decodes them.
     JSON_LIST = "JSON_LIST"
-    DURATION = "DURATION"  # REQ-2172: a duration's [months, days, microseconds]
+    DURATION = "DURATION"  # REQ-2173: a duration's [months, days, microseconds]
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"
@@ -71,7 +71,7 @@ class UnregisteredRelationshipType(CypherMistake):
     traversal exists only along a registered relationship, so the statement is refused -- on
     every surface that carries Cypher, since every one of them translates it here. Naming a type
     that does not exist is the user's mistake (REQ-778): the message offers the registered types
-    nearest the first one named."""
+    nearest the first one named, as the nearest, not as every one there is."""
 
     def __init__(self, types: list[str], registered: set[str]) -> None:
         self.types = types
@@ -89,7 +89,7 @@ class UnregisteredRelationshipType(CypherMistake):
         )
         super().__init__(
             "cypher.unknown_relationship_type",
-            f"There is no relationship type {named}. Registered types: {near}.",
+            f"There is no relationship type {named}. Nearest registered types: {near}.",
             types=named,
             suggestions=near,
         )

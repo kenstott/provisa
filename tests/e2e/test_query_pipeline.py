@@ -119,7 +119,10 @@ class TestValidationErrors:
             "/data/graphql",
             json={"query": "{ sa__orders { id bogus_field } }", "role": "org_admin"},
         )
-        assert resp.status_code == 400
+        # A document that does not validate: its errors, no data (REQ-2167, GraphQL over HTTP).
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["errors"] and "data" not in body
 
     async def test_unknown_role(self, client):
         # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); an unknown

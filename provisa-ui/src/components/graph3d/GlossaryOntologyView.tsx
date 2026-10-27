@@ -32,7 +32,7 @@ import {
   type OntologyRows,
 } from "./glossaryGraphData";
 import { NODE_BUDGET } from "./neighbourhood";
-import { GraphModal } from "./KnowledgeGraphPanel";
+import { GraphModal } from "./GraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
 import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
@@ -220,7 +220,6 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         query={asQuery(read.all)}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
-        zero={[]}
         search={search}
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
@@ -236,7 +235,6 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus={null}
-        zero={[]}
         search={search}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"

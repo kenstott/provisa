@@ -506,6 +506,48 @@ async def _relationship_alias_refusal(
     )
 
 
+async def _change_product_status(
+    info: StrawberryInfo, product_id: str, done: str, change: Any
+) -> MutationResult:  # REQ-1634
+    """One status action on a data product, in one transaction, by the product's domain's writer;
+    a refusal names its code (data_product.status.<code>) and writes nothing."""
+    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability(info, "data_product_rw")
+    identity = getattr(info.context["request"].state, "identity", None)
+    user_id = getattr(identity, "user_id", None)
+    by = None if user_id is None or user_id == "anonymous" else str(user_id)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        conn = cast("Connection", conn)
+        stored = await data_product_repo.get(conn, product_id)
+        if stored is None:
+            return MutationResult(
+                success=False,
+                message=f"Data product {product_id!r} not found",
+                code="schema.data_product_not_found",
+                params={"data_product": product_id},
+            )
+        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
+        try:
+            async with conn.transaction():
+                await change(conn, by)
+        except data_product_repo.StatusRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code=f"data_product.status.{refused.code}",
+                params={"data_product": product_id, **refused.params},
+            )
+    return MutationResult(
+        success=True,
+        message=f"Data product {product_id!r} {done}",
+        code=f"data_product.status.{done}",
+        params={"data_product": product_id},
+    )
+
+
 async def _save_data_product(
     info: StrawberryInfo, input: DataProductInput, *, creating: bool
 ) -> MutationResult:  # REQ-1634
@@ -564,9 +606,20 @@ async def _save_data_product(
             limitations=input.limitations,
             usage=input.usage,
             version=input.version,
-            status=input.status,
+            # REQ-1634 STATUS: the lifecycle changes only by its actions; an edit keeps it.
+            **(
+                {
+                    "status": stored["status"],
+                    "status_reason": stored["status_reason"],
+                    "retire_on": stored["retire_on"],
+                    "successor": stored["successor_id"],
+                }
+                if stored is not None
+                else {}
+            ),
             sla=input.sla,
             support=input.support,
+            support_contact=input.support_contact or None,
             # Absent or null is "no custom properties" (DataProductInput says why).
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
         )
@@ -2584,9 +2637,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
 
+        # The token as typed: a value, or a reference resolved in the org's vault.
+        async with bound_to_request_org():
+            resolved = resolve_secrets(token)
         try:
-            staged_root = await stage_dataset(token, owner, ref)
+            staged_root = await stage_dataset(resolved, owner, ref)
         except UnsupportedKaggleDataset as exc:
             return KaggleStageResultType(
                 success=False, message=str(exc), directory="", suggested_source_id=""
@@ -2604,9 +2662,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def refresh_kaggle_source(  # REQ-1780/1781/1782/1783
-        self, info: StrawberryInfo, source_id: str, token: str
+        self, info: StrawberryInfo, source_id: str
     ) -> MutationResult:
-        """Re-fetch a Kaggle-derived source's dataset in place. stage_dataset's own contract
+        """Re-fetch a Kaggle-derived source's dataset in place, with the source's own token. stage_dataset's own contract
         (downloader.py) is idempotent -- re-running it overwrites each file at the SAME directory
         registerSource already points at.
 
@@ -2617,8 +2675,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         the directory on disk without also evicting that cache would silently keep serving
         whatever schema the server saw at its first attach — the exact bug `stop_endpoint`
         (pgwire_replica.py) was added THIS SESSION to close for delete+recreate; a refresh needs
-        the identical fix. The Kaggle token is deliberately never persisted server-side (REQ-1783)
-        -- the caller re-enters it for this call, same as the original staging step."""
+        the identical fix. The token is the source's credential field as the operator entered it
+        (a value, or a reference they typed), resolved here as at its creation."""
         from datetime import datetime, timezone
         from pathlib import Path
 
@@ -2651,6 +2709,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.not_a_kaggle_source",
                 params={"source": source_id},
             )
+        from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
+
+        if not row.get("password_ref"):
+            return MutationResult(
+                success=False,
+                message=f"Kaggle dataset {owner}/{ref}: the source holds no Kaggle API token; "
+                "add it on the Sources form, where its token is entered",
+                code="schema.kaggle_token_missing",
+                params={"owner": owner, "ref": ref},
+            )
+        async with bound_to_request_org():
+            token = resolve_secrets(row["password_ref"])
         # REQ-1787: skip the re-download (and the pgwire endpoint teardown it would otherwise
         # force) when Kaggle has nothing newer than what's already on disk -- the staged files'
         # own mtime IS the "last refreshed at" record; no separate timestamp needs to be stored.
@@ -3176,6 +3247,54 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Data product {id!r} not found",
             code="schema.data_product_not_found",
             params={"data_product": id},
+        )
+
+    # REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+
+    @strawberry.mutation
+    async def publish_data_product(self, info: StrawberryInfo, id: str) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info, id, "published", lambda conn, by: data_product_repo.publish(conn, id, by=by)
+        )
+
+    @strawberry.mutation
+    async def deprecate_data_product(
+        self, info: StrawberryInfo, id: str, reason: str, retire_on: date | None = None
+    ) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info,
+            id,
+            "deprecated",
+            lambda conn, by: data_product_repo.deprecate(
+                conn, id, reason=reason, retire_on=retire_on, by=by, today=date.today()
+            ),
+        )
+
+    @strawberry.mutation
+    async def retire_data_product(
+        self, info: StrawberryInfo, id: str, reason: str, successor: str | None = None
+    ) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info,
+            id,
+            "retired",
+            lambda conn, by: data_product_repo.retire(
+                conn, id, reason=reason, successor=successor, by=by
+            ),
+        )
+
+    @strawberry.mutation
+    async def restore_data_product(self, info: StrawberryInfo, id: str) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info, id, "restored", lambda conn, by: data_product_repo.restore(conn, id, by=by)
         )
 
     @strawberry.mutation
@@ -4077,6 +4196,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
                     consistency=input.mv_consistency,  # REQ-879
                     preprocess=input.mv_preprocess,  # REQ-957
+                    hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
+                    table_id=table_id,  # REQ-2133
+                    product_id=input.product_id,  # REQ-2133
                     business_key=list(input.business_key),  # REQ-2109
                     valid_time=input.valid_time,  # REQ-2109
                     recorded_time=input.recorded_time,  # REQ-2109
@@ -6192,6 +6314,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     warnings=r["warnings"],
                     compiled_cypher=r.get("compiled_cypher"),
                     cypher_error=r.get("cypher_error"),
+                    compiled_sparql=r.get("compiled_sparql"),
+                    sparql_error=r.get("sparql_error"),
                 )
             )
         return out

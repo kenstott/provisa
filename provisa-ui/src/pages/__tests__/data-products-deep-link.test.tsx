@@ -33,12 +33,16 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
+vi.mock("../../components/graph3d/GraphPanel", () => ({
   ProductMapButton: () => null,
-  KnowledgeGraphPanel: () => null,
+  GraphPanel: () => null,
 }));
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
+  useAuth: () => ({
+    role: { id: "admin", capabilities: [] },
+    selectedRoles: [{ id: "admin" }],
+    availableRoles: [],
+  }),
 }));
 vi.mock("../../hooks/useCapability", () => ({
   useCapability: () => false,
@@ -48,7 +52,15 @@ vi.mock("../../api/actions", () => ({
   saveFunction: vi.fn(),
 }));
 vi.mock("../../api/lineage", () => ({
-  fetchFederationGraph: () => Promise.resolve({ nodes: [], edges: [] }),
+  fetchProductLineage: () =>
+    Promise.resolve({
+      nodes: [],
+      edges: [],
+      outputs: [],
+      members: [],
+      inputs: [],
+      dq: { expectations: [], promises: [], related: [], unattached: [] },
+    }),
 }));
 vi.mock("../../api/glossary", () => ({
   fetchRelatedGlossaryTerms: () => Promise.resolve([]),
@@ -59,11 +71,20 @@ vi.mock("../data-products/DataProductDetailPanel", () => ({
   ),
 }));
 
+// REQ-2146: Pet Health has a finding; Workforce Ops has none.
+const FINDINGS = new Map([
+  [
+    "pet_health",
+    [{ kind: "no_owner", code: "data_product.finding.no_owner", message: "", params: {} }],
+  ],
+]);
+
 const products = [
   {
     id: "pet_health",
     domainId: "care",
     name: "Pet Health",
+    status: "live",
     purpose: "Pet health records",
     limitations: "",
     usage: "",
@@ -73,6 +94,7 @@ const products = [
     id: "workforce_ops",
     domainId: "ops",
     name: "Workforce Ops",
+    status: "draft",
     purpose: "Shelter staffing",
     limitations: "",
     usage: "",
@@ -88,6 +110,13 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
+  useDataProductFindings: () => ({ findings: FINDINGS, refetch: vi.fn(), error: undefined }),
+  useDataProductStatus: () => ({
+    publish: vi.fn(),
+    deprecate: vi.fn(),
+    retire: vi.fn(),
+    restore: vi.fn(),
+  }),
 }));
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
@@ -110,6 +139,26 @@ describe("the Data Products list's search", () => {
       expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument(),
     );
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pet invoices" } });
+    expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument();
+    expect(screen.queryByTestId("data-products-row-workforce_ops")).toBeNull();
+  });
+});
+
+describe("the Data Products list's lifecycle", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows each product's status", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    expect(await screen.findByTestId("data-products-status-pet_health")).toHaveTextContent("Live");
+    expect(screen.getByTestId("data-products-status-workforce_ops")).toHaveTextContent("Draft");
+  });
+
+  it("narrows to the products with findings, To review", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    await screen.findByTestId("data-products-row-workforce_ops");
+    fireEvent.click(screen.getByTestId("data-products-to-review-only"));
     expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument();
     expect(screen.queryByTestId("data-products-row-workforce_ops")).toBeNull();
   });

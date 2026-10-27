@@ -115,7 +115,7 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
--- REQ-1660: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
+-- REQ-1634: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
 -- already has the underlying source of truth -- team_role/owner_role resolve to individuals
 -- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
 -- inputPorts/outputPorts are derived from existing tag assignments/glossary/lineage rather
@@ -131,26 +131,35 @@ CREATE TABLE IF NOT EXISTS data_products (
     limitations   TEXT NOT NULL DEFAULT '',
     usage         TEXT NOT NULL DEFAULT '',
     version       TEXT,
-    status        TEXT,
+    -- REQ-1634 STATUS: draft, live, deprecated or retired, each asserted by an action.
+    status        TEXT NOT NULL DEFAULT 'draft',
+    status_reason TEXT,
+    retire_on     DATE,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
+    successor_id  TEXT REFERENCES data_products(id) ON DELETE SET NULL,
     sla           TEXT,
     support       TEXT,
     support_contact TEXT,
-    publish       BOOLEAN NOT NULL DEFAULT FALSE,
     custom_properties JSONB NOT NULL DEFAULT '{}'
 );
 
--- REQ-1660: added to a table that predates them.
+-- REQ-1634: added to a table that predates them.
 DO $$ BEGIN
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS team_role TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT '';
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS limitations TEXT NOT NULL DEFAULT '';
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT '';
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS version TEXT;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_reason TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS retire_on DATE;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_by TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS successor_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS sla TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support_contact TEXT;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS publish BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS custom_properties JSONB NOT NULL DEFAULT '{}';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
@@ -193,6 +202,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
+    mv_hold_on_failing_checks BOOLEAN NOT NULL DEFAULT false,  -- REQ-2133: built-in preflight
     business_key JSONB,  -- REQ-2109: columns identifying the same thing across versions
     valid_time TEXT,  -- REQ-2109: the column holding the date the business gives the record
     recorded_time TEXT,  -- REQ-2109: the column holding when this version was entered or changed
@@ -610,7 +620,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- Commands (tracked functions/webhooks) are named, not serial-keyed; no FK — their
     -- registries split across two tables and deletion cleanup is the mutation's job.
     command_name    TEXT,
-    -- REQ-1660: explicit data-product-level tags, distinct from tags inherited/rolled up
+    -- REQ-1634: explicit data-product-level tags, distinct from tags inherited/rolled up
     -- from member tables' own assignments (computed, not stored here).
     product_id      TEXT REFERENCES data_products(id) ON DELETE CASCADE,
     -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
@@ -643,7 +653,7 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1660: product-level tags, added to a table that predates them.
+-- REQ-1634: product-level tags, added to a table that predates them.
 DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
@@ -945,6 +955,16 @@ CREATE TABLE IF NOT EXISTS lineage_edges (
 CREATE TABLE IF NOT EXISTS checker_targets (
     table_id         INTEGER PRIMARY KEY,
     checked_table_id INTEGER NOT NULL
+);
+
+-- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
+-- no row has never run; the dry run writes none.
+CREATE TABLE IF NOT EXISTS checker_latest_runs (
+    table_id  INTEGER PRIMARY KEY,
+    scan_id   TEXT NOT NULL,
+    scan_time TIMESTAMPTZ NOT NULL,
+    outcome   TEXT NOT NULL CONSTRAINT checker_latest_runs_outcome_check
+              CHECK (outcome IN ('pass', 'fail'))
 );
 
 -- Relationship Discovery Candidates (Phase R)

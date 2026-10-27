@@ -91,11 +91,13 @@ const PRODUCT_ROW = {
   limitations: "",
   usage: "",
   version: "1",
-  status: "published",
+  status: "live",
+  status_reason: null,
+  retire_on: null,
+  successor_id: null,
   sla: null,
   support: null,
   support_contact: null,
-  publish: null,
   custom_properties: '{"tier":"gold"}',
 };
 
@@ -121,7 +123,7 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
     expect(q?.sql).toBe(
-      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "sla", "support", "support_contact", "publish", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
+      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "sla", "support", "support_contact", "custom_properties" FROM "meta"."data_products" WHERE "id" = \'c360\'',
     );
     expect(q?.jsonapi).toBe("/data/jsonapi/meta/data_products?filter[id]=c360");
   });
@@ -161,18 +163,6 @@ describe("the panel's meta reads", () => {
                       table_columns: [
                         { column_name: "email", glossary_ref: [{ term_id: 7, term: CUSTOMER }] },
                       ],
-                      checked_by: [
-                        {
-                          id: 4,
-                          source_id: "dq",
-                          domain_id: "sales",
-                          schema_name: "dq",
-                          table_name: "customers_quality",
-                          description: null,
-                          dq_contract: "dataset: pg/public/customers",
-                          checks: { id: 1, domain_id: "sales", table_name: "customers" },
-                        },
-                      ],
                     },
                   ],
                   commands: [{ name: "refresh", description: null, domain_id: "sales" }],
@@ -196,8 +186,10 @@ describe("the panel's meta reads", () => {
       ownerRole: "steward",
       customProperties: { tier: "gold" },
     });
-    // REQ-1443 clause 10: the checker scanning a member is the product's through that member.
-    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers", "customers_quality"]);
+    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers"]);
+    // REQ-2157: the product's checks are its lineage's (the product lineage endpoint), not the panel's
+    // meta read.
+    expect(core).not.toHaveProperty("checks");
     expect(core?.commands?.map((c) => c.name)).toEqual(["refresh"]);
     // The bound term and the abstract term its edge reaches.
     expect(core?.terms?.map((t) => t.name)).toEqual(["Customer", "Party"]);

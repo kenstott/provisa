@@ -33,6 +33,7 @@ import { Tip } from "../components/Tip";
 import { useAuth } from "../context/AuthContext";
 import { fetchNlMode, submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
 import { getStored, setStored } from "../lib/browserStorage";
+import { kept, restored } from "../lib/resultWithQuery";
 
 const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
   sql: { path: "/sql", stateKey: "sql" },
@@ -144,10 +145,15 @@ export function NlPage() {
   }, [actingRoleId]);
   const strictLocked = !(nlMode?.role === actingRoleId && nlMode.nonStrict);
   const effectiveStrict = strict || strictLocked;
+  // The answers are kept with the question that produced them, and shown only beside it.
   const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
     try {
       const saved = getStored(NL_BRANCHES_KEY);
-      const parsed = saved ? JSON.parse(saved) : {};
+      const parsed =
+        restored<Partial<Record<Target, BranchState>>>(
+          saved ? JSON.parse(saved) : null,
+          getStored(NL_QUESTION_KEY) ?? "",
+        ) ?? {};
       return {
         sql: parsed.sql ?? EMPTY_BRANCH,
         graphql: parsed.graphql ?? EMPTY_BRANCH,
@@ -167,11 +173,13 @@ export function NlPage() {
       };
     }
   });
-  const [hasResults, setHasResults] = useState(() => getStored(NL_BRANCHES_KEY) !== null);
+  const [hasResults, setHasResults] = useState(() =>
+    TARGETS.some((t) => branches[t] !== EMPTY_BRANCH),
+  );
   const cancelRef = useRef<(() => void) | null>(null);
 
-  const saveBranches = useCallback((next: Record<Target, BranchState>) => {
-    setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+  const saveBranches = useCallback((asked: string, next: Record<Target, BranchState>) => {
+    setStored(NL_BRANCHES_KEY, JSON.stringify(kept(asked, next)));
     setBranches(next);
   }, []);
 
@@ -190,7 +198,7 @@ export function NlPage() {
     setGlobalError(null);
     setHasResults(true);
     setSubmitting(true);
-    saveBranches({
+    saveBranches(q, {
       sql: { ...EMPTY_BRANCH, loading: true },
       graphql: { ...EMPTY_BRANCH, loading: true },
       cypher: { ...EMPTY_BRANCH, loading: true },
@@ -206,7 +214,7 @@ export function NlPage() {
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
-      saveBranches({
+      saveBranches(q, {
         sql: EMPTY_BRANCH,
         graphql: EMPTY_BRANCH,
         cypher: EMPTY_BRANCH,
@@ -226,7 +234,7 @@ export function NlPage() {
             ...prev,
             [t]: { query: event.query, result: event.result, error: event.error, loading: false },
           };
-          setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
           return next;
         });
       },
@@ -237,7 +245,7 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH };
           }
-          setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
           return next;
         });
       },
@@ -249,7 +257,7 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH, error: msg };
           }
-          setStored(NL_BRANCHES_KEY, JSON.stringify(next));
+          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
           return next;
         });
       },

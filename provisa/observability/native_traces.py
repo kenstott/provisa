@@ -24,8 +24,10 @@ indefinitely, as Trino keeps them; compaction removes only the batch files it me
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Sequence
@@ -57,6 +59,15 @@ SCHEMA_FILE = "_schema.parquet"
 #: Parquet, so no read of the folder lists it.
 COMPACT_LOCK = ".compact.lock"
 
+#: A traces row's identity. Deduplicating on it rather than every column costs a fifth to a half as
+#: much: on a million rows a count read 0.04 s against 0.20 s, a route's aggregate 0.021 s against
+#: 0.044 s (0.003 s and 0.006 s with no deduplication).
+SPAN_KEY = ("trace_id", "span_id", "tenant_id")
+
+#: Each day's batches compaction has merged, by name, with when: kept in place until no read
+#: can still hold a listing of them (``compact``). Not Parquet, so the view's glob skips it.
+MERGED_FILE = "_merged.json"
+
 _ARROW = {
     "text": pa.string(),
     "integer": pa.int32(),
@@ -83,15 +94,18 @@ def traces_scan(root: str) -> str:
     written with ``TRACES_SCHEMA`` (``write_batch``, ``compact``), so none needs its columns
     matched by name.
 
-    Known limitation: a query of the view lists the folder and then opens each file, so one
-    running while ``compact`` removes a batch it listed fails with DuckDB's "Cannot open file".
-    It touches only reads of the traces and is reported, never silent. Moving merged batches out
-    of the folder fails the same way (the listed path is gone either way); what closes it is a
-    batch kept in place, read alongside its merged copy, until no read can still hold its listing
-    (a grace longer than the request timeout), with the view reading each row once."""
+    A query of the view lists the folder and then opens each file, so a batch removed between the
+    two would fail it ("Cannot open file"). ``compact`` keeps each batch it merged in place, beside
+    its merged copy, until no read can still hold a listing of it; the view reads each span once
+    (DISTINCT ON its key, ``SPAN_KEY``: a batch's rows and their merged copy are the same spans,
+    and a record landed for another org is another span of that org's)."""
     schema = os.path.join(root, SCHEMA_FILE).replace("'", "''")
     every = os.path.join(root, "**", "*.parquet").replace("'", "''")
-    return f"SELECT * FROM read_parquet(['{schema}', '{every}'], hive_partitioning = false)"
+    key = ", ".join(SPAN_KEY)
+    return (
+        f"SELECT DISTINCT ON ({key}) * "
+        f"FROM read_parquet(['{schema}', '{every}'], hive_partitioning = false)"
+    )
 
 
 def signal_views(root: str, transpile: Callable[[str], str]) -> dict[str, str]:
@@ -173,9 +187,15 @@ def landed_rows(spans: Sequence[Any]) -> list[dict]:
     return rows
 
 
-def compact(root: str, target_bytes: int = COMPACT_TARGET_BYTES) -> int:
-    """Merge each day's files smaller than ``target_bytes`` into files of up to that size, then
-    remove the files merged; the number of files removed.
+def compact(
+    root: str,
+    target_bytes: int = COMPACT_TARGET_BYTES,
+    *,
+    grace_s: float,
+    clock: Callable[[], float] = time.time,
+) -> int:
+    """Merge each day's files smaller than ``target_bytes`` into files of up to that size; the
+    number of merged files removed.
 
     Every process of a host that shares the folder compacts it on the same schedule, so a pass
     runs only under the folder's lock (``COMPACT_LOCK``): a pass that finds it held leaves the
@@ -183,9 +203,12 @@ def compact(root: str, target_bytes: int = COMPACT_TARGET_BYTES) -> int:
     write their merged copy, and every row of them would then be there twice.
 
     Each input is written to the merged file as it is read, so a pass holds one input file of
-    Arrow at a time, never a day's. The merged files are renamed into place before their inputs
-    are removed, so no row is ever absent from the folder; a read in the instant between the two
-    can see the merged rows twice.
+    Arrow at a time, never a day's. A merged file is kept in place, beside its merged copy, for
+    ``grace_s`` seconds -- longer than any read of the folder can hold a listing of it
+    (``limits.longest_request_timeout``) -- and is removed by the first compaction after that; it
+    is never merged again. A read listing the folder meanwhile opens every file it listed and
+    reads each row once (``traces_scan``). The merged files are renamed into place before any
+    input is recorded, so no row is ever absent from the folder.
     """
     if not os.path.isdir(root):
         return 0
@@ -197,21 +220,42 @@ def compact(root: str, target_bytes: int = COMPACT_TARGET_BYTES) -> int:
         for entry in sorted(os.listdir(root)):
             folder = os.path.join(root, entry)
             if entry.startswith("_date=") and os.path.isdir(folder):
-                removed += _compact_day(folder, target_bytes)
+                removed += _compact_day(folder, target_bytes, grace_s, clock)
         return removed
     finally:
         lock.release()
 
 
-def _compact_day(folder: str, target_bytes: int) -> int:
-    """:func:`compact` for one day's folder, under the folder's lock."""
+def _compact_day(folder: str, target_bytes: int, grace_s: float, clock: Callable[[], float]) -> int:
+    """:func:`compact` for one day's folder, under the folder's lock: merge its small batches not
+    merged before, record them, and remove the recorded ones past ``grace_s``."""
+    merged = _merged(folder)
     small = [
         os.path.join(folder, name)
         for name in sorted(os.listdir(folder))
-        if name.endswith(".parquet") and os.path.getsize(os.path.join(folder, name)) < target_bytes
+        if name.endswith(".parquet")
+        and name not in merged
+        and os.path.getsize(os.path.join(folder, name)) < target_bytes
     ]
-    if len(small) < 2:
-        return 0
+    if len(small) >= 2:
+        _merge_into_place(folder, small, target_bytes)
+        at = clock()
+        merged.update({os.path.basename(p): at for p in small})
+    removed = 0
+    now = clock()
+    for name, at in list(merged.items()):
+        if now - at >= grace_s:
+            os.remove(os.path.join(folder, name))
+            del merged[name]
+            removed += 1
+    _write_merged(folder, merged)
+    return removed
+
+
+def _merge_into_place(folder: str, small: list[str], target_bytes: int) -> None:
+    """Write ``small``'s rows into merged files of up to ``target_bytes``, one input at a time, and
+    rename them into place. On a failure the merged files of this pass are removed: the inputs
+    stay, and kept, their rows would be there twice."""
     writer: pq.ParquetWriter | None = None
     tmp = ""
     filled = 0
@@ -240,25 +284,45 @@ def _compact_day(folder: str, target_bytes: int) -> int:
         roll()
         writer = None
     except BaseException:
-        # The inputs stay, so the merged files of this pass go: kept, their rows would be twice.
         if writer is not None:
             writer.close()
             os.remove(tmp)
         for path in rolled:
             os.remove(path)
         raise
-    for path in small:
-        os.remove(path)
-    return len(small)
+
+
+def _merged(folder: str) -> dict[str, float]:
+    path = os.path.join(folder, MERGED_FILE)
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def _write_merged(folder: str, merged: dict[str, float]) -> None:
+    path = os.path.join(folder, MERGED_FILE)
+    if not merged:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    tmp = os.path.join(folder, f".{uuid.uuid4().hex}.tmp")
+    with open(tmp, "w") as f:
+        json.dump(merged, f)
+    os.replace(tmp, path)
 
 
 def _landed(root: str) -> pa.Table:
-    """Every trace row landed under ``root``, each file read as itself (see ``compact``)."""
+    """Every trace row landed under ``root``, each file read as itself (see ``compact``) and a
+    merged batch kept beside its merged copy not read again."""
     paths = [
         os.path.join(folder, name)
         for folder, _dirs, names in os.walk(root)
         for name in sorted(names)
-        if name.endswith(".parquet") and name != SCHEMA_FILE and not name.startswith(".")
+        if name.endswith(".parquet")
+        and name != SCHEMA_FILE
+        and not name.startswith(".")
+        and name not in _merged(folder)
     ]
     tables = [pq.ParquetFile(p).read().cast(TRACES_SCHEMA) for p in sorted(paths)]
     return pa.concat_tables(tables) if tables else TRACES_SCHEMA.empty_table()

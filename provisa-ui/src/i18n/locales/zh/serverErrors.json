@@ -130,7 +130,12 @@
       "address_not_found": "没有可解析的内容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中与其他根字段组合使用",
       "source_starting": "源 {{source}} 仍在启动。请稍后重试。",
-      "view_outside_load_window": "视图 {{view}} 只能在其读取时段内读取。下次开放时间为 {{opens_at}}。"
+      "view_outside_load_window": "视图 {{view}} 只能在其读取时段内读取。下次开放时间为 {{opens_at}}。",
+      "graphql_body_missing": "请求没有正文:GraphQL 请求是包含查询的 JSON 对象。",
+      "graphql_body_not_json": "请求正文不是 JSON:{{error}}",
+      "graphql_request_not_object": "GraphQL 请求是包含查询的 JSON 对象。",
+      "graphql_parameter_type": "GraphQL 请求的 {{parameter}} 必须是 {{expected}}。",
+      "graphql_mutation_over_get": "变更操作用 POST 发送,绝不用 GET。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -461,7 +466,8 @@
       "relationship_same_entity_direct": "关系 '{{relationship}}' 不能标记为同一实体：它通过联结表或函数连接，而不是一行对一行",
       "relationship_same_entity_cardinality": "关系 '{{relationship}}' 不能标记为同一实体：它是 {{cardinality}}，而同一实体是一行对一行",
       "relationship_same_entity_not_grounded": "关系 '{{relationship}}' 不能标记为同一实体：{{source}} 和 {{target}} 未关联到同一术语",
-      "relationship_same_entity_not_keys": "关系 '{{relationship}}' 不能标记为同一实体：{{columns}} 不是 {{table}} 的主键或唯一键"
+      "relationship_same_entity_not_keys": "关系 '{{relationship}}' 不能标记为同一实体：{{columns}} 不是 {{table}} 的主键或唯一键",
+      "kaggle_token_missing": "Kaggle 数据集 {{owner}}/{{ref}}：数据源中没有 Kaggle API 令牌。请在数据源表单中添加，令牌在那里输入。"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
@@ -491,7 +497,10 @@
       "unknown_encryption_provider": "未知的加密提供程序 '{{provider}}'",
       "unknown_engine": "未知引擎 '{{engine}}'；有效值：{{valid}}",
       "use_domains_invalid": "use_domains 必须为 true、false 或 null",
-      "claims_with_multitenancy": "多租户部署不能从登录声明中读取角色分配：它按组织自行授予角色，而声明会覆盖这些授予。请将分配来源设置为 Provisa。"
+      "claims_with_multitenancy": "多租户部署不能从登录声明中读取角色分配：它按组织自行授予角色，而声明会覆盖这些授予。请将分配来源设置为 Provisa。",
+      "federation_unknown_field": "不是联邦设置：{{fields}}",
+      "federation_invalid": "联邦设置无效：{{error}}",
+      "federation_role_unknown": "联邦角色“{{role}}”不是此组织的角色"
     },
     "setup": {
       "admin_credentials_required": "需要 admin_username 和 admin_password",
@@ -541,7 +550,7 @@
       "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正则表达式：{{reason}}。=~ 需要正则表达式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
       "unknown_label": "不存在标签 :{{label}}。已注册的标签：{{suggestions}}。",
       "no_labels": "不存在标签 :{{label}}：此角色无法读取任何表。",
-      "unknown_relationship_type": "不存在关系类型 {{types}}。已注册的类型：{{suggestions}}。",
+      "unknown_relationship_type": "不存在关系类型 {{types}}。最接近的已注册类型：{{suggestions}}。",
       "no_relationship_types": "不存在关系类型 {{types}}：此角色无法遍历任何关系。",
       "type_mismatch": "在 {{expression}} 中，{{value}} 无法与类型为 {{property_type}} 的 {{property}} 比较。{{fix}}",
       "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分组之前筛选行。请在 WITH 中聚合，然后再筛选。",
@@ -702,6 +711,34 @@
       "also_term_needs_column": "改为给术语加标签需要指定一列。",
       "inherited_from_term": "此列是 PII，因为它表示 {{term}}。请取消该含义的标记，或者如果此列表示其他含义，请移动它。",
       "move_loses": "此次移动会使列失去标签，之后这些列将不再带有它们。请确认失去每个标签，或将标签带到列移入的术语上。"
+    },
+    "data_product": {
+      "status": {
+        "published": "数据产品 {{data_product}} 已发布。",
+        "deprecated": "数据产品 {{data_product}} 已标记为弃用。",
+        "retired": "数据产品 {{data_product}} 已停用。",
+        "restored": "数据产品 {{data_product}} 已恢复。",
+        "reason_required": "需要填写原因：说明为什么弃用或停用该数据产品。",
+        "not_found": "未找到数据产品 {{data_product}}。",
+        "not_draft": "只有草稿状态的数据产品可以发布；此产品为 {{status}}。",
+        "not_live": "只有已上线的数据产品可以弃用，只有已上线或已弃用的可以停用；此产品为 {{status}}。",
+        "not_restorable": "只有已弃用或已停用的数据产品可以恢复；此产品为 {{status}}。",
+        "retire_on_past": "计划停用日期 {{retire_on}} 已过。请选择今天或之后的日期。",
+        "successor_required": "此数据产品有 {{members}} 个成员；停用后它们会转给继任者。请选择一个。",
+        "successor_is_self": "数据产品不能是自己的继任者。",
+        "successor_retired": "继任者“{{successor}}”已停用。请选择一个正在使用的数据产品。",
+        "successor_other_domain": "继任者“{{successor}}”属于域 {{domain}}。产品的成员与其共享同一个域，因此请选择同一域中的继任者。"
+      },
+      "finding": {
+        "no_members": "没有任何表、视图或命令属于此数据产品。",
+        "member_deprecated": "成员表 {{table}} 已弃用。",
+        "no_owner": "没有所有者角色对此数据产品负责。",
+        "no_support_contact": "此数据产品没有支持联系人，而已配置的导出目标要求提供。",
+        "retirement_blocked": "此数据产品原定于 {{retire_on}} 停用，但仍有成员。请指定一个继任者接收这些成员后再停用。",
+        "domain_steward_unset": "域 {{domain}} 没有数据管家。",
+        "no_description": "此数据产品既未说明用途，也未说明使用方式。",
+        "successor_retired": "接收此产品成员的数据产品“{{successor}}”也已停用。"
+      }
     }
   }
 }

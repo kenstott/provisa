@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Cypher's temporal values as openCypher defines them, lowered onto the engine's own types
-(REQ-2172).
+(REQ-2173).
 
 A value's kind is read off the statement (its constructor, the function that returns it, the
 arithmetic that combines two, a variable a WITH or UNWIND carries): date, localtime, time,
@@ -18,7 +18,7 @@ microseconds, as openCypher's duration is months, days, seconds and nanoseconds.
 engine as those three numbers (an engine's driver would hand back a timedelta, its months read as
 30 days) and is written in the answer in ISO-8601, P..T.. (:func:`iso_duration`)."""
 
-# Requirements: REQ-2172
+# Requirements: REQ-2173
 
 from __future__ import annotations
 

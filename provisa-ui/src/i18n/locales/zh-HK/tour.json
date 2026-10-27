@@ -1763,6 +1763,42 @@
       "groupexposureRest": {
         "title": "透過 REST 取得同一答案",
         "description": "該視圖也是一個 REST 端點，這裏按是否超限分組並在伺服器端匯總，可直接用於風險報告或試算表。"
+      },
+      "agentdataScenario": {
+        "title": "把數據交給智能體",
+        "description": "一家零售商想讓 AI 智能體使用其訂單數據,但只能看到它所代表的人有權看到的內容。智能體透過 Provisa 的 MCP 伺服器存取數據。接下來的 MCP 瀏覽器準確展示這樣一個外部智能體所看到的內容。而 Polly 是在 Provisa 內部工作的助手。這是零售商的訂單資料庫,即時讀取。"
+      },
+      "agentdataCustomers": {
+        "title": "誰能看到哪些客戶",
+        "description": "規則在客戶表上:West 區的客服只能讀取 West 的客戶及其訂單,電郵地址被遮罩,看不到價格。BI 分析師可讀取所有區域和訂單金額,但看不到任何電郵地址。"
+      },
+      "agentdataSupportRole": {
+        "title": "以 West 區客服身份操作",
+        "description": "智能體以頁首中的角色身份操作。下一步會選擇 West 區客服,因此智能體的每次工具呼叫都以該角色執行。"
+      },
+      "agentdataSupportAsks": {
+        "title": "客服的問題",
+        "description": "智能體尋找表、編寫 SQL 並透過 MCP 工具執行,工具在執行時顯示。只返回 West 的客戶,其電郵地址以遮罩形式到達:該角色只能得到這些。"
+      },
+      "agentdataExplain": {
+        "title": "實際執行了甚麼",
+        "description": "打開智能體的 run_sql 呼叫:先是它發送的語句,然後是為其角色實際執行的語句。West 行篩選和電郵遮罩由 Provisa 加上。智能體兩者都沒寫,也從不會被告知。"
+      },
+      "agentdataOutOfReach": {
+        "title": "超出範圍的問題",
+        "description": "當被問到每位客戶的訂單總額時,智能體在其角色可讀的表中找不到價格,並如實說明。它無法繞過角色:每次工具呼叫都適用同樣的規則。"
+      },
+      "agentdataAnalystRole": {
+        "title": "現在以 BI 分析師身份",
+        "description": "下一步將頁首切換為 BI 分析師。智能體相同,角色不同。"
+      },
+      "agentdataAnalystAsks": {
+        "title": "同一問題,不同角色",
+        "description": "以分析師身份問同一問題:返回所有區域,完全沒有電郵欄,收入視圖也在其表中。同一個智能體、同一部伺服器,得到不同的表、行和欄。"
+      },
+      "agentdataConnect": {
+        "title": "你自己的智能體,同一部伺服器",
+        "description": "這就是瀏覽器中的智能體使用的伺服器。把這段設定貼到 Claude Desktop,或將任何 MCP 客戶端指向該 URL,你自己的智能體就能獲得同樣受管治的工具,遵守同樣的規則。"
       }
     },
     "status": {
@@ -1883,6 +1919,10 @@
       "groupexposure": {
         "title": "透過 Wikidata 計算集團風險承擔",
         "summary": "銀行對哪些企業集團超出了大額風險承擔限額？銀行的貸款賬簿按每個借款人擁有者的 LEI 透過 SPARQL 連接到 Wikidata 的母公司鏈，把每個借款人歸入其集團。銀行及其借款人是虛構的，集團是真實的。"
+      },
+      "agentdata": {
+        "title": "把數據交給智能體",
+        "summary": "能否把零售商的訂單數據交給 AI 智能體,並將其限制在用戶有權查看的範圍內?MCP 瀏覽器分別以客服和分析師身份展示智能體:不同的行和欄、遮罩的電郵,以及每個答案背後受管治的 SQL。"
       }
     }
   }

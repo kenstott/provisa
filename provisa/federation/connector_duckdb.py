@@ -600,8 +600,10 @@ class DuckDBMongoConnector(_DuckDBExtensionConnector):  # REQ-899
 
 
 class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
-    """Snowflake, attached read-only via the snowflake extension. Credentials arrive as a DuckDB
-    SECRET (TYPE snowflake) named by convention; secret creation is a provisioning step, not the attach."""
+    """Snowflake, attached read-only via the snowflake extension. The attach names a DuckDB SECRET
+    (TYPE snowflake) and creates it first, from the source, as the Azure MSSQL attach does: the
+    account is the Account URL's host without its snowflakecomputing.com domain (as Trino's
+    snowflake.account), the warehouse and role the source's federation hints."""
 
     source_type = "snowflake"
     key = "duckdb_snowflake"
@@ -609,10 +611,33 @@ class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "snowflake_query"
 
     def details(self, source: Source) -> dict:
+        from provisa.compiler.sql_literals import sql_literal
+        from provisa.core.secrets import resolve_secrets
+
+        def lit(value: str) -> str:
+            return sql_literal(value, "duckdb")
+
+        host = resolve_secrets(source.host or "")
+        suffix = ".snowflakecomputing.com"
+        account = host[: -len(suffix)] if host.endswith(suffix) else host
+        options = [
+            "TYPE snowflake",
+            f"ACCOUNT {lit(account)}",
+            f"USER {lit(resolve_secrets(source.username or ''))}",
+            f"PASSWORD {lit(resolve_secrets(source.password or ''))}",
+            f"DATABASE {lit(resolve_secrets(source.database or ''))}",
+        ]
+        for hint, option in (("warehouse", "WAREHOUSE"), ("role", "ROLE")):
+            if source.federation_hints.get(hint):
+                options.append(f"{option} {lit(source.federation_hints[hint])}")
+        secret = f"sf_{source.id}"
+        alias = f"_src_{source.id}"
         return {
-            "secret": f"sf_{source.id}",
-            "attach": f"ATTACH '' AS \"_src_{source.id}\" (TYPE snowflake, SECRET sf_{source.id}, READ_ONLY)",
-            "raw_alias": f"_src_{source.id}",
+            "attach": (
+                f'CREATE OR REPLACE SECRET "{secret}" ({", ".join(options)}); '
+                f'ATTACH \'\' AS "{alias}" (TYPE snowflake, SECRET "{secret}", READ_ONLY)'
+            ),
+            "raw_alias": alias,
         }
 
 

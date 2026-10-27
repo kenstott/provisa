@@ -42,6 +42,7 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
 import { RoleRead } from "./security/RoleRead";
 import { RoleCapabilities } from "./security/RoleCapabilities";
+import { RoleDataAccess } from "./security/RoleDataAccess";
 import { SessionValuesField } from "./security/SessionValuesField";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
 import { useRegionChoices } from "../hooks/useRegionQueries";
@@ -407,12 +408,18 @@ export function SecurityRolesPage() {
               <Tabs.Tab value="capabilities" data-testid={`role-tab-capabilities-${r.id}`}>
                 {t("roleRights.tab_capabilities")}
               </Tabs.Tab>
+              <Tabs.Tab value="data" data-testid={`role-tab-data-${r.id}`}>
+                {t("roleRights.tab_data")}
+              </Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="details">
               <RoleRead role={r} />
             </Tabs.Panel>
             <Tabs.Panel value="capabilities">
               <RoleCapabilities roleId={r.id} />
+            </Tabs.Panel>
+            <Tabs.Panel value="data">
+              <RoleDataAccess roleId={r.id} />
             </Tabs.Panel>
           </Tabs>
         ) : (

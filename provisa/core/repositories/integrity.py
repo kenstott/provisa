@@ -302,6 +302,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("registered_tables", "product_id", "data_product", "table", "id"),
     _dep("tracked_functions", "product_id", "data_product", "command", "name"),
     _part("tag_assignments", "product_id", "data_product"),
+    # REQ-1634 STATUS: a retired product names the product its members moved to.
+    _dep("data_products", "successor_id", "data_product", "data_product", "id"),
     # --- to a glossary term --------------------------------------------------------------------
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.

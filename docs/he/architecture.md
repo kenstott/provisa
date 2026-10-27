@@ -146,6 +146,140 @@ flowchart TD
 - שדות מעל הסף מופנים (redirected), עם ערכים לכל שדה תחת `redirects`
 - פורמטים בינאריים (Parquet, Arrow) נתמכים רק עבור שאילתות שורש-יחיד
 
+## צינור השאילתה {: #query-pipeline }
+
+כל קריאה עוברת חמישה שלבים. GraphQL, Cypher, SPARQL, gRPC ו-SQL הם נקודות כניסה, לא שלבים — כל אחד מהם מקמפל או ממיר ל-SQL סמנטי לפני שהפייפליין מתחיל.
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### ממשקי קצה {: #front-ends }
+
+ממשק קצה מפענח שפה ומכנה את מה שהיא קוראת במונחי המודל. GraphQL מהודר ישירות ל-SQL סמנטי. נקודות הקצה של REST שמסמך ה-OpenAPI מתאר, ונקודות הקצה של JSON:API, בונות מכל בקשה שאילתת GraphQL ומהדרות אותה באותה דרך. gRPC מתרגם בקשת טבלה ל-SQL סמנטי בלי לעבור דרך GraphQL. Cypher ו-SPARQL מפוענחים לצורת תבנית גרף אחת, המשותפת לשתי שפות הגרף, והצורה הזו מהודרת ל-SQL סמנטי. SQL שאתם כותבים מול טבלאות המודל הוא כבר SQL סמנטי, ולכן הוא נכנס בשלב הבא. אף ממשק קצה לא מחליט מי רשאי לקרוא מה.
+
+### SQL סמנטי {: #semantic-sql }
+
+SQL סמנטי קורא את המודל. הטבלאות שלו מסווגות לפי דומיין (`sales.orders`), העמודות שלו הן אלה שהמודל מפרסם, וה-joins שלו הם הקשרים המוצהרים. הוא אינו אומר דבר על המקום שבו הנתונים נמצאים.
+
+קריאה מקוננת מהודרת לצינור CTE קנוני אחד, זהה לכל מנוע ובנוי מהקשרים המוצהרים בלבד. CTE שורש קורא את טבלת השורש עם הסינון, הסדר, המגבלה וההיסט שלה. כל רמת יחיד-לרבים היא CTE משלה. היא מצרפת את הטבלה שלה ל-CTE של ההורה לפי מפתחות הקשר, לוקחת את השורות הראשונות של כל הורה באמצעות `ROW_NUMBER() OVER (PARTITION BY ...)`, ומצרפת אותן לרשימת JSON אחת לכל הורה. ה-`SELECT` הסופי קורא את ה-CTE של השורש ומצרף כל רמה ב-left join לפי מפתח ההורה. קריאות GraphQL, ‏Cypher ו-SPARQL ששואלות את אותה שאלה מהודרות לאותו משפט.
+
+מתרגם ה-Cypher כותב CTE אחד לכל שלב `WITH`; יישור הצורות הללו לפייפליין הקנוני הוא עבודה עתידית. עד שתסתיים, קריאות Cypher ו-GraphQL שקולות לא תמיד מקמפלות לאותו SQL סמנטי. מהדר ה-GraphQL כותב שדות מקוננים עם ארגומנטים כ-`LEFT JOIN LATERAL` לכל הורה. שתי הצורות הנוכחיות מופיעות בדוגמה שלהלן.
+
+### SQL מנוהל {: #governed-sql }
+
+הממשל עובד על המשפט הסמנטי כולו בבת אחת. כל `SELECT` שבו מקבל את כללי הנראות, את האבטחה ברמת השורה ואת המסכות של התפקיד הקורא, כך שכל רמה מקוננת מסוננת בעומק שלה. כלל שורות שהתנאי שלו הוא תת-שאילתה קורא טבלה נוספת, ולכן הממשל יכול להוסיף מקורות למשפט.
+
+### SQL ממוטב {: #optimized-sql }
+
+שלב המיטוב כותב מחדש את המשפט המנוהל בדרכים שנכונות בכל מנוע. הוא מחזיר views ממומשים למקום שבו הם עונים על חלק מהמשפט, מטמיע טבלאות קטנות ונקראות הרבה כ-`VALUES`, ומסיר ענפי מטמון API וענפי union שהמשפט לא יכול להגיע אליהם. שום דבר כאן אינו יודע איזה מנוע יריץ את המשפט. השכתובים האלה יכולים להסיר מקורות. קריאה מפודרלת שכל שאר המקורות שלה הוטמעו נשארת עם מקור חי אחד.
+
+### תכנון וניתוב {: #plan-and-route }
+
+מנוע הפדרציה הוא ברירת המחדל; הניתוב קורא את המקורות הממוטבים, לא המנוהלים. משפט רץ ישירות על המקור שלו רק כשהוא עובר את כל ששת השערים בסדר. השער הראשון שנכשל בו מציין את הסיבה.
+
+| שער | מה הוא בודק |
+|---|---|
+| `one_source` | קורא מקור אחד לאחר האופטימיזציה, או מקורות החולקים מסד נתונים פיזי |
+| `dialect_supports` | הניב של אותו מקור תומך בכל מבנה שבמשפט |
+| `access_path` | קיים מנהל התקן ישיר, קורא API או פונקציית קוד עבור המקור |
+| `colocated_login` | מקורות הנחשבים כמסד נתונים אחד חולקים את אותה תעודת כניסה |
+| `not_forced` | לא חל שום רצפת מפעיל, עמודה מזויפת, או תנאי המחייב את המנוע |
+| `trusted_to_answer` | מקור שאינו SQL יכול לענות על מערך הנתונים המלא ללא סינון נוסף בתהליך |
+
+המקרים של מטמון, רפליקה וסטיוארד מופיעים ב[צינור הבקשות (Request Pipeline)](#request-pipeline).
+
+### SQL מקומי {: #native-sql }
+
+השלב המקומי כותב את המשפט המנותב בניב של המקור לקריאה ישירה ובניב של המנוע לקריאה מפודרלת. הוא בוחר את הכתיב של פונקציות הצבירה והאובייקט של JSON, כותב את הרשימה הריקה להורה בלי שורות, הופך `DISTINCT ON` ל-`ROW_NUMBER()` היכן שאין לניב את הראשון, ובוחר צורות ייחודיות למנוע כמו join מסוג `LATERAL` לכל הורה או רמז למימוש CTE.
+
+### דוגמה מלאה {: #a-worked-example }
+
+קריאת ה-GraphQL הזו מבקשת לקוח אחד ואת שלוש ההזמנות הגדולות שלו:
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+בצורה הקנונית היא מהודרת ל-SQL הסמנטי הזה:
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+מזהה ההזמנה מכריע בשוויון בדירוג, כך ששתי הזמנות באותו סכום חוזרות תמיד באותו סדר. ללקוח בלי הזמנות אין שורה ב-`customers_orders`; השלב המקומי כותב עבורו את הרשימה הריקה.
+
+אותה קריאה ב-Cypher מוצאת את הלקוח וקוראת את שלוש ההזמנות הגדולות בתת-שאילתה:
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+בצורה הקנונית, קריאת ה-Cypher הזו וקריאת ה-GraphQL מהודרות למשפט שלמעלה. על זה נשענת האפשרות "פתח כשאילתה": קריאת GraphQL עוברת לדף ה-Cypher ומחזירה את אותה תשובה.
+
+היום מהדר ה-GraphQL כותב במקום זאת את הרמה המקוננת כ-lateral join לכל הורה:
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+את ה-SQL הסמנטי של כל קריאת GraphQL אפשר לראות בפאנל Provisa של דף ה-GraphQL.
+
 ## נתיבי ביצוע פדרציה {: #federation-execution-paths }
 
 | נתיב | הובלה | דרך | מתי בשימוש |

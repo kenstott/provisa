@@ -571,7 +571,6 @@ _TOOLS: list[Any] = [
                 "limitations": {"type": "string"},
                 "usage": {"type": "string"},
                 "version": {"type": "string"},
-                "status": {"type": "string"},
                 "sla": {"type": "string"},
                 "support": {"type": "string"},
             },
@@ -589,6 +588,68 @@ _TOOLS: list[Any] = [
             "properties": {"id": {"type": "string"}},
             "required": ["id"],
         },
+    },
+    {
+        "name": "publish_data_product",
+        "description": "Publish a draft data product: it goes live.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "deprecate_data_product",
+        "description": (
+            "Deprecate a live data product, with a reason and an optional planned retirement "
+            "date (ISO, not in the past). It stays in service until then and is retired on it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "reason": {"type": "string"},
+                "retire_on": {"type": "string"},
+            },
+            "required": ["id", "reason"],
+        },
+    },
+    {
+        "name": "retire_data_product",
+        "description": (
+            "Retire a live or deprecated data product, with a reason. Its member tables, views "
+            "and commands move to the successor data product (same domain), required when it "
+            "has any."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "reason": {"type": "string"},
+                "successor": {"type": "string"},
+            },
+            "required": ["id", "reason"],
+        },
+    },
+    {
+        "name": "restore_data_product",
+        "description": (
+            "Restore a deprecated data product (back to live) or a retired one (back to a "
+            "draft; the members that moved stay with its successor)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "list_data_product_findings",
+        "description": (
+            "What a curator should look at in the data products: each product with its "
+            "findings, each {kind, code, message, params}."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "upsert_metric",
@@ -838,8 +899,8 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "read_screen",
         "description": (
             "Read the screen the user is looking at, from their own browser session: the current "
-            "route; the open query editor's text (SQL, GraphQL, Cypher or Python) with its "
-            "language and the query tab open; the visible labelled form fields with their values "
+            "route; the open query editor's text (SQL, GraphQL, Cypher, SPARQL or Python) with "
+            "its language and the query tab open; the visible labelled form fields with their values "
             "(a password shows as dots, as on screen); and each result grid's columns and row "
             "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
             "anything on the screen, before you answer or act on it."
@@ -939,12 +1000,12 @@ _SYSTEM = (
     "found, propose it with admin_mutation right away. Never propose a candidate from a "
     "multi-candidate result the user has not picked from. "
     "For a GovData match, the 'source' is the subject/schema itself (say what subscribing would "
-    "require if the org isn't subscribed yet); for a Kaggle match, propose type='files' with "
-    'federation_hints_json set to \'{"kaggle_owner": "<owner>", "kaggle_ref": "<ref>"}\' '
-    "(split the dataset's ref on its '/') and any placeholder for path — the server downloads the "
-    "real files and overwrites path itself when the source is actually created, so "
-    "there is no separate staging/download step to call here or anywhere else. ALWAYS use the "
-    "tool rather than only describing the source in prose. "
+    "require if the org isn't subscribed yet); for a Kaggle match, do not propose createSource: "
+    "a Kaggle source holds its own Kaggle API token, which the user enters on the Sources form "
+    "and you never take. Give the user the link /sources?new=kaggle&kaggle=<ref>, with the "
+    "dataset's ref as the search gave it (<owner>/<dataset>), which opens that form "
+    "with the dataset chosen, and say the token is entered there. For any other source, ALWAYS "
+    "use the tool rather than only describing the source in prose. "
     "A request naming ONE file by a fully resolved path -- a file mount path, an https:// URL or "
     "an s3:// URL to a single .csv or .parquet file -- is a CSV or Parquet source given its file "
     "by download: work out csv or parquet from the file's name (ask if it says neither), and "
@@ -1021,8 +1082,10 @@ _SYSTEM = (
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
     "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
-    "Manage data products with list_data_products/create_data_product/"
-    "delete_data_product, and governed metrics with upsert_metric/delete_metric, directly — no "
+    "Manage data products with list_data_products/list_data_product_findings/create_data_product/"
+    "delete_data_product, and change a product's status (draft, live, deprecated, retired) with "
+    "publish_data_product/deprecate_data_product/retire_data_product/restore_data_product -- "
+    "create_data_product never changes it -- and governed metrics with upsert_metric/delete_metric, directly — no "
     "admin_mutation needed, they carry their own capability check and fail loud if the "
     "caller lacks it (data_product_rw / table_registration). create_data_product and upsert_metric "
     "are both upserts by id/name — an existing one is silently overwritten in full, so call "
@@ -1470,8 +1533,13 @@ async def _execute_tool(
         )
     if name in (
         "list_data_products",
+        "list_data_product_findings",
         "create_data_product",
         "delete_data_product",
+        "publish_data_product",
+        "deprecate_data_product",
+        "retire_data_product",
+        "restore_data_product",
         "upsert_metric",
         "delete_metric",
     ):
@@ -1479,6 +1547,18 @@ async def _execute_tool(
             raise ValueError(f"{name} requires a verified request context")
         if name == "list_data_products":
             return await mcp_tools.list_data_products(state, role, request)
+        if name == "list_data_product_findings":
+            return await mcp_tools.list_data_product_findings(state, role, request)
+        if name in (
+            "publish_data_product",
+            "deprecate_data_product",
+            "retire_data_product",
+            "restore_data_product",
+        ):
+            body = {k: args[k] for k in ("reason", "retire_on", "successor") if k in args}
+            return await mcp_tools.change_data_product_status(
+                state, role, request, args["id"], name.split("_", 1)[0], body
+            )
         if name == "create_data_product":
             return await mcp_tools.create_data_product(
                 state,
@@ -1493,7 +1573,6 @@ async def _execute_tool(
                 limitations=args.get("limitations", ""),
                 usage=args.get("usage", ""),
                 version=args.get("version"),
-                status=args.get("status"),
                 sla=args.get("sla"),
                 support=args.get("support"),
             )

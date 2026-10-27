@@ -130,7 +130,12 @@
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
-      "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。"
+      "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
+      "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
+      "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
+      "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
+      "graphql_parameter_type": "GraphQL リクエストの {{parameter}} は {{expected}} でなければなりません。",
+      "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -461,7 +466,8 @@
       "relationship_same_entity_direct": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: 中間テーブルまたは関数を介して結合しており、1 行対 1 行ではありません",
       "relationship_same_entity_cardinality": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{cardinality}} であり、同一エンティティは 1 行対 1 行です",
       "relationship_same_entity_not_grounded": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{source}} と {{target}} は同じ用語に紐づいていません",
-      "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません"
+      "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません",
+      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
@@ -491,7 +497,10 @@
       "unknown_encryption_provider": "不明な暗号化プロバイダー「{{provider}}」です",
       "unknown_engine": "不明なエンジン「{{engine}}」です。有効な値：{{valid}}",
       "use_domains_invalid": "use_domains は true、false、または null である必要があります",
-      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。"
+      "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。",
+      "federation_unknown_field": "フェデレーションの設定ではありません: {{fields}}",
+      "federation_invalid": "フェデレーション設定が無効です: {{error}}",
+      "federation_role_unknown": "フェデレーションのロール '{{role}}' はこの組織のロールではありません"
     },
     "setup": {
       "admin_credentials_required": "admin_username と admin_password が必要です",
@@ -541,7 +550,7 @@
       "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
       "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",
       "no_labels": "ラベル :{{label}} はありません: このロールが読めるテーブルはありません。",
-      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。登録済みのタイプ: {{suggestions}}。",
+      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。最も近い登録済みのタイプ: {{suggestions}}。",
       "no_relationship_types": "リレーションシップタイプ {{types}} はありません: このロールがたどれるリレーションシップはありません。",
       "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
       "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",
@@ -702,6 +711,34 @@
       "also_term_needs_column": "代わりに用語へタグを付けるには列が必要です。",
       "inherited_from_term": "この列は {{term}} を意味するため PII です。その意味のマークを外すか、別の意味であれば列を移動してください。",
       "move_loses": "この移動により、列からタグが外れ、列はそのタグを持たなくなります。各タグの喪失を確認するか、列の移動先の用語にタグを引き継いでください。"
+    },
+    "data_product": {
+      "status": {
+        "published": "データプロダクト {{data_product}} を公開しました。",
+        "deprecated": "データプロダクト {{data_product}} を非推奨にしました。",
+        "retired": "データプロダクト {{data_product}} を廃止しました。",
+        "restored": "データプロダクト {{data_product}} を復元しました。",
+        "reason_required": "理由が必要です。データプロダクトを非推奨または廃止にする理由を入力してください。",
+        "not_found": "データプロダクト {{data_product}} が見つかりません。",
+        "not_draft": "公開できるのは下書きのデータプロダクトだけです。このプロダクトは {{status}} です。",
+        "not_live": "非推奨にできるのは公開中のデータプロダクトだけで、廃止できるのは公開中または非推奨のものだけです。このプロダクトは {{status}} です。",
+        "not_restorable": "復元できるのは非推奨または廃止のデータプロダクトだけです。このプロダクトは {{status}} です。",
+        "retire_on_past": "予定された廃止日 {{retire_on}} は過去の日付です。今日以降の日付を選んでください。",
+        "successor_required": "このデータプロダクトには {{members}} 件のメンバーがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
+        "successor_is_self": "データプロダクトは自分自身の後継になれません。",
+        "successor_retired": "後継 '{{successor}}' は廃止されています。利用中のデータプロダクトを選んでください。",
+        "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選んでください。"
+      },
+      "finding": {
+        "no_members": "このデータプロダクトに属するテーブル、ビュー、コマンドはありません。",
+        "member_deprecated": "メンバーテーブル {{table}} は非推奨です。",
+        "no_owner": "このデータプロダクトに責任を持つオーナーロールがありません。",
+        "no_support_contact": "このデータプロダクトにはサポート連絡先がありません。設定済みのエクスポート先がそれを必要とします。",
+        "retirement_blocked": "このデータプロダクトは {{retire_on}} に廃止される予定でしたが、まだメンバーがあります。メンバーを引き継ぐ後継を指定して廃止してください。",
+        "domain_steward_unset": "ドメイン {{domain}} にはスチュワードがいません。",
+        "no_description": "このデータプロダクトは目的も使い方も記載していません。",
+        "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
+      }
     }
   }
 }

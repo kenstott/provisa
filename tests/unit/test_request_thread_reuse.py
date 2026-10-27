@@ -575,6 +575,11 @@ def test_the_bound_can_be_changed_while_running(front):
     callers = [threading.Thread(target=f.call, args=(middleware,)) for f in fronts]
     for c in callers:
         c.start()
+    # The first request is let in; a fixed 0.3 s was not always long enough for it to start
+    # under a parallel run (it had not: 0 seen). Then the second is still waiting at a bound of 1.
+    started = time.monotonic() + 5
+    while not seen and time.monotonic() < started:
+        time.sleep(0.01)
     time.sleep(0.3)
     assert len(seen) == 1  # the second request is waiting at a bound of 1
     pool.resize(max_threads=2)

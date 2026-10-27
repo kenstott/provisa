@@ -178,6 +178,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-2132: its own checkers' latest scans.
+        "checker_latest_runs",
     }
 )
 

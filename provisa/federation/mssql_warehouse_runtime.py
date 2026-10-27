@@ -128,16 +128,33 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         self._land_guard = LandGuard("Fabric/Synapse store connection")
 
     def _connect(self) -> Any:
-        import pyodbc
-        from azure.identity import DefaultAzureCredential
-
         if self._engine_name == "fabric":
             from provisa.federation import fabric_capacity
 
             # REQ-1775: a Paused/Suspended capacity refuses the login outright; resume it first
-            # when this deployment names its capacity (unset = capacity managed externally).
+            # when this deployment names its capacity (unset = capacity managed externally). Its
+            # warehouse serves statements only some time after Azure reports it Active, so the
+            # connection is the probe that waits for it.
             if fabric_capacity.capacity_configured():
                 fabric_capacity.ensure_capacity_resumed()
+                return fabric_capacity.await_data_plane(self._open_serving)
+        return self._open()
+
+    def _open_serving(self) -> Any:
+        """A connection whose warehouse has answered a statement; a refused one is closed."""
+        conn = self._open()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1").fetchall()
+            cur.close()
+        except Exception:
+            conn.close()
+            raise
+        return conn
+
+    def _open(self) -> Any:
+        import pyodbc
+        from azure.identity import DefaultAzureCredential
 
         token = DefaultAzureCredential().get_token(_AAD_SCOPE).token
         raw = token.encode("utf-16-le")

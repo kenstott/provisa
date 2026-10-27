@@ -15,12 +15,13 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct } from "../../../types/admin";
+import { lifecycleProps } from "./lifecycleProps";
 
 // Who an owner role resolves to is its own fetch, held by its own tests.
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 // The panel's 3D graph is its own component, held by its own tests.
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const PRODUCT = {
@@ -28,10 +29,11 @@ const PRODUCT = {
   domainId: "pet-store",
   name: "Pet Health",
   version: "1.2.0",
-  status: "published",
+  status: "live",
   ownerRole: "vet_lead",
   teamRole: null,
   support: "#pet-health",
+  supportContact: "vets@petstore.example",
   sla: "99.5%",
   purpose: "Health records of the pets in care",
   limitations: null,
@@ -46,13 +48,14 @@ function fields(p: DataProduct): [string, string][] {
       coreError={null}
       reader={null}
       canEdit={false}
-      canSeeLineage={false}
+      canDelete={false}
+      owner
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
   return within(screen.getByTestId(`data-product-read-${p.id}`))
@@ -67,10 +70,11 @@ describe("a data product's read view", () => {
       ["Name", "Pet Health"],
       ["Domain", "pet-store"],
       ["Version", "1.2.0"],
-      ["Status", "published"],
+      ["Status", "Live"],
       ["Owner", "vet_lead"],
       ["Team", "—"],
       ["Support", "#pet-health"],
+      ["Support contact", "vets@petstore.example"],
       ["SLA", "99.5%"],
       ["Purpose", "Health records of the pets in care"],
       ["Limitations", "—"],

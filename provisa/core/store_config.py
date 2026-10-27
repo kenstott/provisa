@@ -349,7 +349,12 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         "domains": await _domains(conn),
         "roles": await _roles(conn),
         "data_products": [
-            _written(DataProduct.model_validate(_fields(DataProduct, row)))
+            # REQ-1634 STATUS: the stored successor_id is the config's ``successor``.
+            _written(
+                DataProduct.model_validate(
+                    _fields(DataProduct, {**row, "successor": row["successor_id"]})
+                )
+            )
             for row in await data_product_repo.list_all(conn)
             if row["domain_id"] not in ("meta", "ops")
         ],

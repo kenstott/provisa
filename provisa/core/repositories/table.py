@@ -393,6 +393,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay": getattr(table, "push_debounce_max_delay", 5.0),  # REQ-1733
         "mv_consistency": getattr(table, "mv_consistency", "shared"),  # REQ-879
         "mv_preprocess": getattr(table, "mv_preprocess", None),  # REQ-957
+        "mv_hold_on_failing_checks": getattr(table, "mv_hold_on_failing_checks", False),  # REQ-2133
         "business_key": getattr(table, "business_key", []),  # REQ-2109
         "valid_time": getattr(table, "valid_time", None),  # REQ-2109
         "recorded_time": getattr(table, "recorded_time", None),  # REQ-2109
@@ -465,6 +466,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay",
         "mv_consistency",
         "mv_preprocess",
+        "mv_hold_on_failing_checks",  # REQ-2133
         "business_key",  # REQ-2109
         "valid_time",  # REQ-2109
         "recorded_time",  # REQ-2109

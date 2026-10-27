@@ -186,7 +186,7 @@ domains = Table(
     Column("tenant_id", Uuid),
 )
 
-data_products = Table(  # REQ-1634, REQ-1660
+data_products = Table(  # REQ-1634
     "data_products",
     metadata,
     Column("id", Text, primary_key=True),
@@ -198,13 +198,18 @@ data_products = Table(  # REQ-1634, REQ-1660
     Column("limitations", Text, nullable=False, server_default=""),
     Column("usage", Text, nullable=False, server_default=""),
     Column("version", Text),
-    Column("status", Text),
+    # REQ-1634 STATUS: draft, live, deprecated or retired, each asserted by an action; why, the
+    # planned retirement of a deprecated product, who changed it when, and the product a retired
+    # one's members moved to.
+    Column("status", Text, nullable=False, server_default="draft"),
+    Column("status_reason", Text),
+    Column("retire_on", Date),
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
+    Column("successor_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),
     Column("sla", Text),
     Column("support", Text),
     Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
-    Column(
-        "publish", Boolean, nullable=False, server_default=false()
-    ),  # REQ-1635: PUBLISH = TRUE vs DRAFT
     Column("custom_properties", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
@@ -298,6 +303,8 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
+    # REQ-2133: the view's Hold on failing checks option, a built-in preflight beside mv_preprocess.
+    Column("mv_hold_on_failing_checks", Boolean, nullable=False, server_default=false()),
     # REQ-2109: the bitemporal declaration of a table or view, all three or none: the business-key
     # column list, the valid-time column and the recorded-time column.
     Column("business_key", JSON(none_as_null=True)),
@@ -608,7 +615,7 @@ tag_assignments = Table(
     Column("column_name", Text),
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
-    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1634
     # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),
@@ -907,6 +914,19 @@ checker_targets = Table(
     metadata,
     Column("table_id", Integer, primary_key=True),
     Column("checked_table_id", Integer, nullable=False),
+)
+
+# REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
+# check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
+# A table with no row has never run. The dry run writes none.
+checker_latest_runs = Table(
+    "checker_latest_runs",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("scan_id", Text, nullable=False),
+    Column("scan_time", DateTime(timezone=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    CheckConstraint("outcome IN ('pass', 'fail')", name="checker_latest_runs_outcome_check"),
 )
 
 relationship_candidates = Table(

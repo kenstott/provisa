@@ -1,0 +1,123 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "agentdata" (start-ui-install.sh --demo agentdata; REQ-2172).
+# A retailer wants to give an AI agent its order data, and asks whether the agent can be held to
+# what its user may see. The agent reaches the data over Provisa's MCP server, as the role of the
+# person it acts for: a West support agent's assistant reads the West's customers and their orders,
+# email addresses masked, and no price; the BI analyst's reads every region and what the orders came
+# to, and no email address at all. The MCP explorer is the developer's view of exactly that agent.
+#
+#   agentdata-db   the storefront demo's order database, read live as provisa_reader (db/init.sql).
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: shop
+  description: A retailer's customers, their orders and each order's lines
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: support_west
+  parents: [viewer]
+  description: "A West support agent: the West's customers and their orders, email addresses masked, no prices."
+  capabilities:
+  - query_development
+  domain_access:
+  - shop
+- id: shop_analyst
+  parents: [analyst]
+  description: "The BI analyst: every region's orders and what they came to, no customer's email."
+  capabilities:
+  - query_development
+  domain_access:
+  - shop
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: agentdata-db
+  type: postgresql
+  host: ${env:AGENTDATA_PG_HOST:-localhost}
+  port: ${env:AGENTDATA_PG_PORT:-30332}
+  database: agentdata${env:AGENTDATA_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  description: The retailer's order database -- customers, their orders and each order's lines
+tables:
+- source_id: agentdata-db
+  domain_id: shop
+  schema: public
+  table: customers
+  description: The retailer's customers
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, support_west, shop_analyst]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, support_west, shop_analyst]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for support, visible_to: [data_steward, support_west], masks: [{to: [support_west], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: region, data_type: varchar, description: 'The customer''s sales region: North, South, East, West or Central', visible_to: [data_steward, support_west, shop_analyst]}
+- source_id: agentdata-db
+  domain_id: shop
+  schema: public
+  table: orders
+  description: Each order a customer placed
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The order's id, visible_to: [data_steward, support_west, shop_analyst]}
+  - {name: customer_id, data_type: integer, description: The customer who placed it, visible_to: [data_steward, support_west, shop_analyst]}
+  - {name: placed_at, data_type: timestamp, description: When it was placed, visible_to: [data_steward, support_west, shop_analyst]}
+  - {name: status, data_type: varchar, description: 'processing, shipped or cancelled', visible_to: [data_steward, support_west, shop_analyst]}
+- source_id: agentdata-db
+  domain_id: shop
+  schema: public
+  table: order_items
+  description: Each line of an order -- a product, how many and the price of one
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, description: The order the line is on, visible_to: [data_steward, shop_analyst]}
+  - {name: line, data_type: integer, is_primary_key: true, description: The line's number on its order, visible_to: [data_steward, shop_analyst]}
+  - {name: product_id, data_type: integer, description: The product ordered, visible_to: [data_steward, shop_analyst]}
+  - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [data_steward, shop_analyst]}
+  - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [data_steward, shop_analyst]}
+rls_rules:
+# The West support agent reads the West's customers and their orders only.
+- {description: "Shows West support only the West's customers.", table_id: customers, role_id: support_west, filter: "region = 'West'"}
+- {description: "Shows West support only the orders of the West's customers.", table_id: orders, role_id: support_west, filter: "customer_id IN (SELECT own_c.id FROM \"shop\".\"customers\" AS own_c WHERE own_c.region = 'West')"}
+views:
+# What each customer's orders came to: the analyst's answer, which support cannot read (it reads the
+# order lines' prices).
+- id: revenue_by_customer
+  domain_id: shop
+  enable_aggregates: true
+  enable_group_by: true
+  description: What each customer's orders came to, and how many they placed
+  sql: >-
+    SELECT c.id AS customer_id, c.name, c.region, COUNT(DISTINCT o.id) AS orders,
+           SUM(i.quantity * i.unit_price) AS revenue
+    FROM "shop"."orders" AS o
+    JOIN "shop"."customers" AS c ON c.id = o.customer_id
+    JOIN "shop"."order_items" AS i ON i.order_id = o.id
+    WHERE o.status <> 'cancelled'
+    GROUP BY c.id, c.name, c.region
+  columns:
+  - {name: customer_id, data_type: integer, description: The customer's id, visible_to: [data_steward, shop_analyst]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, shop_analyst]}
+  - {name: region, data_type: varchar, description: The customer's region, visible_to: [data_steward, shop_analyst]}
+  - {name: orders, data_type: bigint, description: The orders they placed, visible_to: [data_steward, shop_analyst]}
+  - {name: revenue, data_type: decimal, description: What they came to in USD, visible_to: [data_steward, shop_analyst]}
+relationships:
+- {id: order-to-customer, alias: PLACED_BY, cardinality: many-to-one, source_table_id: orders, source_column: customer_id, target_table_id: customers, target_column: id}
+- {id: item-to-order, alias: LINE_OF, cardinality: many-to-one, source_table_id: order_items, source_column: order_id, target_table_id: orders, target_column: id}

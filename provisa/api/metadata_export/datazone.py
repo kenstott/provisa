@@ -328,6 +328,9 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 "content": json.dumps(product_form(product)),
             }
         ]
+        # REQ-1634 STATUS: a retired product has no members, and DataZone takes no empty item
+        # list (items, when given, holds at least one): its revision carries the form, retired.
+        held = {"items": items} if items else {}
         created = self._revise(
             client,
             products.get(product.semantic_uri),
@@ -336,16 +339,16 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 identifier=known,
                 name=product.name,
                 description=product.description,
-                items=items,
                 formsInput=forms,
+                **held,
             ),
             lambda: client.create_data_product(
                 **self._scope(),
                 name=product.name,
                 description=product.description,
                 owningProjectIdentifier=self._config.datazone_project_id,
-                items=items,
                 formsInput=forms,
+                **held,
             ),
         )
         products[product.semantic_uri] = created["id"]

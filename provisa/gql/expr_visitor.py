@@ -129,7 +129,7 @@ class ExprContext(Protocol):
         ...
 
     def temporal_kind(self, expr: CypherExpr) -> str | None:
-        """The temporal kind ``expr`` has (REQ-2172: date, time, ..., duration), or None."""
+        """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
 
     def resolve_term(self, node: Term) -> exp.Expression:
@@ -269,7 +269,7 @@ class ExprLowering:
         held = self._ctx.temporal_kind(node.obj)
         if held == temporal.DURATION:
             return temporal.duration_property(self.lower(node.obj), node.name)
-        if held is not None:  # REQ-2172: a date's, a time's or a date time's own parts
+        if held is not None:  # REQ-2173: a date's, a time's or a date time's own parts
             return temporal.value_property(held, self.lower(node.obj), node.name)
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
@@ -319,7 +319,7 @@ class ExprLowering:
         left = self.lower(node.left)
         right = self.lower(node.right)
         if op in _BINARY_ARITH:
-            # REQ-2172: a duration with a temporal value or another duration, as openCypher reads it.
+            # REQ-2173: a duration with a temporal value or another duration, as openCypher reads it.
             timed = temporal.arithmetic(
                 op,
                 left,
@@ -435,23 +435,23 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
-        if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2172
+        if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()
             kinds = [self._ctx.temporal_kind(a) for a in node.args]
             return temporal.duration_function(node.name, node.args, kinds, self.lower)
         kind, _, clock = node.name.lower().partition(".")
         if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
-            # REQ-2172: the current value, as the engine's clock reads it.
+            # REQ-2173: the current value, as the engine's clock reads it.
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()
             if node.args:
                 raise CypherTranslateError(f"{node.name}() with a time zone is not supported")
             return self._ctx.resolve_function(kind, [], distinct=False)
-        if kind in temporal.SQL_TYPES and clock == "truncate":  # REQ-2172
+        if kind in temporal.SQL_TYPES and clock == "truncate":  # REQ-2173
             value_kind = self._ctx.temporal_kind(node.args[1]) if len(node.args) > 1 else None
             return temporal.truncated(kind, node.args, value_kind, self.lower)
-        if node.name.lower() in temporal.SQL_TYPES:  # REQ-2172: from text or a map
+        if node.name.lower() in temporal.SQL_TYPES:  # REQ-2173: from text or a map
             built = temporal.temporal_value(
                 node.name.lower(), node.args, self.lower, self._ctx.temporal_kind
             )

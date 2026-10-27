@@ -49,6 +49,8 @@ GET /auth/provider-type
 
 בקשה רצה בתפקיד הפועל שלה: התפקיד של המשתמש המאומת, או, במצב פיתוח (ללא אימות), הכותרת `X-Provisa-Role`, ובהיעדרה `org_admin`. השדה `role` בגוף אינו בוחר תפקיד. כשהוא קיים, הוא חייב להתאים לתפקיד הפועל; ערך אחר מחזיר `400` עם הקוד `data.role_mismatch`, שנוקב בשני התפקידים. אותו כלל חל על `POST /data/sql`, `POST /data/query` ו-`POST /query/nl`.
 
+**GraphQL על גבי HTTP.** נקודת הקצה פועלת לפי מפרט GraphQL-over-HTTP. היא עונה גם על `GET /data/graphql`, עם `query`, `operationName`, `variables` ו-`extensions` מקודדים ב-URL (`variables` ו-`extensions` כמחרוזות JSON); מוטציה שנשלחת ב-`GET` מחזירה `405`. בקשה שה-`Accept` שלה מציין את `application/graphql-response+json` לפני `application/json` נענית בסוג המדיה הזה; כל בקשה אחרת נענית ב-`application/json`. בקשה שאינה בקשת GraphQL מחזירה `400`: אין גוף, הגוף אינו אובייקט JSON, או פרמטר מסוג JSON שגוי (`query` ו-`operationName` הם מחרוזות, `variables` ו-`extensions` הם אובייקטים). מסמך שלא ניתן לנתח או לאמת, או שהמשתנים שלו לא ניתנים להמרה, נענה עם ה-`errors` שלו וללא `data`: סטטוס `200` תחת `application/json`, ו-`400` תחת `application/graphql-response+json` או כאשר `Accept` מבקש פורמט קובץ כמו CSV.
+
 השדה `extensions` תומך בפרוטוקול Automatic Persisted Query (APQ):
 
 ```json

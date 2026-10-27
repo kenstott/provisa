@@ -247,7 +247,7 @@ class TranslatorExprContext:
         return dict(info[1].property_types).get(name)
 
     def temporal_kind(self, expr: CypherExpr) -> str | None:
-        """The temporal kind ``expr`` has (REQ-2172), or None."""
+        """The temporal kind ``expr`` has (REQ-2173), or None."""
         from provisa.gql import temporal
 
         return temporal.kind_of(expr, self._t._temporal_kinds, self._property_kind)

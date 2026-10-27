@@ -8,12 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit: a gRPC request's ``read_mask`` selects the columns of the semantic SELECT (REQ-803).
+"""Unit: a gRPC request's ``read_mask`` selects the columns of the compiled statement (REQ-803).
 
 One read_mask semantics for the native servicer and the HTTP gRPC proxy, implemented once in
 ``provisa.grpc.query_ir``: ``resolve_read_mask`` validates the paths against the columns the role
-can read, the SELECT names only the masked columns, and a dotted sub-path into a JSON-valued
-column restricts that column's value."""
+can read, the request lowered to GraphQL selects only the masked columns, so the statement the
+compiler makes names only them, and a dotted sub-path into a JSON-valued column restricts that
+column's value."""
 
 # Requirements: REQ-803
 
@@ -29,9 +30,7 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.compiler.sql_types import TableMeta
-from provisa.grpc.query_ir import grpc_table_to_semantic_sql
-from tests.role_state import RoleState
+from tests.grpc_model import compiled_read, grpc_model, serving_state
 
 _COLUMNS = [
     ("order_id", "integer"),
@@ -43,17 +42,13 @@ _COLUMNS = [
 _META = {"source_id": "s1", "created_by": "u1", "tags": {"a": 1, "b": 2}}
 
 
+def _model():
+    """The role's schema and compiler context for the ``orders`` table of ``_COLUMNS``."""
+    return grpc_model(_COLUMNS)
+
+
 def _ctx():
-    meta = TableMeta(
-        table_id=1,
-        field_name="orders",
-        type_name="Orders",
-        source_id="pg1",
-        catalog_name="pg1",
-        schema_name="public",
-        table_name="orders",
-    )
-    return SimpleNamespace(tables={"orders": meta}, aggregate_columns={1: list(_COLUMNS)})
+    return _model()[1]
 
 
 def _mask(paths: list[str]):
@@ -63,7 +58,7 @@ def _mask(paths: list[str]):
 
 
 def _sql(paths: list[str], limit: int = 10, filter_msg=None) -> str:
-    lowered = grpc_table_to_semantic_sql(_ctx(), "Orders", limit, filter_msg, _mask(paths))
+    lowered = compiled_read(_model(), "Orders", limit, filter_msg, _mask(paths))
     assert lowered is not None
     return lowered[0]
 
@@ -79,7 +74,7 @@ def _where_columns(sql: str) -> list[str]:
     return [c.name for c in where.find_all(exp.Column)] if where is not None else []
 
 
-class TestSemanticSqlReadMask:
+class TestCompiledReadMask:
     def test_mask_selects_only_the_masked_columns(self):
         assert _selected(_sql(["order_id", "amount"])) == ["order_id", "amount"]
 
@@ -95,7 +90,7 @@ class TestSemanticSqlReadMask:
         assert _selected(_sql([])) == [c for c, _t in _COLUMNS]
 
     def test_absent_mask_selects_every_column(self):
-        lowered = grpc_table_to_semantic_sql(_ctx(), "Orders", 10)
+        lowered = compiled_read(_model(), "Orders", 10)
         assert lowered is not None
         assert _selected(lowered[0]) == [c for c, _t in _COLUMNS]
 
@@ -231,7 +226,7 @@ def _request(paths: list[str]):
     )
 
 
-def _servicer():
+def _servicer(model=None):
     from google.protobuf.descriptor import FieldDescriptor
 
     from provisa.grpc.server import ProvisaServicer
@@ -243,7 +238,7 @@ def _servicer():
     descriptor = SimpleNamespace(fields=fields, fields_by_name={f.name: f for f in fields})
     msg_cls = MagicMock(DESCRIPTOR=descriptor)
     pb2 = SimpleNamespace(Orders=msg_cls)
-    state = RoleState(org_id="default", contexts={"admin": _ctx()}, multitenancy=False)
+    state = serving_state(model or _model())
     servicer = ProvisaServicer(state, pb2)
     servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg
@@ -279,7 +274,7 @@ async def _run(servicer, request, context, result):
 class TestServicerReadMask:
     @pytest.mark.asyncio
     async def test_request_mask_reaches_the_governed_statement(self):
-        """The servicer hands the pipeline a SELECT of the masked columns only."""
+        """The servicer hands the pipeline a statement selecting the masked columns only."""
         servicer, _msg_cls = _servicer()
         result = SimpleNamespace(column_names=["order_id", "amount"], rows=[])
         govern = await _run(servicer, _request(["order_id", "amount"]), _context(), result)

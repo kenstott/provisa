@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Cypher durations (REQ-2172), each case an openCypher TCK scenario (Temporal1, 5, 8 and 10)
+"""Cypher durations (REQ-2173), each case an openCypher TCK scenario (Temporal1, 5, 8 and 10)
 translated, run on DuckDB and answered as the Cypher surface answers it. Where a scenario's value
 has nanoseconds, the case keeps it to microseconds, the engine's precision."""
 
-# Requirements: REQ-2172
+# Requirements: REQ-2173
 
 from __future__ import annotations
 

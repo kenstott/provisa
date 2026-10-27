@@ -70,6 +70,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     businessKey: [],
     validTime: null,
     recordedTime: null,
@@ -271,7 +272,7 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
   });
 });
 
-describe("TableReadView — the table's seven sections", () => {
+describe("TableReadView — the table's eight sections", () => {
   const rel = (id: number, source: string, target: string, sourceTableId: number) =>
     ({
       id,
@@ -283,7 +284,7 @@ describe("TableReadView — the table's seven sections", () => {
       targetColumn: "id",
     }) as unknown as Relationship;
 
-  it("shows the same seven sections as the edit form, Identity first", () => {
+  it("shows the same eight sections as the edit form, Identity first", () => {
     renderView(false, makeTable({ id: 7 }));
     const sections = within(screen.getByRole("tablist", { name: "Table sections" }));
     expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
@@ -294,6 +295,7 @@ describe("TableReadView — the table's seven sections", () => {
       "Quality",
       "Columns",
       "Writes",
+      "Access",
     ]);
     expect(screen.getByTestId("table-identity")).toHaveTextContent("orders");
   });

@@ -381,6 +381,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
         # (FROM, joins, path steps by alias, relationship type by variable) of each extra branch
         self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict, dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # #293: each node a WITH carries beside another node, by its variable: (the WITH's CTE,
+        # the node's columns). Its columns are carried as "<var>.<column>", and a segment after
+        # the WITH reads the node as its own row of them (_expose_split_nodes).
+        self._split_carried: dict[str, tuple[str, list[str]]] = {}
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
@@ -401,7 +405,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
         self._map_vars: dict[str, set[str]] = {}
-        # REQ-2172: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
+        # REQ-2173: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
         self._temporal_kinds: dict[str, str] = {}
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
@@ -492,6 +496,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         else:
             # A WITH that reads no pattern (WITH 1 AS x): one row, read from no table.
             from_clause, joins = None, []
+        if from_clause is not None:
+            from_clause, joins = self._expose_split_nodes(from_clause, joins)
 
         select_exprs = self._build_with_select_items(with_clause.items)
         where_expr = self._build_where(stage_where)
@@ -530,19 +536,66 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.offset(with_clause.skip)
         if with_clause.where is not None:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
-            before = (self._var_table, self._cte_sources)
+            before = (self._var_table, self._cte_sources, self._split_carried)
             self._update_var_table_for_with(with_clause.items, "_inner")
             with_where_expr = self._build_where(with_clause.where)
-            self._var_table, self._cte_sources = before
+            exposed = self._split_node_joins()
+            self._var_table, self._cte_sources, self._split_carried = before
             if with_where_expr:
-                stage_query = (
-                    exp.select(exp.Star())
-                    .from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
-                    .where(with_where_expr)
+                # The stage's own columns: a carried node read beside them adds its own (#293).
+                star = (
+                    exp.Column(this=exp.Star(), table=exp.to_identifier("_inner"))
+                    if exposed
+                    else exp.Star()
                 )
+                wrapper = exp.select(star)
+                wrapper = wrapper.from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
+                for join in exposed:
+                    wrapper = wrapper.join(join["table"], join_type=join["join_type"])
+                stage_query = wrapper.where(with_where_expr)
 
         cte_name = f"_w{n}"
         return cte_name, stage_query
+
+    def _split_node_joins(self) -> list[dict]:
+        """Each node a WITH carries beside another, read from its row of the WITH's CTE as a table
+        of its own columns under its own name (#293)."""
+        joins = []
+        for key, (cte, cols) in self._split_carried.items():
+            row = exp.select(
+                *(
+                    exp.alias_(exp.column(f"{key}.{c}", table=cte, quoted=True), c, quoted=True)
+                    for c in cols
+                )
+            )
+            table = exp.alias_(exp.Lateral(this=exp.Subquery(this=row)), alias=key)
+            joins.append({"table": table, "on": None, "join_type": "CROSS"})
+        return joins
+
+    def _expose_split_nodes(
+        self,
+        from_clause: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The segment's FROM with the carried nodes read from their WITH's rows (#293): a pattern
+        starting at one goes on from that WITH's CTE, and each such node is joined, per row, right
+        after it, before any join that reads it."""
+        if not self._split_carried:
+            return from_clause, joins
+        (cte,) = {c for c, _ in self._split_carried.values()}
+        exposed = self._split_node_joins()
+        # The CTE is read once, first: a join of it _beside_carried_rows set after is dropped.
+        rest = [
+            j for j in joins if not (isinstance(j["table"], exp.Table) and j["table"].name == cte)
+        ]
+        if isinstance(from_clause, exp.Table) and from_clause.name in (cte, *self._split_carried):
+            return exp.Table(this=exp.Identifier(this=cte)), [*exposed, *rest]
+        carried = {
+            "table": exp.Table(this=exp.Identifier(this=cte)),
+            "on": None,
+            "join_type": "CROSS",
+        }
+        return from_clause, [carried, *exposed, *rest]
 
     @staticmethod
     def _beside_carried_rows(
@@ -610,6 +663,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             # A statement that reads no pattern (RETURN 1 + 1): one row, read from no table.
             return None, [], [], stage_where
 
+        from_clause, joins = self._expose_split_nodes(from_clause, joins)
         return from_clause, joins, all_matches, stage_where
 
     def _apply_where_and_fold(
@@ -1175,7 +1229,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         return None
 
     def _temporal_context(self) -> "TranslatorExprContext":
-        """The context temporal kinds are read in (REQ-2172)."""
+        """The context temporal kinds are read in (REQ-2173)."""
         from provisa.gql.expr_context import TranslatorExprContext
 
         return TranslatorExprContext(self)
@@ -1243,12 +1297,57 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for key, value in expr.entries
         ]
 
+    def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping]:
+        """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
+        its own columns, ``<key>.<column>``, so two tables' columns of one name never meet (#293)."""
+        nodes = {}
+        for item in items:
+            expr = item.expression
+            if isinstance(expr, Variable) and expr.name in self._var_table:
+                meta = self._var_table[expr.name][1]
+                if isinstance(meta, NodeMapping):
+                    nodes[item.alias or expr.name] = meta
+        return nodes if len(nodes) > 1 else {}
+
+    def _node_columns(self, nm: NodeMapping) -> list[str]:
+        """Every column of ``nm``'s table a later clause can read: its properties, its keys and
+        the join columns of the relationships that reach it."""
+        cols = {*nm.properties.values(), *nm.physical_properties.values(), nm.id_column}
+        cols.update(nm.pk_columns)
+        rels = [
+            *self._lm.relationships.values(),
+            *(r for rs in self._lm.aliases.values() for r in rs),
+        ]
+        for rel in rels:
+            for end, column, expr in (
+                (rel.source_label, rel.join_source_column, rel.source_expr),
+                (rel.target_label, rel.join_target_column, rel.target_expr),
+            ):
+                if end not in (nm.label, nm.type_name):
+                    continue
+                if expr is not None:
+                    raise CypherTranslateError(
+                        f"A WITH carrying {nm.label} beside another node: its relationship "
+                        f"{rel.rel_type} joins on an expression"
+                    )
+                cols.add(column)
+        return sorted(c for c in cols if c)
+
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
         exprs: list[exp.Expr] = []
+        split = self._carried_nodes(items)
         for item in items:
             expr = item.expression
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
+            if bare is not None and (alias or bare) in split:
+                held_in = self._var_table[bare][0]
+                key = alias or bare
+                exprs.extend(
+                    exp.alias_(exp.column(c, table=held_in, quoted=True), f"{key}.{c}", quoted=True)
+                    for c in self._node_columns(split[key])
+                )
+                continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
@@ -1295,6 +1394,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
         kinds: dict[str, str] = {}
+        split = self._carried_nodes(items)
+        self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
@@ -1306,7 +1407,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
-            if bare is not None and bare in self._var_table:
+            if key in split:
+                # Read as its own row of the carried columns, under its own name.
+                new_var_table[key] = (key, split[key])
+            elif bare is not None and bare in self._var_table:
                 original_meta = self._var_table[bare][1]
                 new_var_table[key] = (cte_name, original_meta)
                 if bare in self._map_array_vars:

@@ -265,8 +265,9 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     KaggleFormSection.tsx at creation, or set the same way by an MCP proposal) — not by
     input.type, since a caller could set anything there.
 
-    Must run inside `bound_to_request_org()` (same requirement as search_kaggle_datasets) — a
-    reference the Kaggle token setting holds resolves against whichever org's vault is bound."""
+    The token is the source's own credential field (``password``), as the operator entered it --
+    a value, or a reference they typed -- resolved here, and again at each refresh. Must run
+    inside `bound_to_request_org()`: a reference resolves against whichever org's vault is bound."""
     import json as _json
 
     hints = _json.loads(input.federation_hints_json or "{}")
@@ -274,9 +275,18 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     if not owner or not ref:
         return None
 
-    from provisa.kaggle.downloader import UnsupportedKaggleDataset, api_token, stage_dataset
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
-    token = api_token()
+    if not input.password:
+        return MutationResult(
+            success=False,
+            message=f"Kaggle dataset {owner}/{ref}: the source holds no Kaggle API token; "
+            "add it on the Sources form, where its token is entered",
+            code="schema.kaggle_token_missing",
+            params={"owner": owner, "ref": ref},
+        )
+    token = resolve_secrets(input.password)
     try:
         staged_root = await stage_dataset(token, owner, ref)
     except UnsupportedKaggleDataset as exc:
@@ -895,6 +905,9 @@ async def _sync_view_mv(
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
+    hold_on_failing_checks: bool = False,  # REQ-2133
+    table_id: int | None = None,  # REQ-2133: the view table this build is of
+    product_id: str | None = None,  # REQ-2133: that table's data product
     business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
     valid_time: str | None = None,  # REQ-2109: the column its reads travel on
     recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
@@ -970,6 +983,9 @@ async def _sync_view_mv(
         debounce_max_delay=debounce_max_delay,  # REQ-963
         consistency=consistency,  # REQ-879
         preprocess=preprocess,  # REQ-957
+        hold_on_failing_checks=hold_on_failing_checks,  # REQ-2133
+        table_id=table_id,  # REQ-2133
+        product_id=product_id,  # REQ-2133
         bitemporal=bitemporal,  # REQ-1162
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970

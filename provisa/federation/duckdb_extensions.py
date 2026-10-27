@@ -26,10 +26,13 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
+
+from provisa.core import engine_memory
 
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine
@@ -64,7 +67,7 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     """
     from provisa_duckdb_ext import ext_root  # type: ignore[import-not-found]  # ModuleNotFoundError propagates by design
 
-    con = duckdb.connect()
+    con = engine_memory.connect()
     try:
         _ver = con.execute("SELECT version()").fetchone()
         _plat = con.execute("PRAGMA platform").fetchone()
@@ -98,7 +101,7 @@ def connect() -> duckdb.DuckDBPyConnection:
     config: dict[str, str | bool | int | float | list[str]] = (
         {"extension_directory": ext_dir} if ext_dir else {}
     )
-    return duckdb.connect(config=config)
+    return engine_memory.connect(extra=config)
 
 
 # Settings an extension is loaded with, whatever loads it. SET GLOBAL: a plain SET stays on the one
@@ -113,12 +116,28 @@ _EXTENSION_SETTINGS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _snowflake_driver() -> dict[str, str]:
+    """REQ-899: the snowflake extension reads Snowflake through Arrow ADBC and searches only its own
+    locations for the driver, never the adbc-driver-snowflake package Provisa ships, so it is
+    named to the extension -- read from the process environment when the extension connects."""
+    import adbc_driver_snowflake
+
+    return {"SNOWFLAKE_ADBC_DRIVER_PATH": adbc_driver_snowflake._driver_path()}  # pyright: ignore[reportPrivateUsage]
+
+
+#: The process environment an extension is loaded with, by extension.
+_EXTENSION_ENV: dict[str, Callable[[], dict[str, str]]] = {"snowflake": _snowflake_driver}
+
+
 def install_and_load(
     con: duckdb.DuckDBPyConnection, extension: str, *, from_community: bool = True
 ) -> None:
     """INSTALL then LOAD ``extension`` on ``con`` — the one place that spells the two-step DuckDB
     extension bring-up, so callers never write a bare ``INSTALL``/``LOAD`` string themselves —
-    then apply the settings the extension is always loaded with (``_EXTENSION_SETTINGS``)."""
+    with the environment (``_EXTENSION_ENV``) and settings (``_EXTENSION_SETTINGS``) the extension
+    is always loaded with."""
+    if extension in _EXTENSION_ENV:
+        os.environ.update(_EXTENSION_ENV[extension]())
     con.execute(f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}")
     con.execute(f"LOAD {extension}")
     for statement in _EXTENSION_SETTINGS.get(extension, ()):

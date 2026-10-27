@@ -49,7 +49,7 @@ def for_role(
     """``snapshot`` as a target naming a role is published it (REQ-2152, ruling Q1): exactly
     what the role reads. ``served(table)`` is the columns of ``table`` the role is served (None:
     all of them); a table it is served none of is not published, nor a product with no member
-    left, and every other fact goes only with the assets kept. A domain is published when the
+    left but a retired one the role reaches, and every other fact goes only with the assets kept. A domain is published when the
     role reaches it (``reaches``), empty or not, or holds a kept table or product -- the admin
     catalog's rule (CatalogScope.lists_domain)."""
     tables = []
@@ -65,7 +65,9 @@ def for_role(
     products = [
         replace(p, members=tuple(m for m in p.members if m in members))
         for p in snapshot.data_products
-        if any(m in members for m in p.members)
+        # A retired product has no members (they went to its successor): it is sent to be
+        # withdrawn where it was published (REQ-1634 STATUS), within the role's reach.
+        if any(m in members for m in p.members) or (p.status == "retired" and reaches(p.domain_id))
     ]
     holding = {t.domain_id for t in tables} | {p.domain_id for p in products}
     domains = [d for d in snapshot.domains if d.id in holding or reaches(d.id)]
