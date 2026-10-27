@@ -853,6 +853,9 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
+    # REQ-351, REQ-1586: the Cypher type the server serves this edge as, its stored effective name
+    # (core.relationship_names). A client reads it; none derives it.
+    cypher_type: str | None = None
     disable_cypher: bool = False
     # REQ-2141: the rows this edge joins are the same entity.
     same_entity: bool = False

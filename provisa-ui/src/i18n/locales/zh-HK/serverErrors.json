@@ -541,7 +541,7 @@
       "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正則表達式：{{reason}}。=~ 需要正則表達式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
       "unknown_label": "沒有標籤 :{{label}}。已登記的標籤：{{suggestions}}。",
       "no_labels": "沒有標籤 :{{label}}：此角色無法讀取任何表。",
-      "unknown_relationship_type": "沒有關係類型 {{types}}。已登記的類型：{{suggestions}}。",
+      "unknown_relationship_type": "沒有關係類型 {{types}}。最接近的已登記類型：{{suggestions}}。",
       "no_relationship_types": "沒有關係類型 {{types}}：此角色無法遍歷任何關係。",
       "type_mismatch": "在 {{expression}} 中，{{value}} 無法與類型為 {{property_type}} 的 {{property}} 比較。{{fix}}",
       "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分組之前篩選行。請在 WITH 中聚合，之後再篩選。",

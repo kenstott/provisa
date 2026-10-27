@@ -541,7 +541,7 @@
       "invalid_regex": "Le motif \"{{pattern}}\" dans {{expression}} n'est pas une expression régulière valide : {{reason}}. =~ attend une expression régulière, par ex. \".*{{word}}.*\", ou utilisez CONTAINS \"{{word}}\".",
       "unknown_label": "Il n'existe pas de libellé :{{label}}. Libellés enregistrés : {{suggestions}}.",
       "no_labels": "Il n'existe pas de libellé :{{label}} : ce rôle ne peut lire aucune table.",
-      "unknown_relationship_type": "Il n'existe pas de type de relation {{types}}. Types enregistrés : {{suggestions}}.",
+      "unknown_relationship_type": "Il n'existe pas de type de relation {{types}}. Types enregistrés les plus proches : {{suggestions}}.",
       "no_relationship_types": "Il n'existe pas de type de relation {{types}} : ce rôle ne peut parcourir aucune relation.",
       "type_mismatch": "Dans {{expression}}, {{value}} ne peut pas être comparé à {{property}}, de type {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE ne peut pas utiliser l'agrégat {{aggregate}} : WHERE filtre les lignes avant leur regroupement. Agrégez dans un WITH et filtrez ensuite.",

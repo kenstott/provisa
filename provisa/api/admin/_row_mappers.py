@@ -231,6 +231,7 @@ def _rel_from_row(row) -> RelationshipType:
         alias=alias,
         graphql_alias=graphql_alias,
         computed_cypher_alias=computed_cypher_alias,
+        cypher_type=row["cypher_type"],
         disable_cypher=row.get("disable_cypher", False),
         same_entity=row["same_entity"],  # REQ-2141
         # REQ-1586: the junction declaration is part of the edge the UI reads back.

@@ -541,7 +541,7 @@
       "invalid_regex": "Il pattern \"{{pattern}}\" in {{expression}} non è un'espressione regolare valida: {{reason}}. =~ accetta un'espressione regolare, ad es. \".*{{word}}.*\", oppure usa CONTAINS \"{{word}}\".",
       "unknown_label": "Non esiste l'etichetta :{{label}}. Etichette registrate: {{suggestions}}.",
       "no_labels": "Non esiste l'etichetta :{{label}}: questo ruolo non può leggere alcuna tabella.",
-      "unknown_relationship_type": "Non esiste il tipo di relazione {{types}}. Tipi registrati: {{suggestions}}.",
+      "unknown_relationship_type": "Non esiste il tipo di relazione {{types}}. Tipi registrati più vicini: {{suggestions}}.",
       "no_relationship_types": "Non esiste il tipo di relazione {{types}}: questo ruolo non può attraversare alcuna relazione.",
       "type_mismatch": "In {{expression}}, {{value}} non può essere confrontato con {{property}}, di tipo {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE non può usare l'aggregato {{aggregate}}: WHERE filtra le righe prima che siano raggruppate. Aggrega in un WITH e filtra dopo.",

@@ -20,6 +20,7 @@ import type { Relationship } from "../../types/admin";
 import { injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
 import type { FrameView } from "./graph-model";
+import type { SchemaRel } from "./graph-schema-types";
 import { useRequestedView } from "./use-requested-view";
 import { useColumnWidths } from "./use-column-widths";
 import CodeMirror from "@uiw/react-codemirror";
@@ -91,6 +92,9 @@ interface GraphFrameProps {
   // these edges even though `relationships` (admin-editable set) excludes them. Falls back to
   // `relationships` when omitted so existing callers keep working.
   graphRelationships?: Relationship[];
+  /** The acting role's relationship types (/data/graph-schema): what a query this frame writes to
+   * expand a node names (REQ-1586). */
+  schemaRels: SchemaRel[];
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
   onSelectedLabelChange?: (label: string | null) => void;
@@ -125,6 +129,7 @@ export function GraphFrame({
   labelToTableId,
   relationships,
   graphRelationships = relationships,
+  schemaRels,
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
@@ -221,7 +226,7 @@ export function GraphFrame({
     overlayData,
     setOverlayData,
     frameNodes: frame.nodes,
-    relationships: graphRelationships,
+    schemaRels,
   });
 
   const handleExcludeNode = useCallback(

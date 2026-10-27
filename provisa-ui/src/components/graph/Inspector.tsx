@@ -31,7 +31,6 @@ import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import type { CanvasHighlight } from "./canvas/canvas-types";
-import { cypherRelType } from "../../naming";
 import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -109,7 +108,7 @@ export function Inspector({
     const edgeType = (selected.data as GEdge).type;
     // REQ-1586: a junction-backed row is exposed under its nomination, not its alias, so matching
     // on the alias would leave every junction edge without its relationship row here.
-    return relationships.find((r) => cypherRelType(r) === edgeType) ?? null;
+    return relationships.find((r) => r.cypherType === edgeType) ?? null;
   }, [selected, relationships]);
 
   const prevRelId = useRef<number | null>(null);

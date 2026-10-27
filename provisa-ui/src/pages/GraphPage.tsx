@@ -602,8 +602,7 @@ export function GraphPage() {
       const { query: newQueryBase, targetVars } = buildDropExpansion(
         frame.query,
         compoundLabel,
-        graphRels,
-        labelToTableLabel,
+        schemaRels,
       );
 
       const droppedNode = schemaNodeLabels.find((n) => {
@@ -631,7 +630,7 @@ export function GraphPage() {
         rerunFrame(frameId, newQueryBase);
       }
     },
-    [rerunFrame, graphRels, schemaNodeLabels, buildNfWhereClauses, labelToTableLabel],
+    [rerunFrame, schemaRels, schemaNodeLabels, buildNfWhereClauses],
   );
 
   const onDomainDrop = useCallback(
@@ -965,6 +964,7 @@ export function GraphPage() {
                 labelToTableId={labelToTableId}
                 relationships={adminRels}
                 graphRelationships={graphRels}
+                schemaRels={schemaRels}
                 autoImpute={autoImpute}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
