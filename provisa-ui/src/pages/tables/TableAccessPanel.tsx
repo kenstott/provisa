@@ -16,6 +16,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Loader, Select, Table, Text } from "@mantine/core";
+import { FormField, FormLayout } from "../../components/form/FormLayout";
 import { fetchTableAccess, type TableAccess } from "../../api/roleRights";
 import { AccessCells, AccessHeads } from "../security/AccessCells";
 
@@ -57,18 +58,19 @@ export function TableAccessPanel({ tableId }: { tableId: number | null }) {
   const chosen = columns.find((c) => c.name === (column ?? columns[0]?.name));
   return (
     <div data-testid="table-access">
-      <Select
-        label={t("roleRights.column")}
-        description={t("roleRights.accessHint")}
-        data={columns.map((c) => c.name)}
-        value={chosen?.name ?? null}
-        onChange={setColumn}
-        allowDeselect={false}
-        searchable
-        maw={360}
-        mb="sm"
-        data-testid="table-access-column"
-      />
+      <FormLayout>
+        <FormField size="medium" hint={t("roleRights.accessHint")}>
+          <Select
+            label={t("roleRights.column")}
+            data={columns.map((c) => c.name)}
+            value={chosen?.name ?? null}
+            onChange={setColumn}
+            allowDeselect={false}
+            searchable
+            data-testid="table-access-column"
+          />
+        </FormField>
+      </FormLayout>
       {chosen &&
         (chosen.access.length === 0 ? (
           <Text size="sm" c="dimmed" data-testid="table-access-none">
