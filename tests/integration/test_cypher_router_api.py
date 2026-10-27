@@ -57,6 +57,26 @@ async def client():
             os.environ["PROVISA_CONFIG"] = _prev_config
 
 
+def _engine_catalogs() -> str:
+    """What the engine's runtime holds attached, for a failure's message: a meta read on DuckDB
+    needs the control plane attached as provisa_admin (native_backend's registry walk)."""
+    from provisa.api.app import state
+
+    backend = state.federation_engine
+    runtime = getattr(backend, "_runtime", None)
+    if runtime is None or not hasattr(runtime, "_con"):
+        return f"engine {type(backend).__name__}: no native runtime"
+    attached = [
+        r[0]
+        for r in runtime._con.execute("SELECT database_name FROM duckdb_databases()").fetchall()
+    ]
+    return (
+        f"attached={attached} control_plane_attached={getattr(runtime, '_control_plane_attached', None)} "
+        f"phys_catalogs={sorted(getattr(runtime, '_phys_catalogs', []))} "
+        f"failed={dict(getattr(backend, '_failed', {}))} walks={getattr(backend, '_walks', None)}"
+    )
+
+
 async def _cypher(client: AsyncClient, query: str, params: dict | None = None, headers=None):
     return await client.post(
         "/data/cypher",
@@ -242,7 +262,7 @@ class TestCypherNodeAndRelationshipQueries:
             client,
             f"MATCH (a)-[r:{rel['type']}]->(b) RETURN a, b LIMIT 3",
         )
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 200, f"{resp.text}\n{_engine_catalogs()}"
         data = resp.json()
         assert "columns" in data
         assert "rows" in data
