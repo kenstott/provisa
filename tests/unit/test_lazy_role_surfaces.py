@@ -27,7 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.api.org_runtime import OrgRuntime
+from provisa.api.org_runtime import OrgRuntime, runtime_key
 from provisa.api.role_surface import LazySurface, RoleSurfaceUnbuilt, role_surface
 
 
@@ -430,3 +430,29 @@ def test_putting_back_a_replaced_part_builds_no_role() -> None:
     install_surface(runtime, "analyst", lazy)
     patch.undo()
     assert runtime.surfaces == before and not lazy.built
+
+
+def test_a_surface_is_built_against_the_runtime_that_registered_it(monkeypatch) -> None:
+    """A role's surface reads the model through ``state``, as its runtime: the one that registered
+    it, whatever the work that first reads it has bound. The background warm-up of an
+    environment's runtime ('recopied', just built) resolved ``state`` by the environment bound
+    then, found no runtime registered under it, and failed (RuntimeNotBuilt)."""
+    import provisa.api.app as appmod
+    from provisa.api import app_loaders
+
+    runtime = OrgRuntime(org_id="acme", env="recopied")  # registered under no key
+    seen: list = []
+
+    class _Stop(Exception):
+        pass
+
+    def _schema_input(state, role, tables, metrics):
+        seen.append(state._active_runtime())
+        raise _Stop
+
+    monkeypatch.setattr(app_loaders, "schema_input_for", _schema_input)
+    inputs = {"tables": [], "metrics": [], "field_numbers": {}}
+    with pytest.raises(_Stop):
+        app_loaders._build_role_surface(appmod.state, runtime, inputs, {"id": "analyst"}, None)
+    assert seen == [runtime]
+    assert appmod.state.org_registry.get(runtime_key("acme", "recopied")) is None

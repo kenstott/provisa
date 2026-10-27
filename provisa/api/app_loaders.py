@@ -1715,13 +1715,13 @@ def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls:
     """One role's surface, every part built before any of it is served."""
     from provisa.api.role_surface import RoleSurface
     from provisa.compiler.schema_gen import build_table_path_map
-    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.grpc.proto_gen import generate_proto
 
     # Built for the runtime that registered it, whoever reads it first: the build reads that
-    # org's model through ``state``.
-    token = set_current_org(runtime.org_id)
-    try:
+    # runtime's model through ``state`` -- its org's and its environment's, registered or not yet.
+    from provisa.api.org_runtime import serving
+
+    with serving(runtime):
         si = schema_input_for(state, role, inputs["tables"], inputs["metrics"])
         # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
         # surface holds that failure -- logged as an ERROR naming the role, and raised to every
@@ -1738,8 +1738,6 @@ def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls:
             table_path_map=build_table_path_map(si),
             proto=generate_proto(si, field_numbers=inputs["field_numbers"]),
         )
-    finally:
-        reset_current_org(token)
 
 
 #: How long after a rebuild the background warm-up starts: a burst of changes supersedes it first.
