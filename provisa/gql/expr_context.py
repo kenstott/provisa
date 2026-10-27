@@ -383,6 +383,13 @@ class TranslatorExprContext:
             return all(self.is_list(b) for b in branches)
         return False
 
+    def is_null(self, expr: CypherExpr) -> bool:
+        from provisa.gql.expr_ast import Literal
+
+        if isinstance(expr, Literal):
+            return expr.kind == "null"
+        return isinstance(expr, Variable) and expr.name in self._t._null_vars
+
     def is_json_value(self, expr: CypherExpr) -> bool:
         from provisa.gql.expr_ast import Index, Paren
 

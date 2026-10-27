@@ -547,6 +547,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # one an UNWIND or WITH binds to an item of one (its JSON): the answer decodes them.
         self._json_list_vars: set[str] = set()
         self._json_value_vars: set[str] = set()
+        # A variable a WITH binds to null (WITH null AS m): m[k] is null.
+        self._null_vars: set[str] = set()
         # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
         self._param_kinds: dict[str, str] = {}
         self._param_zones: dict[str, str] = {}
@@ -1577,6 +1579,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         lists: set[str] = set()
         json_lists: set[str] = set()
         json_values: set[str] = set()
+        nulls = {
+            i.alias
+            for i in items
+            if i.alias and isinstance(i.expression, ExprLiteral) and i.expression.kind == "null"
+        }
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
@@ -1626,6 +1633,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._list_vars = lists
         self._json_list_vars = json_lists
         self._json_value_vars = json_values
+        self._null_vars = nulls
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.

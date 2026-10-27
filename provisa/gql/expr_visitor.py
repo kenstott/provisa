@@ -157,6 +157,10 @@ class ExprContext(Protocol):
         """Whether ``expr`` is an item of a list of values of several types: its JSON."""
         ...
 
+    def is_null(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
+        ...
+
     def resolve_term(self, node: Term) -> exp.Expression:
         """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
@@ -1084,7 +1088,7 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
-        if any(isinstance(n, Literal) and n.kind == "null" for n in (node.obj, node.index)):
+        if self._ctx.is_null(node.obj) or self._ctx.is_null(node.index):
             return exp.Null()  # null[k] and m[null] are null (openCypher)
         if (
             isinstance(node.obj, (MapLiteral, Variable))

@@ -58,6 +58,9 @@ def _rows(query: str, params: dict | None = None) -> list[tuple]:
         # Graph9 [4]: properties() of a map is the map.
         ("RETURN keys(properties({name: 'Popeye', level: 9001})) AS k", [(["name", "level"],)]),
         ("RETURN properties(null) AS p", [(None,)]),
+        # Map2 [3], [4]: a map or key bound to null indexes to null.
+        ("WITH null AS expr, 'x' AS idx RETURN expr[idx] AS value", [(None,)]),
+        ("WITH {name: 'Mats'} AS expr, null AS idx RETURN expr[idx] AS value", [(None,)]),
         # Quantifier9-12 [5]: a key every unwound map gives a value of one type reads as it.
         (
             "UNWIND [{list: [2], fixed: true}, {list: [1, 2, 3], fixed: false}] AS input"
