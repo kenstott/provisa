@@ -88061,7 +88061,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     IR AST without choosing semantics; a language config, data that names the language''s choice for each
     parameterized operation (casts, division, division by zero, cross-type comparison, string +, null ordering
     and the like), is applied to that AST by one pass, producing the resolved AST the back end renders.
-    Cypher and SPARQL each have a config; a further language is a further config, not new compiler code.'
+    Cypher and SPARQL each have a config; a further language is a further config, not new compiler code.
+    (Amended 2026-10-27, THE LANGUAGE CONFIG IS A DIRECTION:) Maintainer 2026-10-27: the language-config
+    pass is the direction, not a project to build now. New parameterized operations are built as one IR
+    operation with a semantics option; an existing rule moves to that shape when it is next touched; the
+    per-language config and its pass come when enough options have gathered to warrant them.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
