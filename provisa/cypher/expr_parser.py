@@ -419,21 +419,20 @@ def _build_grammar() -> pp.ParserElement:
     ends_with = (pp.CaselessKeyword("ENDS") + pp.CaselessKeyword("WITH")).set_parse_action(
         lambda: "ENDS WITH"
     )
-    cmp_op = (
-        pp.one_of("<> != <= >= = < > =~")
-        | starts_with
-        | ends_with
-        | pp.CaselessKeyword("CONTAINS")
-        | pp.CaselessKeyword("IN")
+    cmp_op = pp.one_of("<> != <= >= = < > =~")
+    # openCypher's string and list predicates bind tighter than a comparison and looser than + and
+    # - (oC_StringListNullPredicateExpression): a = b IN c is a = (b IN c), a + b IN c is (a + b) IN c.
+    string_list_op = (
+        starts_with | ends_with | pp.CaselessKeyword("CONTAINS") | pp.CaselessKeyword("IN")
     )
 
-    # A postfix predicate bound directly onto the primary: IS [NOT] NULL, or the labeled-node test
-    # IS [NOT] :Label (the verbose form of `n:Label`; labels are Provisa's fixed domain/object types).
+    # The labeled-node test IS [NOT] :Label (the verbose form of `n:Label`; labels are Provisa's
+    # fixed domain/object types), bound directly onto the primary.
     is_label = pp.Suppress(":") + pp.DelimitedList(_ident_any, delim=":")
     is_suffix = pp.Group(
         pp.CaselessKeyword("IS").suppress()
         + pp.Optional(pp.CaselessKeyword("NOT"))("neg")
-        + (pp.CaselessKeyword("NULL")("isnull") | is_label("labels"))
+        + is_label("labels")
     )("issuffix")
     predicate = primary + pp.Optional(is_suffix)
 
@@ -442,13 +441,25 @@ def _build_grammar() -> pp.ParserElement:
         if "issuffix" not in t:
             return base
         suf = t["issuffix"]
-        negated = "neg" in suf
-        if "isnull" in suf:
-            return IsNull(operand=base, negated=negated)
         node: CypherExpr = LabelPredicate(operand=base, labels=[str(x) for x in suf["labels"]])
-        return Unary(op="NOT", operand=node) if negated else node
+        return Unary(op="NOT", operand=node) if "neg" in suf else node
 
     predicate.set_parse_action(_mk_predicate)
+
+    # IS [NOT] NULL, a postfix at the string and list predicates' level: a + b IS NULL is
+    # (a + b) IS NULL, a = b IS NULL is a = (b IS NULL).
+    is_null_op = pp.Group(
+        pp.CaselessKeyword("IS").suppress()
+        + pp.Optional(pp.CaselessKeyword("NOT"))("neg")
+        + pp.CaselessKeyword("NULL").suppress()
+    )
+
+    def _fold_is_null(t):
+        seq = list(t[0])
+        node = seq[0]
+        for suf in seq[1:]:
+            node = IsNull(operand=node, negated="neg" in suf)
+        return node
 
     expr <<= pp.infix_notation(
         predicate,
@@ -457,6 +468,8 @@ def _build_grammar() -> pp.ParserElement:
             (pp.Literal("^"), 2, pp.OpAssoc.LEFT, _fold_binary),  # power (BNF: arithmetic factor)
             (pp.one_of("* / %"), 2, pp.OpAssoc.LEFT, _fold_binary),
             (pp.one_of("+ -"), 2, pp.OpAssoc.LEFT, _fold_binary),
+            (string_list_op, 2, pp.OpAssoc.LEFT, _fold_binary),
+            (is_null_op, 1, pp.OpAssoc.LEFT, _fold_is_null),
             (cmp_op, 2, pp.OpAssoc.LEFT, _fold_binary),
             (pp.CaselessKeyword("NOT"), 1, pp.OpAssoc.RIGHT, _fold_unary),
             (pp.CaselessKeyword("AND"), 2, pp.OpAssoc.LEFT, _fold_binary),

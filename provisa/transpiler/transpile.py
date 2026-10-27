@@ -306,8 +306,10 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
     """What PostgreSQL says, said on DuckDB where the two differ. A division or remainder by zero
     is PostgreSQL's error: DuckDB answers infinity or NULL, so each divisor is read through a CASE
     that raises PostgreSQL's message on zero (a nonzero literal divisor is left as it is; any
-    other is evaluated twice). And a set-returning function aliased in FROM with no column list
-    names its one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
+    other is evaluated twice). An integer divided by an integer is an integer, truncated toward
+    zero: DuckDB's ``/`` answers a DOUBLE, its ``//`` PostgreSQL's ``/`` (a non-integer operand
+    divides exactly). And a set-returning function aliased in FROM with no column list names its
+    one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
     tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _guarded(divisor: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
@@ -337,7 +339,11 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
                 node.set("columns", [node.this.copy()])
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    tree = tree.transform(_transform)
+    # After the transform, which does not revisit what a replaced node holds (a / (b / c)).
+    for div in list(tree.find_all(exp.Div)):
+        div.replace(exp.IntDiv(this=div.this, expression=div.expression))
+    return tree.sql(dialect="duckdb")
 
 
 def _lengths_for_duckdb(sql: str) -> str:
