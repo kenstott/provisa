@@ -81,7 +81,7 @@ def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: s
 class _Plan:
     route: object  # transpiler.router.Route
     sql: str
-    source_id: str
+    source_id: str | None  # the DIRECT route's source; None on the engine's
     dialect: str
     exec_params: list | None = field(default=None)
     # the engine-specific: catalog-qualified postgres SQL (pre-transpile, for NF args extraction)
@@ -363,7 +363,8 @@ async def _optimize_and_route(
     not the pre-optimization one. ``exec_sql`` is the caller's already-lowered SQL (catalog-
     qualified semantic, or compiled catalog-physical); ``governed_sql`` is the pre-optimization
     governed semantic used for source extraction. Returns the optimized exec SQL, the route
-    decision, the resolved default source, and whether optimization changed the SQL.
+    decision, and whether optimization changed the SQL. A statement that reads no source is the
+    engine's: no source is not one source (the one_source gate).
 
     ``table_ids`` are the registered tables the statement reads, as the pipeline resolved them
     (``audit.pipeline.resolve_table_ids``): the operator's floor is judged by those tables
@@ -458,13 +459,9 @@ async def _optimize_and_route(
             source=_named_unbound[0],
             env=_rt.env,
         )
-    default_source = next(
-        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
-        next(iter(state.source_pools.source_ids), "pg"),
-    )
     from provisa.federation.registry_view import operator_floor
 
-    routed = sources or {default_source}
+    routed = set(sources)
     decision = decide_route(
         sources=routed,
         source_types=state.source_types,
@@ -481,9 +478,7 @@ async def _optimize_and_route(
         engine=state.federation_engine.engine if is_mutation else None,
         forced=()
         if is_mutation
-        else _forced_engine(
-            routed, optimized and not sources, _view, _rewrites, ctx, state, table_ids
-        ),
+        else _forced_engine(routed, _view, _rewrites, ctx, state, table_ids),
         **({} if is_mutation else await _proxy_plan(routed, governed_sql, ctx, state, table_ids)),
     )
     from provisa.api.region_ops_views import reads_region_views
@@ -509,7 +504,7 @@ async def _optimize_and_route(
         if _live or _live_inline:
             optimized = True
             opt_labels.extend(f"read live: {_tn}" for _tn in sorted({*_live, *_live_inline}))
-    return exec_sql, decision, default_source, optimized, sources, tuple(opt_labels)
+    return exec_sql, decision, optimized, sources, tuple(opt_labels)
 
 
 def _view_answering(
@@ -557,7 +552,6 @@ async def _read_live_parts(
 
 def _forced_engine(
     routed: set[str],
-    all_inlined: bool,
     view: Any,
     rewrites: dict,
     ctx: Any,
@@ -571,9 +565,6 @@ def _forced_engine(
     # A live-only part is read live for the engine when the engine runs the statement; on its
     # own it sends nothing there -- its source may answer the statement itself (REQ-2000).
     forced: list[str] = []
-    if all_inlined:
-        # Never a direct read of a source the statement does not read.
-        forced.append("every source it reads was inlined as rows")
     if view is not None:
         # The view is stored where the engine reads it: no source's driver knows it.
         forced.append(f"read from materialized view {view.mv.id!r}")
@@ -723,7 +714,7 @@ def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
     return bounds
 
 
-def _direct_terminal_serves(decision: Any, default_source: str, state: Any) -> bool:
+def _direct_terminal_serves(decision: Any, state: Any) -> bool:
     """Whether the router's decision lands on the DIRECT terminal proper — one source on its own
     pooled driver (``_run_plan_terminal``'s last branch), which is the read the threshold probe
     bounds. The admin store is not that terminal."""
@@ -731,7 +722,7 @@ def _direct_terminal_serves(decision: Any, default_source: str, state: Any) -> b
 
     if decision.route != Route.DIRECT:
         return False
-    source_id = decision.source_id or default_source
+    source_id = decision.source_id
     return source_id != "provisa-admin" and state.source_pools.has(source_id)
 
 
@@ -859,7 +850,7 @@ async def _optimize_and_route_cached(
             dialect=_cached.dialect,
             reason=_cached.reason,
         )
-        return exec_sql, decision, _cached.default_source, False, set(_cached.sources), ()
+        return exec_sql, decision, False, set(_cached.sources), ()
 
     result = await _optimize_and_route(
         exec_sql,
@@ -875,7 +866,7 @@ async def _optimize_and_route_cached(
         read_args=read_args,
         building=building,
     )
-    _exec_sql_out, decision, default_source, optimized, sources, opt_labels = result
+    _exec_sql_out, decision, optimized, sources, opt_labels = result
     # Guaranteed by would_materialize_optimize(exec_sql, state) being False (see module docstring):
     # no rewrite/inline/drop branch had anything to act on, so exec_sql passed through unchanged
     # and no optimization fired. Only cache when that guarantee actually held for THIS call — a
@@ -891,7 +882,6 @@ async def _optimize_and_route_cached(
                 source_id=decision.source_id,
                 dialect=decision.dialect,
                 reason=decision.reason,
-                default_source=default_source,
                 sources=frozenset(sources),
             ),
         )
@@ -2209,7 +2199,6 @@ async def route_governed(
     (
         _qualified,
         decision,
-        _default_source,
         _optimized,
         _sources,
         _opts,
@@ -2300,7 +2289,7 @@ async def route_governed(
     _probe_direct = (
         auto_deliver is not None
         and not _is_mutation
-        and _direct_terminal_serves(decision, _default_source, state)
+        and _direct_terminal_serves(decision, state)
         and _kept_probe_bounds(governed.memo, governed_semantic)
     )
     if auto_deliver is not None and decision.route != Route.ENGINE and not _probe_direct:
@@ -2479,7 +2468,7 @@ async def route_governed(
             result_shape=_kept_result_shape(
                 governed.memo, governed_semantic, gov_ctx.table_map, ctx, state
             ),
-            source_id=_default_source,
+            source_id=None,
             dialect=state.federation_engine.dialect,
             exec_params=exec_params,
             physical_sql=physical_sql,
@@ -2517,7 +2506,8 @@ async def route_governed(
         # carrying any inlined VALUES CTE onto the direct path; else the unchanged fast path.
         from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
 
-        _direct_sid = decision.source_id or _default_source
+        _direct_sid = decision.source_id
+        assert _direct_sid is not None  # a DIRECT decision names its source (decide_route)
         _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
         # REQ-1224: a buffered read is bounded at threshold+1 rows for the probe — the same
         # bound governance applies for a role's row ceiling (stage2.apply_row_cap).
@@ -4045,6 +4035,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # first write that finds that server listening.
         from provisa.api.data.pgwire_write import ensure_write_pool
 
+        assert plan.source_id is not None  # a DIRECT plan names its source
         await ensure_write_pool(state, plan.source_id)
 
     if plan.route == Route.ENGINE:
@@ -5017,7 +5008,6 @@ async def _route_compiled(
     (
         _exec_sql,
         decision,
-        _default_source,
         _optimized,
         sources,
         _opts,
@@ -5074,7 +5064,7 @@ async def _route_compiled(
     # terminal; the engine-physical form is derived only if the result does not fit.
     _probe_direct = (
         auto_deliver is not None
-        and _direct_terminal_serves(decision, _default_source, state)
+        and _direct_terminal_serves(decision, state)
         and _kept_probe_bounds(memo, governed_sql)
     )
     if auto_deliver is not None and decision.route != Route.ENGINE and not _probe_direct:
@@ -5161,7 +5151,7 @@ async def _route_compiled(
             route=Route.ENGINE,
             sql=governed_sql,
             result_shape=_kept_result_shape(memo, governed_sql, gov_ctx.table_map, ctx, state),
-            source_id=_default_source,
+            source_id=None,
             dialect=state.federation_engine.dialect,
             exec_params=exec_params,
             exec_sql=_exec_sql,
@@ -5195,7 +5185,8 @@ async def _route_compiled(
         dialect = decision.dialect or "postgres"
         from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
 
-        _direct_sid = decision.source_id or _default_source
+        _direct_sid = decision.source_id
+        assert _direct_sid is not None  # a DIRECT decision names its source (decide_route)
         _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
         # REQ-1224: a buffered read is bounded at threshold+1 rows for the probe — the same
         # bound governance applies for a role's row ceiling (stage2.apply_row_cap).

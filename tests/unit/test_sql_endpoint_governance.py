@@ -603,7 +603,7 @@ def two_roles(sql_client, monkeypatch):
 
     async def _route(exec_sql, governed_sql, gov_ctx, ctx, st, **kwargs):
         decision = RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t")
-        return exec_sql, decision, "pg", False, {"pg"}, ()
+        return exec_sql, decision, False, {"pg"}, ()
 
     async def _execute(plan, st=None):
         plans.append(plan)

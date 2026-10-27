@@ -147,6 +147,8 @@ def _database(dsn: str) -> str:
 def _one_source(i: RouteInputs) -> str | None:
     if len(i.sources) == 1:
         return None
+    if not i.sources:
+        return "reads no source"
     if i.source_dsns:
         keys = [i.source_dsns.get(s) for s in i.sources]
         if None not in keys and len({_database(k) for k in keys if k is not None}) == 1:
