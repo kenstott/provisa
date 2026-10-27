@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "Opdrachtsecties",
+    "section_command": "Opdracht",
+    "section_bindings": "Bindingen",
+    "language": "Taal",
+    "name": "Naam",
+    "leaveOut": "Weggelaten",
+    "nameIn": "Naam in {{language}}",
+    "leaveOutOf": "Weglaten uit {{language}}",
+    "notOffered": "Niet aangeboden",
+    "sqlAlways": "Altijd aangeboden",
+    "hint": "Een opdracht wordt in elke taal onder zijn eigen naam aangeboden. Geef hem in een taal een andere naam, of laat hem uit een taal weg. SQL wordt altijd aangeboden.",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

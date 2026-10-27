@@ -578,6 +578,27 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     return tree.transform(_lowered)
 
 
+def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
+    """``tree`` for a PostgreSQL server, which has no FILTER: each filtered list (the semantic SQL
+    keeps ``FILTER(l, y -> p)``, ``semantic_dialect``) is ``ARRAY(SELECT y FROM UNNEST(l) AS
+    _t(y) WHERE p)``."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.ArrayFilter):
+            return node
+        cond = node.expression
+        if not (isinstance(cond, exp.Lambda) and len(cond.expressions) == 1):
+            raise ValueError(f"A filtered list takes one element variable: {node.sql()}")
+        var = cond.expressions[0].name
+        unnest = exp.Unnest(expressions=[node.this.copy()])
+        table = exp.TableAlias(this=exp.to_identifier("_t"), columns=[exp.to_identifier(var)])
+        unnest.set("alias", table)
+        filtered = exp.select(var).from_(unnest).where(cond.this.copy())
+        return exp.Array(expressions=[filtered])
+
+    return tree.transform(_lowered)
+
+
 def snowflake_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for Snowflake, whose TRY_CAST takes text only (sqlglot writes a plain CAST of a
     value it cannot see is text): each null-on-failure cast reads its value as text first."""
@@ -690,6 +711,10 @@ def transpile(
     pg_sql = _like_escape_written(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
+    if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
+        lowered = postgres_array_filters(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")

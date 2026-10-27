@@ -201,7 +201,7 @@ async def test_the_explorers_routes_answer_for_the_named_set(built, monkeypatch)
 
     seen: list[str] = []
 
-    def _listed(state, role_id):
+    def _listed(state, role_id, language):
         seen.append(role_id)
         return []
 

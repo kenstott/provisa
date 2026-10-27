@@ -864,14 +864,15 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             bind_named_args,
             invoke_tracked_function,
             unknown_command,
+            usable_commands,
         )
 
-        fns = getattr(state, "tracked_functions", {}) or {}
-        whs = getattr(state, "tracked_webhooks", {}) or {}
-        fn = fns.get(command_name) or whs.get(command_name)
+        # REQ-2168: the path names the command's REST command binding.
+        fn = usable_commands(state, role_id, language="rest").get(command_name)
         if fn is None or fn.get("domain_id") != domain_id:
             # The executor's own answer, the same as for a command the role may not use.
             raise unknown_command(command_name)
+        command_name = fn["name"]
 
         raw = await request.body()
         try:

@@ -555,6 +555,18 @@
       "type_mismatch": "In {{expression}} kann {{value}} nicht mit {{property}} (Typ {{property_type}}) verglichen werden. {{fix}}",
       "aggregate_in_where": "WHERE kann das Aggregat {{aggregate}} nicht verwenden: WHERE filtert Zeilen, bevor sie gruppiert werden. Aggregieren Sie in einem WITH und filtern Sie danach.",
       "nested_aggregate": "{{outer}} aggregiert das Aggregat {{inner}}: Ein Aggregat kann nicht über ein anderes gebildet werden. Aggregieren Sie zuerst in einem WITH.",
+      "node_and_relationship": "{{variable}} bezeichnet sowohl einen Knoten als auch eine Beziehung: Eine Variable bezeichnet genau eine Sache. Geben Sie jedem eine eigene Variable.",
+      "path_variable_reused": "{{variable}} bezeichnet den Pfad und einen Knoten oder eine Beziehung darin: Eine Variable bezeichnet genau eine Sache. Geben Sie jedem eine eigene Variable.",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] aggregiert innerhalb einer List Comprehension, die jeweils eine Liste liest. Aggregieren Sie zuerst in einem WITH und verwenden Sie das Ergebnis in der Liste.",
+      "length_of_entity": "length({{variable}}) erwartet einen Pfad, und {{variable}} ist ein Knoten oder eine Beziehung. Binden Sie einen Pfad, MATCH p = ..., und verwenden Sie length(p).",
+      "column_name_conflict": "{{clause}} benennt zwei Spalten {{column}}: Jede Spalte hat ihren eigenen Namen. Benennen Sie eine mit AS um.",
+      "union_mixed": "UNION und UNION ALL sind in einer Anweisung gemischt: Verwenden Sie durchgehend eines von beiden.",
+      "union_columns_differ": "Die durch UNION verbundenen Anweisungen geben unterschiedliche Spalten zurück, {{first}} und {{second}}: Jede muss dieselben Spaltennamen zurückgeben.",
+      "integer_overflow": "{{value}} liegt außerhalb des Bereichs einer Ganzzahl, -9223372036854775808 bis 9223372036854775807.",
+      "invalid_unicode_escape": "Die Escape-Sequenz {{escape}} im String liest Cypher nicht. Ein Unicode-Escape ist \\u mit vier Hexadezimalziffern, z. B. \\u00e9.",
+      "boolean_operand": "{{operator}} erwartet true, false oder null, erhält aber einen in der Anweisung geschriebenen Wert eines anderen Typs.",
+      "nondeterministic_aggregate": "{{aggregate}} aggregiert rand(), das sich bei jedem Aufruf ändert. Berechnen Sie es zuerst in einem WITH und aggregieren Sie das Ergebnis.",
+      "value_as_node": "MATCH liest {{variable}} als Knoten oder Beziehung, aber die Anweisung bindet sie an einen Wert, der keines von beiden ist. Geben Sie dem Knoten eine eigene Variable.",
       "undefined_variable": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}.",
       "invalid_limit": "LIMIT {{value}} ist keine ganze Zeilenzahl: LIMIT erwartet eine Anzahl ab 0, z. B. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} ist keine ganze Zeilenzahl: SKIP erwartet eine Anzahl ab 0, z. B. SKIP 10.",
@@ -564,7 +576,7 @@
       "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
       "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden.",
       "non_finite_number": "Die Antwort enthält eine Zahl, die JSON nicht darstellen kann: {{column}} ist {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean eines Werts, der sich womöglich nicht umwandeln lässt, benötigen auf dieser Engine PostgreSQL 16 oder neuer."
+      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean für einen Wert, der sich möglicherweise nicht umwandeln lässt, erfordern auf dieser Engine PostgreSQL 16 oder neuer."
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
@@ -578,7 +590,7 @@
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
       "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}",
-      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diese Abfrage erlaubt ({{kind}}); es kann mehr geben.",
+      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diesen Lesevorgang zulässt ({{kind}}); sie kann mehr haben.",
       "approximate_index": "Die ähnlichsten Zeilen wurden über einen näherungsweisen Vektorindex gefunden: Eine Zeile, die etwas ähnlicher ist als die zuletzt zurückgegebene, kann fehlen.",
       "path_cut": "Ein Pfad ohne Obergrenze wurde an der Graph-Tiefengrenze von {{limit}} Hops abgeschnitten: Längere Pfade fehlen in der Antwort."
     },

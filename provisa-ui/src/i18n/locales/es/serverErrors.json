@@ -555,6 +555,18 @@
       "type_mismatch": "En {{expression}}, {{value}} no se puede comparar con {{property}}, que es de tipo {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE no puede usar el agregado {{aggregate}}: WHERE filtra filas antes de agruparlas. Agregue en un WITH y filtre después.",
       "nested_aggregate": "{{outer}} agrega el agregado {{inner}}: no se puede agregar otro agregado. Agregue primero en un WITH.",
+      "node_and_relationship": "{{variable}} nombra a la vez un nodo y una relación: una variable nombra una sola cosa. Dé a cada uno su propia variable.",
+      "path_variable_reused": "{{variable}} nombra la ruta y un nodo o una relación de ella: una variable nombra una sola cosa. Dé a cada uno su propia variable.",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] agrega dentro de una comprensión de lista, que lee una lista cada vez. Agregue primero en un WITH y use su resultado en la lista.",
+      "length_of_entity": "length({{variable}}) recibe una ruta, y {{variable}} es un nodo o una relación. Vincule una ruta, MATCH p = ..., y use length(p).",
+      "column_name_conflict": "{{clause}} nombra dos columnas {{column}}: cada columna tiene su propio nombre. Cambie el nombre de una con AS.",
+      "union_mixed": "UNION y UNION ALL están mezclados en una sentencia: use uno de ellos en toda ella.",
+      "union_columns_differ": "Las sentencias que une UNION devuelven columnas distintas, {{first}} y {{second}}: cada una debe devolver los mismos nombres de columna.",
+      "integer_overflow": "{{value}} está fuera del rango de un entero, de -9223372036854775808 a 9223372036854775807.",
+      "invalid_unicode_escape": "La secuencia de escape {{escape}} de la cadena no es una que Cypher lea. Un escape Unicode es \\u y cuatro dígitos hexadecimales, p. ej. \\u00e9.",
+      "boolean_operand": "{{operator}} recibe true, false o null, y se le da un valor de otro tipo escrito en la sentencia.",
+      "nondeterministic_aggregate": "{{aggregate}} agrega rand(), que cambia en cada llamada. Calcúlelo primero en un WITH y agregue el resultado.",
+      "value_as_node": "MATCH lee {{variable}} como un nodo o una relación, y la sentencia la vincula a un valor que no es ninguno de los dos. Dé al nodo su propia variable.",
       "undefined_variable": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}.",
       "invalid_limit": "LIMIT {{value}} no es un número entero de filas: LIMIT espera una cantidad de 0 o más, p. ej. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} no es un número entero de filas: SKIP espera una cantidad de 0 o más, p. ej. SKIP 10.",
@@ -564,7 +576,7 @@
       "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
       "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}.",
       "non_finite_number": "La respuesta contiene un número que JSON no puede representar: {{column}} es {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que quizá no se pueda convertir necesitan PostgreSQL 16 o posterior en este motor."
+      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que puede no convertirse requieren PostgreSQL 16 o posterior en este motor."
     },
     "requests": {
       "approver_outside_domains": "Su derecho a crear relaciones no alcanza ningún dominio que toque esta solicitud ({{domains}})",
@@ -578,7 +590,7 @@
     "statement": {
       "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
       "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}",
-      "list_at_ceiling": "Una lista contiene el máximo de {{limit}} entradas que permite el límite de filas para esta lectura ({{kind}}); puede haber más.",
+      "list_at_ceiling": "Una lista contiene el máximo de {{limit}} entradas que permite el límite de filas para esta lectura ({{kind}}); puede tener más.",
       "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta.",
       "path_cut": "Una ruta sin límite superior se cortó en el límite de profundidad del grafo de {{limit}} saltos: faltan en la respuesta las rutas más largas."
     },

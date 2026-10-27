@@ -57,6 +57,7 @@ from provisa.gql.expr_ast import (
     Unary,
     Variable,
 )
+from provisa.gql import temporal
 from provisa.gql.translator_helpers import _and_all
 from provisa.gql.translator_types import CypherTranslateError
 
@@ -125,6 +126,10 @@ class ExprContext(Protocol):
 
     def resolve_parameter(self, name: str) -> exp.Expression:
         """A ``$param`` reference — the positional placeholder it binds to."""
+        ...
+
+    def temporal_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
 
     def resolve_term(self, node: Term) -> exp.Expression:
@@ -199,6 +204,32 @@ def _anon(name: str, *args: exp.Expression) -> exp.Anonymous:
     return exp.Anonymous(this=name, expressions=list(args))
 
 
+def _literal_kind(item: CypherExpr) -> str | None:
+    """A literal's Cypher type, None for null or an expression whose type is not written."""
+    if isinstance(item, Literal):
+        if item.value is None:
+            return None
+        if isinstance(item.value, bool):
+            return "boolean"
+        if isinstance(item.value, int):
+            return "integer"
+        if isinstance(item.value, float):
+            return "float"
+        return "string"
+    if isinstance(item, ListLiteral):
+        return "list"
+    if isinstance(item, MapLiteral):
+        return "map"
+    return None
+
+
+def _mixed_literal_kinds(items: list[CypherExpr]) -> bool:
+    """Whether a list literal's items are literals of more than one type."""
+    if not all(isinstance(i, (Literal, ListLiteral, MapLiteral)) for i in items):
+        return False
+    return len({k for k in map(_literal_kind, items) if k is not None}) > 1
+
+
 class ExprLowering:
     """Lowers ``CypherExpr`` nodes to ``sqlglot.exp`` using an ``ExprContext`` for scoped leaves."""
 
@@ -235,6 +266,11 @@ class ExprLowering:
                 if key == node.name:
                     return self.lower(value)
             return exp.Null()
+        held = self._ctx.temporal_kind(node.obj)
+        if held == temporal.DURATION:
+            return temporal.duration_property(self.lower(node.obj), node.name)
+        if held is not None:  # REQ-2173: a date's, a time's or a date time's own parts
+            return temporal.value_property(held, self.lower(node.obj), node.name)
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
@@ -283,7 +319,22 @@ class ExprLowering:
         left = self.lower(node.left)
         right = self.lower(node.right)
         if op in _BINARY_ARITH:
+            # REQ-2173: a duration with a temporal value or another duration, as openCypher reads it.
+            timed = temporal.arithmetic(
+                op,
+                left,
+                self._ctx.temporal_kind(node.left),
+                right,
+                self._ctx.temporal_kind(node.right),
+            )
+            if timed is not None:
+                return timed
             return _BINARY_ARITH[op](this=left, expression=right)
+        if op in ("=", "<>", "!=") and (
+            self._ctx.temporal_kind(node.left) == temporal.DURATION
+            and self._ctx.temporal_kind(node.right) == temporal.DURATION
+        ):
+            return temporal.equality("=" if op == "=" else "<>", left, right)
         if op in ("=", "<>", "!="):
             # The `id` of a node drawn from several tables is the graph's synthetic identity —
             # engine-typed VARCHAR (built via CAST(pk AS VARCHAR) across heterogeneous node types
@@ -384,6 +435,34 @@ class ExprLowering:
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
+            if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
+                return exp.Null()
+            kinds = [self._ctx.temporal_kind(a) for a in node.args]
+            return temporal.duration_function(node.name, node.args, kinds, self.lower)
+        kind, _, clock = node.name.lower().partition(".")
+        if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
+            # REQ-2173: the current value, as the engine's clock reads it.
+            if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
+                return exp.Null()
+            if node.args:
+                raise CypherTranslateError(f"{node.name}() with a time zone is not supported")
+            return self._ctx.resolve_function(kind, [], distinct=False)
+        if kind in temporal.SQL_TYPES and clock == "truncate":  # REQ-2173
+            value_kind = self._ctx.temporal_kind(node.args[1]) if len(node.args) > 1 else None
+            return temporal.truncated(kind, node.args, value_kind, self.lower)
+        if node.name.lower() in temporal.SQL_TYPES:  # REQ-2173: from text or a map
+            built = temporal.temporal_value(
+                node.name.lower(), node.args, self.lower, self._ctx.temporal_kind
+            )
+            if built is not None:
+                return built
+        if (
+            node.name.lower() == "tostring"
+            and len(node.args) == 1
+            and self._ctx.temporal_kind(node.args[0]) == temporal.DURATION
+        ):
+            return temporal.iso_text(self.lower(node.args[0]))
         args = [self.lower(a) for a in node.args]
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 
@@ -404,6 +483,9 @@ class ExprLowering:
             for i in node.items
         ]
         if all(e is None for e in elements):
+            if _mixed_literal_kinds(node.items):
+                # [1, 'a', true]: one engine type only as each value's JSON (GraphVarKind.JSON_LIST).
+                return exp.Array(expressions=[_anon("to_json", self.lower(i)) for i in node.items])
             return exp.Array(expressions=[self.lower(i) for i in node.items])
         # A list of nodes and relationships ([r, m]) holds each as its JSON object, and anything
         # beside them as JSON too: one list of one type.

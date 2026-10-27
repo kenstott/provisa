@@ -69,7 +69,13 @@ def test_a_statement_the_translation_refuses_is_400_with_its_reason():
         raise CypherTranslateError("MERGE is not supported")
 
     refused = _build_sql_from_ast(
-        SimpleNamespace(comments=[]), None, CypherRequest(query="MERGE (n)"), refuse, None
+        SimpleNamespace(comments=[]),
+        None,
+        CypherRequest(query="MERGE (n)"),
+        refuse,
+        None,
+        "admin",
+        SimpleNamespace(),
     )
 
     assert refused.status_code == 400

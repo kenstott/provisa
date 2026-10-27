@@ -161,6 +161,6 @@
     "moveManyUnnamed_one": "להעביר עמודה {{count}}?",
     "moveManyUnnamed_other": "להעביר {{count}} עמודות?",
     "moveCarryUnnamed": "העבר וסמן את המונחים החדשים שלהן ב-{{tags}}",
-    "termGraphTitle": "גרף המונח"
+    "termGraphTitle": "גרף מונחים"
   }
 }

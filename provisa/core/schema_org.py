@@ -1105,6 +1105,8 @@ tracked_functions = Table(
     Column("requires_approval", Boolean, nullable=False, server_default=false()),
     # REQ-1924, REQ-871: "schema.table" of the registered table the command writes, when known.
     Column("writes_table", Text),
+    # REQ-2168: the command's name per language {language: {name?, exclude?}}.
+    Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
 tracked_webhooks = Table(

@@ -55,7 +55,12 @@ class GroupByMixin:  # REQ-653
         expands it to `alias.*`, so GROUP BY must group by the same `alias.*`, not a bare column
         named after the Cypher variable — else the two column sets disagree at the engine."""
         var_table = getattr(self, "_var_table", {})
-        if isinstance(expr, Variable) and expr.name in var_table:
+        unwound = getattr(self, "_unwind_aliases", set())
+        if (
+            isinstance(expr, Variable)
+            and expr.name in var_table
+            and not (var_table[expr.name][1] is None and var_table[expr.name][0] in unwound)
+        ):
             return exp.Column(
                 this=exp.Star(),
                 table=exp.Identifier(this=expr.name),

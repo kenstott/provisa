@@ -874,23 +874,43 @@ def _where(expr: CypherExpr | None) -> WhereClause | None:
     return None if expr is None else WhereClause(expr)
 
 
+def _flat_props(entries: list[_Entry]) -> list[str]:
+    """The node properties a FIELDS root returns flat: its own and its to-one levels'."""
+    out: list[str] = []
+    for e in entries:
+        if e.level is not None:
+            out += _flat_props(e.level)
+        elif e.prop is not None:
+            out.append(e.prop)
+    return out
+
+
 def _returned(
-    projection: str, entries: list[_Entry], seen: set[str] | None = None
+    projection: str,
+    entries: list[_Entry],
+    seen: set[str] | None = None,
+    shared: frozenset[str] | None = None,
 ) -> list[ReturnItem]:
     """A root's RETURN items: each field under its response key (GRAPHQL); its own and its
-    to-one fields' properties flat, unaliased (FIELDS); every node and relationship variable it
-    matches, each once (NODES). A to-many field is its COLLECT under its name in the first two."""
+    to-one fields' properties flat, each named by its property, or written ``var.prop`` where two
+    levels return the same property (FIELDS); every node and relationship variable it matches,
+    each once (NODES). A to-many field is its COLLECT under its name in the first two."""
     seen = set() if seen is None else seen
+    if shared is None:
+        props = _flat_props(entries)
+        shared = frozenset(p for p in props if props.count(p) > 1)
     out: list[ReturnItem] = []
     for e in entries:
         if e.level is not None:
-            out += _returned(projection, e.level, seen)
+            out += _returned(projection, e.level, seen, shared)
         elif projection == NODES and isinstance(e.expr, Variable):
             if e.expr.name not in seen:
                 seen.add(e.expr.name)
                 out.append(ReturnItem(e.expression()))
         elif projection == GRAPHQL or not (e.prop is not None or isinstance(e.expr, Variable)):
             out.append(ReturnItem(e.expression(), alias=e.key))
+        elif e.prop is not None and e.prop not in shared:
+            out.append(ReturnItem(e.expression(), alias=e.prop))
         else:
             out.append(ReturnItem(e.expression()))
     return out

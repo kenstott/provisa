@@ -23,16 +23,28 @@ from provisa.gql.expr_ast import (
     Binary,
     CypherExpr,
     FunctionCall,
+    ListComprehension,
+    ListLiteral,
     Literal,
+    MapLiteral,
     Parameter,
     Property,
+    Unary,
     Variable,
     walk,
 )
 from provisa.gql.group_by import AGGREGATES
 from provisa.gql.translator_types import CypherMistake
 
-from provisa.gql.ir import CypherAST, MatchStep, NodePattern, UnwindClause, WithClause
+from provisa.gql.ir import (
+    CypherAST,
+    MatchStep,
+    NodePattern,
+    PathFunction,
+    PathPattern,
+    UnwindClause,
+    WithClause,
+)
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -259,6 +271,8 @@ def _names(node: object, bound: set[str], used: list[str]) -> None:
         used.append(node.var)  # type: ignore[attr-defined]
     if kind == "CallSubquery":
         bound.update(node.imported_vars)  # type: ignore[attr-defined]
+    if kind == "ProcedureCall":  # REQ-2168: YIELD binds each variable it names
+        bound.update(var for _, var in node.yields)  # type: ignore[attr-defined]
     for f in dataclasses.fields(node):
         value = getattr(node, f.name)
         if (kind, f.name) in _BINDERS and isinstance(value, str):
@@ -278,6 +292,9 @@ def _clause_of(name: str, ast: CypherAST) -> str:
             parts.append(("WHERE", step.where))
         elif isinstance(step, UnwindClause):
             parts.append(("UNWIND", step.expression))
+        elif type(step).__name__ == "ProcedureCall":
+            parts.append(("CALL", step.args))  # type: ignore[attr-defined]
+            parts.append(("WHERE", step.where))  # type: ignore[attr-defined]
     parts.append(("RETURN", ast.return_clause))
     parts.append(("ORDER BY", ast.order_by))
     for clause, part in parts:
@@ -407,6 +424,22 @@ def aggregate_misuse(ast: CypherAST) -> CypherMistake | None:
     items = [i for w in ast.with_clauses for i in w.items]
     items += ast.return_clause.items if ast.return_clause is not None else []
     for item in items:
+        for comprehension in walk(item.expression):
+            if not isinstance(comprehension, ListComprehension):
+                continue
+            inside = [comprehension.predicate, comprehension.projection]
+            found = [c for part in inside for c in _aggregates(part)]
+            if found:
+                call = _call_text(found[0])
+                return CypherMistake(
+                    "cypher.aggregate_in_list",
+                    f"[{comprehension.var} IN ... | {call}] aggregates inside a list comprehension, "
+                    "which reads one list at a time. Aggregate in a WITH first and use its result "
+                    "in the list.",
+                    variable=comprehension.var,
+                    aggregate=call,
+                )
+    for item in items:
         for call in _aggregates(item.expression):
             for arg in call.args:
                 nested = _aggregates(arg)
@@ -419,5 +452,197 @@ def aggregate_misuse(ast: CypherAST) -> CypherMistake | None:
                         "of another. Aggregate in a WITH first.",
                         outer=outer,
                         inner=inner,
+                    )
+    return None
+
+
+def _kind_conflict(variable: str, kinds: tuple[str, str]) -> CypherMistake:
+    if "value" in kinds:
+        return CypherMistake(
+            "cypher.value_as_node",
+            f"MATCH reads {variable} as a node or relationship, and the statement binds it to a "
+            "value that is neither. Give the node its own variable.",
+            variable=variable,
+        )
+    if "path" in kinds:
+        return CypherMistake(
+            "cypher.path_variable_reused",
+            f"{variable} names the path and a node or relationship in it: a variable names one "
+            "thing. Give each its own variable.",
+            variable=variable,
+        )
+    return CypherMistake(
+        "cypher.node_and_relationship",
+        f"{variable} names both a node and a relationship: a variable names one thing. Give each "
+        "its own variable.",
+        variable=variable,
+    )
+
+
+def _length_of_entity(expressions: list[CypherExpr], kinds: dict[str, str]) -> CypherMistake | None:
+    for expr in expressions:
+        for call in walk(expr):
+            if not (isinstance(call, FunctionCall) and call.name.lower() == "length"):
+                continue
+            arg = call.args[0] if len(call.args) == 1 else None
+            if isinstance(arg, Variable) and kinds.get(arg.name) in ("node", "relationship"):
+                return CypherMistake(
+                    "cypher.length_of_entity",
+                    f"length({arg.name}) takes a path, and {arg.name} is a node or relationship. "
+                    "Bind a path, MATCH p = ..., and take length(p).",
+                    variable=arg.name,
+                )
+    return None
+
+
+def variable_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of a variable used as two things -- a node and a relationship, or a path and a
+    part of it -- or of length() taken of a node or relationship. What a variable names is read from
+    the MATCH patterns since the last WITH, which projects a fresh set."""
+    kinds: dict[str, str] = {}
+    for step in ast.pipeline:
+        if isinstance(step, WithClause):
+            found = _length_of_entity([i.expression for i in step.items], kinds)
+            if found is not None:
+                return found
+            kinds = {
+                item.alias: "value"
+                for item in step.items
+                if item.alias and isinstance(item.expression, (Literal, ListLiteral, MapLiteral))
+            }
+            continue
+        if not isinstance(step, MatchStep):
+            continue
+        for clause in step.matches:
+            pattern = clause.pattern
+            if isinstance(pattern, PathFunction):
+                pattern = pattern.pattern
+            if not isinstance(pattern, PathPattern):
+                continue
+            named = [(n.variable, "node") for n in pattern.nodes]
+            named += [(r.variable, "relationship") for r in pattern.rels]
+            if clause.variable is not None:
+                named.append((clause.variable, "path"))
+            for variable, kind in named:
+                if variable is None:
+                    continue
+                bound = kinds.setdefault(variable, kind)
+                if bound != kind:
+                    return _kind_conflict(variable, (bound, kind))
+                if kind == "path":
+                    continue
+                if variable == clause.variable:
+                    return _kind_conflict(variable, (kind, "path"))
+    if ast.return_clause is None:
+        return None
+    return _length_of_entity([i.expression for i in ast.return_clause.items], kinds)
+
+
+def _columns(ast: CypherAST) -> list[str]:
+    items = ast.return_clause.items if ast.return_clause is not None else []
+    return [item.alias or item.name for item in items]
+
+
+def _unions(ast: CypherAST) -> tuple[list[CypherAST], list[bool]]:
+    """The statements a UNION chain joins, in order, and whether each join is UNION ALL."""
+    parts, alls = [ast], []
+    while parts[-1].union_parts:
+        following, is_all = parts[-1].union_parts[0]
+        parts.append(following)
+        alls.append(is_all)
+    return parts, alls
+
+
+def projection_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of two columns of one name in a RETURN or WITH, of UNION joining statements
+    whose columns differ, or of UNION and UNION ALL mixed in one statement."""
+    parts, alls = _unions(ast)
+    for part in parts:
+        clauses = [("WITH", [i.alias or i.name for i in w.items]) for w in part.with_clauses]
+        clauses.append(("RETURN", _columns(part)))
+        for clause, columns in clauses:
+            repeated = next((c for n, c in enumerate(columns) if c in columns[:n]), None)
+            if repeated is not None:
+                return CypherMistake(
+                    "cypher.column_name_conflict",
+                    f"{clause} names two columns {repeated}: each column has its own name. Rename "
+                    "one with AS.",
+                    clause=clause,
+                    column=repeated,
+                )
+    if len(set(alls)) > 1:
+        return CypherMistake(
+            "cypher.union_mixed",
+            "UNION and UNION ALL are mixed in one statement: use one of them throughout.",
+        )
+    first = _columns(parts[0])
+    for part in parts[1:]:
+        other = _columns(part)
+        if other != first:
+            return CypherMistake(
+                "cypher.union_columns_differ",
+                f"The statements UNION joins return different columns, {', '.join(first)} and "
+                f"{', '.join(other)}: each returns the same column names.",
+                first=", ".join(first),
+                second=", ".join(other),
+            )
+    return None
+
+
+def _statement_expressions(ast: CypherAST) -> list[CypherExpr]:
+    found: list[CypherExpr] = []
+    for step in ast.pipeline:
+        if isinstance(step, WithClause):
+            found += [i.expression for i in step.items]
+        where = step.where if isinstance(step, (MatchStep, WithClause)) else None
+        if where is not None:
+            found.append(where.expression)
+    if ast.return_clause is not None:
+        found += [i.expression for i in ast.return_clause.items]
+    return found
+
+
+def _not_boolean(expr: CypherExpr) -> bool:
+    """A value written in the statement that is no boolean and no null."""
+    if isinstance(expr, Literal):
+        return expr.kind not in ("boolean", "null")
+    return isinstance(expr, (ListLiteral, MapLiteral))
+
+
+def expression_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of AND, OR, XOR or NOT given a value written in the statement that is no
+    boolean, or of an aggregate of rand(), whose value changes on every call."""
+    for expr in _statement_expressions(ast):
+        for node in walk(expr):
+            if isinstance(node, Binary) and node.op in ("AND", "OR", "XOR"):
+                operands = [node.left, node.right]
+                operator = node.op
+            elif isinstance(node, Unary) and node.op.upper() == "NOT":
+                operands = [node.operand]
+                operator = "NOT"
+            else:
+                operands = []
+                operator = ""
+            if any(_not_boolean(o) for o in operands):
+                return CypherMistake(
+                    "cypher.boolean_operand",
+                    f"{operator} takes true, false or null, and is given a value of another type "
+                    "written in the statement.",
+                    operator=operator,
+                )
+            if isinstance(node, FunctionCall) and node.name.lower() in AGGREGATES:
+                random = [
+                    n
+                    for a in node.args
+                    for n in walk(a)
+                    if isinstance(n, FunctionCall) and n.name.lower() == "rand"
+                ]
+                if random:
+                    call = _call_text(node)
+                    return CypherMistake(
+                        "cypher.nondeterministic_aggregate",
+                        f"{call} aggregates rand(), which changes on every call. Compute it in a "
+                        "WITH first and aggregate the result.",
+                        aggregate=call,
                     )
     return None

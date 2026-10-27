@@ -555,6 +555,18 @@
       "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
       "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",
       "nested_aggregate": "{{outer}} は集約 {{inner}} を集約しています: 集約の集約はできません。先に WITH で集約してください。",
+      "node_and_relationship": "{{variable}} はノードとリレーションシップの両方を指しています: 1 つの変数が指すのは 1 つのものです。それぞれに別の変数を付けてください。",
+      "path_variable_reused": "{{variable}} はパスと、その中のノードまたはリレーションシップの両方を指しています: 1 つの変数が指すのは 1 つのものです。それぞれに別の変数を付けてください。",
+      "aggregate_in_list": "[{{variable}} IN ... | {{aggregate}}] はリスト内包の中で集約しています。リスト内包は一度に 1 つのリストを読みます。先に WITH で集約し、その結果をリストで使ってください。",
+      "length_of_entity": "length({{variable}}) はパスを受け取りますが、{{variable}} はノードまたはリレーションシップです。MATCH p = ... でパスをバインドし、length(p) を使ってください。",
+      "column_name_conflict": "{{clause}} で 2 つの列に {{column}} という名前が付いています: 列にはそれぞれ固有の名前が必要です。AS でどちらかの名前を変えてください。",
+      "union_mixed": "1 つの文に UNION と UNION ALL が混在しています: どちらか一方に統一してください。",
+      "union_columns_differ": "UNION で結合する文が異なる列 {{first}} と {{second}} を返しています: どの文も同じ列名を返す必要があります。",
+      "integer_overflow": "{{value}} は整数の範囲 (-9223372036854775808 から 9223372036854775807) の外です。",
+      "invalid_unicode_escape": "文字列のエスケープ {{escape}} は Cypher が読むものではありません。Unicode エスケープは \\u と 16 進数 4 桁です (例: \\u00e9)。",
+      "boolean_operand": "{{operator}} は true、false、null を受け取りますが、文中に書かれた別の型の値が渡されています。",
+      "nondeterministic_aggregate": "{{aggregate}} は呼び出しごとに変わる rand() を集約しています。先に WITH で計算し、その結果を集約してください。",
+      "value_as_node": "MATCH は {{variable}} をノードまたはリレーションシップとして読みますが、文はそれをどちらでもない値にバインドしています。ノードには別の変数を付けてください。",
       "undefined_variable": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。",
       "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
       "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
@@ -564,7 +576,7 @@
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
       "non_finite_number": "回答に JSON で表せない数値が含まれています: {{column}} は {{value}} です。",
-      "try_cast_needs_postgres_16": "変換できない可能性がある値に対する toInteger、toFloat、toBoolean には、このエンジンでは PostgreSQL 16 以降が必要です。"
+      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
@@ -578,7 +590,7 @@
     "statement": {
       "rows_cut": "回答は {{limit}} 行で打ち切られました。これはこの読み取りに適用される行数制限です ({{kind}})。返された行より多くの行が一致します。",
       "rows_cut_unchecked": "回答は {{limit}} 行で、この読み取りに適用される行数制限と同じです ({{kind}})。さらに一致する行があるかどうかは確認できませんでした: {{reason}}",
-      "list_at_ceiling": "リストには、この読み取りの行数制限で許される最大 {{limit}} 件のエントリが含まれています ({{kind}})。さらにある可能性があります。",
+      "list_at_ceiling": "リストには、この読み取り ({{kind}}) で行数上限が許す最大 {{limit}} 件のエントリが含まれています。さらにある可能性があります。",
       "approximate_index": "最も類似した行は近似ベクトルインデックスで見つけました。返された最後の行よりわずかに類似度の高い行が欠けている可能性があります。",
       "path_cut": "上限のないパスがグラフの深さ上限 {{limit}} ホップで打ち切られました。それより長いパスは結果に含まれていません。"
     },

@@ -11,8 +11,8 @@
 """A Cypher RETURN of two variables' same-named properties is two columns (#259).
 
 ``RETURN n.name, c.name`` named both columns ``name``, and a row keeps one value a name, so one
-was lost. Each is now named as Cypher clients name an unaliased item, ``n.name`` and ``c.name``.
-An item with its own name, or a property no other item shares a name with, is named as before."""
+was lost. Each is now named as Cypher clients name an unaliased item, ``n.name`` and ``c.name``:
+every unaliased item is named as the statement writes it, and an item with its own name keeps it."""
 
 # Requirements: REQ-345
 
@@ -35,11 +35,11 @@ def test_two_variables_same_named_properties_are_two_columns():
     assert names == ["n.name", "c.name"]
 
 
-def test_a_property_no_other_item_shares_a_name_with_keeps_its_name():
+def test_a_property_no_other_item_shares_a_name_with_is_named_as_written():
     names = _names("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, n.age, c.name")
-    assert names == ["n.name", "age", "c.name"]
+    assert names == ["n.name", "n.age", "c.name"]
 
 
 def test_an_item_with_its_own_name_keeps_it():
     names = _names("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name AS person, c.name")
-    assert names == ["person", "name"]
+    assert names == ["person", "c.name"]
