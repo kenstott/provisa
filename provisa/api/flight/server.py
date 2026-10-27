@@ -1919,7 +1919,14 @@ class ProvisaFlightServer(
         )  # REQ-1176: verify at the last moment, before the engine executes
         if plan.materialize is not None:
             return self._delivered_stream(plan)
-        if not streams_from_terminal(plan):
+        # REQ-2131: column transforms are applied as the rows stream on the DIRECT stream below,
+        # which takes serve_stream_through_cache; the ENGINE stream does not, so it is not taken.
+        direct_stream = (
+            plan.route == Route.DIRECT
+            and self._state.source_pools.has(plan.source_id)
+            and self._state.source_pools.supports_stream(plan.source_id)
+        )
+        if not streams_from_terminal(plan, applies_columns=direct_stream):
             # REQ-2002: the rows are embedded once read, in the pipeline terminal (its audit too).
             from provisa.pgwire._pipeline import _execute_plan
 

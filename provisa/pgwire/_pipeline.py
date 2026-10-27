@@ -3583,18 +3583,21 @@ async def _settle_cut(plan: _Plan, state: Any) -> None:
         plan.limit_outcome = "cut"
 
 
-def streams_from_terminal(plan: _Plan) -> bool:  # REQ-2002
+def streams_from_terminal(plan: _Plan, *, applies_columns: bool = False) -> bool:  # REQ-2002
     """Whether a surface may stream ``plan``'s rows straight from its terminal. Not when Provisa
     still has work to do on them: a select-list ``embed()`` of rows is embedded once the rows are
-    read, in :func:`_execute_plan`, which such a plan is run through."""
+    read, in :func:`_execute_plan`, which such a plan is run through. A plan's column transforms
+    are applied as its rows stream where the terminal serves them through
+    :func:`serve_stream_through_cache` (``applies_columns``); anywhere else, by the pipeline
+    terminal."""
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.code_write is not None:
         return False  # REQ-2100: its command is called by the pipeline terminal
     if plan.scratch:
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
-    if plan.columns is not None:
-        return False  # REQ-2131: its column transforms are applied once its rows are read
+    if plan.columns is not None and not applies_columns:
+        return False  # REQ-2131: its column transforms are applied by the pipeline terminal
     if plan.staged is not None:
         return False  # REQ-2131: its CTEs holding a transform are run first, then it
     return plan.embedded is None or not plan.embedded.rows
@@ -4128,7 +4131,9 @@ def serve_stream_through_cache(  # REQ-1897
     plan.loop_run = run  # REQ-1949: what the check at the end of a source stream is run with
     caching = state.response_cache_store.stores_results
     permits = None  # REQ-1909: taken on the first live open, held until the stream ends
-    if passthrough is not None:
+    if passthrough is not None and plan.columns is None:
+        # (A plan's column transforms change its rows' values: its source's DataRows are not the
+        # answer, so it is served decoded.)
         wire_formats, open_passthrough = passthrough
         if caching:
             replay = run(check_response_cache_datarows(plan, state, wire_formats))
@@ -4161,6 +4166,18 @@ def serve_stream_through_cache(  # REQ-1897
     except BaseException:
         permits.release()
         raise
+    if plan.columns is not None:
+        from provisa.codesource.columns_fold import apply as _apply_columns
+
+        # REQ-2131: each call's input columns become its outputs as the rows stream through the
+        # source's workers, each answered batch passed on at once -- the answer is never waited
+        # for whole, and what is kept and counted at the stream's end is the transformed rows.
+        try:
+            stream = run(_apply_columns(stream, plan.columns.calls, state))
+        except BaseException:
+            stream.close()
+            permits.release()
+            raise
     tee = response_cache_tee(plan, state, run=run)
     return permits.wrap_stream(stream if tee is None else tee.rows(stream))
 
