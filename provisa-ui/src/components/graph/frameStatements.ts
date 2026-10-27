@@ -102,6 +102,8 @@ export function showing(st: FrameStatement): Partial<FrameData> {
     truncated: st.truncated,
     queryStats: st.queryStats,
     sparqlForm: st.sparqlForm,
+    sparqlTriples: st.sparqlTriples,
+    sparqlPairing: st.sparqlPairing,
   };
 }
 

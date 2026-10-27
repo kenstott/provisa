@@ -30,6 +30,8 @@
     "downloadJpg": "JPG",
     "downloadSvg": "SVG",
     "viewGraph": "גרף",
+    "sparqlLiteralsAsNodes": "ליטרלים כצמתים",
+    "sparqlDrawAsGraph": "צייר כגרף",
     "viewTable": "טבלה",
     "viewJson": "JSON",
     "viewGraphStats": "סטטיסטיקות הגרף",

@@ -30,6 +30,8 @@
     "downloadJpg": "JPG",
     "downloadSvg": "SVG",
     "viewGraph": "Graaf",
+    "sparqlLiteralsAsNodes": "Literals als knooppunten",
+    "sparqlDrawAsGraph": "Tekenen als graaf",
     "viewTable": "Tabel",
     "viewJson": "JSON",
     "viewGraphStats": "Graafstatistieken",

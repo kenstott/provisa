@@ -11,6 +11,7 @@
 // REQ-2135 phase 5: SPARQL in the graph visualizer -- IRIs compacted by the vocabulary's prefixes, a
 // pill's pattern added to the query in the bar, and an answer made a frame.
 
+import type { FrameData } from "../graph-model";
 import { describe, it, expect } from "vitest";
 import {
   addPattern,
@@ -22,6 +23,7 @@ import {
   pickedQuery,
   relationshipPattern,
   type SparqlVocabulary,
+  sparqlDrawn,
   withPrefixes,
   LITERAL_LABEL,
 } from "../sparql";
@@ -31,6 +33,7 @@ const P = {
   rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   xsd: "http://www.w3.org/2001/XMLSchema#",
   term: `${BASE}/vocab/term/`,
+  rel: `${BASE}/vocab/rel/`,
   sales: `${BASE}/vocab/sales/`,
   "sales-id": `${BASE}/id/sales/`,
 };
@@ -110,8 +113,31 @@ describe("a CONSTRUCT's triples", () => {
     expect(triples[0].p.shown).toBe("rdf:type");
   });
 
-  it("are drawn: resources by their class, each literal a node of its own", () => {
+  it("are drawn with each literal object a property of its subject", () => {
     const { nodes, edges } = triplesGraph(parseNTriples(NT, P));
+    expect([...nodes.values()].some((n) => n.label === LITERAL_LABEL)).toBe(false);
+    // Only the rdf:type triple joins two resources.
+    expect([...edges.values()].map((e) => e.type)).toEqual(["rdf:type"]);
+    const byIri = (iri: string) =>
+      [...nodes.values()].find((n) => n.properties.iri === `${BASE}/id/sales/orders/${iri}`);
+    expect(byIri("1")?.properties).toMatchObject({
+      "sales:amount": "12.50",
+      "sales:note": 'said "hi"',
+    });
+    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": "12.50" });
+  });
+
+  it("hold a predicate's several literals as a list", () => {
+    const nt = [
+      `<${BASE}/id/a> <${BASE}/vocab/sales/tag> "x" .`,
+      `<${BASE}/id/a> <${BASE}/vocab/sales/tag> "y" .`,
+    ].join("\n");
+    const { nodes } = triplesGraph(parseNTriples(nt, P));
+    expect([...nodes.values()][0].properties["sales:tag"]).toEqual(["x", "y"]);
+  });
+
+  it("are drawn, on the toggle: resources by their class, each literal a node of its own", () => {
+    const { nodes, edges } = triplesGraph(parseNTriples(NT, P), true);
     const resources = [...nodes.values()].filter((n) => n.label !== LITERAL_LABEL);
     const literals = [...nodes.values()].filter((n) => n.label === LITERAL_LABEL);
     // Order 1 is typed; order 2 has no type triple, so it is drawn by its namespace's prefix.
@@ -133,7 +159,7 @@ describe("a CONSTRUCT's triples", () => {
   it("are keyed as the canvas keys a node, so each edge is drawn between its ends", () => {
     // GraphCanvas draws an edge only when both its ends are in the frame's nodes under
     // `${label}:${id}`, as a Cypher frame keys them.
-    const { nodes, edges } = triplesGraph(parseNTriples(NT, P));
+    const { nodes, edges } = triplesGraph(parseNTriples(NT, P), true);
     for (const [key, n] of nodes) expect(key).toBe(`${n.label}:${n.id}`);
     for (const e of edges.values()) {
       expect(nodes.has(`${e.startNode.label}:${e.startNode.id}`)).toBe(true);
@@ -193,8 +219,9 @@ describe("an answer of /data/sparql", () => {
       response(NT, "application/n-triples"),
       P,
     );
-    expect(st.nodes.size).toBe(6);
-    expect(st.edges.size).toBe(4);
+    expect(st.nodes.size).toBe(3);
+    expect(st.edges.size).toBe(1);
+    expect(st.sparqlTriples).toHaveLength(4);
     expect(st.columns).toEqual(["subject", "predicate", "object"]);
     // A graph: its export is RDF.
     expect(st.sparqlForm).toBe("graph");
@@ -293,5 +320,89 @@ describe("a relationship pill", () => {
     expect(() => relationshipPattern("", `${BASE}/vocab/rel/NOPE`, PETS)).toThrow(
       /no relationship/,
     );
+  });
+});
+
+const iri = (path: string) => ({ type: "uri", value: `${BASE}/id/${path}` });
+const answer = (vars: string[], bindings: Record<string, unknown>[]) =>
+  response(
+    JSON.stringify({ head: { vars }, results: { bindings } }),
+    "application/sparql-results+json",
+  );
+
+describe("a SELECT of resources", () => {
+  it("pairs two variables into subject and object, offered as a graph", async () => {
+    const st = await sparqlStatement(
+      "SELECT ?a ?b WHERE { ?a <http://x/knows> ?b }",
+      answer(["a", "b"], [{ a: iri("ann"), b: iri("bob") }]),
+      P,
+    );
+    expect(st.sparqlPairing).toEqual({ subject: "a", predicate: null, object: "b" });
+    expect(st.nodes.size).toBe(0);
+    const drawn = sparqlDrawn({ id: "f", ...st } as FrameData, false, true);
+    expect(drawn.nodes.size).toBe(2);
+    expect([...drawn.edges.values()].map((e) => e.type)).toEqual([""]);
+    // Not asked: still a table.
+    expect(sparqlDrawn({ id: "f", ...st } as FrameData, false, false).nodes.size).toBe(0);
+  });
+
+  it("names each edge by a bound predicate", async () => {
+    const q = "SELECT ?s ?p ?o WHERE { ?s ?p ?o }";
+    const st = await sparqlStatement(
+      q,
+      answer(
+        ["s", "p", "o"],
+        [
+          { s: iri("ann"), p: { type: "uri", value: `${P.rel}knows` }, o: iri("bob") },
+          { s: iri("bob"), p: { type: "uri", value: `${P.rel}likes` }, o: iri("ann") },
+        ],
+      ),
+      P,
+    );
+    expect(st.sparqlPairing).toEqual({ subject: "s", predicate: "p", object: "o" });
+    const drawn = sparqlDrawn({ id: "f", ...st } as FrameData, false, true);
+    expect(drawn.nodes.size).toBe(2);
+    expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["rel:knows", "rel:likes"]);
+  });
+
+  it("stays a table where a variable binds a literal, is unbound, or is not a pair", async () => {
+    const lit = { type: "literal", value: "3" };
+    const cases: [string, string[], Record<string, unknown>[]][] = [
+      ["SELECT ?a ?n WHERE { ?a <http://x/n> ?n }", ["a", "n"], [{ a: iri("ann"), n: lit }]],
+      ["SELECT ?a ?b WHERE { ?a <http://x/k> ?b }", ["a", "b"], [{ a: iri("ann") }]],
+      [
+        "SELECT ?a ?b ?c WHERE { ?a <http://x/k> ?b . ?b <http://x/k> ?c }",
+        ["a", "b", "c"],
+        [{ a: iri("a"), b: iri("b"), c: iri("c") }],
+      ],
+      ["SELECT ?a WHERE { ?a a <http://x/T> }", ["a"], [{ a: iri("ann") }]],
+      ["SELECT ?a ?b WHERE { ?a <http://x/k> ?b }", ["a", "b"], []],
+    ];
+    for (const [q, vars, rows] of cases) {
+      const st = await sparqlStatement(q, answer(vars, rows), P);
+      expect(st.sparqlPairing).toBeUndefined();
+    }
+  });
+
+  it("is never offered for an ASK", async () => {
+    const st = await sparqlStatement(
+      "ASK { ?s ?p ?o }",
+      response(JSON.stringify({ head: {}, boolean: true }), "application/sparql-results+json"),
+      P,
+    );
+    expect(st.sparqlPairing).toBeUndefined();
+  });
+});
+
+describe("a CONSTRUCT frame's literal toggle", () => {
+  it("draws the literals as nodes on request, and as properties otherwise", async () => {
+    const st = await sparqlStatement(
+      "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }",
+      response(NT, "application/n-triples"),
+      P,
+    );
+    const frame = { id: "f", ...st } as FrameData;
+    expect(sparqlDrawn(frame, false, false).nodes.size).toBe(3);
+    expect(sparqlDrawn(frame, true, false).nodes.size).toBe(6);
   });
 });

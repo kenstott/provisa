@@ -11,9 +11,10 @@
 // REQ-2135 phase 5: SPARQL in the graph visualizer. The role's vocabulary as /data/sparql/vocabulary
 // serves it, IRIs shown compacted by its prefixes, a pill's triple pattern added to the query in the
 // bar, and an answer of /data/sparql made a frame: a CONSTRUCT's triples drawn as a graph (a literal
-// a node of its own, drawn apart from the resources), a SELECT's and an ASK's rows a table.
+// a property of its subject, or a node of its own on request), a SELECT's and an ASK's rows a table,
+// a SELECT of resources that pair into subject and object also drawable as a graph.
 
-import type { FrameStatement, GEdge, GNode } from "./graph-model";
+import type { FrameData, FrameStatement, GEdge, GNode } from "./graph-model";
 
 /** The role's vocabulary (GET /data/sparql/vocabulary). */
 export interface SparqlVocabulary {
@@ -284,10 +285,15 @@ export const LITERAL_LABEL = "Literal";
 
 /**
  * The triples as the canvas draws them: each resource a node, labelled by its class where a triple
- * types it (else its namespace's prefix), each literal object a node of its own labelled Literal,
- * and each triple an edge named by its predicate. An rdf:type triple is drawn too.
+ * types it (else its namespace's prefix), and each triple whose object is a resource an edge named
+ * by its predicate; an rdf:type triple is drawn too. A literal object is a property of its subject,
+ * as the Cypher view shows a node's properties (a predicate with several literals holds a list);
+ * with ``literalNodes`` it is a node of its own labelled Literal, drawn apart from the resources.
  */
-export function triplesGraph(triples: Triple[]): {
+export function triplesGraph(
+  triples: Triple[],
+  literalNodes = false,
+): {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
 } {
@@ -324,7 +330,13 @@ export function triplesGraph(triples: Triple[]): {
   };
   triples.forEach(({ s, p, o }, i) => {
     const a = resource(s);
-    // A literal is the triple's own: the same value under two subjects is two nodes.
+    if (o.rdfTerm === "literal" && !literalNodes) {
+      const held = a.properties[p.shown];
+      a.properties[p.shown] =
+        held === undefined ? o.shown : Array.isArray(held) ? [...held, o.shown] : [held, o.shown];
+      return;
+    }
+    // A literal node is the triple's own: the same value under two subjects is two nodes.
     const b =
       o.rdfTerm === "literal"
         ? add({
@@ -344,12 +356,66 @@ export function triplesGraph(triples: Triple[]): {
       start: a.id,
       end: b.id,
       type: p.shown,
-      properties: { iri: p.value },
+      properties: p.value === "" ? {} : { iri: p.value },
       startNode: a,
       endNode: b,
     });
   });
   return { nodes, edges };
+}
+
+/** How a SELECT's variables pair into an edge: its subject and object columns, and the column a
+ * bound predicate is read from (null where the query binds none). */
+export interface SelectPairing {
+  subject: string;
+  predicate: string | null;
+  object: string;
+}
+
+const isResource = (v: unknown): boolean =>
+  isRdfCell(v) && (v.rdfTerm === "iri" || v.rdfTerm === "bnode");
+
+/**
+ * Whether a SELECT's rows can be drawn as a graph (REQ-2135): every variable binds a resource in
+ * every row, and the variables pair into a subject and an object -- two variables, or three where
+ * the query's own triple pattern puts the middle one in predicate position. Null for any other.
+ */
+export function selectPairing(
+  query: string,
+  columns: string[],
+  rows: Record<string, unknown>[],
+): SelectPairing | null {
+  if (rows.length === 0 || columns.length < 2 || columns.length > 3) return null;
+  if (!rows.every((r) => columns.every((c) => isResource(r[c])))) return null;
+  if (columns.length === 2) return { subject: columns[0], predicate: null, object: columns[1] };
+  const [s, p, o] = columns;
+  const pattern = new RegExp(`[?$]${s}\\s+[?$]${p}\\s+[?$]${o}(?![\\w])`);
+  // The pattern is read in the WHERE group, never in the SELECT clause that lists the variables.
+  return pattern.test(query.slice(query.indexOf("{"))) ? { subject: s, predicate: p, object: o } : null;
+}
+
+/** A SELECT's rows as triples, one per row: the predicate bound where the pairing has one, else
+ * an unnamed edge. */
+export function pairedTriples(
+  pairing: SelectPairing,
+  rows: Record<string, unknown>[],
+): Triple[] {
+  const unnamed: RdfCell = { rdfTerm: "iri", value: "", shown: "" };
+  return rows.map((r) => ({
+    s: r[pairing.subject] as RdfCell,
+    p: pairing.predicate === null ? unnamed : (r[pairing.predicate] as RdfCell),
+    o: r[pairing.object] as RdfCell,
+  }));
+}
+
+/** ``frame`` as it is drawn: a CONSTRUCT's triples with their literals as properties or, with
+ * ``literalNodes``, as nodes; a pairable SELECT's rows, once ``drawSelect`` asks, as nodes and
+ * edges. Any other frame is as answered. */
+export function sparqlDrawn(frame: FrameData, literalNodes: boolean, drawSelect: boolean): FrameData {
+  if (frame.sparqlTriples) return { ...frame, ...triplesGraph(frame.sparqlTriples, literalNodes) };
+  if (drawSelect && frame.sparqlPairing)
+    return { ...frame, ...triplesGraph(pairedTriples(frame.sparqlPairing, frame.rows)) };
+  return frame;
 }
 
 /** A refused /data/sparql request's message: the error its JSON body names, else its body. */
@@ -384,6 +450,7 @@ export async function sparqlStatement(
       rows: triples.map((t) => ({ subject: t.s, predicate: t.p, object: t.o })),
       columns: ["subject", "predicate", "object"],
       sparqlForm: "graph",
+      sparqlTriples: triples,
     };
   }
   const body = (await res.json()) as {
@@ -404,7 +471,16 @@ export async function sparqlStatement(
   const rows = (body.results?.bindings ?? []).map((b) =>
     Object.fromEntries(columns.map((v) => [v, b[v] ? cellOf(b[v], prefixes) : null])),
   );
-  return { ...empty, query, status: "done", rows, columns, sparqlForm: "rows" };
+  const pairing = selectPairing(query, columns, rows);
+  return {
+    ...empty,
+    query,
+    status: "done",
+    rows,
+    columns,
+    sparqlForm: "rows",
+    ...(pairing ? { sparqlPairing: pairing } : {}),
+  };
 }
 
 /** What /data/sparql is asked to answer in: a SELECT's or an ASK's rows as JSON, a CONSTRUCT's

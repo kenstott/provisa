@@ -13,6 +13,7 @@
 // GraphFrame (the component) and GraphPage. See react-graphql SKILL.md
 // (Module Size — Subdivide Past 1000 Lines).
 
+import type { SelectPairing, Triple } from "./sparql";
 import type { ResultRedirect } from "../../types/resultRedirect";
 import type { Relationship } from "../../types/admin";
 
@@ -393,6 +394,10 @@ export interface FrameData {
   statementIndex?: number;
   /** A SPARQL answer's form (REQ-2135), which its export is written as. */
   sparqlForm?: SparqlForm;
+  /** A CONSTRUCT's triples, which the frame draws with its literals as properties or as nodes. */
+  sparqlTriples?: Triple[];
+  /** A SELECT whose rows pair into subject and object, and can be drawn as a graph. */
+  sparqlPairing?: SelectPairing;
 }
 
 /** One statement's result, of a frame whose query holds several. */
@@ -409,4 +414,6 @@ export type FrameStatement = Pick<
   | "truncated"
   | "queryStats"
   | "sparqlForm"
+  | "sparqlTriples"
+  | "sparqlPairing"
 > & { status: "done" | "error" };
