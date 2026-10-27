@@ -142,3 +142,31 @@ def test_an_unaliased_expression_is_named_as_the_statement_writes_it():
         parse_cypher("UNWIND [1, 3, 2] AS x RETURN min(x), count(x) > 1"), _EMPTY, {}
     )
     assert [s.alias_or_name for s in sql_ast.expressions] == ["min(x)", "count(x) > 1"]
+
+
+@pytest.mark.parametrize(
+    ("query", "value"),
+    [
+        ("RETURN date('2015-07-21') AS v", "2015-07-21"),
+        ("RETURN localdatetime('2015-07-21T21:40:32') AS v", "2015-07-21 21:40:32"),
+        ("RETURN localtime('21:40:32') AS v", "21:40:32"),
+        ("RETURN datetime('2015-07-21T21:40:32+00:00') AS v", "2015-07-21 21:40:32+00"),
+    ],
+)
+def test_a_temporal_value_written_as_a_string_is_a_value_of_its_type(query, value):
+    from provisa.transpiler.transpile import transpile
+
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    duck = duckdb.connect()
+    duck.execute("SET TimeZone = 'UTC'")
+    [(got,)] = duck.sql(transpile(sql_ast.sql(dialect="postgres"), "duckdb")).fetchall()
+    assert str(got).startswith(value)
+
+
+def test_the_current_temporal_value_is_the_engines_own():
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("RETURN date() AS d, datetime() AS t, localdatetime() AS l"), _EMPTY, {}
+    )
+    assert sql_ast.sql(dialect="postgres") == (
+        "SELECT CURRENT_DATE AS d, CURRENT_TIMESTAMP AS t, LOCALTIMESTAMP AS l"
+    )
