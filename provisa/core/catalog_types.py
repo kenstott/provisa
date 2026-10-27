@@ -20,6 +20,7 @@ import pyarrow as pa
 
 from provisa.core.ir_types import to_ir
 from provisa.core.numeric_type import numeric_arrow_type, numeric_size
+from provisa.core.temporal_type import timestamp_precision, timestamp_unit
 
 # the engine type -> Arrow type mapping
 _ARROW_TYPE_MAP: dict[str, pa.DataType] = {
@@ -114,6 +115,11 @@ def _physical_type_to_arrow(column_type: str) -> pa.DataType:
     if _is_numeric(text):
         return numeric_arrow_type(text)
     base = text.partition("(")[0].strip()
+    precision = timestamp_precision(text)
+    if precision is not None:
+        # A timestamp declaring its precision is read at the unit that holds it (REQ-1961).
+        zone = "UTC" if base == "timestamptz" else None
+        return pa.timestamp(timestamp_unit(precision), tz=zone)
     # Parameterized scalars: varchar(20) -> varchar.
     if base in _ARROW_TYPE_MAP:
         return _ARROW_TYPE_MAP[base]

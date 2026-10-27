@@ -229,11 +229,12 @@ def seed(pg_dsn: str) -> None:
 def registered_typing(pg_type: str) -> dict[str, Any]:
     """How a PostgreSQL source column of ``pg_type`` registers, decided as registration decides
     it (provisa/api/admin/introspect.py ``_pg_column_typing``): an array by ``column_typing``
-    (JSON with its depth, element type and native spelling, REQ-1965), a sized decimal keeping its
-    size (REQ-1961), any other scalar by ``to_ir``. The column fields, ``data_type`` first. Raises
+    (JSON with its depth, element type and native spelling, REQ-1965), a sized decimal or a
+    timestamp declaring its precision keeping it (REQ-1961), any other scalar by ``to_ir``. The column fields, ``data_type`` first. Raises
     ValueError for a type registration refuses."""
     from provisa.core.ir_types import column_typing, to_ir
     from provisa.core.numeric_type import numeric_size_of
+    from provisa.core.temporal_type import sized_timestamp
 
     typing = column_typing(pg_type, "postgresql")
     if typing.native_type:
@@ -246,6 +247,9 @@ def registered_typing(pg_type: str) -> dict[str, Any]:
         }
     if numeric_size_of(typing.data_type) is not None:
         return {"data_type": typing.data_type}
+    sized = sized_timestamp(pg_type)
+    if sized is not None:
+        return {"data_type": sized}  # a timestamp keeps its declared precision (REQ-1961)
     return {"data_type": to_ir(pg_type)}
 
 
