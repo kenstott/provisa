@@ -89940,7 +89940,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the same tables (a triple about a model subject is a session property, relationship or rdf:type tag
     on that node, never a model write). Ephemeral objects are visible to their own session alone, never
     in the catalog, the ontology, exports or another session. Conformance suites that build their own graph
-    run against it (REQ-2167).'
+    run against it (REQ-2167). (Amended 2026-10-27, SPARQL FOLLOWS THE SAME RULE:) Maintainer 2026-10-27:
+    SPARQL Update follows the governing rule. A model subject''s IRI ({public URL}/id/{domain}/{table}/{key})
+    names one model row, so a SPARQL write is governed only when all its triples resolve to that one row''s
+    declared columns: DELETE DATA / INSERT DATA (or DELETE/INSERT ... WHERE) of a declared predicate''s
+    value on a model subject updates that column; INSERT DATA of a new subject IRI in a model table''s namespace,
+    carrying that table''s class and its required columns, inserts one row; deleting every triple of a model
+    subject deletes that row, under the same exact-target rule as DETACH DELETE. Each runs through the governed
+    write path as SQL and Cypher writes do. Everything else goes to the session graph (the same session
+    store): a predicate the table does not declare, an rdf:type naming a class the model lacks or a second
+    class on a model subject (a session tag), a subject that is not a model IRI or is a blank node, triples
+    spanning several model rows, every named graph (CREATE GRAPH makes a session graph), and ontology statements
+    about model terms (the ontology is governed through its own admin path, never written by a query). The
+    existing SPARQL compiler is unchanged; an extension classifies each update as governed or session, and
+    reads union session triples beside the governed answer only where the session has matches. With server.public_url
+    unset, model IRIs cannot be recognized and such writes are refused by name, as reads are.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
