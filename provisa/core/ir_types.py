@@ -597,6 +597,19 @@ def indexed_string_length() -> int:
     return int(os.environ.get("PROVISA_INDEXED_STRING_LENGTH", "255"))
 
 
+def _session_only_sqlalchemy(type_name: str) -> Any:
+    """REQ-2176: the column types only a session's ephemeral table holds, which no source's type
+    names (a source's time with a zone is ``time``, its array ``json``): ``zoned_time``, a time
+    of day with its offset, and ``list<elem>``, a list of one element type. None for any other."""
+    if type_name == "zoned_time":
+        return Time(timezone=True)
+    if type_name.startswith("list<") and type_name.endswith(">"):
+        from sqlalchemy import ARRAY
+
+        return ARRAY(to_sqlalchemy(type_name[5:-1]))
+    return None
+
+
 def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     """The SQLAlchemy generic type for an IR name (or a native spelling, normalized via ``to_ir``).
     This is the write face's IR → SQLAlchemy mapping; it renders per-dialect at DDL time.
@@ -606,6 +619,9 @@ def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     place this substitution happens, so every engine/dialect that lands a keyed column through
     ``materialize_exec.build_table`` gets it uniformly, not just the one dialect that happened to
     surface the gap. Every other IR type is already bounded/fixed-width and needs no substitution."""
+    session_only = _session_only_sqlalchemy(type_name)
+    if session_only is not None:
+        return session_only
     sa_type = _IR_TO_SA[to_ir(type_name)]
     if sa_type is Numeric:
         # A decimal named with its precision and scale lands with them: an unqualified NUMERIC is

@@ -118,18 +118,27 @@ def _arrow(landed: str) -> Any:
     decimal = _DECIMAL.match(landed)
     if decimal is not None:
         return pa.decimal128(int(decimal[1]), int(decimal[2]))
-    return {
-        "bigint": pa.int64(),
-        "double": pa.float64(),
-        "boolean": pa.bool_(),
-        "date": pa.date32(),
-        "timestamp": pa.timestamp("us"),
-        "timestamptz": pa.timestamp("us", tz="UTC"),
-        "text": pa.string(),
-        "bytea": pa.binary(),
-        "uuid": pa.string(),
-        "json": pa.string(),
-    }[landed]
+    return (
+        {
+            "bigint": pa.int64(),
+            "double": pa.float64(),
+            "boolean": pa.bool_(),
+            "date": pa.date32(),
+            "timestamp": pa.timestamp("us"),
+            "timestamptz": pa.timestamp("us", tz="UTC"),
+            "text": pa.string(),
+            "bytea": pa.binary(),
+            "uuid": pa.string(),
+            "json": pa.string(),
+            # REQ-2176: a session's ephemeral table also holds times, durations (as the text the
+            # store reads), times with their offset (likewise) and lists of one element type.
+            "time": pa.time64("us"),
+            "interval": pa.string(),
+            "zoned_time": pa.string(),
+        }[landed]
+        if not landed.startswith("list<")
+        else pa.list_(_arrow(landed[5:-1]))
+    )
 
 
 def inferred_type(name: str, values: list[Any]) -> str:
@@ -209,6 +218,8 @@ def _as_landed(name: str, landed: str, value: Any) -> Any:
         return str(value if isinstance(value, uuid.UUID) else uuid.UUID(str(value)))
     if landed == "json":
         return value if isinstance(value, str) else json.dumps(value)
+    if landed in ("interval", "zoned_time"):
+        return _as_text(landed, value)
     if isinstance(value, str) and landed != "text":
         try:
             return _from_copy_text(name, landed, value)
@@ -228,6 +239,27 @@ def _as_landed(name: str, landed: str, value: Any) -> Any:
     if landed == "bigint" and isinstance(value, (Decimal, float)):
         return int(Decimal(str(value)).to_integral_value(ROUND_HALF_UP))
     return value
+
+
+def _as_text(landed: str, value: Any) -> str:
+    """A duration or a time with its offset as the text the store reads it from (REQ-2176)."""
+    import datetime
+
+    if isinstance(value, str):
+        return value
+    if landed == "zoned_time" and isinstance(value, datetime.time):
+        return value.isoformat()
+    if landed == "interval":
+        from provisa.gql.temporal import Duration
+
+        if isinstance(value, Duration):
+            months, days, micros = value.months, value.days, value.micros
+        elif isinstance(value, datetime.timedelta):
+            months, days, micros = 0, value.days, value.seconds * 1_000_000 + value.microseconds
+        else:  # an interval the store hands back (Arrow's month_day_nano)
+            months, days, micros = value.months, value.days, value.nanoseconds // 1000
+        return f"{months} months {days} days {micros} microseconds"
+    raise ValueError(f"a {landed} column holds no {type(value).__name__}")
 
 
 def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
@@ -394,6 +426,37 @@ async def apply(
     return QueryResult(rows=[], column_names=[], rowcount=len(before) - len(after))
 
 
+async def reland(
+    state: Any,
+    session: TempSession,
+    name: str,
+    columns: list[tuple[str, str]],
+    rows: list[tuple],
+) -> None:
+    """Land the session's table ``name`` again whole, as ``columns`` holding ``rows`` (REQ-2176):
+    created on its first landing, its shape changed where ``columns`` differ. The caller builds
+    ``rows`` from what the table holds (:func:`held_rows`)."""
+    table = session.tables.get(name)
+    if table is None:
+        _within_tables(session, name)
+    _within_rows(name, len(rows))
+    await _land(state, session, name, _batch(columns, rows), columns)
+    if table is None or table.columns != columns:
+        # A new table or a new shape: what a statement kept for the session no longer holds.
+        session.tables[name] = TempTable(name, columns)
+        session.generation += 1
+
+
+async def held_rows(state: Any, session: TempSession, name: str) -> list[tuple]:
+    """The rows the session's table ``name`` holds now, in its columns' order; none before it is
+    first landed."""
+    if name not in session.tables:
+        return []
+    at = await _store_address(state, session, name)
+    _, rows = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
+    return rows
+
+
 async def end(session: TempSession, state: Any) -> None:
     """The session is over: its temporary tables go with it."""
     if session.stored:
@@ -404,6 +467,7 @@ async def end(session: TempSession, state: Any) -> None:
         await drop_temp_schema(state.federation_engine.engine.materialize_store(), schema)
         await note_ended(state, session, schema)
     session.tables.clear()
+    session.extensions.clear()
     session.stored = False
 
 
