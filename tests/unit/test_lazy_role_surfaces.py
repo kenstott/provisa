@@ -410,3 +410,23 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
     assert print_schema(role_surface(state, "analyst").schema) != print_schema(
         role_surface(state, "steward").schema
     )
+
+
+def test_putting_back_a_replaced_part_builds_no_role() -> None:
+    """A teardown puts back the view it replaced, and builds none of the roles the test
+    installed since. Reading through them built each, and one whose build failed failed the
+    teardown, leaving the org the test ran in bound for the next test."""
+    from provisa.api.role_surface import install_surface
+
+    runtime = OrgRuntime(org_id="default")
+    before = runtime.surfaces
+    patch = pytest.MonkeyPatch()
+    patch.setattr(runtime, "schemas", {})
+
+    def _fails():
+        raise ValueError("No tables visible to role 'analyst'")
+
+    lazy = LazySurface("analyst", _fails)  # as the test's build installs it
+    install_surface(runtime, "analyst", lazy)
+    patch.undo()
+    assert runtime.surfaces == before and not lazy.built

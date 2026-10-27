@@ -229,7 +229,18 @@ class SurfacePart(MutableMapping):
 
 def set_part(holder: Any, part: str, values: Any) -> None:
     """Make ``part`` across all roles exactly ``values`` (a test replacing a whole map, or its
-    teardown putting an earlier one back)."""
+    teardown putting an earlier one back).
+
+    Given a view of this part (what a teardown puts back), the ``surfaces`` mapping the view
+    shows is made current again whole: a role not built then is put back unbuilt. Reading the
+    view's parts would build every such role, and one whose build fails would fail the teardown
+    -- leaving whatever it was to undo after it (the bound org among them) undone."""
+    if isinstance(values, SurfacePart) and values._part == part:
+        for role_id in [r for r in holder.surfaces if r not in values._held]:
+            install_surface(holder, role_id, None)
+        for role_id, held in values._held.items():
+            install_surface(holder, role_id, held)
+        return
     wanted = dict(values)
     view = SurfacePart(holder, part)
     for role_id in list(view):

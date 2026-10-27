@@ -291,7 +291,7 @@ async def _save_relationship_as_caller(
     # domain is the one being changed. The target is referenced, not altered — its own RLS and
     # masking still apply when the join is traversed. So the gate asks about the SOURCE domain, and
     # an edge whose target lives elsewhere is recorded but flagged for the other domain to review.
-    from provisa.api.admin.capabilities import require_domain
+    from provisa.api.admin.capabilities import require_domain, require_right_in_domains
 
     _pool_g = await _get_pool()
     async with _pool_g.acquire() as _gconn:
@@ -303,6 +303,9 @@ async def _save_relationship_as_caller(
     if _beyond is not None:
         return _beyond
     try:
+        # REQ-1944: the right is exercised in the domains of the roles that carry it -- a caller
+        # holding create_relationship in finance and reading sales asks for a sales edge.
+        require_right_in_domains(info, "create_relationship", [_src_row["domain_id"]])
         require_domain(info, _src_row["domain_id"])
     except PermissionError:
         if not creating:
