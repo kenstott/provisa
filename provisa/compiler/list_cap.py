@@ -231,8 +231,6 @@ def _number_the_source(
     columns: list[exp.Expr] = [*carried, exp.alias_(numbered, ROW_NUMBER)]
     within: list[exp.Expr] = []
     for i, lst in enumerate(lists):
-        if isinstance(lst.parent, exp.Filter):
-            raise ListNotCappable("a list already filtered")
         number = ROW_NUMBER
         value = values[i]
         if value is not None:
@@ -259,7 +257,12 @@ def _number_the_source(
     source.set("this", exp.alias_(exp.Subquery(this=inner), alias, table=True))
     select.set("joins", None)
     for lst, bound in zip(lists, within, strict=True):
-        lst.replace(exp.Filter(this=lst.copy(), expression=exp.Where(this=bound)))
+        if isinstance(lst.parent, exp.Filter):
+            # A list already filtered (collect() skips nulls) holds what both conditions keep.
+            kept = lst.parent.expression
+            kept.set("this", exp.And(this=exp.Paren(this=kept.this.copy()), expression=bound))
+        else:
+            lst.replace(exp.Filter(this=lst.copy(), expression=exp.Where(this=bound)))
 
 
 def _limit_the_rows(select: exp.Select, lists: list[exp.Expr], limit: int) -> None:

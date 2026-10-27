@@ -1395,6 +1395,7 @@ def _pg_column_typing(
     array type's own spelling, and ``USER-DEFINED`` as a composite (JSON, REQ-1965) or as an enum
     or domain (text)."""
     from provisa.core.ir_types import ColumnTyping, column_typing, composite_typing, to_ir
+    from provisa.core.temporal_type import sized_timestamp
 
     if data_type == _PG_ARRAY:
         return column_typing(formatted or udt_name, kind)
@@ -1404,6 +1405,9 @@ def _pg_column_typing(
         return ColumnTyping("text")
     if data_type == "numeric" and formatted and formatted != "numeric":
         return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
+    sized = sized_timestamp(formatted) if formatted else None
+    if sized is not None:
+        return ColumnTyping(sized)  # a timestamp keeps its declared precision (REQ-1961)
     return ColumnTyping(to_ir(data_type))
 
 

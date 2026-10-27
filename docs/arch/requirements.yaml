@@ -8829,6 +8829,7 @@
   - tests/unit/test_cypher_tck_maps.py
   - tests/unit/test_cypher_tck_precedence.py
   - tests/unit/test_cypher_tck_quantifiers.py
+  - tests/unit/test_cypher_tck_temporal.py
   - tests/unit/test_sql_to_cypher.py
   - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
@@ -27963,42 +27964,48 @@
   type: behavioral
   target: 2026-Q4
   description: 'Provisa''s pgwire server must satisfy the capability set that DuckDB''s `postgres` extension
-    exercises when attaching Provisa via `ATTACH ... AS x (TYPE postgres)`, enabling DuckDB federation
-    engines and external DuckDB clients to mount a governed Provisa instance with RLS/masking intact.
-    Concrete capabilities enumerated: (1) libpq connection + auth handshake; (2) catalog introspection
-    queries for schemas/tables/ columns/types/PKs over pg_namespace, pg_class, pg_attribute, pg_type,
-    pg_index, pg_constraint with correct atttypmod and pg_type OIDs; (3) bulk read via `COPY (SELECT ...)
-    TO STDOUT (FORMAT binary)` with real PostgreSQL binary COPY wire encoding per column type; (4) transaction-control
-    statements (`BEGIN`/`COMMIT`/`ROLLBACK`, incl. `SET TRANSACTION READ ONLY` / `REPEATABLE READ`) accepted as no-ops. NO real snapshot isolation is provided or needed; (5) single-stream scan ONLY. Snapshot
-    export, server-side cursors, and ctid-range parallelism are explicit NON-GOALS, validated empirically
-    against DuckDB in the sibling pgwire-calcite project (PGW-004 / PGW-023): DuckDB''s ctid parallelism
-    splits a table by physical page range, but Provisa exposes no physical row address, so honoring a
-    ctid range would force a `ROW_NUMBER() OVER (ORDER BY ...)` partition that scans+sorts the whole table per stream, strictly worse than one stream. The server reports relpages/reltuples ~ 0 in pg_class
-    so DuckDB never elects parallelism and reads a single correct binary-COPY stream. Server version >=
-    14 (DuckDB''s gate) is already met (server_version ''14.0.provisa''). DONE (2026-07) capability (3): BINARY COPY output: COPY ... TO STDOUT (FORMAT binary) now emits a real PostgreSQL binary COPY stream
-    (provisa/pgwire/copy_handler.py): the 11-byte PGCOPY signature + flags + header-extension, per-row
-    int16 field count with length-prefixed per-field bodies (int32 -1 for NULL), and the int16 -1 trailer.
-    Per-column encoding is selected from the column''s advertised type (Arrow schema on the Trino Flight
-    bulk path; DuckDB type strings via QueryResult.column_types on the direct path) — bool/int2/int4/int8/float4/float8/bytea
-    encode to their PG binary representations, everything else to UTF-8 text matching the text OID — and
-    the CopyOutResponse overall-format flag is set to 1 (binary). Capabilities (1) libpq handshake and
-    (2) catalog introspection are served by the existing pgwire server + catalog; (4) transaction-control
-    statements are accepted as no-ops by the txn-tag path. DONE (2026-07) the COPY parser now accepts
-    DuckDB''s actual `(FORMAT "binary")` syntax — optional WITH and a quoted format word — which the older
-    regex rejected (all three COPY regexes in provisa/pgwire/copy_handler.py); and a live end-to-end DuckDB
-    1.5.3 `ATTACH ... TYPE postgres` test drives all five capabilities against a running server (tests/integration/test_duckdb_attach_pgwire.py):
-    ATTACH + catalog discovery, binary-COPY row/type/NULL round-trip, transaction no-ops via postgres_execute,
-    and relpages=0 single-stream. Capability (5) is confirmed a non-goal, not remaining work. COMPLETE.
-
-    (Amended 2026-09-25, CASE-INSENSITIVE TYPE MATCHING:) `_sql_type_to_bvtype` (provisa/pgwire/server.py)
-    now upper-cases its input before matching against `_TYPE_TO_BVTYPE`/`_INT_TYPES`, which are keyed
-    uppercase. Confirmed live: an asyncpg-based DIRECT-route client reports PostgreSQL type names lowercase
-    (`"int4"`, via asyncpg''s own `Type.name`), which the case-sensitive lookup missed entirely. The column fell through to the `BVType.TEXT` default, and when that same client requested BINARY wire
-    format for the column (asyncpg''s normal behavior for a type it recognizes), `send_data_rows`''s TEXT
-    binary-format converter (`lambda r: r.encode("utf-8")`) crashed on the raw `int` value (`AttributeError:
-    ''int'' object has no attribute ''encode''`). psycopg2 never surfaced this: it requests TEXT wire
-    format by default, and TEXT''s own text-format converter is plain `str`, tolerant of any Python type,
-    so the underlying mistyping was invisible until a binary-preferring client exercised the DIRECT route.'
+    exercises when attaching Provisa via `ATTACH ... AS x (TYPE postgres)`, enabling DuckDB federation engines
+    and external DuckDB clients to mount a governed Provisa instance with RLS/masking intact. Concrete capabilities
+    enumerated: (1) libpq connection + auth handshake; (2) catalog introspection queries for schemas/tables/
+    columns/types/PKs over pg_namespace, pg_class, pg_attribute, pg_type, pg_index, pg_constraint with correct
+    atttypmod and pg_type OIDs; (3) bulk read via `COPY (SELECT ...) TO STDOUT (FORMAT binary)` with real
+    PostgreSQL binary COPY wire encoding per column type; (4) transaction-control statements (`BEGIN`/`COMMIT`/`ROLLBACK`,
+    incl. `SET TRANSACTION READ ONLY` / `REPEATABLE READ`) accepted as no-ops. NO real snapshot isolation
+    is provided or needed; (5) single-stream scan ONLY. Snapshot export, server-side cursors, and ctid-range
+    parallelism are explicit NON-GOALS, validated empirically against DuckDB in the sibling pgwire-calcite
+    project (PGW-004 / PGW-023): DuckDB''s ctid parallelism splits a table by physical page range, but Provisa
+    exposes no physical row address, so honoring a ctid range would force a `ROW_NUMBER() OVER (ORDER BY
+    ...)` partition that scans+sorts the whole table per stream, strictly worse than one stream. The server
+    reports relpages/reltuples ~ 0 in pg_class so DuckDB never elects parallelism and reads a single correct
+    binary-COPY stream. Server version >= 14 (DuckDB''s gate) is already met (server_version ''14.0.provisa'').
+    DONE (2026-07) capability (3): BINARY COPY output: COPY ... TO STDOUT (FORMAT binary) now emits a real
+    PostgreSQL binary COPY stream (provisa/pgwire/copy_handler.py): the 11-byte PGCOPY signature + flags
+    + header-extension, per-row int16 field count with length-prefixed per-field bodies (int32 -1 for NULL),
+    and the int16 -1 trailer. Per-column encoding is selected from the column''s advertised type (Arrow
+    schema on the Trino Flight bulk path; DuckDB type strings via QueryResult.column_types on the direct
+    path) — bool/int2/int4/int8/float4/float8/bytea encode to their PG binary representations, everything
+    else to UTF-8 text matching the text OID — and the CopyOutResponse overall-format flag is set to 1 (binary).
+    Capabilities (1) libpq handshake and (2) catalog introspection are served by the existing pgwire server
+    + catalog; (4) transaction-control statements are accepted as no-ops by the txn-tag path. DONE (2026-07)
+    the COPY parser now accepts DuckDB''s actual `(FORMAT "binary")` syntax — optional WITH and a quoted
+    format word — which the older regex rejected (all three COPY regexes in provisa/pgwire/copy_handler.py);
+    and a live end-to-end DuckDB 1.5.3 `ATTACH ... TYPE postgres` test drives all five capabilities against
+    a running server (tests/integration/test_duckdb_attach_pgwire.py): ATTACH + catalog discovery, binary-COPY
+    row/type/NULL round-trip, transaction no-ops via postgres_execute, and relpages=0 single-stream. Capability
+    (5) is confirmed a non-goal, not remaining work. COMPLETE. (Amended 2026-09-25, CASE-INSENSITIVE TYPE
+    MATCHING:) `_sql_type_to_bvtype` (provisa/pgwire/server.py) now upper-cases its input before matching
+    against `_TYPE_TO_BVTYPE`/`_INT_TYPES`, which are keyed uppercase. Confirmed live: an asyncpg-based
+    DIRECT-route client reports PostgreSQL type names lowercase (`"int4"`, via asyncpg''s own `Type.name`),
+    which the case-sensitive lookup missed entirely. The column fell through to the `BVType.TEXT` default,
+    and when that same client requested BINARY wire format for the column (asyncpg''s normal behavior for
+    a type it recognizes), `send_data_rows`''s TEXT binary-format converter (`lambda r: r.encode("utf-8")`)
+    crashed on the raw `int` value (`AttributeError: ''int'' object has no attribute ''encode''`). psycopg2
+    never surfaced this: it requests TEXT wire format by default, and TEXT''s own text-format converter
+    is plain `str`, tolerant of any Python type, so the underlying mistyping was invisible until a binary-preferring
+    client exercised the DIRECT route. (Amended 2026-10-27, TRANSACTIONS ARE A NO-OP ON EVERY SURFACE:)
+    Maintainer 2026-10-07 (settled): transaction control is a no-op on every surface, not only pgwire: SQL
+    BEGIN/START TRANSACTION/COMMIT/ROLLBACK/SAVEPOINT/RELEASE, Flight SQL''s transaction actions and Bolt''s
+    BEGIN/COMMIT/ROLLBACK are acknowledged and hold no transaction; each write is applied as it runs.'
   use_case: Lets DuckDB (as the REQ-825 federation engine or any external DuckDB/BI client) mount a governed
     Provisa instance via `ATTACH ... TYPE postgres` and query it with RLS/masking intact, completing the
     develop-on-DuckDB story where DuckDB reaches Provisa itself the same way it reaches any Postgres.
@@ -37642,7 +37649,42 @@
   feature: approvals-and-limits-query-limits
   priority: MUST
   type: constraint
-  description: 'Per-role query limits complement per-role request-rate limits (REQ-369). [SUPERSEDED by the amendment below, 2026-10-02 -- max_query_depth and max_query_nodes measured a GraphQL document, so they held on GraphQL requests only; they are retired. max_query_time_ms is unchanged. Kept here for history; do not implement against it.] Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms) complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable via admin API. [END SUPERSEDED BLOCK] (Amended 2026-10-02, ONE SCORE AT THE SEMANTIC LAYER) The query complexity guard is measured on the semantic statement -- the form a request takes on every surface once it is parsed and before it is governed -- so one limit holds for GraphQL, SQL, Cypher, pgwire, Arrow Flight, gRPC, JSON:API and MCP alike, by one measure. A statement''s complexity is one score, the sum of the relations it reads, its joins, the columns it projects (a star counting as the columns the role may see of what it stands for) and the query blocks nested inside it; a reference to a common table expression is not a relation read again. A relation fetched from a remote API on each read (an OpenAPI, remote GraphQL or remote gRPC source) counts for ten, since every read spends a budget the remote sets and every reader of that source shares. The limit is a number on the role, max_query_complexity, beside its other limits. The org sets a ceiling for every role, limits.max_query_complexity, that a role may tighten and not loosen: the smaller of the two that are set applies; neither is set as shipped, and a role under no limit is not measured. A statement over the limit is refused before it is governed or run, with its score, the limit, whose limit it is and what the statement asked for; the refusal is recorded as a policy denial; HTTP surfaces answer 413 and the others answer in their own error shape with the same message. A Hasura node_limit is imported as max_query_complexity; a Hasura depth_limit has no counterpart, since a deeper query is a statement with more relations and joins.'
+  description: 'Per-role query limits complement per-role request-rate limits (REQ-369). [SUPERSEDED by
+    the amendment below, 2026-10-02 -- max_query_depth and max_query_nodes measured a GraphQL document,
+    so they held on GraphQL requests only; they are retired. max_query_time_ms is unchanged. Kept here for
+    history; do not implement against it.] Per-role query complexity limits (max_query_depth, max_query_nodes,
+    max_query_time_ms) complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile
+    boundary; over-limit requests return HTTP 413. Limits persist on the roles table and are configurable
+    via admin API. [END SUPERSEDED BLOCK] (Amended 2026-10-02, ONE SCORE AT THE SEMANTIC LAYER) The query
+    complexity guard is measured on the semantic statement -- the form a request takes on every surface
+    once it is parsed and before it is governed -- so one limit holds for GraphQL, SQL, Cypher, pgwire,
+    Arrow Flight, gRPC, JSON:API and MCP alike, by one measure. A statement''s complexity is one score,
+    the sum of the relations it reads, its joins, the columns it projects (a star counting as the columns
+    the role may see of what it stands for) and the query blocks nested inside it; a reference to a common
+    table expression is not a relation read again. A relation fetched from a remote API on each read (an
+    OpenAPI, remote GraphQL or remote gRPC source) counts for ten, since every read spends a budget the
+    remote sets and every reader of that source shares. The limit is a number on the role, max_query_complexity,
+    beside its other limits. The org sets a ceiling for every role, limits.max_query_complexity, that a
+    role may tighten and not loosen: the smaller of the two that are set applies; neither is set as shipped,
+    and a role under no limit is not measured. A statement over the limit is refused before it is governed
+    or run, with its score, the limit, whose limit it is and what the statement asked for; the refusal is
+    recorded as a policy denial; HTTP surfaces answer 413 and the others answer in their own error shape
+    with the same message. A Hasura node_limit is imported as max_query_complexity; a Hasura depth_limit
+    has no counterpart, since a deeper query is a statement with more relations and joins. (Amended 2026-10-27,
+    LLM TOKEN BUDGETS ARE THE ROLE''S:) Maintainer 2026-10-27: a role''s limits include LLM spend, in tokens
+    or USD (priced by polly.model_prices, REQ-2012): a per-call cap (the most one Polly turn or LLM service
+    call may use, checked against that call''s own usage) and a pooled period budget (daily or monthly),
+    one counter per org and role like the request-rate bucket, debited after each call and refusing by name
+    once spent. A user acting with several roles is held to the most generous. There is no per-user metering:
+    an operator who wants a person''s own budget gives that person a role of their own. Both limits are
+    set on the role''s form. (Amended 2026-10-27, BUDGETS ARE ROLLING WINDOWS COUNTED IN THE CONTROL PLANE:)
+    Maintainer 2026-10-27: an LLM budget never resets. A role may set any of four rolling windows, an hour,
+    a day, a week and a month, each a limit in tokens or USD; a call is refused by name when any window
+    that is set is full, the refusal naming the window and when its oldest spend expires. The per-call cap
+    stays beside them. Usage is kept per org and role as per-minute buckets (an hour), per-hour buckets
+    (a week) and per-day buckets (31 days), every window a sum over them. The counters live in the control-plane
+    PostgreSQL, so budgets hold on every deployment, with or without Redis. The role''s page shows each
+    window''s use and when room frees up. This replaces the daily-or-monthly period stated above.'
   use_case: Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing
     request-rate limiting. Provides Hasura api_limits parity.
   code:
@@ -80849,8 +80891,9 @@
   feature: source-registration-introspection
   priority: MUST
   type: behavioral
-  description: 'The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column''s type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a numeric column''s precision and scale have one stored spelling, numeric(p,s), written and read in one place, taken at registration from the precision and scale the engine reports, and a size no numeric can have (precision 1 to 76, scale 0 to the precision) is refused with a code naming the column; the column editor sets or clears them beside the type; a read types each registered column as its registered type on pgwire''s row stream, Flight''s buffered answers, an Airport scan and an engine''s Arrow stream, a value that is not that type is a read refusal with a code, and only a result column that is a registered column is typed by the model; a numeric with no recorded size is cast to double precision by its source inside the governed statement, so its type depends on no row; the type a catalog lists is the type a read returns. Verified on a running server over Flight and pgwire (the catalog, rows, no rows and a computed column). Not yet verified surface by surface: GraphQL, gRPC, REST, JSON:API and Bolt.'
+  description: 'The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column''s type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a numeric column''s precision and scale have one stored spelling, numeric(p,s), written and read in one place, taken at registration from the precision and scale the engine reports, and a size no numeric can have (precision 1 to 76, scale 0 to the precision) is refused with a code naming the column; the column editor sets or clears them beside the type; a read types each registered column as its registered type on pgwire''s row stream, Flight''s buffered answers, an Airport scan and an engine''s Arrow stream, a value that is not that type is a read refusal with a code, and only a result column that is a registered column is typed by the model; a numeric with no recorded size is cast to double precision by its source inside the governed statement, so its type depends on no row; the type a catalog lists is the type a read returns. Verified on a running server over Flight and pgwire (the catalog, rows, no rows and a computed column). Not yet verified surface by surface: GraphQL, gRPC, REST, JSON:API and Bolt. (Amended 2026-10-27, TIMESTAMP PRECISION:) The model records a timestamp column''s fractional-second precision the same way: a PostgreSQL column declaring one (TIMESTAMP(p), with or without time zone) registers as timestamp(p) or timestamptz(p), and is read and listed in Arrow at the coarsest unit that holds p -- seconds for 0, milliseconds to 3, microseconds to 6, nanoseconds beyond -- on every read path, by the same one rule as a numeric''s size. A timestamp declaring none is six digits, microseconds. It is still a timestamp everywhere a column''s kind is asked.'
   code:
+  - provisa/core/temporal_type.py
   - provisa/core/numeric_type.py
   - provisa/core/catalog_types.py
   - provisa/core/ir_types.py
@@ -80865,6 +80908,7 @@
   - provisa-ui/src/pages/tables/NumericSizeInputs.tsx
   tests:
   - tests/unit/test_numeric_type.py
+  - tests/unit/test_timestamp_precision.py
   - tests/unit/test_read_path_arrow_types.py
   - tests/unit/test_undeclared_numeric_read_as_double.py
   - provisa-ui/src/pages/tables/__tests__/NumericSizeInputs.test.tsx
@@ -87995,16 +88039,33 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     written as the operator setting so it shows in Deployment settings and can be changed there. SPARQL,
     the vocabulary panel and RDF export then work on a fresh local start. It is an install step, not a read-time
     fallback: a hosted or cluster deployment still sets it deliberately, and with it unset SPARQL still
-    refuses by name. The refusal names the exact field and the address to put in it.
-    (Amended 2026-10-27, THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph
-    visualizer offers its own language''s exports: the Neo4j export (Cypher CREATE) stays in the
-    Cypher tab only. The SPARQL tab''s export writes a graph answer (a CONSTRUCT''s triples) as RDF,
-    Turtle by default, or N-Triples or JSON-LD, and a SELECT''s rows as SPARQL Results JSON, CSV or
-    TSV (an ASK''s answer as SPARQL Results JSON). The export asks the endpoint the frame''s query
-    again in the chosen format, so the endpoint''s one writer writes it, with IRIs on
-    server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD
-    (application/ld+json) as well as Turtle and N-Triples. The newest answer is exported, or the
-    one chosen.'
+    refuses by name. The refusal names the exact field and the address to put in it. (Amended 2026-10-27,
+    THE SPARQL TAB EXPORTS IN SPARQL''S OWN FORMATS:) Each tab of the graph visualizer offers its own language''s
+    exports: the Neo4j export (Cypher CREATE) stays in the Cypher tab only. The SPARQL tab''s export writes
+    a graph answer (a CONSTRUCT''s triples) as RDF, Turtle by default, or N-Triples or JSON-LD, and a SELECT''s
+    rows as SPARQL Results JSON, CSV or TSV (an ASK''s answer as SPARQL Results JSON). The export asks the
+    endpoint the frame''s query again in the chosen format, so the endpoint''s one writer writes it, with
+    IRIs on server.public_url as SPARQL answers them; the endpoint answers a CONSTRUCT as JSON-LD (application/ld+json)
+    as well as Turtle and N-Triples. The newest answer is exported, or the one chosen. (Amended 2026-10-27,
+    THE IR STATES SEMANTICS; EACH LANGUAGE PICKS:) Maintainer 2026-10-27: where query languages differ in
+    an operation''s semantics, the graph IR has one operation whose options state the semantics, and each
+    front end lowers to the options its language defines; no front end composes another language''s functions
+    to fake its own rules. Casts: one ToInteger (and its siblings) with how a number is cut (toward zero),
+    how a string is read (lenient: ''2.9'' is 2, as Cypher; lexical: only an integer''s own form, as XPath/SPARQL)
+    and what a failure gives (null). Likewise division (integer division truncating vs a decimal quotient),
+    division by zero (error, null, or IEEE infinity for floating operands), comparison across types (false
+    vs a type error) and + on strings (concatenation vs undefined). The back end renders each option once
+    per engine dialect, so every surface lowering to the IR gets its language''s semantics through one back
+    end. (Amended 2026-10-27, A LANGUAGE IS A CONFIG APPLIED TO THE AST:) Maintainer 2026-10-27: every reasonable
+    design choice a language makes that can be parameterized works this way. A front end lowers to the neutral
+    IR AST without choosing semantics; a language config, data that names the language''s choice for each
+    parameterized operation (casts, division, division by zero, cross-type comparison, string +, null ordering
+    and the like), is applied to that AST by one pass, producing the resolved AST the back end renders.
+    Cypher and SPARQL each have a config; a further language is a further config, not new compiler code.
+    (Amended 2026-10-27, THE LANGUAGE CONFIG IS A DIRECTION:) Maintainer 2026-10-27: the language-config
+    pass is the direction, not a project to build now. New parameterized operations are built as one IR
+    operation with a semantics option; an existing rule moves to that shape when it is next touched; the
+    per-language config and its pass come when enough options have gathered to warrant them.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -89787,7 +89848,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     View and the Product map) offers a 2D/3D toggle. In 2D the same stage lays the graph out flat and locks
     a face-on orthographic camera with pan and zoom and no turning; selection, expansion and the detail
     panel work the same. Each graph remembers the choice per user. The label-spacing rule above applies
-    in 2D as in 3D.'
+    in 2D as in 3D. (Amended 2026-10-27, A LAYERED LAYOUT WHERE EDGES HAVE DIRECTION:) Maintainer 2026-10-27:
+    every network graph can be laid out in layers. Each edge kind is one of three classes: RANKS (one end
+    above the other: term KIND_OF, PART_OF and VALID_VALUE_OF; domain to table; product to member table;
+    table to column; term to the columns bound to it; a command, check or profile under its table), FLOWS
+    (one end before the other: lineage, column lineage, term DERIVED_FROM and REPLACES) or LATERAL (neither:
+    term RELATED_TO, SYNONYM_OF, PREFERRED_TERM_FOR, TRANSLATION_OF and ANTONYM_OF; a relationship between
+    tables; a tag). A layered layout places each node one level below the deepest node ranking or flowing
+    into it, every parent kept (a node with two parents sits under both, not under one), orders each level
+    by sweeps that cut crossings, and ignores an edge that closes a cycle; ranks run top-down and flows
+    left-to-right. Lateral edges are drawn as arcs laid over the rank and flow edges and never move a node.
+    When a view opens, the layout is layered if its drawn rank and flow edges are all of one class and form
+    no cycle, else force; a Force/Layered control lets the reader override it, Layered disabled where a
+    cycle makes it impossible. A layered layout is flat in 3D as the tree is. It extends today''s tree layout
+    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -90042,7 +90116,46 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     DELETE and SPARQL Update are built. The IR gains write clauses (CREATE, SET, REMOVE, DELETE, MERGE);
     the Cypher parser accepts them and SPARQL INSERT/DELETE DATA lower to them; one classifier over the
     IR decides governed vs session for every language, and the governed writer takes IR input in place of
-    the regex translator. Reads need no IR change.'
+    the regex translator. Reads need no IR change. (Amended 2026-10-27, A LABEL''S UNION IS ONE CTE:) Maintainer
+    2026-10-27: a label or relationship type the session overlays is expanded once per statement, as a common
+    table expression holding its union (the model table''s rows, the session''s anchor rows carrying the
+    label, and the model rows the session tags with it), referenced by name wherever the compiled statement
+    reads it, including inside a variable-length path''s recursive CTE, rather than written out as a subquery
+    at every reference. The model arm stays the registered table inside the CTE, so the one governed pipeline
+    still applies row filters and masks to it. (Amended 2026-10-27, ONE CTE PER LABEL SET:) Maintainer 2026-10-27:
+    the unit of that CTE is the label set a node pattern names, not the single label: (a:Person:Employee)
+    reads one CTE holding the nodes that carry every label in the set, defined once per distinct set in
+    the statement and referenced wherever a pattern names that same set; a relationship type keeps one CTE
+    per type. (Amended 2026-10-27, ONE CTE PER PATTERN INSTANCE, IDENTICAL ONES SHARED:) Maintainer 2026-10-27,
+    refining the above: each node pattern instance reads its own CTE, carrying the conditions that apply
+    to that variable alone (its inline properties and the WHERE conditions naming only it) so they filter
+    before the union and the joins; instances whose definitions come out identical (same label set, same
+    conditions) share one CTE. (a:Person {country:''US''}) and (b:Person) read two; (a:Person) and (c:Person)
+    with no conditions read one. A relationship type keeps one CTE per type. This replaces ''one CTE per
+    label set''. (Amended 2026-10-27, SESSION READS ARE CACHED BY GRAPH VERSION:) Maintainer 2026-10-27:
+    the session''s graph index (the labels it holds, their anchor tables, its tags and relationship pairs)
+    carries a version that every session write advances. The overlaid label map is kept per role and version,
+    and a read while the session holds ephemeral objects is kept in the translation cache under the statement,
+    the role and that version, so a repeated read reuses its compiled SQL until the session next writes.
+    (Amended 2026-10-27, LABEL RESOLUTION LIVES IN THE SESSION''S LOOKUP TABLES:) Maintainer 2026-10-27:
+    the session graph''s lookup tables, kept at write time, also hold each label''s resolved form: its merged
+    columns with widened types and its arms (the anchor tables and the tagged model types). A write that
+    adds or removes a label updates them; the overlay reads them and computes nothing per statement. No
+    separate cache, no version and no invalidation; a read while the session holds ephemeral objects still
+    bypasses the kept-translation cache. (Amended 2026-10-27, SESSION GRAPHS ARE INDEXED AND COUNTED:) Maintainer
+    2026-10-27: the session graph is indexed as a graph store''s would be, so very large session graphs
+    traverse well. Its relationship table is indexed on from_id, on to_id and on type, node_labels on (label,
+    node_id), and each anchor table on its node id; these are temporary objects beside the session''s temporary
+    tables, created with them. The lookup tables keep counts per label, per relationship type and per (type,
+    source label, target label), maintained at write time, so the compiler starts a traversal from its more
+    selective end. The benefit is engine dependent (largest on a PostgreSQL engine; DuckDB''s hash joins
+    gain mainly on selective hops). Model data keeps its source''s own indexes: none is created at a source.
+    (Amended 2026-10-27, THE CYPHER PAGE HOLDS A SESSION AND SHOWS ITS LABELS:) Maintainer 2026-10-27: the
+    UI''s Cypher page holds an ephemeral session as Bolt does per connection, kept per browser session,
+    so the page''s statements see each other''s ephemeral objects. Its left-hand label and relationship-type
+    pills include the session''s labels and types (tags on model nodes among them), marked apart from the
+    model''s and showing their counts; clicking one runs the same MATCH as a model pill does. A clear-session
+    action ends the session''s objects on demand.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

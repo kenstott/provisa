@@ -485,3 +485,19 @@ def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
 )
 def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
     assert transpile(pg_sql, "exasol") == exasol_sql
+
+
+def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
+    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1 (a duration's ISO text read
+    # by its groups, temporal.duration_of_computed_text).
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
+    assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+
+
+def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
+    # collect() of nothing is []: PostgreSQL types no bare ARRAY[], and reads '{}' as the other
+    # argument's array type.
+    pg = "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), ARRAY[]) FROM t"
+    assert transpile(pg, "postgres") == (
+        "SELECT COALESCE(ARRAY_AGG(x) FILTER(WHERE NOT x IS NULL), '{}') FROM t"
+    )

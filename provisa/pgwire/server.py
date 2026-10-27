@@ -505,6 +505,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.BOOL: BVType.BOOLARRAY,
     BVType.DECIMAL: BVType.DECIMALARRAY,
     BVType.TEXT: BVType.STRINGARRAY,
+    BVType.OID: BVType.OIDARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
@@ -543,11 +544,17 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "BLOB": BVType.BYTES,
     "BYTEA": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
-    # PostgreSQL's unsigned 4-byte integers, and information_schema's domain over integer
+    # PostgreSQL's unsigned 4-byte integers, and information_schema's domains over integer and
+    # timestamp with time zone
     # (REQ-2167: a catalog column is described with the type PostgreSQL declares for it).
     "OID": BVType.OID,
     "XID": BVType.OID,
     "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
+    "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
+    "REGPROC": BVType.REGPROC,
+    "REGTYPE": BVType.REGTYPE,
+    "OIDVECTOR": BVType.OIDVECTOR,
+    "INT2VECTOR": BVType.INT2VECTOR,
 }
 _INT_TYPES = {
     "INTEGER",
@@ -598,14 +605,58 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
 
 
 _WIRE_FAMILIES = (
-    frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID}),
+    frozenset(
+        {BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID, BVType.REGPROC, BVType.REGTYPE}
+    ),
     frozenset({BVType.REAL, BVType.FLOAT}),
+    frozenset(
+        {
+            BVType.SMALLINTARRAY,
+            BVType.INTEGERARRAY,
+            BVType.BIGINTARRAY,
+            BVType.OIDARRAY,
+            BVType.OIDVECTOR,
+            BVType.INT2VECTOR,
+        }
+    ),
 )
+
+
+def _reg_text(names: dict[int, str]) -> Callable[[Any], str]:  # REQ-2167
+    """A reg* type's text form, as regprocout / regtypeout write it: the object's name, "-" for
+    0, and the number itself for an oid that names no object. A value already in its text form
+    (a source's own reg* column, read as text) is that text."""
+
+    def text(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if value == 0:
+            return "-"
+        return names[value] if value in names else str(value)
+
+    return text
+
+
+def _reg_binary(value: Any) -> bytes:
+    if isinstance(value, str):
+        raise TypeError(f"a reg* value read as its text form {value!r} has no binary form here")
+    return value.to_bytes(4, "big", signed=False)
+
+
+def _register_reg_types() -> None:
+    from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
+
+    type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
+    BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
+    BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
+
+
+_register_reg_types()
 
 
 def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167
     """Whether a value served as type ``served`` is sent correctly as type ``declared``: the
-    same wire type, or integers (or floats) of another width."""
+    same wire type, or integers (or floats, or integer lists) of another width or kind."""
     a, b = _sql_type_to_bvtype(declared), _sql_type_to_bvtype(served)
     return a == b or any(a in family and b in family for family in _WIRE_FAMILIES)
 

@@ -23,6 +23,7 @@ from provisa.pgwire.server import ProvisaQueryResult
 
 SQL_IDENTIFIER, CHARACTER_DATA, YES_OR_NO, CARDINAL_NUMBER = 13302, 13300, 13310, 13297
 OID, NAME, CHAR, TEXT, INT4, INT8, FLOAT8, TIMESTAMPTZ = 26, 19, 18, 25, 23, 20, 701, 1184
+REGPROC, REGTYPE = 24, 2206
 
 
 def _state():
@@ -123,3 +124,82 @@ def test_a_catalog_function_returns_the_type_postgresql_declares():
     assert returned("pg_catalog.pg_get_expr(NULL::pg_node_tree, NULL::oid)") == TEXT
     assert returned('pg_catalog."current_database"()') == NAME
     assert returned('pg_catalog."current_user"()') == NAME
+
+
+# The PostgreSQL types a served catalog column is stored and sent as, beyond the ones above.
+_STORED_AS_POSTGRESQL_DOES = frozenset(
+    {
+        "timestamp with time zone",
+        "information_schema.time_stamp",
+        "interval",
+        "numeric",
+        "bytea",
+        "boolean",
+        "text[]",
+        "smallint[]",
+        "regproc",
+        "regtype",
+        "oid[]",
+        "oidvector",
+        "int2vector",
+    }
+)
+
+
+def test_every_served_catalog_column_of_a_stored_type_is_postgresqls():
+    from provisa.pgwire.catalog_data import _TABLE_MAP
+    from provisa.pgwire.catalog_pg17 import RELATIONS
+
+    differing = []
+    for schema, relation in sorted(_TABLE_MAP):
+        if (schema, relation) not in RELATIONS:
+            continue
+        served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
+        for column, pg_type, pg_oid in RELATIONS[(schema, relation)]:
+            if pg_type in _STORED_AS_POSTGRESQL_DOES and served.get(column, pg_oid) != pg_oid:
+                differing.append(f"{schema}.{relation}.{column}: {served[column]}, not {pg_type}")
+    assert differing == []
+
+
+def _wire(sql: str) -> list[tuple[int, str, bytes]]:
+    """Each column of the first row as (type OID, text form, binary form)."""
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    result = ProvisaQueryResult(answer(sql, "testrole", _state()), sql)
+    row = next(iter(result.rows()))
+    out = []
+    for i, value in enumerate(row):
+        bvtype = result.column(i)[1]
+        oid = result.column_type_oid(i)
+        _own_oid, text, binary = BVTYPE_TO_PGTYPE[bvtype]
+        out.append((_own_oid if oid is None else oid, text(value), binary(value)))
+    return out
+
+
+def test_a_regproc_is_its_function_name_as_text_and_its_oid_as_binary():
+    assert _wire("SELECT amhandler FROM pg_catalog.pg_am WHERE amname = 'btree'") == [
+        (REGPROC, "bthandler", (330).to_bytes(4, "big"))
+    ]
+    assert _wire("SELECT typinput FROM pg_catalog.pg_type WHERE oid = 23") == [
+        (REGPROC, "-", (0).to_bytes(4, "big"))
+    ]
+
+
+def test_an_oid_array_and_the_vectors_are_written_as_postgresql_writes_them():
+    from buenavista.core import BVType
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    def header(element_oid: int, n: int) -> bytes:
+        return struct.pack("!iiiii", 1, 0, element_oid, n, 1)
+
+    oid_array, oidvector, int2vector = (
+        BVTYPE_TO_PGTYPE[BVType.OIDARRAY],
+        BVTYPE_TO_PGTYPE[BVType.OIDVECTOR],
+        BVTYPE_TO_PGTYPE[BVType.INT2VECTOR],
+    )
+    assert oid_array[0] == 1028 and oid_array[1]([16, 3000000000]) == "{16,3000000000}"
+    assert oid_array[2]([16]) == header(26, 1) + struct.pack("!iI", 4, 16)
+    assert oidvector[0] == 30 and oidvector[1]([23, 25]) == "23 25"
+    assert oidvector[2]([23]) == header(26, 1) + struct.pack("!iI", 4, 23)
+    assert int2vector[0] == 22 and int2vector[1]([1, 3]) == "1 3"
+    assert int2vector[2]([1]) == header(21, 1) + struct.pack("!ih", 2, 1)

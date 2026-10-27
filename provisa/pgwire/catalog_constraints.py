@@ -371,7 +371,7 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
         conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
         confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
         conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkey INTEGER[], confkey INTEGER[], conpfeqop INTEGER[], conppeqop INTEGER[],
+        conkey SMALLINT[], confkey SMALLINT[], conpfeqop INTEGER[], conppeqop INTEGER[],
         conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
     constraint_rows = catalog_constraint_rows(ctx, idx)
     if constraint_rows:
@@ -489,12 +489,12 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
         conns_oid_v: int = con_row[2]
         contype_v: str = con_row[3]
         conrelid_v: int = con_row[7]
-        c_v, c_sch_v, c_tname_v = idx.toid_to_table.get(conrelid_v, ("provisa", "public", ""))
+        c_v, c_sch_v, c_tname_v = idx.toid_to_table.get(conrelid_v, (idx.database, "public", ""))
         con_schema_v = oid_to_ns.get(conns_oid_v, "public")
         ctype_str = {"p": "PRIMARY KEY", "u": "UNIQUE", "f": "FOREIGN KEY"}[contype_v]  # REQ-1093
         is_tc_rows.append(
             (
-                "provisa",
+                idx.database,
                 con_schema_v,
                 conname_v,
                 c_v,
@@ -514,7 +514,7 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
             if col_name_v:
                 is_kcu_rows.append(
                     (
-                        "provisa",
+                        idx.database,
                         con_schema_v,
                         conname_v,
                         c_v,
@@ -535,7 +535,7 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
             f"INSERT INTO _is_key_column_usage VALUES ({','.join(['?'] * 9)})",
             is_kcu_rows,
         )
-    is_rc_rows = _build_referential_rows(constraint_rows, oid_to_ns)
+    is_rc_rows = _build_referential_rows(constraint_rows, oid_to_ns, idx.database)
     if is_rc_rows:
         db.executemany(
             f"INSERT INTO _is_referential_constraints VALUES ({','.join(['?'] * 9)})",
@@ -556,6 +556,7 @@ def _key_constraints(constraint_rows: list[tuple]) -> dict[tuple[int, frozenset]
 def _build_referential_rows(
     constraint_rows: list[tuple],
     oid_to_ns: dict[int, str],
+    database: str,
 ) -> list[tuple]:
     """One information_schema.referential_constraints row per FK constraint.
 
@@ -580,10 +581,10 @@ def _build_referential_rows(
         uniq_schema = oid_to_ns.get(ns_oid, "public")
         rc_rows.append(
             (
-                "provisa",
+                database,
                 fk_schema,
                 fk_name,
-                "provisa",
+                database,
                 uniq_schema,
                 uniq_name,
                 "NONE",

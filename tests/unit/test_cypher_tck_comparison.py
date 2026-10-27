@@ -10,7 +10,8 @@
 
 """A comparison of two values of different kinds, as the openCypher TCK's Comparison1 and 2
 state it, answered on the DuckDB engine through the governed path: never equal, unequal, and
-with no order (null) -- not the engine's implicit cast of one to the other (REQ-345, REQ-2167)."""
+with no order (null) -- not the engine's implicit cast of one to the other. And a string + a value
+is the two as one string, and toInteger() cuts toward zero (REQ-345, REQ-2167)."""
 
 # Requirements: REQ-345, REQ-2167
 
@@ -50,4 +51,33 @@ def _row(query: str) -> tuple:
     ],
 )
 def test_values_of_two_kinds_never_compare(query, row):
+    assert _row(query) == row
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        ("RETURN 'a' + 'b' AS a, 'a' + null AS b", ("ab", None)),
+        ("RETURN 'a' + 1 AS a, 1 + 'a' AS b, 'x' + 1.5 AS c", ("a1", "1a", "x1.5")),
+        ("WITH 'a' AS s RETURN s + 'b' + s AS a", ("aba",)),
+    ],
+)
+def test_a_string_plus_a_value_is_one_string(query, row):
+    assert _row(query) == row
+
+
+@pytest.mark.parametrize(
+    ("query", "row"),
+    [
+        # TypeConversion2: toward zero, as Cypher truncates (an engine's cast rounds).
+        ("WITH 82.9 AS weight RETURN toInteger(weight) AS a", (82,)),
+        (
+            "RETURN toInteger(-2.9) AS a, toInteger('2.9') AS b, toInteger('foo') AS c",
+            (-2, 2, None),
+        ),
+        ("WITH [2, 2.9] AS numbers RETURN [n IN numbers | toInteger(n)] AS a", ([2, 2],)),
+        ("RETURN toInteger(true) AS a, toIntegerOrNull('x') AS b", (1, None)),
+    ],
+)
+def test_to_integer_cuts_toward_zero(query, row):
     assert _row(query) == row

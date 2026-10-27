@@ -293,7 +293,7 @@ def _req128_visible_columns(table_id, tables, column_types, role_id):
         domains=[{"id": "sales", "graphql_alias": None}],
     )
     ctx = build_context(si)
-    idx = _build_catalog_index(ctx, column_types)
+    idx = _build_catalog_index(ctx, column_types, database="provisa")
     return [(col_name, rest) for toid, col_name, *rest in idx.all_cols if toid == 16384 + table_id]
 
 

@@ -65,10 +65,10 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
     declared = by_design.groups(surface)
     # REQ-2167 (amended 2026-10-27): a test failed because of a designed limitation is not
     # runnable by design, in a group naming its decision (by_design/<surface>.yaml); one the
-    # client driver refused before any request is left out too, in its own group; an adapted
+    # client driver did not send what it needs is left out too, in its own group; an adapted
     # case counts, marked with what its setup became.
     failures, excluded = by_design.classify(failures, declared)
-    failures, refusals = by_design.refused(failures, declared)
+    failures, unsent = by_design.not_sent(failures, declared)
     ran = passed + len(failures)
     return {
         "surface": surface,
@@ -82,8 +82,8 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         "skipped": skipped,
         "not_runnable": sum(g["count"] for g in excluded),
         "by_design": excluded,
-        "client_refused": sum(g["count"] for g in refusals),
-        "refused_by_client": refusals,
+        "client_not_sent": sum(g["count"] for g in unsent),
+        "not_sent_by_client": unsent,
         "adapted": by_design.adapted(outcomes, declared),
         "pass_rate": round(passed / ran, 4) if ran else None,
         "failures": failures,
@@ -98,14 +98,14 @@ def markdown(doc: dict) -> str:
                 f"## {doc['surface']} conformance: {doc['suite']} {doc['version']}",
                 "",
                 f"Tests: {doc['tests']}. Passed {doc['passed']} of {doc['ran']} ({rate}); "
-                f"{doc['not_runnable']} not runnable by design; {doc['client_refused']} refused "
-                f"by the client before any request; {doc['skipped']} skipped by the suite.",
+                f"{doc['not_runnable']} not runnable by design; {doc['client_not_sent']} not sent "
+                f"by the client; {doc['skipped']} skipped by the suite.",
                 "",
                 *by_design.table(doc["by_design"]),
                 "",
-                "### Refused by the client before any request",
+                "### Not sent by the client",
                 "",
-                *by_design.refused_table(doc["refused_by_client"]),
+                *by_design.not_sent_table(doc["not_sent_by_client"]),
                 "",
                 "### Adapted",
                 "",

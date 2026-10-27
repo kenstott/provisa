@@ -71,8 +71,8 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     rate = _rate(artifact["passed"], artifact["ran"])
     if artifact.get("not_runnable"):
         rate += f"; {artifact['not_runnable']} cases not runnable by design"
-    if artifact.get("client_refused"):
-        rate += f"; {artifact['client_refused']} refused by the client before any request"
+    if artifact.get("client_not_sent"):
+        rate += f"; {artifact['client_not_sent']} not sent by the client"
     if artifact.get("skipped"):
         rate += f"; {artifact['skipped']} skipped by the suite"
     if "recommendations" in artifact:  # the audit's SHOULD and MAY checks, counted apart
@@ -88,15 +88,15 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
         ["## Not runnable by design", "", *by_design.table(artifact.get("by_design") or [])]
     )
     sections = [designed]
-    # REQ-2167 (amended 2026-10-27): cases the client refused before any request, in their own
+    # REQ-2167 (amended 2026-10-27): cases whose client did not send what they need, in their own
     # group, and adapted cases marked with what their setup became -- on the surfaces that have any.
-    if "refused_by_client" in artifact:
+    if "not_sent_by_client" in artifact:
         sections.append(
             "\n".join(
                 [
-                    "## Refused by the client before any request",
+                    "## Not sent by the client",
                     "",
-                    *by_design.refused_table(artifact["refused_by_client"]),
+                    *by_design.not_sent_table(artifact["not_sent_by_client"]),
                 ]
             )
         )
