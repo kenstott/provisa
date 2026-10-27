@@ -1,6 +1,6 @@
 {
   "generated_by": "scripts/record_govdata_bundle_schemas.py, from the pinned bundle's own model. The script is the only writer of this file: do not edit it; run the script.",
-  "release": "engine-v0.121.3",
+  "release": "engine-v0.122.2",
   "schemas": [
     "ag",
     "banking",
