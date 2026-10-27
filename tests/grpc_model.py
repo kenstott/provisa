@@ -58,7 +58,8 @@ def grpc_model(
                 "domain_id": "sales",
                 "schema_name": schema_name,
                 "table_name": table,
-                "columns": [{"column_name": c, "visible_to": []} for c, _t in columns]
+                # REQ-2154: a column is read by the roles its grant names (empty is no role).
+                "columns": [{"column_name": c, "visible_to": [role]} for c, _t in columns]
                 + param_columns,
                 "write_ops": [],
                 "write_returns_rows": False,
