@@ -89606,7 +89606,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     on text (no PostgreSQL equivalent with a fixed type). (Amended 2026-10-27, PG CONVENTIONS:) Maintainer
     2026-10-27: IR types and subtypes follow PostgreSQL''s conventions (PostGIS for geometry and geography).
     The test for a new subtype: it is a PostgreSQL type the IR does not already hold; a source type that
-    names a concept PostgreSQL already has maps onto that type and never becomes a subtype of its own.'
+    names a concept PostgreSQL already has maps onto that type and never becomes a subtype of its own. (Amended
+    2026-10-27, NO TYPE LEFT UNMAPPED:) Maintainer 2026-10-27: every source type maps onto an IR type or
+    subtype; a type that fits none becomes text (varchar), holding the source''s own text form. Registration
+    never fails on an unknown source type. A native array, struct or map stays json (REQ-1965), which is
+    PostgreSQL''s convention for them.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
