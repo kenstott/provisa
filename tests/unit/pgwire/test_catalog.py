@@ -478,3 +478,61 @@ class TestDBeaverERDiagram:
         assert conkey[0] == expected_attnum, (
             f"conkey[0]={conkey[0]} must equal registered_table_id attnum={expected_attnum}"
         )
+
+
+class TestIndexVectorSubscripts:
+    """int2vector and oidvector (pg_index.indkey, indclass, indoption, ...) are subscripted from 0,
+    as PostgreSQL does, where an array is subscripted from 1 (REQ-2167). The queries are the ones
+    clients send to list an index's columns."""
+
+    @pytest.fixture
+    def state(self):
+        return _make_pet_store_state()
+
+    def test_the_first_key_column_is_indkey_0(self, state):
+        result = answer(
+            "SELECT a.attname FROM pg_catalog.pg_index i "
+            "JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0] "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [("id",)]
+
+    def test_pgadmins_index_columns_query(self, state):
+        # pgAdmin's indexes/sql/default/column_details.sql: attnum from 1 to array_upper + 1,
+        # each column indkey[attnum - 1] and its options indoption[attnum - 1].
+        result = answer(
+            "SELECT i.attnum, a.attname, i.indoption[i.attnum - 1] AS option FROM "
+            "(SELECT *, generate_series(1, array_upper(indkey, 1) + 1) AS attnum "
+            "FROM pg_catalog.pg_index) i "
+            "JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "JOIN pg_catalog.pg_attribute a "
+            "ON a.attrelid = i.indrelid AND a.attnum = i.indkey[i.attnum - 1] "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(1, "id", 0)]
+
+    def test_a_vectors_bounds_and_subscripts_start_at_0(self, state):
+        result = answer(
+            "SELECT array_lower(i.indkey, 1), array_upper(i.indkey, 1), "
+            "generate_subscripts(i.indkey, 1), i.indkey[0:0] "
+            "FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(0, 0, 0, [1])]
+
+    def test_an_arrays_bounds_start_at_1(self, state):
+        result = answer(
+            "SELECT array_lower(conkey, 1), array_upper(conkey, 1), conkey[1] "
+            "FROM pg_catalog.pg_constraint WHERE contype = 'p' "
+            "AND conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'pets')",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(1, 1, 1)]

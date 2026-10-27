@@ -29,7 +29,7 @@ from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TABLE_MAP,
 )
-from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
@@ -59,6 +59,58 @@ _DUCKDB_TYPES = {
     "inet": "VARCHAR",
 }
 _COUNTS = frozenset({"BIGINT", "INTEGER", "SMALLINT", "UINTEGER", "DOUBLE", "FLOAT"})
+
+
+# REQ-2167: PostgreSQL subscripts an int2vector or oidvector (pg_index.indkey, indclass, ...) from
+# 0 and any other array from 1; DuckDB's lists are subscripted from 1. A subscript of one of
+# these columns is moved up by one, and array_lower / array_upper (which DuckDB lacks) and
+# generate_subscripts answer as PostgreSQL does for each.
+_VECTOR_COLUMNS = frozenset(
+    name
+    for columns in RELATIONS.values()
+    for name, pg_type, _ in columns
+    if pg_type in ("int2vector", "oidvector")
+)
+
+
+def _is_vector(node: exp.Expression) -> bool:
+    while isinstance(node, exp.Paren):
+        node = node.this
+    return isinstance(node, exp.Column) and node.name.lower() in _VECTOR_COLUMNS
+
+
+def _plus_one(node: exp.Expression) -> exp.Expression:
+    return exp.Add(this=exp.Paren(this=node), expression=exp.Literal.number(1))
+
+
+def _from_zero(subscript: exp.Expression) -> exp.Expression:
+    """A vector's subscript (or slice bounds), counted from 0, as the list subscript from 1."""
+    if isinstance(subscript, exp.Slice):
+        return exp.Slice(
+            this=_plus_one(subscript.this) if subscript.this else None,
+            expression=_plus_one(subscript.expression) if subscript.expression else None,
+        )
+    return _plus_one(subscript)
+
+
+def _array_bound(fn: str, array: exp.Expression) -> exp.Expression:
+    """array_lower / array_upper of a one-dimensional array: NULL for an empty one, as in
+    PostgreSQL; else its first or last subscript."""
+    length = exp.Anonymous(this="len", expressions=[array])
+    first = 0 if _is_vector(array) else 1
+    bound = (
+        exp.Literal.number(first)
+        if fn == "array_lower"
+        else exp.Sub(this=length, expression=exp.Literal.number(1 - first))
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=length.copy(), expression=exp.Literal.number(0)), true=exp.null()
+            )
+        ],
+        default=bound,
+    )
 
 
 def _emulated(fn: str, untyped: exp.Expression) -> exp.Expression:
@@ -278,8 +330,28 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                         "alias", exp.TableAlias(this=exp.Identifier(this=name, quoted=False))
                     )
                 return new_tbl
+        if isinstance(node, exp.Bracket) and _is_vector(node.this):
+            return node.__class__(
+                **{
+                    **node.args,
+                    "this": node.this.transform(_transform),
+                    "expressions": [_from_zero(e.transform(_transform)) for e in node.expressions],
+                }
+            )
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
+            args = node.args.get("expressions", [])
+            first_dimension = len(args) == 2 and args[1] == exp.Literal.number(1)
+            if fn in ("array_lower", "array_upper") and first_dimension:
+                return _array_bound(fn, args[0].transform(_transform))
+            if fn == "generate_subscripts" and first_dimension and _is_vector(args[0]):
+                return exp.Sub(
+                    this=exp.Anonymous(
+                        this="generate_subscripts",
+                        expressions=[args[0].transform(_transform), exp.Literal.number(1)],
+                    ),
+                    expression=exp.Literal.number(1),
+                )
             if fn == "json_build_object":
                 # DuckDB has no json_build_object; json_object takes the same
                 # alternating key/value argument list.
