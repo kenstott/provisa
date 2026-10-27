@@ -58220,12 +58220,12 @@
     status and lifecycle (REQ-2126, the product lifecycle), its output ports and its inputs; a Data Contracts
     sheet lists each output port''s contract (REQ-2158): version, status, purpose, usage, limitations and
     the columns it promises. A Data Quality sheet summarises each check''s latest result per table and column
-    (REQ-2132/2133) and the latest profiling run''s figures per column (rows, nulls, distinct, min and max
-    where the role may read them). Every sheet shows only what the caller is served: a column the caller''s
-    roles are not granted (REQ-2153/2154) is absent from the Columns sheet and from every other sheet that
-    names it, a masked column shows its masked form wherever a value or statistic would reveal it, profiling
-    figures follow the column''s grant and mask, and a product, contract or term outside the caller''s domains
-    is absent, as for every other sheet.'
+    (REQ-2132/2133); a Data Profiling sheet of its own gives the latest profiling run''s figures per column
+    (rows, nulls, distinct, min and max where the role may read them) with the run''s time. Every sheet
+    shows only what the caller is served: a column the caller''s roles are not granted (REQ-2153/2154) is
+    absent from the Columns sheet and from every other sheet that names it, a masked column shows its masked
+    form wherever a value or statistic would reveal it, profiling figures follow the column''s grant and
+    mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.'
   tests:
   - tests/unit/test_model_report_workbook.py
   - tests/integration/test_model_report_download.py
