@@ -832,7 +832,6 @@ export function GraphFrame({
               clusterLevel={clusterLevel}
               requestedView={canvasView}
               hullSvgRef={canvasHullSvgRef}
-              isExpanded={expanded}
               note={frame.truncated && <GraphCutNote count={frame.nodes.size} />}
             />
             {!inspectorVisible && (
