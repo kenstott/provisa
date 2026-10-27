@@ -147,6 +147,14 @@
       "workers": {
         "label": "Processus worker",
         "help": "Le nombre de processus worker que le serveur exécute. Redémarrage requis car les processus sont lancés par le lanceur."
+      },
+      "stream_threads": {
+        "label": "Threads de streaming par worker",
+        "help": "Le nombre maximal de réponses en streaming et de WebSockets ouverts qu'un processus worker garde à la fois, abonnements compris. Chacun attend son client au lieu d'occuper un cœur, il est donc compté à part des threads de requête."
+      },
+      "control_request_threads": {
+        "label": "Threads de contrôle par worker",
+        "help": "Les threads que chaque processus worker réserve aux contrôles de santé et à l'API d'administration et de connexion, pour qu'un trafic de données intense ne rende pas un worker injoignable par son orchestrateur ou ses administrateurs."
       }
     },
     "kaggle": {
@@ -185,6 +193,18 @@
       "spool_max_bytes": {
         "label": "Limite de disque pour le stockage temporaire des répliques",
         "help": "L'espace disque maximal que ce nœud utilise pour conserver la réponse d'une source dans un fichier temporaire pendant la construction de sa réplique. S'applique aux sources qui répondent par un seul document et ne peuvent pas être lues par un curseur. Une construction qui dépasserait la limite échoue ; rien n'est tronqué."
+      },
+      "hot_threshold": {
+        "label": "Seuil de table active",
+        "help": "Le nombre d'instructions gouvernées qu'une table doit recevoir dans la fenêtre de table active avant d'être répliquée, pour que les lectures suivantes viennent de sa réplique."
+      },
+      "hot_interval": {
+        "label": "Fenêtre de table active",
+        "help": "La période sur laquelle les instructions d'une table sont comptées par rapport au seuil de table active."
+      },
+      "hot_max_rows": {
+        "label": "Taille maximale de table active",
+        "help": "Une table active qui dépasse ce nombre de lignes n'est pas répliquée ; elle reste lue en direct."
       }
     },
     "security": {
@@ -444,7 +464,35 @@
       },
       "subsystem_traces": {
         "label": "Traces des sous-systèmes",
-        "help": "Les sous-systèmes internes qui écrivent leurs propres traces."
+        "help": "Les sous-systèmes internes qui écrivent leurs propres traces.",
+        "http_api": {
+          "label": "Traces des sous-systèmes : API HTTP",
+          "help": "Requêtes traitées par l'API de la plateforme. Redémarrage requis."
+        },
+        "outbound_http": {
+          "label": "Traces des sous-systèmes : Appels HTTP sortants",
+          "help": "Requêtes que la plateforme adresse aux sources REST et GraphQL. Redémarrage requis."
+        },
+        "catalog_database": {
+          "label": "Traces des sous-systèmes : Base de données du catalogue",
+          "help": "Lectures et écritures de métadonnées. Désactivé par défaut : chaque consultation du catalogue en est une, et elles noient les traces de requête. Redémarrage requis."
+        },
+        "result_cache": {
+          "label": "Traces des sous-systèmes : Cache de résultats",
+          "help": "Lectures et écritures dans le cache. Redémarrage requis."
+        },
+        "document_sources": {
+          "label": "Traces des sous-systèmes : Sources documentaires",
+          "help": "Requêtes vers les magasins de documents. Redémarrage requis."
+        },
+        "search_sources": {
+          "label": "Traces des sous-systèmes : Sources de recherche",
+          "help": "Requêtes vers les index de recherche. Redémarrage requis."
+        },
+        "grpc_services": {
+          "label": "Traces des sous-systèmes : Services gRPC",
+          "help": "La surface de requête gRPC, entrante et sortante. Redémarrage requis."
+        }
       },
       "compact_cron": {
         "label": "Planification du compactage",
@@ -869,6 +917,10 @@
       "leak_rate_threshold": {
         "label": "Seuil de taux de fuite des valeurs fictives",
         "help": "La part des valeurs échantillonnées d'une colonne sensible que sa valeur fictive peut laisser égales à la valeur réelle avant que la vérification du taux de fuite ne la marque comme inadéquate. 0 fait échouer une valeur fictive qui laisse une valeur inchangée."
+      },
+      "key": {
+        "label": "Clé des valeurs fictives",
+        "help": "Le secret dont chaque valeur fictive est dérivée, identique sur chaque nœud et dans chaque région. Il est créé au premier démarrage de la plateforme. Le changer change chaque valeur fictive ; protégé, et un redémarrage est requis."
       }
     },
     "commands": {
@@ -899,6 +951,36 @@
       "duckdb_threads": {
         "label": "Threads DuckDB de la source de code",
         "help": "Les threads sur lesquels la DuckDB d'une source de code répond à ses instructions."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Intervalle de rechargement des paramètres",
+        "help": "La fréquence à laquelle chaque worker vérifie si le modèle ou un paramètre a changé, et le recharge le cas échéant. Une modification faite dans un worker atteint les autres dans ce délai."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Taille maximale des tables chaudes",
+        "help": "Une table qui ne dépasse pas ce nombre de lignes est gardée entière dans le cache chaud (Redis) et lue depuis celui-ci. Redémarrage requis."
+      },
+      "max_rows": {
+        "label": "Plafond de lignes des tables chaudes",
+        "help": "Le nombre maximal de lignes que le cache chaud garde pour une table. Sans valeur, la taille maximale des tables chaudes s'applique. Redémarrage requis."
+      },
+      "max_bytes": {
+        "label": "Plafond d'octets des tables chaudes",
+        "help": "Le nombre maximal d'octets que le cache chaud garde pour une table ; une table plus grande est lue en direct. Redémarrage requis."
+      },
+      "refresh_interval": {
+        "label": "Intervalle d'actualisation des tables chaudes",
+        "help": "La fréquence à laquelle les tables du cache chaud sont rechargées depuis leur source. Sans valeur, la durée de vie par défaut des vues matérialisées s'applique. Redémarrage requis."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Durée de vie par défaut des vues matérialisées",
+        "help": "La durée pendant laquelle une vue matérialisée est utilisée avant d'être actualisée, quand elle ne fixe pas sa propre durée de vie. Redémarrage requis."
       }
     }
   }

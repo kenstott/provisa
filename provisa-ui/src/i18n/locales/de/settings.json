@@ -147,6 +147,14 @@
       "workers": {
         "label": "Worker-Prozesse",
         "help": "Wie viele Worker-Prozesse der Server ausführt. Neustart erforderlich, da die Prozesse vom Launcher gestartet werden."
+      },
+      "stream_threads": {
+        "label": "Stream-Threads pro Worker",
+        "help": "Die maximale Anzahl gestreamter Antworten und offener WebSockets, die ein Worker-Prozess gleichzeitig hält, Abonnements eingeschlossen. Jede wartet auf ihren Client, statt einen Kern zu belegen, daher wird sie getrennt von den Anforderungs-Threads gezählt."
+      },
+      "control_request_threads": {
+        "label": "Steuerungs-Threads pro Worker",
+        "help": "Threads, die jeder Worker-Prozess für Health-Checks und die Admin- und Anmelde-API reserviert, damit starker Datenverkehr einen Worker für seinen Orchestrator oder seine Administratoren nicht unerreichbar macht."
       }
     },
     "kaggle": {
@@ -185,6 +193,18 @@
       "spool_max_bytes": {
         "label": "Speicherplatzlimit für Replikat-Zwischendateien",
         "help": "Der maximale Speicherplatz, den dieser Knoten nutzt, um die Antwort einer Quelle in einer temporären Datei zu halten, während ihr Replikat gebaut wird. Gilt für Quellen, die mit einem einzigen Dokument antworten und nicht über einen Cursor gelesen werden können. Ein Build, der das Limit überschreiten würde, schlägt fehl; es wird nichts abgeschnitten."
+      },
+      "hot_threshold": {
+        "label": "Schwellenwert für stark genutzte Tabellen",
+        "help": "Wie viele kontrollierte Anweisungen eine Tabelle innerhalb des Zeitfensters für stark genutzte Tabellen erhalten muss, bevor sie repliziert wird, damit spätere Lesezugriffe aus ihrem Replikat kommen."
+      },
+      "hot_interval": {
+        "label": "Zeitfenster für stark genutzte Tabellen",
+        "help": "Der Zeitraum, über den die Anweisungen einer Tabelle gegen den Schwellenwert für stark genutzte Tabellen gezählt werden."
+      },
+      "hot_max_rows": {
+        "label": "Größenlimit für stark genutzte Tabellen",
+        "help": "Eine stark genutzte Tabelle mit mehr Zeilen als diesem Wert wird nicht repliziert; sie wird weiter live gelesen."
       }
     },
     "security": {
@@ -444,7 +464,35 @@
       },
       "subsystem_traces": {
         "label": "Subsystem-Traces",
-        "help": "Welche internen Subsysteme eigene Traces schreiben."
+        "help": "Welche internen Subsysteme eigene Traces schreiben.",
+        "http_api": {
+          "label": "Subsystem-Traces: HTTP-API",
+          "help": "Anfragen, die von der Plattform-API bedient werden. Neustart erforderlich."
+        },
+        "outbound_http": {
+          "label": "Subsystem-Traces: Ausgehende HTTP-Aufrufe",
+          "help": "Anfragen, die die Plattform an REST- und GraphQL-Quellen stellt. Neustart erforderlich."
+        },
+        "catalog_database": {
+          "label": "Subsystem-Traces: Katalogdatenbank",
+          "help": "Lese- und Schreibvorgänge auf Metadaten. Standardmäßig aus: jede Katalogabfrage ist einer davon, und sie überdecken die Abfrage-Traces. Neustart erforderlich."
+        },
+        "result_cache": {
+          "label": "Subsystem-Traces: Ergebnis-Cache",
+          "help": "Lese- und Schreibvorgänge im Cache. Neustart erforderlich."
+        },
+        "document_sources": {
+          "label": "Subsystem-Traces: Dokumentquellen",
+          "help": "Abfragen an Dokumentspeicher. Neustart erforderlich."
+        },
+        "search_sources": {
+          "label": "Subsystem-Traces: Suchquellen",
+          "help": "Abfragen an Suchindizes. Neustart erforderlich."
+        },
+        "grpc_services": {
+          "label": "Subsystem-Traces: gRPC-Dienste",
+          "help": "Die gRPC-Abfrageoberfläche, eingehend und ausgehend. Neustart erforderlich."
+        }
       },
       "compact_cron": {
         "label": "Kompaktierungszeitplan",
@@ -869,6 +917,10 @@
       "leak_rate_threshold": {
         "label": "Leckraten-Schwelle für Fake-Werte",
         "help": "Der Anteil der Stichprobenwerte einer sensiblen Spalte, den ihr Fake-Wert gleich dem echten Wert lassen darf, bevor die Leckraten-Prüfung den Fake-Wert als unzureichend markiert. 0 lässt einen Fake-Wert scheitern, der irgendeinen Wert unverändert lässt."
+      },
+      "key": {
+        "label": "Schlüssel für Fake-Werte",
+        "help": "Das Geheimnis, aus dem jeder Fake-Wert abgeleitet wird, auf jedem Knoten und in jeder Region gleich. Es wird beim ersten Start der Plattform erzeugt. Eine Änderung ändert jeden Fake-Wert; geschützt, und ein Neustart ist erforderlich."
       }
     },
     "commands": {
@@ -899,6 +951,36 @@
       "duckdb_threads": {
         "label": "DuckDB-Threads der Code-Quelle",
         "help": "Die Threads, auf denen die DuckDB einer Code-Quelle ihre Anweisungen beantwortet."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Neuladeintervall für Einstellungen",
+        "help": "Wie oft jeder Worker prüft, ob sich das Modell oder eine Einstellung geändert hat, und sie dann neu lädt. Eine in einem Worker vorgenommene Änderung erreicht die anderen innerhalb dieser Zeit."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Größenlimit für Hot-Tabellen",
+        "help": "Eine Tabelle mit höchstens so vielen Zeilen wird vollständig im Hot Cache (Redis) gehalten und von dort gelesen. Neustart erforderlich."
+      },
+      "max_rows": {
+        "label": "Zeilenobergrenze für Hot-Tabellen",
+        "help": "Die maximale Anzahl Zeilen, die der Hot Cache für eine Tabelle hält. Ohne Wert gilt das Größenlimit für Hot-Tabellen. Neustart erforderlich."
+      },
+      "max_bytes": {
+        "label": "Byte-Obergrenze für Hot-Tabellen",
+        "help": "Die maximale Anzahl Bytes, die der Hot Cache für eine Tabelle hält; eine größere Tabelle wird stattdessen live gelesen. Neustart erforderlich."
+      },
+      "refresh_interval": {
+        "label": "Aktualisierungsintervall für Hot-Tabellen",
+        "help": "Wie oft Tabellen im Hot Cache aus ihrer Quelle neu geladen werden. Ohne Wert gilt die Standard-Lebensdauer für materialisierte Sichten. Neustart erforderlich."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Standard-Lebensdauer für materialisierte Sichten",
+        "help": "Wie lange eine materialisierte Sicht verwendet wird, bevor sie aktualisiert wird, wenn sie keine eigene Lebensdauer festlegt. Neustart erforderlich."
       }
     }
   }

@@ -147,6 +147,14 @@
       "workers": {
         "label": "Workerprocessen",
         "help": "Hoeveel workerprocessen de server draait. Opnieuw opstarten vereist omdat de processen door de launcher worden gestart."
+      },
+      "stream_threads": {
+        "label": "Stream-threads per worker",
+        "help": "Het maximale aantal gestreamde antwoorden en open WebSockets dat één workerproces tegelijk vasthoudt, abonnementen inbegrepen. Elk wacht op zijn client in plaats van een core te bezetten, dus dit wordt los van de request-threads geteld."
+      },
+      "control_request_threads": {
+        "label": "Beheer-threads per worker",
+        "help": "Threads die elk workerproces vrijhoudt voor health checks en de beheer- en aanmeld-API, zodat druk dataverkeer een worker niet onbereikbaar maakt voor zijn orchestrator of beheerders."
       }
     },
     "kaggle": {
@@ -185,6 +193,18 @@
       "spool_max_bytes": {
         "label": "Schijflimiet voor replica-spool",
         "help": "De maximale schijfruimte die deze node gebruikt om het antwoord van een bron in een tijdelijk bestand te bewaren terwijl de replica wordt gebouwd. Geldt voor bronnen die met één document antwoorden en niet via een cursor kunnen worden gelezen. Een build die de limiet zou overschrijden mislukt; er wordt niets afgekapt."
+      },
+      "hot_threshold": {
+        "label": "Drempel voor drukke tabellen",
+        "help": "Hoeveel gecontroleerde statements een tabel binnen het venster voor drukke tabellen moet ontvangen voordat ze wordt gerepliceerd, zodat latere leesacties uit haar replica komen."
+      },
+      "hot_interval": {
+        "label": "Venster voor drukke tabellen",
+        "help": "De periode waarover de statements van een tabel worden geteld tegen de drempel voor drukke tabellen."
+      },
+      "hot_max_rows": {
+        "label": "Groottelimiet voor drukke tabellen",
+        "help": "Een drukke tabel met meer rijen dan dit wordt niet gerepliceerd; ze blijft live gelezen."
       }
     },
     "security": {
@@ -444,7 +464,35 @@
       },
       "subsystem_traces": {
         "label": "Subsysteemtraces",
-        "help": "Welke interne subsystemen hun eigen traces schrijven."
+        "help": "Welke interne subsystemen hun eigen traces schrijven.",
+        "http_api": {
+          "label": "Subsysteem-traces: HTTP-API",
+          "help": "Verzoeken die door de platform-API worden afgehandeld. Opnieuw opstarten vereist."
+        },
+        "outbound_http": {
+          "label": "Subsysteem-traces: Uitgaande HTTP-aanroepen",
+          "help": "Verzoeken die het platform naar REST- en GraphQL-bronnen stuurt. Opnieuw opstarten vereist."
+        },
+        "catalog_database": {
+          "label": "Subsysteem-traces: Catalogusdatabase",
+          "help": "Metadata die wordt gelezen en geschreven. Standaard uit: elke catalogusopvraging is er één, en ze bedelven de query-traces. Opnieuw opstarten vereist."
+        },
+        "result_cache": {
+          "label": "Subsysteem-traces: Resultatencache",
+          "help": "Lees- en schrijfacties in de cache. Opnieuw opstarten vereist."
+        },
+        "document_sources": {
+          "label": "Subsysteem-traces: Documentbronnen",
+          "help": "Query's op documentopslag. Opnieuw opstarten vereist."
+        },
+        "search_sources": {
+          "label": "Subsysteem-traces: Zoekbronnen",
+          "help": "Query's op zoekindexen. Opnieuw opstarten vereist."
+        },
+        "grpc_services": {
+          "label": "Subsysteem-traces: gRPC-services",
+          "help": "Het gRPC-queryoppervlak, inkomend en uitgaand. Opnieuw opstarten vereist."
+        }
       },
       "compact_cron": {
         "label": "Compactieschema",
@@ -869,6 +917,10 @@
       "leak_rate_threshold": {
         "label": "Lekpercentagedrempel voor nepwaarden",
         "help": "Het aandeel van de steekproefwaarden van een gevoelige kolom dat de nepwaarde gelijk aan de echte waarde mag laten voordat de lekpercentagecontrole haar als ontoereikend markeert. 0 laat een nepwaarde falen die een waarde ongewijzigd laat."
+      },
+      "key": {
+        "label": "Sleutel voor nepwaarden",
+        "help": "Het geheim waaruit elke nepwaarde wordt afgeleid, gelijk op elke node en in elke regio. Het wordt gemaakt bij de eerste start van het platform. Wijzigen verandert elke nepwaarde; beveiligd, en opnieuw opstarten is vereist."
       }
     },
     "commands": {
@@ -899,6 +951,36 @@
       "duckdb_threads": {
         "label": "DuckDB-threads van de codebron",
         "help": "De threads waarop de DuckDB van een codebron zijn statements beantwoordt."
+      }
+    },
+    "config": {
+      "reload_interval": {
+        "label": "Herlaadinterval van instellingen",
+        "help": "Hoe vaak elke worker controleert of het model of een instelling is gewijzigd, en die zo nodig herlaadt. Een wijziging in één worker bereikt de andere binnen deze tijd."
+      }
+    },
+    "hot_tables": {
+      "auto_threshold": {
+        "label": "Groottelimiet voor hot tables",
+        "help": "Een tabel met niet meer rijen dan dit wordt volledig in de hot cache (Redis) bewaard en daaruit gelezen. Opnieuw opstarten vereist."
+      },
+      "max_rows": {
+        "label": "Rijenplafond voor hot tables",
+        "help": "Het maximale aantal rijen dat de hot cache voor één tabel bewaart. Zonder waarde geldt de groottelimiet voor hot tables. Opnieuw opstarten vereist."
+      },
+      "max_bytes": {
+        "label": "Byteplafond voor hot tables",
+        "help": "Het maximale aantal bytes dat de hot cache voor één tabel bewaart; een grotere tabel wordt live gelezen. Opnieuw opstarten vereist."
+      },
+      "refresh_interval": {
+        "label": "Verversingsinterval voor hot tables",
+        "help": "Hoe vaak tabellen in de hot cache opnieuw uit hun bron worden geladen. Zonder waarde geldt de standaardlevensduur van gematerialiseerde views. Opnieuw opstarten vereist."
+      }
+    },
+    "materialized_views": {
+      "default_ttl": {
+        "label": "Standaardlevensduur van gematerialiseerde views",
+        "help": "Hoe lang een gematerialiseerde view wordt gebruikt voordat ze wordt ververst, als ze geen eigen levensduur instelt. Opnieuw opstarten vereist."
       }
     }
   }
