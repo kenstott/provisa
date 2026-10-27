@@ -592,6 +592,13 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if not isinstance(node.obj, (MapLiteral, Variable)):
+            held = self.lower(node.obj)
+            if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
+                # A map read from a list of several types is its JSON: its key, read as JSON
+                # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
+                path = "$." + json.dumps(node.name)
+                return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
         if isinstance(node.obj, MapLiteral):
             # A map literal's key is its entry's own value; a key it has not is null (#287).
             for key, value in node.obj.entries:

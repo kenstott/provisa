@@ -780,6 +780,8 @@ def _json_valued(
         e = e.this
     if isinstance(e, exp.Column) and e.name in json_columns:
         return "value"
+    if isinstance(e, exp.Anonymous) and e.name.upper() == "JSON_EXTRACT":
+        return "value"  # a key of a JSON-encoded map (expr_visitor._lower_Property)
     if (
         isinstance(e, exp.Cast)
         and e.to.is_type("json")

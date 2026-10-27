@@ -380,6 +380,13 @@ class TranslatorExprContext:
         return False
 
     def is_json_value(self, expr: CypherExpr) -> bool:
+        from provisa.gql.expr_ast import Index, Paren
+
+        while isinstance(expr, Paren):
+            expr = expr.inner
+        if isinstance(expr, Index):
+            # An item of a variable bound to a list of several types.
+            return isinstance(expr.obj, Variable) and expr.obj.name in self._t._json_list_vars
         return isinstance(expr, Variable) and expr.name in self._t._json_value_vars
 
     def holds_list_items(self, expr: CypherExpr) -> bool:
