@@ -13,8 +13,8 @@ pipeline returned, each RDF term a JSON value (:mod:`provisa.gql.terms`), made R
 subject's IRI built from its table and key values (:mod:`provisa.gql.iri`) -- and written by
 rdflib's own serializers, so escaping and the formats are theirs.
 
-A SELECT or ASK is written as SPARQL results (JSON, XML, CSV or TSV), a CONSTRUCT as Turtle or
-N-Triples. A CONSTRUCT's triples are a graph, so each is kept once.
+A SELECT or ASK is written as SPARQL results (JSON, XML, CSV or TSV), a CONSTRUCT as Turtle,
+N-Triples or JSON-LD. A CONSTRUCT's triples are a graph, so each is kept once.
 """
 
 # Requirements: REQ-2135
@@ -40,6 +40,7 @@ RESULT_FORMATS = (
 GRAPH_FORMATS = (
     ("text/turtle", "turtle"),
     ("application/n-triples", "nt"),
+    ("application/ld+json", "json-ld"),
 )
 _ALIASES = {
     "application/json": "application/sparql-results+json",

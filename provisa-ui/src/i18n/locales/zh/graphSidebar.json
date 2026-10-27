@@ -4,6 +4,7 @@
     "tabHistory": "历史记录",
     "tabFavorites": "收藏",
     "tabExport": "导出到 Neo4j",
+    "tabExportSparql": "导出 RDF 或 SPARQL 结果",
     "domainLabels": "域标签",
     "nodeLabels": "节点标签",
     "relationshipTypes": "关系类型",

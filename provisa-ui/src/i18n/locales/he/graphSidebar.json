@@ -4,6 +4,7 @@
     "tabHistory": "היסטוריה",
     "tabFavorites": "מועדפים",
     "tabExport": "ייצוא ל-Neo4j",
+    "tabExportSparql": "ייצוא RDF או תוצאות SPARQL",
     "domainLabels": "תוויות דומיין",
     "nodeLabels": "תוויות צמתים",
     "relationshipTypes": "סוגי קשרים",

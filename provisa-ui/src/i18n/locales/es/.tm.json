@@ -8399,5 +8399,18 @@
   "registerTableForm.json::registerTableForm.dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
-  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds."
+  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
+  "es/sparqlExportModal.json::sparqlExportModal.title": "SPARQL export",
+  "es/sparqlExportModal.json::sparqlExportModal.result": "Result",
+  "es/sparqlExportModal.json::sparqlExportModal.format": "Format",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.turtle": "Turtle",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.ntriples": "N-Triples",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.jsonld": "JSON-LD",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.json": "SPARQL Results JSON",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.csv": "CSV",
+  "es/sparqlExportModal.json::sparqlExportModal.formats.tsv": "TSV",
+  "es/sparqlExportModal.json::sparqlExportModal.download": "Download",
+  "es/sparqlExportModal.json::sparqlExportModal.close": "Close",
+  "es/sparqlExportModal.json::sparqlExportModal.empty": "Run a query to export its result.",
+  "es/graphSidebar.json::graphSidebar.tabExportSparql": "Export RDF or SPARQL results"
 }

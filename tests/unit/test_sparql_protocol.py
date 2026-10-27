@@ -119,6 +119,7 @@ def test_no_sparql_refusal_answers_an_error_field():
         ("application/json", "SELECT", "application/sparql-results+json"),
         ("*/*", "CONSTRUCT", "text/turtle"),
         ("application/n-triples", "CONSTRUCT", "application/n-triples"),
+        ("application/ld+json", "CONSTRUCT", "application/ld+json"),
         ("application/sparql-results+xml", "ASK", "application/sparql-results+xml"),
     ],
 )
@@ -163,6 +164,16 @@ def test_construct_keeps_each_triple_once():
     assert len(g) == 1
     iri = URIRef(f"{BASE}/id/hr/persons/a%2Fb%20c")
     assert (iri, URIRef("http://example.org/knows"), iri) in g
+
+
+def test_construct_as_json_ld_names_each_subject_by_its_iri():
+    # The SPARQL tab's RDF export asks for JSON-LD as for Turtle or N-Triples: the one writer.
+    p = {"iri": "http://example.org/knows"}
+    rows = [{"s": NODE, "p": p, "o": {"literal": "Ann", "lang": "en"}}]
+    body = write_construct(rows, BASE, {"ex": "http://example.org/"}, "json-ld")
+    g = Graph().parse(data=body, format="json-ld")
+    iri = URIRef(f"{BASE}/id/hr/persons/a%2Fb%20c")
+    assert [(s, o.language, str(o)) for s, _p, o in g] == [(iri, "en", "Ann")]
 
 
 def test_stats_ride_a_json_answer_and_a_header_on_any_other():

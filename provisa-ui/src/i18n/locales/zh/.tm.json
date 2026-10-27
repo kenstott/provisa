@@ -8398,5 +8398,18 @@
   "zh/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh/sparqlExportModal.json::sparqlExportModal.title": "SPARQL export",
+  "zh/sparqlExportModal.json::sparqlExportModal.result": "Result",
+  "zh/sparqlExportModal.json::sparqlExportModal.format": "Format",
+  "zh/sparqlExportModal.json::sparqlExportModal.formats.turtle": "Turtle",
+  "zh/sparqlExportModal.json::sparqlExportModal.formats.ntriples": "N-Triples",
+  "zh/sparqlExportModal.json::sparqlExportModal.formats.jsonld": "JSON-LD",
+  "zh/sparqlExportModal.json::sparqlExportModal.formats.json": "SPARQL Results JSON",
+  "zh/sparqlExportModal.json::sparqlExportModal.formats.csv": "CSV",
+  "zh/sparqlExportModal.json::sparqlExportModal.formats.tsv": "TSV",
+  "zh/sparqlExportModal.json::sparqlExportModal.download": "Download",
+  "zh/sparqlExportModal.json::sparqlExportModal.close": "Close",
+  "zh/sparqlExportModal.json::sparqlExportModal.empty": "Run a query to export its result.",
+  "zh/graphSidebar.json::graphSidebar.tabExportSparql": "Export RDF or SPARQL results"
 }
