@@ -37,6 +37,7 @@ from provisa.core.org_forget import on_forget
 from provisa.pgwire.system_tables import _populate_empty_system_tables
 from provisa.pgwire.catalog_constraints import (
     _populate_pg_constraint,
+    _populate_index_classes,
     _populate_pg_index,
     _populate_is_constraints,
 )
@@ -993,6 +994,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_pg_description(db, idx, raw_tables, raw_domains, metrics)
     constraint_rows = _populate_pg_constraint(db, ctx, idx)
     _populate_pg_index(db, constraint_rows)
+    _populate_index_classes(db, constraint_rows)
     _populate_pg_roles_and_database(db, role_id, state)
     _populate_pg_settings(db)
     _populate_pg_tables_and_am(db, idx)
