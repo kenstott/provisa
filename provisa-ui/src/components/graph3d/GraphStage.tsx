@@ -165,6 +165,7 @@ export function GraphStage({
       exportName={exportName}
       testId={testId}
       bare={bare}
+      flat={s.flat}
       legend={<GraphLegend graph={s.graph} />}
     />
   );

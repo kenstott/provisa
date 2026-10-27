@@ -3,6 +3,7 @@
     "expand": "Espandi vista",
     "webglError": "Impossibile avviare la vista 3D: {{error}}",
     "hint": "Trascina per orbitare · scorri per ingrandire · trascina con il tasto destro per spostare",
+    "hintFlat": "Trascina per spostare · scorri per ingrandire",
     "rotate": "Ruota",
     "resetView": "Reimposta vista",
     "zoomTo": "Ingrandisci su questa colonna",

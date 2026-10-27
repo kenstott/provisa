@@ -316,7 +316,20 @@ export abstract class BaseScene<H> {
     const content = this.viewContent();
     this.best = this.flat ? FACE_ON : content ? bestView(content.nodes, content.edges) : null;
     this.turnAxis.copy(this.best ? this.best.axis : UP_AXIS);
+    this.alignFloor();
     return this.best;
+  }
+
+  /** The floor grid square to the best view's up, a margin under the content, so it reads as the
+   * ground whichever way the view stands; in 2D, behind the content, facing the camera. A scene
+   * whose own view is kept (no best view) keeps its floor as laid. */
+  protected alignFloor() {
+    const content = this.viewContent();
+    if (!this.floor || !this.best || !content || content.nodes.length === 0) return;
+    const normal = this.flat ? FACE_ON.dir : this.best.up;
+    const lowest = Math.min(...content.nodes.map((n) => n.at.dot(normal) - n.radius));
+    this.floor.quaternion.setFromUnitVectors(UP_AXIS, normal);
+    this.floor.position.copy(normal).multiplyScalar(lowest - 1.5);
   }
 
   /** The scene's resting view: where it opens, where Reset puts it, and where it eases back to
@@ -373,6 +386,9 @@ export abstract class BaseScene<H> {
     this.camera.up.copy(from.up);
     this.controls.object = this.camera;
     this.controls.enableRotate = !on;
+    // In 2D a drag pans, as a map does; in 3D it orbits.
+    this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.touches.ONE = on ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
     this.resize();
     this.applyTurn();
   }
@@ -698,7 +714,9 @@ export abstract class BaseScene<H> {
       this.controls.target.lerpVectors(tw.t0, tw.t1, e);
       const up = tw.u0
         .clone()
-        .applyQuaternion(new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), tw.turn, e));
+        .applyQuaternion(
+          new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), tw.turn, e),
+        );
       if (k >= 1) {
         this.tween = null;
         this.setUp(up);

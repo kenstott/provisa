@@ -114,8 +114,7 @@ async function stage(width = 800, height = 500) {
     THEME,
   );
   const inside = scene as unknown as Inside;
-  const looking = () =>
-    inside.camera.position.clone().sub(inside.controls.target).normalize();
+  const looking = () => inside.camera.position.clone().sub(inside.controls.target).normalize();
   return { scene, inside, looking, labels };
 }
 
@@ -152,12 +151,54 @@ describe("a network graph's best view", () => {
 
   it.each([
     ["the floor", new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1)],
-    ["a tilted plane", new THREE.Vector3(1, 0.6, 0).normalize(), new THREE.Vector3(0, 0.2, 1).normalize()],
+    [
+      "a tilted plane",
+      new THREE.Vector3(1, 0.6, 0).normalize(),
+      new THREE.Vector3(0, 0.2, 1).normalize(),
+    ],
   ])("opens facing a graph that lies mostly in %s", async (_name, u, v) => {
     const { scene, looking } = await stage();
     const { graph, at, normal } = planeGraph(u, v);
     scene.setData(graph, at, true);
     expect(degrees(looking(), normal)).toBeLessThan(15);
+    scene.dispose();
+  });
+
+  it("opens a column relations graph facing the plane its columns lie in", async () => {
+    const { RelationsScene } = await import("../relations/relationsScene");
+    const wrap = document.createElement("div");
+    Object.defineProperty(wrap, "clientWidth", { value: 800 });
+    Object.defineProperty(wrap, "clientHeight", { value: 500 });
+    const canvas = document.createElement("canvas");
+    wrap.appendChild(canvas);
+    document.body.appendChild(wrap);
+    const scene = new RelationsScene(
+      canvas,
+      document.createElement("div"),
+      { onHover: () => {}, onSelect: () => {}, onUserMove: () => {} },
+      THEME,
+    );
+    const u = new THREE.Vector3(1, 0.6, 0).normalize();
+    const v = new THREE.Vector3(0, 0.2, 1).normalize();
+    const { graph, at, normal } = planeGraph(u, v, 3);
+    const nodes = graph.nodes.map((n) => {
+      const [x, y, z] = at.get(n.id) as [number, number, number];
+      return { id: n.id, family: "numeric" as const, x, y, z };
+    });
+    const edges = graph.edges.map((e) => ({
+      id: e.id,
+      a: e.a,
+      b: e.b,
+      kind: "spearman" as const,
+      value: 0.5,
+      strength: 0.5,
+      rows: null,
+      mutualInformation: null,
+    }));
+    scene.setData({ nodes, edges }, edges, true);
+    const inside = scene as unknown as Inside;
+    const looking = inside.camera.position.clone().sub(inside.controls.target);
+    expect(degrees(looking, normal)).toBeLessThan(15);
     scene.dispose();
   });
 
@@ -203,23 +244,68 @@ describe("a network graph's best view", () => {
     const roomy = planeGraph(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), 6);
     scene.setData(roomy.graph, roomy.at, true);
     const full = (labels.firstElementChild as HTMLElement).style.fontSize;
-    // The same graph drawn tight: its labels would run into each other at full size.
-    const tight = planeGraph(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), 0.9);
-    scene.setData(tight.graph, tight.at, true);
+    // The same graph with two nodes all but on one spot: their labels would run into each other
+    // at any size, so they are drawn smaller and the pair is moved apart, the rest left in place.
+    const tight = new Map(roomy.at);
+    const [x, y, z] = roomy.at.get("term:0-0") as [number, number, number];
+    tight.set("term:0-1", [x + 0.05, y, z]);
+    scene.setData(roomy.graph, tight, true);
     const small = (labels.firstElementChild as HTMLElement).style.fontSize;
     expect(parseFloat(small)).toBeLessThan(parseFloat(full));
+    const inside = scene as unknown as { at: Map<string, [number, number, number]> };
+    const a = new THREE.Vector3(...(inside.at.get("term:0-0") as [number, number, number]));
+    const b = new THREE.Vector3(...(inside.at.get("term:0-1") as [number, number, number]));
+    expect(a.distanceTo(b)).toBeGreaterThan(0.5);
+    expect(inside.at.get("term:4-4")).toEqual(roomy.at.get("term:4-4"));
+    scene.dispose();
+  });
+
+  it("lays the floor grid under the content as the view stands, and behind it in 2D", async () => {
+    const { scene, inside } = await stage();
+    const { graph, at } = planeGraph(
+      new THREE.Vector3(1, 0.6, 0).normalize(),
+      new THREE.Vector3(0, 0.2, 1).normalize(),
+    );
+    const floorOf = () => {
+      const floor = (scene as unknown as { floor: THREE.GridHelper }).floor;
+      floor.updateMatrixWorld();
+      const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(floor.quaternion);
+      return { normal, at: floor.getWorldPosition(new THREE.Vector3()) };
+    };
+    // Every node on the far side of the floor from where it faces.
+    const beyond = (normal: THREE.Vector3, point: THREE.Vector3, ps: Iterable<number[]>) =>
+      [...ps].every((p) => new THREE.Vector3(...p).sub(point).dot(normal) > 0);
+    scene.setData(graph, at, true);
+    const best = inside.best as NonNullable<Inside["best"]>;
+    let f = floorOf();
+    expect(degrees(f.normal, best.up)).toBeLessThan(1e-3);
+    expect(f.normal.dot(best.up)).toBeGreaterThan(0);
+    expect(beyond(f.normal, f.at, at.values())).toBe(true);
+    const flatAt = new Map(
+      [...at].map(([id, p]) => [id, [p[0], p[1], 0] as [number, number, number]]),
+    );
+    scene.setFlat(true);
+    scene.setData(graph, flatAt, true);
+    f = floorOf();
+    expect(degrees(f.normal, new THREE.Vector3(0, 0, 1))).toBeLessThan(1e-3);
+    expect(beyond(f.normal, f.at, flatAt.values())).toBe(true);
     scene.dispose();
   });
 
   it("in 2D looks face-on through a locked orthographic camera that never turns", async () => {
     const { scene, inside, looking } = await stage();
     const { graph, at } = planeGraph(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0));
-    const flatAt = new Map([...at].map(([id, p]) => [id, [p[0], p[1], 0] as [number, number, number]]));
+    const flatAt = new Map(
+      [...at].map(([id, p]) => [id, [p[0], p[1], 0] as [number, number, number]]),
+    );
     scene.setFlat(true);
     scene.setData(graph, flatAt, true);
     expect(inside.camera).toBeInstanceOf(THREE.OrthographicCamera);
     expect(inside.controls.object).toBe(inside.camera);
     expect(inside.controls.enableRotate).toBe(false);
+    // A drag pans the flat graph, as a map does.
+    const buttons = (inside.controls as unknown as { mouseButtons: { LEFT: number } }).mouseButtons;
+    expect(buttons.LEFT).toBe(THREE.MOUSE.PAN);
     expect(degrees(looking(), new THREE.Vector3(0, 0, 1))).toBeLessThan(1e-6);
     scene.setRotate(true);
     expect(inside.turning).toBe(false);
@@ -229,6 +315,7 @@ describe("a network graph's best view", () => {
     scene.setFlat(false);
     expect(inside.camera).toBeInstanceOf(THREE.PerspectiveCamera);
     expect(inside.controls.enableRotate).toBe(true);
+    expect(buttons.LEFT).toBe(THREE.MOUSE.ROTATE);
     expect(inside.turning).toBe(true);
     scene.dispose();
   });

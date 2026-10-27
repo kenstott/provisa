@@ -504,7 +504,8 @@ export class GraphScene extends BaseScene<GraphHover> {
           .filter(Boolean)
           .join(" "),
         // Above its node on screen, whichever way the view stands.
-        () => mesh.position.clone().add(this.camera.up.clone().multiplyScalar(r * this.sized + 0.3)),
+        () =>
+          mesh.position.clone().add(this.camera.up.clone().multiplyScalar(r * this.sized + 0.3)),
       );
       label.style.fontSize = `${LABEL_FONT_PX * this.sized}px`;
       this.nodes.push({ node, mesh, radius: r, label });
@@ -553,6 +554,7 @@ export class GraphScene extends BaseScene<GraphHover> {
     const size = Math.ceil(extent * 2.4);
     this.layFloor(world, size, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
     this.fitShadow(extent + 4);
+    this.alignFloor();
     this.paint();
   }
 

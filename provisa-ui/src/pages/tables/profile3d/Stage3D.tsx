@@ -44,6 +44,7 @@ export function Stage3D({
   exportName,
   testId,
   bare = false,
+  flat = false,
 }: StageRefs & {
   ready: boolean;
   error: string | null;
@@ -57,6 +58,8 @@ export function Stage3D({
   testId: string;
   /** A view that is a glance only (a card): the canvas and its legend, no export or hint. */
   bare?: boolean;
+  /** REQ-2174: a 2D view, panned and zoomed only: its hint says so. */
+  flat?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -91,7 +94,7 @@ export function Stage3D({
             name={exportName}
             testId={testId}
           />
-          <div className="p3d-hint">{t("profile3d.hint")}</div>
+          <div className="p3d-hint">{t(flat ? "profile3d.hintFlat" : "profile3d.hint")}</div>
         </>
       )}
       <div className="p3d-legend">{legend}</div>

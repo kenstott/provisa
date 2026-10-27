@@ -8206,5 +8206,6 @@
   "fr/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization",
   "fr/graph3d.json::graph3d.dimension": "2D or 3D",
   "fr/graph3d.json::graph3d.view2d": "2D",
-  "fr/graph3d.json::graph3d.view3d": "3D"
+  "fr/graph3d.json::graph3d.view3d": "3D",
+  "fr/profile3d.json::profile3d.hintFlat": "Drag to pan · scroll to zoom"
 }

@@ -89541,7 +89541,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   docs:
   - named-demos.md
 - id: REQ-2174
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Profile Runs Terrain View
@@ -89574,3 +89574,22 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And no two node labels overlap on screen
 
     And when turning pauses after idle the camera eases back to that view'
+  related_reqs:
+  - REQ-2123
+  - REQ-2128
+  code:
+  - provisa-ui/src/pages/tables/profile3d/bestView.ts
+  - provisa-ui/src/pages/tables/profile3d/baseScene.ts
+  - provisa-ui/src/pages/tables/profile3d/forceLayout.ts
+  - provisa-ui/src/pages/tables/profile3d/relations/relationsScene.ts
+  - provisa-ui/src/components/graph3d/graphScene.ts
+  - provisa-ui/src/components/graph3d/graphModel.ts
+  - provisa-ui/src/components/graph3d/GraphStage.tsx
+  - provisa-ui/src/components/graph3d/GraphExplorer.tsx
+  - provisa-ui/src/components/graph3d/KnowledgeGraphPanel.tsx
+  - provisa-ui/src/components/graph3d/DimensionToggle.tsx
+  tests:
+  - provisa-ui/src/pages/tables/profile3d/__tests__/bestView.test.ts
+  - provisa-ui/src/pages/tables/profile3d/__tests__/sceneBestView.test.tsx
+  - provisa-ui/src/pages/tables/profile3d/__tests__/turnPause.test.tsx
+  - provisa-ui/src/components/graph3d/__tests__/graphModel.test.ts

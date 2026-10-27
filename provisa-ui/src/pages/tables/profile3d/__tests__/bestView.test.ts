@@ -14,14 +14,7 @@
 
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import {
-  bestView,
-  labelFit,
-  loosen,
-  principalAxes,
-  viewScore,
-  type ViewNode,
-} from "../bestView";
+import { bestView, labelFit, loosen, principalAxes, viewScore, type ViewNode } from "../bestView";
 
 const node = (x: number, y: number, z: number, label = 1): ViewNode => ({
   at: new THREE.Vector3(x, y, z),
@@ -60,7 +53,8 @@ function gridEdges(n = 6): [number, number][] {
 describe("principal axes", () => {
   it("orders the axes from most to least spread", () => {
     const pts = [];
-    for (let i = -5; i <= 5; i++) for (let j = -2; j <= 2; j++) pts.push(new THREE.Vector3(i * 3, j, 0.1 * ((i + j) % 2)));
+    for (let i = -5; i <= 5; i++)
+      for (let j = -2; j <= 2; j++) pts.push(new THREE.Vector3(i * 3, j, 0.1 * ((i + j) % 2)));
     const { axes, spread } = principalAxes(pts);
     expect(spread[0]).toBeGreaterThan(spread[1]);
     expect(spread[1]).toBeGreaterThan(spread[2]);
@@ -74,7 +68,11 @@ describe("the best view", () => {
   it.each([
     ["the floor", new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1)],
     ["a wall", new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)],
-    ["a tilted plane", new THREE.Vector3(1, 1, 0).normalize(), new THREE.Vector3(0, 0.3, 1).normalize()],
+    [
+      "a tilted plane",
+      new THREE.Vector3(1, 1, 0).normalize(),
+      new THREE.Vector3(0, 0.3, 1).normalize(),
+    ],
   ])("faces a graph lying mostly in %s", (_name, u, v) => {
     const nodes = plane(u, v);
     const view = bestView(nodes, gridEdges());

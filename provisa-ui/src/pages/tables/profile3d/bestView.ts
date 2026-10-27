@@ -100,10 +100,7 @@ export function viewScore(
       if (dist < (a.r + b.r) * 0.9) hidden++;
       nearest = Math.min(nearest, dist - a.r - b.r);
       // Each label is centred over its node.
-      if (
-        Math.abs(a.x - b.x) < (a.w + b.w) / 2 &&
-        Math.abs(a.y + a.r - (b.y + b.r)) < LABEL_HEIGHT
-      )
+      if (Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y + a.r - (b.y + b.r)) < LABEL_HEIGHT)
         labels++;
     }
   const spreadAll = spreadOf(nodes.map((n) => n.at));
@@ -233,7 +230,11 @@ function basis(
     u = right.clone().projectOnPlane(dir).normalize();
   else if (up && up.clone().cross(dir).lengthSq() > 1e-9) u = up.clone().cross(dir).normalize();
   else {
-    const world = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+    const world = [
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(0, 0, 1),
+    ];
     const flattest = world.sort((a, b) => Math.abs(a.dot(dir)) - Math.abs(b.dot(dir)))[0];
     u = flattest.projectOnPlane(dir).normalize();
   }
@@ -303,8 +304,11 @@ function crosses(
   r: readonly [number, number],
   s: readonly [number, number],
 ): boolean {
-  const side = (a: readonly [number, number], b: readonly [number, number], c: readonly [number, number]) =>
-    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const side = (
+    a: readonly [number, number],
+    b: readonly [number, number],
+    c: readonly [number, number],
+  ) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   const d1 = side(r, s, p);
   const d2 = side(r, s, q);
   const d3 = side(p, q, r);
