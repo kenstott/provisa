@@ -178,15 +178,21 @@ The ADBC driver validation suite (github.com/adbc-drivers/validation, Apache-2.0
 
 ### Writes
 
-DML over Flight SQL is supported where the write maps onto the model through governed table writes. A write needing structure the model lacks is refused by name. Transaction commands are a no-op by design.
+DML over Flight SQL is supported where the write maps onto the model through governed table writes. A write needing structure the model lacks is refused by name. Bulk ingest writes into a table the model declares, through the same governed writes. A temporary ingest lands in a temporary table of the client's own session, which only that session reads and lists, and which ends with the session. Transaction commands are a no-op by design.
 
 ### Vocabulary fixed by the model
 
-DDL over Flight SQL is not supported. The model is the source of schema.
+DDL over Flight SQL is not supported. The model is the source of schema. An ingest that would create a table the model does not declare, or replace one it does, is refused.
 
 ### Add-ins
 
 No standard add-ins apply to the Flight SQL transport.
+
+## Notes
+
+### The status of a table that already exists
+
+An ingest that creates a table that already exists, or whose columns do not match the table, is refused with the status INVALID_ARGUMENT, not ALREADY_EXISTS. The suite's three cases that check for ALREADY_EXISTS (test_create_conflict, test_append_schema_mismatch and test_createappend_schema_mismatch) therefore fail. The cause is the server library: no error a pyarrow Flight server raises reaches the client as ALREADY_EXISTS. Each kind of error was raised in turn through the ADBC Flight SQL driver 1.12.0. A KeyError arrives as NOT_FOUND, a ValueError or ArrowInvalid as INVALID_ARGUMENT, a NotImplementedError as NOT_IMPLEMENTED, and each Flight error class as its own status (UNAUTHORIZED, UNAUTHENTICATED, UNAVAILABLE, CANCELLED, TIMEOUT, INTERNAL). Every other error arrives as UNKNOWN. INVALID_ARGUMENT is the nearest status the server can send, and the refusal names the table or the column.
 
 ## Tools
 
