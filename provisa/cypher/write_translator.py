@@ -98,9 +98,9 @@ _IDENT = r"[A-Za-z_]\w*"
 _LABEL_PART = r"[A-Za-z_]\w*"
 _LABEL = rf"{_LABEL_PART}(?::{_LABEL_PART})*"  # Label or Label:Label2
 
-# CREATE (n:Label [{key: val, ...}]) [SET n.key = val, ...] [RETURN ...]
+# CREATE ([n]:Label [{key: val, ...}]) [SET n.key = val, ...] [RETURN ...]
 _CREATE_RE = re.compile(
-    rf"CREATE{_WS}\({_OWS}({_IDENT}){_OWS}:({_LABEL}){_OWS}(\{{[^}}]*\}})?{_OWS}\)"
+    rf"CREATE{_WS}\({_OWS}({_IDENT})?{_OWS}:({_LABEL}){_OWS}(\{{[^}}]*\}})?{_OWS}\)"
     rf"(?:{_WS}SET{_WS}(.+?))?(?:{_WS}RETURN{_WS}(.+?))?{_OWS}$",
     re.IGNORECASE | re.DOTALL,
 )
@@ -358,6 +358,7 @@ def parse_cypher_write(query: str) -> WriteAST:
     m = _CREATE_RE.match(query)
     if m:
         variable, label, props_text, set_text, returns = m.groups()
+        variable = variable or ""  # a node created with no variable: nothing else names it
         props = _parse_props(props_text) if props_text else {}
         # A SET on the node the statement creates gives it that property, as its map would.
         props.update(_parse_set_assignments(set_text, variable) if set_text else [])

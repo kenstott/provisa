@@ -239,3 +239,11 @@ def test_a_relationship_the_model_does_not_store_in_a_junction_is_refused_by_nam
 def test_a_relationship_create_outside_its_form_is_refused(query):
     with pytest.raises(CypherWriteParseError):
         parse_cypher_write(query)
+
+
+def test_a_node_created_without_a_variable_is_written():
+    surface = _Surface(reads=[], wrote=([], []))
+    _run("CREATE (:Person {name: $name})", {"name": "Alice"}, surface)
+    assert surface.write_calls == [
+        ('INSERT INTO "conformance"."person" ("name") VALUES ($1)', ["Alice"])
+    ]
