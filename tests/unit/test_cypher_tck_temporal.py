@@ -132,3 +132,13 @@ def test_a_temporal_value_beyond_the_bounds_is_refused_by_name(query, refusal):
 
 def test_a_time_within_the_offsets_is_read():
     assert _value("RETURN time('22+15:00') AS t").isoformat() == "22:00:00+15:00"
+
+
+def test_a_date_time_from_the_epoch_is_that_instant():
+    # Temporal1 [11]: datetime.fromepoch(seconds, nanoseconds), datetime.fromepochmillis(ms),
+    # to the microsecond (REQ-2173).
+    d1 = _value("RETURN datetime.fromepoch(416779, 999999999) AS d")
+    d2 = _value("RETURN datetime.fromepochmillis(237821673987) AS d")
+    assert d1.isoformat() == "1970-01-05T19:46:19.999999+00:00"
+    assert d2.isoformat() == "1977-07-15T13:34:33.987000+00:00"
+    assert _value("RETURN datetime.fromepochmillis(237821673987).year AS y") == 1977

@@ -913,6 +913,42 @@ class ExprLowering:
             return self._wall(node, None)
         return self.lower(node)
 
+    def _from_epoch(self, clock: str, args: list[CypherExpr]) -> exp.Expression:
+        """datetime.fromepoch(seconds, nanoseconds) and datetime.fromepochmillis(milliseconds):
+        the instant that long after 1970-01-01T00:00Z, to the microsecond (REQ-2173)."""
+        if any(isinstance(a, Literal) and a.kind == "null" for a in args):
+            return exp.Null()
+        double = exp.DataType.build("DOUBLE")
+        if clock == "fromepochmillis":
+            if len(args) != 1:
+                raise CypherTranslateError("datetime.fromepochmillis() takes the milliseconds")
+            seconds = exp.Div(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Literal.number(1000),
+            )
+        else:
+            if len(args) != 2:
+                raise CypherTranslateError(
+                    "datetime.fromepoch() takes the seconds and the nanoseconds"
+                )
+            micros = exp.Cast(
+                this=exp.Anonymous(
+                    this="TRUNC",
+                    expressions=[
+                        exp.Div(
+                            this=exp.Cast(this=self.lower(args[1]), to=double),
+                            expression=exp.Literal.number(1000),
+                        )
+                    ],
+                ),
+                to=double,
+            )
+            seconds = exp.Add(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Div(this=micros, expression=exp.Literal.number(1_000_000)),
+            )
+        return _anon("TO_TIMESTAMP", seconds)
+
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
@@ -989,6 +1025,8 @@ class ExprLowering:
             zones = [self._ctx.temporal_zone(a) for a in node.args]
             return temporal.duration_function(node.name, node.args, kinds, self.lower, zones)
         kind, _, clock = node.name.lower().partition(".")
+        if kind == temporal.DATETIME and clock in ("fromepoch", "fromepochmillis"):
+            return self._from_epoch(clock, node.args)
         if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
             # REQ-2173: the current value, as the engine's clock reads it.
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
