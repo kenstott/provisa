@@ -198,7 +198,9 @@ def _data_product_assets(
     from provisa.core.mail import data_product_page_url
 
     # A product with no exported members does not build: publishing an empty listing would tell
-    # the catalog about a product with nothing behind it.
+    # the catalog about a product with nothing behind it. A retired one builds all the same
+    # (REQ-1634 STATUS): its members went to its successor, and each catalog is told it is retired
+    # rather than left listing it as it last saw it.
     members_by_product: dict[str, list[Table]] = {}
     for table in exported:
         product_id = product_ids[table_ref(table).parts]
@@ -207,7 +209,7 @@ def _data_product_assets(
     assets: list[DataProductAsset] = []
     for product in config.data_products:
         members = members_by_product.get(product.id, [])
-        if not members:
+        if not members and product.status != "retired":
             continue
         assets.append(
             DataProductAsset(
@@ -222,7 +224,6 @@ def _data_product_assets(
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
-                publish=product.publish,
                 team_role=product.team_role,
                 limitations=product.limitations,
                 usage=product.usage,

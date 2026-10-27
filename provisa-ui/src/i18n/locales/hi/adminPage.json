@@ -208,6 +208,13 @@
     "colParentDomain": "मूल डोमेन",
     "parentDomainHint": "मूल डोमेन की पहुँच वाली भूमिका इस डोमेन तक भी पहुँचती है।",
     "noParentDomain": "कोई मूल नहीं",
-    "stewardInherited": "विरासत में"
+    "stewardInherited": "विरासत में",
+    "apolloSubgraph": "Apollo Federation सबग्राफ़",
+    "apolloSubgraphEnabled": "सबग्राफ़ के रूप में सेवा दें",
+    "apolloSubgraphEnabledHint": "नीचे दी गई भूमिका के लिए /data/graphql में _service और _entities जोड़ता है, ताकि Apollo Router इस संगठन को सुपरग्राफ़ में संयोजित कर सके।",
+    "apolloSubgraphName": "सबग्राफ़ का नाम",
+    "apolloSubgraphNameHint": "वह नाम जिससे सुपरग्राफ़ इस सबग्राफ़ को पहचानता है।",
+    "apolloSubgraphRole": "इस भूमिका के रूप में कार्य करता है",
+    "apolloSubgraphRoleHint": "सुपरग्राफ़ अपने कॉलर की पहचान आगे नहीं भेज सकता, इसलिए राउटर इसी भूमिका के रूप में साइन इन करता है और उसके द्वारा लाई गई हर एंटिटी इसी भूमिका के रूप में नियंत्रित होती है: इसके पंक्ति नियमों, मास्क और दृश्यता के साथ।"
   }
 }

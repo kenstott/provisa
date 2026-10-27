@@ -61,8 +61,13 @@ def _client(instance_url: str, username: str, password: str) -> httpx.Client:
     )
 
 
-def _get(client: httpx.Client, path: str, params: dict[str, str] | None = None) -> Any:
-    resp = client.get(path, params=params)
+def _get(
+    client: httpx.Client,
+    path: str,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> Any:
+    resp = client.get(path, params=params, headers=headers)
     if resp.is_error:
         raise InstanceApiError(f"{path}: HTTP {resp.status_code}: {resp.text[:300]}")
     return resp.json()
@@ -106,6 +111,9 @@ def fetch_api_spec(
             client,
             "/api/now/doc/oas_3",
             {"namespace": namespace, "name": name, "format": "json", "version": version},
+            # The export is a download: asked for as application/json, the instance answers
+            # 406 Not Acceptable. Its body is the JSON document ``format`` names.
+            headers={"Accept": "*/*"},
         )
     if "error" in spec or "paths" not in spec:
         raise InstanceApiError(f"{namespace}/{name}: the instance exported no document: {spec}")

@@ -63,6 +63,13 @@ _CORPORATE = (
 )
 
 
+def _corporate(as_recorded: str) -> str:
+    """The corporate totals as recorded at ``as_recorded``: the time is the relation's argument."""
+    return _CORPORATE.replace(
+        '"view_eod_totals" AS e', f"\"view_eod_totals\"(as_recorded => '{as_recorded}') AS e"
+    )
+
+
 class _Stores(_Stack):
     """The shared model store, a Redis, and each of the demo's regions' own store."""
 
@@ -241,15 +248,15 @@ def test_a_day_not_yet_closed_has_no_figures_as_reported(answers):
 
 def test_the_late_trade_restates_its_own_trade_date(nodes):
     # Its own day only: the corporate totals of every day run past the server's default row limit.
-    oct_2 = f"{_CORPORATE} AND e.business_date = DATE '2026-10-02'"
+    oct_2 = " AND e.business_date = DATE '2026-10-02'"
     at_its_close = _total(
-        _sql(nodes["warehouse"], oct_2, "banking_analyst", {"as_recorded": _OCT_2_CLOSE}),
+        _sql(nodes["warehouse"], _corporate(_OCT_2_CLOSE) + oct_2, "banking_analyst"),
         "2026-10-02",
         "Edinburgh",
         "USD",
     )
     now = _total(
-        _sql(nodes["warehouse"], oct_2, "banking_analyst", {"as_recorded": _LAST_CLOSE}),
+        _sql(nodes["warehouse"], _corporate(_LAST_CLOSE) + oct_2, "banking_analyst"),
         "2026-10-02",
         "Edinburgh",
         "USD",

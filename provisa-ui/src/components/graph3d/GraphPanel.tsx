@@ -88,10 +88,13 @@ function PanelStage({
   graph,
   product,
   productName,
+  covered,
 }: {
   graph: GraphData;
   product: string;
   productName: string;
+  /** Its expanded view is open over it: it holds still, drawing nothing it would not show. */
+  covered: boolean;
 }) {
   const at = useMemo(() => layoutGraph(graph, "force"), [graph]);
   const [picked, setSelected] = useState<string | null>(product);
@@ -109,7 +112,7 @@ function PanelStage({
     setSelected,
     hover,
     setHover,
-    rotate,
+    rotate: rotate && !covered,
     setRotate,
     grid,
   };
@@ -160,7 +163,9 @@ export function GraphPanel({
         <ExpandButton onClick={() => setOpen(true)} testId="graph-panel-expand" />
       </Group>
       <div className="p3d g3d-panel-view">
-        {seen && <PanelStage graph={graph} product={product} productName={productName} />}
+        {seen && (
+          <PanelStage graph={graph} product={product} productName={productName} covered={open} />
+        )}
       </div>
       {open && !data && (
         <Modal opened onClose={() => setOpen(false)} title={productName} size="sm">

@@ -10,7 +10,7 @@
 
 // REQ-2136: a graph view's "Open as query" (→): the query the view runs, its filters inside it,
 // opened ready to edit in the surface chosen -- GraphQL (the query itself), SQL (its compiled
-// semantic SQL) or Cypher (where it maps to Cypher). SPARQL waits for its endpoint. A focus
+// semantic SQL), Cypher (where it maps to Cypher) or SPARQL (where its one root maps). A focus
 // (the page's search, or a node focused) is drawn as a neighbourhood the query does not state,
 // so with one set the view does not open as its query.
 
@@ -24,11 +24,15 @@ import { useCompileQuery } from "../../hooks/useAdminQueries";
 import type { CompileResult } from "../../api/admin";
 import { Tip } from "../Tip";
 
-/** What the query compiles to: its semantic SQL, and its Cypher or why it has none. */
+/** What the query compiles to: its semantic SQL, its Cypher or why it has none, and its SPARQL or
+ * why it has none. */
 interface Compiled {
   sql: string;
   cypher: string | null;
   cypherError: string | null;
+  sparql: string | null;
+  /** Why there is no SPARQL: the root's own reason, or that the query has several roots. */
+  sparqlWhy: "roots" | string | null;
 }
 
 function compiledOf(raw: CompileResult | { queries: CompileResult[] }): Compiled {
@@ -45,6 +49,15 @@ function compiledOf(raw: CompileResult | { queries: CompileResult[] }): Compiled
     sql: results.map((r) => r.semantic_sql).join(";\n\n"),
     cypher: translated ? cypher : null,
     cypherError: results.map((r) => r.cypher_error).find((e): e is string => !!e) ?? null,
+    // The SPARQL endpoint answers one query: a read of several roots is several, opened one by one
+    // from the GraphQL.
+    sparql: results.length === 1 ? (results[0].compiled_sparql ?? null) : null,
+    sparqlWhy:
+      results.length !== 1
+        ? "roots"
+        : results[0].compiled_sparql
+          ? null
+          : (results[0].sparql_error ?? null),
   };
 }
 
@@ -94,6 +107,17 @@ export function OpenAsQuery({
         : (current.result?.cypherError ?? t("graph3d.openAsQueryNoCypher"))
       : t("graph3d.openAsQueryCompiling"));
 
+  const sparqlWhy =
+    unavailable ??
+    current?.error ??
+    (current
+      ? current.result?.sparql
+        ? null
+        : current.result?.sparqlWhy === "roots"
+          ? t("graph3d.openAsQuerySparqlRoots")
+          : (current.result?.sparqlWhy ?? t("graph3d.openAsQueryNoSparql"))
+      : t("graph3d.openAsQueryCompiling"));
+
   const item = (target: string, why: string | null, open: () => void) => {
     const entry = (
       <Menu.Item disabled={why !== null} onClick={open} data-testid={`${testId}-open-as-${target}`}>
@@ -130,7 +154,9 @@ export function OpenAsQuery({
         {item("cypher", cypherWhy, () =>
           navigate("/graph", { state: { query: current?.result?.cypher } }),
         )}
-        {item("sparql", t("graph3d.openAsQuerySparqlLater"), () => undefined)}
+        {item("sparql", sparqlWhy, () =>
+          navigate("/sparql", { state: { query: current?.result?.sparql } }),
+        )}
       </Menu.Dropdown>
     </Menu>
   );

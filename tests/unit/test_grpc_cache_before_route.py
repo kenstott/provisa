@@ -28,6 +28,7 @@ import grpc.aio
 import pytest
 
 from provisa.grpc.server import ProvisaServicer
+from tests.grpc_model import grpc_model
 from tests.unit.test_cache_before_route import pipe  # noqa: F401  (the pipeline fixture)
 
 pytestmark = pytest.mark.asyncio
@@ -48,9 +49,22 @@ class _Order:
         self.fields = fields
 
 
+def _serve_orders(p) -> None:
+    """The role's schema and context for the stand-in's ``sales.orders`` (table 1, source pg),
+    installed once: a row read, native or proxied, is lowered to GraphQL and compiled against
+    them."""
+    if getattr(p, "orders_served", False):
+        return
+    schema, ctx = grpc_model(
+        [("id", "integer")], role="analyst", source_id="pg", schema_name="sales"
+    )
+    p.state.contexts["analyst"] = ctx
+    p.state.schemas["analyst"] = schema
+    p.orders_served = True
+
+
 def _servicer(p) -> ProvisaServicer:
-    ctx = p.state.contexts["analyst"]
-    ctx.aggregate_columns[1] = [("id", "integer")]
+    _serve_orders(p)
     p.state.source_pools.supports_stream = lambda _source_id: False  # the buffered DIRECT read
     p.state.multitenancy = False
     servicer = ProvisaServicer(p.state, SimpleNamespace(Orders=_Order))
@@ -160,8 +174,7 @@ async def _proxy(p, body: dict, *, hinted: bool) -> list[dict]:
 
     from provisa.api.data.endpoint_grpc_proxy import grpc_proxy
 
-    p.state.contexts["analyst"].aggregate_columns[1] = [("id", "integer")]
-    p.state.schemas = {"analyst": object()}  # the proxy only checks the role has a schema
+    _serve_orders(p)
     headers = {"x-provisa-role": "analyst"}
     if hinted:
         headers["x-provisa-cache"] = "true"

@@ -42,6 +42,8 @@ import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineag
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
 import { ClampedDetail } from "./ClampedDetail";
+import { useProductLifecycle } from "./ProductLifecycle";
+import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
   coreGraph,
@@ -129,8 +131,18 @@ interface DataProductDetailPanelProps {
   describeColumn?: DescribeColumn;
   // A lineage relation as the catalog names its table.
   relationLabel?: (relation: string) => string;
-  onEdit: () => void;
+  /** Opens the edit form, on ``focus`` where given. */
+  onEdit: (focus?: "supportContact") => void;
   onDelete: () => void;
+  // REQ-1634 STATUS, REQ-2146: its lifecycle -- the products a successor is chosen from, the
+  // members a retirement moves, its findings, and what follows a status change.
+  products: DataProduct[];
+  members: string[];
+  findings: ProductFinding[];
+  onStatusChanged: (message: string) => void;
+  onStatusFailed: (message: string) => void;
+  openProduct: (id: string) => void;
+  statusActions: DataProductStatus;
 }
 
 // A card in the masonry: kept whole within its column.
@@ -237,6 +249,13 @@ export function DataProductDetailPanel({
   relationLabel,
   onEdit,
   onDelete,
+  products,
+  members,
+  findings,
+  onStatusChanged,
+  onStatusFailed,
+  openProduct,
+  statusActions,
 }: DataProductDetailPanelProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -265,6 +284,19 @@ export function DataProductDetailPanel({
       if (!next.delete(relation)) next.add(relation);
       return next;
     });
+  // Its lifecycle reads the list's row, so it is drawn while the panel's core is read.
+  const lifecycle = useProductLifecycle({
+    product: p,
+    products,
+    members,
+    findings,
+    canEdit,
+    onChanged: onStatusChanged,
+    onFailed: onStatusFailed,
+    onEdit,
+    openProduct,
+    status: statusActions,
+  });
   // REQ-1443 clause 10: the checker table whose rules modal is open, by table id.
   const [rulesFor, setRulesFor] = useState<number | null>(null);
 
@@ -319,7 +351,7 @@ export function DataProductDetailPanel({
     { label: t("dataProductsTab.nameLabel"), value: product.name },
     { label: t("dataProductsTab.domainLabel"), value: product.domainId },
     { label: t("dataProductsTab.versionLabel"), value: product.version },
-    { label: t("dataProductsTab.statusLabel"), value: product.status },
+    ...lifecycle.fields,
     {
       label: t("dataProductsTab.ownerLabel"),
       value: product.ownerRole ? (
@@ -339,6 +371,7 @@ export function DataProductDetailPanel({
       ) : null,
     },
     { label: t("dataProductsTab.supportLabel"), value: product.support },
+    { label: t("dataProductsTab.supportContactLabel"), value: product.supportContact },
     { label: t("dataProductsTab.slaLabel"), value: product.sla },
     { label: t("dataProductsTab.purposeLabel"), value: product.purpose },
     { label: t("dataProductsTab.limitationsLabel"), value: product.limitations },
@@ -514,6 +547,7 @@ export function DataProductDetailPanel({
 
   return (
     <Stack gap="sm" data-testid={`data-product-detail-${p.id}`}>
+      {lifecycle.toReview}
       <div style={{ columnWidth: "320px", columnGap: "var(--mantine-spacing-sm)" }}>
         <DetailCard
           section="details"
@@ -977,8 +1011,10 @@ export function DataProductDetailPanel({
           </CollapsibleItem>
         </Collapsibles>
       </div>
+      {lifecycle.dialogs}
       {(canEdit || canDelete) && (
         <Group gap="xs" mt={4}>
+          {lifecycle.actions}
           {canEdit && (
             <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
               <ActionIcon

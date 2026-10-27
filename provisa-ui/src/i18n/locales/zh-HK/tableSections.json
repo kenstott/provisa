@@ -35,6 +35,7 @@
     "classTerm": "行是以下術語的實例",
     "classTermPlaceholder": "選擇術語",
     "noClassTerm": "無術語",
-    "classTermUnreadable": "無法讀取其術語：{{error}}"
+    "classTermUnreadable": "無法讀取其術語：{{error}}",
+    "access": "存取"
   }
 }

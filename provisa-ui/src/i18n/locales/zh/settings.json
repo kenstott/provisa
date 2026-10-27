@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "DuckDB 引擎内存上限",
+        "help": "此部署中任一 DuckDB 引擎可使用的最大内存。超出后，查询会溢出到磁盘或被拒绝。未设置：使用 DuckDB 自身的上限，即主机的大部分内存。"
+      },
       "ready_timeout": {
         "label": "引擎就绪超时",
         "help": "启动时等待联邦引擎就绪的最长时间，超时则启动失败。"
@@ -881,6 +885,20 @@
       "union_limit": {
         "label": "变量谓词覆盖的最大谓词数",
         "help": "谓词为变量的 SPARQL 模式会读取每个可能匹配的已映射谓词，每个一个分支。需要更多分支的查询会被拒绝，并注明该上限。"
+      }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "代码源 DuckDB 内存",
+        "help": "代码源的 DuckDB 回答语句时使用的内存。超过后，语句会溢写到磁盘。"
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "代码源 DuckDB 溢写上限",
+        "help": "代码源的 DuckDB 最多溢写到磁盘的量。需要更多的语句会被拒绝，并指出此设置。构建的镜像只有在其溢写卷用平台配额设为此上限时才会执行它。开发模式下的代码源溢写到数据目录，没有上限。"
+      },
+      "duckdb_threads": {
+        "label": "代码源 DuckDB 线程",
+        "help": "代码源的 DuckDB 回答其语句所用的线程数。"
       }
     }
   }

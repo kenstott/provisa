@@ -38,14 +38,24 @@ _UNSUPPORTED_EXTENSIONS = (".sqlite", ".sqlite3", ".db")
 KAGGLE_TOKEN_SETTING = "kaggle.api_token"
 
 
+class KaggleTokenUnset(RuntimeError):
+    """The operator has not set the Kaggle token setting the assistant's tool reads."""
+
+
 def api_token() -> str:
     """The Kaggle API token as the operator's setting holds it -- the value, or a reference they
-    typed -- resolved by the one resolver. A reference into an organisation's vault needs that
-    vault bound by the caller (``secrets_store.bound_to_request_org``)."""
+    typed -- resolved by the one resolver: the assistant's tool, which has no form, reads it (a
+    Kaggle source holds its own). A reference into an organisation's vault needs that vault bound
+    by the caller (``secrets_store.bound_to_request_org``)."""
     from provisa.core import settings_registry
     from provisa.core.secrets import resolve_secrets
 
-    return resolve_secrets(str(settings_registry.value(KAGGLE_TOKEN_SETTING)))
+    held = settings_registry.value(KAGGLE_TOKEN_SETTING)
+    if held is None:
+        raise KaggleTokenUnset(
+            f"no Kaggle API token is set: set {KAGGLE_TOKEN_SETTING} under Security"
+        )
+    return resolve_secrets(str(held))
 
 
 class UnsupportedKaggleDataset(Exception):

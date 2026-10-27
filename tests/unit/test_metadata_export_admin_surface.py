@@ -342,6 +342,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     class _Partial:
         needs_export_views = False  # a remote catalog: it addresses nothing in the engine's store
+        binds_products = False  # OpenLineage keeps no product bindings
 
         async def publish(self, snapshot):
             return result

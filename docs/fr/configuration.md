@@ -1742,6 +1742,7 @@ Pour les sources Google Cloud, définissez `GOOGLE_APPLICATION_CREDENTIALS` sur 
 | `TRINO_HOST` | `localhost` | Hôte du coordinateur Trino |
 | `TRINO_PORT` | `8080` | Port HTTP du coordinateur Trino |
 | `PROVISA_ENGINE_FILES_GID` | `1000` | Groupe sous lequel Trino lit ses fichiers secrets (les réglages SASL d'une source Kafka, la clé client d'un hôte de code) quand Provisa ne s'exécute ni en root ni sous l'utilisateur de Trino, comme une app native à côté du conteneur de Trino. L'utilisateur de Provisa doit en être membre, sinon le fichier est refusé nommément. |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | De même, pour le serveur d'un moteur Postgres qui lit la clé client d'un hôte de code |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Chemin du JSON de clé de compte de service GCP (moteur/source BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | — | Projet GCP par défaut (BigQuery ; remplacé par l'URL) |
 | `FABRIC_SQL_SERVER` | — | Endpoint SQL du Fabric Warehouse (alternative à `PROVISA_ENGINE_URL`) |

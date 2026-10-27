@@ -175,8 +175,10 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
     [entry] = orders["amount"]["masks"]
     why = entry.pop("why")
     assert set(why) == {"decided_by", "decided_at", "evidence"}, why
+    # REQ-2153: an entry naming no role (``to``) is the catch-all, for every other reader.
     assert orders["amount"]["masks"] == [
         {
+            "to": None,
             "mask": {
                 "type": "constant",
                 "pattern": None,

@@ -39,6 +39,9 @@ def instance(monkeypatch):
         calls.append(request)
         if request.url.path == "/api/now/doc":
             return httpx.Response(200, json=_fixture("doc_catalog.json"))
+        if request.headers["Accept"] == "application/json":
+            # What the instance answers its export asked for as JSON (2026-10-20).
+            return httpx.Response(406, json={"error": {"message": "Not Acceptable"}})
         name = request.url.params.get("name")
         recorded = {
             "Import Set API": "oas_import_set_api.json",

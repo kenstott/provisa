@@ -86,12 +86,12 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: publish
-    data_type: boolean
-    visible_to:
-    - viewer
   - name: purpose
     data_type: text
+    visible_to:
+    - viewer
+  - name: retire_on
+    data_type: date
     visible_to:
     - viewer
   - name: sla
@@ -99,6 +99,14 @@ tables:
     visible_to:
     - viewer
   - name: status
+    data_type: text
+    visible_to:
+    - viewer
+  - name: status_reason
+    data_type: text
+    visible_to:
+    - viewer
+  - name: successor_id
     data_type: text
     visible_to:
     - viewer

@@ -208,6 +208,13 @@
     "colParentDomain": "Parent domain",
     "parentDomainHint": "A role granted the parent domain reaches this one too.",
     "noParentDomain": "No parent",
-    "stewardInherited": "inherited"
+    "stewardInherited": "inherited",
+    "apolloSubgraph": "Apollo Federation subgraph",
+    "apolloSubgraphEnabled": "Serve as a subgraph",
+    "apolloSubgraphEnabledHint": "Adds _service and _entities to /data/graphql for the role below, so an Apollo Router can compose this organization into a supergraph.",
+    "apolloSubgraphName": "Subgraph name",
+    "apolloSubgraphNameHint": "The name the supergraph knows this subgraph by.",
+    "apolloSubgraphRole": "Serves as role",
+    "apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role and every entity it fetches is governed as this role: its row rules, masks and visibility."
   }
 }

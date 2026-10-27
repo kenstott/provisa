@@ -11,14 +11,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { Plus } from "lucide-react";
 import { useDomains, useTables, useUpdateTable, useRoles } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
+  useDataProductFindings,
+  useDataProductStatus,
 } from "../hooks/useDataProductMutations";
+import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { buildTableUpdateInput } from "./tables/helpers";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
@@ -55,6 +59,8 @@ import { heldRoles } from "../lib/roles";
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
 export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
+// REQ-2146: the list narrowed to the products with findings, remembered.
+const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 
 // REQ-1634: top-level data-products management page (list / create / edit / delete).
 // Follows the MetricsPage detail-then-edit pattern (REQ-1323) — row click expands the
@@ -82,7 +88,7 @@ export function DataProductsPage() {
   const dataProducts = useMemo(() => products.data ?? [], [products.data]);
   const { loading, error } = products;
   const { domains } = useDomains();
-  const { tables } = useTables(); // REQ-1634: member-table list + assignment
+  const { tables, refetch: refetchTables } = useTables(); // REQ-1634: member-table list + assignment
   const [functions, setFunctions] = useState<TrackedFunction[]>([]); // REQ-1634: member-command list + assignment
   const { roles } = useRoles();
   const roleOptions = roles.map((r) => r.id);
@@ -107,6 +113,25 @@ export function DataProductsPage() {
     (p.ownerRole != null && held.has(p.ownerRole)) || (p.teamRole != null && held.has(p.teamRole));
   const mayEdit = (p: DataProduct) =>
     canEdit || (canEditOwned && p.ownerRole != null && held.has(p.ownerRole));
+  // REQ-2146: each product's findings, and the list narrowed to the products that have any.
+  const productFindings = useDataProductFindings();
+  const statusActions = useDataProductStatus();
+  const [toReviewOnly, setToReviewOnlyState] = useState(() => {
+    try {
+      return getStored(TO_REVIEW_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const setToReviewOnly = (on: boolean) => {
+    setToReviewOnlyState(on);
+    try {
+      if (on) setStored(TO_REVIEW_STORAGE_KEY, "true");
+      else removeStored(TO_REVIEW_STORAGE_KEY);
+    } catch {
+      // localStorage unavailable (private mode, quota) — the filter just won't persist
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -201,6 +226,7 @@ export function DataProductsPage() {
   const lineageMembers = useMemo(() => new Set(lineageGraph?.members ?? []), [lineageGraph]);
 
   const openCreate = () => {
+    setFormFocus(undefined);
     setEditingId(null);
     setForm({ ...EMPTY_FORM });
     setSelectedTableIds([]);
@@ -209,7 +235,10 @@ export function DataProductsPage() {
     setCreating(true);
   };
 
-  const openEdit = (p: DataProduct) => {
+  // The field the edit form opens on, where a finding's fix sent the reader.
+  const [formFocus, setFormFocus] = useState<"supportContact" | undefined>(undefined);
+  const openEdit = (p: DataProduct, focus?: "supportContact") => {
+    setFormFocus(focus);
     setCreating(false);
     setEditingId(p.id);
     setExpanded(p.id);
@@ -223,9 +252,9 @@ export function DataProductsPage() {
       limitations: p.limitations,
       usage: p.usage,
       version: p.version ?? "",
-      status: p.status ?? "",
       sla: p.sla ?? "",
       support: p.support ?? "",
+      supportContact: p.supportContact ?? "",
       // The editor works on Record<string, string>; ODPS customProperties values are
       // arbitrary JSON, so a non-string existing value is rendered as its string form.
       customProperties: Object.fromEntries(
@@ -257,9 +286,9 @@ export function DataProductsPage() {
       limitations: form.limitations.trim(),
       usage: form.usage.trim(),
       version: form.version.trim() || null,
-      status: form.status.trim() || null,
       sla: form.sla.trim() || null,
       support: form.support.trim() || null,
+      supportContact: form.supportContact.trim() || null,
       customProperties: form.customProperties,
     });
     if (!result.success) {
@@ -322,6 +351,19 @@ export function DataProductsPage() {
     closeForm();
   };
 
+  // REQ-1634 STATUS: a status change. The products and their findings are read again, and the
+  // panel's core and the tables and commands with it: a retirement moves the members.
+  const statusChanged = (message: string) => {
+    notifications.show({ color: "green", message });
+    products.reload();
+    void productFindings.refetch();
+    void refetchTables();
+    fetchActions()
+      .then((actions) => setFunctions(actions.functions))
+      .catch(() => setFunctions([]));
+    setCoreVersion((v) => v + 1);
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     const result = await deleteDataProduct(deleteTarget);
@@ -349,16 +391,19 @@ export function DataProductsPage() {
       msg={msg}
       onSave={handleSave}
       onCancel={closeForm}
+      focus={formFocus}
     />
   );
 
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredProducts = useMemo(
     () =>
-      dataProducts.filter((p) =>
-        matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search),
+      dataProducts.filter(
+        (p) =>
+          matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
+          (!toReviewOnly || productFindings.findings.has(p.id)),
       ),
-    [dataProducts, search],
+    [dataProducts, search, toReviewOnly, productFindings.findings],
   );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
@@ -379,8 +424,8 @@ export function DataProductsPage() {
       {
         key: "status",
         label: t("dataProductsTab.colStatus"),
-        sortValue: (p) => p.status ?? "",
-        groupValue: (p) => p.status ?? "",
+        sortValue: (p) => p.status,
+        groupValue: (p) => t(`dataProductsTab.status_${p.status}`),
       },
       { key: "purpose", label: t("dataProductsTab.colPurpose"), sortValue: (p) => p.purpose },
     ],
@@ -399,6 +444,14 @@ export function DataProductsPage() {
           value={search}
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
+        />
+        <Checkbox
+          size="xs"
+          label={t("dataProductsTab.toReview")}
+          checked={toReviewOnly}
+          onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
+          styles={{ label: { whiteSpace: "nowrap" } }}
+          data-testid="data-products-to-review-only"
         />
         <Group gap="xs">
           <ProductMapButton />
@@ -510,7 +563,10 @@ export function DataProductsPage() {
                           </Group>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs">{p.status ?? ""}</Text>
+                          <ProductStatusBadge
+                            status={p.status}
+                            testId={`data-products-status-${p.id}`}
+                          />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="var(--text-muted)">
@@ -538,8 +594,21 @@ export function DataProductsPage() {
                                 lineageMembers={lineageMembers}
                                 describeColumn={describeColumn}
                                 relationLabel={relationLabel}
-                                onEdit={() => openEdit(p)}
+                                onEdit={(focus) => openEdit(p, focus)}
                                 onDelete={() => setDeleteTarget(p.id)}
+                                products={dataProducts}
+                                members={[
+                                  ...memberTables(p.id).map((tb) => tb.tableName),
+                                  ...memberFunctions(p.id).map((fn) => fn.name),
+                                ]}
+                                findings={productFindings.findings.get(p.id) ?? []}
+                                onStatusChanged={statusChanged}
+                                onStatusFailed={setMsg}
+                                statusActions={statusActions}
+                                openProduct={(id) => {
+                                  closeForm();
+                                  setExpanded(id);
+                                }}
                               />
                             )}
                           </ListDetail>

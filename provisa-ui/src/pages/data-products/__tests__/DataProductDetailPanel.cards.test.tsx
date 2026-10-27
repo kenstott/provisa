@@ -17,6 +17,7 @@ import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
+import { lifecycleProps } from "./lifecycleProps";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/GraphPanel", () => ({
@@ -68,6 +69,7 @@ function panel() {
       lineageGraph={LINEAGE}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }

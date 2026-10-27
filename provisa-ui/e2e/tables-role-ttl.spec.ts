@@ -44,6 +44,19 @@ async function save(page: Page) {
 test("a table's role TTL list persists after reload", async ({ page }) => {
   await openPetsEditor(page);
   const field = page.getByTestId("role-ttl-field");
+  // An attempt cut short (a timeout before its cleanup) leaves its row on the shared demo table:
+  // removed first, so the list starts empty as the assertions below need.
+  const leftover = field.getByTestId("role-ttl-row");
+  if ((await leftover.count()) > 0) {
+    while ((await leftover.count()) > 0) {
+      await leftover
+        .first()
+        .getByRole("button", { name: /^Remove role TTL for / })
+        .click();
+    }
+    await save(page);
+    await openPetsEditor(page);
+  }
   await expect(field.getByTestId("role-ttl-row")).toHaveCount(0);
 
   await field.getByRole("button", { name: "Add role TTL" }).click();
@@ -55,7 +68,7 @@ test("a table's role TTL list persists after reload", async ({ page }) => {
   await expect(row.getByTestId("role-ttl-effective")).toContainText("7200s");
   await save(page);
 
-  await page.reload();
+  // openPetsEditor loads /tables afresh (page.goto): the reload this test asserts.
   await openPetsEditor(page);
   const reloaded = page.getByTestId("role-ttl-field").getByTestId("role-ttl-row");
   await expect(reloaded).toHaveCount(1);
@@ -70,7 +83,6 @@ test("a table's role TTL list persists after reload", async ({ page }) => {
     .getByRole("button", { name: `Remove role TTL for ${role}` })
     .click();
   await save(page);
-  await page.reload();
   await openPetsEditor(page);
   await expect(page.getByTestId("role-ttl-field").getByTestId("role-ttl-row")).toHaveCount(0);
 });

@@ -20,6 +20,7 @@ import { dqStatus } from "../dataProductClaims";
 import type { ProductDq, ProductDqEntry, ProductInput, ProductLineage } from "../../../api/lineage";
 import type { CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
+import { lifecycleProps } from "./lifecycleProps";
 
 vi.mock("../../../components/graph3d/GraphPanel", () => ({
   GraphPanel: () => null,
@@ -153,6 +154,7 @@ function panel() {
       owner
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }
@@ -226,6 +228,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         owner
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
     expect(screen.getByTestId("data-product-detail-dq-related-c360")).toHaveTextContent("Claim 16");
@@ -278,6 +281,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         owner={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
 
@@ -322,6 +326,7 @@ describe("editing a data product follows the right to edit it, not the view (REQ
         owner={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
 
@@ -409,6 +414,7 @@ describe("Related Tables (REQ-2126)", () => {
         owner
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
     const related = screen.getByTestId("data-product-detail-related-tables-c360");

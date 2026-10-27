@@ -95,7 +95,6 @@
     "openAsQueryFocused": "De omgeving van zoeken of focus is nog niet als één query uit te drukken.",
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
-    "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is.",
     "layersMenu": "Lagen",
     "termsMenu": "Termen",
     "menuAll": "alle",
@@ -108,6 +107,8 @@
     "overBudget": "{{count}} treffers; verfijn de zoekopdracht of kies een domein",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Verankerd in tabellen die nog niet als dezelfde entiteit zijn gekoppeld: {{tables}}",
-    "status_draft": "Ontwerp"
+    "status_draft": "Ontwerp",
+    "openAsQueryNoSparql": "Deze query heeft geen SPARQL-vorm.",
+    "openAsQuerySparqlRoots": "Elke root van deze query is een eigen SPARQL-query: open de GraphQL om ze een voor een te lezen."
   }
 }

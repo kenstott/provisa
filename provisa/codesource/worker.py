@@ -13,9 +13,17 @@
 One long-running process per code source per Provisa process, keyed by the source and the content
 hash of its installed code (:class:`WorkerPool`). The process runs the language's host program
 (Node's ``provisa/node/host.mjs``, Python's ``host.py``), which imports the code and serves calls
-over a Unix domain socket in a private directory: Provisa listens, the host connects. A socket,
-not the process's output, so nothing the code prints reaches the protocol; what it prints to
-stderr is kept (the last lines) to name a crash.
+over a Unix domain socket in a private directory: Provisa listens, the host connects
+:data:`CONNECTIONS` times. A socket, not the process's output, so nothing the code prints reaches
+the protocol; what it prints to stderr is kept (the last lines) to name a crash.
+
+A CONNECTION PER CONCURRENT CALL. Each call leases one of the worker's connections for its whole
+run, and a call that finds every one leased waits for one (REQ-2100).
+
+CREDIT. A call's host sends at most :data:`_QUEUED` rows frames (the call's ``window``) ahead of
+the call's thread: each frame the thread takes gives one back (``credit``). So the function is
+pulled at most a window of frames, and the one it is building, ahead of its reader, whatever the
+sockets between them buffer, and a slow reader holds back its own function and no other call.
 
 A frame is a 4-byte big-endian length, then that many bytes: a kind byte and its body. ``J`` is
 a control message, UTF-8 JSON. ``A`` is rows: the call's id (8 bytes, big-endian) and an Arrow IPC
@@ -28,7 +36,11 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
 
     Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream"|"columns", args, names,
                       schema,  -- the rows' Arrow schema, base64 IPC; null for a single value
-                      traceparent}  -- the request's trace (W3C), or null (REQ-2106)
+                      traceparent,  -- the request's trace (W3C), or null (REQ-2106)
+                      window,  -- how many rows frames the host may send before a credit
+                      takes, context}  -- a @table or @stream function's: what it takes, its
+                                          inputs (made of args) and its read context, in order
+                     {op: "credit", id, n}  -- the call's thread took n of its rows frames
                      {op: "call", id, export, kind: "table", calls: [{args, names}, ...], schema,
                       traceparent}  -- REQ-2099: a table called once per argument set, in
                                        order, in the host, its rows sent under the one call id
@@ -86,7 +98,27 @@ if TYPE_CHECKING:
     from provisa.codesource.services import ServiceGrant
 
 #: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
-PROTOCOL = 3
+PROTOCOL = 4
+
+#: REQ-2100: how many connections a worker has, each serving one call at a time.
+CONNECTIONS = 8
+#: The variable a host reads how many times to connect to its socket path from.
+CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
+#: How many of a call's frames its connection holds for the call's thread before it stops reading.
+_QUEUED = 4
+
+
+def duckdb_bounds() -> dict[str, int]:
+    """REQ-2100: the operator's bounds on a code source's DuckDB -- its memory, threads and spill
+    cap -- as a code host is given them, with pairing and with every call."""
+    from provisa.core import settings_registry
+
+    return {
+        "memory_mb": int(settings_registry.value("codesource.duckdb_memory_mb")),
+        "threads": int(settings_registry.value("codesource.duckdb_threads")),
+        "spill_cap_mb": int(settings_registry.value("codesource.duckdb_spill_cap_mb")),
+    }
+
 
 #: The variable a host reads the content hash of its code from, which its hello names.
 CODE_HASH_ENV = "PROVISA_CODE_HASH"
@@ -283,12 +315,69 @@ def refusal(hello: dict, content_hash: str) -> str | None:
 class _Cancelled:
     """Put on a call's queue when its deadline cancels it: the waiting thread is released."""
 
+    def __init__(self, call_id: int) -> None:
+        self.call_id = call_id
+
 
 class _Ended:
     """Put on every call's queue when the worker ends."""
 
     def __init__(self, message: str) -> None:
         self.message = message
+
+
+class _Lane:
+    """One of a worker's connections, leased by one call at a time. What the host sends under the
+    call's id waits in ``waiting`` for the call's thread, at most :data:`_QUEUED` frames; anything
+    else (a call that has closed, still sending) is dropped."""
+
+    def __init__(self, conn: socket.socket) -> None:
+        self.conn = conn
+        self.waiting: queue.Queue = queue.Queue(maxsize=_QUEUED)
+        self._send_lock = threading.Lock()
+        self._lock = threading.Lock()
+        self._call_id: int | None = None
+
+    def send(self, message: dict) -> None:
+        with self._send_lock:
+            self.conn.sendall(_frame(message))
+
+    def deliver(self, message: dict) -> None:
+        """A frame the host sent: to the leasing call's thread, waiting while its queue is full."""
+        with self._lock:
+            current = self._call_id
+        if current is not None and message.get("id") == current:
+            self.waiting.put(message)
+
+    def force(self, item: object) -> None:
+        """``item`` put on the queue whatever it holds: what a cancel or an end puts, which the
+        call's thread takes next; the rows it displaces are not wanted any more."""
+        while True:
+            try:
+                self.waiting.put_nowait(item)
+                return
+            except queue.Full:
+                try:
+                    self.waiting.get_nowait()
+                except queue.Empty:
+                    pass  # the call's thread took one meanwhile: there is room now
+
+    def lease(self, call_id: int | None) -> None:
+        """The lane's call from now (None: no call), what an earlier one left in its queue gone."""
+        with self._lock:
+            self._call_id = call_id
+        while True:
+            try:
+                self.waiting.get_nowait()
+            except queue.Empty:
+                return
+
+    def shut(self) -> None:
+        try:
+            self.conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # already closed by the host's exit: nothing left to shut
+        self.conn.close()
 
 
 class Worker:
@@ -299,13 +388,13 @@ class Worker:
         self.content_hash = content_hash
         self._command = command
         self._ids = itertools.count(1)
-        self._calls: dict[int, queue.SimpleQueue] = {}
-        self._calls_lock = threading.Lock()
-        self._send_lock = threading.Lock()
+        #: Its connections, and those no call holds.
+        self._lanes: list[_Lane] = []
+        self._idle: list[_Lane] = []
+        self._leases = threading.Condition()
         self._stderr: collections.deque[str] = collections.deque(maxlen=STDERR_LINES)
         self._ended: str | None = None
         self._dir: Path | None = None
-        self._conn: socket.socket | None = None
         self._process: subprocess.Popen | None = None
         self._stderr_thread: threading.Thread | None = None
         self._services_token: str | None = None
@@ -314,13 +403,19 @@ class Worker:
     # -- lifecycle ------------------------------------------------------------------------------
 
     def start(self, timeout: float = START_TIMEOUT_S) -> None:
-        """Start the host and wait for its hello; :class:`WorkerFailed` when it does not come."""
+        """Start the host and wait for its hello on each of its connections;
+        :class:`WorkerFailed` when one does not come."""
         if self._command.inherit_socket:
-            conn, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+            pairs = [
+                socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM) for _ in range(CONNECTIONS)
+            ]
+            children = [child.fileno() for _, child in pairs]
             try:
-                self._spawn(f"fd:{child.fileno()}", (child.fileno(),))
+                self._spawn(f"fd:{','.join(map(str, children))}", tuple(children))
             finally:
-                child.close()
+                for _, child in pairs:
+                    child.close()
+            conns = [mine for mine, _ in pairs]
         else:
             self._dir = Path(tempfile.mkdtemp(prefix="provisa-code-"))
             self._dir.chmod(0o700)
@@ -328,24 +423,37 @@ class Worker:
             listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
                 listener.bind(str(path))
-                listener.listen(1)
+                listener.listen(CONNECTIONS)
                 listener.settimeout(_ACCEPT_POLL_S)
                 self._spawn(str(path), ())
-                conn = self._accept(listener, timeout)
+                conns = [self._accept(listener, timeout) for _ in range(CONNECTIONS)]
             finally:
                 listener.close()
+        hello: dict = {}
+        for conn in conns:
+            hello = self._hello(conn, timeout, conns)
+        self._attach(conns, hello, f"code-worker-{self.source_id}")
+
+    def _hello(self, conn: socket.socket, timeout: float, conns: list[socket.socket]) -> dict:
+        """The host's hello on ``conn``, checked; the worker stopped, and ``conns`` closed, when it
+        does not come or is refused."""
+
+        def close() -> None:
+            for each in conns:
+                each.close()
+
         conn.settimeout(timeout)
         try:
             hello = _read_frame(conn)
         except TimeoutError:
-            conn.close()
+            close()
             self.stop()
             raise WorkerFailed(
                 self.source_id,
                 f"its host did not say it was ready within {timeout:g}s{self._said()}",
             ) from None
         if hello is None or hello.get("op") != "hello":
-            conn.close()
+            close()
             self.stop()
             raise WorkerFailed(self.source_id, f"its host ended before it was ready{self._said()}")
         refused = refusal(hello, self.content_hash)
@@ -354,18 +462,29 @@ class Worker:
                 conn.sendall(_frame({"op": "refused", "message": refused}))
             except OSError:
                 pass  # the host has gone already: the refusal is still raised by name below
-            conn.close()
+            close()
             self.stop()
             raise WorkerFailed(self.source_id, refused)
         conn.settimeout(None)
-        self._conn = conn
+        return hello
+
+    def _attach(self, conns: list[socket.socket], hello: dict, name: str) -> None:
+        """The worker's connections, each read on a thread of its own, every one idle."""
+        self._lanes = [_Lane(conn) for conn in conns]
+        with self._leases:
+            self._idle = list(self._lanes)
         self.exports = list(hello.get("exports") or [])
-        threading.Thread(
-            target=self._read, name=f"code-worker-{self.source_id}", daemon=True
-        ).start()
+        for i, lane in enumerate(self._lanes):
+            threading.Thread(
+                target=self._read, args=(lane,), name=f"{name}-{i}", daemon=True
+            ).start()
 
     def _spawn(self, address: str, pass_fds: tuple[int, ...]) -> None:
-        env = {**self._command.env, CODE_HASH_ENV: self.content_hash}
+        env = {
+            **self._command.env,
+            CODE_HASH_ENV: self.content_hash,
+            CONNECTIONS_ENV: str(CONNECTIONS),
+        }
         if self._command.services is not None:
             from provisa.codesource import services
 
@@ -414,14 +533,11 @@ class Worker:
         return self._ended is None and self._process is not None and self._process.poll() is None
 
     def stop(self) -> None:
-        """End the host: its socket is closed (the host exits when it closes), then the process."""
+        """End the host: its sockets are closed (the host exits when one closes), then the
+        process."""
         self._end("the worker was stopped")
-        if self._conn is not None:
-            try:
-                self._conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # already closed by the host's exit: nothing left to shut
-            self._conn.close()
+        for lane in self._lanes:
+            lane.shut()
         if self._process is not None and self._process.poll() is None:
             self._process.terminate()
             try:
@@ -451,22 +567,18 @@ class Worker:
             from provisa.codesource import services
 
             services.revoke(self._services_token)  # an ended worker's token reads nothing
-        with self._calls_lock:
+        with self._leases:
             if self._ended is None:
                 self._ended = message
-            calls = list(self._calls.values())
-        for waiting in calls:
-            waiting.put(_Ended(self._ended))
+            ended = self._ended
+            self._leases.notify_all()  # a call waiting for a connection fails, naming the end
+        for lane in self._lanes:
+            lane.force(_Ended(ended))
 
-    def _read(self) -> None:
-        conn = self._conn
-        assert conn is not None
+    def _read(self, lane: _Lane) -> None:
         try:
-            while (message := _read_frame(conn)) is not None:
-                with self._calls_lock:
-                    waiting = self._calls.get(message["id"])
-                if waiting is not None:
-                    waiting.put(message)
+            while (message := _read_frame(lane.conn)) is not None:
+                lane.deliver(message)
         except OSError:
             pass  # the socket closed under the read: the worker has ended, said below
         if self._process is not None:
@@ -478,42 +590,75 @@ class Worker:
 
     # -- calls ----------------------------------------------------------------------------------
 
-    def _send(self, message: dict) -> None:
-        conn = self._conn
-        if conn is None or self._ended is not None:
+    def _send(self, lane: _Lane, message: dict) -> None:
+        if self._ended is not None:
+            raise WorkerFailed(self.source_id, self._ended)
+        lane.send(message)
+
+    def _lease(self, timeout: float | None = None) -> _Lane | None:
+        """A connection no call holds, waited for while every one is leased: until the request's
+        deadline, or ``timeout`` (None when it passes)."""
+        woken = threading.Event()
+
+        def wake() -> None:
+            woken.set()
+            with self._leases:
+                self._leases.notify_all()
+
+        with request_deadline.cancel_on_deadline(wake):
+            with self._leases:
+                ready = self._leases.wait_for(
+                    lambda: self._idle or self._ended is not None or woken.is_set(), timeout
+                )
+                if self._ended is not None:
+                    raise WorkerFailed(self.source_id, self._ended)
+                if not ready:
+                    return None
+                lane = None if woken.is_set() else self._idle.pop()
+        if lane is None:
+            # The deadline's own error is raised on the way out of cancel_on_deadline; this is
+            # reached only when it did not fire (a cancel with no budget passed).
+            raise WorkerFailed(self.source_id, "the call was cancelled")
+        return lane
+
+    def _open(self) -> tuple[_Lane, int]:
+        if not self._lanes:
             raise WorkerFailed(self.source_id, self._ended or "the worker is not started")
-        with self._send_lock:
-            conn.sendall(_frame(message))
-
-    def _open(self) -> tuple[int, queue.SimpleQueue]:
+        lane = self._lease()
+        assert lane is not None  # no timeout: a connection, or a refusal raised
         call_id = next(self._ids)
-        waiting: queue.SimpleQueue = queue.SimpleQueue()
-        with self._calls_lock:
-            if self._ended is not None:
-                raise WorkerFailed(self.source_id, self._ended)
-            self._calls[call_id] = waiting
-        return call_id, waiting
+        lane.lease(call_id)
+        return lane, call_id
 
-    def _close(self, call_id: int) -> None:
-        with self._calls_lock:
-            self._calls.pop(call_id, None)
+    def _close(self, lane: _Lane, call_id: int) -> None:
+        lane.lease(None)
+        with self._leases:
+            self._idle.append(lane)
+            self._leases.notify()
         if self._services_token is not None:
             with _scopes_lock:
                 _scopes.pop((self._services_token, call_id), None)
                 _roles.pop((self._services_token, call_id), None)
 
-    def _cancel(self, call_id: int, waiting: queue.SimpleQueue) -> None:
+    def _cancel(self, lane: _Lane, call_id: int) -> None:
         """Tell the host to stop the call, and release the thread waiting for it. Called from the
         deadline's watchdog thread."""
-        waiting.put(_Cancelled())
+        lane.force(_Cancelled(call_id))
         try:
-            self._send({"op": "cancel", "id": call_id})
+            self._send(lane, {"op": "cancel", "id": call_id})
         except (OSError, WorkerFailed):
             pass  # the worker has ended: there is no call left to stop
 
-    def _next(self, call_id: int, waiting: queue.SimpleQueue, export: str) -> dict:
-        with request_deadline.cancel_on_deadline(lambda: self._cancel(call_id, waiting)):
-            message = waiting.get()
+    def _next(self, lane: _Lane, call_id: int, export: str) -> dict:
+        with request_deadline.cancel_on_deadline(lambda: self._cancel(lane, call_id)):
+            while True:
+                message = lane.waiting.get()
+                # What an earlier call on the connection left behind is not this call's.
+                if isinstance(message, _Cancelled) and message.call_id != call_id:
+                    continue
+                if isinstance(message, dict) and message.get("id") != call_id:
+                    continue
+                break
         if isinstance(message, _Cancelled):
             # The deadline's own error is raised on the way out of cancel_on_deadline; this is
             # reached only when it did not fire (a cancel with no budget passed).
@@ -522,6 +667,12 @@ class Worker:
             raise WorkerFailed(self.source_id, message.message, export=export)
         if message["op"] == "error":
             raise CodeFailed(self.source_id, export, message["message"], message.get("stack", ""))
+        if message["op"] == "rows":
+            # Taken: the host may send one more of the call's frames.
+            try:
+                self._send(lane, {"op": "credit", "id": call_id, "n": 1})
+            except (OSError, WorkerFailed):
+                pass  # the worker has ended: the call fails on its next message, naming it
         return message
 
     def rows(
@@ -532,6 +683,8 @@ class Worker:
         names: Sequence[str] = (),
         *,
         schema: str,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
     ) -> Iterator[list[dict]]:
         """A table's or a stream's rows, batch by batch, as the host sends them against
         ``schema`` (arrow_rows.schema_text). Closing the iterator before its end cancels the
@@ -541,7 +694,9 @@ class Worker:
         from provisa.codesource.arrow_rows import rows_of
 
         # Closed here, not by the collector: closing rows is what cancels the call in the host.
-        with closing(self.batches(export, kind, args, names, schema=schema)) as batches:
+        with closing(
+            self.batches(export, kind, args, names, schema=schema, takes=takes, context=context)
+        ) as batches:
             for ipc in batches:
                 yield rows_of(ipc)
 
@@ -553,21 +708,31 @@ class Worker:
         names: Sequence[str] = (),
         *,
         schema: str,
+        residual: dict | None = None,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
     ) -> Generator[bytes, None, None]:
-        """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent."""
+        """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent. With a
+        ``residual`` (a remote host's front end, provisa/codehost/front.py), the batches are the
+        statement's answer over the function's rows."""
         import pyarrow as pa
 
         if kind not in ("table", "stream"):
             raise ValueError(f"rows() serves a table or a stream, not a {kind}")
         with stage(_tracer, "codesource.call") as span:
             self._describe(span, export, kind, args)
-            call_id, waiting = self._open()
+            lane, call_id = self._open()
             finished = False
             rows = batches = 0
             try:
-                self._send(self._call_frame(call_id, export, kind, args, names, schema))
+                frame = self._call_frame(
+                    call_id, export, kind, args, names, schema, takes=takes, context=context
+                )
+                if residual is not None:
+                    frame["residual"] = residual
+                self._send(lane, frame)
                 while True:
-                    message = self._next(call_id, waiting, export)
+                    message = self._next(lane, call_id, export)
                     if message["op"] == "end":
                         finished = True
                         span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
@@ -582,10 +747,10 @@ class Worker:
                 span.set_attribute("codesource.batches", batches)
                 if not finished:
                     try:
-                        self._send({"op": "cancel", "id": call_id})
+                        self._send(lane, {"op": "cancel", "id": call_id})
                     except (OSError, WorkerFailed):
                         pass  # the worker has ended: there is no call left to stop
-                self._close(call_id)
+                self._close(lane, call_id)
 
     def rows_each(
         self,
@@ -594,6 +759,9 @@ class Worker:
         *,
         schema: str,
         keyed: bool = False,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
+        contexts: Sequence[dict] | None = None,
     ) -> Iterator[list[dict]]:
         """A table's rows for each of ``calls`` (its arguments and their names), in order, from
         one call to the host (REQ-2099): the host calls the function once per argument set
@@ -604,21 +772,27 @@ class Worker:
         with stage(_tracer, "codesource.call") as span:
             self._describe(span, export, "table", calls[0][0] if calls else ())
             span.set_attribute("codesource.argument_sets", len(calls))
-            call_id, waiting = self._open()
+            lane, call_id = self._open()
             finished = False
             rows = batches = 0
             try:
-                frame = self._call_frame(call_id, export, "table", (), (), schema)
+                frame = self._call_frame(
+                    call_id, export, "table", (), (), schema, takes=takes, context=context
+                )
                 del frame["args"], frame["names"]
                 frame["calls"] = [
                     {"args": encode(list(args)), "names": list(names)} for args, names in calls
                 ]
+                if contexts is not None:
+                    # REQ-2100: each call its own read context (a loader's batch of keys).
+                    for call, given in zip(frame["calls"], contexts, strict=True):
+                        call["context"] = encode(given)
                 if keyed:
                     # REQ-2100: a loader call, answered with each key's rows, each with its $key.
                     frame["keyed"] = True
-                self._send(frame)
+                self._send(lane, frame)
                 while True:
-                    message = self._next(call_id, waiting, export)
+                    message = self._next(lane, call_id, export)
                     if message["op"] == "end":
                         finished = True
                         span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
@@ -632,10 +806,10 @@ class Worker:
                 span.set_attribute("codesource.batches", batches)
                 if not finished:
                     try:
-                        self._send({"op": "cancel", "id": call_id})
+                        self._send(lane, {"op": "cancel", "id": call_id})
                     except (OSError, WorkerFailed):
                         pass  # the worker has ended: there is no call left to stop
-                self._close(call_id)
+                self._close(lane, call_id)
 
     def command(
         self,
@@ -651,13 +825,13 @@ class Worker:
 
         with stage(_tracer, "codesource.call") as span:
             self._describe(span, export, "command", args)
-            call_id, waiting = self._open()
+            lane, call_id = self._open()
             batches = 0
             try:
-                self._send(self._call_frame(call_id, export, "command", args, names, schema))
+                self._send(lane, self._call_frame(call_id, export, "command", args, names, schema))
                 collected: list[dict] = []
                 value: Any = None
-                while (message := self._next(call_id, waiting, export))["op"] != "end":
+                while (message := self._next(lane, call_id, export))["op"] != "end":
                     if message["op"] == "value":
                         value = decode(message["value"])
                     elif message["op"] == "rows":
@@ -669,7 +843,7 @@ class Worker:
                 span.set_attribute("codesource.batches", batches)
                 return value
             finally:
-                self._close(call_id)
+                self._close(lane, call_id)
 
     def columns(
         self, export: str, columns: Sequence[list], names: Sequence[str], *, schema: str
@@ -681,22 +855,23 @@ class Worker:
 
         with stage(_tracer, "codesource.call") as span:
             self._describe(span, export, "columns", columns)
-            call_id, waiting = self._open()
+            lane, call_id = self._open()
             try:
                 self._send(
+                    lane,
                     self._call_frame(
                         call_id, export, "columns", [list(c) for c in columns], names, schema
-                    )
+                    ),
                 )
                 results: list[dict] = []
-                while (message := self._next(call_id, waiting, export))["op"] != "end":
+                while (message := self._next(lane, call_id, export))["op"] != "end":
                     if message["op"] == "rows":
                         results.extend(rows_of(message["arrow"]))
                 span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
                 span.set_attribute("codesource.rows", len(results))
                 return results
             finally:
-                self._close(call_id)
+                self._close(lane, call_id)
 
     def _describe(self, span: Any, export: str, kind: str, args: Sequence[Any]) -> None:
         """What a call is, on its stage: never an argument's value."""
@@ -718,13 +893,20 @@ class Worker:
         args: Sequence[Any],
         names: Sequence[str],
         schema: str | None,
+        *,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
     ) -> dict:
         """The call's frame, with the request's trace; the call's scope held for the services
-        requests that name it, until the call closes."""
+        requests that name it, until the call closes. ``takes`` (REQ-2100): what a @table or
+        @stream function takes, its ``inputs`` (made of ``args``) and its read ``context``."""
         if self._services_token is not None:
             with _scopes_lock:
                 _scopes[(self._services_token, call_id)] = carried_scope()
                 _roles[(self._services_token, call_id)] = current_acting_role.get()
+        extra: dict = {}
+        if takes is not None:
+            extra = {"takes": list(takes), "context": encode(context)}
         return {
             "op": "call",
             "id": call_id,
@@ -734,22 +916,84 @@ class Worker:
             "names": list(names),
             "schema": schema,
             "traceparent": current_traceparent(),
+            "window": _QUEUED,
+            **extra,
         }
 
     def ping(self, timeout: float = 5.0) -> bool:
-        """Whether the host answers."""
-        call_id, waiting = self._open()
+        """Whether the host answers on a connection, within ``timeout``."""
+        until = time.monotonic() + timeout
         try:
-            self._send({"op": "ping", "id": call_id})
-            try:
-                message = waiting.get(timeout=timeout)
-            except queue.Empty:
-                return False
-            return isinstance(message, dict) and message.get("op") == "pong"
+            lane = self._lease(timeout)
+        except WorkerFailed:
+            return False
+        if lane is None:
+            return False  # every connection busy the whole time: no answer in time
+        call_id = next(self._ids)
+        lane.lease(call_id)
+        try:
+            self._send(lane, {"op": "ping", "id": call_id})
+            while (left := until - time.monotonic()) > 0:
+                try:
+                    message = lane.waiting.get(timeout=left)
+                except queue.Empty:
+                    return False
+                if isinstance(message, _Ended):
+                    return False
+                if isinstance(message, dict) and message.get("id") == call_id:
+                    return message.get("op") == "pong"
+            return False
         except (OSError, WorkerFailed):
             return False
         finally:
-            self._close(call_id)
+            self._close(lane, call_id)
+
+
+# -- pulled on one thread -----------------------------------------------------------------------------
+
+
+_PULLED_DONE = object()
+
+
+def pulled(items: Iterator[Any], depth: int = _QUEUED) -> Iterator[Any]:
+    """``items`` -- a call's batches -- pulled on one thread of their own, in the caller's context,
+    and handed over through a queue of ``depth``: for a reader that takes them on threads of its own
+    (DuckDB's scan of a RecordBatchReader), so the call's stage is entered and left on one thread,
+    in the request it belongs to. Closing this ends the call (its generator is closed)."""
+    import contextvars
+
+    handed: queue.Queue = queue.Queue(maxsize=depth)
+    stop = threading.Event()
+
+    def pull() -> None:
+        try:
+            for item in items:
+                while not stop.is_set():
+                    try:
+                        handed.put(item, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+                if stop.is_set():
+                    break
+        except BaseException as exc:  # noqa: BLE001 -- the call's failure, raised to its reader
+            handed.put(exc)
+            return
+        finally:
+            close = getattr(items, "close", None)
+            if close is not None:
+                close()
+        handed.put(_PULLED_DONE)
+
+    context = contextvars.copy_context()
+    threading.Thread(target=context.run, args=(pull,), name="code-call-pull", daemon=True).start()
+    try:
+        while (item := handed.get()) is not _PULLED_DONE:
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        stop.set()
 
 
 # -- the pool ---------------------------------------------------------------------------------------

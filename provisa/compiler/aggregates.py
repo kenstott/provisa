@@ -457,7 +457,13 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     if agg_filter_where:
         _vvals = ctx.virtual_columns.get(table.table_id)
         filter_where_sql = _sw._compile_where(
-            agg_filter_where, collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+            agg_filter_where,
+            collector,
+            None,
+            _vvals,
+            table.table_id,
+            ctx.exposed_to_physical,
+            column_types=ctx.aggregate_columns,
         )
         filter_sql = f" FILTER (WHERE {filter_where_sql})"
 
@@ -537,14 +543,26 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     nf_conditions = _sw.native_arg_conditions(api_args)
     if "where" in args and not agg_filter_where:
         where_sql = _sw._compile_where(
-            args["where"], collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+            args["where"],
+            collector,
+            None,
+            _vvals,
+            table.table_id,
+            ctx.exposed_to_physical,
+            column_types=ctx.aggregate_columns,
         )
         sql += f" WHERE {where_sql}"
     elif "where" in args and agg_filter_where:
         # FILTER params already consumed above; need a fresh sub-collector for WHERE
         where_collector = ParamCollector()
         where_sql = _sw._compile_where(
-            args["where"], where_collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+            args["where"],
+            where_collector,
+            None,
+            _vvals,
+            table.table_id,
+            ctx.exposed_to_physical,
+            column_types=ctx.aggregate_columns,
         )
         # Re-number params: append where params after filter params
         _filter_count = len(collector.params)
@@ -688,7 +706,13 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     if "where" in args:
         where_parts.append(
             _sw._compile_where(
-                args["where"], collector, None, _agg_vvals, table.table_id, ctx.exposed_to_physical
+                args["where"],
+                collector,
+                None,
+                _agg_vvals,
+                table.table_id,
+                ctx.exposed_to_physical,
+                column_types=ctx.aggregate_columns,
             )
         )
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.

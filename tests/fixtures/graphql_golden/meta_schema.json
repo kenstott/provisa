@@ -592,17 +592,17 @@
        }
       },
       {
-       "name": "publish",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
        "name": "purpose",
        "type": {
         "kind": "SCALAR",
         "name": "String"
+       }
+      },
+      {
+       "name": "retireOn",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Date"
        }
       },
       {
@@ -614,6 +614,20 @@
       },
       {
        "name": "status",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "statusReason",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "successorId",
        "type": {
         "kind": "SCALAR",
         "name": "String"

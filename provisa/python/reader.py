@@ -41,8 +41,8 @@ import types
 import typing
 
 _TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
-#: REQ-2100: a pushdown tag line, ``@{op}_{column} parameter``.
-_PUSHDOWN_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
+#: A tag line with an argument, ``@name argument`` (REQ-2100: ``@loader N``).
+_TAG_ARGUMENT = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
 _NONE = type(None)
 
 
@@ -120,6 +120,10 @@ class _Reader:
                     "generator": generator,
                     "element": self.tree(args[0] if args else typing.Any),
                 }
+        if isinstance(hint, type) and hint.__module__ == "provisa_services":
+            # REQ-2100: Provisa's own types (the ReadContext) are named, never read: theirs are
+            # no columns, and their names are no name of the code's.
+            return {"kind": "ref", "name": hint.__name__}
         if isinstance(hint, type) and self._is_record_type(hint):
             self._read_type(hint)
             return {"kind": "ref", "name": hint.__name__}
@@ -164,6 +168,8 @@ class _Reader:
                 {
                     "name": field,
                     "optional": optional,
+                    # REQ-2100: a field with a default (an input left out takes it).
+                    "default": _has_default(cls, field, model_fields),
                     "type": self.tree(hint),
                     "description": description,
                 }
@@ -178,11 +184,11 @@ class _Reader:
         tags, text, tag_arguments = [], [], []
         for line in doc.splitlines():
             match = _TAG.match(line.strip())
-            pushdown = _PUSHDOWN_TAG.match(line.strip())
+            argued = _TAG_ARGUMENT.match(line.strip())
             if match:
                 tags.append(match.group(1))
-            elif pushdown:
-                tag_arguments.append({"tag": pushdown.group(1), "text": pushdown.group(2)})
+            elif argued:
+                tag_arguments.append({"tag": argued.group(1), "text": argued.group(2)})
             else:
                 text.append(line)
         hints = typing.get_type_hints(fn, include_extras=True)
@@ -196,7 +202,6 @@ class _Reader:
                     "optional": p.default is not p.empty,
                     "rest": rest,
                     "type": self.tree(hint),
-                    "pushdown": _annotated_strings(hint),
                 }
             )
         returns = self.tree(hints.get("return", inspect.Parameter.empty))
@@ -211,11 +216,22 @@ class _Reader:
         }
 
 
-def _annotated_strings(hint: typing.Any) -> list[str]:
-    """REQ-2100: the strings a ``typing.Annotated`` hint carries, each a pushdown declaration."""
-    if typing.get_origin(hint) is not typing.Annotated:
-        return []
-    return [m for m in typing.get_args(hint)[1:] if isinstance(m, str)]
+def _has_default(cls: type, field: str, model_fields: dict | None) -> bool:
+    """Whether ``cls`` gives its field ``field`` a default: a dataclass's, a NamedTuple's, a
+    Pydantic model's (one not required), or a class attribute."""
+    if model_fields is not None:
+        info = next((i for n, i in model_fields.items() if n == field or i.alias == field), None)
+        return info is not None and not info.is_required()
+    if dataclasses.is_dataclass(cls):
+        found = {f.name: f for f in dataclasses.fields(cls)}.get(field)
+        return found is not None and (
+            found.default is not dataclasses.MISSING
+            or found.default_factory is not dataclasses.MISSING
+        )
+    defaults = getattr(cls, "_field_defaults", None)
+    if isinstance(defaults, dict):
+        return field in defaults
+    return field in vars(cls)
 
 
 def functions(module: types.ModuleType) -> list[tuple[str, typing.Callable]]:

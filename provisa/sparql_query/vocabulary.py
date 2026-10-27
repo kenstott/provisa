@@ -31,6 +31,7 @@ the label map built for it, so a class or predicate the role cannot read is not 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
@@ -241,11 +242,29 @@ def concepts_of(base: str, terms: list[dict]) -> list[dict]:
     ]
 
 
-def vocabulary_document(vocab: Vocabulary, concepts: list[dict]) -> dict:
+def superclasses_of(
+    base: str, terms: list[dict], edges: list[tuple[int, int, str]]
+) -> dict[str, list[str]]:
+    """Each term's superclasses (REQ-2135, VISUALIZER VOCABULARY): the terms it is a KIND_OF, as
+    IRIs. ``terms`` are the glossary rows the role reads (``id``, ``name``); an edge to or from a
+    term outside them is no superclass, so the role learns no term it cannot read. ``edges`` are
+    (from term id, to term id, relationship type)."""
+    names = {t["id"]: t["name"] for t in terms}
+    out: dict[str, list[str]] = {}
+    for from_id, to_id, rel_type in edges:
+        if rel_type == "KIND_OF" and from_id in names and to_id in names:
+            out.setdefault(term_iri(base, names[from_id]), []).append(term_iri(base, names[to_id]))
+    return out
+
+
+def vocabulary_document(
+    vocab: Vocabulary, concepts: list[dict], superclasses: Mapping[str, list[str]]
+) -> dict:
     """The vocabulary as GET /data/sparql/vocabulary answers it: its base and prefixes; each class
-    (a table's own, or a Class term) with the labels it types; each predicate (a column's own, or
-    a Property term) with its label, property and datatype; each edge type with its source and
-    target; and the live Concept terms (:func:`concepts_of`)."""
+    (a table's own, or a Class term) with the labels it types and, for a Class term, the terms it
+    is a KIND_OF (:func:`superclasses_of`); each predicate (a column's own, or a Property term) with
+    its label, property and datatype; each edge type with its source and target; and the live
+    Concept terms (:func:`concepts_of`)."""
     term_root = f"{vocab.base}/vocab/term/"
 
     def kind(iri: str, own: str) -> str:
@@ -255,7 +274,12 @@ def vocabulary_document(vocab: Vocabulary, concepts: list[dict]) -> dict:
         "base": vocab.base,
         "prefixes": dict(vocab.prefixes),
         "classes": [
-            {"iri": iri, "kind": kind(iri, "table"), "labels": list(labels)}
+            {
+                "iri": iri,
+                "kind": kind(iri, "table"),
+                "labels": list(labels),
+                "superclasses": list(superclasses.get(iri, [])),
+            }
             for iri, labels in vocab.classes.items()
         ],
         "predicates": [

@@ -342,4 +342,6 @@ def bind_travel_params(sql: str, params: list | None) -> tuple[str, list | None]
         n = int(param.this.this)
         param.set("this", exp.Literal.number(renumbered[n]))
     rest = [v for i, v in enumerate(params, 1) if i not in taken]
-    return tree.sql(dialect="postgres"), rest or None
+    # The relation is still in its call form, a function to the parser: its name is kept as
+    # written, or a quoted lower-case name would be written upper-case.
+    return tree.sql(dialect="postgres", normalize_functions=False), rest or None

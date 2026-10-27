@@ -18,6 +18,7 @@ import type { DataProduct } from "../../../types/admin";
 import type { CoreTable } from "../productCore";
 import type { ProductDq, ProductDqEntry } from "../../../api/lineage";
 import i18n from "../../../i18n";
+import { lifecycleProps } from "./lifecycleProps";
 
 // The panel parses nothing: a checker table's rules come with it, as meta's dq_rules rows.
 const parseContract = vi.fn();
@@ -118,6 +119,7 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       }}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }

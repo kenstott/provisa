@@ -68,6 +68,7 @@ import {
   TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
@@ -251,7 +252,7 @@ const PREP_ACTIONS: Record<string, () => void> = {
       );
     }
     setStored(NL_QUESTION_KEY, NL_DEMO_QUESTION);
-    setStored(NL_BRANCHES_KEY, JSON.stringify(NL_DEMO_BRANCHES));
+    setStored(NL_BRANCHES_KEY, JSON.stringify(kept(NL_DEMO_QUESTION, NL_DEMO_BRANCHES)));
   },
 };
 
@@ -630,6 +631,9 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // changes; the visit and attempt whose statement was last handed to an explorer.
   const visitRef = useRef(0);
   const handedRef = useRef<string | null>(null);
+  // The visit and attempt whose step's clickBefore was last clicked: once per visit, as a statement
+  // is handed once, since the runner re-runs a step (a new `t` or `navigate`) over what it opened.
+  const clickedRef = useRef<string | null>(null);
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
   const activeStepRef = useRef<number | null>(null);
 
@@ -813,8 +817,15 @@ export function TourProvider({ children }: { children: ReactNode }) {
           await waitForElement(open.unlessPresent, undefined, abort.signal);
           if (cancelled) return;
         }
-        if (step.clickBefore) {
+        // Once per visit: a step run again (a superseded run, or the runner re-run on a new `t` or
+        // `navigate`) clicked again, and a toggle clicked twice ("+ Source" opens and closes the
+        // type picker) shut what the first click had opened -- the step then waited out its anchor
+        // window on a picker it had closed itself. Retry is a new attempt, and clicks again.
+        const clickEntry = `${visitRef.current}:${attempt}`;
+        if (step.clickBefore && clickedRef.current !== clickEntry) {
           const trigger = await waitForElement(step.clickBefore, undefined, abort.signal);
+          if (cancelled) return;
+          clickedRef.current = clickEntry;
           trigger.click();
         }
         // REQ-2115: act, then explain. A step entered again finds what it built and only explains.

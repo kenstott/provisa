@@ -130,7 +130,12 @@
       "address_not_found": "Niente da risolvere: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve non può essere combinato con altri campi radice nella stessa operazione",
       "source_starting": "L'origine {{source}} è ancora in fase di avvio. Riprova tra un momento.",
-      "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}."
+      "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}.",
+      "graphql_body_missing": "La richiesta non ha corpo: una richiesta GraphQL è un oggetto JSON con una query.",
+      "graphql_body_not_json": "Il corpo della richiesta non è JSON: {{error}}",
+      "graphql_request_not_object": "Una richiesta GraphQL è un oggetto JSON con una query.",
+      "graphql_parameter_type": "Il parametro {{parameter}} della richiesta GraphQL deve essere {{expected}}.",
+      "graphql_mutation_over_get": "Una mutazione si invia con POST, mai con GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -461,7 +466,8 @@
       "relationship_same_entity_direct": "La relazione '{{relationship}}' non può essere marcata come stessa entità: unisce tramite una tabella di giunzione o una funzione, non una riga a una riga",
       "relationship_same_entity_cardinality": "La relazione '{{relationship}}' non può essere marcata come stessa entità: è {{cardinality}}, e la stessa entità è una riga a una riga",
       "relationship_same_entity_not_grounded": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{source}} e {{target}} non sono ancorate allo stesso termine",
-      "relationship_same_entity_not_keys": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{columns}} non è la chiave primaria né una chiave univoca di {{table}}"
+      "relationship_same_entity_not_keys": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{columns}} non è la chiave primaria né una chiave univoca di {{table}}",
+      "kaggle_token_missing": "Dataset Kaggle {{owner}}/{{ref}}: l'origine dati non contiene alcun token API Kaggle. Aggiungilo nel modulo Origini dati, dove si inserisce il suo token."
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",
@@ -491,7 +497,10 @@
       "unknown_encryption_provider": "provider di crittografia '{{provider}}' sconosciuto",
       "unknown_engine": "motore '{{engine}}' sconosciuto; validi: {{valid}}",
       "use_domains_invalid": "use_domains deve essere true, false o null",
-      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa."
+      "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa.",
+      "federation_unknown_field": "Non è un'impostazione di federazione: {{fields}}",
+      "federation_invalid": "Impostazione di federazione non valida: {{error}}",
+      "federation_role_unknown": "Il ruolo di federazione '{{role}}' non è un ruolo di questa organizzazione"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password richiesti",
@@ -541,7 +550,7 @@
       "invalid_regex": "Il pattern \"{{pattern}}\" in {{expression}} non è un'espressione regolare valida: {{reason}}. =~ accetta un'espressione regolare, ad es. \".*{{word}}.*\", oppure usa CONTAINS \"{{word}}\".",
       "unknown_label": "Non esiste l'etichetta :{{label}}. Etichette registrate: {{suggestions}}.",
       "no_labels": "Non esiste l'etichetta :{{label}}: questo ruolo non può leggere alcuna tabella.",
-      "unknown_relationship_type": "Non esiste il tipo di relazione {{types}}. Tipi registrati: {{suggestions}}.",
+      "unknown_relationship_type": "Non esiste il tipo di relazione {{types}}. Tipi registrati più vicini: {{suggestions}}.",
       "no_relationship_types": "Non esiste il tipo di relazione {{types}}: questo ruolo non può attraversare alcuna relazione.",
       "type_mismatch": "In {{expression}}, {{value}} non può essere confrontato con {{property}}, di tipo {{property_type}}. {{fix}}",
       "aggregate_in_where": "WHERE non può usare l'aggregato {{aggregate}}: WHERE filtra le righe prima che siano raggruppate. Aggrega in un WITH e filtra dopo.",
@@ -690,6 +699,34 @@
       "also_term_needs_column": "Applicare il tag al termine richiede una colonna.",
       "inherited_from_term": "Questa colonna è PII perché significa {{term}}. Togli il contrassegno da quel significato, oppure sposta la colonna se significa altro.",
       "move_loses": "Questo spostamento toglie tag a colonne che non li avrebbero più. Conferma la perdita di ogni tag, oppure porta i tag sul termine verso cui si spostano le colonne."
+    },
+    "data_product": {
+      "status": {
+        "published": "Prodotto dati {{data_product}} pubblicato.",
+        "deprecated": "Prodotto dati {{data_product}} contrassegnato come deprecato.",
+        "retired": "Prodotto dati {{data_product}} ritirato.",
+        "restored": "Prodotto dati {{data_product}} ripristinato.",
+        "reason_required": "È richiesto un motivo: indica perché il prodotto dati viene deprecato o ritirato.",
+        "not_found": "Prodotto dati {{data_product}} non trovato.",
+        "not_draft": "Solo un prodotto dati in bozza può essere pubblicato; questo è {{status}}.",
+        "not_live": "Solo un prodotto dati attivo può essere deprecato, e solo uno attivo o deprecato può essere ritirato; questo è {{status}}.",
+        "not_restorable": "Solo un prodotto dati deprecato o ritirato può essere ripristinato; questo è {{status}}.",
+        "retire_on_past": "La data di ritiro prevista {{retire_on}} è già passata. Scegli oggi o una data successiva.",
+        "successor_required": "Questo prodotto dati ha {{members}} membro/i; ritirarlo li sposta a un successore. Scegline uno.",
+        "successor_is_self": "Un prodotto dati non può succedere a sé stesso.",
+        "successor_retired": "Il successore '{{successor}}' è ritirato. Scegli un prodotto dati in servizio.",
+        "successor_other_domain": "Il successore '{{successor}}' è nel dominio {{domain}}. I membri di un prodotto ne condividono il dominio, quindi scegli un successore dello stesso dominio."
+      },
+      "finding": {
+        "no_members": "Nessuna tabella, vista o comando appartiene a questo prodotto dati.",
+        "member_deprecated": "La tabella membro {{table}} è deprecata.",
+        "no_owner": "Nessun ruolo proprietario è responsabile di questo prodotto dati.",
+        "no_support_contact": "Questo prodotto dati non ha un contatto di supporto, richiesto da una destinazione di esportazione configurata.",
+        "retirement_blocked": "Questo prodotto dati doveva essere ritirato il {{retire_on}}, ma ha ancora membri. Ritiralo con un successore che li prenda.",
+        "domain_steward_unset": "Il dominio {{domain}} non ha uno steward.",
+        "no_description": "Questo prodotto dati non indica né il suo scopo né il suo utilizzo.",
+        "successor_retired": "Anche il prodotto dati che ha preso i membri di questo, '{{successor}}', è stato ritirato."
+      }
     }
   }
 }

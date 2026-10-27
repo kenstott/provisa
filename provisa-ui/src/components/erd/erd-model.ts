@@ -9,7 +9,6 @@
 // permission from the copyright holder.
 
 import type { RegisteredTable, Relationship, Domain, TableColumn } from "../../types/admin";
-import { cypherRelType } from "../../naming";
 
 export type ColumnDetail = "all" | "key" | "none";
 
@@ -281,7 +280,7 @@ export function buildErdElements(
       // Both legs name the type and the cardinality. A row whose nomination names no type is a
       // defective row (REQ-1586), and its legs show cardinality alone rather than a substituted
       // type.
-      const pathType = cypherRelType(r) ?? "";
+      const pathType = r.cypherType ?? "";
       const card = cardinalityLabel(r.cardinality);
       const leg = pathType ? `${pathType} ${card}` : card;
       pushEdge(r, src, junctionNode, { label: leg, pathType, leg: "in" });
@@ -293,7 +292,7 @@ export function buildErdElements(
 
     // A junction that is not on the canvas still names the edge it backs, so the collapsed form
     // carries the same relationship type the two legs would have shown.
-    const junctionLabel = r.viaTableId == null ? null : cypherRelType(r);
+    const junctionLabel = r.viaTableId == null ? null : r.cypherType;
     const label =
       junctionLabel ?? (r.alias || r.computedCypherAlias || cardinalityLabel(r.cardinality));
     pushEdge(r, src, tgt, { label, pathType: "", leg: "" });

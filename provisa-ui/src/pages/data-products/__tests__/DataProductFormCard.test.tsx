@@ -27,9 +27,9 @@ const INPUT_TESTIDS = [
   "data-product-limitations-input",
   "data-product-usage-input",
   "data-product-version-input",
-  "data-product-status-input",
   "data-product-sla-input",
   "data-product-support-input",
+  "data-product-support-contact-input",
   "data-product-tables-input",
   "data-product-commands-input",
 ];
@@ -40,12 +40,12 @@ const PANELS: Record<string, string[]> = {
     "data-product-name-input",
     "data-product-domain-input",
     "data-product-version-input",
-    "data-product-status-input",
   ],
   ownership: [
     "data-product-owner-input",
     "data-product-team-input",
     "data-product-support-input",
+    "data-product-support-contact-input",
     "data-product-sla-input",
   ],
   description: [
@@ -60,10 +60,12 @@ function Harness({
   initial,
   editingId,
   onSave,
+  focus,
 }: {
   initial: DataProductForm;
   editingId: string | null;
   onSave: () => void;
+  focus?: "supportContact";
 }) {
   const [form, setForm] = useState(initial);
   const [tableIds, setTableIds] = useState<string[]>([]);
@@ -85,6 +87,7 @@ function Harness({
       msg=""
       onSave={onSave}
       onCancel={vi.fn()}
+      focus={focus}
     />
   );
 }
@@ -146,5 +149,10 @@ describe("DataProductFormCard", () => {
     const footer = screen.getByTestId("data-product-form-footer");
     expect(footer).toHaveStyle({ position: "sticky", bottom: "0px" });
     expect(within(footer).getByTestId("data-product-save-button")).toBeInTheDocument();
+  });
+
+  it("opens on the support contact where a finding's fix sent the reader", () => {
+    render(<Harness initial={EDITED} editingId="p1" onSave={vi.fn()} focus="supportContact" />);
+    expect(screen.getByTestId("data-product-support-contact-input")).toHaveFocus();
   });
 });

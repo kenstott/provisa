@@ -33,10 +33,11 @@ once at the entrypoint (never silently here).
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
 from dataclasses import dataclass, field
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from provisa.api.role_surface import LazySurface, RoleSurface, SurfacePart, set_part
@@ -432,6 +433,32 @@ class _Build:
 #: The runtimes the current work is building, by key. Only the build itself (and what it starts)
 #: resolves a key to its runtime while it is built; everyone else is served the registered one.
 _builds: ContextVar[dict[str, _Build]] = ContextVar("org_runtime_builds", default={})
+
+
+@contextmanager
+def serving(runtime: OrgRuntime) -> Iterator[None]:
+    """Resolve ``runtime``'s org and environment to ``runtime`` for this work alone, whatever
+    is registered under its key: work done for a runtime (a role surface it registered, built
+    when first read) reads the model it was built from. The org and environment are bound
+    for the work as well."""
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+
+    org = set_current_org(runtime.org_id)
+    # Prod is bound as a request to it binds it: no environment named.
+    env = set_current_env(None if runtime.env == PROD else runtime.env)
+    build = _Build(runtime_key(runtime.org_id, runtime.env), runtime)
+    token = _builds.set({**_builds.get(), build.key: build})
+    try:
+        yield
+    finally:
+        _builds.reset(token)
+        reset_current_env(env)
+        reset_current_org(org)
 
 
 class OrgRegistry:

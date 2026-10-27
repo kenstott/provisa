@@ -146,6 +146,140 @@ flowchart TD
 - 高于阈值的字段会被重定向，在 `redirects` 中给出对应的按字段条目
 - 二进制格式（Parquet、Arrow）仅支持单根查询
 
+## 查询管道 {: #query-pipeline }
+
+每次读取都要经过五个阶段。GraphQL、Cypher、SPARQL、gRPC 和 SQL 是入口，而非阶段——每种语言都会在流水线开始前编译或转换为语义 SQL。
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### 前端 {: #front-ends }
+
+前端解析一种语言，并用模型的术语说明它读取的内容。GraphQL 直接编译为语义 SQL。OpenAPI 文档描述的 REST 端点和 JSON:API 端点，会根据每个请求构造一条 GraphQL 查询，再以同样的方式编译。gRPC 把表请求直接转换为语义 SQL，不经过 GraphQL。Cypher 和 SPARQL 被解析为两种图语言共用的同一种图模式形式，再由这种形式编译为语义 SQL。你针对模型的表编写的 SQL 本身就是语义 SQL，因此它从下一个阶段进入。没有任何前端决定谁可以读取什么。
+
+### 语义 SQL {: #semantic-sql }
+
+语义 SQL 读取的是模型。它的表带有网域限定（`sales.orders`），它的列是模型发布的列，它的连接是已声明的关系。它不涉及数据存放在哪里。
+
+嵌套读取会编译为一条规范的 CTE 管道，对每个引擎都相同，并且只依据已声明的关系构建。根 CTE 带着筛选、排序、限制和偏移读取根表。每个一对多层级都是一个独立的 CTE。它按关系的键把自己的表与父级 CTE 连接，用 `ROW_NUMBER() OVER (PARTITION BY ...)` 取每个父级的前几行，并按父级聚合成一个 JSON 列表。最后的 `SELECT` 读取根 CTE，并按父键对每个层级做左连接。提出相同问题的 GraphQL、Cypher 和 SPARQL 读取会编译为同一条语句。
+
+Cypher 转换器为每个 `WITH` 阶段写一个 CTE；将这些形式与规范流水线对齐是后续工作。在完成之前，等效的 Cypher 和 GraphQL 读取并不总能编译为相同的语义 SQL。GraphQL 编译器将带参数的嵌套字段写成每父级一次的 `LEFT JOIN LATERAL` 联接。两种当前形式均出现在下面的示例中。
+
+### 受治理的 SQL {: #governed-sql }
+
+治理一次性作用于整条语义语句。其中每个 `SELECT` 都会应用读取角色的可见性规则、行级安全和掩码，因此每个嵌套层级都在自己的深度上被过滤。条件为子查询的行级规则会读取另一张表，所以治理可能为语句增加数据源。
+
+### 优化后的 SQL {: #optimized-sql }
+
+优化阶段以在每个引擎上都成立的方式改写受治理的语句。它在物化视图能回答部分语句的地方重新代入物化视图，把小而频繁读取的表内联为 `VALUES`，并去掉语句无法到达的 API 缓存分支和 union 分支。这里没有任何部分知道将由哪个引擎执行语句。这些改写可能去掉数据源。一次联邦读取如果其余数据源都被内联，就只剩下一个实时数据源。
+
+### 规划与路由 {: #plan-and-route }
+
+联邦引擎是默认选项；路由读取优化后的数据源，而非治理后的数据源。只有当语句按顺序通过全部六个关卡时，才会直接在其数据源上执行。第一个未通过的关卡说明原因。
+
+| 关卡 | 检查内容 |
+|---|---|
+| `one_source` | 优化后读取单个数据源，或读取共享同一物理数据库的数据源 |
+| `dialect_supports` | 该数据源的方言支持语句中的每一种结构 |
+| `access_path` | 数据源存在直连驱动、API 调用方或代码函数 |
+| `colocated_login` | 被计为同一数据库的数据源共享相同的登录凭证 |
+| `not_forced` | 未应用任何算子下限、虚构列或要求引擎运行的条件 |
+| `trusted_to_answer` | 非 SQL 数据源能够在不进行进程内额外过滤的情况下返回完整数据集 |
+
+缓存、副本和管理员（steward）的情况见[请求流水线](#request-pipeline)。
+
+### 原生 SQL {: #native-sql }
+
+原生阶段把路由后的语句写成方言：直连读取用数据源的方言，联邦读取用引擎的方言。它选择 JSON 聚合函数和对象函数的写法，为没有行的父级写出空列表，在方言不支持 `DISTINCT ON` 时把它改写为 `ROW_NUMBER()`，并选择引擎特有的形式，例如每个父级一次的 `LATERAL` 连接或 CTE 物化提示。
+
+### 完整示例 {: #a-worked-example }
+
+这条 GraphQL 读取请求一个客户及其金额最大的三个订单：
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+在规范形式下，它编译为如下语义 SQL：
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+订单的 id 用于打破排名中的并列，因此金额相同的两个订单总是以相同的顺序返回。没有订单的客户在 `customers_orders` 中没有行；原生阶段会为它写出空列表。
+
+同样的读取用 Cypher 编写，先匹配客户，再在子查询中读取最大的三个订单：
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+在规范形式下，这条 Cypher 读取和 GraphQL 读取会编译为上面的语句。“作为查询打开”正是依赖这一点：一条 GraphQL 读取交给 Cypher 页面后，返回相同的结果。
+
+目前，GraphQL 编译器会把嵌套层级写成每个父级一次的 lateral 连接：
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+你可以在 GraphQL 页面的 Provisa 面板中查看任意 GraphQL 读取的语义 SQL。
+
 ## 联邦执行路径 {: #federation-execution-paths }
 
 | 路径 | 传输方式 | 经由 | 使用场景 |

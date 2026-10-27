@@ -17,6 +17,7 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
+from provisa.api import app as appmod
 from provisa.api.admin import roles_router
 from provisa.api.admin.schema_query import Query
 from provisa.api.mcp import status as mcp_status_module
@@ -75,10 +76,12 @@ _SOURCE = {
 }
 
 
-async def _read_sources(info):
+async def _read_sources(monkeypatch, info):
     """The source as ``info``'s caller reads it. The caller is answered a table from it, which is
     what names a source to someone who does not register sources (REQ-1958; who is answered which
     table is tests/unit/test_admin_catalog_scope.py)."""
+    # A request is served after a role build, which leaves its inputs (drafts among them).
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
 
     async def _named(conn, scope):  # noqa: ARG001
         return {"pg"}
@@ -92,7 +95,7 @@ async def _read_sources(info):
 
 async def test_connection_details_go_to_a_source_registration_holder(monkeypatch):
     info, _ = grant(monkeypatch, "source_registration")
-    listed, single = await _read_sources(info)
+    listed, single = await _read_sources(monkeypatch, info)
     for src in (listed, single):
         assert (src.host, src.port, src.database, src.username) == (
             "db.internal",
@@ -106,7 +109,7 @@ async def test_connection_details_go_to_a_source_registration_holder(monkeypatch
 
 async def test_everyone_else_reads_the_source_without_them(monkeypatch):
     info, _ = grant(monkeypatch, "query_development")
-    listed, single = await _read_sources(info)
+    listed, single = await _read_sources(monkeypatch, info)
     for src in (listed, single):
         assert (src.id, src.type, src.dialect, src.description) == (
             "pg",

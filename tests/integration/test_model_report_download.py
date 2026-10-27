@@ -158,8 +158,9 @@ def _config() -> dict:
             },
         ],
         "metrics": [
-            {"name": "revenue", "expression": "SUM(orders.amount)"},
-            {"name": "held", "expression": "SUM(staging.id)"},
+            # A metric is read by the roles it names (REQ-2153), as a column is.
+            {"name": "revenue", "expression": "SUM(orders.amount)", "visible_to": _READERS},
+            {"name": "held", "expression": "SUM(staging.id)", "visible_to": _READERS},
         ],
         "roles": [
             {

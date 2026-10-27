@@ -342,6 +342,19 @@ def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
     return approved
 
 
+def canvas_joins(ctx: CompilationContext) -> list[tuple[int, str, int, str]]:
+    """The joins a join canvas draws (the SQL page's): :func:`approved_joins`, each pair of
+    columns once as (table, column, table, column) with the lower (table, column) first, less a
+    column equal to itself -- a junction relationship's own end-to-end pair, which joins nothing;
+    its two foreign-key joins are its lines."""
+    out: set[tuple[int, str, int, str]] = set()
+    for a_table, b_table, a_col, b_col in approved_joins(ctx):
+        if (a_table, a_col) == (b_table, b_col):
+            continue
+        out.add(min((a_table, a_col, b_table, b_col), (b_table, b_col, a_table, a_col)))
+    return sorted(out)
+
+
 def computed_joins(
     ctx: CompilationContext,
 ) -> tuple[set[tuple[int, int, str, str]], set[tuple[int, int, str, str]]]:

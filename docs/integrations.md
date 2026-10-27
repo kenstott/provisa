@@ -264,13 +264,16 @@ Provisa can act as a Federation v2 subgraph, exposing its published schema to an
 
 ### Setup
 
-Enable federation in `config.yaml`:
+Enable federation in `config.yaml`, or per organization on **Admin → Domains → Settings**:
 
 ```yaml
 federation:
   enabled: true
   subgraph_name: provisa-data
+  role: partner
 ```
+
+A supergraph cannot pass its caller's identity to a subgraph, so the subgraph serves as one declared role. `role` names it and is required when `enabled` is true. The router connects as an ordinary client acting as that role, and `_service` and `_entities` are offered on that role's schema only. Every entity the router fetches is read through the same governed path as any other query by the role, so its row rules, masks and column visibility apply.
 
 Provisa generates `@key` directives on primary-key columns and `@external`/`@provides` on cross-subgraph relationships automatically.
 
@@ -286,11 +289,23 @@ subgraphs:
       subgraph_url: http://provisa:8001/data/graphql
 ```
 
+The router's requests to Provisa carry the declared role's credentials. With authentication disabled, the `X-Provisa-Role` header selects it; in the router's `router.yaml`:
+
+```yaml
+headers:
+  subgraphs:
+    provisa-data:
+      request:
+        - insert:
+            name: x-provisa-role
+            value: partner
+```
+
 Run `rover supergraph compose --config supergraph.yaml` to generate the supergraph schema.
 
 ### Entities
 
-Provisa responds to `_entities` queries for cross-subgraph joins. Any table with a primary key is automatically resolvable as a Federation entity.
+Provisa responds to `_entities` queries for cross-subgraph joins. Any table with a designated primary key whose key columns the declared role can see is resolvable as a Federation entity. A representation whose row the role cannot read resolves to `null`.
 
 ---
 

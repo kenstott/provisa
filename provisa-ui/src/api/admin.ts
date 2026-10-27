@@ -13,6 +13,7 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
+import type { ApprovedJoin } from "../components/canvas/joinGraph";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
@@ -902,6 +903,12 @@ export interface PlatformSettings {
   cache: {
     default_ttl: number;
   };
+  // REQ-259: the org's Apollo Federation subgraph and the role it serves as.
+  federation: {
+    enabled: boolean;
+    subgraph_name: string;
+    role: string | null;
+  };
   naming: {
     // Deployment-wide, so absent for an org administrator; the two below are the org's own.
     domain_prefix?: boolean;
@@ -1552,6 +1559,10 @@ export interface CompileResult {
   warnings?: string[];
   compiled_cypher?: string | null;
   cypher_error?: string | null;
+  /** REQ-2136: the root's read as a SPARQL SELECT, its PREFIX lines with it; null with
+   * ``sparql_error`` saying why there is none. */
+  compiled_sparql?: string | null;
+  sparql_error?: string | null;
 }
 
 /** One thing an answer says about itself (REQ-1350), as the server sends it. */
@@ -1701,6 +1712,15 @@ export interface StatementAnswer {
   error?: string;
   /** REQ-1194 / REQ-1224: landed in the results store, not in `rows`. */
   redirect?: ResultRedirect;
+}
+
+/** The joins the acting role's statements may write: what the SQL canvas draws. */
+export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/approved-joins`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(await refusal(resp, "fetchApprovedJoins"));
+  return ((await resp.json()) as { joins: ApprovedJoin[] }).joins;
 }
 
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a

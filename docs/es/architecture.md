@@ -146,6 +146,140 @@ Las consultas GraphQL con varios campos raíz (p. ej., `{ orders { id } customer
 - Los campos por encima del umbral se redirigen, con entradas por campo en `redirects`
 - Los formatos binarios (Parquet, Arrow) solo se admiten para consultas de raíz única
 
+## Canal de consulta {: #query-pipeline }
+
+Toda lectura pasa por cinco etapas. GraphQL, Cypher, SPARQL, gRPC y SQL son puntos de entrada, no etapas — cada uno compila o traduce a SQL semántico antes de que comience la canalización.
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### Front-ends {: #front-ends }
+
+Un front-end analiza un lenguaje y nombra lo que lee en los términos del modelo. GraphQL se compila directamente a SQL semántico. Los endpoints REST que describe el documento OpenAPI y los endpoints JSON:API construyen una consulta GraphQL a partir de cada petición y la compilan de la misma forma. gRPC traduce una petición de tabla a SQL semántico sin pasar por GraphQL. Cypher y SPARQL se analizan en una misma forma de patrón de grafo que comparten ambos lenguajes de grafos, y esa forma se compila a SQL semántico. El SQL que usted escribe sobre las tablas del modelo ya es SQL semántico, así que entra en la etapa siguiente. Ningún front-end decide quién puede leer qué.
+
+### SQL semántico {: #semantic-sql }
+
+El SQL semántico lee el modelo. Sus tablas están calificadas por dominio (`sales.orders`), sus columnas son las que el modelo publica y sus joins son las relaciones declaradas. No dice nada de dónde están los datos.
+
+Una lectura anidada se compila a un único pipeline canónico de CTE, el mismo para todos los motores y construido solo a partir de las relaciones declaradas. Una CTE raíz lee la tabla raíz con su filtro, su orden, su límite y su desplazamiento. Cada nivel a-muchos es una CTE propia. Une su tabla a la CTE del padre por las claves de la relación, toma las primeras filas de cada padre con `ROW_NUMBER() OVER (PARTITION BY ...)` y las agrega en una lista JSON por padre. El `SELECT` final lee la CTE raíz y une cada nivel con un left join por la clave del padre. Las lecturas GraphQL, Cypher y SPARQL que hacen la misma pregunta se compilan a la misma sentencia.
+
+El traductor de Cypher escribe una CTE por cada etapa `WITH`; alinear esas formas con la canalización canónica es trabajo pendiente. Hasta que concluya, lecturas equivalentes en Cypher y GraphQL no siempre compilan al mismo SQL semántico. El compilador GraphQL escribe campos anidados con argumentos como `LEFT JOIN LATERAL` por padre. Ambas formas actuales aparecen en el ejemplo siguiente.
+
+### SQL gobernado {: #governed-sql }
+
+La gobernanza trabaja sobre toda la sentencia semántica a la vez. Cada `SELECT` que contiene recibe las reglas de visibilidad, la seguridad a nivel de fila y las máscaras del rol que lee, de modo que cada nivel anidado se filtra en su propia profundidad. Una regla de fila cuya condición es una subconsulta lee otra tabla, así que la gobernanza puede añadir orígenes a una sentencia.
+
+### SQL optimizado {: #optimized-sql }
+
+La etapa optimizada reescribe la sentencia gobernada de formas que valen en cualquier motor. Vuelve a introducir las vistas materializadas donde responden parte de la sentencia, incrusta como `VALUES` las tablas pequeñas y muy leídas, y elimina las ramas de caché de API y de unión que la sentencia no puede alcanzar. Nada aquí sabe qué motor ejecutará la sentencia. Estas reescrituras pueden quitar orígenes. Una lectura federada cuyos demás orígenes quedan todos incrustados se queda con un único origen en vivo.
+
+### Planificar y enrutar {: #plan-and-route }
+
+Aterrizar en el motor de federación es la opción predeterminada; el enrutamiento lee los orígenes optimizados, nunca los gobernados. Una sentencia solo se ejecuta directamente en su origen cuando supera las seis puertas en orden. La primera que falla nombra el motivo.
+
+| Puerta | Qué verifica |
+|---|---|
+| `one_source` | Lee un origen tras la optimización, o lee orígenes que comparten una base de datos física |
+| `dialect_supports` | El dialecto de ese origen admite cada construcción de la sentencia |
+| `access_path` | Existe un controlador directo, un llamador de API o una función de código para el origen |
+| `colocated_login` | Los orígenes contados como una sola base de datos comparten la misma credencial de acceso |
+| `not_forced` | No se aplica ningún límite de operador, columna falsa o condición que requiera el motor |
+| `trusted_to_answer` | Un origen no SQL puede responder el conjunto de datos completo sin más filtrado en proceso |
+
+Los casos de caché, réplica y steward están en [Pipeline de solicitudes](#request-pipeline).
+
+### SQL nativo {: #native-sql }
+
+La etapa nativa escribe la sentencia enrutada en el dialecto del origen para una lectura directa y en el del motor para una federada. Elige la grafía de las funciones de agregado y de objeto JSON, escribe la lista vacía para un padre sin filas, convierte `DISTINCT ON` en `ROW_NUMBER()` donde el dialecto no lo tiene y elige formas propias de cada motor, como un join `LATERAL` por padre o una indicación de materialización de CTE.
+
+### Un ejemplo completo {: #a-worked-example }
+
+Esta lectura GraphQL pide un cliente y sus tres pedidos de mayor importe:
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+En la forma canónica, se compila a este SQL semántico:
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+El id del pedido deshace los empates en la clasificación, así que dos pedidos del mismo importe vuelven siempre en el mismo orden. Un cliente sin pedidos no tiene fila en `customers_orders`; la etapa nativa escribe para él la lista vacía.
+
+La misma lectura en Cypher localiza al cliente y lee los tres pedidos mayores en una subconsulta:
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+En la forma canónica, esta lectura Cypher y la lectura GraphQL se compilan a la sentencia de arriba. En eso se apoya Abrir como consulta: una lectura GraphQL pasa a la página de Cypher y devuelve la misma respuesta.
+
+Hoy el compilador GraphQL escribe el nivel anidado como un lateral join por padre:
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+Puede ver el SQL semántico de cualquier lectura GraphQL en el panel Provisa de la página GraphQL.
+
 ## Rutas de ejecución de federación {: #federation-execution-paths }
 
 | Path | Transport | Via | When used |

@@ -90,6 +90,17 @@ def _physical_to_proto(column_type: str) -> str:
 
     if parse_native_type(normalized).nested:
         return "string"
+    # Any other spelling an engine or a source reports (``character varying``, ``character``,
+    # ``timestamp without time zone``): the product's one type vocabulary names it, as the Arrow
+    # catalog's map does (core.catalog_types).
+    from provisa.core.ir_types import to_ir
+
+    try:
+        canonical = to_ir(normalized)
+    except ValueError:
+        canonical = None  # not in the vocabulary either: refused by name below
+    if canonical in _PROTO_TYPE_MAP:
+        return _PROTO_TYPE_MAP[canonical]
     raise ValueError(f"Unmapped column type for proto: {column_type!r}")
 
 

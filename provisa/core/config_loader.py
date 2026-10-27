@@ -1352,8 +1352,13 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
         await role_repo.upsert(conn, role, org_id=None)
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
+    # REQ-1634 STATUS: a retired product's successor may come later in the file, so every product
+    # exists before any names its successor.
     for dp in config.data_products:
-        await data_product_repo.upsert(conn, dp)
+        await data_product_repo.upsert(conn, dp.model_copy(update={"successor": None}))
+    for dp in config.data_products:
+        if dp.successor is not None:
+            await data_product_repo.upsert(conn, dp)
 
     # 4.6 Glossary terms (after domains, so declared scope names something real)  # REQ-1641
     # upsert_declared_term upserts by name (its unique key); an apply removes nothing.

@@ -426,7 +426,20 @@ function App() {
                                               capability="query_development"
                                               fallback={<NotAuthorized />}
                                             >
-                                              <GraphPage />
+                                              <GraphPage key="cypher" />
+                                            </CapabilityGate>
+                                          }
+                                        />
+                                        {/* REQ-2135: the same visualizer, SPARQL's vocabulary in
+                                            its sidebar; keyed apart so each keeps its own state. */}
+                                        <Route
+                                          path="/sparql"
+                                          element={
+                                            <CapabilityGate
+                                              capability="query_development"
+                                              fallback={<NotAuthorized />}
+                                            >
+                                              <GraphPage key="sparql" language="sparql" />
                                             </CapabilityGate>
                                           }
                                         />

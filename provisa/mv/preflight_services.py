@@ -57,8 +57,9 @@ def services_module() -> ModuleType:
             spec = importlib.util.spec_from_file_location(SERVICES_MODULE, _CLIENT)
             assert spec is not None and spec.loader is not None
             module = importlib.util.module_from_spec(spec)
+            # registered before it runs: its dataclasses resolve their annotations in it
+            sys.modules[SERVICES_MODULE] = module
             spec.loader.exec_module(module)
-            sys.modules.setdefault(SERVICES_MODULE, module)
             _loaded = module
         return _loaded
 

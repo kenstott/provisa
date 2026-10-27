@@ -8,13 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit: a gRPC request's ``filter`` lowers to the WHERE of the semantic SELECT (REQ-803, REQ-1860).
+"""Unit: a gRPC request's ``filter`` lowers to the WHERE of the compiled statement (REQ-803, REQ-1860).
 
 One lowering for the native servicer (a ``{Type}Filter`` message) and the HTTP gRPC proxy (the
-request body's ``filter`` object): the same equality WHERE, the same rule that a filtered field
-must be a column the role can read. Filter VALUES are bound parameters — never text in the
-statement — so the statement is the request's shape: requests that differ only in their filter
-values share one statement (one kept plan) and carry their own values."""
+request body's ``filter`` object): the request becomes GraphQL whose ``where`` holds the same
+equalities, the same rule that a filtered field must be a column the role can read, and the
+compiler writes the WHERE. Filter VALUES are bound parameters — never text in the statement — so
+the statement is the request's shape: requests that differ only in their filter values share one
+statement (one kept plan) and carry their own values."""
 
 # Requirements: REQ-803, REQ-1860, REQ-1877
 
@@ -28,8 +29,8 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.compiler.sql_types import TableMeta
-from provisa.grpc.query_ir import grpc_table_to_semantic_sql, resolve_read_mask
+from provisa.grpc.query_ir import resolve_read_mask
+from tests.grpc_model import compiled_read, grpc_model
 
 _COLUMNS = [
     ("order_id", "integer"),
@@ -43,17 +44,13 @@ _COLUMNS = [
 ]
 
 
+def _model():
+    """The role's schema and compiler context for the ``orders`` table of ``_COLUMNS``."""
+    return grpc_model(_COLUMNS)
+
+
 def _ctx():
-    meta = TableMeta(
-        table_id=1,
-        field_name="orders",
-        type_name="Orders",
-        source_id="pg1",
-        catalog_name="pg1",
-        schema_name="public",
-        table_name="orders",
-    )
-    return SimpleNamespace(tables={"orders": meta}, aggregate_columns={1: list(_COLUMNS)})
+    return _model()[1]
 
 
 def _message(**set_fields):
@@ -67,8 +64,9 @@ def _message(**set_fields):
 
 
 def _lower(filter_arg, limit: int = 0, paths: list[str] | None = None) -> tuple[str, list]:
-    mask = resolve_read_mask(_ctx(), "Orders", paths or [])
-    lowered = grpc_table_to_semantic_sql(_ctx(), "Orders", limit, filter_arg, mask)
+    model = _model()
+    mask = resolve_read_mask(model[1], "Orders", paths or [])
+    lowered = compiled_read(model, "Orders", limit, filter_arg, mask)
     assert lowered is not None
     return lowered
 
@@ -81,10 +79,13 @@ def _predicates(sql: str) -> list[str]:
 
 class TestFilterValuesAreBound:
     def test_values_are_placeholders_with_the_values_alongside(self):
+        """The predicates follow the table's column order, whatever order the request names the
+        fields in, so one set of filtered fields is one statement."""
         sql, params = _lower({"region": "east", "order_id": 3})
-        assert _predicates(sql) == ['"region" = $1', '"order_id" = $2']
-        assert params == ["east", 3]
+        assert _predicates(sql) == ['"order_id" = $1', '"region" = $2']
+        assert params == [3, "east"]
         assert "east" not in sql
+        assert _lower({"order_id": 3, "region": "east"}) == (sql, params)
 
     def test_body_filter_and_filter_message_lower_alike(self):
         sql, params = _lower(_message(order_id=3, region="east"))
@@ -93,8 +94,8 @@ class TestFilterValuesAreBound:
 
     def test_values_keep_their_type(self):
         _sql, params = _lower({"shipped": False, "amount": 10.5, "order_id": 7})
-        assert params == [False, 10.5, 7]
-        assert [type(p) for p in params] == [bool, float, int]
+        assert params == [7, 10.5, False]  # in the table's column order
+        assert [type(p) for p in params] == [int, float, bool]
 
     def test_a_quote_in_a_value_never_reaches_the_statement(self):
         sql, params = _lower({"region": "o'hare' OR '1'='1"})
@@ -201,11 +202,11 @@ class TestTypedFilterValues:
             transpile(f"SELECT order_id FROM orders WHERE {where}", "trino"), params, "?"
         )
         assert statement == (
-            'SELECT order_id FROM orders WHERE "placed_at" = CAST(? AS TIMESTAMP) '
-            'AND "seen_at" = CAST(? AS TIMESTAMP WITH TIME ZONE) '
-            'AND "ship_date" = CAST(? AS DATE) AND "amount" = ? AND "shipped" = ?'
+            'SELECT order_id FROM orders WHERE "amount" = ? AND "shipped" = ? '
+            'AND "placed_at" = CAST(? AS TIMESTAMP) '
+            'AND "seen_at" = CAST(? AS TIMESTAMP WITH TIME ZONE) AND "ship_date" = CAST(? AS DATE)'
         )
-        assert bound == ["2026-01-01 08:30:00", "2026-01-01 08:30:00+00", "2026-01-05", 10.5, True]
+        assert bound == [10.5, True, "2026-01-01 08:30:00", "2026-01-01 08:30:00+00", "2026-01-05"]
 
 
 class TestLimitIsBound:
@@ -325,7 +326,7 @@ def test_filter_on_a_field_the_role_cannot_read_raises_naming_the_field(filter_a
     from provisa.grpc.query_ir import FilterError, grpc_table_to_group_by_graphql_text
 
     with pytest.raises(FilterError, match="hidden") as failure:
-        grpc_table_to_semantic_sql(_ctx(), "Orders", 10, filter_arg)
+        compiled_read(_model(), "Orders", 10, filter_arg)
     assert failure.value.field == "hidden"
     with pytest.raises(FilterError, match="hidden") as failure:
         grpc_table_to_group_by_graphql_text(
@@ -339,5 +340,5 @@ def test_body_filter_value_that_is_not_a_scalar_raises_naming_the_field(value):
     from provisa.grpc.query_ir import FilterError
 
     with pytest.raises(FilterError, match="region") as failure:
-        grpc_table_to_semantic_sql(_ctx(), "Orders", 10, {"region": value})
+        compiled_read(_model(), "Orders", 10, {"region": value})
     assert failure.value.field == "region"

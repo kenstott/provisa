@@ -146,6 +146,140 @@ GraphQL-Abfragen mit mehreren Root-Feldern (z. B. `{ orders { id } customers { n
 - Felder oberhalb des Schwellenwerts werden umgeleitet, mit Einträgen pro Feld in `redirects`
 - Binärformate (Parquet, Arrow) werden nur für Single-Root-Abfragen unterstützt
 
+## Abfrage-Pipeline {: #query-pipeline }
+
+Jeder Lesezugriff durchläuft fünf Stufen. GraphQL, Cypher, SPARQL, gRPC und SQL sind Einstiegspunkte, keine Stufen — jeder kompiliert oder wird in semantisches SQL übersetzt, bevor die Pipeline beginnt.
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### Front-Ends {: #front-ends }
+
+Ein Front-End parst eine Sprache und benennt, was sie liest, in den Begriffen des Modells. GraphQL wird direkt zu semantischem SQL kompiliert. Die REST-Endpunkte, die das OpenAPI-Dokument beschreibt, und die JSON:API-Endpunkte bauen aus jeder Anfrage eine GraphQL-Abfrage und kompilieren sie auf dieselbe Weise. gRPC übersetzt eine Tabellenanfrage in semantisches SQL, ohne den Umweg über GraphQL. Cypher und SPARQL werden in eine gemeinsame Graphmuster-Form geparst, die beide Graphsprachen teilen, und diese Form wird zu semantischem SQL kompiliert. SQL, das Sie gegen die Tabellen des Modells schreiben, ist bereits semantisches SQL und steigt deshalb in der nächsten Stufe ein. Kein Front-End entscheidet, wer was lesen darf.
+
+### Semantisches SQL {: #semantic-sql }
+
+Semantisches SQL liest das Modell. Seine Tabellen sind mit der Domäne qualifiziert (`sales.orders`), seine Spalten sind die, die das Modell veröffentlicht, und seine Joins sind die deklarierten Beziehungen. Wo die Daten liegen, steht darin nicht.
+
+Ein verschachtelter Lesezugriff wird zu einer kanonischen CTE-Pipeline kompiliert, die für jede Engine gleich ist und allein aus den deklarierten Beziehungen entsteht. Eine Wurzel-CTE liest die Wurzeltabelle mit ihrem Filter, ihrer Sortierung, ihrem Limit und ihrem Offset. Jede To-many-Ebene ist eine eigene CTE. Sie verbindet ihre Tabelle über die Schlüssel der Beziehung mit der CTE des Elternteils, nimmt mit `ROW_NUMBER() OVER (PARTITION BY ...)` die ersten Zeilen jedes Elternteils und fasst sie pro Elternteil zu einer JSON-Liste zusammen. Das abschließende `SELECT` liest die Wurzel-CTE und verbindet jede Ebene per Left Join über den Elternschlüssel. GraphQL-, Cypher- und SPARQL-Lesezugriffe, die dieselbe Frage stellen, ergeben dieselbe Anweisung.
+
+Der Cypher-Übersetzer schreibt eine CTE pro `WITH`-Stufe; die Anpassung dieser Formen an die kanonische Pipeline ist noch ausstehende Arbeit. Bis sie abgeschlossen ist, kompilieren äquivalente Cypher- und GraphQL-Lesezugriffe nicht immer zu demselben semantischen SQL. Der GraphQL-Compiler schreibt verschachtelte Felder mit Argumenten als `LEFT JOIN LATERAL`-Joins pro Elternteil. Beide aktuellen Formen sind im folgenden Beispiel zu sehen.
+
+### Geregeltes SQL {: #governed-sql }
+
+Die Governance arbeitet auf der ganzen semantischen Anweisung auf einmal. Jedes `SELECT` darin erhält die Sichtbarkeitsregeln, die Row-Level-Security und die Masken der lesenden Rolle, sodass jede verschachtelte Ebene in ihrer eigenen Tiefe gefiltert wird. Eine Zeilenregel, deren Bedingung eine Unterabfrage ist, liest eine weitere Tabelle; die Governance kann einer Anweisung also Quellen hinzufügen.
+
+### Optimiertes SQL {: #optimized-sql }
+
+Die Optimierungsstufe schreibt die geregelte Anweisung so um, dass es auf jeder Engine gilt. Sie setzt materialisierte Views wieder ein, wo sie einen Teil der Anweisung beantworten, bettet kleine, häufig gelesene Tabellen als `VALUES` ein und entfernt API-Cache- und Union-Zweige, die die Anweisung nicht erreichen kann. Nichts hier weiß, welche Engine die Anweisung ausführt. Diese Umschreibungen können Quellen entfernen. Ein föderierter Lesezugriff, dessen übrige Quellen alle eingebettet sind, behält eine einzige Live-Quelle.
+
+### Planen und routen {: #plan-and-route }
+
+Die Federation-Engine ist der Standard; das Routing liest die optimierten Quellen, nie die geregelten. Eine Anweisung läuft nur dann direkt auf ihrer Quelle, wenn sie alle sechs Gatter der Reihe nach besteht. Das erste Gatter, das sie nicht besteht, benennt den Grund.
+
+| Gatter | Was wird geprüft |
+|---|---|
+| `one_source` | Liest nach der Optimierung eine Quelle oder Quellen, die eine gemeinsame physische Datenbank teilen |
+| `dialect_supports` | Der Dialekt dieser Quelle unterstützt jedes Konstrukt der Anweisung |
+| `access_path` | Ein direkter Treiber, ein API-Aufrufer oder eine Code-Funktion ist für die Quelle vorhanden |
+| `colocated_login` | Als eine Datenbank gezählte Quellen teilen dieselben Anmeldedaten |
+| `not_forced` | Kein Operator-Floor, keine gefälschte Spalte oder engine-erzwingende Bedingung liegt vor |
+| `trusted_to_answer` | Eine Nicht-SQL-Quelle kann das vollständige Dataset ohne weitere In-Process-Filterung liefern |
+
+Die Fälle für Cache, Replikat und Steward finden Sie unter [Anfrage-Pipeline](#request-pipeline).
+
+### Natives SQL {: #native-sql }
+
+Die native Stufe schreibt die geroutete Anweisung im Dialekt der Quelle für einen direkten Lesezugriff und im Dialekt der Engine für einen föderierten. Sie wählt die Schreibweise der JSON-Aggregat- und Objektfunktionen, schreibt die leere Liste für ein Elternteil ohne Zeilen, wandelt `DISTINCT ON` in `ROW_NUMBER()` um, wo der Dialekt es nicht kennt, und wählt engine-spezifische Formen wie ein `LATERAL`-Join pro Elternteil oder einen Hinweis zur CTE-Materialisierung.
+
+### Ein durchgerechnetes Beispiel {: #a-worked-example }
+
+Dieser GraphQL-Lesezugriff fragt nach einem Kunden und dessen drei größten Bestellungen:
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+In der kanonischen Form wird er zu diesem semantischen SQL kompiliert:
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+Die ID der Bestellung entscheidet bei Gleichstand in der Rangfolge, sodass zwei Bestellungen mit gleichem Betrag immer in derselben Reihenfolge zurückkommen. Ein Kunde ohne Bestellungen hat keine Zeile in `customers_orders`; die native Stufe schreibt für ihn die leere Liste.
+
+Derselbe Lesezugriff in Cypher findet den Kunden und liest die drei größten Bestellungen in einer Unterabfrage:
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+In der kanonischen Form ergeben dieser Cypher-Lesezugriff und der GraphQL-Lesezugriff die Anweisung oben. Darauf beruht „Als Abfrage öffnen“: Ein GraphQL-Lesezugriff geht an die Cypher-Seite und liefert dieselbe Antwort.
+
+Heute schreibt der GraphQL-Compiler die verschachtelte Ebene stattdessen als Lateral Join pro Elternteil:
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+Das semantische SQL jedes GraphQL-Lesezugriffs sehen Sie im Provisa-Panel der GraphQL-Seite.
+
 ## Federation-Ausführungspfade {: #federation-execution-paths }
 
 | Pfad | Transport | Über | Wann verwendet |

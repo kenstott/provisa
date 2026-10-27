@@ -180,7 +180,7 @@ class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
 
 
 @strawberry.type
-class DataProductType:  # REQ-1634, REQ-1660
+class DataProductType:  # REQ-1634
     id: str
     domain_id: str
     name: str
@@ -190,10 +190,34 @@ class DataProductType:  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
     sla: str | None = None
     support: str | None = None
+    # REQ-1635: the support contact (email or URL) a catalog listing requires.
+    support_contact: str | None = None
     custom_properties: JsonScalar
+    # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
+    status: str = "draft"
+    status_reason: str | None = None
+    retire_on: str | None = None  # ISO date: a deprecated product's planned retirement
+    status_by: str | None = None
+    status_at: str | None = None
+    successor_id: str | None = None
+    successor_name: str | None = None
+    findings: int = 0  # REQ-2146: how many To Review findings the product has
+
+
+@strawberry.type
+class DataProductFindingType:  # REQ-2146
+    kind: str
+    code: str
+    message: str
+    params: JsonScalar
+
+
+@strawberry.type
+class DataProductFindingsType:  # REQ-2146
+    product_id: str
+    findings: list[DataProductFindingType]
 
 
 @strawberry.type
@@ -825,6 +849,9 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
+    # REQ-351, REQ-1586: the Cypher type the server serves this edge as, its stored effective name
+    # (core.relationship_names). A client reads it; none derives it.
+    cypher_type: str | None = None
     disable_cypher: bool = False
     # REQ-2141: the rows this edge joins are the same entity.
     same_entity: bool = False
@@ -1014,7 +1041,7 @@ class DomainInput:  # REQ-533, REQ-609
 
 
 @strawberry.input
-class DataProductInput:  # REQ-1634, REQ-1660
+class DataProductInput:  # REQ-1634
     id: str
     domain_id: str
     name: str
@@ -1024,9 +1051,10 @@ class DataProductInput:  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
     sla: str | None = None
     support: str | None = None
+    # REQ-1635: the support contact (email or URL) a catalog listing requires.
+    support_contact: str | None = None
     # Nullable, default null: a default of `{}` on the JSON scalar cannot be printed as a GraphQL
     # default value, and the standard introspection query (which asks every input's defaultValue)
     # then answered with an error. Absent or null means no custom properties.
@@ -1909,6 +1937,8 @@ class CompileQueryResult:  # REQ-262, REQ-263, REQ-267
     warnings: list[str]
     compiled_cypher: str | None
     cypher_error: str | None
+    compiled_sparql: str | None
+    sparql_error: str | None
 
 
 @strawberry.input

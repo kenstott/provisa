@@ -72,6 +72,19 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as never);
+
+// jsdom has no IntersectionObserver either: a 3D stage watches whether it is on screen to draw
+// nothing while it is not (profile3d/frameLoop.ts). A test that needs an element seen stubs its own.
+class IntersectionObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+globalThis.IntersectionObserver =
+  globalThis.IntersectionObserver ?? (IntersectionObserverStub as never);
 if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
