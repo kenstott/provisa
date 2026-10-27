@@ -38,6 +38,9 @@ jobs:
     timeout-minutes: 75
     env:
       DRIVER_REPO: https://github.com/neo4j/neo4j-python-driver.git
+      # One test waiting on an answer that never comes fails alone, by name, not the whole run.
+      PYTEST_TIMEOUT_VERSION: 2.3.1
+      DRIVER_TEST_TIMEOUT_S: 60
       DRIVER_VERSION: "6.2.0"
       # The Bolt port the instance start step gives (API port + 3).
       PROVISA_BOLT_PORT: "8904"
@@ -78,7 +81,8 @@ jobs:
           grep -q "Apache License" "$RUNNER_TEMP/driver/LICENSE.txt"
           python3 -m venv "$RUNNER_TEMP/driver-venv"
           "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --upgrade pip
-          cd "$RUNNER_TEMP/driver" && "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --group test -e .
+          cd "$RUNNER_TEMP/driver" && "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --group test -e . \
+            "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
 
       - name: Seed the PostgreSQL fixture
         run: |
@@ -174,7 +178,7 @@ jobs:
           # The driver's own test package, run from inside it (its tests/conftest.py applies).
           cd "$RUNNER_TEMP/driver/tests"
           "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
-            --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
