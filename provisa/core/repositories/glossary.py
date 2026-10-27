@@ -1488,6 +1488,20 @@ async def remove_expert(conn: "Connection", term_id: int, user_id: str) -> bool:
     return (result.rowcount or 0) > 0
 
 
+async def axioms(conn: "Connection") -> list[dict]:  # REQ-2163
+    """The ontology's RDFS/OWL/SKOS statements, one per row of the ontology schema's _axioms
+    view: the view states them, so its rule is the one every reader of axioms gets."""
+    from sqlalchemy import text
+
+    rows = await conn.execute_core(
+        text(
+            "SELECT subject_term_id, predicate, object_term_id, object_iri, object_literal "
+            "FROM _axioms_ontology ORDER BY id"
+        )
+    )
+    return [dict(r._mapping) for r in rows.fetchall()]
+
+
 async def export_graph(conn: "Connection") -> dict:
     """The whole term graph in one shape for the metadata-export builder (REQ-1387):
     terms, column and table refs joined to their table's config identity, edges, and experts."""
