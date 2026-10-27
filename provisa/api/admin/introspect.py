@@ -1401,7 +1401,7 @@ def _pg_column_typing(
         subtype_of,
         to_ir,
     )
-    from provisa.core.temporal_type import sized_timestamp
+    from provisa.core.temporal_type import sized_time, sized_timestamp
 
     if data_type == _PG_ARRAY:
         return column_typing(formatted or udt_name, kind)
@@ -1412,9 +1412,9 @@ def _pg_column_typing(
         return ColumnTyping(subtype_of(udt_name, kind) or "text")
     if data_type == "numeric" and formatted and formatted != "numeric":
         return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
-    sized = sized_timestamp(formatted) if formatted else None
+    sized = (sized_timestamp(formatted) or sized_time(formatted)) if formatted else None
     if sized is not None:
-        return ColumnTyping(sized)  # a timestamp keeps its declared precision (REQ-1961)
+        return ColumnTyping(sized)  # a timestamp or time keeps its declared precision (REQ-1961)
     subtype = subtype_of(data_type, kind)
     if subtype is not None:
         return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
