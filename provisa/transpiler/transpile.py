@@ -15,6 +15,8 @@ Supports PG SQL → Trino, and PG SQL → any target dialect for direct executio
 
 # Requirements: REQ-066, REQ-068, REQ-229
 
+import re
+
 import sqlglot
 
 from provisa.transpiler.native_json import resolve_native_json
@@ -47,7 +49,25 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
     result = _rewrite_empty_json_list_for_trino(result)
+    result = _rewrite_regex_backreferences_for_trino(result)
     return _rewrite_to_json_for_trino(result)
+
+
+_BACKREFERENCE = re.compile(r"\\(\d)")
+
+
+def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
+    """A regexp_replace's replacement names a captured group as PostgreSQL writes it, \\1;
+    Trino's writes it $1."""
+    if "REGEXP_REPLACE" not in sql.upper() or "\\" not in sql:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+    for node in tree.find_all(exp.RegexpReplace):
+        replacement = node.args.get("replacement")
+        if isinstance(replacement, exp.Literal) and replacement.is_string:
+            written = _BACKREFERENCE.sub(r"$\1", replacement.this)
+            node.set("replacement", exp.Literal.string(written))
+    return tree.sql(dialect="trino")
 
 
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:
