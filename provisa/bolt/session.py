@@ -78,6 +78,15 @@ def _scheme_of(meta: dict) -> str:
     return scheme.lower() if isinstance(scheme, str) and scheme else "basic"
 
 
+def _bookmark() -> str:
+    """A unit of work's bookmark (REQ-802): opaque and new each time. A write is applied as it
+    runs and a transaction is a no-op (REQ-883), so a bookmark a client passes back with BEGIN or
+    RUN is always already met and is accepted without a wait."""
+    import uuid
+
+    return f"provisa:{uuid.uuid4().hex}"
+
+
 class State(Enum):
     NEGOTIATION = auto()
     AUTHENTICATION = auto()
@@ -638,7 +647,7 @@ class BoltSession:
         self._tx_db = None
         self._end_all_requests()
         self.state = State.READY
-        self.send_success({})
+        self.send_success({"bookmark": _bookmark()})
 
     def handle_rollback(self) -> None:
         if self.state == State.FAILED:
@@ -1016,9 +1025,12 @@ class BoltSession:
             return
 
         has_more = self._pull_offset < len(self._result_rows)
+        auto_commit = self.state == State.STREAMING
         if not has_more:
             self._result_done()
         summary: dict = {"has_more": has_more, "t_last": 0, "type": "r"}
+        if not has_more and auto_commit:
+            summary["bookmark"] = _bookmark()  # an auto-commit unit of work ends here
         if not has_more and self._result_redirect is not None:
             summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
         self.send_success(summary)
@@ -1036,9 +1048,13 @@ class BoltSession:
         else:
             self._pull_offset = min(self._pull_offset + n, len(self._result_rows))
         has_more = self._pull_offset < len(self._result_rows)
+        auto_commit = self.state == State.STREAMING
         if not has_more:
             self._result_done()
-        self.send_success({"has_more": has_more})
+        summary: dict = {"has_more": has_more}
+        if not has_more and auto_commit:
+            summary["bookmark"] = _bookmark()
+        self.send_success(summary)
 
     def handle_route(self) -> None:
         import logging as _logging
