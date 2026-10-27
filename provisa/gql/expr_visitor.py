@@ -266,8 +266,11 @@ class ExprLowering:
                 if key == node.name:
                     return self.lower(value)
             return exp.Null()
-        if self._ctx.temporal_kind(node.obj) == temporal.DURATION:
+        held = self._ctx.temporal_kind(node.obj)
+        if held == temporal.DURATION:
             return temporal.duration_property(self.lower(node.obj), node.name)
+        if held is not None:  # REQ-2172: a date's, a time's or a date time's own parts
+            return temporal.value_property(held, self.lower(node.obj), node.name)
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:

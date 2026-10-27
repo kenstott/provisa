@@ -329,3 +329,36 @@ def test_a_temporal_value_is_built_from_text_a_map_or_another_value(query, expec
 )
 def test_a_temporal_value_is_truncated_to_a_unit(query, expected):
     assert _answer(query) == [{"v": expected}]
+
+
+def test_a_dates_and_a_times_parts_are_read_as_properties():
+    """Temporal5 [1], [3] (the time to the microsecond)."""
+    assert _answer(
+        "WITH date({year: 1984, month: 10, day: 11}) AS d RETURN d.year, d.quarter, d.month, "
+        "d.week, d.weekYear, d.day, d.ordinalDay, d.weekDay, d.dayOfQuarter"
+    ) == [
+        {
+            "d.year": 1984,
+            "d.quarter": 4,
+            "d.month": 10,
+            "d.week": 41,
+            "d.weekYear": 1984,
+            "d.day": 11,
+            "d.ordinalDay": 285,
+            "d.weekDay": 4,
+            "d.dayOfQuarter": 11,
+        }
+    ]
+    assert _answer(
+        "WITH localtime({hour: 12, minute: 31, second: 14, microsecond: 645876}) AS d "
+        "RETURN d.hour, d.minute, d.second, d.millisecond, d.microsecond, d.nanosecond"
+    ) == [
+        {
+            "d.hour": 12,
+            "d.minute": 31,
+            "d.second": 14,
+            "d.millisecond": 645,
+            "d.microsecond": 645876,
+            "d.nanosecond": 645876000,
+        }
+    ]

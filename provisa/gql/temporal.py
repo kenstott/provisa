@@ -1252,3 +1252,71 @@ def truncated(
     if not entries:
         return exp.Cast(this=cut, to=exp.DataType.build(SQL_TYPES[kind]))
     return composed_value(kind, entries, {}, lower, base=cut, base_kind=LOCALDATETIME)
+
+
+# --------------------------------------------------------------------------- date and time properties
+
+
+def _whole(e: exp.Expression) -> exp.Expression:
+    return exp.Cast(this=e, to=exp.DataType.build("BIGINT"))
+
+
+def value_property(kind: str, value: exp.Expression, name: str) -> exp.Expression:
+    """``v.name`` of a date, time or date time (openCypher's accessors): year, quarter, month,
+    week, weekYear, day, ordinalDay, weekDay/dayOfWeek, dayOfQuarter, hour, minute, second,
+    millisecond, microsecond, nanosecond, offsetSeconds, offsetMinutes, offset, epochSeconds,
+    epochMillis."""
+    key = name.lower()
+    fields = {
+        "year": "YEAR",
+        "quarter": "QUARTER",
+        "month": "MONTH",
+        "week": "WEEK",
+        "weekyear": "ISOYEAR",
+        "day": "DAY",
+        "ordinalday": "DOY",
+        "weekday": "ISODOW",
+        "dayofweek": "ISODOW",
+        "hour": "HOUR",
+        "minute": "MINUTE",
+    }
+    dated = kind in _DATED
+    timed = kind != DATE
+    if key in fields and (dated if fields[key] not in ("HOUR", "MINUTE") else timed):
+        return _whole(_field(value, fields[key]))
+    if key == "dayofquarter" and dated:
+        start = exp.Cast(
+            this=exp.Anonymous(
+                this="DATE_TRUNC", expressions=[exp.Literal.string("quarter"), value.copy()]
+            ),
+            to=exp.DataType.build("DATE"),
+        )
+        days = exp.Sub(this=exp.Cast(this=value, to=exp.DataType.build("DATE")), expression=start)
+        return exp.Add(this=exp.Paren(this=days), expression=exp.Literal.number(1))
+    micros = _field(value, "MICROSECOND")
+    if timed and key == "second":
+        return _int_div(micros, _MICROS)
+    if timed and key in ("millisecond", "microsecond", "nanosecond"):
+        within = exp.Mod(this=micros, expression=exp.Literal.number(_MICROS))
+        if key == "millisecond":
+            return _int_div(within, 1000)
+        if key == "microsecond":
+            return _whole(within)
+        return exp.Mul(this=_whole(within), expression=exp.Literal.number(1000))
+    if kind in (TIME, DATETIME) and key in ("offsetseconds", "offsetminutes", "offset"):
+        seconds = _whole(_field(value, "TIMEZONE"))
+        if key == "offsetseconds":
+            return seconds
+        if key == "offsetminutes":
+            return _int_div(seconds, 60)
+        return _offset_text(seconds)
+    if kind in (DATETIME, LOCALDATETIME) and key in ("epochseconds", "epochmillis"):
+        epoch = _field(value, "EPOCH")
+        if key == "epochseconds":
+            return _whole(exp.Anonymous(this="FLOOR", expressions=[epoch]))
+        return _whole(
+            exp.Anonymous(
+                this="FLOOR", expressions=[exp.Mul(this=epoch, expression=exp.Literal.number(1000))]
+            )
+        )
+    raise CypherTranslateError(f"a {kind} has no property {name!r}")
