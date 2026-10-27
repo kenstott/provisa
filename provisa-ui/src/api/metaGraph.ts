@@ -119,9 +119,11 @@ export class RoleSchema {
       .map((f) => f.name);
   }
 
-  /** The one field of ``type`` reaching ``target``: a relationship declared without an alias. */
+  /** The one field of ``type`` reaching ``target``: a relationship declared without an alias. A
+   * system field (``_meta``, the row's own catalog entry) reaches a type too, and is none. */
   reaching(type: string, target: string): { name: string; type: string | null } | null {
-    const found = this.types.get(type)?.filter((f) => f.type === target) ?? [];
+    const found =
+      this.types.get(type)?.filter((f) => f.type === target && !f.name.startsWith("_")) ?? [];
     return found.length === 1 ? found[0] : null;
   }
 }

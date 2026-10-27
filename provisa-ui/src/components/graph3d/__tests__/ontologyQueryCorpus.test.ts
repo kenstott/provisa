@@ -134,6 +134,33 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(produced);
   });
 
+  it("read a column's table, with the relationships declared from it, under the owner tables", () => {
+    // REQ-2135: the owner-tables layer draws the relationships between the tables it draws. A
+    // term ref reaches its table through registeredTable; the _meta system field reaches the same
+    // type and is no relationship to follow.
+    const m = reader();
+    const scope = (layers: LayerId[]): QueryScope => ({
+      layers: new Set<LayerId>(["ontology", ...layers]),
+      search: [],
+      hiddenStatuses: [],
+      edgeTypes: [],
+      domains: [],
+      orphans: true,
+      tags: [],
+      sensitivities: [],
+    });
+    const owner = ontologyQuery(m, scope(["columns", "ownerTables"]));
+    const columns = ontologyQuery(m, scope(["columns"]));
+    expect(owner).not.toEqual(columns);
+    const refs = owner!.slice(
+      owner!.indexOf("refs: refs"),
+      owner!.indexOf("data_products") >= 0 ? owner!.indexOf("data_products") : undefined,
+    );
+    expect(refs).toContain("table: registeredTable");
+    expect(refs).toContain("source_relationships: sourceRelationships");
+    expect(refs).not.toContain("_meta");
+  });
+
   it("each read the system catalog's real root fields", () => {
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
