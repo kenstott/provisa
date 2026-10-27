@@ -73,6 +73,7 @@ from provisa.gql.translator_types import (
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
     GraphVarKind,
+    map_key_column,
 )
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
@@ -410,7 +411,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._unwind_aliases: set[str] = set()
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
-        self._map_vars: dict[str, set[str]] = {}
+        self._map_vars: dict[str, dict[str, int]] = {}
         # REQ-2173: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
         self._temporal_kinds: dict[str, str] = {}
         # REQ-2173: a variable bound to a time or date time a query names a zone for -> the zone
@@ -1316,14 +1317,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _carried_map_keys(self, expr: CypherExpr, alias: str) -> list[exp.Expr]:
         """A map literal the WITH carries as ``alias``: each key's own value as a column of its
-        own, ``"alias.key"``, which ``alias.key`` after the WITH reads -- the value as it is, not
-        its JSON-encoded copy in the map (#287)."""
+        own, ``"alias.#n"`` by the key's place, which ``alias.key`` after the WITH reads -- the
+        value as it is, not its JSON-encoded copy in the map (#287). Named by place, not by key:
+        an engine folds the case of a name, and name and Name are two keys."""
         if not isinstance(expr, MapLiteral):
             return []
-        self._map_vars[alias] = {key for key, _value in expr.entries}
+        self._map_vars[alias] = {key: n for n, (key, _value) in enumerate(expr.entries)}
         return [
-            exp.alias_(self._lower_expr(value), f"{alias}.{key}", quoted=True)
-            for key, value in expr.entries
+            exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
+            for n, (_key, value) in enumerate(expr.entries)
         ]
 
     def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping]:
@@ -1390,11 +1392,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         self._map_vars[alias or expr_text] = keys
                         exprs.extend(
                             exp.alias_(
-                                exp.column(f"{expr_text}.{key}", table=held_in, quoted=True),
-                                f"{alias or expr_text}.{key}",
+                                exp.column(
+                                    map_key_column(expr_text, n), table=held_in, quoted=True
+                                ),
+                                map_key_column(alias or expr_text, n),
                                 quoted=True,
                             )
-                            for key in sorted(keys)
+                            for n in sorted(keys.values())
                         )
                     continue
                 if meta is None and held_in in self._unwind_aliases:

@@ -36,7 +36,7 @@ from provisa.gql.expr_ast import (
     Term,
     Variable,
 )
-from provisa.gql.translator_types import CypherTranslateError
+from provisa.gql.translator_types import CypherTranslateError, map_key_column
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -242,7 +242,9 @@ class TranslatorExprContext:
             # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
             if name not in t._map_vars[obj.name]:
                 return exp.Null()
-            return exp.column(f"{obj.name}.{name}", table=obj.table, quoted=True)
+            return exp.column(
+                map_key_column(obj.name, t._map_vars[obj.name][name]), table=obj.table, quoted=True
+            )
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)

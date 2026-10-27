@@ -106,3 +106,8 @@ class CypherCrossSourceError(CypherTranslateError):
 #: The column a domain union's arm carries a node returned bare in: one JSON value, its id, its
 #: label and its own type's properties (each as text, as a property column is).
 NODE_COLUMN = "__node"
+
+
+def map_key_column(alias: str, place: int) -> str:
+    """The column a WITH carries a map literal's key in: by the key's place in the map (#287)."""
+    return f"{alias}.#{place}"
