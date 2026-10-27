@@ -16,8 +16,8 @@ is adapted: before the instance starts, its setup_query runs in the job's Postgr
 ``conformance``) and the table is registered in the model's ``conformance`` domain, where the
 case's own query reads it. Where cases share a table name with different contents (the ten
 ``test_timestamp`` precisions), each case's table is named for the case (``test_<case>``) and the
-case's query is overridden to read it (``queries/type/select/<case>.sql``, checked in and checked
-here). Where a setup is not PostgreSQL (``BLOB``, ``X'..'``), it is written in PostgreSQL's
+case's query and metadata are overridden to read and name it (``queries/type/select/<case>.sql``
+and ``.toml``, checked in and checked here). Where a setup is not PostgreSQL (``BLOB``, ``X'..'``), it is written in PostgreSQL's
 equivalent. The get_objects tests' table, which they would ingest, is ``getobjects_fixture``; the
 statement tests' tables, which they would create and write, are seeded empty and writable
 (``WRITTEN_TABLES``).
@@ -117,16 +117,27 @@ def cases(validation: Path) -> list[Case]:
     return out
 
 
+def metadata_override(case: Case) -> str:
+    """A renamed case's metadata override: the table its setup names, which the suite reads its
+    table schema from (``[setup] drop``)."""
+    return f'[setup]\ndrop = "{case.adapted_table}"\n'
+
+
 def check_overrides(found: list[Case]) -> None:
-    """Every renamed case's query override exists and reads the case's own table."""
+    """Every renamed case's overrides exist: its query reads the case's own table, and its
+    metadata names that table."""
     for case in found:
-        override = OVERRIDES / f"{case.name}.sql"
         if not case.renamed:
             continue
-        if not override.exists():
-            raise FileNotFoundError(f"{override}: {case.name} reads {case.adapted_table}")
-        if override.read_text().strip() != case.adapted_query:
-            raise ValueError(f"{override}: expected {case.adapted_query!r}")
+        expected = {
+            OVERRIDES / f"{case.name}.sql": case.adapted_query,
+            OVERRIDES / f"{case.name}.toml": metadata_override(case).strip(),
+        }
+        for override, text in expected.items():
+            if not override.exists():
+                raise FileNotFoundError(f"{override}: {case.name} reads {case.adapted_table}")
+            if override.read_text().strip() != text:
+                raise ValueError(f"{override}: expected {text!r}")
 
 
 def _columns(conn, table: str) -> list[tuple[str, str]]:

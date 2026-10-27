@@ -115,8 +115,16 @@ def test_a_renamed_cases_query_is_overridden_to_read_its_table(validation):
 
 
 def test_every_checked_in_override_is_for_a_renamed_timestamp_case():
-    names = sorted(p.stem for p in fixtures.OVERRIDES.glob("*.sql"))
-    assert names == sorted(f"timestamp{p}{tz}" for p in range(10) for tz in ("", "tz"))
+    """Each renamed case has its query, and its metadata naming its table (which the suite reads
+    the case's table schema from); nothing else is overridden."""
+    renamed = sorted(f"timestamp{p}{tz}" for p in range(10) for tz in ("", "tz"))
+    for suffix in ("sql", "toml"):
+        assert sorted(p.stem for p in fixtures.OVERRIDES.glob(f"*.{suffix}")) == renamed
+    assert {p.suffix for p in fixtures.OVERRIDES.iterdir()} == {".sql", ".toml"}
+    assert (fixtures.OVERRIDES / "timestamp3tz.toml").read_text() == (
+        '[setup]\ndrop = "test_timestamp3tz"\n'
+    )
+    names = renamed
     for name in names:
         table = "test_timestamptz" if name.endswith("tz") else "test_timestamp"
         case = fixtures.Case(name, table, "", f"SELECT res FROM {table} ORDER BY idx")
