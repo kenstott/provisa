@@ -190,15 +190,16 @@ async def test_duckdbs_inet_orders_and_contains_as_postgresqls_does(pg):
     assert "10.0.0.9" < "z" and not ("10.0.0.9" < "10.0.0.10")  # the text form's own order
 
 
-def test_trinos_inet_emulation_orders_by_family_network_mask_then_address():
-    """Run on Trino in the engine lane; here, its shape: the key and containment are built from
-    Trino's own address functions, never from the text."""
-    written = transpile(_marked("h.ip <<= '10.0.0.0/8'", " ORDER BY h.ip"), "trino")
-    # Trino 481 has no prefix function: the network is the address's 128 bits, each 64-bit half
-    # masked, from its IPADDRESS's bytes.
-    assert "IP_PREFIX" not in written and "IP_SUBNET_MIN" not in written
-    assert "FROM_BIG_ENDIAN_64(SUBSTR(CAST(CAST(SPLIT_PART(h.ip, '/', 1) AS IPADDRESS)" in written
-    assert "BITWISE_AND(" in written and "BITWISE_LEFT_SHIFT(CAST(-1 AS BIGINT)" in written
+def test_an_inet_operation_on_trino_is_refused_and_its_text_form_reads():
+    """Trino's IPADDRESS holds no mask: no emulation of an inet from Trino's functions answered
+    as PostgreSQL does (the Trino lane), so the operation is refused by name. The column read as
+    a value is its text form, as on every engine."""
+    for where, order in (("h.ip <<= '10.0.0.0/8'", ""), ("TRUE", " ORDER BY h.ip")):
+        with pytest.raises(SubtypeOperationRefused) as refused:
+            transpile(_marked(where, order), "trino")
+        assert refused.value.params["subtype"] == "inet"
+        assert refused.value.params["dialect"] == "trino"
+    assert transpile(_marked("h.id = 1"), "trino").startswith("SELECT h.ip, h.mac FROM")
 
 
 # --- the registered subtype reaches the physical statement --------------------------------------

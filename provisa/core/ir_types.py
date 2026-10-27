@@ -153,13 +153,11 @@ def _shape(name: str, oid: int) -> Subtype:
 
 SUBTYPES: dict[str, Subtype] = {
     # DuckDB's inet extension holds an address with its mask, as PostgreSQL does. Trino's
-    # IPADDRESS holds no mask and its IPPREFIX no host bits, so an inet is emulated there.
-    "inet": Subtype(
-        "text", 869, "address", {"postgres": "INET", "duckdb": "INET"}, frozenset({"trino"})
-    ),
-    "cidr": Subtype(
-        "text", 650, "address", {"postgres": "CIDR", "duckdb": "INET", "trino": "IPPREFIX"}
-    ),
+    # IPADDRESS holds no mask, and no emulation of it from Trino 481's functions answered as
+    # PostgreSQL does, so an inet or cidr operation on Trino is refused by name; its text form
+    # reads as ever.
+    "inet": Subtype("text", 869, "address", {"postgres": "INET", "duckdb": "INET"}),
+    "cidr": Subtype("text", 650, "address", {"postgres": "CIDR", "duckdb": "INET"}),
     "macaddr": Subtype("text", 829, "mac", {"postgres": "MACADDR"}, _EVERY_DIALECT),
     "macaddr8": Subtype("text", 774, "mac", {"postgres": "MACADDR8"}, _EVERY_DIALECT),
     "xml": Subtype("text", 142),

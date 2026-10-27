@@ -10,10 +10,10 @@
 
 """A subtype keeps its native semantics on the Trino engine (REQ-2171, amended 2026-10-27).
 
-Trino's IPADDRESS holds no mask, so an inet is emulated from Trino's own address functions; a
-range from its bounds; a geometry is Trino's own. Each statement is written as Provisa writes it
-for Trino and run there; the expected answers are PostgreSQL's. An operation Trino neither has
-nor emulates is refused before it is sent."""
+A range is emulated from its bounds; a geometry is Trino's own. Each statement is written as
+Provisa writes it for Trino and run there; the expected answers are PostgreSQL's. An operation
+Trino neither has nor emulates -- an inet's, its IPADDRESS holding no mask -- is refused before it
+is sent."""
 
 # Requirements: REQ-2171
 
@@ -37,42 +37,24 @@ def _values(column: str, values: list[str]) -> str:
     return "(VALUES " + ", ".join(f"('{v}')" for v in values) + f") AS h({column})"
 
 
-def test_inet_orders_as_postgresql_orders_it(trino_conn):
-    addresses = ["10.0.0.10", "10.0.0.9", "10.0.0.1/24", "10.0.0.0/32", "::1", "10.1.0.0/16"]
-    addresses.append("10.0.0.0/8")
-    rows = _rows(
-        trino_conn,
+def test_an_inet_reads_as_its_text_and_an_operation_on_it_is_refused_by_name(trino_conn):
+    """Trino's IPADDRESS holds no mask; no emulation from Trino 481's functions answered as
+    PostgreSQL does, so an inet's order or containment is refused before anything is sent, and
+    the column read as a value is its text form."""
+    addresses = ["10.0.0.10", "10.0.0.9", "10.0.0.1/24", "::1"]
+    rows = _rows(trino_conn, f"SELECT h.ip FROM {_values('ip', addresses)}")
+    assert sorted(r[0] for r in rows) == sorted(addresses)
+    for statement in (
         f"SELECT h.ip FROM {_values('ip', addresses)} ORDER BY provisa_subtype(h.ip, 'inet')",
-    )
-    # As text, 10.0.0.10 sorts before 10.0.0.9.
-    assert [r[0] for r in rows] == [
-        "10.0.0.0/8",
-        "10.0.0.1/24",
-        "10.0.0.0/32",
-        "10.0.0.9",
-        "10.0.0.10",
-        "10.1.0.0/16",
-        "::1",
-    ]
-
-
-@pytest.mark.parametrize(
-    ("address", "within_or_equal", "within"),
-    [
-        ("10.1.2.3", True, True),
-        ("10.0.0.0/8", True, False),
-        ("11.0.0.1", False, False),
-        ("::1", False, False),
-    ],
-)
-def test_inet_containment_answers_as_postgresql_does(trino_conn, address, within_or_equal, within):
-    rows = _rows(
-        trino_conn,
-        f"SELECT provisa_subtype(h.ip, 'inet') <<= '10.0.0.0/8',"
-        f" provisa_subtype(h.ip, 'inet') << '10.0.0.0/8' FROM {_values('ip', [address])}",
-    )
-    # The marker is on the operand the operator reads; Provisa's select-list reads are bare.
-    assert tuple(rows[0]) == (within_or_equal, within)
+        f"SELECT h.ip FROM {_values('ip', addresses)}"
+        " WHERE provisa_subtype(h.ip, 'inet') <<= '10.0.0.0/8'",
+    ):
+        with pytest.raises(SubtypeOperationRefused) as refused:
+            transpile(statement, "trino")
+        assert (refused.value.params["subtype"], refused.value.params["dialect"]) == (
+            "inet",
+            "trino",
+        )
 
 
 def test_range_overlap_answers_as_postgresql_does(trino_conn):

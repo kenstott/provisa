@@ -408,178 +408,6 @@ def _emulated_range(node: exp.Expr, subtype: str) -> exp.Expr | None:
     return _contains_element(container, _value(right), subtype)
 
 
-# --- inet on Trino, from its own address functions -----------------------------------------------
-
-
-def _call(name: str, *args: exp.Expr) -> exp.Anonymous:
-    return exp.Anonymous(this=name, expressions=list(args))
-
-
-def _family(text: exp.Expr) -> exp.Expr:
-    """'6' for an IPv6 address, '4' for an IPv4 one."""
-    return exp.Case(
-        ifs=[
-            exp.If(
-                this=exp.GT(
-                    this=_call("STRPOS", text.copy(), exp.Literal.string(":")),
-                    expression=exp.Literal.number(0),
-                ),
-                true=exp.Literal.string("6"),
-            )
-        ],
-        default=exp.Literal.string("4"),
-    )
-
-
-def _host(text: exp.Expr) -> exp.Expr:
-    return exp.Cast(
-        this=_call("SPLIT_PART", text.copy(), exp.Literal.string("/"), exp.Literal.number(1)),
-        to=exp.DataType.build("IPADDRESS", udt=True),
-    )
-
-
-def _masklen(text: exp.Expr) -> exp.Expr:
-    """The mask length an inet is written with, else its family's full length."""
-    full = exp.Case(
-        ifs=[
-            exp.If(
-                this=exp.EQ(this=_family(text), expression=exp.Literal.string("6")),
-                true=exp.Literal.number(128),
-            )
-        ],
-        default=exp.Literal.number(32),
-    )
-    written = exp.Cast(
-        this=exp.Nullif(
-            this=_call("SPLIT_PART", text.copy(), exp.Literal.string("/"), exp.Literal.number(2)),
-            expression=exp.Literal.string(""),
-        ),
-        to=exp.DataType.build("INTEGER"),
-    )
-    return exp.Coalesce(this=written, expressions=[full])
-
-
-def _hex(address: exp.Expr) -> exp.Expr:
-    return _call("TO_HEX", exp.Cast(this=address, to=exp.DataType.build("VARBINARY")))
-
-
-def _half_mask(bits: exp.Expr, low: bool) -> exp.Expr:
-    """The mask of one 64-bit half of a 128-bit address for a ``bits``-long prefix, as a BIGINT."""
-    start = 64 if low else 0
-    all_ones = exp.Cast(this=exp.Literal.number(-1), to=exp.DataType.build("BIGINT"))
-    return exp.Case(
-        ifs=[
-            exp.If(
-                this=exp.GTE(this=bits.copy(), expression=exp.Literal.number(start + 64)),
-                true=all_ones.copy(),
-            ),
-            exp.If(
-                this=exp.LTE(this=bits.copy(), expression=exp.Literal.number(start)),
-                true=exp.Cast(this=exp.Literal.number(0), to=exp.DataType.build("BIGINT")),
-            ),
-        ],
-        default=_call(
-            "BITWISE_LEFT_SHIFT",
-            all_ones,
-            exp.Sub(this=exp.Literal.number(start + 64), expression=bits.copy()),
-        ),
-    )
-
-
-def _network_hex(text: exp.Expr, bits: exp.Expr) -> exp.Expr:
-    """The address of ``text`` with every bit past the first ``bits`` (of 128) cleared, as
-    fixed-width hex: each 64-bit half masked (Trino 481 has no prefix function of its own)."""
-    address = exp.Cast(this=_host(text), to=exp.DataType.build("VARBINARY"))
-
-    def half(low: bool) -> exp.Expr:
-        value = _call(
-            "FROM_BIG_ENDIAN_64",
-            _call(
-                "SUBSTR",
-                address.copy(),
-                exp.Literal.number(9 if low else 1),
-                exp.Literal.number(8),
-            ),
-        )
-        masked = _call("BITWISE_AND", value, _half_mask(bits, low))
-        return _call("TO_HEX", _call("TO_BIG_ENDIAN_64", masked))
-
-    return exp.DPipe(this=half(False), expression=half(True))
-
-
-def _prefix_bits(text: exp.Expr) -> exp.Expr:
-    """``text``'s mask length in the 128 bits Trino holds every address in."""
-    return exp.Add(
-        this=_masklen(text),
-        expression=exp.Case(
-            ifs=[
-                exp.If(
-                    this=exp.EQ(this=_family(text), expression=exp.Literal.string("4")),
-                    true=exp.Literal.number(96),
-                )
-            ],
-            default=exp.Literal.number(0),
-        ),
-    )
-
-
-def _inet_key(text: exp.Expr) -> exp.Expr:
-    """An inet's ordering key, compared as text: family, the network (fixed-width hex), the mask
-    length, then the whole address. PostgreSQL orders two inets by family, then their networks'
-    bits up to the shorter mask, then mask length, then all bits; a shorter mask's network has
-    only zeros past it, so comparing the networks whole then the mask length gives that order."""
-    mask = _call(
-        "LPAD",
-        exp.Cast(this=_masklen(text), to=exp.DataType.build("VARCHAR")),
-        exp.Literal.number(3),
-        exp.Literal.string("0"),
-    )
-    return exp.DPipe(
-        this=exp.DPipe(
-            this=exp.DPipe(this=_family(text), expression=_network_hex(text, _prefix_bits(text))),
-            expression=mask,
-        ),
-        expression=_hex(_host(text)),
-    )
-
-
-def _within(inner: exp.Expr, outer: exp.Expr, strict: bool) -> exp.Expr:
-    """``inner <<= outer`` (``<<`` when ``strict``): of one family, the inner mask no shorter
-    (longer, when ``strict``), and the inner address within the outer network -- equal to it
-    under the outer mask."""
-    longer = (exp.GT if strict else exp.GTE)(this=_masklen(inner), expression=_masklen(outer))
-    bits = _prefix_bits(outer)
-    held = exp.EQ(this=_network_hex(inner, bits), expression=_network_hex(outer, bits.copy()))
-    return _and(exp.EQ(this=_family(inner), expression=_family(outer)), longer, held)
-
-
-def _emulated_trino_address(node: exp.Expr) -> exp.Expr | None:
-    if isinstance(node, (exp.Ordered, exp.Between, exp.In, *COMPARISONS)):
-        _each_operand(node, _inet_key)
-        return node
-    if not isinstance(
-        node,
-        (
-            exp.BitwiseLeftShift,
-            exp.BitwiseRightShift,
-            ContainedByOrEqual,
-            ContainsOrEqual,
-            exp.ArrayOverlaps,
-        ),
-    ):
-        return None
-    a, b = _value(node.this), _value(node.expression)
-    if isinstance(node, exp.BitwiseLeftShift):
-        return _within(a, b, strict=True)
-    if isinstance(node, ContainedByOrEqual):
-        return _within(a, b, strict=False)
-    if isinstance(node, exp.BitwiseRightShift):
-        return _within(b, a, strict=True)
-    if isinstance(node, ContainsOrEqual):
-        return _within(b, a, strict=False)
-    return _or(_within(a, b, strict=False), _within(b, a, strict=False))
-
-
 # --- address operators on DuckDB, which has <<= and >>= of its own ------------------------------
 
 
@@ -641,10 +469,8 @@ def _native(node: exp.Expr, subtype: str, dialect: str, form: str) -> exp.Expr |
     return None
 
 
-def _emulated(node: exp.Expr, subtype: str, dialect: str) -> exp.Expr | None:
+def _emulated(node: exp.Expr, subtype: str) -> exp.Expr | None:
     semantics = SUBTYPES[subtype].semantics
-    if semantics == "address" and dialect == "trino":
-        return _emulated_trino_address(node)
     if semantics == "mac" and isinstance(node, (exp.Ordered, exp.Between, exp.In, *COMPARISONS)):
         _each_operand(node, _mac_key)
         return node
@@ -661,7 +487,7 @@ def _resolve_one(node: exp.Expr, subtype: str, dialect: str) -> exp.Expr:
         if written is not None:
             return written
     elif "*" in sub.emulated or dialect in sub.emulated:
-        written = _emulated(node, subtype, dialect)
+        written = _emulated(node, subtype)
         if written is not None:
             return written
     raise SubtypeOperationRefused(subtype, _operation(node), dialect)
