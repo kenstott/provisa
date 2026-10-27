@@ -89775,28 +89775,30 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: cypher-and-graph-analytics-writes
   priority: SHOULD
   type: behavioral
-  description: 'Every query language may create EPHEMERAL objects, the way SQL creates a session temp table;
-    the model''s own objects are still never created through a query surface (REQ-661, REQ-665, REQ-2167).
-    In Cypher, a CREATE naming a label or relationship type the model does not have creates it in the session
-    only: a session temp table per new label and a session junction table per new type, so nodes with several
-    new labels and relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local
-    named graph does the same. Ephemeral objects follow the temp-table rules: visible to their own session
-    alone, never in the catalog, the ontology, exports or another session; dropped when the session ends;
-    capped by the session''s memory and size limits. They may be read beside model data, which is still
-    read under the role''s grants, masks and row rules, so nothing governed leaves its governance through
-    them. Writes to model objects keep their own rules (REQ-661, REQ-665). A session is the transport''s
-    own (pgwire, Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one
-    request unless the caller opens a session. An engine with no session temp storage keeps them in the
-    session''s own store. Conformance suites whose tests build their own graph run against it as written
-    (REQ-2167). (Amended 2026-10-27, EPHEMERAL GRAPH OBJECTS ARE JSON BAGS:) [SUPERSEDED by REQ-2176, 2026-10-27
-    -- ephemeral labels and types are typed session tables grown by ALTER TABLE with inferred types (EPHEMERAL
-    TABLES GROW BY ALTER, below). Kept here for history; do not implement against it.] Maintainer 2026-10-27:
-    ephemeral graph objects take a fixed shape instead of a table per label or type, [END SUPERSEDED BLOCK]
-    since a CREATE carries no schema and a label''s properties vary node to node. A session holds one node
-    table (id, labels as a list, props as one JSON value) and one relationship table (id, type, from_id,
-    to_id, props as one JSON value). A label the model registers resolves to its table; any other label
-    resolves to the session node table filtered on its labels. A property of an ephemeral node or relationship
-    is read by JSON extraction, keeping the value''s JSON type, and the translator casts where it is compared
+  description: '[SUPERSEDED by REQ-2176, 2026-10-27 -- the consolidated design below replaces every earlier
+    text of this requirement. Kept here for history; do not implement against it.] Every query language
+    may create EPHEMERAL objects, the way SQL creates a session temp table; the model''s own objects are
+    still never created through a query surface (REQ-661, REQ-665, REQ-2167). In Cypher, a CREATE naming
+    a label or relationship type the model does not have creates it in the session only: a session temp
+    table per new label and a session junction table per new type, so nodes with several new labels and
+    relationships between ephemeral nodes work. In SPARQL, INSERT DATA into a session-local named graph
+    does the same. Ephemeral objects follow the temp-table rules: visible to their own session alone, never
+    in the catalog, the ontology, exports or another session; dropped when the session ends; capped by the
+    session''s memory and size limits. They may be read beside model data, which is still read under the
+    role''s grants, masks and row rules, so nothing governed leaves its governance through them. Writes
+    to model objects keep their own rules (REQ-661, REQ-665). A session is the transport''s own (pgwire,
+    Bolt); on a stateless transport (HTTP Cypher, SPARQL) ephemeral objects live for the one request unless
+    the caller opens a session. An engine with no session temp storage keeps them in the session''s own
+    store. Conformance suites whose tests build their own graph run against it as written (REQ-2167). (Amended
+    2026-10-27, EPHEMERAL GRAPH OBJECTS ARE JSON BAGS:) [SUPERSEDED by REQ-2176, 2026-10-27 -- ephemeral
+    labels and types are typed session tables grown by ALTER TABLE with inferred types (EPHEMERAL TABLES
+    GROW BY ALTER, below). Kept here for history; do not implement against it.] Maintainer 2026-10-27: ephemeral
+    graph objects take a fixed shape instead of a table per label or type, [END SUPERSEDED BLOCK] since
+    a CREATE carries no schema and a label''s properties vary node to node. A session holds one node table
+    (id, labels as a list, props as one JSON value) and one relationship table (id, type, from_id, to_id,
+    props as one JSON value). A label the model registers resolves to its table; any other label resolves
+    to the session node table filtered on its labels. A property of an ephemeral node or relationship is
+    read by JSON extraction, keeping the value''s JSON type, and the translator casts where it is compared
     or joined with a typed model column. SPARQL''s session-local graph uses the same convention (or one
     (s, p, o) table). This supersedes the per-label and per-type session tables in this requirement''s first
     text. (Amended 2026-10-27, EPHEMERAL TABLES GROW BY ALTER:) Maintainer 2026-10-27, replacing the JSON-bag
@@ -89899,7 +89901,46 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     governed write and is ephemeral: one carrying a free label (a tag cannot be part of a governed write),
     one naming two or more model tables, and one naming a bare model table name that resolves to tables
     in two or more reachable domains. Such a node reads beside the real rows of every model table whose
-    label it carries. Domain labels in a CREATE stay refused (domains are sealed).'
+    label it carries. Domain labels in a CREATE stay refused (domains are sealed). [END SUPERSEDED BLOCK]
+    (Amended 2026-10-27, CONSOLIDATED DESIGN:) Maintainer 2026-10-27. This statement supersedes every earlier
+    text of this requirement. GOVERNING RULE: a governed model write needs an exact, unambiguous target,
+    one model table (and, for a relationship, one registered junction, REQ-665) and nothing else; anything
+    else is ephemeral. ARCHITECTURE: ephemeral objects extend the language without disturbing the governed
+    path. The existing compiler is unchanged for governed data: a statement with no ephemeral involvement
+    (every statement in a session holding no ephemeral object, and every label without session matches)
+    compiles to exactly today''s SQL, plan, route and governance. Ephemeral handling is a separate layer,
+    entered only when the session holds ephemeral objects or the statement creates them: an ephemeral-write
+    handler for CREATE, MERGE, SET and REMOVE that fall outside the governed-write rule, and a read overlay
+    that, for a label with session matches only, unions the session''s part beside the governed compiler''s
+    own answer. STORAGE: the session temp-table machinery (per-session schema, caps, keeper, dropped at
+    session end). nodes(node_id, table) names each ephemeral node''s anchor table; node_labels(node_id,
+    label), indexed on (label, node_id), holds every label an ephemeral node or a session-tagged model node
+    carries; rels(rel_id, type, from_id, to_id, table) holds ephemeral relationships, either end ephemeral
+    or model. Anchor tables are typed, grow a column for each new property (re-landing), infer types from
+    values and only widen (bigint to double; anything incompatible to JSON; on Trino, durations, zoned times
+    and lists land as JSON text and the answer says so). Model tables never widen. WRITES: a CREATE naming
+    exactly one model table and no free label is a governed model write (REQ-661). Any other CREATE makes
+    an ephemeral node carrying every label given: its anchor is the first label naming an existing ephemeral
+    table (only ephemeral tables anchor), else the first free label creates it, else the default session
+    table. A domain label in a CREATE is refused (domains are sealed). SET n:L and REMOVE n:L write node_labels
+    rows on ephemeral or model nodes; a node never moves table. SET of a property is a governed write on
+    a model node (declared columns only) and widens the anchor on an ephemeral one. MERGE is MATCH, then
+    CREATE under these same rules. DETACH DELETE of a model node is governed only when every part has an
+    exact target (its row, and each relationship it detaches a registered junction row); a foreign-key relationship
+    cannot be detached and is refused by name; its session tags and relationships go with it. READS: a label
+    with session matches resolves through node_labels: matching node_ids are found, deduplicated, grouped
+    by table and unioned by column name into one sparse result (a missing column reads NULL; conflicting
+    types widen); a model label adds its model table''s rows, read under the role''s governance; :A:B is
+    a node carrying both, :A|B either, :!A not A; labels(n) is a model node''s {Domain}:{Table} plus its
+    session tags, or an ephemeral node''s labels. A relationship type reads the model''s and the session''s
+    relationships alike. Domain and model names resolve first; a label in neither, with no CREATE, is refused
+    by name. SESSIONS AND LANGUAGES: the session is the transport''s own (Bolt and pgwire per connection;
+    HTTP Cypher and SPARQL per request). One session store serves every language: a pgwire temp table is
+    an ephemeral table to Cypher, a Cypher scratch node a temp table to SQL, and SPARQL INSERT DATA writes
+    the same tables (a triple about a model subject is a session property, relationship or rdf:type tag
+    on that node, never a model write). Ephemeral objects are visible to their own session alone, never
+    in the catalog, the ontology, exports or another session. Conformance suites that build their own graph
+    run against it (REQ-2167).'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
