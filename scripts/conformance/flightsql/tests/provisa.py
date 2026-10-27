@@ -12,7 +12,8 @@
 SQL driver against Provisa's Flight SQL endpoint, the features Provisa claims, and how the suite
 reaches it. A feature claimed here and not delivered fails the suite's tests for it; one not
 claimed is skipped by the suite. Creating tables is not claimed: a Provisa schema is its model,
-so the suite's queries that build their fixture with DDL are skipped, not run."""
+so the tables the suite's cases would create are declared in the job's fixture model instead
+(``fixtures.py``), and the suite reads them there."""
 
 # Requirements: REQ-2167
 
@@ -27,7 +28,8 @@ from adbc_drivers_validation import model
 class ProvisaQuirks(model.DriverQuirks):
     name = "provisa"
     driver = "adbc_driver_flightsql"
-    driver_name = "ADBC Flight SQL Driver"
+    # The name adbc-driver-flightsql 1.12 reports (the suite expects the unsuffixed one).
+    driver_name = "ADBC Flight SQL Driver - Go"
     vendor_name = "Provisa"
     vendor_version = re.compile(r".*")
     short_version = "flightsql"
@@ -59,6 +61,10 @@ class ProvisaQuirks(model.DriverQuirks):
 
     def bind_parameter(self, index: int) -> str:
         return f"${index}"
+
+    def try_drop_table(self, cursor, **_table) -> None:  # noqa: ARG002  # the suite's signature
+        """Nothing to drop: the fixture model holds every table the suite reads, and a query
+        surface creates or drops none (adapted, by_design/flight-sql.yaml)."""
 
     def is_table_not_found(self, table_name: str, error: Exception) -> bool:
         text = str(error).lower()

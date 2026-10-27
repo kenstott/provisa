@@ -1,0 +1,45 @@
+# The ADBC driver validation suite against Provisa's Flight SQL endpoint (REQ-2167, amended
+# 2026-10-27). scripts/conformance/by_design.py. A case whose setup creates its table is adapted,
+# not excluded: the table is declared in the job's fixture model (flightsql/fixtures.py) and the
+# case runs and counts, marked on the page with what its setup became. A case the client driver
+# refuses before any request reaches Provisa is left out of the pass rate, in its own group.
+
+- kind: adapted
+  group: Type cases' tables
+  became: >-
+    Its setup_query runs in the job's PostgreSQL (schema conformance) before the instance starts,
+    and the table it creates is declared in the fixture model's conformance domain, where the
+    case's own query reads it. binary's setup is written in PostgreSQL's spelling (BYTEA for BLOB,
+    '\x..'::bytea for X'..').
+  case: "TestQuery::test_(query|execute_schema|get_table_schema)\\[provisa:flightsql:type/select/(?!timestamp)"
+
+- kind: adapted
+  group: Timestamp cases' tables
+  became: >-
+    The ten precisions of timestamp and of timestamptz each create test_timestamp or
+    test_timestamptz with different contents, so each case's table is named for the case
+    (test_timestamp3tz, ...), declared in the fixture model and seeded by its setup; the case's
+    query reads it (flightsql/queries/type/select/<case>.sql, checked against the suite's).
+  case: "TestQuery::test_(query|execute_schema|get_table_schema)\\[provisa:flightsql:type/select/timestamp"
+
+- kind: adapted
+  group: get_objects table
+  became: >-
+    The table the suite would ingest (ints INTEGER, strs TEXT; rows (1, NULL), (NULL, 'foo'),
+    (42, 'spam')) is getobjects_fixture, declared in the fixture model; dropping a table is a
+    no-op, as the model holds every table.
+  case: "TestConnection::test_get_objects_(table|column)_"
+
+- kind: client
+  group: Bind before Prepare
+  client: adbc-driver-flightsql 1.12.0 (the Go driver)
+  refusal: >-
+    "[Flight SQL Statement] must set IngestTargetTable before bulk ingestion" (INVALID_STATE)
+  evidence: >-
+    The suite binds parameters to a statement it has not prepared. The driver refuses Bind
+    without Prepare in the client: against a probe Flight SQL server that records every call,
+    the same Bind sends no RPC.
+  workaround: >-
+    Prepare the statement before binding (the DB-API cursor's execute does), as
+    tests/unit/test_flightsql_prepared.py does against Provisa.
+  reason: "must set IngestTargetTable before"
