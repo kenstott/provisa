@@ -38,9 +38,11 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   useTables: () => ({ tables: [], loading: false }),
 }));
 const framesSeen: FrameData[] = [];
+const languagesSeen: (string | undefined)[] = [];
 vi.mock("../components/graph/GraphFrame", () => ({
-  GraphFrame: ({ frame }: { frame: FrameData }) => {
+  GraphFrame: ({ frame, language }: { frame: FrameData; language?: string }) => {
     framesSeen.push(frame);
+    languagesSeen.push(language);
     return null;
   },
 }));
@@ -125,6 +127,7 @@ describe("the SPARQL tab", () => {
   beforeEach(() => {
     localStorage.clear();
     framesSeen.length = 0;
+    languagesSeen.length = 0;
     sent.length = 0;
     vi.stubGlobal(
       "fetch",
@@ -186,6 +189,8 @@ describe("the SPARQL tab", () => {
     // The order typed by its class, its amount a literal drawn apart.
     expect(labels).toEqual([LITERAL_LABEL, "sales", "sales:orders"]);
     expect(frame.edges.size).toBe(2);
+    // Each frame is drawn as a SPARQL query's frame.
+    expect(new Set(languagesSeen)).toEqual(new Set(["sparql"]));
     // Kept apart from Cypher's: the SPARQL history holds the query, Cypher's does not.
     expect(localStorage.getItem("test-cp:test-org:provisa.sparql.state")).toContain("CONSTRUCT");
     expect(localStorage.getItem("test-cp:test-org:provisa.graph.state")).toBeNull();

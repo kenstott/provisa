@@ -1092,6 +1092,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 graphRelationships={sparql ? [] : graphRels}
                 schemaRels={sparql ? [] : schemaRels}
                 autoImpute={autoImpute}
+                language={language}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
                 onEffectiveDataChange={onEffectiveDataChange}
