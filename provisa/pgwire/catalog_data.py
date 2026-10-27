@@ -21,6 +21,7 @@ from __future__ import annotations
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_tables import (
     CLIENT_RELATIONS,
+    OBJECT_TYPE_RELATIONS,
     STATISTICS_RELATIONS,
     served_table,
 )
@@ -534,7 +535,12 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
 }
 
 # REQ-2167: the PostgreSQL 17-shaped relations clients browse with (catalog_pg17_tables).
-_TABLE_MAP.update({key: served_table(*key) for key in (*CLIENT_RELATIONS, *STATISTICS_RELATIONS)})
+_TABLE_MAP.update(
+    {
+        key: served_table(*key)
+        for key in (*CLIENT_RELATIONS, *STATISTICS_RELATIONS, *OBJECT_TYPE_RELATIONS)
+    }
+)
 
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 

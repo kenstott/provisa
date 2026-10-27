@@ -323,3 +323,62 @@ def test_pgadmins_statistics_queries_run():
         "WHERE schemaname = 'public' ORDER BY st.relname;"
     )
     assert answer(tables, "testrole", _state()).rows == []
+
+
+def test_every_object_type_relation_has_postgresqls_columns():
+    from provisa.pgwire.catalog_pg17 import RELATIONS
+    from provisa.pgwire.catalog_pg17_tables import OBJECT_TYPE_RELATIONS
+
+    for schema, relation in OBJECT_TYPE_RELATIONS:
+        served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
+        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+
+
+def test_psqls_text_search_and_large_object_lists_are_empty():
+    # Provisa runs no text search configuration and holds no large object: psql's \dFp and \dl
+    # (describe.c) list none.
+    parsers = (
+        'SELECT\n  n.nspname as "Schema",\n  p.prsname as "Name",\n'
+        "  pg_catalog.obj_description(p.oid, 'pg_ts_parser') as \"Description\"\n"
+        "FROM pg_catalog.pg_ts_parser p\n"
+        "LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.prsnamespace\n"
+        "WHERE pg_catalog.pg_ts_parser_is_visible(p.oid)\nORDER BY 1, 2;"
+    )
+    large_objects = (
+        'SELECT oid as "ID",\n  pg_catalog.pg_get_userbyid(lomowner) as "Owner",\n  '
+        "pg_catalog.obj_description(oid, 'pg_largeobject') as \"Description\"\n"
+        "FROM pg_catalog.pg_largeobject_metadata\nORDER BY oid"
+    )
+    assert answer(parsers, "testrole", _state()).rows == []
+    assert answer(large_objects, "testrole", _state()).rows == []
+
+
+def test_the_available_extensions_are_the_installed_ones(monkeypatch):
+    from provisa.pgwire import catalog_populate
+
+    monkeypatch.setattr(
+        catalog_populate,
+        "extension_rows",
+        lambda: [(90000, "vector", 10, 11, False, "0.8.0", None, None)],
+    )
+    # DBeaver PostgreDatabase.java and pgAdmin extensions/sql/extensions.sql.
+    dbeaver = (
+        "SELECT name,default_version,installed_version,comment "
+        "FROM pg_catalog.pg_available_extensions ORDER BY name"
+    )
+    pgadmin = (
+        "SELECT\n    a.name, a.installed_version,\n"
+        "    pg_catalog.array_agg(av.version) as version,\n"
+        "    pg_catalog.array_agg(av.schema) as schema,\n"
+        "    pg_catalog.array_agg(av.superuser) as superuser,\n"
+        "    pg_catalog.array_agg(av.relocatable) as relocatable\nFROM\n"
+        "    pg_catalog.pg_available_extensions a\n"
+        "    LEFT JOIN pg_catalog.pg_available_extension_versions av ON (a.name = av.name)\n"
+        "GROUP BY a.name, a.installed_version\nORDER BY a.name"
+    )
+    assert [tuple(r) for r in answer(dbeaver, "testrole", _state()).rows] == [
+        ("vector", "0.8.0", "0.8.0", None)
+    ]
+    assert [tuple(r) for r in answer(pgadmin, "testrole", _state()).rows] == [
+        ("vector", "0.8.0", ["0.8.0"], ["pg_catalog"], [False], [False])
+    ]
