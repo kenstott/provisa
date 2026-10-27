@@ -108,9 +108,8 @@ class TestTypeMapping:
     def test_date(self):
         assert _physical_to_proto("date") == "string"
 
-    def test_unmapped_raises(self):
-        with pytest.raises(ValueError, match="Unmapped column type"):
-            _physical_to_proto("hyperloglog")
+    def test_a_type_naming_no_ir_type_is_a_string(self):
+        assert _physical_to_proto("hyperloglog") == "string"  # REQ-2171: text
 
     @pytest.mark.parametrize(
         "native",

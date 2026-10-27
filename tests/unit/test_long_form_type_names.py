@@ -53,8 +53,7 @@ def test_every_engine_type_map_names_the_spelling(spelling):
         assert mapped is graphql
 
 
-def test_a_type_no_map_or_the_vocabulary_names_is_still_refused_by_name():
-    with pytest.raises(ValueError, match="Unmapped the engine type: 'character wobbly'"):
-        column_type_to_graphql("character wobbly")
-    with pytest.raises(ValueError, match="Unmapped column type for proto: 'character wobbly'"):
-        _physical_to_proto("character wobbly")
+def test_a_type_no_map_or_the_vocabulary_names_is_text():
+    # REQ-2171: every type maps onto the IR; one naming none of it is text.
+    assert column_type_to_graphql("character wobbly") == column_type_to_graphql("text")
+    assert _physical_to_proto("character wobbly") == _physical_to_proto("text")

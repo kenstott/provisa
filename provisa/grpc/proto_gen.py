@@ -96,10 +96,7 @@ def _physical_to_proto(column_type: str) -> str:
     # catalog's map does (core.catalog_types).
     from provisa.core.ir_types import to_ir
 
-    try:
-        canonical = to_ir(normalized)
-    except ValueError:
-        canonical = None  # not in the vocabulary either: refused by name below
+    canonical = to_ir(normalized)
     if canonical in _PROTO_TYPE_MAP:
         return _PROTO_TYPE_MAP[canonical]
     raise ValueError(f"Unmapped column type for proto: {column_type!r}")

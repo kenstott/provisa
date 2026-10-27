@@ -225,9 +225,8 @@ def _flatten_mapping(properties: dict, prefix: str, columns: list[dict]) -> None
         if "type" not in field_def:
             raise ValueError(f"ES field {full_path!r} has neither 'type' nor 'properties'")
         es_type = field_def["type"]
-        if es_type not in ES_TYPE_TO_IR:
-            raise ValueError(f"unmapped ES type: {es_type}")
-        column_type = ES_TYPE_TO_IR[es_type]
+        # REQ-2171: a field type naming none of the IR's is text, in the source's text form.
+        column_type = ES_TYPE_TO_IR.get(es_type, "text")
         columns.append(
             {
                 "name": full_path.replace(".", "_"),

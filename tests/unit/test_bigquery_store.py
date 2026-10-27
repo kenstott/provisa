@@ -48,11 +48,10 @@ def _targets() -> dict[str, KeyTarget]:
     }
 
 
-def test_bq_type_maps_ir_and_raises_on_unknown():
+def test_bq_type_maps_ir_and_a_type_naming_none_as_text():
     assert bq_type("bigint") == "INT64"
     assert bq_type("timestamptz") == "TIMESTAMP"
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        bq_type("geography")
+    assert bq_type("hierarchyid") == bq_type("text")  # REQ-2171
 
 
 def test_create_ddl_declares_the_key_not_enforced():

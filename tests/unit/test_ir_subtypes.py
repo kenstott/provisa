@@ -532,3 +532,24 @@ async def test_a_suggested_column_of_a_subtype_is_offered_as_its_base_carrying_t
         ("ip", "text", "inet"),
         ("n", "integer", None),
     ]
+
+
+# --- a source type that fits no IR type is text --------------------------------------------------
+
+
+def test_a_source_field_of_a_type_naming_none_of_the_irs_registers_as_text():
+    from provisa.cassandra.source import discover_schema as cql_columns
+    from provisa.elasticsearch.source import discover_schema as es_columns
+
+    assert es_columns({"f": {"type": "some_future_type"}})[0]["type"] == "text"
+    assert (
+        cql_columns(
+            {
+                "columns": [{"name": "c", "type": "vector"}],
+                "partition_keys": [],
+                "clustering_keys": [],
+            }
+        )[0]["type"]
+        == "text"
+    )
+    assert _pg_column_typing("postgresql", "hstore", "hstore", "hstore", "b").data_type == "text"

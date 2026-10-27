@@ -558,9 +558,15 @@ def to_ir(native_type: str, platform: str | None = None) -> str:
     ``platform`` (a dialect name — trino, sqlserver, duckdb, postgresql, mysql, …) selects a
     per-platform translator whose spellings take precedence; without it, only the generic aliases
     apply. Strips a length/precision qualifier (``varchar(255)`` → ``varchar``) and lowercases.
-    Raises on an unknown type — never a silent ``varchar`` default: a landed column's type must be
-    known at design time, and an unmapped type is a vocabulary gap to close, not to paper over.
-    A native array, struct or map, in any spelling, is ``json`` (REQ-1965)."""
+    A native array, struct or map, in any spelling, is ``json`` (REQ-1965). REQ-2171: every type
+    maps onto the vocabulary; one that names no type of it is ``text``, its values held in the
+    source's own text form."""
+    named = _named_ir(native_type, platform)
+    return named if named is not None else "text"
+
+
+def _named_ir(native_type: str, platform: str | None) -> str | None:
+    """The IR type ``native_type`` names, or None when it names none of the vocabulary."""
     if parse_native_type(native_type).nested:
         return "json"
     subtype = subtype_of(native_type, platform)
@@ -572,13 +578,10 @@ def to_ir(native_type: str, platform: str | None = None) -> str:
         canon = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}).get(base)
     if canon is None:
         canon = _ALIASES.get(base, base)
-    if canon not in _IR_TO_SA:
-        raise ValueError(
-            f"unknown SQL type {native_type!r}"
-            f"{f' for platform {platform!r}' if platform else ''}: not in the IR vocabulary "
-            f"{sorted(IR_TYPES)} (add it to ir_types if a source legitimately produces it)"
-        )
-    return canon
+    if canon in _IR_TO_SA:
+        return canon
+    # A platform alias may name a sized type (Cassandra's varint is numeric(38,0)).
+    return type_name(canon) if type_name(canon) in _IR_TO_SA else None
 
 
 # The source kinds whose array type records no dimensions (PostgreSQL: "declaring the array size
@@ -665,6 +668,8 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
 
         if spelling.split("(", 1)[0].strip() in DECIMAL_NAMES:
             return ColumnTyping(spelling)
+        if not is_ir_type(spelling, platform):
+            return ColumnTyping("text")  # REQ-2171: a type naming none of the IR's is text
         return ColumnTyping(own.get(spelling) or own.get(type_name(spelling)) or spelling)
     read_from = platform.split("+", 1)[0] if platform else None
     typed = _array_of_a_primitive(shape, platform)
@@ -689,12 +694,9 @@ def composite_typing(native_type: str, platform: str) -> ColumnTyping:
 
 
 def is_ir_type(name: str, platform: str | None = None) -> bool:
-    """Whether ``name`` is a resolvable IR type (canonical, a generic alias, or platform-specific)."""
-    try:
-        to_ir(name, platform)
-        return True
-    except ValueError:
-        return False
+    """Whether ``name`` names a type of the IR vocabulary (canonical, a generic alias, a
+    platform's own spelling or a subtype), rather than being text because it names none."""
+    return _named_ir(name, platform) is not None
 
 
 def indexed_string_length() -> int:

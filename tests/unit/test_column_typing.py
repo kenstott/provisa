@@ -89,7 +89,6 @@ _NOT_NESTED = [
     ("timestamp(3)", "trino"),
     ("varchar(20)", "mysql"),
     ("character varying", "postgresql"),
-    ("Nullable(String)", "clickhouse"),
     ("geography", "snowflake"),
 ]
 
@@ -125,6 +124,11 @@ def test_a_column_that_is_not_natively_nested_carries_none_of_the_three(native, 
     assert typing.data_type == native.strip().lower()
 
 
+def test_a_spelling_naming_no_ir_type_is_text_and_carries_none_of_the_three():
+    # REQ-2171: a spelling no reader knows (ClickHouse's Nullable wrapper) registers as text.
+    assert column_typing("Nullable(String)", "clickhouse") == ColumnTyping("text")
+
+
 @pytest.mark.parametrize("platform", ["postgresql", "greenplum", "yugabytedb", "cockroachdb"])
 def test_a_postgres_family_array_has_depth_one_however_it_is_spelled(platform):
     """PostgreSQL's array type records no dimensions; a declared ``integer[][]`` is an
@@ -157,7 +161,8 @@ def test_a_spelling_only_its_platform_has_registers_as_its_ir_name():
 
     assert column_typing("LONG", "databricks").data_type == "bigint"
     assert column_typing("decimal(10,2)", "databricks").data_type == "decimal(10,2)"
-    assert column_typing("long").data_type == "long"
+    # Without the platform it names no IR type: text (REQ-2171).
+    assert column_typing("long").data_type == "text"
 
 
 def test_oracle_number_is_a_numeric_sized_or_not():

@@ -180,9 +180,9 @@ def test_a_selected_tables_columns_are_its_own_then_its_partition_keys(client):
     }
 
 
-def test_a_column_type_with_no_ir_type_is_refused_by_name():
-    with pytest.raises(ValueError, match="unknown SQL type 'hyperloglog' for platform 'athena'"):
-        athena.ir_type("hyperloglog")
+def test_a_column_type_with_no_ir_type_is_text():
+    # REQ-2171: registration never fails on a source type; one naming none of the IR's is text.
+    assert athena.ir_type("hyperloglog") == "text"
 
 
 def test_the_credential_is_the_sources_and_half_a_pair_is_refused():

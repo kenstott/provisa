@@ -58,11 +58,8 @@ def _accepts_for(dtype: str) -> tuple[type, ...] | None:
     """Accepted Python types for a declared column type, or None when the type is unconstrained.
 
     The declared type is normalized to canonical IR (``to_ir``) so native/alias spellings resolve;
-    ``json`` and any type outside the IR vocabulary are treated as accept-any (presence-only)."""
-    try:
-        ir = to_ir(dtype)
-    except ValueError:
-        return None  # not an IR type — opaque, accept any value (still presence-checked)
+    ``json`` is accept-any (presence-only)."""
+    ir = to_ir(dtype)
     if ir in _ANY_TYPES:
         return None
     return _TYPE_ACCEPTS.get(ir)

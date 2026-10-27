@@ -92,10 +92,7 @@ def _is_numeric(text: str) -> bool:
     base = text.partition("(")[0].strip()
     if base in ("numeric", "decimal"):
         return True
-    try:
-        return to_ir(text) == "numeric"
-    except ValueError:
-        return False
+    return to_ir(text) == "numeric"
 
 
 def _physical_type_to_arrow(column_type: str) -> pa.DataType:
@@ -119,10 +116,7 @@ def _physical_type_to_arrow(column_type: str) -> pa.DataType:
         return _ARROW_TYPE_MAP[base]
     # Any other spelling an engine or a source reports (``character varying``, ``int4``,
     # ``timestamp without time zone``): the product's one type vocabulary names it.
-    try:
-        canonical = to_ir(text)
-    except ValueError:
-        canonical = None
+    canonical = to_ir(text)
     if canonical in _IR_ARROW:
         return _IR_ARROW[canonical]
     raise KeyError(f"Unmapped engine type: {column_type!r}")
@@ -157,7 +151,4 @@ def is_json_type(registered: str | None) -> bool:
     text = registered.strip().lower()
     if _is_nested(text):
         return True
-    try:
-        return to_ir(text) == "json"
-    except ValueError:
-        return False
+    return to_ir(text) == "json"
