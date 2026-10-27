@@ -59,7 +59,7 @@ from provisa.gql.expr_ast import (
     Unary,
     Variable,
 )
-from provisa.gql import temporal
+from provisa.gql import spatial, temporal
 from provisa.gql.translator_helpers import _and_all
 from provisa.gql.translator_types import CypherTranslateError
 
@@ -318,6 +318,8 @@ class ExprLowering:
                     return self.lower(value)
             return exp.Null()
         held = self._ctx.temporal_kind(node.obj)
+        if held == spatial.POINT:
+            return spatial.point_property(self.lower(node.obj), node.name)
         if held == temporal.DURATION:
             return temporal.duration_property(self.lower(node.obj), node.name)
         if held is not None:  # REQ-2173: a date's, a time's or a date time's own parts
@@ -536,6 +538,8 @@ class ExprLowering:
                 # A string's size is its character count: counted as text on every engine, never
                 # as a list (PostgreSQL refuses CARDINALITY of text).
                 return exp.Length(this=self.lower(given))
+        if node.name.lower() == spatial.POINT:
+            return spatial.constructed(node.args, self.lower)
         if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()

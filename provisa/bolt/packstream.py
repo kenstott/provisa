@@ -44,6 +44,13 @@ TAG_DATE = 0x44
 TAG_DATETIME_TZ = 0x49
 TAG_LOCAL_DATETIME = 0x64
 TAG_DURATION = 0x45
+TAG_TIME = 0x54
+TAG_LOCAL_TIME = 0x74
+TAG_DATETIME_ZONE_ID = 0x69
+TAG_LEGACY_DATETIME = 0x46
+TAG_LEGACY_DATETIME_ZONE_ID = 0x66
+TAG_POINT_2D = 0x58
+TAG_POINT_3D = 0x59
 
 
 # ── Struct builders (produce msgpack Ext objects) ──────────────────────────────
@@ -90,27 +97,101 @@ def _unbound_rel_ext(element_id: int, rel_type: str, props: dict) -> bytes:
     return header + inner
 
 
-def _date_bytes(d: datetime.date) -> bytes:
-    epoch = datetime.date(1970, 1, 1)
-    days = (d - epoch).days
-    header = bytes([0xB1, TAG_DATE])
-    return header + _pack_value(days)
+def _struct(tag: int, *fields: Any) -> bytes:
+    return bytes([0xB0 | len(fields), tag]) + b"".join(_pack_value(f) for f in fields)
 
 
-def _datetime_bytes(dt: datetime.datetime) -> bytes:
-    import calendar
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 
-    if dt.tzinfo is not None:
-        ts = int(calendar.timegm(dt.utctimetuple()))
-        nanos = dt.microsecond * 1000
-        tz_offset = int(dt.utcoffset().total_seconds()) if dt.utcoffset() else 0  # type: ignore[union-attr]
-        header = bytes([0xB3, TAG_DATETIME_TZ])
-        return header + _pack_value(ts) + _pack_value(nanos) + _pack_value(tz_offset)
-    else:
-        ts = int(dt.replace(tzinfo=datetime.timezone.utc).timestamp())
-        nanos = dt.microsecond * 1000
-        header = bytes([0xB2, TAG_LOCAL_DATETIME])
-        return header + _pack_value(ts) + _pack_value(nanos)
+
+def _nanos_of_day(t: datetime.time) -> int:
+    return ((t.hour * 60 + t.minute) * 60 + t.second) * 1_000_000_000 + t.microsecond * 1000
+
+
+def _temporal_bytes(value: Any) -> bytes | None:
+    """A temporal or spatial value as its Bolt 5 structure (REQ-2173): Date, Time, LocalTime,
+    DateTime (an offset), DateTimeZoneId (a zone name), LocalDateTime, Duration, Point2D/3D."""
+    from zoneinfo import ZoneInfo
+
+    from provisa.gql.spatial import Point
+    from provisa.gql.temporal import Duration
+
+    if isinstance(value, Duration):
+        seconds, micros = divmod(value.micros, 1_000_000)
+        return _struct(TAG_DURATION, value.months, value.days, seconds, micros * 1000)
+    if isinstance(value, Point):
+        return _struct(
+            TAG_POINT_2D if len(value.coordinates) == 2 else TAG_POINT_3D,
+            value.srid,
+            *value.coordinates,
+        )
+    if isinstance(value, datetime.datetime):
+        if value.tzinfo is None:
+            local = value.replace(tzinfo=datetime.timezone.utc) - _EPOCH
+            seconds = local.days * 86400 + local.seconds
+            return _struct(TAG_LOCAL_DATETIME, seconds, local.microseconds * 1000)
+        since = value - _EPOCH
+        seconds = since.days * 86400 + since.seconds
+        nanos = since.microseconds * 1000
+        if isinstance(value.tzinfo, ZoneInfo):
+            return _struct(TAG_DATETIME_ZONE_ID, seconds, nanos, value.tzinfo.key)
+        offset = value.utcoffset()
+        assert offset is not None
+        return _struct(TAG_DATETIME_TZ, seconds, nanos, int(offset.total_seconds()))
+    if isinstance(value, datetime.date):
+        return _struct(TAG_DATE, (value - datetime.date(1970, 1, 1)).days)
+    if isinstance(value, datetime.time):
+        if value.tzinfo is None:
+            return _struct(TAG_LOCAL_TIME, _nanos_of_day(value))
+        offset = value.utcoffset()
+        assert offset is not None
+        return _struct(TAG_TIME, _nanos_of_day(value), int(offset.total_seconds()))
+    return None
+
+
+def _temporal_value(tag: int, fields: list) -> Any:
+    """A Bolt temporal or spatial structure as its value; None for any other structure."""
+    from zoneinfo import ZoneInfo
+
+    from provisa.gql.spatial import Point
+    from provisa.gql.temporal import Duration
+
+    def clock(nanos: int, tz: datetime.tzinfo | None = None) -> datetime.time:
+        seconds, rest = divmod(nanos, 1_000_000_000)
+        minutes, second = divmod(seconds, 60)
+        hour, minute = divmod(minutes, 60)
+        return datetime.time(hour, minute, second, rest // 1000, tzinfo=tz)
+
+    def instant(seconds: int, nanos: int) -> datetime.datetime:
+        return _EPOCH + datetime.timedelta(seconds=seconds, microseconds=nanos // 1000)
+
+    def fixed(offset: int) -> datetime.timezone:
+        return datetime.timezone(datetime.timedelta(seconds=offset))
+
+    if tag == TAG_DATE:
+        return datetime.date(1970, 1, 1) + datetime.timedelta(days=fields[0])
+    if tag == TAG_LOCAL_TIME:
+        return clock(fields[0])
+    if tag == TAG_TIME:
+        return clock(fields[0], fixed(fields[1]))
+    if tag == TAG_LOCAL_DATETIME:
+        return instant(fields[0], fields[1]).replace(tzinfo=None)
+    if tag == TAG_DATETIME_TZ:
+        return instant(fields[0], fields[1]).astimezone(fixed(fields[2]))
+    if tag == TAG_DATETIME_ZONE_ID:
+        return instant(fields[0], fields[1]).astimezone(ZoneInfo(fields[2]))
+    if tag == TAG_LEGACY_DATETIME:  # Bolt 4: local seconds and an offset
+        local = instant(fields[0], fields[1]).replace(tzinfo=None)
+        return local.replace(tzinfo=fixed(fields[2]))
+    if tag == TAG_LEGACY_DATETIME_ZONE_ID:  # Bolt 4: local seconds and a zone name
+        local = instant(fields[0], fields[1]).replace(tzinfo=None)
+        return local.replace(tzinfo=ZoneInfo(fields[2]))
+    if tag == TAG_DURATION:
+        months, days, seconds, nanos = fields
+        return Duration(months, days, seconds * 1_000_000 + nanos // 1000)
+    if tag in (TAG_POINT_2D, TAG_POINT_3D):
+        return Point(fields[0], tuple(float(c) for c in fields[1:]))
+    return None
 
 
 # ── Core pack / unpack ─────────────────────────────────────────────────────────
@@ -158,10 +239,9 @@ def _pack_value(value: Any) -> bytes:
         if n <= 0xFFFF:
             return struct.pack("!BH", 0xCD, n) + value
         return struct.pack("!BI", 0xCE, n) + value
-    if isinstance(value, datetime.datetime):
-        return _datetime_bytes(value)
-    if isinstance(value, datetime.date):
-        return _date_bytes(value)
+    structure = _temporal_bytes(value)
+    if structure is not None:
+        return structure
     if isinstance(value, list):
         header = _list_header(len(value))
         return header + b"".join(_pack_value(v) for v in value)
@@ -427,6 +507,9 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
         for _ in range(n_fields):
             v, offset = _unpack_one(data, offset)
             struct_fields.append(v)
+        value = _temporal_value(tag_byte, struct_fields)
+        if value is not None:
+            return value, offset
         return {"_tag": tag_byte, "_fields": struct_fields}, offset
 
     raise ValueError(f"Unknown PackStream marker 0x{marker:02X} at offset {offset - 1}")

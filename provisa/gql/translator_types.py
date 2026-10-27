@@ -34,6 +34,7 @@ class GraphVarKind(str, Enum):
     JSON_LIST = "JSON_LIST"
     DURATION = "DURATION"  # REQ-2173: a duration's [months, days, microseconds]
     ZONED = "ZONED"  # REQ-2173: a date time's [microseconds since the epoch, the zone it names]
+    POINT = "POINT"  # a point's [srid, x, y(, z)] (spatial.py)
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"

@@ -165,15 +165,19 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if kind == GraphVarKind.JSON_LIST:
         return _json_list(col, value)
     if kind == GraphVarKind.DURATION:  # REQ-2173
-        from provisa.gql.temporal import iso_duration
+        from provisa.gql.temporal import Duration
 
         months, days, micros = (int(v) for v in value)
-        return iso_duration(months, days, micros)
+        return Duration(months, days, micros)
+    if kind == GraphVarKind.POINT:
+        from provisa.gql.spatial import returned
+
+        return returned(list(value))
     if kind == GraphVarKind.ZONED:  # REQ-2173
-        from provisa.gql.temporal import zoned_text
+        from provisa.gql.temporal import zoned_value
 
         instant, zone = value
-        return zoned_text(int(instant), str(zone))
+        return zoned_value(int(instant), str(zone))
     if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
         # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
@@ -549,10 +553,15 @@ async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> Non
         serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}
 
 
-def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
-    """Recursively convert Node/Edge/Path to JSON-serializable dicts."""
+def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, REQ-350
+    """Recursively convert Node/Edge/Path to JSON-serializable dicts. A temporal value is
+    written as Cypher writes it, unless ``keep_values`` (Bolt, which sends it as its own
+    structure, REQ-2173)."""
     import datetime
     from decimal import Decimal
+
+    from provisa.gql.spatial import Point
+    from provisa.gql.temporal import Duration
 
     if isinstance(obj, Node):
         return {
@@ -579,9 +588,15 @@ def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
             "edges": [to_serializable(e) for e in obj.edges],
         }
     if isinstance(obj, dict):
-        return {k: to_serializable(v) for k, v in obj.items()}
+        return {k: to_serializable(v, keep_values=keep_values) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [to_serializable(i) for i in obj]
+        return [to_serializable(i, keep_values=keep_values) for i in obj]
+    if keep_values and isinstance(obj, (datetime.date, datetime.time, Duration, Point)):
+        return obj
+    if isinstance(obj, Point):
+        return obj.as_map()
+    if isinstance(obj, Duration):  # REQ-2173: as Cypher writes it
+        return obj.iso()
     if isinstance(obj, (datetime.date, datetime.time)):  # REQ-2173: as Cypher writes it
         from provisa.gql.temporal import cypher_text
 

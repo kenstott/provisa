@@ -1840,7 +1840,7 @@ async def _execute_cypher(
         return [], [], result.redirect
     raw_rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
     assembled = assemble_rows(raw_rows, graph_vars)
-    serializable = [to_serializable(r) for r in assembled]
+    serializable = [to_serializable(r, keep_values=True) for r in assembled]  # REQ-2173
 
     _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
     await register_node_ids(serializable, _model_db)
