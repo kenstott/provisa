@@ -9,8 +9,8 @@ name: Conformance (Bolt)
 # (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md), never a job failure.
 # The job fails only when the Provisa instance did not start or no test ran.
 #
-# The instance is the pgwire conformance job's (see conformance-pgwire.yml); no auth provider, so
-# the Bolt principal names the role.
+# The instance is every conformance job's (.github/actions/conformance-instance), with password
+# auth: the driver signs in as the job user, who holds org_admin.
 
 on:
   workflow_dispatch:
@@ -51,6 +51,14 @@ jobs:
       CONFORMANCE_PG_DATABASE: conformance
       CONFORMANCE_PG_USER: postgres
       CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
     services:
       postgres:
         image: postgres:16.4
@@ -84,80 +92,12 @@ jobs:
           cd "$RUNNER_TEMP/driver" && "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --group test -e . \
             "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
 
-      - name: Seed the PostgreSQL fixture
-        run: |
-          .venv/bin/python scripts/conformance/pgwire_catalog_types.py seed \
-            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
-
-      # The model, and how it presents the fixture under the names PostgreSQL gives it, so the same
-      # statement runs unchanged on both servers:
-      #   domain  conformance           -> the pgwire schema `conformance`
-      #   source  conformance-pg        -> the PostgreSQL service above (postgresql)
-      #   table   types_fixture         -> registered from schema `conformance`, alias types_fixture
-      #   columns c_bool .. c_point     -> their own names, each declared with the type
-      #                                    registration gives that PostgreSQL type, visible to
-      #                                    org_admin; a type registration refuses (inet, money,
-      #                                    xml, ...) is left out and named in the type report
-      # naming.domain_prefix is false, so the table keeps its own name under the domain's schema.
-      # The full model is scripts/conformance/pgwire_catalog_types.py (provisa_config).
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
       - name: Start the Provisa instance
         id: start
-        run: |
-          home="$RUNNER_TEMP/provisa"
-          mkdir -p "$home"
-          .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
-            --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
-            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
-          started=$(.venv/bin/python -m provisa.core.control_plane_pg start "$home/control-pg" --init-sql db/init.sql)
-          cp_host=$(sed -n 's/^PG_HOST=//p' <<<"$started")
-          cp_port=$(sed -n 's/^PG_PORT=//p' <<<"$started")
-          cp_password=$(sed -n 's/^PG_PASSWORD=//p' <<<"$started")
-          echo "::add-mask::$cp_password"
-          test -n "$cp_host" && test -n "$cp_port" && test -n "$cp_password"
-          cp_url="postgresql+psycopg://provisa:$cp_password@/provisa?host=$cp_host&port=$cp_port"
-          key=$(python3 -c 'import base64, os; print(base64.b64encode(os.urandom(32)).decode())')
-          echo "::add-mask::$key"
-          GRPC_PORT=$((PROVISA_API_PORT + 1)) \
-          FLIGHT_PORT=$((PROVISA_API_PORT + 2)) \
-          PROVISA_BOLT_PORT=$((PROVISA_API_PORT + 3)) \
-          PROVISA_MCP_PORT=$((PROVISA_API_PORT + 4)) \
-          PROVISA_DATA_DIR="$home" \
-          PROVISA_TELEMETRY_DIR="$home/telemetry" \
-          PROVISA_CONFIG="$home/provisa.yaml" \
-          PROVISA_HOME="$home" \
-          PROVISA_LICENSING_SANDBOX_DIR="$home/licensing" \
-          PYTHON_KEYRING_BACKEND=tests._memory_keyring.MemoryKeyring \
-          PROVISA_ENCRYPTION_KEY="$key" \
-          ORG_ID=conformance \
-          TENANT_DATABASE_URL="$cp_url" \
-          PLATFORM_DATABASE_URL="$cp_url" \
-            nohup .venv/bin/uvicorn main:app --host 127.0.0.1 --port "$PROVISA_API_PORT" \
-            > "$home/server.log" 2>&1 &
-          echo $! > "$home/server.pid"
-          for _ in $(seq 1 90); do
-            curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null && break
-            sleep 2
-          done
-          curl -sf "http://127.0.0.1:$PROVISA_API_PORT/health" >/dev/null || { echo "::error::Provisa never answered /health"; tail -n 200 "$home/server.log"; exit 1; }
-          # The model, as global-setup.ts bootstraps each backend (PUT /admin/config).
-          status=$(curl -s -o "$home/config-response.txt" -w '%{http_code}' --retry 5 --retry-all-errors --retry-delay 3 \
-            -X PUT -H 'Content-Type: application/yaml' --data-binary @"$home/provisa.yaml" \
-            "http://127.0.0.1:$PROVISA_API_PORT/admin/config")
-          if [ "${status:0:1}" != "2" ]; then
-            echo "::error::PUT /admin/config answered $status"; cat "$home/config-response.txt"; tail -n 200 "$home/server.log"; exit 1
-          fi
-          # Warm (REQ-1882's readiness probe): the first statement is not paying for the warm-up.
-          for _ in $(seq 1 90); do
-            curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null && break
-            sleep 2
-          done
-          curl -sf "http://127.0.0.1:$PROVISA_API_PORT/ready" >/dev/null || { echo "::error::Provisa never answered /ready"; tail -n 200 "$home/server.log"; exit 1; }
-          for _ in $(seq 1 60); do
-            (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null && break
-            sleep 2
-          done
-          (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
-          echo "Provisa is up: API $PROVISA_API_PORT, pgwire $PROVISA_PGWIRE_PORT"
+        uses: ./.github/actions/conformance-instance
+
 
       - name: Run the driver's integration tests
         continue-on-error: true
@@ -166,8 +106,8 @@ jobs:
           TEST_NEO4J_HOST: 127.0.0.1
           TEST_NEO4J_PORT: ${{ env.PROVISA_BOLT_PORT }}
           TEST_NEO4J_SCHEME: bolt
-          TEST_NEO4J_USER: org_admin
-          TEST_NEO4J_PASS: ""
+          TEST_NEO4J_USER: ${{ env.CONFORMANCE_USER }}
+          TEST_NEO4J_PASS: ${{ env.CONFORMANCE_PASSWORD }}
           TEST_NEO4J_EDITION: community
           TEST_NEO4J_VERSION: "5.4"
           TEST_NEO4J_IS_CLUSTER: "false"

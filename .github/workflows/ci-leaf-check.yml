@@ -16,6 +16,8 @@
 #     would hold a signing identity on a branch push.
 #   - nixos-vm: boots a NixOS guest under KVM (many minutes, a multi-gigabyte build). It is
 #     the NixOS workflow's own and is proven by that workflow.
+#   - conformance-instance: starts a whole Provisa instance over a PostgreSQL service and loads
+#     its model (minutes). It is the conformance workflows' own and is proven by each of them.
 #   - the real release legs: each builds installers or needs their artifacts, and the publish
 #     leg needs write access to the release, the registry and the OIDC token. Their control flow
 #     is exercised through a stand-in (ci-leaf-stub-leg.yml), which proves how GitHub evaluates

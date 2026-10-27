@@ -20,14 +20,15 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const [dir, version, url, role, outJson, outMd] = process.argv.slice(2);
+const [dir, version, url, role, authorization, outJson, outMd] = process.argv.slice(2);
 const { auditServer } = await import(
   pathToFileURL(join(dir, "node_modules", "graphql-http", "lib", "index.mjs")).href
 );
 
-// The acting role travels as a header (no auth provider): every audit request carries it.
+// Every audit request presents the job user's credential and the role it acts as.
 const fetchFn = (input, init = {}) => {
   const headers = new Headers(init.headers ?? {});
+  headers.set("authorization", authorization);
   headers.set("x-provisa-role", role);
   return fetch(input, { ...init, headers });
 };

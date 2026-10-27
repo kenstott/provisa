@@ -45,7 +45,8 @@ class ProvisaQuirks(model.DriverQuirks):
     setup = model.DriverSetup(
         database={
             "uri": model.FromEnv("PROVISA_FLIGHT_URI"),
-            # No auth provider on the instance: the acting role travels as a call header.
+            # The job user's credential ("Bearer <token>") and the role it acts as.
+            "adbc.flight.sql.authorization_header": model.FromEnv("CONFORMANCE_AUTHORIZATION"),
             "adbc.flight.sql.rpc.call_header.x-provisa-role": model.FromEnv("PROVISA_ROLE"),
         },
         connection={},
