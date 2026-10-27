@@ -10,3 +10,12 @@
     "CREATE, SET, and DELETE cannot target relationship entities. Attempting to write a
     relationship is a hard error at translation time."
   reason: "cannot target relationships"
+
+- group: Digits below the microsecond
+  requirement: REQ-2173
+  decision: >-
+    "Every temporal value, read from a column or built in a query, has microsecond precision,
+    what the engines and their drivers hold; its nanosecond property is its microseconds times
+    1000."
+  # Each example sends a value with nanoseconds (4123 ns, 4 ns) and asserts it comes back whole.
+  case: "test_temporal_types_example::test_(datetime|time|local_datetime|local_time|duration_example)$"
