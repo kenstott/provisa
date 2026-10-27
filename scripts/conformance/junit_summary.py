@@ -57,6 +57,9 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         "passed": passed,
         "failed": len(failures),
         "skipped": skipped,
+        # A test the suite skips is one for a feature the endpoint does not claim -- creating its
+        # own tables, for one -- so it is not runnable by design (the pages count it apart).
+        "not_runnable": skipped,
         "pass_rate": round(passed / ran, 4) if ran else None,
         "failures": failures,
     }

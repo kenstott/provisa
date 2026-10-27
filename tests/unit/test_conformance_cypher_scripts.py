@@ -205,4 +205,4 @@ def test_a_driver_s_junit_results_are_a_conformance_report(tmp_path):
     ]
     _, suite, rate, _ = fill_docs.read(doc)
     assert suite == "neo4j-python-driver integration tests 6.2.0 (tests/integration)"
-    assert rate == "50.0% (1 of 2)"
+    assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
