@@ -705,7 +705,12 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         return exp.Anonymous(this="cardinality", expressions=args)
 
     if name in _CYPHER_FN_RENAMES:
-        return exp.Anonymous(this=_CYPHER_FN_RENAMES[name], expressions=args)
+        # Its arguments first, as the transform does not descend into the node it is handed back
+        # (collect(size(list)) counts the list).
+        return exp.Anonymous(
+            this=_CYPHER_FN_RENAMES[name],
+            expressions=[a.transform(_rewrite_cypher_fn_node) for a in args],
+        )
 
     if name in _SPARQL_SCALARS or name in _CYPHER_CAST_FNS:
         # The transform does not descend into the node it is handed back: its arguments first
