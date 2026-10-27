@@ -32,6 +32,8 @@ class GraphVarKind(str, Enum):
     # A list literal of values of several types ([1, 'a', true]): each value JSON-encoded, so the
     # list is one engine type; the answer decodes them.
     JSON_LIST = "JSON_LIST"
+    # One value read from such a list ([1, 'a'][0]): its JSON; the answer decodes it.
+    JSON_VALUE = "JSON_VALUE"
     DURATION = "DURATION"  # REQ-2173: a duration's [months, days, microseconds]
     ZONED = "ZONED"  # REQ-2173: a date time's [microseconds since the epoch, the zone it names]
     POINT = "POINT"  # a point's [srid, x, y(, z)] (spatial.py)
