@@ -42,6 +42,9 @@ class _FakeCtx:
     def temporal_zone(self, expr):
         return None
 
+    def is_text(self, expr):
+        return False
+
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
 

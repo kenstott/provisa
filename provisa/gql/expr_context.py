@@ -76,6 +76,34 @@ def _comprehension_hop(pattern: PathPattern) -> tuple[str, str | None, str, str 
     return None
 
 
+#: The Cypher functions whose value is a string.
+_STRING_FUNCTIONS = frozenset(
+    {
+        "tostring",
+        "tostringornull",
+        "toupper",
+        "tolower",
+        "upper",
+        "lower",
+        "trim",
+        "ltrim",
+        "rtrim",
+        "replace",
+        "substring",
+        "left",
+        "right",
+        "type",
+    }
+)
+
+_TEXT_TYPES = ("text", "varchar", "char", "character", "string", "citext", "nvarchar", "nchar")
+
+
+def is_text_type(registered: str) -> bool:
+    """Whether a registered column type holds text (varchar(64), character varying, ...)."""
+    return registered.strip().lower().startswith(_TEXT_TYPES)
+
+
 # Graph-aware functions resolve against traversal state (var → id column, rel type, JSON shape, …).
 # Their lowering is not yet ported to the AST path, so an expression using one defers to the legacy
 # path via NotImplementedError (see _Translator._lower_expr).
@@ -257,6 +285,42 @@ class TranslatorExprContext:
         from provisa.gql import temporal
 
         return temporal.element_kind(expr, self._t._temporal_kinds, self._property_kind)
+
+    def is_text(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a string: a string literal, a string function's value, a
+        concatenation with a string, a registered text column, or a variable bound to one."""
+        from provisa.gql.expr_ast import Binary, FunctionCall, Literal, Paren
+
+        if isinstance(expr, Paren):
+            return self.is_text(expr.inner)
+        if isinstance(expr, Literal):
+            return expr.kind == "string"
+        if isinstance(expr, Variable):
+            return expr.name in self._t._text_vars
+        if isinstance(expr, Property):
+            if not isinstance(expr.obj, Variable):
+                return False
+            registered = self.property_type(exp.column(expr.obj.name), expr.name)
+            return registered is not None and is_text_type(registered)
+        if isinstance(expr, FunctionCall):
+            name = expr.name.lower()
+            if name in _STRING_FUNCTIONS or name.startswith("apoc.text."):
+                return True
+            # reverse() of a string is a string, of a list a list.
+            return name == "reverse" and len(expr.args) == 1 and self.is_text(expr.args[0])
+        if isinstance(expr, Binary) and expr.op == "+":
+            return self.is_text(expr.left) or self.is_text(expr.right)
+        return False
+
+    def holds_text_items(self, expr: CypherExpr) -> bool:
+        """Whether every item of a list literal is a string (an UNWIND's variable)."""
+        from provisa.gql.expr_ast import ListLiteral
+
+        return (
+            isinstance(expr, ListLiteral)
+            and bool(expr.items)
+            and all(self.is_text(i) for i in expr.items)
+        )
 
     def temporal_zone(self, expr: CypherExpr) -> str | None:
         """The zone a time or date time the query builds names (REQ-2173), or None."""

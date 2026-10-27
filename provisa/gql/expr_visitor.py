@@ -138,6 +138,10 @@ class ExprContext(Protocol):
         """The zone a time or date time the query builds names (REQ-2173), or None."""
         ...
 
+    def is_text(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a string (size() of it counts its characters)."""
+        ...
+
     def resolve_term(self, node: Term) -> exp.Expression:
         """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
@@ -199,14 +203,6 @@ _BINARY_CMP: dict[str, type[exp.Expression]] = {
     ">": exp.GT,
     ">=": exp.GTE,
 }
-
-
-_TEXT_TYPES = ("text", "varchar", "char", "character", "string", "citext", "nvarchar", "nchar")
-
-
-def _is_text_type(registered: str) -> bool:
-    """Whether a registered column type holds text (varchar(64), character varying, ...)."""
-    return registered.strip().lower().startswith(_TEXT_TYPES)
 
 
 def _lam(var: str, body: exp.Expression) -> exp.Lambda:
@@ -475,13 +471,10 @@ class ExprLowering:
                 return exp.Literal.number(len(given.items))
             if isinstance(given, Literal) and given.kind == "null":
                 return exp.Null()
-            if isinstance(given, Property):
-                # A registered text column's size is its character count: counted as text on
-                # every engine, never as a list (PostgreSQL refuses CARDINALITY of text).
-                obj = self.lower(given.obj)
-                registered = self._ctx.property_type(obj, given.name)
-                if registered is not None and _is_text_type(registered):
-                    return exp.Length(this=self._ctx.resolve_property(obj, given.name))
+            if self._ctx.is_text(given) and not isinstance(given, Literal):
+                # A string's size is its character count: counted as text on every engine, never
+                # as a list (PostgreSQL refuses CARDINALITY of text).
+                return exp.Length(this=self.lower(given))
         if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
                 return exp.Null()
