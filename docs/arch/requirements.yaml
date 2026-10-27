@@ -89818,7 +89818,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     lists the base and every row of the labels table for it. SET n:Label adds a row and REMOVE n:Label removes
     one on an ephemeral node; on a model node, whose labels are its {Domain}:{Table}, a label write is refused
     by name. The labels table is session-scoped like every ephemeral object: never persisted, never shared,
-    dropped at session end.'
+    dropped at session end. (Amended 2026-10-27, NODES AND NODE_LABELS DECIDE MEMBERSHIP:) Maintainer 2026-10-27,
+    replacing the alias views and the labels table above: every ephemeral node has one row in a session
+    nodes table (node_id, table) naming the session table that stores its properties, and one row per label
+    it carries in a session node_labels junction (node_id, label), indexed on (label, node_id). A free label
+    (one combined with no existing ephemeral table in its CREATE) creates a storage table; a node whose
+    CREATE names an existing ephemeral table is stored there and the table widens as needed; an unlabeled
+    node goes to one default session table. Every label expression resolves through node_labels: :A:B is
+    a node carrying both, :A|B either, :!A not A, labels(n) its rows aggregated. A read finds the node_ids
+    matching the expression, dedups them, groups them by their table and unions those tables by column name
+    into one sparse result: a column a table lacks reads NULL (Cypher''s missing property) and conflicting
+    types widen as above. SET n:L and REMOVE n:L insert or delete one node_labels row; a node never moves
+    table. Ephemeral relationships have one row in a session rels table (rel_id, type, from_id, to_id, table),
+    their properties in a per-type table. Domain and model names resolve first and always win; a label in
+    neither with no CREATE is refused by name.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
