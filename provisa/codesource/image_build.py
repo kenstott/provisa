@@ -289,7 +289,16 @@ def _uv_install(arch: str, site: Path) -> list[str]:
 FRONT_RUNTIME = f"{ROOT}/front-runtime"
 #: The front end's programs (provisa/codehost), with the code's name tables beside them.
 FRONT = f"{ROOT}/front"
-FRONT_PROGRAMS = ("front.py", "residual.py", "duckdb_sql.py", "pgfront.py", "pgcatalog.py")
+#: engine_memory.py is core's (provisa/codehost/engine_memory.py links it): every DuckDB the front
+#: end opens is capped (REQ-2006).
+FRONT_PROGRAMS = (
+    "front.py",
+    "residual.py",
+    "duckdb_sql.py",
+    "engine_memory.py",
+    "pgfront.py",
+    "pgcatalog.py",
+)
 
 
 def _front(

@@ -38,8 +38,8 @@ at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:clas
 SQL has it, which leaves DuckDB free to answer without holding them in order.
 
 This module is carried, as it is, by the front end of every built image and used by Provisa for a
-dev-mode source; it imports nothing of Provisa's but duckdb_sql, carried beside it: the standard
-library, sqlglot, DuckDB and Arrow.
+dev-mode source; it imports nothing of Provisa's but duckdb_sql and engine_memory, carried beside
+it: the standard library, sqlglot, DuckDB and Arrow.
 """
 
 # Requirements: REQ-2100
@@ -59,6 +59,10 @@ from sqlglot import exp
 
 # Beside this program in the image, where its modules are top-level; Provisa's, in its package.
 duckdb_sql = importlib.import_module(f"{__package__}.duckdb_sql" if __package__ else "duckdb_sql")
+#: Every DuckDB this process opens is opened capped (REQ-2006): core's, carried beside it.
+engine_memory = importlib.import_module(
+    f"{__package__}.engine_memory" if __package__ else "engine_memory"
+)
 
 #: The relation the statement's table is read as.
 ROWS = "__provisa_code_rows"
@@ -95,8 +99,8 @@ def configure(*, memory_mb: int, threads: int, spill_cap_mb: int, spill_dir: str
         if wanted == _bounds:
             return
         if _database is None:
-            _database = duckdb.connect(
-                config={
+            _database = engine_memory.connect(
+                extra={
                     "memory_limit": f"{memory_mb}MiB",
                     "threads": threads,
                     "max_temp_directory_size": f"{spill_cap_mb}MiB",
@@ -111,6 +115,19 @@ def configure(*, memory_mb: int, threads: int, spill_cap_mb: int, spill_dir: str
             # Where it spills is the process's own, fixed when the instance was made.
             assert _bounds is not None and spill_dir == _bounds[3], "the spill directory is fixed"
         _bounds = wanted
+
+
+def bounded_database() -> duckdb.DuckDBPyConnection:
+    """A DuckDB database of its own (a front end's catalog) under this host's memory and thread
+    bounds, opened capped as every one is (REQ-2006)."""
+    with _database_lock:
+        if _bounds is None:
+            raise Unbounded(
+                "this code host's DuckDB has no bounds yet: Provisa gives them when it pairs "
+                "with the host and with every call"
+            )
+        memory_mb, threads = _bounds[0], _bounds[1]
+    return engine_memory.connect(extra={"memory_limit": f"{memory_mb}MiB", "threads": threads})
 
 
 def _connection() -> duckdb.DuckDBPyConnection:

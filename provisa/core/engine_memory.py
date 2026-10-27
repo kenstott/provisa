@@ -54,8 +54,11 @@ def connect(
     extra: DuckDBConfig | None = None,
 ) -> duckdb.DuckDBPyConnection:
     """A DuckDB database opened under the deployment's cap (``extra`` adds to its config, and a
-    ``memory_limit`` in it -- a demo sandbox's own -- stands)."""
-    return duckdb.connect(database, read_only=read_only, config={**config(), **(extra or {})})
+    ``memory_limit`` in it -- a demo sandbox's own, a code source's -- stands, the deployment's
+    not read: a built code host's image carries no settings of Provisa's, REQ-2100)."""
+    extra = extra or {}
+    capped = {} if "memory_limit" in extra else config()
+    return duckdb.connect(database, read_only=read_only, config={**capped, **extra})
 
 
 def log_limit(con: Any, what: str) -> None:
