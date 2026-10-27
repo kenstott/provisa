@@ -70,6 +70,8 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     if artifact.get("not_runnable"):
         rate += f"; {artifact['not_runnable']} cases not runnable by design"
     suite = f"{artifact['suite']} {artifact['version']}"
+    if artifact.get("tests"):  # which of the suite's tests ran (a driver's own test directory)
+        suite += f" ({artifact['tests']})"
     return artifact["surface"], suite, rate, _cases(groups)
 
 

@@ -176,3 +176,33 @@ def test_a_page_is_filled_from_the_artifact_and_refilled_in_place():
     assert filled.index("conformance-results:begin") < filled.index("## Deliberate")
     again = fill_docs.fill(filled, suite, rate, cases)
     assert again == filled
+
+
+junit = _load("junit_summary")
+
+
+def test_a_driver_s_junit_results_are_a_conformance_report(tmp_path):
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="tests.integration.test_bolt_driver" name="test_ok"/>'
+        '<testcase classname="tests.integration.test_bolt_driver" name="test_bad">'
+        '<failure message="ClientError: Unknown label">trace</failure></testcase>'
+        '<testcase classname="tests.integration.examples" name="test_skip">'
+        '<skipped message="needs enterprise"/></testcase>'
+        "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(
+        str(xml), "bolt", "neo4j-python-driver integration tests", "6.2.0", "tests/integration"
+    )
+    assert (doc["ran"], doc["passed"], doc["failed"], doc["skipped"]) == (2, 1, 1, 1)
+    assert doc["failures"] == [
+        {
+            "feature": "tests.integration.test_bolt_driver",
+            "scenario": "test_bad",
+            "reason": "ClientError: Unknown label",
+        }
+    ]
+    _, suite, rate, _ = fill_docs.read(doc)
+    assert suite == "neo4j-python-driver integration tests 6.2.0 (tests/integration)"
+    assert rate == "50.0% (1 of 2)"
