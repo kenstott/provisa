@@ -90122,7 +90122,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     label, and the model rows the session tags with it), referenced by name wherever the compiled statement
     reads it, including inside a variable-length path''s recursive CTE, rather than written out as a subquery
     at every reference. The model arm stays the registered table inside the CTE, so the one governed pipeline
-    still applies row filters and masks to it.'
+    still applies row filters and masks to it. (Amended 2026-10-27, ONE CTE PER LABEL SET:) Maintainer 2026-10-27:
+    the unit of that CTE is the label set a node pattern names, not the single label: (a:Person:Employee)
+    reads one CTE holding the nodes that carry every label in the set, defined once per distinct set in
+    the statement and referenced wherever a pattern names that same set; a relationship type keeps one CTE
+    per type.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
