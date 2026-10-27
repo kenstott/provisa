@@ -570,10 +570,19 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
 
         parsed = self._parse_expr(expr)
         name = alias or (written if written and not isinstance(expr, Variable) else None)
-        if name and self._temporal_context().temporal_kind(expr) == temporal.DURATION:
+        if name is None and isinstance(expr, Variable):
+            name = expr.name if self._temporal_context().temporal_kind(expr) else None
+        held = self._temporal_context().temporal_kind(expr) if name else None
+        if name and held == temporal.DURATION:
             # REQ-2173: a duration leaves the engine as its parts, written as ISO-8601 in the answer.
             parsed = temporal.returned(parsed)
             self._graph_vars[name.lower()] = GraphVarKind.DURATION
+        elif name and held == temporal.DATETIME:
+            # REQ-2173: a date time the query names a zone for is written in that zone.
+            zone = self._temporal_context().temporal_zone(expr)
+            if zone is not None:
+                parsed = temporal.returned_in_zone(parsed, zone)
+                self._graph_vars[name.lower()] = GraphVarKind.ZONED
         _prop_m = _variable_property(expr)
         if _prop_m:
             _var, _prop = _prop_m

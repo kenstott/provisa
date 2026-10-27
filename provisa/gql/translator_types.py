@@ -33,6 +33,7 @@ class GraphVarKind(str, Enum):
     # list is one engine type; the answer decodes them.
     JSON_LIST = "JSON_LIST"
     DURATION = "DURATION"  # REQ-2173: a duration's [months, days, microseconds]
+    ZONED = "ZONED"  # REQ-2173: a date time's [microseconds since the epoch, the zone it names]
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"

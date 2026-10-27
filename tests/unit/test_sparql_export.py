@@ -119,7 +119,10 @@ def test_a_property_is_bound_where_its_node_is_and_returned_by_its_name():
             "RETURN p.name",
             "IS NULL in an OPTIONAL MATCH",
         ),
-        ("MATCH (p:Person) RETURN p.name UNION MATCH (c:Company) RETURN c.name", "UNION"),
+        (
+            "MATCH (p:Person) RETURN p.name AS name UNION MATCH (c:Company) RETURN c.name AS name",
+            "UNION",
+        ),
     ],
 )
 def test_what_has_no_exact_sparql_form_is_refused_by_name(cypher, why):

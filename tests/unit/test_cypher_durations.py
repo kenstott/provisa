@@ -362,3 +362,64 @@ def test_a_dates_and_a_times_parts_are_read_as_properties():
             "d.nanosecond": 645876000,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        # REQ-2173: a zone the query names is computed with by the engine and presented as written
+        (
+            "RETURN datetime({year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, "
+            "millisecond: 645, timezone: '+01:00'}) AS v",
+            "1984-10-11T12:31:14.645+01:00",
+        ),
+        (
+            "RETURN datetime({year: 1984, month: 10, day: 11, hour: 12, minute: 31, second: 14, "
+            "microsecond: 645876, timezone: 'Europe/Stockholm'}) AS v",
+            "1984-10-11T12:31:14.645876+01:00[Europe/Stockholm]",
+        ),
+        (
+            "RETURN datetime({year: 1984, ordinalDay: 202, hour: 12, minute: 31, second: 14, "
+            "microsecond: 645876, timezone: 'Europe/Stockholm'}) AS v",
+            "1984-07-20T12:31:14.645876+02:00[Europe/Stockholm]",
+        ),
+        (
+            "RETURN datetime({year: 1984, timezone: 'Europe/Stockholm'}) AS v",
+            "1984-01-01T00:00+01:00[Europe/Stockholm]",
+        ),
+        (
+            "RETURN duration.between(datetime('2014-07-21T21:40:36.143+0200'), localtime('16:30'))"
+            " AS v",
+            "PT-5H-10M-36.143S",
+        ),
+        # the hour daylight saving takes back on 2017-10-29 in Stockholm
+        (
+            "RETURN duration.inSeconds(datetime({year: 2017, month: 10, day: 29, hour: 0, "
+            "timezone: 'Europe/Stockholm'}), localdatetime({year: 2017, month: 10, day: 29, "
+            "hour: 4})) AS v",
+            "PT5H",
+        ),
+        (
+            "RETURN duration.between(datetime('2017-10-29T04:00+01:00[Europe/Stockholm]'), "
+            "datetime('2017-10-28T23:00+02:00[Europe/Stockholm]')) AS v",
+            "PT-6H",
+        ),
+        (
+            "WITH datetime({year: 1984, month: 10, day: 11, hour: 12, timezone: "
+            "'Europe/Stockholm'}) AS other RETURN time({time: other, timezone: '+05:00'}) AS v",
+            "16:00+05:00",
+        ),
+        # A value written below the microsecond keeps the microsecond; its nanoseconds end in 000.
+        ("RETURN localtime('12:31:14.645876123') AS v", "12:31:14.645876"),
+        ("RETURN localtime('12:31:14.645876123').nanosecond AS v", 645876000),
+    ],
+)
+def test_a_zone_the_query_names_is_computed_with_and_presented(query, expected):
+    assert _answer(query) == [{"v": expected}]
+
+
+def test_values_of_two_temporal_kinds_are_never_equal():
+    """Temporal7."""
+    assert _answer("WITH duration({days: 1}) AS x, date('1984-10-11') AS d RETURN x = d AS v") == [
+        {"v": False}
+    ]

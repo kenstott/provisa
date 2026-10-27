@@ -39,6 +39,9 @@ class _FakeCtx:
     def temporal_kind(self, expr):
         return None  # no temporal values in scope here
 
+    def temporal_zone(self, expr):
+        return None
+
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
 
