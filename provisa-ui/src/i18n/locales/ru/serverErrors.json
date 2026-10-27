@@ -129,7 +129,12 @@
       "address_not_found": "Нечего разрешать: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve нельзя сочетать с другими корневыми полями в одной операции",
       "source_starting": "Источник {{source}} ещё запускается. Повторите попытку через минуту.",
-      "view_outside_load_window": "Представление {{view}} можно читать только в его окне чтения. Оно снова откроется в {{opens_at}}."
+      "view_outside_load_window": "Представление {{view}} можно читать только в его окне чтения. Оно снова откроется в {{opens_at}}.",
+      "graphql_body_missing": "У запроса нет тела: запрос GraphQL — это объект JSON с запросом.",
+      "graphql_body_not_json": "Тело запроса не является JSON: {{error}}",
+      "graphql_request_not_object": "Запрос GraphQL — это объект JSON с запросом.",
+      "graphql_parameter_type": "Параметр {{parameter}} запроса GraphQL должен быть {{expected}}.",
+      "graphql_mutation_over_get": "Мутация отправляется методом POST, никогда GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",

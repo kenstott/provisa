@@ -49,6 +49,8 @@ Exécute une requête ou une mutation GraphQL.
 
 La requête s'exécute sous son rôle agissant : le rôle de l'utilisateur authentifié ou, en mode développement (sans authentification), l'en-tête `X-Provisa-Role`, `org_admin` en l'absence de l'en-tête. Le champ `role` du corps ne sélectionne pas de rôle. S'il est présent, il doit égaler le rôle agissant ; une valeur différente renvoie `400` avec le code `data.role_mismatch`, en nommant les deux rôles. La même règle s'applique à `POST /data/sql`, `POST /data/query` et `POST /query/nl`.
 
+**GraphQL sur HTTP.** Le point de terminaison suit la spécification GraphQL-over-HTTP. Il répond aussi à `GET /data/graphql`, avec `query`, `operationName`, `variables` et `extensions` encodés dans l'URL (`variables` et `extensions` sous forme de chaînes JSON) ; une mutation envoyée en `GET` renvoie `405`. Une requête dont l'en-tête `Accept` cite `application/graphql-response+json` avant `application/json` reçoit une réponse de ce type de média ; toute autre requête reçoit `application/json`. Une requête qui n'est pas une requête GraphQL renvoie `400` : pas de corps, un corps qui n'est pas un objet JSON, ou un paramètre du mauvais type JSON (`query` et `operationName` sont des chaînes, `variables` et `extensions` des objets). Un document qui ne s'analyse pas ou ne se valide pas, ou dont les variables ne se convertissent pas, reçoit ses `errors` et aucune `data` : statut `200` avec `application/json`, et `400` avec `application/graphql-response+json` ou quand `Accept` demande un format de fichier comme CSV.
+
 Le champ `extensions` prend en charge le protocole Automatic Persisted Query (APQ) :
 
 ```json

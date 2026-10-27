@@ -129,7 +129,12 @@
       "address_not_found": "Rien à résoudre : {{reason}}",
       "mixed_resolve_and_other_fields": "resolve ne peut pas être combiné avec d'autres champs racine dans une même opération",
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
-      "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}."
+      "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
+      "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
+      "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
+      "graphql_request_not_object": "Une requête GraphQL est un objet JSON contenant une requête.",
+      "graphql_parameter_type": "Le paramètre {{parameter}} de la requête GraphQL doit être {{expected}}.",
+      "graphql_mutation_over_get": "Une mutation s'envoie en POST, jamais en GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

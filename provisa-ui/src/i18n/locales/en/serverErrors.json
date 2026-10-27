@@ -129,7 +129,12 @@
       "address_not_found": "Nothing to resolve: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve cannot be combined with other root fields in one operation",
       "source_starting": "The source {{source}} is still starting. Try again in a moment.",
-      "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}."
+      "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
+      "graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
+      "graphql_body_not_json": "The request body is not JSON: {{error}}",
+      "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
+      "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
+      "graphql_mutation_over_get": "A mutation is sent with POST, never GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",

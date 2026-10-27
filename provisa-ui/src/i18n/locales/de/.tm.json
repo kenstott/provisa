@@ -8140,5 +8140,10 @@
   "de/roleRights.json::roleRights.lineageHint": "From the standard roles to this one: each role lists the capabilities it adds; this role lists all it holds.",
   "de/roleRights.json::roleRights.capability": "Capability",
   "de/roleRights.json::roleRights.from": "Comes from",
-  "de/roleRights.json::roleRights.own": "its own"
+  "de/roleRights.json::roleRights.own": "its own",
+  "de/serverErrors.json::serverErrors.data.graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
+  "de/serverErrors.json::serverErrors.data.graphql_body_not_json": "The request body is not JSON: {{error}}",
+  "de/serverErrors.json::serverErrors.data.graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
+  "de/serverErrors.json::serverErrors.data.graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
+  "de/serverErrors.json::serverErrors.data.graphql_mutation_over_get": "A mutation is sent with POST, never GET."
 }

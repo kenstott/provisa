@@ -129,7 +129,12 @@
       "address_not_found": "Nada a resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve não pode ser combinado com outros campos raiz na mesma operação",
       "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
-      "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}."
+      "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}.",
+      "graphql_body_missing": "A requisição não tem corpo: uma requisição GraphQL é um objeto JSON com uma consulta.",
+      "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
+      "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
+      "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
+      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
