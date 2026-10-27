@@ -31,15 +31,17 @@ ONTOLOGY_TABLES: list[str] = [
     "_domains",
     "_experts",
     "_axioms",
+    "_closure",
 ]
 
 #: Each definition table's view.
 ONTOLOGY_TABLE_ALIAS: dict[str, str] = {t: f"{t}_ontology" for t in ONTOLOGY_TABLES}
 
 #: The glossary base table each definition table restates (its primary key is that table's); _axioms
-#: restates none, and its key is its own id.
+#: and _closure restate none, and each is keyed by its own id.
 ONTOLOGY_BASE_TABLE: dict[str, str | None] = {
     "_axioms": None,
+    "_closure": None,
     "_terms": "glossary_terms",
     "_term_refs": "glossary_term_refs",
     "_term_edges": "glossary_term_edges",
@@ -274,5 +276,49 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         JOIN t s ON s.id = x.subject_id
         LEFT JOIN t o ON o.id = x.object_id
         WHERE x.object_id IS NULL OR o.id IS NOT NULL
+    """,
+    # REQ-2163: rdfs:subClassOf and rdfs:subPropertyOf closed over, for SPARQL's * and + paths and
+    # the instances of a class's sub-classes (SQL's alone, as _axioms is). One row per (predicate,
+    # sub-term, super-term), with hops 0 for a term itself (the zero-length path) and 1 for one or
+    # more kind-of steps. A kind-of edge is a sub-class edge from a Class and a sub-property edge
+    # from a Property, as in _axioms. The rows are a finite set and UNION drops repeats, so the
+    # recursion ends on a cycle too.
+    "_closure": f"""
+        CREATE OR REPLACE VIEW _closure_ontology AS
+        WITH RECURSIVE t AS (
+            SELECT id, name, is_class, is_property, term_domains, tenant_id
+            FROM _terms_ontology WHERE NOT retired
+        ),
+        kinds (predicate, sub_id, sup_id) AS (
+            SELECT CASE WHEN f.is_class THEN '{RDFS}subClassOf' ELSE '{RDFS}subPropertyOf' END,
+                   e.from_term_id, e.to_term_id
+            FROM glossary_term_edges e
+            JOIN t f ON f.id = e.from_term_id
+            JOIN t g ON g.id = e.to_term_id
+            WHERE e.rel_type = 'KIND_OF' AND (f.is_class OR f.is_property)
+        ),
+        reach (predicate, sub_id, sup_id) AS (
+            SELECT predicate, sub_id, sup_id FROM kinds
+            UNION
+            SELECT r.predicate, r.sub_id, k.sup_id
+            FROM reach r JOIN kinds k ON k.predicate = r.predicate AND k.sub_id = r.sup_id
+        ),
+        pairs (predicate, sub_id, sup_id, hops) AS (
+            SELECT predicate, sub_id, sup_id, 1 FROM reach
+            UNION
+            SELECT '{RDFS}subClassOf', id, id, 0 FROM t WHERE is_class
+            UNION
+            SELECT '{RDFS}subPropertyOf', id, id, 0 FROM t WHERE is_property
+            UNION
+            SELECT predicate, sup_id, sup_id, 0 FROM kinds
+        )
+        SELECT x.predicate || ' ' || CAST(x.sub_id AS TEXT) || ' ' || CAST(x.sup_id AS TEXT)
+                   || ' ' || CAST(x.hops AS TEXT) AS id,
+               x.predicate, x.sub_id AS subject_term_id, s.name AS subject,
+               x.sup_id AS object_term_id, o.name AS object, x.hops,
+               s.term_domains AS subject_domains, o.term_domains AS object_domains, s.tenant_id
+        FROM pairs x
+        JOIN t s ON s.id = x.sub_id
+        JOIN t o ON o.id = x.sup_id
     """,
 }

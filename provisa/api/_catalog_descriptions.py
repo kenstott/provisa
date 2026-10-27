@@ -87,6 +87,8 @@ _META: dict[str, str] = {
     "_axioms": "The ontology stated as RDFS, OWL and SKOS triples, one a row: each term's class "
     "or property kind, its super-classes and super-properties, a property's domain and range, "
     "and each term's label and definition",
+    "_closure": "Each term with every term it is a kind of, as a class or as a property, "
+    "through one or more kind-of relationships, and itself",
 }
 
 _OPS: dict[str, str] = {
@@ -590,6 +592,19 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "readable-term scope tests",
         "object_domains": "Synthesized: the object term's domains as |a|b|; empty when the "
         "object is no term",
+        "tenant_id": _TENANT,
+    },
+    "_closure": {
+        "id": "The pair: its predicate, both terms' ids and its hops",
+        "predicate": "rdfs:subClassOf between Classes, rdfs:subPropertyOf between Properties",
+        "subject_term_id": "The narrower term",
+        "subject": "That term's name",
+        "object_term_id": "The broader term it is a kind of, or itself",
+        "object": "That term's name",
+        "hops": "0 for the term itself, 1 for one or more kind-of relationships",
+        "subject_domains": "Synthesized: the narrower term's domains as |a|b| — what its "
+        "readable-term scope tests",
+        "object_domains": "Synthesized: the broader term's domains as |a|b|",
         "tenant_id": _TENANT,
     },
     "_experts": {
