@@ -91,7 +91,7 @@ def test_a_domain_is_sealed(labels):
 
 
 def _classify(statement: str, graph: Graph | None = None):
-    prefix, patterns = pattern.create_clause(statement)
+    prefix, patterns, _ = pattern.create_clause(statement)
     return classify_create(
         pattern.parse_patterns(patterns), pattern.bound(prefix), _model(), graph or Graph()
     )

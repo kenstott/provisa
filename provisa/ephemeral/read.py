@@ -29,8 +29,9 @@ arm to hold a node giving its row -- a model type's arms come before the session
 session's unlabeled nodes are the relation of the label ``""``, which no statement can write, so
 only a match of any node reads it.
 
-A node of such a relation has ``__node_id`` (a model node's key, so its identity in an answer is
-what it is without the session; an ephemeral node's id) and ``__graph_id`` (``Label|key`` or the
+A node of such a relation has ``__node_id`` (a model node's key under its own label, so its
+identity in an answer is what it is without the session; its graph identity under a tag; an
+ephemeral node's id) and ``__graph_id`` (``Label|key`` or the
 ephemeral id), which the session's relationships join on.
 """
 
@@ -129,7 +130,13 @@ def overlay(model: Any, session: TempSession) -> Any:
         anchors = graph.label_anchors.get(key, set())
         properties = {prop: alias for prop, alias, _ in _model_columns(held)} if held else {}
         types = {alias: kind for _, alias, kind in _model_columns(held)} if held else {}
-        for name, kind in _session_columns(session, anchors):
+        # A tag's label reads its model nodes' columns beside its ephemeral nodes'.
+        tagged = [
+            (alias, kind)
+            for type_name in sorted(graph.tag_types.get(key, set()) - {key})
+            for _, alias, kind in _model_columns(model.nodes[type_name])
+        ]
+        for name, kind in [*tagged, *_session_columns(session, anchors)]:
             properties.setdefault(name, name)
             types[name] = _widened(types[name], kind) if name in types else kind
         nodes[key] = NodeMapping(
@@ -227,14 +234,16 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
             ),
         )
 
-    def model_rows(model_nm: Any, alias: str) -> exp.Select:
-        # The node's relation as the compiler reads it, each column by its published name.
+    def model_rows(model_nm: Any, alias: str, own: bool) -> exp.Select:
+        # The node's relation as the compiler reads it, each column by its published name. Read
+        # under its own label a model node is its key; under another (a tag) its graph identity,
+        # which names its type and keeps it apart from that label's own rows.
         from provisa.gql.translator_helpers import _node_table_expr
 
         values = {a: _col(a, alias) for _, a, _ in _model_columns(model_nm)}
-        return select(values, node_key_text(alias, model_nm), node_identity(alias, model_nm)).from_(
-            _node_table_expr(model_nm, alias)
-        )
+        identity = node_identity(alias, model_nm)
+        node_id = node_key_text(alias, model_nm) if own else identity
+        return select(values, node_id, identity).from_(_node_table_expr(model_nm, alias))
 
     def tagged(rows: exp.Select, graph_id: exp.Expression) -> exp.Select:
         return rows.join(
@@ -247,12 +256,12 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
         )
 
     if held is not None:
-        parts.append(model_rows(held, "_m"))
+        parts.append(model_rows(held, "_m", True))
     for type_name in sorted(graph.tag_types.get(key, set())):
         if type_name == key:
             continue  # a model label's own rows are all read already
         tagged_nm = model.nodes[type_name]
-        parts.append(tagged(model_rows(tagged_nm, "_t"), node_identity("_t", tagged_nm)))
+        parts.append(tagged(model_rows(tagged_nm, "_t", False), node_identity("_t", tagged_nm)))
 
     def unlabeled(rows: exp.Select, node_id: exp.Expression) -> exp.Select:
         held_labels = (

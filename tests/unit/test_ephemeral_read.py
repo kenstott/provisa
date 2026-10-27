@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.cypher.parser import CypherParseError
 from tests.unit.ephemeral_harness import Session
 
 pytestmark = pytest.mark.unit
@@ -106,3 +107,50 @@ def test_a_mixed_create_lands_its_governed_row_and_its_session_parts(monkeypatch
     assert _values(s.run("MATCH (n:Note) RETURN n.text")) == [("x",)]
     rows = s.run("MATCH (p:Person)-[:ABOUT]->(n:Note) RETURN p.name, n.text")
     assert _values(rows) == [("Cy", "x")]
+
+
+def test_set_gives_a_session_node_a_label(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("CREATE (:Temp {k: 1}), (:Temp {k: 2})")
+    s.run("MATCH (n:Temp) WHERE n.k = 1 SET n:Hot:Fresh")
+    assert _values(s.run("MATCH (n:Hot) RETURN n.k")) == [(1,)]
+    assert _values(s.run("MATCH (n:Fresh) RETURN n.k")) == [(1,)]
+
+
+def test_set_tags_a_model_node_and_remove_untags_it(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("MATCH (p:Person) WHERE p.name = 'Ann' SET p:Vip")
+    assert _values(s.run("MATCH (n:Vip) RETURN n.name")) == [("Ann",)]
+    assert _values(s.run("MATCH (n:Person) RETURN n.name")) == [("Ann",), ("Bo",)]
+    s.run("MATCH (n:Vip) REMOVE n:Vip")
+    assert s.run("MATCH (n:Vip) RETURN n.name") == []
+
+
+def test_a_session_node_whose_last_label_is_removed_is_still_a_node(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("CREATE (:Temp {k: 1})")
+    s.run("MATCH (n:Temp) REMOVE n:Temp")
+    assert s.run("MATCH (n:Temp) RETURN n.k") == []
+    assert _values(s.run("MATCH (n) WHERE n.k = 1 RETURN n.k")) == [(1,)]
+
+
+def test_a_label_already_carried_is_set_once(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("MATCH (p:Person) WHERE p.name = 'Ann' SET p:Vip")
+    s.run("MATCH (p:Person) WHERE p.name = 'Ann' SET p:Vip")
+    assert _values(s.run("MATCH (n:Vip) RETURN n.name")) == [("Ann",)]
+
+
+def test_a_model_nodes_own_label_is_not_removed(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    with pytest.raises(CypherParseError, match="its own table"):
+        s.run("MATCH (p:Person) REMOVE p:Person")
+
+
+def test_a_node_tagged_with_another_tables_label_keeps_apart_from_its_rows(monkeypatch):
+    # Rex (Pet 1) tagged Person reads beside Person 1 (Ann) as a node of its own.
+    s = Session(monkeypatch, {**_PEOPLE, "Pet": ({"id": "integer", "name": "text"}, "(1, 'Rex')")})
+    s.run("MATCH (p:Pet) SET p:Person")
+    assert _values(s.run("MATCH (n:Person) RETURN n.name")) == [("Ann",), ("Bo",), ("Rex",)]
+    s.run("MATCH (n:Person) WHERE n.name = 'Rex' REMOVE n:Person")
+    assert _values(s.run("MATCH (n:Person) RETURN n.name")) == [("Ann",), ("Bo",)]

@@ -129,6 +129,7 @@ async def _bolt_handshake_and_serve(
         await _serve(session, reader, writer)
     finally:
         session.close()  # a request left unpulled ends with its connection (REQ-1905)
+        await session.end_temp_tables()  # and its temporary tables (REQ-2176, REQ-615)
 
 
 async def _serve(session: BoltSession, reader: BoltReader, writer: BoltWriter) -> None:

@@ -116,7 +116,12 @@ def test_the_anchor_a_free_label_creates_anchors_its_later_nodes(written):
 
 @pytest.mark.parametrize(
     "statement",
-    ["CREATE (:Person {id: 1})", "MATCH (n:Person) RETURN n"],
+    [
+        "CREATE (:Person {id: 1})",
+        "CREATE (n:Person {id: 1}) RETURN n",
+        "CREATE INDEX FOR (n:Temp) ON (n.k)",
+        "MATCH (n:Person) RETURN n",
+    ],
 )
 def test_the_governed_write_and_a_read_are_left_to_their_own_path(written, statement):
     made, asked = _run(statement, [])
@@ -168,3 +173,8 @@ def test_a_model_relationship_of_a_split_goes_to_the_governed_path(written):
     assert [(r.rel_type, r.from_id, r.to_id) for r in written[0].rels] == [
         ("LIKES", "Person|7", "Person|7")
     ]
+
+
+def test_an_ephemeral_create_ends_its_statement(written):
+    with pytest.raises(CypherParseError, match="followed by RETURN"):
+        _run("CREATE (n:Temp {k: 1}) RETURN n", [])
