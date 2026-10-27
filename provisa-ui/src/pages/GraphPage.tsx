@@ -274,7 +274,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     let cancelled = false;
     fetch("/data/sparql/vocabulary", { headers })
       .then(async (r) => {
-        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? r.statusText);
+        // A refused request's body is its error, never a vocabulary.
+        if (!r.ok) throw new Error(refusalText(await r.text()));
         return r.json() as Promise<SparqlVocabulary>;
       })
       .then(

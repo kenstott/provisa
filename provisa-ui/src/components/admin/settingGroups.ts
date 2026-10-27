@@ -22,6 +22,10 @@ export function networkTransport(s: CatalogSetting): string {
 }
 
 /** How a card's settings are grouped into panels, by card id; a card not listed is not grouped. */
+// The groups a card shows open at first: general settings are what an operator opens the card
+// for (server.public_url among them, REQ-2135); every other transport starts collapsed.
+export const GROUPS_OPEN_AT_FIRST: ReadonlySet<string> = new Set(["general"]);
+
 export const CARD_GROUPS: Record<string, (s: CatalogSetting) => string> = {
   network: networkTransport,
 };

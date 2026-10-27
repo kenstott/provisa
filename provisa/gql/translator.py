@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
+from provisa.gql import temporal
 from provisa.gql.expr_ast import Binary, CypherExpr, MapLiteral, Paren, Property, Variable, walk
 from provisa.gql.ir import (
     CypherAST,
@@ -411,6 +412,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._temporal_zones: dict[str, str] = {}
         # A variable a WITH or UNWIND binds to a string (size() of it counts its characters)
         self._text_vars: set[str] = set()
+        # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
+        self._param_kinds: dict[str, str] = {}
+        self._param_zones: dict[str, str] = {}
+        for _name, _value in params.items():
+            _kind = temporal.value_kind(_value)
+            if _kind is not None:
+                self._param_kinds[temporal.parameter_key(_name)] = _kind
+                _zone = temporal.value_zone(_value)
+                if _zone is not None:
+                    self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # path_var → (step_nodes, step_edges) for flat-JOIN paths

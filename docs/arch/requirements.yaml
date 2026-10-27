@@ -89811,8 +89811,80 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     values their date, time, timestamp or duration types (microsecond precision, zones as Cypher presents
     them), a list of one element type a typed list, a map or mixed list JSON. Types only widen: an integer
     column receiving a float becomes double, and any incompatible value widens the column to JSON; a NULL
-    adds no column. A node carries an id; a node with several labels has a row in each label table under
-    that id, and SET updates every one.'
+    adds no column. [SUPERSEDED by REQ-2176, 2026-10-27 -- Cypher labels are {Domain}:{Table} (REQ-572);
+    extra labels are alias views (LABELS ARE DOMAIN:TABLE; EXTRA LABELS ARE VIEWS, below). Kept here for
+    history; do not implement against it.] A node carries an id; a node with several labels has a row in
+    each label table under that id, and SET updates every one. [END SUPERSEDED BLOCK] (Amended 2026-10-27,
+    LABELS ARE DOMAIN:TABLE; EXTRA LABELS ARE VIEWS:) Maintainer 2026-10-27: a Provisa node''s labels are
+    {Domain}:{Table} (REQ-572), so ephemeral labels follow that structure. Ephemeral tables live in one
+    reserved session domain (Session): CREATE (:Scratch) makes Session:Scratch, and :Scratch resolves to
+    it when no model table has that name, the model winning any clash. When a CREATE''s first label names
+    a domain, the pair is domain and table as everywhere else, and a domain other than the session domain
+    is refused by name (REQ-661). When its labels name no domain, the first is the node''s base table in
+    the session domain and each further label is a label alias: a session view over the base table selecting
+    the nodes that carry it. Views are tables to the label map, so MATCH on any of a node''s labels finds
+    it and labels(n) lists its base label and aliases. A node lives in exactly one base table; SET and DELETE
+    act on that table and its aliases follow. Relationship types follow the same rule: an ephemeral type
+    is a junction in the session domain and never shadows a model type. (Amended 2026-10-27, A SESSION LABELS
+    TABLE:) Maintainer 2026-10-27: the labels an ephemeral node carries beyond its base table are rows of
+    a session labels table (node id, label). When a CREATE''s labels include an existing ephemeral table''s
+    name, that table is the node''s base and each other label is added to the labels table; when none names
+    an existing ephemeral table, the first label creates the base table and the rest are added there. Each
+    label''s alias view is generated from the labels table, so MATCH on any label finds the node and labels(n)
+    lists the base and every row of the labels table for it. SET n:Label adds a row and REMOVE n:Label removes
+    one on an ephemeral node; on a model node, whose labels are its {Domain}:{Table}, a label write is refused
+    by name. The labels table is session-scoped like every ephemeral object: never persisted, never shared,
+    dropped at session end. (Amended 2026-10-27, NODES AND NODE_LABELS DECIDE MEMBERSHIP:) Maintainer 2026-10-27,
+    replacing the alias views and the labels table above: every ephemeral node has one row in a session
+    nodes table (node_id, table) naming the session table that stores its properties, and one row per label
+    it carries in a session node_labels junction (node_id, label), indexed on (label, node_id). A free label
+    (one combined with no existing ephemeral table in its CREATE) creates a storage table; a node whose
+    CREATE names an existing ephemeral table is stored there and the table widens as needed; an unlabeled
+    node goes to one default session table. Every label expression resolves through node_labels: :A:B is
+    a node carrying both, :A|B either, :!A not A, labels(n) its rows aggregated. A read finds the node_ids
+    matching the expression, dedups them, groups them by their table and unions those tables by column name
+    into one sparse result: a column a table lacks reads NULL (Cypher''s missing property) and conflicting
+    types widen as above. SET n:L and REMOVE n:L insert or delete one node_labels row; a node never moves
+    table. Ephemeral relationships have one row in a session rels table (rel_id, type, from_id, to_id, table),
+    their properties in a per-type table. Domain and model names resolve first and always win; a label in
+    neither with no CREATE is refused by name. (Amended 2026-10-27, FREE LABELS TAG MODEL NODES TOO; MODEL
+    TABLES NEVER WIDEN:) Maintainer 2026-10-27: a free label is always session data. It creates an ephemeral
+    storage table only when its CREATE names no model or ephemeral table; otherwise it is a node_labels
+    row. That includes model nodes: SET n:Tag on a matched model node, or a free label in a CREATE that
+    names a model label, records (the model node''s id, Tag) in node_labels with the model table as its
+    table, so MATCH (n:Tag) reads those rows from the model table under the role''s governance, beside any
+    ephemeral tables carrying the tag, and labels(n) adds the session tags to the node''s {Domain}:{Table}.
+    [SUPERSEDED by REQ-2176, 2026-10-27 -- a CREATE that also carries a free label creates an ephemeral
+    node carrying the model label (A MIXED CREATE IS EPHEMERAL, below). Kept here for history; do not implement
+    against it.] The model itself never changes: a CREATE naming a model label is a model write governed
+    as any (REQ-661), refused by name when the role cannot write that table, never diverted into an ephemeral
+    table; [END SUPERSEDED BLOCK] and a model table is never widened, so a CREATE or SET giving a model
+    node a property its table does not declare is refused by name. Session tags on model nodes end with
+    the session. (Amended 2026-10-27, A MIXED CREATE IS EPHEMERAL:) Maintainer 2026-10-27 (the rule is conformance
+    to the language, not protecting a careless caller): [SUPERSEDED by REQ-2176, 2026-10-27 -- a model write
+    is a CREATE naming exactly one model table (ONE MODEL TABLE IS A MODEL WRITE, below). Kept here for
+    history; do not implement against it.] a CREATE naming only model labels is a model write governed as
+    any (REQ-661). [END SUPERSEDED BLOCK] A CREATE whose labels include a free label creates an ephemeral
+    node: its properties go to the free label''s session table, and node_labels holds a row for every label
+    it was given, model labels included. A model label then resolves to its model table together with every
+    session node carrying it, unioned by table into one sparse result: the model rows read under the role''s
+    governance, the session''s nodes beside them, a column one side lacks reading NULL. So MATCH (n:Orders)
+    in that session answers the real orders and the session''s own as Cypher would. The model is never written
+    or widened by such a CREATE, and no marker label is added: a session node carries exactly the labels
+    it was created with. (Amended 2026-10-27, ONE MODEL TABLE IS A MODEL WRITE:) Maintainer 2026-10-27:
+    a CREATE is a model write (REQ-661) only when its labels name exactly one model table ({Domain}:{Table}
+    or the table alone; the domain only qualifies it) and no free label. Every other CREATE makes an ephemeral
+    node carrying every label it was given: one model table with free labels, two or more model tables (no
+    single model row can be both), or free labels alone. Its properties go to its first free label''s session
+    table, or to the default session table when it has none, and its node_labels rows make it match each
+    model label beside that table''s real rows. (Amended 2026-10-27, AN EXPANDED READ, ONLY WHERE THE SESSION
+    HAS MATCHES:) Maintainer 2026-10-27: ephemeral objects expand the read syntax; they do not change today''s
+    reads. A session holding no ephemeral object compiles every read to exactly the SQL it compiles today:
+    no join through nodes or node_labels, and the same plan, route and governance. In a session that holds
+    some, a label no session node carries is still read exactly as today; only a label with session matches
+    is read through the node_labels lookup and the sparse union. The translation is chosen from the session''s
+    overlay when the statement is translated, and the cache key carries the session''s generation, so a
+    label''s read changes form only once the session gives it a node.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

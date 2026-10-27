@@ -6,13 +6,6 @@
 # over a fixture model, and until it is, it counts as a failure. A write to a label the fixture
 # model registers is in scope (REQ-818), so writes are not excluded either.
 
-- group: Writes to relationships
-  requirement: REQ-665
-  decision: >-
-    "CREATE, SET, and DELETE cannot target relationship entities. Attempting to write a
-    relationship is a hard error at translation time."
-  reason: "cannot target relationships"
-
 - group: MERGE and REMOVE
   requirement: REQ-818
   decision: '"Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected."'

@@ -581,7 +581,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             else:
                 _bad = self._peek()
                 raise CypherParseError(
-                    f"Unexpected token {_bad.value!r} at pos {_bad.pos}"
+                    # Neo4j's words for a syntax error, which its clients read.
+                    f"Invalid input {_bad.value!r} at pos {_bad.pos}"
                     if _bad
                     else "Unexpected end of input"
                 )

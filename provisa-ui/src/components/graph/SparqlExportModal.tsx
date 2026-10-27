@@ -12,8 +12,9 @@
 // is written in its own form's formats (sparqlExport.ts): a graph as RDF, rows as SPARQL results.
 
 import { useState } from "react";
-import { Alert, Button, Group, Modal, SegmentedControl, Select, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Input, Modal, SegmentedControl, Select, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { FormField, FormLayout } from "../form/FormLayout";
 import { downloadBlob } from "./graph-export";
 import { fetchSparqlExport, SPARQL_EXPORT_FORMATS, type SparqlExportable } from "./sparqlExport";
 
@@ -57,7 +58,7 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
       centered
       data-testid="sparql-export-modal"
     >
-      <Stack gap="md">
+      <FormLayout>
         {!frame ? (
           <Text size="sm" c="dimmed" data-testid="sparql-export-empty">
             {t("sparqlExportModal.empty")}
@@ -65,36 +66,40 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
         ) : (
           <>
             {frames.length > 1 && (
-              <Select
-                label={t("sparqlExportModal.result")}
-                data={frames.map((f) => ({ value: f.id, label: f.query }))}
-                value={frame.id}
-                onChange={(v) => {
-                  setFrameId(v);
-                  setFormatKey(null);
-                  setError("");
-                }}
-                allowDeselect={false}
-                data-testid="sparql-export-frame"
-              />
+              <FormField size="long">
+                <Select
+                  label={t("sparqlExportModal.result")}
+                  data={frames.map((f) => ({ value: f.id, label: f.query }))}
+                  value={frame.id}
+                  onChange={(v) => {
+                    setFrameId(v);
+                    setFormatKey(null);
+                    setError("");
+                  }}
+                  allowDeselect={false}
+                  data-testid="sparql-export-frame"
+                />
+              </FormField>
             )}
-            <Stack gap={4}>
-              <Text size="sm" fw={500}>
-                {t("sparqlExportModal.format")}
-              </Text>
-              <SegmentedControl
-                value={format.key}
-                onChange={(v) => {
-                  setFormatKey(v);
-                  setError("");
-                }}
-                data={formats.map((f) => ({
-                  value: f.key,
-                  label: t(`sparqlExportModal.formats.${f.key}`),
-                }))}
-                data-testid="sparql-export-format"
-              />
-            </Stack>
+            <FormField size="long">
+              <Input.Wrapper label={t("sparqlExportModal.format")}>
+                {/* A block of its own, so the label sits above it as a field's does. */}
+                <div>
+                  <SegmentedControl
+                    value={format.key}
+                    onChange={(v) => {
+                      setFormatKey(v);
+                      setError("");
+                    }}
+                    data={formats.map((f) => ({
+                      value: f.key,
+                      label: t(`sparqlExportModal.formats.${f.key}`),
+                    }))}
+                    data-testid="sparql-export-format"
+                  />
+                </div>
+              </Input.Wrapper>
+            </FormField>
             {error && (
               <Alert color="red" data-testid="sparql-export-error">
                 {error}
@@ -102,17 +107,17 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
             )}
           </>
         )}
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose} data-testid="sparql-export-close">
-            {t("sparqlExportModal.close")}
-          </Button>
+        <Group>
           {frame && (
             <Button onClick={handleDownload} loading={busy} data-testid="sparql-export-download">
               {t("sparqlExportModal.download")}
             </Button>
           )}
+          <Button variant="default" onClick={onClose} data-testid="sparql-export-close">
+            {t("sparqlExportModal.close")}
+          </Button>
         </Group>
-      </Stack>
+      </FormLayout>
     </Modal>
   );
 }

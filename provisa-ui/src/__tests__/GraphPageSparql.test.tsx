@@ -68,7 +68,12 @@ const VOCABULARY = {
   // a KIND_OF.
   classes: [
     { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], superclasses: [] },
-    { iri: `${BASE}/vocab/sales/customers`, kind: "table", labels: ["customers"], superclasses: [] },
+    {
+      iri: `${BASE}/vocab/sales/customers`,
+      kind: "table",
+      labels: ["customers"],
+      superclasses: [],
+    },
     {
       iri: `${BASE}/vocab/term/Customer`,
       kind: "term",
@@ -95,7 +100,12 @@ const VOCABULARY = {
   ],
   // An edge type's predicate between two labels.
   edges: [
-    { iri: `${BASE}/vocab/rel/PLACED_BY`, type: "PLACED_BY", source: "orders", target: "customers" },
+    {
+      iri: `${BASE}/vocab/rel/PLACED_BY`,
+      type: "PLACED_BY",
+      source: "orders",
+      target: "customers",
+    },
   ],
   concepts: [{ iri: `${BASE}/vocab/term/Revenue`, name: "Revenue", definition: "Money in" }],
 };
@@ -162,6 +172,26 @@ describe("the SPARQL tab", () => {
     expect(screen.getByTestId("sparql-concept-Revenue")).toHaveTextContent("Revenue");
     // A column predicate's IRI has no prefixed name: its pill shows its column.
     expect(screen.getByTestId("sparql-predicate-orders.total")).toHaveTextContent("orders.total");
+  });
+
+  it("shows the refusal's own words when the vocabulary is refused", async () => {
+    // The refusal body is the app's ApiError body (cypher_error): its words are in ``detail``.
+    const told =
+      "server.public_url is not set. Set Public address (server.public_url) in Deployment settings";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: told, code: "sparql.refused", params: {} }), {
+            status: 400,
+            statusText: "Bad Request",
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    page();
+    expect(await screen.findByText(told)).toBeInTheDocument();
+    expect(screen.queryByText("Bad Request")).toBeNull();
   });
 
   it("adds a pill's triple pattern to the query in the bar, with its PREFIX line", async () => {

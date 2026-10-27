@@ -226,3 +226,55 @@ def test_supported_versions_includes_5_4():
     from provisa.bolt.messages import SUPPORTED_VERSIONS
 
     assert (5, 4) in SUPPORTED_VERSIONS
+
+
+# --- temporal and spatial structures (Bolt 5) ----------------------------------------------------
+# Neo4j's drivers send and expect these as structures, never as maps: Date 'D' [days],
+# Time 'T' [nanoseconds of the day, offset seconds], LocalTime 't' [nanoseconds],
+# DateTime 'I' [UTC seconds, nanoseconds, offset seconds], DateTimeZoneId 'i' [UTC seconds,
+# nanoseconds, zone id], LocalDateTime 'd' [seconds, nanoseconds], Duration 'E' [months, days,
+# seconds, nanoseconds], Point2D 'X' [srid, x, y], Point3D 'Y' [srid, x, y, z].
+
+import datetime as _dt  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+import pytest  # noqa: E402
+
+from provisa.gql.spatial import Point  # noqa: E402
+from provisa.gql.temporal import Duration  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("value", "tag", "fields"),
+    [
+        (_dt.date(1970, 1, 3), 0x44, [2]),
+        (_dt.time(0, 0, 1, 5), 0x74, [1_000_005_000]),
+        (
+            _dt.time(0, 0, 1, tzinfo=_dt.timezone(_dt.timedelta(hours=1))),
+            0x54,
+            [1_000_000_000, 3600],
+        ),
+        (_dt.datetime(1970, 1, 1, 0, 0, 2, 3), 0x64, [2, 3000]),
+        (
+            _dt.datetime(1970, 1, 1, 1, 0, 2, tzinfo=_dt.timezone(_dt.timedelta(hours=1))),
+            0x49,
+            [2, 0, 3600],
+        ),
+        (
+            _dt.datetime(1970, 1, 1, 1, 0, 2, tzinfo=ZoneInfo("Europe/Stockholm")),
+            0x69,
+            [2, 0, "Europe/Stockholm"],
+        ),
+        (Duration(14, 3, -1_500_000), 0x45, [14, 3, -2, 500_000_000]),
+        (Point(7203, (2.3, 4.5)), 0x58, [7203, 2.3, 4.5]),
+        (Point(4979, (1.0, 2.0, 3.0)), 0x59, [4979, 1.0, 2.0, 3.0]),
+    ],
+)
+def test_a_temporal_or_spatial_value_is_its_bolt_structure_both_ways(value, tag, fields):
+    packed = pack(value)
+    assert packed[1] == tag
+    assert unpack(packed) == value
+    assert (
+        unpack(packed[:0] + bytes([0xB0 | len(fields), tag]) + b"".join(pack(f) for f in fields))
+        == value
+    )
