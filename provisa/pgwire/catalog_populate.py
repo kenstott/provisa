@@ -20,7 +20,10 @@ truth for OID/attnum/name mappings) plus every _populate_* table builder.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from collections import OrderedDict
+from typing import Any
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
@@ -1012,4 +1015,93 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     populate_client_relations(db)  # REQ-2167
     populate_unqueried_relations(db, UNQUERIED_RELATIONS)
 
+    return db
+
+
+# REQ-2167: a role's catalog DB, built once and kept for every catalog statement of the role while
+# what it was built from is unchanged -- DBeaver sends dozens on connect, and building the catalog
+# for each cost each one. Kept per org and role, the most recently used first out of the bound.
+_CATALOG_DB_LIMIT = 256
+_catalog_dbs: OrderedDict[tuple[str, str], tuple[tuple[Any, ...], Any]] = OrderedDict()
+_catalog_dbs_lock = threading.Lock()
+
+
+@on_forget(size=lambda: len(_catalog_dbs))
+def _forget_catalog_dbs(org_id: str) -> None:
+    with _catalog_dbs_lock:
+        for key in [k for k in _catalog_dbs if k[0] == org_id]:
+            _catalog_dbs.pop(key, None)
+
+
+def _current_row_counts(role_id: str) -> dict[int, float] | None:
+    """The role's row-count estimates while they are current (``_row_counts_for``); None once they
+    are due to be fetched again."""
+    from provisa.core.request_context import require_current_org
+
+    cached = _row_count_cache.get((require_current_org(), role_id))
+    if cached and time.monotonic() - cached[0] < _ROW_COUNT_TTL:
+        return cached[1]
+    return None
+
+
+def _catalog_inputs(role_id: str, state) -> tuple[Any, ...]:
+    """What a role's catalog DB is built from: the schema generation, and objects compared by
+    identity (each replaced, never mutated, when the model is rebuilt); by value the role ids
+    (pg_roles lists every role, and a meta-role is added to and dropped from the registry in
+    place), the served database and the enabled surfaces."""
+    from provisa.pgwire.ext_surfaces import enabled_surface_keys
+
+    registry = state.schema_build_cache
+    config = getattr(state, "config", None)
+    roles = getattr(state, "roles", None)
+    return (
+        getattr(state, "schema_boot_id", None),
+        getattr(state, "schema_version", None),
+        state.contexts.get(role_id),
+        registry,
+        registry.get("column_types"),
+        registry.get("tables"),
+        registry.get("domains"),
+        config,
+        getattr(config, "metrics", None),
+        roles,
+        frozenset(roles) if isinstance(roles, dict) else None,
+        getattr(state, "tracked_functions", None),
+        _current_row_counts(role_id),
+        served_database_name(state),
+        enabled_surface_keys(),
+    )
+
+
+def _same_inputs(kept: tuple[Any, ...], now: tuple[Any, ...]) -> bool:
+    return len(kept) == len(now) and all(
+        a is b or (isinstance(a, (str, int, frozenset)) and a == b) for a, b in zip(kept, now)
+    )
+
+
+def catalog_db_for(role_id: str, state):  # REQ-2167
+    """The role's catalog DB, built only when none is kept for what it is built from now. Shared
+    by every statement it answers: each runs on its own cursor, and the DB is never closed (it is
+    dropped when replaced, a cursor still in use keeping it open). Nothing is kept while the model
+    is being rebuilt, or when the row-count estimates were due (the build fetches them anew)."""
+    from provisa.core.request_context import require_current_org
+    from provisa.pgwire.governed_plan import _rebuild_in_progress
+
+    key = (require_current_org(), role_id)
+    inputs = _catalog_inputs(role_id, state)
+    with _catalog_dbs_lock:
+        kept = _catalog_dbs.get(key)
+        if kept is not None and _same_inputs(kept[0], inputs):
+            _catalog_dbs.move_to_end(key)
+            return kept[1]
+    rebuilding = _rebuild_in_progress()
+    db = _build_catalog_db(role_id, state)
+    if rebuilding or _rebuild_in_progress():
+        return db
+    built_from = _catalog_inputs(role_id, state)
+    with _catalog_dbs_lock:
+        _catalog_dbs[key] = (built_from, db)
+        _catalog_dbs.move_to_end(key)
+        while len(_catalog_dbs) > _CATALOG_DB_LIMIT:
+            _catalog_dbs.popitem(last=False)
     return db

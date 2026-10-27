@@ -36,7 +36,7 @@ from provisa.pgwire.catalog_data import (
     _TYPEINFO_COLS,
     typeinfo,
 )
-from provisa.pgwire.catalog_populate import _build_catalog_db
+from provisa.pgwire.catalog_populate import catalog_db_for
 
 log = logging.getLogger(__name__)
 
@@ -355,9 +355,10 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         return QueryResult(rows=[(None,)], column_names=["string_agg"], column_types=["VARCHAR"])
 
     rewritten = stripped
-    db = None
+    cur = None
     try:
-        db = _build_catalog_db(role_id, state)
+        # REQ-2167: the role's kept catalog DB, on a cursor of this statement's own.
+        cur = catalog_db_for(role_id, state).cursor()
         # Substitute $N params before rewriting so SQLGlot can parse the SQL.
         # Queries with $N::type[] (e.g. asyncpg type introspection) would otherwise
         # fail to parse, preventing table-name rewrites.
@@ -369,7 +370,7 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         from provisa.pgwire.catalog_populate import served_database_name
 
         rewritten = _rewrite_for_duckdb(pre_subst, role_id, served_database_name(state))
-        cur = db.execute(rewritten)
+        cur.execute(rewritten)
         rows = [tuple(r) for r in cur.fetchall()]
         col_names = [desc[0] for desc in (cur.description or [])]
         col_types = _declared_types(
@@ -382,5 +383,5 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         )
         raise
     finally:
-        if db is not None:
-            db.close()
+        if cur is not None:
+            cur.close()
