@@ -23385,40 +23385,42 @@
   feature: cypher-and-graph-analytics-endpoint
   priority: MUST
   type: behavioral
-  description: '[SUPERSEDED by REQ-778, 2026-10-24 -- an error is answered in the app''s ApiError body, not
-    an `error` field. Kept here for history; do not implement against it.] Cypher /query/cypher endpoint
-    returns a typed response with `columns` (array of column names), `rows` (array of result objects),
-    `error` (null or error detail), and `type` (always "cypher"). [END SUPERSEDED BLOCK] No row truncation
-    or implicit result limiting occurs beyond query-specified LIMIT. (Amended 2026-10-24, ERRORS IN THE
-    APP''S ERROR BODY:) A successful answer is `columns`, `rows` and `type` ("cypher"). Every error of the
-    graph routes (/data/cypher and its graph-schema, graph-counts and export routes) is answered in the
-    app''s ApiError body (REQ-1350): `detail` (the English reason), `code` (stable, e.g. cypher.refused,
-    cypher.access_violations, cypher.execution_failed) and `params`, so every client reads the reason the
-    same way. An access refusal also lists each violation (`violations`: code and message), which `detail`
-    joins; an execution failure also carries the physical `sql`. (Amended 2026-10-24, A MISTAKE IS REFUSED
-    IN THE USER''S TERMS:) A mistake in the user''s statement is refused at translation, before any engine
-    runs it, with status 400, its own code and a message naming the clause or expression, what is wrong,
-    and the fix: a literal =~ pattern that RE2 (DuckDB) or Java (Trino) would reject (cypher.invalid_regex),
-    a label no table this role reads has (cypher.unknown_label, offering registered labels, the nearest
-    first; a label beside a known one is refused, never widened to the domain), a relationship type that
-    is not registered (cypher.unknown_relationship_type, 400 -- a registered type the role may not traverse
-    stays a 403 refusal), a property compared with a literal its registered type never compares to
-    (cypher.type_mismatch), an aggregate in a WHERE or inside another aggregate
-    (cypher.aggregate_in_where, cypher.nested_aggregate), a variable nothing in the statement binds
-    (cypher.undefined_variable), and a LIMIT or SKIP that is not a whole number of 0 or more
-    (cypher.invalid_limit, cypher.invalid_skip -- a fraction is never cut to its whole part). The engine''s
-    own text is said only for what the engine refused, as "The engine refused the query: ..."
-    (cypher.engine_refused). Each code is worded in the UI''s serverErrors catalog in every locale.
-    (Amended 2026-10-24, WHAT A READ CANNOT ANSWER HAS A CODE:) toInteger, toFloat and toBoolean of a
-    value that does not convert are null, as Neo4j''s are: the semantic SQL keeps TRY_CAST through
-    every rewrite and each engine writes its own null-on-failure cast (TRY_CAST, SAFE_CAST,
-    Snowflake''s TRY_CAST of the value as text, ClickHouse''s accurateCastOrNull, MySQL''s CAST where
-    the text reads as the type, or pg_input_is_valid on PostgreSQL, which needs PostgreSQL 16 or
-    later; an older one refuses it by name, cypher.try_cast_needs_postgres_16). Every route
-    transpiles the statement for its target: none sends the semantic SQL to a source as it is. An answer holding a number JSON cannot carry (Infinity,
-    NaN) is a 400 naming the column (cypher.non_finite_number). What the engine refused is
-    cypher.engine_refused on every engine, each by its own driver''s errors (a value it cannot
-    convert, a name it does not know); a lost engine is a 503.'
+  description: '[SUPERSEDED by REQ-778, 2026-10-24 -- an error is answered in the app''s ApiError body,
+    not an `error` field. Kept here for history; do not implement against it.] Cypher /query/cypher endpoint
+    returns a typed response with `columns` (array of column names), `rows` (array of result objects), `error`
+    (null or error detail), and `type` (always "cypher"). [END SUPERSEDED BLOCK] No row truncation or implicit
+    result limiting occurs beyond query-specified LIMIT. (Amended 2026-10-24, ERRORS IN THE APP''S ERROR
+    BODY:) A successful answer is `columns`, `rows` and `type` ("cypher"). Every error of the graph routes
+    (/data/cypher and its graph-schema, graph-counts and export routes) is answered in the app''s ApiError
+    body (REQ-1350): `detail` (the English reason), `code` (stable, e.g. cypher.refused, cypher.access_violations,
+    cypher.execution_failed) and `params`, so every client reads the reason the same way. An access refusal
+    also lists each violation (`violations`: code and message), which `detail` joins; an execution failure
+    also carries the physical `sql`. (Amended 2026-10-24, A MISTAKE IS REFUSED IN THE USER''S TERMS:) A
+    mistake in the user''s statement is refused at translation, before any engine runs it, with status 400,
+    its own code and a message naming the clause or expression, what is wrong, and the fix: a literal =~
+    pattern that RE2 (DuckDB) or Java (Trino) would reject (cypher.invalid_regex), a label no table this
+    role reads has (cypher.unknown_label, offering registered labels, the nearest first; a label beside
+    a known one is refused, never widened to the domain), a relationship type that is not registered (cypher.unknown_relationship_type,
+    400 -- a registered type the role may not traverse stays a 403 refusal), a property compared with a
+    literal its registered type never compares to (cypher.type_mismatch), an aggregate in a WHERE or inside
+    another aggregate (cypher.aggregate_in_where, cypher.nested_aggregate), a variable nothing in the statement
+    binds (cypher.undefined_variable), and a LIMIT or SKIP that is not a whole number of 0 or more (cypher.invalid_limit,
+    cypher.invalid_skip -- a fraction is never cut to its whole part). The engine''s own text is said only
+    for what the engine refused, as "The engine refused the query: ..." (cypher.engine_refused). Each code
+    is worded in the UI''s serverErrors catalog in every locale. (Amended 2026-10-24, WHAT A READ CANNOT
+    ANSWER HAS A CODE:) toInteger, toFloat and toBoolean of a value that does not convert are null, as Neo4j''s
+    are: the semantic SQL keeps TRY_CAST through every rewrite and each engine writes its own null-on-failure
+    cast (TRY_CAST, SAFE_CAST, Snowflake''s TRY_CAST of the value as text, ClickHouse''s accurateCastOrNull,
+    MySQL''s CAST where the text reads as the type, or pg_input_is_valid on PostgreSQL, which needs PostgreSQL
+    16 or later; an older one refuses it by name, cypher.try_cast_needs_postgres_16). Every route transpiles
+    the statement for its target: none sends the semantic SQL to a source as it is. An answer holding a
+    number JSON cannot carry (Infinity, NaN) is a 400 naming the column (cypher.non_finite_number). What
+    the engine refused is cypher.engine_refused on every engine, each by its own driver''s errors (a value
+    it cannot convert, a name it does not know); a lost engine is a 503. (Amended 2026-10-27, A NULL BINDING
+    IS NOT A MISTAKE:) Maintainer 2026-10-27: a variable bound to null (WITH null AS a) used where a node
+    is expected is valid Cypher and is not refused as a value used as a node: an OPTIONAL MATCH constrained
+    by it answers its null row (a null path). A variable bound to a non-null value that is not a node is
+    still refused by name.'
   use_case: Consistent response shape enables client libraries to deserialize typed Cypher query results.
   code:
   - provisa/api/rest/cypher_router.py
@@ -80892,7 +80894,34 @@
   feature: source-registration-introspection
   priority: MUST
   type: behavioral
-  description: 'The model records the precision and scale of a numeric column. Registration takes them from the source the same way whichever engine introspects it -- from the precision and scale each engine reports for the column, not from how that engine happens to print the type name -- and stores them with the column; the column editor shows them and lets the registrar set or clear them. A numeric column with a recorded precision and scale is an exact decimal of that precision and scale on every read path, on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating point on every read path and in every listing, the same for an empty result as for a full one, and is documented as approximate. A column''s type is never sized from the rows a read happens to return. The type a catalog lists for a column is the type a read of that column returns. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a numeric column''s precision and scale have one stored spelling, numeric(p,s), written and read in one place, taken at registration from the precision and scale the engine reports, and a size no numeric can have (precision 1 to 76, scale 0 to the precision) is refused with a code naming the column; the column editor sets or clears them beside the type; a read types each registered column as its registered type on pgwire''s row stream, Flight''s buffered answers, an Airport scan and an engine''s Arrow stream, a value that is not that type is a read refusal with a code, and only a result column that is a registered column is typed by the model; a numeric with no recorded size is cast to double precision by its source inside the governed statement, so its type depends on no row; the type a catalog lists is the type a read returns. Verified on a running server over Flight and pgwire (the catalog, rows, no rows and a computed column). Not yet verified surface by surface: GraphQL, gRPC, REST, JSON:API and Bolt. (Amended 2026-10-27, TIMESTAMP PRECISION:) The model records a timestamp column''s fractional-second precision the same way: a PostgreSQL column declaring one (TIMESTAMP(p), with or without time zone) registers as timestamp(p) or timestamptz(p), and is read and listed in Arrow at the coarsest unit that holds p -- seconds for 0, milliseconds to 3, microseconds to 6, nanoseconds beyond -- on every read path, by the same one rule as a numeric''s size. A timestamp declaring none is six digits, microseconds. It is still a timestamp everywhere a column''s kind is asked.'
+  description: 'The model records the precision and scale of a numeric column. Registration takes them from
+    the source the same way whichever engine introspects it -- from the precision and scale each engine
+    reports for the column, not from how that engine happens to print the type name -- and stores them with
+    the column; the column editor shows them and lets the registrar set or clear them. A numeric column
+    with a recorded precision and scale is an exact decimal of that precision and scale on every read path,
+    on every engine and surface, and in every catalog listing. A numeric column with none recorded is floating
+    point on every read path and in every listing, the same for an empty result as for a full one, and is
+    documented as approximate. A column''s type is never sized from the rows a read happens to return. The
+    type a catalog lists for a column is the type a read of that column returns. (Amended 2026-10-13, WHAT
+    IS DELIVERED:) Delivered: a numeric column''s precision and scale have one stored spelling, numeric(p,s),
+    written and read in one place, taken at registration from the precision and scale the engine reports,
+    and a size no numeric can have (precision 1 to 76, scale 0 to the precision) is refused with a code
+    naming the column; the column editor sets or clears them beside the type; a read types each registered
+    column as its registered type on pgwire''s row stream, Flight''s buffered answers, an Airport scan and
+    an engine''s Arrow stream, a value that is not that type is a read refusal with a code, and only a result
+    column that is a registered column is typed by the model; a numeric with no recorded size is cast to
+    double precision by its source inside the governed statement, so its type depends on no row; the type
+    a catalog lists is the type a read returns. Verified on a running server over Flight and pgwire (the
+    catalog, rows, no rows and a computed column). Not yet verified surface by surface: GraphQL, gRPC, REST,
+    JSON:API and Bolt. (Amended 2026-10-27, TIMESTAMP PRECISION:) The model records a timestamp column''s
+    fractional-second precision the same way: a PostgreSQL column declaring one (TIMESTAMP(p), with or without
+    time zone) registers as timestamp(p) or timestamptz(p), and is read and listed in Arrow at the coarsest
+    unit that holds p -- seconds for 0, milliseconds to 3, microseconds to 6, nanoseconds beyond -- on every
+    read path, by the same one rule as a numeric''s size. A timestamp declaring none is six digits, microseconds.
+    It is still a timestamp everywhere a column''s kind is asked. (Amended 2026-10-27, TIME PRECISION:)
+    Maintainer 2026-10-27: the precision rule covers TIME(p) as it covers TIMESTAMP(p): a time column is
+    listed and read at its declared precision (Arrow time32[s] for 0, time32[ms] for up to 3, time64[us]
+    for up to 6, time64[ns] beyond), never widened to one unit.'
   code:
   - provisa/core/temporal_type.py
   - provisa/core/numeric_type.py
