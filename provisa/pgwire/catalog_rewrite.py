@@ -73,7 +73,7 @@ _VECTOR_COLUMNS = frozenset(
 )
 
 
-def _is_vector(node: exp.Expression, vectors: frozenset[str] = _VECTOR_COLUMNS) -> bool:
+def _is_vector(node: exp.Expr, vectors: frozenset[str] = _VECTOR_COLUMNS) -> bool:
     while isinstance(node, exp.Paren):
         node = node.this
     return isinstance(node, exp.Column) and node.name.lower() in vectors
@@ -271,6 +271,8 @@ def _rewrite_pg_cast(node, _transform):
 
     dtype = node.args.get("to")
     dtype_str = str(dtype).lower() if dtype else ""
+    # A type named in pg_catalog (psql writes ::pg_catalog.regclass) is that type.
+    dtype_str = dtype_str.removeprefix("pg_catalog.")
     if dtype_str in _REG_CAST_TYPES:
         # `'[schema.]name'::regclass` → unqualified `'name'`. Provisa's synthetic
         # pg_description stores classoid as the short relation name (e.g.
@@ -360,6 +362,25 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     this=exp.Identifier(this=alias.name if alias else "_pg_expandarray")
                 ),
             )
+        if (
+            isinstance(node, exp.Table)
+            and isinstance(node.this, exp.Func)
+            and not isinstance(node.this, exp.Anonymous)
+            and (node.db or "").lower() in (*_INTERCEPT_SCHEMAS, "")
+        ):
+            # A pg_catalog set-returning function in FROM (psql: FROM pg_catalog.unnest(a) s(n)) is
+            # DuckDB's own function of that name. Aliased without column names, a one-column
+            # function's alias names its column, as in PostgreSQL (DuckDB's names the row).
+            alias = node.args.get("alias")
+            if (
+                alias is not None
+                and not alias.columns
+                and isinstance(node.this, (exp.GenerateSeries, exp.Explode))
+            ):
+                alias = exp.TableAlias(
+                    this=alias.this.copy(), columns=[exp.to_identifier(alias.name)]
+                )
+            return exp.Table(this=node.this.transform(_transform), alias=alias)
         if isinstance(node, exp.Table):
             # Schema-qualified scalar function used as a TVF (e.g. pg_catalog.pg_indexam_has_property(...) amcanorder).
             # Rewrite to a lateral subquery so DuckDB can parse it.
@@ -464,6 +485,20 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.Subquery(this=base)
             if "pg_get_userbyid" in fn or "pg_get_role_name" in fn:
                 return exp.Literal.string("provisa")
+            if fn == "pg_relation_is_publishable" and len(args) == 1:
+                # REQ-2167: as PostgreSQL answers it: an ordinary or partitioned table outside
+                # pg_catalog and information_schema (psql \d's "Publications" footer).
+                return exp.Exists(
+                    this=exp.select("1")
+                    .from_("_pg_class")
+                    .where(
+                        exp.EQ(
+                            this=exp.column("oid"),
+                            expression=exp.cast(args[0].transform(_transform), "BIGINT"),
+                        )
+                    )
+                    .where("relkind IN ('r', 'p') AND relnamespace NOT IN (11, 12)")
+                )
             if fn == "pg_get_indexdef" and len(args) >= 2:
                 return _index_column_name(
                     args[0].transform(_transform), args[1].transform(_transform)
@@ -607,8 +642,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             left = node.this
             if isinstance(left, exp.Identifier) and left.name.lower() in _INTERCEPT_SCHEMAS:
                 # Re-apply transform to inner node so schema-qualified function calls
-                # like pg_catalog.pg_encoding_to_char(...) are fully handled
-                return _transform(node.expression)
+                # like pg_catalog.pg_encoding_to_char(...) are fully handled, their arguments
+                # too (psql: pg_catalog.string_agg(pg_catalog.quote_ident(attname), ', ')).
+                return node.expression.transform(_transform)
         if isinstance(node, exp.EQ):
             # Rewrite `val = ANY(arr)` → `list_contains(arr, val)` so DuckDB
             # does not expand ANY into an internal subquery, which it rejects

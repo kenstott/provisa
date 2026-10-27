@@ -231,3 +231,62 @@ def test_acl_char_array_inet_and_lsn_are_written_and_sent_as_postgresql_does():
     assert lsn[0] == 3220 and lsn[1]("16/B374D848") == "16/B374D848"
     assert lsn[2]("16/B374D848") == ((0x16 << 32) | 0xB374D848).to_bytes(8, "big")
     assert lsn[1]((0x16 << 32) | 0xB374D848) == "16/B374D848"  # asyncpg reads a pg_lsn as int
+
+
+def test_every_client_relation_has_postgresqls_columns_and_types():
+    from provisa.pgwire.catalog_pg17 import RELATIONS
+    from provisa.pgwire.catalog_pg17_tables import CLIENT_RELATIONS
+
+    for schema, relation in CLIENT_RELATIONS:
+        served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
+        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+
+
+def test_pg_authid_lists_the_roles_and_never_a_password():
+    state = _state()
+    state.roles = {"analyst": {"id": "analyst"}, "admin": {"id": "admin"}}
+    rows = answer("SELECT rolname, rolpassword FROM pg_catalog.pg_authid", "testrole", state).rows
+    assert rows and {name for name, _ in rows} >= {"analyst", "admin"}
+    assert [password for _, password in rows] == [None] * len(rows)
+
+
+def test_psqls_describe_table_footers_run():
+    # psql 17's \d <table>: "Statistics objects" and "Publications" (describe.c).
+    oid = "16394"
+    statistics = (
+        "SELECT oid, stxrelid::pg_catalog.regclass, stxnamespace::pg_catalog.regnamespace AS nsp, "
+        "stxname,\n  (SELECT pg_catalog.string_agg(pg_catalog.quote_ident(attname),', ')\n"
+        "   FROM pg_catalog.unnest(stxkeys) s(attnum)\n"
+        "   JOIN pg_catalog.pg_attribute a ON (stxrelid = a.attrelid AND\n"
+        "        a.attnum = s.attnum AND NOT attisdropped)) AS columns,\n"
+        "  'd' = any(stxkind) AS ndist_enabled,\n  'f' = any(stxkind) AS deps_enabled,\n"
+        "  'm' = any(stxkind) AS mcv_enabled,\n  stxstattarget\n"
+        f"FROM pg_catalog.pg_statistic_ext\nWHERE stxrelid = '{oid}'\nORDER BY 1;"
+    )
+    publications = (
+        "SELECT pubname\n     , NULL\n     , NULL\nFROM pg_catalog.pg_publication p\n"
+        "     JOIN pg_catalog.pg_publication_namespace pn ON p.oid = pn.pnpubid\n"
+        "     JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.pnnspid\n"
+        f"WHERE pc.oid ='{oid}' and pg_catalog.pg_relation_is_publishable('{oid}')\n"
+        "UNION\nSELECT pubname\n     , pg_get_expr(pr.prqual, c.oid)\n"
+        "     , (CASE WHEN pr.prattrs IS NOT NULL THEN\n"
+        "         (SELECT string_agg(attname, ', ')\n"
+        "           FROM pg_catalog.generate_series(0, "
+        "pg_catalog.array_upper(pr.prattrs::pg_catalog.int2[], 1)) s,\n"
+        "                pg_catalog.pg_attribute\n"
+        "          WHERE attrelid = pr.prrelid AND attnum = prattrs[s])\n"
+        "        ELSE NULL END) FROM pg_catalog.pg_publication p\n"
+        "     JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid\n"
+        "     JOIN pg_catalog.pg_class c ON c.oid = pr.prrelid\n"
+        f"WHERE pr.prrelid = '{oid}'\nUNION\nSELECT pubname\n     , NULL\n     , NULL\n"
+        "FROM pg_catalog.pg_publication p\n"
+        f"WHERE p.puballtables AND pg_catalog.pg_relation_is_publishable('{oid}')\nORDER BY 1;"
+    )
+    assert answer(statistics, "testrole", _state()).rows == []
+    assert answer(publications, "testrole", _state()).rows == []
+
+
+def test_dbeavers_sequence_query_runs():
+    # DBeaver PostgreSequence.java.
+    sql = "SELECT * from pg_catalog.pg_sequences WHERE schemaname='public' AND sequencename='s'"
+    assert answer(sql, "testrole", _state()).rows == []
