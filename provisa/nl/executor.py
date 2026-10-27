@@ -227,7 +227,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
     import json
 
     from provisa.grpc.query_ir import (
-        grpc_table_to_semantic_sql,
+        grpc_table_to_graphql,
         nodes_index,
         split_agg_columns,
         split_group_by_columns,
@@ -290,12 +290,15 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         top, nested = split_agg_columns(cq.columns, row)
         return {**top, **nested}
 
+    # Query{Type}: the row read the servicer runs, lowered to GraphQL and compiled as it is.
     type_name = query[len("Query") :] if query.startswith("Query") else query
-    semantic = grpc_table_to_semantic_sql(ctx, type_name, limit=20)
-    if semantic is None:
+    lowered = grpc_table_to_graphql(ctx, app_state.schemas.get(role), type_name, limit=20)
+    if lowered is None:
         raise RuntimeError(f"No table matches gRPC type: {type_name}")
-    sql, _no_filter_params = semantic  # no filter is passed, so nothing is bound
-    return await _execute_sql(sql, role, app_state, deliver)
+    graphql_text, _no_variables = lowered  # no filter or parameter is passed
+    _cq, result, _ = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
+    columns = list(result.column_names)
+    return {"columns": columns, "rows": [dict(zip(columns, row)) for row in result.rows]}
 
 
 def _grpc_aggregate_graphql_text(
