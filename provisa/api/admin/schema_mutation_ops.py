@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import delete, select, update
 
-from provisa.compiler.naming import SqlAddressTaken
+from provisa.compiler.naming import LabelClash, SqlAddressTaken
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import (
@@ -42,6 +42,7 @@ from provisa.api.admin._live_mappers import table_model_from_input as _table_mod
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
     carried,
+    label_clash_result,
     load_protection_refusal,
     save_row_rules,
     save_carried_after_store,
@@ -668,6 +669,9 @@ async def register_table(
                             params={"table": _drop.table_name, "columns": _report},
                         )
                     )
+                except LabelClash as _clash:
+                    # REQ-572: a label never names both a domain and a table; both are named.
+                    raise TableSaveRefused(label_clash_result(_clash))
                 except SqlAddressTaken as _taken:
                     # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                     raise TableSaveRefused(
