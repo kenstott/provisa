@@ -161,6 +161,6 @@
     "moveManyUnnamed_one": "移動 {{count}} 個欄位？",
     "moveManyUnnamed_other": "移動 {{count}} 個欄位？",
     "moveCarryUnnamed": "移動並為其新術語標記 {{tags}}",
-    "termGraphTitle": "術語圖"
+    "termGraphTitle": "詞彙圖"
   }
 }

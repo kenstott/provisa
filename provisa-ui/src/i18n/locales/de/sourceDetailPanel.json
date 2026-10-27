@@ -9,7 +9,7 @@
     "deleteTitleShort": "Löschen",
     "deleteConsequence": "Dies entfernt die Datenquelle \"{{id}}\" und kann Tabellen beschädigen, die darauf verweisen.",
     "refreshKaggleTitle": "Von Kaggle aktualisieren",
-    "refreshKaggleHint": "{{owner}}/{{ref}} mit dem eigenen Token der Quelle erneut von Kaggle herunterladen und die bereitgestellten Dateien an Ort und Stelle überschreiben.",
+    "refreshKaggleHint": "{{owner}}/{{ref}} mit dem eigenen Token der Datenquelle erneut von Kaggle herunterladen und die bereitgestellte(n) Datei(en) an Ort und Stelle überschreiben.",
     "refreshKaggleSubmit": "Aktualisieren",
     "runProfilerTitle": "Jetzt für jede Mitgliedstabelle ausführen",
     "profilerNoMembers": "Keine Tabelle gehört zu diesem Profiler.",

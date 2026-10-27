@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Kaggle API-token",
-    "tokenDescription": "Live bij Kaggle gecontroleerd. Bewaard als referentie van de bron en bij elke verversing opnieuw gebruikt.",
+    "tokenDescription": "Live gecontroleerd bij Kaggle. Bewaard als referentie van de databron en bij elke vernieuwing opnieuw gebruikt.",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "Token valideren",
     "tokenValid": "Token geldig",

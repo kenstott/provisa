@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "אסימון API של Kaggle",
-    "tokenDescription": "נבדק בזמן אמת מול Kaggle. נשמר כפרטי הגישה של המקור ומשמש שוב בכל רענון.",
+    "tokenDescription": "נבדק בזמן אמת מול Kaggle. נשמר כאישור הגישה של מקור הנתונים ומשמש שוב בכל רענון.",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "אימות אסימון",
     "tokenValid": "האסימון תקין",

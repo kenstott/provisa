@@ -9,7 +9,7 @@
     "deleteTitleShort": "刪除",
     "deleteConsequence": "此操作會移除數據來源「{{id}}」，並可能令參照它的數據表失效。",
     "refreshKaggleTitle": "從 Kaggle 重新整理",
-    "refreshKaggleHint": "使用數據源自身的權杖從 Kaggle 重新下載 {{owner}}/{{ref}},就地覆寫已暫存的檔案。",
+    "refreshKaggleHint": "使用數據來源本身的權杖從 Kaggle 重新下載 {{owner}}/{{ref}}，並就地覆寫暫存檔案。",
     "refreshKaggleSubmit": "重新整理",
     "runProfilerTitle": "立即為每個成員資料表執行",
     "profilerNoMembers": "沒有資料表加入此剖析器。",

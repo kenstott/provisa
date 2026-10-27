@@ -73,8 +73,8 @@
     },
     "engine": {
       "duckdb_memory_limit": {
-        "label": "Geheugenlimiet DuckDB-engine",
-        "help": "Het meeste geheugen dat een DuckDB-engine van deze installatie mag gebruiken. Daarboven wijkt een query uit naar schijf of wordt geweigerd. Niet ingesteld: de eigen limiet van DuckDB, het grootste deel van het geheugen van de host."
+        "label": "Geheugenlimiet van de DuckDB-engine",
+        "help": "Het meeste geheugen dat een DuckDB-engine van deze implementatie mag gebruiken. Daarboven wijkt een query uit naar schijf of wordt geweigerd. Niet ingesteld: de eigen limiet van DuckDB, het grootste deel van het geheugen van de host."
       },
       "ready_timeout": {
         "label": "Gereedheids-timeout van de engine",
@@ -889,15 +889,15 @@
     },
     "codesource": {
       "duckdb_memory_mb": {
-        "label": "DuckDB-geheugen van codebron",
-        "help": "Het geheugen waarin de DuckDB van een codebron een statement beantwoordt. Daarboven wijkt het statement uit naar schijf."
+        "label": "DuckDB-geheugen van de codebron",
+        "help": "Het geheugen waarin de DuckDB van een codebron een statement beantwoordt. Daarboven loopt het statement over naar schijf."
       },
       "duckdb_spill_cap_mb": {
-        "label": "DuckDB-spillimiet van codebron",
-        "help": "Het meeste dat de DuckDB van een codebron naar schijf uitwijkt. Een statement dat meer nodig heeft, wordt geweigerd met vermelding van deze instelling. Een gebouwde image dwingt dit alleen af als het spill-volume met het quotum van het platform op deze limiet is afgestemd. Een codebron in ontwikkelmodus wijkt zonder grens uit naar de datamap."
+        "label": "DuckDB-overlooplimiet van de codebron",
+        "help": "Het meeste dat de DuckDB van een codebron naar schijf laat overlopen. Een statement dat meer nodig heeft, wordt geweigerd met de naam van deze instelling. Een gebouwde image dwingt dit alleen af als het overloopvolume met het quotum van het platform op deze limiet is ingesteld. Een codebron in ontwikkelmodus loopt zonder grens over naar de datamap."
       },
       "duckdb_threads": {
-        "label": "DuckDB-threads van codebron",
+        "label": "DuckDB-threads van de codebron",
         "help": "De threads waarop de DuckDB van een codebron zijn statements beantwoordt."
       }
     }

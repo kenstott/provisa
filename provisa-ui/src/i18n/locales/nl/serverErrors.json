@@ -93,7 +93,7 @@
       "no_grpc_query_for_table": "Geen gRPC-query geregistreerd voor tabel '{{table}}'",
       "no_mutation_fields": "Geen mutatievelden gevonden",
       "no_proto_for_role": "Rol '{{role_id}}' heeft geen proto: de rol krijgt geen gegevensoppervlak, omdat deze geen domein bereikt of alleen rechten op het besturingsvlak heeft",
-      "role_served_nothing": "Aan rol '{{role_id}}' worden geen tabellen geleverd: er is geen kolom van welke tabel ook aan verleend",
+      "role_served_nothing": "Aan rol '{{role_id}}' wordt geen tabel geleverd: er is geen kolom van welke tabel dan ook aan toegekend",
       "no_query_field_for_proto_type": "Geen queryveld voor proto-type '{{type_name}}' onder rol '{{role_id}}'",
       "no_query_fields": "Geen queryvelden gevonden",
       "no_role": "Geen rol '{{role_id}}'",
@@ -467,7 +467,7 @@
       "relationship_same_entity_cardinality": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze is {{cardinality}}, en dezelfde entiteit is één rij op één rij",
       "relationship_same_entity_not_grounded": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{source}} en {{target}} zijn niet in dezelfde term verankerd",
       "relationship_same_entity_not_keys": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{columns}} is niet de primaire sleutel of een unieke sleutel van {{table}}",
-      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de bron heeft geen Kaggle-API-token. Voeg het toe in het Bronnen-formulier, waar het token wordt ingevoerd."
+      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd."
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
@@ -576,7 +576,7 @@
       "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
       "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",
       "non_finite_number": "Het antwoord bevat een getal dat JSON niet kan weergeven: {{column}} is {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet converteert vereisen PostgreSQL 16 of later op deze engine."
+      "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet converteert, vereisen PostgreSQL 16 of later op deze engine."
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
@@ -590,7 +590,7 @@
     "statement": {
       "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",
       "rows_cut_unchecked": "Het antwoord heeft {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}). Of er meer rijen overeenkomen, kon niet worden gecontroleerd: {{reason}}",
-      "list_at_ceiling": "Een lijst bevat het maximum van {{limit}} items dat de rijlimiet voor deze leesactie toestaat ({{kind}}); er kunnen er meer zijn.",
+      "list_at_ceiling": "Een lijst bevat het maximum van {{limit}} items dat de rijlimiet voor deze leesbewerking toestaat ({{kind}}); er kunnen er meer zijn.",
       "approximate_index": "De meest gelijkende rijen zijn gevonden via een benaderende vectorindex: een rij die iets meer lijkt dan de laatst teruggegeven rij kan ontbreken.",
       "path_cut": "Een pad zonder bovengrens is afgekapt op de dieptegrens van de graaf van {{limit}} hops: langere paden ontbreken in het antwoord."
     },
@@ -718,23 +718,23 @@
         "deprecated": "Dataproduct {{data_product}} als verouderd gemarkeerd.",
         "retired": "Dataproduct {{data_product}} buiten gebruik gesteld.",
         "restored": "Dataproduct {{data_product}} hersteld.",
-        "reason_required": "Een reden is vereist: zeg waarom het dataproduct verouderd is of buiten gebruik wordt gesteld.",
+        "reason_required": "Een reden is verplicht: geef aan waarom het dataproduct als verouderd wordt gemarkeerd of buiten gebruik wordt gesteld.",
         "not_found": "Dataproduct {{data_product}} niet gevonden.",
         "not_draft": "Alleen een dataproduct in concept kan worden gepubliceerd; dit is {{status}}.",
-        "not_live": "Alleen een live dataproduct kan als verouderd worden gemarkeerd, en alleen een live of verouderd product buiten gebruik worden gesteld; dit is {{status}}.",
+        "not_live": "Alleen een actief dataproduct kan als verouderd worden gemarkeerd, en alleen een actief of verouderd dataproduct buiten gebruik worden gesteld; dit is {{status}}.",
         "not_restorable": "Alleen een verouderd of buiten gebruik gesteld dataproduct kan worden hersteld; dit is {{status}}.",
         "retire_on_past": "De geplande datum van buitengebruikstelling {{retire_on}} ligt in het verleden. Kies vandaag of een latere datum.",
-        "successor_required": "Dit dataproduct heeft {{members}} lid/leden; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
-        "successor_is_self": "Een dataproduct kan zichzelf niet opvolgen.",
-        "successor_retired": "De opvolger '{{successor}}' is buiten gebruik. Kies een dataproduct dat in gebruik is.",
-        "successor_other_domain": "De opvolger '{{successor}}' zit in domein {{domain}}. De leden van een product delen het domein ervan, dus kies een opvolger in hetzelfde domein."
+        "successor_required": "Dit dataproduct heeft {{members}} lid/leden; bij buitengebruikstelling gaan ze naar een opvolger. Kies er een.",
+        "successor_is_self": "Een dataproduct kan niet zijn eigen opvolger zijn.",
+        "successor_retired": "De opvolger '{{successor}}' is buiten gebruik gesteld. Kies een dataproduct dat in gebruik is.",
+        "successor_other_domain": "De opvolger '{{successor}}' hoort bij domein {{domain}}. De leden van een product delen zijn domein, dus kies een opvolger in hetzelfde domein."
       },
       "finding": {
-        "no_members": "Geen tabel, view of commando hoort bij dit dataproduct.",
+        "no_members": "Er hoort geen tabel, view of opdracht bij dit dataproduct.",
         "member_deprecated": "Ledentabel {{table}} is verouderd.",
         "no_owner": "Geen eigenaarsrol is verantwoordelijk voor dit dataproduct.",
-        "no_support_contact": "Dit dataproduct heeft geen supportcontact, dat een geconfigureerd exportdoel vereist.",
-        "retirement_blocked": "Dit dataproduct zou op {{retire_on}} buiten gebruik gaan, maar heeft nog leden. Stel het buiten gebruik met een opvolger die ze overneemt.",
+        "no_support_contact": "Dit dataproduct heeft geen supportcontact, wat een geconfigureerd exportdoel vereist.",
+        "retirement_blocked": "Dit dataproduct zou op {{retire_on}} buiten gebruik worden gesteld, maar heeft nog leden. Stel het buiten gebruik met een opvolger die ze overneemt.",
         "domain_steward_unset": "Domein {{domain}} heeft geen steward.",
         "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
         "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."

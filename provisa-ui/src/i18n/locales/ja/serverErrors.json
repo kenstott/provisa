@@ -467,7 +467,7 @@
       "relationship_same_entity_cardinality": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{cardinality}} であり、同一エンティティは 1 行対 1 行です",
       "relationship_same_entity_not_grounded": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{source}} と {{target}} は同じ用語に紐づいていません",
       "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません",
-      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: ソースに Kaggle API トークンがありません。トークンを入力するソースフォームで追加してください。"
+      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
@@ -550,7 +550,7 @@
       "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
       "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",
       "no_labels": "ラベル :{{label}} はありません: このロールが読めるテーブルはありません。",
-      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。最も近い登録済みタイプ: {{suggestions}}。",
+      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。最も近い登録済みのタイプ: {{suggestions}}。",
       "no_relationship_types": "リレーションシップタイプ {{types}} はありません: このロールがたどれるリレーションシップはありません。",
       "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
       "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",
@@ -576,7 +576,7 @@
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
       "non_finite_number": "回答に JSON で表せない数値が含まれています: {{column}} は {{value}} です。",
-      "try_cast_needs_postgres_16": "変換できない可能性のある値に対する toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
+      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
@@ -590,7 +590,7 @@
     "statement": {
       "rows_cut": "回答は {{limit}} 行で打ち切られました。これはこの読み取りに適用される行数制限です ({{kind}})。返された行より多くの行が一致します。",
       "rows_cut_unchecked": "回答は {{limit}} 行で、この読み取りに適用される行数制限と同じです ({{kind}})。さらに一致する行があるかどうかは確認できませんでした: {{reason}}",
-      "list_at_ceiling": "リストには、この読み取り ({{kind}}) で行数上限が許す最大 {{limit}} 件が含まれています。さらにある可能性があります。",
+      "list_at_ceiling": "リストには、この読み取り ({{kind}}) で行数上限が許す最大 {{limit}} 件のエントリが含まれています。さらにある可能性があります。",
       "approximate_index": "最も類似した行は近似ベクトルインデックスで見つけました。返された最後の行よりわずかに類似度の高い行が欠けている可能性があります。",
       "path_cut": "上限のないパスがグラフの深さ上限 {{limit}} ホップで打ち切られました。それより長いパスは結果に含まれていません。"
     },
@@ -718,25 +718,25 @@
         "deprecated": "データプロダクト {{data_product}} を非推奨にしました。",
         "retired": "データプロダクト {{data_product}} を廃止しました。",
         "restored": "データプロダクト {{data_product}} を復元しました。",
-        "reason_required": "理由が必要です: データプロダクトを非推奨または廃止にする理由を記入してください。",
+        "reason_required": "理由が必要です。データプロダクトを非推奨または廃止にする理由を入力してください。",
         "not_found": "データプロダクト {{data_product}} が見つかりません。",
         "not_draft": "公開できるのは下書きのデータプロダクトだけです。このプロダクトは {{status}} です。",
         "not_live": "非推奨にできるのは公開中のデータプロダクトだけで、廃止できるのは公開中または非推奨のものだけです。このプロダクトは {{status}} です。",
         "not_restorable": "復元できるのは非推奨または廃止のデータプロダクトだけです。このプロダクトは {{status}} です。",
-        "retire_on_past": "廃止予定日 {{retire_on}} は過去の日付です。今日以降の日付を選択してください。",
-        "successor_required": "このデータプロダクトには {{members}} 件のメンバーがあります。廃止するとそれらは後継に移ります。後継を選択してください。",
-        "successor_is_self": "データプロダクトは自身の後継にはなれません。",
-        "successor_retired": "後継 '{{successor}}' は廃止済みです。提供中のデータプロダクトを選択してください。",
-        "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選択してください。"
+        "retire_on_past": "予定された廃止日 {{retire_on}} は過去の日付です。今日以降の日付を選んでください。",
+        "successor_required": "このデータプロダクトには {{members}} 件のメンバーがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
+        "successor_is_self": "データプロダクトは自分自身の後継になれません。",
+        "successor_retired": "後継 '{{successor}}' は廃止されています。利用中のデータプロダクトを選んでください。",
+        "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選んでください。"
       },
       "finding": {
         "no_members": "このデータプロダクトに属するテーブル、ビュー、コマンドはありません。",
         "member_deprecated": "メンバーテーブル {{table}} は非推奨です。",
         "no_owner": "このデータプロダクトに責任を持つオーナーロールがありません。",
-        "no_support_contact": "このデータプロダクトには、設定済みのエクスポート先が必要とするサポート窓口がありません。",
-        "retirement_blocked": "このデータプロダクトは {{retire_on}} に廃止予定でしたが、まだメンバーがあります。それらを引き継ぐ後継を指定して廃止してください。",
+        "no_support_contact": "このデータプロダクトにはサポート連絡先がありません。設定済みのエクスポート先がそれを必要とします。",
+        "retirement_blocked": "このデータプロダクトは {{retire_on}} に廃止される予定でしたが、まだメンバーがあります。メンバーを引き継ぐ後継を指定して廃止してください。",
         "domain_steward_unset": "ドメイン {{domain}} にはスチュワードがいません。",
-        "no_description": "このデータプロダクトは目的も用途も記載していません。",
+        "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
       }
     }

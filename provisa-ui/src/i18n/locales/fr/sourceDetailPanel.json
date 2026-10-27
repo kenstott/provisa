@@ -9,7 +9,7 @@
     "deleteTitleShort": "Supprimer",
     "deleteConsequence": "Cela supprimera la source de données « {{id}} » et peut casser les tables qui y font référence.",
     "refreshKaggleTitle": "Actualiser depuis Kaggle",
-    "refreshKaggleHint": "Retélécharger {{owner}}/{{ref}} depuis Kaggle avec le jeton propre de la source, en écrasant sur place le ou les fichiers préparés.",
+    "refreshKaggleHint": "Retélécharger {{owner}}/{{ref}} depuis Kaggle avec le jeton propre à la source, en écrasant sur place le ou les fichiers intermédiaires.",
     "refreshKaggleSubmit": "Actualiser",
     "runProfilerTitle": "Exécuter maintenant pour chaque table membre",
     "profilerNoMembers": "Aucune table n'a rejoint ce profileur.",

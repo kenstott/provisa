@@ -9,7 +9,7 @@
     "deleteTitleShort": "Excluir",
     "deleteConsequence": "Isso removerá a fonte de dados \"{{id}}\" e pode quebrar tabelas que a referenciam.",
     "refreshKaggleTitle": "Atualizar do Kaggle",
-    "refreshKaggleHint": "Baixar de novo {{owner}}/{{ref}} do Kaggle com o próprio token da fonte, sobrescrevendo no lugar o(s) arquivo(s) preparado(s).",
+    "refreshKaggleHint": "Baixe novamente {{owner}}/{{ref}} do Kaggle com o token próprio da fonte de dados, sobrescrevendo no local o(s) arquivo(s) preparado(s).",
     "refreshKaggleSubmit": "Atualizar",
     "runProfilerTitle": "Executar agora para cada tabela membro",
     "profilerNoMembers": "Nenhuma tabela faz parte deste profiler.",

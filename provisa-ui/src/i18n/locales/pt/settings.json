@@ -73,8 +73,8 @@
     },
     "engine": {
       "duckdb_memory_limit": {
-        "label": "Limite de memória do mecanismo DuckDB",
-        "help": "A memória máxima que qualquer mecanismo DuckDB desta implantação pode usar. Acima dela, uma consulta transborda para o disco ou é recusada. Não definido: o limite próprio do DuckDB, a maior parte da memória do host."
+        "label": "Limite de memória do motor DuckDB",
+        "help": "A memória máxima que qualquer motor DuckDB desta implantação pode usar. Acima dela, uma consulta é despejada em disco ou recusada. Não definido: o limite próprio do DuckDB, a maior parte da memória do host."
       },
       "ready_timeout": {
         "label": "Tempo limite de prontidão do motor",
@@ -889,15 +889,15 @@
     },
     "codesource": {
       "duckdb_memory_mb": {
-        "label": "Memória DuckDB da fonte de código",
-        "help": "A memória em que o DuckDB de uma fonte de código responde a uma instrução. Acima dela, a instrução transborda para o disco."
+        "label": "Memória do DuckDB da fonte de código",
+        "help": "A memória em que o DuckDB de uma fonte de código responde a uma instrução. Acima dela, a instrução é despejada no disco."
       },
       "duckdb_spill_cap_mb": {
-        "label": "Teto de transbordo DuckDB da fonte de código",
-        "help": "O máximo que o DuckDB de uma fonte de código transborda para o disco. Uma instrução que precise de mais é recusada, citando esta configuração. Uma imagem construída só o aplica quando seu volume de transbordo é dimensionado para este teto com a cota da plataforma. Uma fonte de código em modo de desenvolvimento transborda para o diretório de dados sem limite."
+        "label": "Limite de despejo do DuckDB da fonte de código",
+        "help": "O máximo que o DuckDB de uma fonte de código despeja no disco. Uma instrução que precise de mais é recusada, indicando esta configuração. Uma imagem construída só o aplica quando o seu volume de despejo tem este tamanho pela quota da plataforma. Uma fonte de código em modo de desenvolvimento despeja no diretório de dados sem limite."
       },
       "duckdb_threads": {
-        "label": "Threads DuckDB da fonte de código",
+        "label": "Threads do DuckDB da fonte de código",
         "help": "As threads em que o DuckDB de uma fonte de código responde às suas instruções."
       }
     }

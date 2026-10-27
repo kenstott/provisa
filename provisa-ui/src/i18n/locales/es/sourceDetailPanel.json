@@ -9,7 +9,7 @@
     "deleteTitleShort": "Eliminar",
     "deleteConsequence": "Esto quitará el origen de datos \"{{id}}\" y puede dañar las tablas que lo referencian.",
     "refreshKaggleTitle": "Actualizar desde Kaggle",
-    "refreshKaggleHint": "Volver a descargar {{owner}}/{{ref}} de Kaggle con el token propio de la fuente, sobrescribiendo en su sitio los archivos preparados.",
+    "refreshKaggleHint": "Vuelve a descargar {{owner}}/{{ref}} de Kaggle con el token propio del origen de datos, sobrescribiendo en su lugar los archivos preparados.",
     "refreshKaggleSubmit": "Actualizar",
     "runProfilerTitle": "Ejecutar ahora para cada tabla miembro",
     "profilerNoMembers": "Ninguna tabla se ha unido a este perfilador.",

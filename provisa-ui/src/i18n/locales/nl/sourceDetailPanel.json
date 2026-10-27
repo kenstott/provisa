@@ -9,7 +9,7 @@
     "deleteTitleShort": "Verwijderen",
     "deleteConsequence": "Hiermee wordt de databron \"{{id}}\" verwijderd en kunnen tabellen die ernaar verwijzen defect raken.",
     "refreshKaggleTitle": "Vernieuwen vanuit Kaggle",
-    "refreshKaggleHint": "{{owner}}/{{ref}} opnieuw van Kaggle downloaden met het eigen token van de bron, waarbij de klaargezette bestand(en) ter plekke worden overschreven.",
+    "refreshKaggleHint": "{{owner}}/{{ref}} opnieuw downloaden van Kaggle met het eigen token van de databron en de gestagede bestanden ter plekke overschrijven.",
     "refreshKaggleSubmit": "Vernieuwen",
     "runProfilerTitle": "Nu uitvoeren voor elke lidtabel",
     "profilerNoMembers": "Geen tabel hoort bij deze profiler.",

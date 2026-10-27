@@ -9,7 +9,7 @@
     "deleteTitleShort": "हटाएँ",
     "deleteConsequence": "इससे डेटा स्रोत \"{{id}}\" हट जाएगा और इसे संदर्भित करने वाली टेबलें टूट सकती हैं।",
     "refreshKaggleTitle": "Kaggle से रीफ़्रेश करें",
-    "refreshKaggleHint": "स्रोत के अपने टोकन से {{owner}}/{{ref}} को Kaggle से फिर से डाउनलोड करें, तैयार फ़ाइलों को उनकी जगह पर ओवरराइट करते हुए।",
+    "refreshKaggleHint": "स्रोत के अपने टोकन से {{owner}}/{{ref}} को Kaggle से दोबारा डाउनलोड करें, स्टेज की गई फ़ाइलों को उसी जगह ओवरराइट करते हुए।",
     "refreshKaggleSubmit": "रीफ़्रेश करें",
     "runProfilerTitle": "हर सदस्य टेबल के लिए अभी चलाएँ",
     "profilerNoMembers": "इस प्रोफ़ाइलर में कोई टेबल शामिल नहीं है।",

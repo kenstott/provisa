@@ -46,7 +46,7 @@
     "nextPage": "Próxima página",
     "firstPage": "Primeira página",
     "lastPage": "Última página",
-    "listedElsewhere": "Listadas em outros domínios",
+    "listedElsewhere": "Listado em outros domínios",
     "listedElsewhereHint": "Nomes que outros domínios listam. Peça acesso a esse domínio para lê-los.",
     "pageOf": "Página {{page}} / {{totalPages}}",
     "loadFailed": "Não foi possível carregar as tabelas registradas: {{message}}",

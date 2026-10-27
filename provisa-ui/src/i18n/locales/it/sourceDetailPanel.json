@@ -9,7 +9,7 @@
     "deleteTitleShort": "Elimina",
     "deleteConsequence": "Verrà rimossa l'origine dati \"{{id}}\" e le tabelle che vi fanno riferimento potrebbero smettere di funzionare.",
     "refreshKaggleTitle": "Aggiorna da Kaggle",
-    "refreshKaggleHint": "Scarica di nuovo {{owner}}/{{ref}} da Kaggle con il token della sorgente, sovrascrivendo sul posto i file preparati.",
+    "refreshKaggleHint": "Scarica di nuovo {{owner}}/{{ref}} da Kaggle con il token proprio dell'origine dati, sovrascrivendo sul posto i file in staging.",
     "refreshKaggleSubmit": "Aggiorna",
     "runProfilerTitle": "Esegui ora per ogni tabella membro",
     "profilerNoMembers": "Nessuna tabella fa parte di questo profiler.",

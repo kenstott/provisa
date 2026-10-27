@@ -1,7 +1,7 @@
 {
   "graphPage": {
     "emptyStateHint": "執行 Cypher 查詢以探索圖形",
-    "emptyStateHintSparql": "執行 SPARQL 查詢以探索圖",
+    "emptyStateHintSparql": "執行 SPARQL 查詢以探索圖形",
     "emptyStateShortcut": "⌘↵ 執行"
   }
 }
