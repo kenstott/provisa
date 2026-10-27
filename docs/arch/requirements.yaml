@@ -89256,7 +89256,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     OID and typmod, and its text and binary encodings, compared with what Postgres sends for the same value,
     plus the casts tools issue. Catalog content stays the role''s governed view of the model, stated once
     as a deliberate difference. Keys shown in pg_constraint and pg_index come from the source''s declarations
-    once discovery records them (REQ-2170).'
+    once discovery records them (REQ-2170). (Amended 2026-10-27, BY-DESIGN EXCLUSIONS ARE NOT FAILURES:)
+    Maintainer 2026-10-27: a conformance result separates what the suite cannot meet because of a designed
+    limitation of Provisa from what it fails because of an actual one. A test whose setup or assertion depends
+    on something Provisa does not do by design (the model is the schema, so no ad hoc table, schema or graph
+    creation outside it; nodes and relationships are registered tables, not free-form graph writes; BEGIN/COMMIT/ROLLBACK
+    are a no-op; and the like) is counted as not runnable by design, never as a failure, and never in the
+    pass rate. Each such group names the design decision that excludes it (its requirement), and the surface''s
+    conformance page lists every group with its count and reason, so nothing is hidden. A test excluded
+    with no design decision behind it stays a failure. Every surface''s job (pgwire, Cypher, Bolt, Flight
+    SQL, GraphQL over HTTP, SPARQL, RDF) applies the same rule.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
