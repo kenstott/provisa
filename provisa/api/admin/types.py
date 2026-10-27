@@ -1964,6 +1964,8 @@ class CompileQueryResult:  # REQ-262, REQ-263, REQ-267
     warnings: list[str]
     compiled_cypher: str | None
     cypher_error: str | None
+    compiled_sparql: str | None
+    sparql_error: str | None
 
 
 @strawberry.input

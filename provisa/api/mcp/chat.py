@@ -899,8 +899,8 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "read_screen",
         "description": (
             "Read the screen the user is looking at, from their own browser session: the current "
-            "route; the open query editor's text (SQL, GraphQL, Cypher or Python) with its "
-            "language and the query tab open; the visible labelled form fields with their values "
+            "route; the open query editor's text (SQL, GraphQL, Cypher, SPARQL or Python) with "
+            "its language and the query tab open; the visible labelled form fields with their values "
             "(a password shows as dots, as on screen); and each result grid's columns and row "
             "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
             "anything on the screen, before you answer or act on it."

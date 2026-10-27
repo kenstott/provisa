@@ -33,6 +33,7 @@ const { getCypherLanguageExtensions: _getGFCypherExts, cypherLinter: _gfCypherLi
   };
 const _gfCypherLangExts = _getGFCypherExts({ cypherLanguage: true });
 import { json as jsonLang } from "@codemirror/lang-json";
+import { sparqlLanguage } from "./sparqlLanguage";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -46,7 +47,7 @@ import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
-import { useLocalStorage } from "./graph-persistence";
+import { useLocalStorage, type GraphLanguage } from "./graph-persistence";
 import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
 import { frameMetaText } from "./frame/frame-meta";
@@ -109,6 +110,9 @@ interface GraphFrameProps {
     nodes: Map<string, GNode>,
     edges: Map<string, GEdge>,
   ) => void;
+  /** The frame's query language (REQ-2135): its header's highlighting, and whether auto-impute,
+   *  which rewrites a Cypher query, is offered. */
+  language?: GraphLanguage;
 }
 
 export function GraphFrame({
@@ -139,6 +143,7 @@ export function GraphFrame({
   onPin,
   onStatement,
   onEffectiveDataChange,
+  language = "cypher",
 }: GraphFrameProps) {
   const { t } = useTranslation();
   // The editors sit inside the app chrome, so they follow the app's scheme rather than staying
@@ -309,7 +314,7 @@ export function GraphFrame({
     onEffectiveDataChange(frame.id, allNodes, allEdges);
   }, [frame.id, augmentedNodes, frame.edges, overlayNodes, overlayEdges, onEffectiveDataChange]);
 
-  useAutoImpute(frame, autoImpute, setOverlayData);
+  useAutoImpute(frame, autoImpute && language === "cypher", setOverlayData);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
@@ -398,8 +403,9 @@ export function GraphFrame({
             theme={cmTheme}
             minHeight="2.8em"
             extensions={[
-              ..._gfCypherLangExts,
-              _gfCypherLinter({ showErrors: false }),
+              ...(language === "sparql"
+                ? [sparqlLanguage]
+                : [..._gfCypherLangExts, _gfCypherLinter({ showErrors: false })]),
               EditorView.lineWrapping,
               Prec.highest(
                 keymap.of([
@@ -559,7 +565,7 @@ export function GraphFrame({
               </ActionIcon>
             </Tip>
           )}
-          {hasGraph && frame.status === "done" && (
+          {hasGraph && frame.status === "done" && language === "cypher" && (
             <Tip
               text={autoImpute ? t("graphFrame.autoImputeOn") : t("graphFrame.autoImputeOff")}
               named

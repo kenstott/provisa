@@ -76,6 +76,7 @@
     "itemPython": "Python",
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Containerregisters",
+    "itemSparql": "SPARQL",
     "itemCatalogs": "Catalogi"
   }
 }

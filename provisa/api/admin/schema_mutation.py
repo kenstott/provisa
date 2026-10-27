@@ -6311,6 +6311,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     warnings=r["warnings"],
                     compiled_cypher=r.get("compiled_cypher"),
                     cypher_error=r.get("cypher_error"),
+                    compiled_sparql=r.get("compiled_sparql"),
+                    sparql_error=r.get("sparql_error"),
                 )
             )
         return out

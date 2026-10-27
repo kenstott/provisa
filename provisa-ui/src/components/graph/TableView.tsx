@@ -17,9 +17,12 @@ import { useTranslation } from "react-i18next";
 import { Table, Text } from "@mantine/core";
 import { CopySymbolButton } from "../CopyButton";
 import { toCSV } from "./graph-export";
+import { isRdfCell } from "./sparql";
 
 function cellText(v: unknown): string {
   if (v === null || v === undefined) return "";
+  // A SPARQL answer's term: an IRI compacted by its prefix (the whole IRI is the cell's title).
+  if (isRdfCell(v)) return v.shown;
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
@@ -117,7 +120,11 @@ export function TableView({
               <Table.Tr key={i}>
                 <Table.Td className="gf-td-rownum">{i + 1}</Table.Td>
                 {columns.map((c) => (
-                  <Table.Td key={c} className={wrap ? "gf-td-wrap" : ""}>
+                  <Table.Td
+                    key={c}
+                    className={wrap ? "gf-td-wrap" : ""}
+                    title={isRdfCell(r[c]) && r[c].rdfTerm === "iri" ? r[c].value : undefined}
+                  >
                     {cellText(r[c])}
                   </Table.Td>
                 ))}

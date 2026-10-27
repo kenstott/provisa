@@ -25,6 +25,8 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { CopySymbolButton } from "../CopyButton";
 import type { CypherSchema } from "./graph-schema-types";
+import { DEFAULT_QUERY, type GraphLanguage } from "./graph-persistence";
+import { sparqlLanguage } from "./sparqlLanguage";
 import { Tip } from "../Tip";
 
 interface QueryBarProps {
@@ -34,6 +36,8 @@ interface QueryBarProps {
   cypherSchema?: CypherSchema;
   autoImpute: boolean;
   onToggleAutoImpute: () => void;
+  /** REQ-2135: Cypher, or SPARQL with its own highlighting and no Cypher aids. */
+  language?: GraphLanguage;
 }
 
 // Polyfill: @neo4j-cypher/codemirror 1.x calls view.newContentVersion() which doesn't exist on current @codemirror/view
@@ -56,12 +60,14 @@ export function QueryBar({
   cypherSchema,
   autoImpute,
   onToggleAutoImpute,
+  language = "cypher",
 }: QueryBarProps) {
+  const sparql = language === "sparql";
   const { t } = useTranslation();
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
-  const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
-  // REQ-2115: Polly's read_screen reads the Cypher in the bar from here.
-  useScreenEditor("/graph", { language: "cypher", text: query, tab: null });
+  const [query, setQuery] = useState(initialQuery ?? DEFAULT_QUERY[language]);
+  // REQ-2115: Polly's read_screen reads the query in the bar from here.
+  useScreenEditor(sparql ? "/sparql" : "/graph", { language, text: query, tab: null });
   const viewRef = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
   const pendingFocusRef = useRef(false);
@@ -93,20 +99,23 @@ export function QueryBar({
   };
 
   const handleCollapsedClickWithFormat = useCallback(() => {
-    const formatted = query
-      .replace(/\s*\n\s*/g, " ")
-      .replace(
-        /\s+\b(MATCH|OPTIONAL MATCH|WHERE|WITH|RETURN|ORDER BY|LIMIT|SKIP|UNION ALL|UNION|CREATE|SET|DELETE|DETACH DELETE|MERGE|CALL|UNWIND)\b/gi,
-        "\n$1",
-      )
-      .trimStart();
+    // A SPARQL query keeps the lines it was written in.
+    const formatted = sparql
+      ? query
+      : query
+          .replace(/\s*\n\s*/g, " ")
+          .replace(
+            /\s+\b(MATCH|OPTIONAL MATCH|WHERE|WITH|RETURN|ORDER BY|LIMIT|SKIP|UNION ALL|UNION|CREATE|SET|DELETE|DETACH DELETE|MERGE|CALL|UNWIND)\b/gi,
+            "\n$1",
+          )
+          .trimStart();
     if (formatted !== query) {
       setQuery(formatted);
       onQueryChange(formatted);
     }
     setFocused(true);
     pendingFocusRef.current = true;
-  }, [query, onQueryChange]);
+  }, [query, onQueryChange, sparql]);
 
   return (
     <div className="graph-query-bar">
@@ -115,7 +124,7 @@ export function QueryBar({
         {!focused && (
           <Tip text={query}>
             <div className="gf-header-query-collapsed" onClick={handleCollapsedClickWithFormat}>
-              {query.replace(/\s*\n\s*/g, " ") || "MATCH (n) RETURN n LIMIT 25"}
+              {query.replace(/\s*\n\s*/g, " ") || DEFAULT_QUERY[language]}
             </div>
           </Tip>
         )}
@@ -125,9 +134,13 @@ export function QueryBar({
             value={query}
             theme={cmTheme}
             extensions={[
-              ..._cypherLangExts,
-              cypherLinter({ showErrors: false }),
-              useAutocompleteExtensions,
+              ...(sparql
+                ? [sparqlLanguage]
+                : [
+                    ..._cypherLangExts,
+                    cypherLinter({ showErrors: false }),
+                    useAutocompleteExtensions,
+                  ]),
               EditorView.lineWrapping,
               Prec.highest(
                 keymap.of([
@@ -165,23 +178,26 @@ export function QueryBar({
               highlightActiveLine: false,
               completionKeymap: false,
             }}
-            placeholder="MATCH (n) RETURN n LIMIT 25"
+            placeholder={DEFAULT_QUERY[language]}
           />
         )}
         <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
       </div>
-      <Tip text={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")} named>
-        <ActionIcon
-          className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
-          variant={autoImpute ? "light" : "subtle"}
-          aria-label={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
-          aria-pressed={autoImpute}
-          onClick={onToggleAutoImpute}
-          style={{ marginInlineEnd: 4, alignSelf: "stretch", height: "auto", width: 38 }}
-        >
-          <CirclePlus size={16} aria-hidden />
-        </ActionIcon>
-      </Tip>
+      {/* Imputing relationships between drawn nodes is Cypher's. */}
+      {!sparql && (
+        <Tip text={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")} named>
+          <ActionIcon
+            className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
+            variant={autoImpute ? "light" : "subtle"}
+            aria-label={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
+            aria-pressed={autoImpute}
+            onClick={onToggleAutoImpute}
+            style={{ marginInlineEnd: 4, alignSelf: "stretch", height: "auto", width: 38 }}
+          >
+            <CirclePlus size={16} aria-hidden />
+          </ActionIcon>
+        </Tip>
+      )}
       <Tip text={t("queryBar.run")} named>
         <ActionIcon
           className="graph-run-btn"
