@@ -267,7 +267,16 @@ class TranslatorExprContext:
 
     def property_type(self, obj: exp.Expression, name: str) -> str | None:
         """The registered data type of ``var.name`` where ``var`` is bound to one registered table
-        (REQ-778), or None where the property is no such table's column."""
+        (REQ-778), or the type a node drawn from several tables reads it as; None where the
+        property is no such table's column."""
+        var = obj.name if isinstance(obj, exp.Column) and not obj.table else None
+        domain = self._t._domain_nodes.get(var) if var else None
+        if domain is not None:
+            # A node drawn from several tables: the one type its UNION reads the property as.
+            from provisa.gql.translator_union import union_labels, union_type
+
+            held = union_type(name, union_labels(self._t._lm, domain), self._t._lm)
+            return held.sql(dialect="postgres") if held is not None else None
         if not self.property_is_table_column(obj, name):
             return None
         info = self._t._var_table.get(obj.name)
@@ -453,7 +462,10 @@ class TranslatorExprContext:
                 return _col(nm.id_column, var)
             return _col("__id", var) if var in t._domain_nodes else None
         if name == "labels":
-            return exp.Array(expressions=[exp.Literal.string(nm.label)]) if nm is not None else None
+            if nm is not None:
+                return exp.Array(expressions=[exp.Literal.string(nm.label)])
+            # A node matched with no label: the label of the table its row is from.
+            return exp.Array(expressions=[_col("__label", var)]) if var in t._domain_nodes else None
         if name == "keys":
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
