@@ -46259,7 +46259,10 @@
     are dereferenceable; physical URIs are refused. (Amended 2026-10-25, A SYSTEM FIELD:) In the GraphQL
     schema the resolver is the system field _resolve(uri, as_of, as_recorded), named like the other system
     fields (_meta, _domain_) so it does not sit among a role''s domain roots; REST and MCP offer it under
-    the same name through REQ-1929.'
+    the same name through REQ-1929. (Amended 2026-10-27, THE RESOLVER IS NOT DISPLAYED:) Maintainer 2026-10-27:
+    _resolve stays callable (REST and MCP offer it, and a link resolves through it) but is not displayed:
+    the GraphQL explorer and the schema views the UI shows leave it out, as they leave out the other system
+    fields.'
   use_case: Exported documents, lineage nodes, audit records, and agent citations carry resolvable links
     to live or historical governed values, giving dereferenceable provenance. Complements REQ-1364 (export addressing).
   code:
