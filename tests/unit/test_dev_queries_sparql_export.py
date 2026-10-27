@@ -21,7 +21,6 @@ import sqlglot
 from graphql import parse
 
 from provisa.api.admin import dev_queries
-from provisa.compiler.params import embed_params_comment
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
 from provisa.gql.assembler import assemble_rows, take_cut
@@ -60,9 +59,8 @@ async def _export(ctx, query: str) -> list[tuple]:
     state = SimpleNamespace(schema_build_cache={}, source_catalogs=None)
     out = []
     for i, root in enumerate(compile_query(doc, ctx)):
-        semantic = make_semantic_sql(embed_params_comment(root.sql, root.params), ctx)
-        cypher, error, _ = dev_queries._compile_cypher_for_result(
-            root, ctx, state, ROLE, doc, None, semantic, False, False, False, i
+        cypher, error = dev_queries._compile_cypher_for_result(
+            ctx, state, ROLE, doc, None, False, False, i
         )
         sparql, why = await dev_queries._compile_sparql_for_result(
             cypher, error, ctx, state, "org_admin"
