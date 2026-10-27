@@ -81,6 +81,14 @@
           It is built the way an operating system is built&#8202;&mdash;&#8202;the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
 
+        <p>
+          Three tools it borrows from, one idea each. From Unix: a few small primitives that compose, so a
+          new need is a combination rather than a new subsystem. From Terraform: you declare the state you
+          want, review the diff, and promote it from one environment to the next. From
+          Kubernetes: a controller keeps what is running reconciled to that declaration, so the APIs, the
+          governance and every published copy follow the model instead of drifting from it.
+        </p>
+
         <h2 id="one-compiler">Why one compiler can speak every language</h2>
         <p>
           Languages are ways of expressing logic, and the logic of data is bounded: select,
