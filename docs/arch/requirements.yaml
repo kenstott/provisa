@@ -10043,7 +10043,14 @@
     union by column name, as REQ-2176 reads a label carried by several tables: a column a table lacks reads
     NULL and conflicting types widen. Each table is read under the role''s governance. The compound form
     (:Sales:Orders) still names one table. The union applies to reads; a CREATE naming such a bare label
-    names no single model table and so follows REQ-2176 (an ephemeral node carrying the label).'
+    names no single model table and so follows REQ-2176 (an ephemeral node carrying the label). (Amended
+    2026-10-27, NO TABLE LABEL MAY EQUAL A DOMAIN LABEL:) Maintainer 2026-10-27: a label must never mean
+    both a domain and a table. Registering a table, renaming it or giving it an alias is refused by name
+    when its resolved label (from its physical name or its alias, under the label naming convention) equals
+    the label of a domain in the org; creating or renaming a domain is refused by name when its label equals
+    a registered table''s resolved label. An ephemeral session label matching a domain is refused at CREATE
+    (REQ-2176). The check runs where the model is saved, so a config carrying such a collision is refused
+    on load and names both objects.'
   use_case: Returning schema introspection data from the semantic layer (not the database) lets Neo4j-compatible
     clients discover the graph schema via standard procedure calls.
   code:
