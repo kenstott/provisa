@@ -211,6 +211,45 @@ def _time_to_microseconds(t):
     return int(total_microseconds)
 
 
+def _infinity(v) -> int:
+    """1 or -1 for a value standing for PostgreSQL's ``infinity`` or ``-infinity`` date or
+    timestamp (its ``pg_infinity``, the nearest value Python holds marked with its sign), else 0."""
+    return getattr(v, "pg_infinity", 0)
+
+
+def _infinity_text(v) -> str:
+    return "infinity" if _infinity(v) > 0 else "-infinity"
+
+
+def _date_text(v) -> str:
+    return _infinity_text(v) if _infinity(v) else v.isoformat()
+
+
+def _date_binary(r) -> bytes:
+    # date binary: int32 days since 2000-01-01; infinity is the int32 range's ends.
+    if _infinity(r):
+        return struct.pack("!i", 0x7FFFFFFF if _infinity(r) > 0 else -0x80000000)
+    return int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True)
+
+
+def _timestamp_text(v) -> str:
+    return _infinity_text(v) if _infinity(v) else v.isoformat().replace("T", " ")
+
+
+def _timestamp_binary(micros):
+    """timestamp/timestamptz binary: int64 microseconds since 2000-01-01 (``micros`` reads them);
+    infinity is the int64 range's ends."""
+
+    def encode(r) -> bytes:
+        if _infinity(r):
+            return struct.pack(
+                "!q", 0x7FFFFFFFFFFFFFFF if _infinity(r) > 0 else -0x8000000000000000
+            )
+        return int.to_bytes(micros(r), 8, "big", signed=True)
+
+    return encode
+
+
 def _micros_since_2000_utc(dt):
     """timestamptz binary: microseconds since 2000-01-01 UTC. A value with no time zone is not a
     timestamptz — refused rather than assumed to be UTC."""
@@ -302,11 +341,7 @@ BVTYPE_TO_PGTYPE = {
         # jsonb binary = a version byte (1) + the JSON text.
         lambda r: b"\x01" + (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
     ),
-    BVType.TIMESTAMPTZ: (
-        1184,
-        lambda v: v.isoformat().replace("T", " "),
-        lambda r: int.to_bytes(_micros_since_2000_utc(r), 8, "big", signed=True),
-    ),
+    BVType.TIMESTAMPTZ: (1184, _timestamp_text, _timestamp_binary(_micros_since_2000_utc)),
     BVType.TIMETZ: (1266, lambda v: v.isoformat(), _timetz_to_pg_binary),
     BVType.UUID: (2950, str, _uuid_to_pg_binary),
     BVType.NULL: (-1, lambda *_: None),
@@ -323,11 +358,7 @@ BVTYPE_TO_PGTYPE = {
         lambda r: b"\x01" if r else b"\x00",
     ),
     BVType.BYTES: (17, lambda v: "\\x" + v.hex(), lambda r: r),
-    BVType.DATE: (
-        1082,
-        lambda v: v.isoformat(),
-        lambda r: int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True),
-    ),
+    BVType.DATE: (1082, _date_text, _date_binary),
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
     BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
@@ -351,12 +382,8 @@ BVTYPE_TO_PGTYPE = {
         lambda v: v.isoformat(),
         lambda r: int.to_bytes(_time_to_microseconds(r), 8, "big"),
     ),
-    BVType.TIMESTAMP: (
-        1114,
-        lambda v: v.isoformat().replace("T", " "),
-        # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
-        lambda r: int.to_bytes(_micros_since_2000(r), 8, "big", signed=True),
-    ),
+    # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
+    BVType.TIMESTAMP: (1114, _timestamp_text, _timestamp_binary(_micros_since_2000)),
 }
 
 

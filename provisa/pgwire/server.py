@@ -54,6 +54,7 @@ from buenavista.postgres import (
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -196,6 +197,11 @@ def _sqlstate_of(exception: object) -> str:
         if isinstance(own, str) and len(own) == 5:
             return own
     for err in chain:
+        # The engine's own raise of PostgreSQL's division error (transpile.DIVISION_BY_ZERO).
+        if type(err).__name__ == "InvalidInputException" and str(err).endswith(
+            f": {DIVISION_BY_ZERO}"
+        ):
+            return "22012"  # division_by_zero
         for cls in type(err).__mro__:
             code = _SQLSTATE_BY_CLASS.get(cls.__name__)
             if code is not None:

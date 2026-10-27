@@ -173,12 +173,18 @@ def test_an_answer_holding_a_number_json_cannot_carry_is_400_naming_it():
     }
 
 
-def test_a_division_by_zero_reaches_the_answer_as_infinity(terms):
-    # What the engine answers t.id / 0 with -- the value the 400 above names.
-    assert _rows(terms, "MATCH (t:GlossaryTerm) RETURN t.id / 0 AS v") == [
+def test_an_infinite_float_reaches_the_answer_as_infinity(terms):
+    # An answer the engine can hold and JSON cannot -- the value the 400 above names.
+    assert _rows(terms, "MATCH (t:GlossaryTerm) RETURN toFloat('Infinity') AS v") == [
         (math.inf,),
         (math.inf,),
     ]
+
+
+def test_a_division_by_zero_is_the_engines_refusal(terms):
+    # REQ-2167: the engine divides as PostgreSQL does, and Neo4j divides an integer so too.
+    with pytest.raises(duckdb.InvalidInputException, match="division by zero"):
+        _rows(terms, "MATCH (t:GlossaryTerm) RETURN t.id / 0 AS v")
 
 
 def _backend(name: str):

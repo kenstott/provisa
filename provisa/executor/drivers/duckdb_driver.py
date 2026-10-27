@@ -50,12 +50,17 @@ def _is_file(database: str) -> bool:
     return database not in ("", ":memory:") and not database.startswith(":memory:")
 
 
+#: The column types DuckDB's own Python rows misread, and its Arrow export keeps.
+READ_THROUGH_ARROW = frozenset({"INTERVAL", "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE"})
+
+
 def fetch_rows(result: Any) -> list[tuple]:  # noqa: ANN401 — a DuckDB result relation
-    """A DuckDB result's rows, each interval the IR interval it is.
-    DuckDB's own Python rows fold an interval's months into days, 30 to a month (``1 year 2
-    months`` reads as 420 days); its Arrow export keeps them, so a result with an interval column
-    is read through Arrow (ir_arrow.column_values)."""
-    if not any(str(d[1]) == "INTERVAL" for d in result.description):
+    """A DuckDB result's rows, each interval the IR interval it is and each infinite date or
+    timestamp the IR infinity it is. DuckDB's own Python rows fold an interval's months into days,
+    30 to a month (``1 year 2 months`` reads as 420 days), and read ``infinity`` as the last date
+    Python holds, a value a table may hold itself; its Arrow export keeps both, so a result with
+    such a column is read through Arrow (ir_arrow.column_values)."""
+    if not any(str(d[1]) in READ_THROUGH_ARROW for d in result.description):
         return result.fetchall()
     from provisa.core.ir_arrow import column_values
 

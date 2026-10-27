@@ -30,7 +30,13 @@ from typing import Any
 import pyarrow as pa
 from dateutil.relativedelta import relativedelta
 
-from provisa.core.ir_types import interval_parts, interval_value, to_ir
+from provisa.core.ir_types import (
+    infinite_date,
+    infinite_timestamp,
+    interval_parts,
+    interval_value,
+    to_ir,
+)
 
 # Canonical IR name → the pyarrow factory name, or one of the two spellings decided below.
 _IR_TO_ARROW: dict[str, str] = {
@@ -120,14 +126,54 @@ def arrow_value(value: Any, ir_type: str, *, decimal: pa.DataType | None = None)
     return value
 
 
+# DuckDB stores PostgreSQL's infinity and -infinity at the ends of the storage integer's range
+# but one: a date as its day count, a timestamp as its microseconds.
+_DATE_INFINITY = 2**31 - 1
+_TIMESTAMP_INFINITY = 2**63 - 1
+
+
 def column_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
     """An Arrow column's values as row values: ``to_pylist``, an interval column's each the IR
-    interval it is (ir_types.interval_value) rather than Arrow's own ``MonthDayNano``."""
-    if not pa.types.is_interval(column.type):
+    interval it is (ir_types.interval_value) rather than Arrow's own ``MonthDayNano``, and an
+    infinite date or timestamp the IR infinity it is (ir_types.infinite_date,
+    infinite_timestamp), which ``to_pylist`` cannot hold."""
+    if pa.types.is_interval(column.type):
+        return [
+            None if v is None else interval_value(v.months, v.days, v.nanoseconds // 1000)
+            for v in column.to_pylist()
+        ]
+    if pa.types.is_date32(column.type):
+        return _with_infinities(column, pa.int32(), _DATE_INFINITY, infinite_date)
+    if pa.types.is_timestamp(column.type) and column.type.unit == "us":
+        aware = column.type.tz is not None
+        return _with_infinities(
+            column,
+            pa.int64(),
+            _TIMESTAMP_INFINITY,
+            lambda sign: infinite_timestamp(sign, aware=aware),
+        )
+    return column.to_pylist()
+
+
+def _with_infinities(
+    column: pa.Array | pa.ChunkedArray, storage: pa.DataType, end: int, infinite: Any
+) -> list[Any]:
+    import pyarrow.compute as pc
+
+    # call_function: the comparison and selection kernels are generated at import, so a type
+    # checker sees no pc.equal or pc.if_else (as scheduler/jobs.py reads them).
+    raw = column.cast(storage)
+    positive = pc.fill_null(pc.call_function("equal", [raw, pa.scalar(end, storage)]), False)
+    negative = pc.fill_null(pc.call_function("equal", [raw, pa.scalar(-end, storage)]), False)
+    infinite_at = pc.call_function("or", [positive, negative])
+    if not pc.call_function("any", [infinite_at]).as_py():
         return column.to_pylist()
+    finite = pc.call_function("if_else", [infinite_at, pa.scalar(None, column.type), column])
     return [
-        None if v is None else interval_value(v.months, v.days, v.nanoseconds // 1000)
-        for v in column.to_pylist()
+        infinite(1) if up else infinite(-1) if down else value
+        for value, up, down in zip(
+            finite.to_pylist(), positive.to_pylist(), negative.to_pylist(), strict=True
+        )
     ]
 
 
