@@ -52,6 +52,34 @@ def _row(query: str) -> tuple:
             (True, True, False),
         ),
         ("RETURN null XOR true AS a, false XOR false AS b", (None, False)),
+        # Precedence1 [8]
+        (
+            "RETURN false = true IS NULL AS a, false = (true IS NULL) AS b,"
+            " (false = true) IS NULL AS c",
+            (True, True, False),
+        ),
+        # Precedence4 [1] #1
+        (
+            "RETURN null IS NOT NULL = null IS NULL AS a,"
+            " (null IS NOT NULL) = (null IS NULL) AS b,"
+            " (null IS NOT NULL = null) IS NULL AS c",
+            (False, False, True),
+        ),
+        ("RETURN 1 + null IS NULL AS a", (True,)),
+        # Precedence3 [5], [6], over lists of one type (mixed-type lists are their own matter)
+        (
+            "RETURN 1 + 2 IN [3] + [4] AS a, (1 + 2) IN ([3] + [4]) AS b",
+            (True, True),
+        ),
+        (
+            "RETURN false = 1 IN [2] AS a, false = (1 IN [2]) AS b, 3 IN [1, null] AS c",
+            (True, True, None),
+        ),
+        # Precedence4 [4]
+        (
+            "RETURN (true OR null STARTS WITH 'abc') = (true OR (null STARTS WITH 'abc')) AS c",
+            (True,),
+        ),
         # Precedence2 [1], [2]
         (
             "RETURN 4 * 2 + 3 / 2 AS a, 4 * 2 + (3 / 2) AS b, 4 * (2 + 3) / 2 AS c",
