@@ -89603,7 +89603,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     integer_range/long_range map to int4range/int8range, float_range/double_range to numrange, date_range
     to tstzrange); macaddr8; bit and varbit; tsvector. Not subtypes: Cassandra duration is interval, Cassandra
     varint is decimal(38,0), MySQL year is integer, Elasticsearch ip_range and SQL Server hierarchyid stay
-    on text (no PostgreSQL equivalent with a fixed type).'
+    on text (no PostgreSQL equivalent with a fixed type). (Amended 2026-10-27, PG CONVENTIONS:) Maintainer
+    2026-10-27: IR types and subtypes follow PostgreSQL''s conventions (PostGIS for geometry and geography).
+    The test for a new subtype: it is a PostgreSQL type the IR does not already hold; a source type that
+    names a concept PostgreSQL already has maps onto that type and never becomes a subtype of its own.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
