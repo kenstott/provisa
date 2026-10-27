@@ -21,10 +21,15 @@ import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3
 import { GraphExplorer } from "./GraphExplorer";
 import { useGraphSettings, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
 import { DimensionToggle } from "./DimensionToggle";
+import { LayoutToggle } from "./LayoutToggle";
 import { GraphStage, type StageState } from "./GraphStage";
 import {
   PRODUCT_SCOPE,
+  chosenLayout,
   layoutGraph,
+  openingLayout,
+  savedLayout,
+  type LayoutKind,
   panelGraph,
   type GraphData,
   type GraphScope,
@@ -91,6 +96,7 @@ function PanelStage({
   productName,
   covered,
   flat,
+  saved,
 }: {
   graph: GraphData;
   product: string;
@@ -99,8 +105,11 @@ function PanelStage({
   covered: boolean;
   /** REQ-2174: drawn in 2D, as its expanded view is. */
   flat: boolean;
+  /** REQ-2174: the reader's Force or Layered choice, if any. */
+  saved: LayoutKind | null;
 }) {
-  const at = useMemo(() => layoutGraph(graph, "force", 1, flat), [graph, flat]);
+  const layout = chosenLayout(graph, saved);
+  const at = useMemo(() => layoutGraph(graph, layout, 1, flat), [graph, layout, flat]);
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
   // The card is a glance: it turns and draws no grid, whatever a viewer's saved graph defaults
@@ -112,6 +121,7 @@ function PanelStage({
     at,
     frame: 0,
     flat,
+    layout,
     selected: picked,
     setSelected,
     hover,
@@ -162,7 +172,10 @@ export function GraphPanel({
   const graph = useMemo(() => panelGraph(core, product), [core, product]);
   // The card's 2D/3D choice is its expanded view's: one remembered setting for the product's graph.
   const settingsKey = useMemo(() => ({ kind: "product-graph", subject: productId }), [productId]);
-  const [view, saveView] = useGraphSettings(settingsKey, { flat: false as boolean });
+  const [view, saveView] = useGraphSettings(settingsKey, {
+    flat: false as boolean,
+    layout: "auto" as string,
+  });
   return (
     <div className="g3d-panel" ref={ref} data-testid="graph-panel">
       {/* Its card names it; the expand button opens the full graph. */}
@@ -170,6 +183,12 @@ export function GraphPanel({
         <DimensionToggle
           flat={view.flat}
           onChange={(on) => saveView("flat", on)}
+          testId="graph-panel"
+        />
+        <LayoutToggle
+          layout={chosenLayout(graph, savedLayout(view.layout))}
+          layeredPossible={openingLayout(graph).layeredPossible}
+          onChange={(l) => saveView("layout", l)}
           testId="graph-panel"
         />
         <ExpandButton onClick={() => setOpen(true)} testId="graph-panel-expand" />
@@ -182,6 +201,7 @@ export function GraphPanel({
             productName={productName}
             covered={open}
             flat={view.flat}
+            saved={savedLayout(view.layout)}
           />
         )}
       </div>

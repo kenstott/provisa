@@ -20,6 +20,7 @@ import {
   type VectorScene,
 } from "../../pages/tables/profile3d/baseScene";
 import { labelFit, loosen, type ViewNode } from "../../pages/tables/profile3d/bestView";
+import { edgeClass } from "./layeredLayout";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
 import { labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
 
@@ -124,6 +125,7 @@ export class GraphScene extends BaseScene<GraphHover> {
   private world: THREE.Group | null = null;
   private nodes: NodeMesh[] = [];
   private edgeMeshes: EdgeMesh[] = [];
+  private arcs = false;
   private mats: Record<string, THREE.Material> = {};
   /** Each edge material dimmed, for the edges away from what is picked: the same hue, less light. */
   private faded: Record<string, THREE.Material> = {};
@@ -208,6 +210,11 @@ export class GraphScene extends BaseScene<GraphHover> {
     if (!n || !view) return;
     const tgt = n.mesh.position.clone();
     this.flyTo(tgt.clone().add(view.dir.clone().multiplyScalar(8)), tgt, false, view.up);
+  }
+
+  /** REQ-2174: in a layered layout the lateral edges are arcs laid over the rank and flow edges. */
+  setArcs(on: boolean) {
+    this.arcs = on;
   }
 
   setFlat(on: boolean) {
@@ -532,20 +539,35 @@ export class GraphScene extends BaseScene<GraphHover> {
       if (!target) throw new Error(`edge ${e.id} ends at ${e.b}, which is not drawn`);
       const surface = target.radius * target.mesh.scale.x;
       const directed = DIRECTED.has(e.kind);
-      const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
-      const rodMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(thick, thick, rodLen, 6, 1, true),
-        mat,
-      );
-      rodMesh.position.copy(a.clone().add(unit.clone().multiplyScalar(rodLen / 2)));
-      rodMesh.quaternion.setFromUnitVectors(UP, unit);
-      rodMesh.userData.edge = e.id;
-      world.add(rodMesh);
-      const meshes = [rodMesh];
+      const meshes: THREE.Mesh[] = [];
+      // The unit direction the edge arrives along: the chord, or an arc's end tangent.
+      let arrive = unit;
+      if (this.arcs && edgeClass(e) === "lateral") {
+        // A quadratic arc bulging sideways in the layout's plane, clear of the straight rods.
+        const side = new THREE.Vector3(-unit.y, unit.x, 0);
+        const ctrl = a.clone().add(b).multiplyScalar(0.5).add(side.multiplyScalar(len * 0.3));
+        const curve = new THREE.QuadraticBezierCurve3(a.clone(), ctrl, b.clone());
+        arrive = b.clone().sub(ctrl).normalize();
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, thick, 6, false), mat);
+        tube.userData.edge = e.id;
+        world.add(tube);
+        meshes.push(tube);
+      } else {
+        const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
+        const rodMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(thick, thick, rodLen, 6, 1, true),
+          mat,
+        );
+        rodMesh.position.copy(a.clone().add(unit.clone().multiplyScalar(rodLen / 2)));
+        rodMesh.quaternion.setFromUnitVectors(UP, unit);
+        rodMesh.userData.edge = e.id;
+        world.add(rodMesh);
+        meshes.push(rodMesh);
+      }
       if (directed) {
         const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, HEAD, 10), mat);
-        cone.position.copy(b.clone().sub(unit.clone().multiplyScalar(surface + HEAD / 2)));
-        cone.quaternion.setFromUnitVectors(UP, unit);
+        cone.position.copy(b.clone().sub(arrive.clone().multiplyScalar(surface + HEAD / 2)));
+        cone.quaternion.setFromUnitVectors(UP, arrive);
         cone.userData.edge = e.id;
         world.add(cone);
         meshes.push(cone);

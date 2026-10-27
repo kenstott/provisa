@@ -63,7 +63,7 @@ function tree(layers: LayerId[], edgeTypes: string[] = tax.edgeTypes ?? [], from
     new Set(),
     GLOSSARY_SCOPE,
   );
-  const at = layoutGraph(g, tax.layout);
+  const at = layoutGraph(g, "layered");
   const x = (id: string) => (at.get(id) as number[])[0];
   const y = (id: string) => (at.get(id) as number[])[1];
   return { g, x, y };
