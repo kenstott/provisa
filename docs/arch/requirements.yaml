@@ -10726,7 +10726,15 @@
     junction table (write grants, row rules, masks, the role''s admission). A relationship backed by a foreign
     key or by columns on one of its end tables stays read-only through Cypher, and writing one is refused
     by name as before. The rule that write clauses never create new labels or relationship types (REQ-661)
-    is unchanged: only registered junction relationships are writable.'
+    is unchanged: only registered junction relationships are writable. (Amended 2026-10-27, JUNCTION WRITES
+    ARE CONSTRAINED:) Maintainer 2026-10-27: a junction write adds or removes an instance of a relationship
+    the model already declares; it never creates a new class of relationship. A CREATE naming a relationship
+    type the model does not register, or one registered between other labels than the two nodes it joins,
+    is refused by name at translation, as is any write that would need a new junction table. Both end nodes
+    must already exist (matched in the statement); a relationship write never creates its end nodes. The
+    junction write is governed as any write to that table (writable source, the role''s write grant, row
+    rules, masks, admission), and a write that would break the relationship''s declared keys or cardinality
+    is refused by name.'
   use_case: Relationship immutability prevents accidental FK manipulation and keeps relationship metadata
     consistent with the declared join paths.
   code:
