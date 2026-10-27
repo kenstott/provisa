@@ -88101,7 +88101,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (Amended 2026-10-27, THE LANGUAGE CONFIG IS A DIRECTION:) Maintainer 2026-10-27: the language-config
     pass is the direction, not a project to build now. New parameterized operations are built as one IR
     operation with a semantics option; an existing rule moves to that shape when it is next touched; the
-    per-language config and its pass come when enough options have gathered to warrant them.'
+    per-language config and its pass come when enough options have gathered to warrant them. (Amended 2026-10-27,
+    SPARQL ANSWERS DRAWN AS THE CYPHER VIEW DRAWS THEM:) Maintainer 2026-10-27: in the graph visualizer
+    a CONSTRUCT''s (or DESCRIBE''s) literal objects are drawn as properties of their subject, as the Cypher
+    view draws a node''s properties, with a toggle that draws them as nodes instead; and a SELECT whose
+    variables all bind to resources, pairing into subject and object, is offered ''Draw as graph'', its
+    rows becoming nodes and edges (the predicate, where the query binds one, naming the edge). A SELECT
+    that cannot pair so, and an ASK, stay a table.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
