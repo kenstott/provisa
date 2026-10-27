@@ -409,6 +409,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._temporal_kinds: dict[str, str] = {}
         # REQ-2173: a variable bound to a time or date time a query names a zone for -> the zone
         self._temporal_zones: dict[str, str] = {}
+        # A variable a WITH or UNWIND binds to a string (size() of it counts its characters)
+        self._text_vars: set[str] = set()
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
@@ -1093,6 +1095,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 zone = self._temporal_context().temporal_element_zone(uw.expression)
                 if zone is not None:
                     self._temporal_zones[uw.variable] = zone
+            if self._temporal_context().holds_text_items(uw.expression):
+                self._text_vars.add(uw.variable)
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
@@ -1400,12 +1404,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         new_var_table: dict[str, tuple[str, Any]] = {}
         kinds: dict[str, str] = {}
         zones: dict[str, str] = {}
+        texts: set[str] = set()
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
             )
+            if name and self._temporal_context().is_text(item.expression):
+                texts.add(name)
             found = self._temporal_context().temporal_kind(item.expression)
             if name and found is not None:
                 kinds[name] = found
@@ -1433,6 +1440,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._cte_sources = set(new_var_table.keys())
         self._temporal_kinds = kinds
         self._temporal_zones = zones
+        self._text_vars = texts
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.
