@@ -437,6 +437,20 @@ class ExprLowering:
                 return exp.Null()
             kinds = [self._ctx.temporal_kind(a) for a in node.args]
             return temporal.duration_function(node.name, node.args, kinds, self.lower)
+        kind, _, clock = node.name.lower().partition(".")
+        if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
+            # REQ-2172: the current value, as the engine's clock reads it.
+            if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
+                return exp.Null()
+            if node.args:
+                raise CypherTranslateError(f"{node.name}() with a time zone is not supported")
+            return self._ctx.resolve_function(kind, [], distinct=False)
+        if node.name.lower() in temporal.SQL_TYPES:  # REQ-2172: from text or a map
+            built = temporal.temporal_value(
+                node.name.lower(), node.args, self.lower, self._ctx.temporal_kind
+            )
+            if built is not None:
+                return built
         if (
             node.name.lower() == "tostring"
             and len(node.args) == 1

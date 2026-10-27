@@ -79,17 +79,6 @@ def _comprehension_hop(pattern: PathPattern) -> tuple[str, str | None, str, str 
 # Graph-aware functions resolve against traversal state (var → id column, rel type, JSON shape, …).
 # Their lowering is not yet ported to the AST path, so an expression using one defers to the legacy
 # path via NotImplementedError (see _Translator._lower_expr).
-_TEMPORAL_CONSTRUCTORS = frozenset(
-    {"date", "time", "localtime", "datetime", "localdatetime", "duration"}
-)
-
-
-def _is_map(arg: exp.Expression) -> bool:
-    return isinstance(arg, exp.Map) or (
-        isinstance(arg, exp.Anonymous) and str(arg.this).upper() == "MAP"
-    )
-
-
 _GRAPH_FUNCTIONS = frozenset(
     {
         "id",
@@ -290,13 +279,6 @@ class TranslatorExprContext:
         self, name: str, args: list[exp.Expression], *, distinct: bool
     ) -> exp.Expression:
         lname = name.lower()
-        if lname in _TEMPORAL_CONSTRUCTORS and args and _is_map(args[0]):
-            # date({year: 2020, month: 1}) and the like: built from a map of components, which
-            # no engine reads as written. Refused by name, before anything is sent.
-            raise CypherTranslateError(
-                f"{name}() built from a map of components is not supported; "
-                f"write the value as a string, {name}('...')"
-            )
         if lname in _GRAPH_FUNCTIONS or lname == "length":
             return self._graph_fn(lname, args)
         if lname in ("count", "collect") and len(args) == 1:

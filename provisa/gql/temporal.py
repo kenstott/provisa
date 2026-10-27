@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 from fractions import Fraction
-from typing import Callable, Mapping
+from typing import TYPE_CHECKING, Callable, Mapping
 
 from sqlglot import exp
 
@@ -41,6 +41,9 @@ from provisa.gql.expr_ast import (
     Variable,
 )
 from provisa.gql.translator_types import CypherTranslateError
+
+if TYPE_CHECKING:
+    import datetime
 
 DATE = "date"
 LOCALTIME = "localtime"
@@ -685,3 +688,469 @@ def equality(op: str, left: exp.Expression, right: exp.Expression) -> exp.Expres
     engine's interval would have it."""
     same = exp.EQ(this=returned(left), expression=returned(right))
     return same if op == "=" else exp.Not(this=exp.Paren(this=same))
+
+
+# --------------------------------------------------------------------------- answers
+
+
+def _clock(value: "datetime.time | datetime.datetime") -> str:
+    """hh:mm, with :ss when there are seconds and the fraction without its trailing zeros."""
+    text = f"{value.hour:02d}:{value.minute:02d}"
+    if value.second or value.microsecond:
+        text += f":{value.second:02d}"
+    if value.microsecond:
+        text += f".{value.microsecond:06d}".rstrip("0")
+    return text
+
+
+def _offset(value: "datetime.time | datetime.datetime") -> str:
+    delta = value.utcoffset()
+    if delta is None:
+        return ""
+    if not delta:
+        return "Z"
+    total = int(delta.total_seconds())
+    sign = "-" if total < 0 else "+"
+    minutes, seconds = divmod(abs(total), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}" + (f":{seconds:02d}" if seconds else "")
+
+
+def cypher_text(value: "datetime.date | datetime.time | datetime.datetime") -> str:
+    """A date, time or date time as openCypher writes it (Temporal6): 1984-10-11, 12:00,
+    21:40:32.142, 2015-07-21T21:40:32.142Z."""
+    import datetime as _dt
+
+    if isinstance(value, _dt.datetime):
+        return f"{value.date().isoformat()}T{_clock(value)}{_offset(value)}"
+    if isinstance(value, _dt.time):
+        return f"{_clock(value)}{_offset(value)}"
+    return value.isoformat()
+
+
+# --------------------------------------------------------------------------- values written whole
+
+
+def _offset_of(text: str) -> "datetime.tzinfo | None":
+    """An offset written after a time: Z, +01:00, +0100, +01; a zone name read from the zone
+    database. None for none."""
+    import datetime as _dt
+
+    if not text:
+        return None
+    if text == "Z":
+        return _dt.timezone.utc
+    m = re.fullmatch(r"([-+])(\d{2}):?(\d{2})?(?::?(\d{2}))?", text)
+    if m is not None:
+        delta = _dt.timedelta(
+            hours=int(m.group(2)), minutes=int(m.group(3) or 0), seconds=int(m.group(4) or 0)
+        )
+        return _dt.timezone(-delta if m.group(1) == "-" else delta)
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        return ZoneInfo(text)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise CypherTranslateError(f"{text!r} is no time zone or offset") from exc
+
+
+_DATE_TEXT = [
+    (re.compile(r"(?P<y>[-+]?\d{4})-?W(?P<w>\d{2})-?(?P<dow>\d)?"), "week"),
+    (re.compile(r"(?P<y>[-+]?\d{4})-?Q(?P<q>\d)(?:-?(?P<doq>\d{2}))?"), "quarter"),
+    (re.compile(r"(?P<y>[-+]?\d{4})-(?P<o>\d{3})"), "ordinal"),
+    (re.compile(r"(?P<y>[-+]?\d{4})(?P<o>\d{3})"), "ordinal"),
+    (re.compile(r"(?P<y>[-+]?\d{4})-?(?P<m>\d{2})?-?(?P<d>\d{2})?"), "calendar"),
+]
+_TIME_TEXT = re.compile(
+    r"(?P<h>\d{2})(?::?(?P<mi>\d{2})(?::?(?P<s>\d{2})(?:[.,](?P<f>\d{1,9}))?)?)?"
+    r"(?P<zone>Z|[-+]\d{2}(?::?\d{2})?)?(?:\[(?P<region>[^\]]+)\])?"
+)
+
+
+def _date_of(fields: Mapping[str, int]) -> "datetime.date":
+    """A date from its components: calendar (year, month, day), week (year, week, dayOfWeek),
+    ordinal (year, ordinalDay) or quarter (year, quarter, dayOfQuarter)."""
+    import datetime as _dt
+
+    year = fields["year"]
+    if "week" in fields:
+        return _dt.date.fromisocalendar(year, fields["week"], fields.get("dayOfWeek", 1))
+    if "ordinalDay" in fields:
+        return _dt.date(year, 1, 1) + _dt.timedelta(days=fields["ordinalDay"] - 1)
+    if "quarter" in fields:
+        start = _dt.date(year, 3 * (fields["quarter"] - 1) + 1, 1)
+        return start + _dt.timedelta(days=fields.get("dayOfQuarter", 1) - 1)
+    return _dt.date(year, fields.get("month", 1), fields.get("day", 1))
+
+
+def _time_of(fields: Mapping[str, int]) -> "datetime.time":
+    import datetime as _dt
+
+    micros = (
+        fields.get("millisecond", 0) * 1000
+        + fields.get("microsecond", 0)
+        + fields.get("nanosecond", 0) // 1000
+    )
+    return _dt.time(fields.get("hour", 0), fields.get("minute", 0), fields.get("second", 0), micros)
+
+
+def _parse_date_text(text: str) -> "datetime.date":
+    for pattern, form in _DATE_TEXT:
+        m = pattern.fullmatch(text)
+        if m is None:
+            continue
+        g = m.groupdict()
+        fields = {"year": int(g["y"])}
+        if form == "week":
+            fields |= {"week": int(g["w"]), "dayOfWeek": int(g["dow"] or 1)}
+        elif form == "quarter":
+            fields |= {"quarter": int(g["q"]), "dayOfQuarter": int(g["doq"] or 1)}
+        elif form == "ordinal":
+            fields |= {"ordinalDay": int(g["o"])}
+        else:
+            fields |= {"month": int(g["m"] or 1), "day": int(g["d"] or 1)}
+        return _date_of(fields)
+    raise CypherTranslateError(f"{text!r} is no date, e.g. '2015-07-21'")
+
+
+def _parse_time_text(text: str) -> tuple["datetime.time", str]:
+    """The time of day a string writes, and its offset or zone as written ('' for none)."""
+    m = _TIME_TEXT.fullmatch(text)
+    if m is None:
+        raise CypherTranslateError(f"{text!r} is no time, e.g. '21:40:32.142'")
+    g = m.groupdict()
+    fraction = (g["f"] or "").ljust(9, "0")
+    fields = {
+        "hour": int(g["h"]),
+        "minute": int(g["mi"] or 0),
+        "second": int(g["s"] or 0),
+        "nanosecond": int(fraction or 0),
+    }
+    zone = g["region"] or g["zone"] or ""
+    return _time_of(fields), zone
+
+
+def _at_zone(date: "datetime.date", time: "datetime.time", zone: str) -> "datetime.datetime":
+    import datetime as _dt
+
+    value = _dt.datetime.combine(date, time)
+    tz = _offset_of(zone)
+    return value.replace(tzinfo=tz) if tz is not None else value.replace(tzinfo=_dt.timezone.utc)
+
+
+def text_value(kind: str, text: str) -> str:
+    """A value of ``kind`` written as text in the statement, in the form the engine reads:
+    date('2015-W30-2') is '2015-07-21'."""
+    import datetime as _dt
+
+    text = text.strip()
+    if kind == DATE:
+        return _parse_date_text(text).isoformat()
+    if kind in (LOCALTIME, TIME):
+        value, zone = _parse_time_text(text)
+        if kind == LOCALTIME:
+            return value.isoformat()
+        tz = _offset_of(zone) or _dt.timezone.utc
+        offset = _dt.datetime.combine(_dt.date.today(), value, tz).utcoffset()
+        assert offset is not None
+        return value.replace(tzinfo=_dt.timezone(offset)).isoformat()
+    date_text, _, time_text = text.partition("T")
+    date = _parse_date_text(date_text)
+    value, zone = _parse_time_text(time_text) if time_text else (_dt.time(), "")
+    if kind == LOCALDATETIME:
+        return _dt.datetime.combine(date, value).isoformat()
+    return _at_zone(date, value, zone).isoformat()
+
+
+def map_value(kind: str, entries: Mapping[str, object]) -> str:
+    """A value of ``kind`` from a map of components written in the statement, in the form the
+    engine reads: date({year: 1984, week: 10, dayOfWeek: 3}) is '1984-03-07'."""
+    import datetime as _dt
+
+    zone = entries.get("timezone")
+    numbers = {k: int(v) for k, v in entries.items() if k != "timezone"}  # type: ignore[call-overload]
+    if kind == DATE:
+        return _date_of(numbers).isoformat()
+    if kind in (LOCALTIME, TIME):
+        value = _time_of(numbers)
+        if kind == LOCALTIME:
+            return value.isoformat()
+        tz = _offset_of(str(zone)) if zone else _dt.timezone.utc
+        assert tz is not None
+        offset = _dt.datetime.combine(_dt.date.today(), value, tz).utcoffset()
+        assert offset is not None
+        return value.replace(tzinfo=_dt.timezone(offset)).isoformat()
+    date = _date_of(numbers)
+    value = _time_of(numbers)
+    if kind == LOCALDATETIME:
+        return _dt.datetime.combine(date, value).isoformat()
+    return _at_zone(date, value, str(zone) if zone else "").isoformat()
+
+
+# --------------------------------------------------------------------------- values built from others
+
+_DATE_FIELDS = ("year", "month", "day")
+_TIME_FIELDS = ("hour", "minute", "second", "millisecond", "microsecond", "nanosecond")
+_OTHER_DATE_FORMS = ("week", "dayOfWeek", "ordinalDay", "quarter", "dayOfQuarter")
+
+
+def _field(value: exp.Expression, unit: str) -> exp.Expression:
+    return exp.Extract(this=exp.var(unit), expression=value.copy())
+
+
+def _offset_text(seconds: exp.Expression) -> exp.Expression:
+    """An offset in seconds as +hh:mm."""
+    magnitude = exp.Anonymous(this="ABS", expressions=[seconds.copy()])
+    hours = _int_div(magnitude.copy(), 3600)
+    minutes = _int_div(
+        exp.Sub(
+            this=magnitude,
+            expression=exp.Mul(this=hours.copy(), expression=exp.Literal.number(3600)),
+        ),
+        60,
+    )
+
+    def two(e: exp.Expression) -> exp.Expression:
+        return exp.Anonymous(
+            this="LPAD", expressions=[_text(e), exp.Literal.number(2), exp.Literal.string("0")]
+        )
+
+    sign = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.LT(this=seconds.copy(), expression=exp.Literal.number(0)),
+                true=exp.Literal.string("-"),
+            )
+        ],
+        default=exp.Literal.string("+"),
+    )
+    return exp.DPipe(
+        this=exp.DPipe(this=sign, expression=two(hours)),
+        expression=exp.DPipe(this=exp.Literal.string(":"), expression=two(minutes)),
+    )
+
+
+def _offset_seconds(text: str) -> int:
+    import datetime as _dt
+
+    tz = _offset_of(text)
+    assert tz is not None
+    offset = _dt.datetime.combine(_dt.date.today(), _dt.time(), tz).utcoffset()
+    assert offset is not None
+    return int(offset.total_seconds())
+
+
+def composed_value(
+    kind: str,
+    entries: Mapping[str, CypherExpr],
+    kinds: Mapping[str, str | None],
+    lower: Callable[[CypherExpr], exp.Expression],
+) -> exp.Expression:
+    """A value of ``kind`` from a map whose components are computed or taken from another value
+    ({date: d, day: 28}, {time: t, timezone: '+05:00'}): each component the map names, else the
+    other value's, else its default."""
+    given = {k: v for k, v in entries.items() if k not in ("date", "time", "datetime", "timezone")}
+    source_date = entries.get("date", entries.get("datetime"))
+    source_time = entries.get("time", entries.get("datetime"))
+    date_sql = lower(source_date) if source_date is not None else None
+    time_sql = lower(source_time) if source_time is not None else None
+    time_kind = kinds.get("time") or kinds.get("datetime")
+
+    def part(name: str, unit: str, source: exp.Expression | None, default: int) -> exp.Expression:
+        if name in given:
+            return lower(given[name])
+        if source is not None:
+            return _field(source, unit)
+        return exp.Literal.number(default)
+
+    def whole(e: exp.Expression) -> exp.Expression:
+        return exp.Cast(this=e, to=exp.DataType.build("BIGINT"))
+
+    year = whole(part("year", "YEAR", date_sql, 1970))
+    month = whole(part("month", "MONTH", date_sql, 1))
+    day = whole(part("day", "DAY", date_sql, 1))
+    hour = whole(part("hour", "HOUR", time_sql, 0))
+    minute = whole(part("minute", "MINUTE", time_sql, 0))
+    # Seconds with their fraction: a second the map names keeps the other value's fraction
+    # unless the map names that too.
+    if any(k in given for k in ("millisecond", "microsecond", "nanosecond")):
+        fraction: exp.Expression = exp.Add(
+            this=exp.Add(
+                this=exp.Mul(
+                    this=exp.Paren(this=part("millisecond", "", None, 0)),
+                    expression=exp.Literal.number(1000),
+                ),
+                expression=part("microsecond", "", None, 0),
+            ),
+            expression=_int_div(part("nanosecond", "", None, 0), 1000),
+        )
+    elif time_sql is not None:
+        fraction = exp.Mod(
+            this=_field(time_sql, "MICROSECOND"), expression=exp.Literal.number(_MICROS)
+        )
+    else:
+        fraction = exp.Literal.number(0)
+    if "second" in given:
+        whole_seconds: exp.Expression = lower(given["second"])
+    elif time_sql is not None:
+        whole_seconds = _int_div(_field(time_sql, "MICROSECOND"), _MICROS)
+    else:
+        whole_seconds = exp.Literal.number(0)
+    seconds = exp.Add(
+        this=exp.Paren(this=whole_seconds),
+        expression=exp.Div(
+            this=exp.Paren(this=fraction), expression=exp.Literal.number(float(_MICROS))
+        ),
+    )
+    calendar: exp.Expression = exp.Anonymous(this="MAKE_DATE", expressions=[year, month, day])
+    if any(k in given for k in _OTHER_DATE_FORMS):
+        calendar = _other_date_form(given, date_sql, lower, part, whole)
+    if kind == DATE:
+        return calendar
+    if kind in (LOCALTIME, TIME):
+        local = exp.Anonymous(this="MAKE_TIME", expressions=[hour, minute, seconds])
+    else:
+        y, m, d = (whole(_field(calendar, unit)) for unit in ("YEAR", "MONTH", "DAY"))
+        local = exp.Anonymous(this="MAKE_TIMESTAMP", expressions=[y, m, d, hour, minute, seconds])
+    if kind in (LOCALTIME, LOCALDATETIME):
+        return local
+    # A time or date time: at the zone the map names, else the other value's, else UTC. A value
+    # that has a zone, given another, is the same instant there.
+    zone = entries.get("timezone")
+    zoned_source = time_sql is not None and time_kind in (TIME, DATETIME)
+    if zone is not None:
+        if not (isinstance(zone, Literal) and zone.kind == "string"):
+            raise CypherTranslateError(f"{kind}() takes its timezone written in the statement")
+        target = _offset_seconds(str(zone.value))
+        if zoned_source and time_kind == TIME:
+            assert time_sql is not None
+            shift = exp.Sub(
+                this=exp.Literal.number(target), expression=_field(time_sql, "TIMEZONE")
+            )
+            local = exp.Add(
+                this=local,
+                expression=_times(
+                    exp.Mul(this=exp.Paren(this=shift), expression=exp.Literal.number(_MICROS)),
+                    "microsecond",
+                ),
+            )
+            if kind == TIME:
+                local = exp.Cast(this=local, to=exp.DataType.build("TIME"))
+        offset = exp.Literal.string(_offset_text_of(target))
+    elif zoned_source and time_kind == TIME:
+        assert time_sql is not None
+        offset = _offset_text(_field(time_sql, "TIMEZONE"))
+    else:
+        offset = exp.Literal.string("+00:00")
+    text = exp.DPipe(this=_text(local), expression=offset)
+    return exp.Cast(this=text, to=exp.DataType.build(SQL_TYPES[kind]))
+
+
+def _days_after(start: exp.Expression, days: exp.Expression) -> exp.Expression:
+    return exp.Cast(
+        this=exp.Add(this=start, expression=_times(days, "day")), to=exp.DataType.build("DATE")
+    )
+
+
+def _other_date_form(
+    given: Mapping[str, CypherExpr],
+    source: exp.Expression | None,
+    lower: Callable[[CypherExpr], exp.Expression],
+    part: Callable[[str, str, exp.Expression | None, int], exp.Expression],
+    whole: Callable[[exp.Expression], exp.Expression],
+) -> exp.Expression:
+    """A date by week (week-year, week, dayOfWeek), ordinal day or quarter, each component the
+    map names, else the other value's."""
+    one = exp.Literal.number(1)
+    if "week" in given or "dayOfWeek" in given:
+        week_year = whole(part("year", "ISOYEAR", source, 1970))
+        fourth = exp.Anonymous(
+            this="MAKE_DATE", expressions=[week_year, one, exp.Literal.number(4)]
+        )
+        first_monday = exp.Cast(
+            this=exp.Anonymous(this="DATE_TRUNC", expressions=[exp.Literal.string("week"), fourth]),
+            to=exp.DataType.build("DATE"),
+        )
+        week = whole(part("week", "WEEK", source, 1))
+        dow = whole(part("dayOfWeek", "ISODOW", source, 1))
+        days = exp.Add(
+            this=exp.Mul(
+                this=exp.Paren(this=exp.Sub(this=week, expression=one)),
+                expression=exp.Literal.number(7),
+            ),
+            expression=exp.Paren(this=exp.Sub(this=dow, expression=one.copy())),
+        )
+        return _days_after(first_monday, days)
+    year = whole(part("year", "YEAR", source, 1970))
+    if "ordinalDay" in given:
+        start = exp.Anonymous(this="MAKE_DATE", expressions=[year, one, one.copy()])
+        return _days_after(
+            start, exp.Sub(this=whole(lower(given["ordinalDay"])), expression=one.copy())
+        )
+    quarter = whole(part("quarter", "QUARTER", source, 1))
+    start = exp.Anonymous(
+        this="MAKE_DATE",
+        expressions=[
+            year,
+            exp.Add(
+                this=exp.Mul(
+                    this=exp.Paren(this=exp.Sub(this=quarter, expression=one)),
+                    expression=exp.Literal.number(3),
+                ),
+                expression=one.copy(),
+            ),
+            one.copy(),
+        ],
+    )
+    if "dayOfQuarter" in given:
+        offset = exp.Sub(this=whole(lower(given["dayOfQuarter"])), expression=one.copy())
+    elif source is not None:
+        quarter_start = exp.Cast(
+            this=exp.Anonymous(
+                this="DATE_TRUNC", expressions=[exp.Literal.string("quarter"), source.copy()]
+            ),
+            to=exp.DataType.build("DATE"),
+        )
+        offset = exp.Sub(
+            this=exp.Cast(this=source.copy(), to=exp.DataType.build("DATE")),
+            expression=quarter_start,
+        )
+    else:
+        offset = exp.Literal.number(0)
+    return _days_after(start, offset)
+
+
+def _offset_text_of(seconds: int) -> str:
+    sign = "-" if seconds < 0 else "+"
+    hours, minutes = divmod(abs(seconds) // 60, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def temporal_value(
+    kind: str,
+    written: list[CypherExpr],
+    lower: Callable[[CypherExpr], exp.Expression],
+    entry_kind: Callable[[CypherExpr], str | None],
+) -> exp.Expression | None:
+    """date(..), localtime(..), time(..), localdatetime(..) and datetime(..) of text or a map of
+    components; None for the forms the engine's own cast reads (no argument, another value)."""
+    if len(written) != 1:
+        return None
+    given = written[0]
+    if isinstance(given, Literal) and given.kind == "null":
+        return exp.Null()
+    if isinstance(given, Literal) and given.kind == "string":
+        value = text_value(kind, str(given.value))
+        return exp.Cast(this=exp.Literal.string(value), to=exp.DataType.build(SQL_TYPES[kind]))
+    if not isinstance(given, MapLiteral):
+        return None
+    entries = dict(given.entries)
+    written_whole = all(
+        isinstance(v, Literal) and (v.kind == "number" or (k == "timezone" and v.kind == "string"))
+        for k, v in entries.items()
+    )
+    if written_whole:
+        value = map_value(kind, {k: v.value for k, v in entries.items()})  # type: ignore[union-attr]
+        return exp.Cast(this=exp.Literal.string(value), to=exp.DataType.build(SQL_TYPES[kind]))
+    sources = {k: entry_kind(v) for k, v in entries.items() if k in ("date", "time", "datetime")}
+    return composed_value(kind, entries, sources, lower)

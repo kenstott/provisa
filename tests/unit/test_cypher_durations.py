@@ -16,6 +16,8 @@ has nanoseconds, the case keeps it to microseconds, the engine's precision."""
 
 from __future__ import annotations
 
+import datetime
+
 import duckdb
 import pytest
 
@@ -188,3 +190,95 @@ def test_a_duration_is_read_on_a_source_only_where_its_sql_holds_intervals():
     assert unsupported(sql, "postgres") is None
     assert unsupported(sql, "duckdb") is None
     assert unsupported(sql, "mysql") == DURATION
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (datetime.date(1984, 10, 11), "1984-10-11"),
+        (datetime.time(21, 40, 32, 142000), "21:40:32.142"),
+        (datetime.time(12, 0), "12:00"),
+        (datetime.time(10, 35, 1, 500), "10:35:01.0005"),
+        (
+            datetime.time(16, 30, tzinfo=datetime.timezone(datetime.timedelta(hours=1))),
+            "16:30+01:00",
+        ),
+        (datetime.datetime(1816, 1, 1, 0, 0), "1816-01-01T00:00"),
+        (
+            datetime.datetime(2015, 7, 21, 21, 40, 32, 142000, tzinfo=datetime.timezone.utc),
+            "2015-07-21T21:40:32.142Z",
+        ),
+    ],
+)
+def test_a_temporal_value_is_answered_as_cypher_writes_it(value, text):
+    """Temporal6: the fraction of a second without its trailing zeros, a whole minute without
+    its seconds, UTC as Z."""
+    assert to_serializable({"v": value}) == {"v": text}
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        # Temporal1: from a map of components -- calendar, week, ordinal and quarter forms
+        ("RETURN date({year: 1984, month: 10, day: 11}) AS v", "1984-10-11"),
+        ("RETURN date({year: 1816, week: 1}) AS v", "1816-01-01"),
+        ("RETURN date({year: 1819, week: 1}) AS v", "1819-01-04"),
+        ("RETURN localdatetime({year: 1817, week: 10}) AS v", "1817-03-03T00:00"),
+        (
+            "RETURN localdatetime({year: 1984, ordinalDay: 202, hour: 12, minute: 31, "
+            "second: 14, millisecond: 645}) AS v",
+            "1984-07-20T12:31:14.645",
+        ),
+        (
+            "RETURN localdatetime({year: 1984, quarter: 3, dayOfQuarter: 45, hour: 12}) AS v",
+            "1984-08-14T12:00",
+        ),
+        (
+            "RETURN localtime({hour: 12, minute: 31, second: 14, millisecond: 645}) AS v",
+            "12:31:14.645",
+        ),
+        (
+            "RETURN time({hour: 12, minute: 31, second: 14, microsecond: 645876, "
+            "timezone: '+01:00'}) AS v",
+            "12:31:14.645876+01:00",
+        ),
+        (
+            "RETURN time({hour: 12, minute: 34, second: 56, timezone: '+02:05:59'}) AS v",
+            "12:34:56+02:05:59",
+        ),
+        ("RETURN datetime({year: 1818, week: 1}) AS v", "1817-12-29T00:00Z"),
+        # Temporal2: Cypher's other written forms
+        ("RETURN date('2015W302') AS v", "2015-07-21"),
+        ("RETURN date('2015-202') AS v", "2015-07-21"),
+        ("RETURN date('201507') AS v", "2015-07-01"),
+        ("RETURN localtime('214032') AS v", "21:40:32"),
+        ("RETURN time('2140-00:00') AS v", "21:40Z"),
+        ("RETURN datetime('2015-W30-2T214032.142Z') AS v", "2015-07-21T21:40:32.142Z"),
+        # Temporal3: from another value, each component the map names taking its place
+        (
+            "WITH date({year: 1984, month: 11, day: 11}) AS other RETURN date({date: other, "
+            "day: 28}) AS v",
+            "1984-11-28",
+        ),
+        (
+            "RETURN localdatetime({date: date('1816-12-30'), week: 2, dayOfWeek: 3}) AS v",
+            "1817-01-08T00:00",
+        ),
+        (
+            "WITH time({hour: 12, minute: 31, second: 14, microsecond: 645876, "
+            "timezone: '+01:00'}) AS other RETURN localtime({time: other, second: 42}) AS v",
+            "12:31:42.645876",
+        ),
+        (
+            "WITH localdatetime({year: 1984, week: 10, dayOfWeek: 3, hour: 12, minute: 31, "
+            "second: 14, millisecond: 645}) AS other RETURN datetime({year: 1984, month: 10, "
+            "day: 11, time: other}) AS v",
+            "1984-10-11T12:31:14.645Z",
+        ),
+        # Temporal4: the clock's current value, null of null
+        ("RETURN localtime.realtime(null) AS v", None),
+        ("RETURN datetime(null) AS v", None),
+    ],
+)
+def test_a_temporal_value_is_built_from_text_a_map_or_another_value(query, expected):
+    assert _answer(query) == [{"v": expected}]

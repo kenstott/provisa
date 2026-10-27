@@ -108,14 +108,14 @@ def test_a_time_value_is_written_in_the_answer_as_iso_8601():
 
     from provisa.gql.assembler import to_serializable
 
-    assert to_serializable({"t": datetime.time(10, 35, 1, 500)}) == {"t": "10:35:01.000500"}
+    assert to_serializable({"t": datetime.time(10, 35, 1, 500)}) == {"t": "10:35:01.0005"}
 
 
-def test_a_temporal_value_built_from_a_map_is_refused_by_name():
-    from provisa.gql.translator_types import CypherTranslateError
+def test_a_temporal_value_built_from_a_map_is_that_value():
+    """REQ-2172: a map of components builds the value (it was refused by name before)."""
+    import datetime
 
-    with pytest.raises(CypherTranslateError, match=r"localtime\(\) built from a map"):
-        _rows("RETURN localtime({hour: 10, minute: 35}) AS t")
+    assert _rows("RETURN localtime({hour: 10, minute: 35}) AS t") == [(datetime.time(10, 35),)]
 
 
 @pytest.mark.parametrize(

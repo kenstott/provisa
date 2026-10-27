@@ -577,12 +577,10 @@ def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
         return {k: to_serializable(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [to_serializable(i) for i in obj]
-    if isinstance(obj, datetime.datetime):
-        return obj.isoformat()
-    if isinstance(obj, datetime.date):
-        return obj.isoformat()
-    if isinstance(obj, datetime.time):  # a localtime/time value: ISO 8601, as a date is
-        return obj.isoformat()
+    if isinstance(obj, (datetime.date, datetime.time)):  # REQ-2172: as Cypher writes it
+        from provisa.gql.temporal import cypher_text
+
+        return cypher_text(obj)
     if isinstance(obj, Decimal):
         return float(obj)
     return obj
