@@ -8825,6 +8825,7 @@
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_cypher_tck_comparison.py
+  - tests/unit/test_cypher_tck_equality.py
   - tests/unit/test_cypher_tck_lists.py
   - tests/unit/test_cypher_tck_maps.py
   - tests/unit/test_cypher_tck_precedence.py
@@ -90116,7 +90117,64 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     DELETE and SPARQL Update are built. The IR gains write clauses (CREATE, SET, REMOVE, DELETE, MERGE);
     the Cypher parser accepts them and SPARQL INSERT/DELETE DATA lower to them; one classifier over the
     IR decides governed vs session for every language, and the governed writer takes IR input in place of
-    the regex translator. Reads need no IR change.'
+    the regex translator. Reads need no IR change. (Amended 2026-10-27, A LABEL''S UNION IS ONE CTE:) Maintainer
+    2026-10-27: a label or relationship type the session overlays is expanded once per statement, as a common
+    table expression holding its union (the model table''s rows, the session''s anchor rows carrying the
+    label, and the model rows the session tags with it), referenced by name wherever the compiled statement
+    reads it, including inside a variable-length path''s recursive CTE, rather than written out as a subquery
+    at every reference. The model arm stays the registered table inside the CTE, so the one governed pipeline
+    still applies row filters and masks to it. (Amended 2026-10-27, ONE CTE PER LABEL SET:) Maintainer 2026-10-27:
+    the unit of that CTE is the label set a node pattern names, not the single label: (a:Person:Employee)
+    reads one CTE holding the nodes that carry every label in the set, defined once per distinct set in
+    the statement and referenced wherever a pattern names that same set; a relationship type keeps one CTE
+    per type. (Amended 2026-10-27, ONE CTE PER PATTERN INSTANCE, IDENTICAL ONES SHARED:) Maintainer 2026-10-27,
+    refining the above: each node pattern instance reads its own CTE, carrying the conditions that apply
+    to that variable alone (its inline properties and the WHERE conditions naming only it) so they filter
+    before the union and the joins; instances whose definitions come out identical (same label set, same
+    conditions) share one CTE. (a:Person {country:''US''}) and (b:Person) read two; (a:Person) and (c:Person)
+    with no conditions read one. A relationship type keeps one CTE per type. This replaces ''one CTE per
+    label set''. (Amended 2026-10-27, SESSION READS ARE CACHED BY GRAPH VERSION:) Maintainer 2026-10-27:
+    the session''s graph index (the labels it holds, their anchor tables, its tags and relationship pairs)
+    carries a version that every session write advances. The overlaid label map is kept per role and version,
+    and a read while the session holds ephemeral objects is kept in the translation cache under the statement,
+    the role and that version, so a repeated read reuses its compiled SQL until the session next writes.
+    (Amended 2026-10-27, LABEL RESOLUTION LIVES IN THE SESSION''S LOOKUP TABLES:) Maintainer 2026-10-27:
+    the session graph''s lookup tables, kept at write time, also hold each label''s resolved form: its merged
+    columns with widened types and its arms (the anchor tables and the tagged model types). A write that
+    adds or removes a label updates them; the overlay reads them and computes nothing per statement. No
+    separate cache, no version and no invalidation; a read while the session holds ephemeral objects still
+    bypasses the kept-translation cache. (Amended 2026-10-27, SESSION GRAPHS ARE INDEXED AND COUNTED:) Maintainer
+    2026-10-27: the session graph is indexed as a graph store''s would be, so very large session graphs
+    traverse well. Its relationship table is indexed on from_id, on to_id and on type, node_labels on (label,
+    node_id), and each anchor table on its node id; these are temporary objects beside the session''s temporary
+    tables, created with them. The lookup tables keep counts per label, per relationship type and per (type,
+    source label, target label), maintained at write time, so the compiler starts a traversal from its more
+    selective end. The benefit is engine dependent (largest on a PostgreSQL engine; DuckDB''s hash joins
+    gain mainly on selective hops). Model data keeps its source''s own indexes: none is created at a source.
+    (Amended 2026-10-27, THE CYPHER PAGE HOLDS A SESSION AND SHOWS ITS LABELS:) Maintainer 2026-10-27: the
+    UI''s Cypher page holds an ephemeral session as Bolt does per connection, kept per browser session,
+    so the page''s statements see each other''s ephemeral objects. Its left-hand label and relationship-type
+    pills include the session''s labels and types (tags on model nodes among them), marked apart from the
+    model''s and showing their counts; clicking one runs the same MATCH as a model pill does. A clear-session
+    action ends the session''s objects on demand. (Amended 2026-10-27, THE PAGE''S SESSION IS PER TAB, ENDED
+    AFTER 2 HOURS IDLE:) Maintainer 2026-10-27: the Cypher page''s session is one per browser tab (it survives
+    a reload of that tab; another tab has its own), keyed by the org, the principal and the tab''s session
+    id, so no principal ever reaches another''s. A session unused for the idle expiry (a deployment setting
+    with its own field, default 2 hours) is ended and its temporary objects dropped; the page also ends
+    it on sign-out and from its clear-session action. (Amended 2026-10-27, A SESSION SURVIVES SIGN-OUT UNTIL
+    ITS ROLES CHANGE:) Maintainer 2026-10-27: when the Cypher page''s session ends by sign-out or idle expiry,
+    its tables and its lookup index are saved in the control-plane PostgreSQL for that org and principal,
+    one saved session per principal (the last to end), before its temporary objects are dropped. The next
+    time that principal opens the Cypher page it is offered the saved session to restore into a fresh one.
+    A saved session is deleted when its retention lapses (a deployment setting with its own field), when
+    the principal clears the session, [SUPERSEDED by REQ-2176, 2026-10-27 -- a saved session is deleted
+    only when the principal''s rights change, as the next amendment states. Kept here for history; do not
+    implement against it.] and whenever that principal''s roles or their grants change, [END SUPERSEDED
+    BLOCK] since it may hold copies of governed values read under the old rights. The idle expiry is configurable
+    as stated above. (Amended 2026-10-27, A PRINCIPAL''S RIGHTS ARE THE UNION OF ITS ROLES:) Maintainer
+    2026-10-27: the saved session is deleted when the principal''s rights change: the roles granted to the
+    principal, or the grants of any of them. A principal''s rights are the union of all its roles; acting
+    within one of them, or switching which it acts as, is not a change and keeps the saved session.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

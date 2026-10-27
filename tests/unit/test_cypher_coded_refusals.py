@@ -105,7 +105,7 @@ def test_a_write_lets_a_refusal_past_its_catch_all():
     from pathlib import Path
 
     source = Path(cypher_router.__file__).read_text(encoding="utf-8")
-    write = source[source.index("_plan = await _govern_write(") :]
+    write = source[source.index("await written(") :]
     write = write[: write.index('"cypher.write_failed"')]
     assert "except (ApiError, ReadRefused):" in write
 

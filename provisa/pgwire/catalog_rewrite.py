@@ -29,7 +29,7 @@ from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TABLE_MAP,
 )
-from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
@@ -59,6 +59,124 @@ _DUCKDB_TYPES = {
     "inet": "VARCHAR",
 }
 _COUNTS = frozenset({"BIGINT", "INTEGER", "SMALLINT", "UINTEGER", "DOUBLE", "FLOAT"})
+
+
+# REQ-2167: PostgreSQL subscripts an int2vector or oidvector (pg_index.indkey, indclass, ...) from
+# 0 and any other array from 1; DuckDB's lists are subscripted from 1. A subscript of one of
+# these columns is moved up by one, and array_lower / array_upper (which DuckDB lacks) and
+# generate_subscripts answer as PostgreSQL does for each.
+_VECTOR_COLUMNS = frozenset(
+    name
+    for columns in RELATIONS.values()
+    for name, pg_type, _ in columns
+    if pg_type in ("int2vector", "oidvector")
+)
+
+
+def _is_vector(node: exp.Expression, vectors: frozenset[str] = _VECTOR_COLUMNS) -> bool:
+    while isinstance(node, exp.Paren):
+        node = node.this
+    return isinstance(node, exp.Column) and node.name.lower() in vectors
+
+
+def _vector_names(tree: exp.Expr) -> frozenset[str]:
+    """The vector columns, and the names the statement gives them (pgjdbc reads pg_index.indoption
+    as tmp.I_INDOPTION), however many times renamed."""
+    names = _VECTOR_COLUMNS
+    while True:
+        renamed = names | {
+            alias.alias.lower()
+            for alias in tree.find_all(exp.Alias)
+            if _is_vector(alias.this, names)
+        }
+        if renamed == names:
+            return names
+        names = renamed
+
+
+def _plus_one(node: exp.Expression) -> exp.Expression:
+    return exp.Add(this=exp.Paren(this=node), expression=exp.Literal.number(1))
+
+
+def _from_zero(subscript: exp.Expression) -> exp.Expression:
+    """A vector's subscript (or slice bounds), counted from 0, as the list subscript from 1."""
+    if isinstance(subscript, exp.Slice):
+        return exp.Slice(
+            this=_plus_one(subscript.this) if subscript.this else None,
+            expression=_plus_one(subscript.expression) if subscript.expression else None,
+        )
+    return _plus_one(subscript)
+
+
+def _array_bound(fn: str, array: exp.Expression, vectors: frozenset[str]) -> exp.Expression:
+    """array_lower / array_upper of a one-dimensional array: NULL for an empty one, as in
+    PostgreSQL; else its first or last subscript."""
+    length = exp.Anonymous(this="len", expressions=[array])
+    first = 0 if _is_vector(array, vectors) else 1
+    bound = (
+        exp.Literal.number(first)
+        if fn == "array_lower"
+        else exp.Sub(this=length, expression=exp.Literal.number(1 - first))
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=length.copy(), expression=exp.Literal.number(0)), true=exp.null()
+            )
+        ],
+        default=bound,
+    )
+
+
+def _expandarray_call(node: exp.Expression) -> exp.Anonymous | None:
+    """``information_schema._pg_expandarray(a)`` (a setof (x, n): each element and its ordinal from
+    1), when ``node`` is that call."""
+    while isinstance(node, exp.Paren):
+        node = node.this
+    if isinstance(node, exp.Dot):
+        node = node.expression
+    if isinstance(node, exp.Anonymous) and node.name.lower() == "_pg_expandarray":
+        return node
+    return None
+
+
+def _expanded(array: exp.Expression, field: str) -> exp.Expression:
+    """A field of _pg_expandarray(array): x, each element (unnest), or n, its ordinal from 1
+    (generate_subscripts of the list, which DuckDB counts from 1 for any list)."""
+    if field == "x":
+        return exp.Anonymous(this="unnest", expressions=[array])
+    return exp.Anonymous(this="generate_subscripts", expressions=[array, exp.Literal.number(1)])
+
+
+def _index_column_name(index_oid: exp.Expression, column: exp.Expression) -> exp.Expression:
+    """pg_get_indexdef(index, column, pretty) for a column from 1: that key column's name; for 0,
+    the whole definition, which the catalog does not keep (NULL)."""
+    name = (
+        exp.select(exp.column("attname", table="a"))
+        .from_("_pg_index AS ix")
+        .join(
+            "_pg_attribute AS a",
+            on="a.attrelid = ix.indrelid",
+            join_type="inner",
+        )
+        .where(
+            exp.EQ(
+                this=exp.column("attnum", table="a"),
+                expression=exp.Anonymous(
+                    this="list_extract", expressions=[exp.column("indkey", table="ix"), column]
+                ),
+            )
+        )
+        .where(exp.EQ(this=exp.column("indexrelid", table="ix"), expression=index_oid))
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=column.copy(), expression=exp.Literal.number(0)), true=exp.null()
+            )
+        ],
+        default=exp.Subquery(this=name),
+    )
 
 
 def _emulated(fn: str, untyped: exp.Expression) -> exp.Expression:
@@ -219,8 +337,29 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         tree = sqlglot.parse_one(sql, read="postgres")
     except Exception:
         return sql
+    vectors = _vector_names(tree)
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, exp.Dot) and node.expression.name.lower() in ("x", "n"):
+            call = _expandarray_call(node.this)
+            if call is not None:
+                return _expanded(
+                    call.expressions[0].transform(_transform), node.expression.name.lower()
+                )
+        if isinstance(node, exp.Table) and _expandarray_call(node.this) is not None:
+            # information_schema._pg_expandarray(a) [AS e[(x, n)]] in FROM: a lateral derived table.
+            array = node.this.expressions[0].transform(_transform)
+            alias = node.args.get("alias")
+            names = [c.name for c in alias.columns] if alias and alias.columns else ["x", "n"]
+            return exp.Subquery(
+                this=exp.select(
+                    exp.alias_(_expanded(array, "x"), names[0]),
+                    exp.alias_(_expanded(array.copy(), "n"), names[1]),
+                ),
+                alias=exp.TableAlias(
+                    this=exp.Identifier(this=alias.name if alias else "_pg_expandarray")
+                ),
+            )
         if isinstance(node, exp.Table):
             # Schema-qualified scalar function used as a TVF (e.g. pg_catalog.pg_indexam_has_property(...) amcanorder).
             # Rewrite to a lateral subquery so DuckDB can parse it.
@@ -278,8 +417,28 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                         "alias", exp.TableAlias(this=exp.Identifier(this=name, quoted=False))
                     )
                 return new_tbl
+        if isinstance(node, exp.Bracket) and _is_vector(node.this, vectors):
+            return node.__class__(
+                **{
+                    **node.args,
+                    "this": node.this.transform(_transform),
+                    "expressions": [_from_zero(e.transform(_transform)) for e in node.expressions],
+                }
+            )
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
+            args = node.args.get("expressions", [])
+            first_dimension = len(args) == 2 and args[1] == exp.Literal.number(1)
+            if fn in ("array_lower", "array_upper") and first_dimension:
+                return _array_bound(fn, args[0].transform(_transform), vectors)
+            if fn == "generate_subscripts" and first_dimension and _is_vector(args[0], vectors):
+                return exp.Sub(
+                    this=exp.Anonymous(
+                        this="generate_subscripts",
+                        expressions=[args[0].transform(_transform), exp.Literal.number(1)],
+                    ),
+                    expression=exp.Literal.number(1),
+                )
             if fn == "json_build_object":
                 # DuckDB has no json_build_object; json_object takes the same
                 # alternating key/value argument list.
@@ -305,6 +464,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.Subquery(this=base)
             if "pg_get_userbyid" in fn or "pg_get_role_name" in fn:
                 return exp.Literal.string("provisa")
+            if fn == "pg_get_indexdef" and len(args) >= 2:
+                return _index_column_name(
+                    args[0].transform(_transform), args[1].transform(_transform)
+                )
             if "pg_get_constraintdef" in fn:
                 # The definition catalog_constraints recorded for the constraint, as PostgreSQL
                 # writes it; the pretty flag changes nothing for a key or a foreign key.

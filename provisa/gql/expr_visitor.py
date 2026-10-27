@@ -254,6 +254,121 @@ def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expressi
     )
 
 
+#: A value not written wholly in the statement (_written_value).
+_UNKNOWN = object()
+
+
+def _written_value(node: CypherExpr) -> object:
+    """``node``'s value where the statement writes it wholly -- a literal, or a list or map of
+    them -- else _UNKNOWN."""
+    if isinstance(node, Paren):
+        return _written_value(node.inner)
+    if isinstance(node, Literal):
+        return node.value if node.kind in ("number", "string", "boolean", "null") else _UNKNOWN
+    if isinstance(node, Unary) and node.op == "-":
+        inner = _written_value(node.operand)
+        is_number = isinstance(inner, (int, float)) and not isinstance(inner, bool)
+        return -inner if is_number else _UNKNOWN  # type: ignore[operator]
+    if isinstance(node, ListLiteral):
+        items = [_written_value(i) for i in node.items]
+        return _UNKNOWN if any(i is _UNKNOWN for i in items) else items
+    if isinstance(node, MapLiteral):
+        entries = {k: _written_value(v) for k, v in node.entries}
+        return _UNKNOWN if any(v is _UNKNOWN for v in entries.values()) else entries
+    if isinstance(node, Binary) and node.op in ("=", "<>", "!=", "IN", "<", "<=", ">", ">="):
+        return _folded_equality(node)
+    if isinstance(node, Binary) and node.op == "+":
+        # A list + a list, an element or the other way round, of values written wholly.
+        left, right = _written_value(node.left), _written_value(node.right)
+        if left is _UNKNOWN or right is _UNKNOWN:
+            return _UNKNOWN
+        if isinstance(left, list):
+            return left + (right if isinstance(right, list) else [right])
+        if isinstance(right, list):
+            return [left, *right]
+    return _UNKNOWN
+
+
+def _cypher_equal(a: object, b: object, cross_kinds: str = "unequal") -> bool | None:
+    """a = b: null where either is null, or where nothing unequal decides it but a null inside a
+    list or map; values of two kinds (1 and '1', 1 and [1]) are unequal, or a type error (null)
+    where ``cross_kinds`` is "error" (Binary.cross_kinds)."""
+    if a is None or b is None:
+        return None
+    number_a = isinstance(a, (int, float)) and not isinstance(a, bool)
+    number_b = isinstance(b, (int, float)) and not isinstance(b, bool)
+    if number_a and number_b:
+        return a == b
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return False
+        return _all_equal([_cypher_equal(x, y, cross_kinds) for x, y in zip(a, b, strict=True)])
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a) != set(b):
+            return False
+        return _all_equal([_cypher_equal(a[k], b[k], cross_kinds) for k in a])
+    if number_a or number_b or type(a) is not type(b):
+        return None if cross_kinds == "error" else False
+    return a == b
+
+
+def _cypher_order(a: object, b: object) -> int | None:
+    """openCypher's order of a and b (-1, 0, 1): numbers, strings, booleans and lists by their
+    items in turn; null where either is null, or of two kinds, which have no order."""
+    if a is None or b is None:
+        return None
+    number_a = isinstance(a, (int, float)) and not isinstance(a, bool)
+    number_b = isinstance(b, (int, float)) and not isinstance(b, bool)
+    if number_a and number_b or (type(a) is type(b) and isinstance(a, (str, bool))):
+        return (a > b) - (a < b)  # type: ignore[operator]
+    if isinstance(a, list) and isinstance(b, list):
+        for x, y in zip(a, b, strict=False):
+            found = _cypher_order(x, y)
+            if found != 0:
+                return found
+        return (len(a) > len(b)) - (len(a) < len(b))
+    return None
+
+
+def _all_equal(results: list[bool | None]) -> bool | None:
+    if False in results:
+        return False
+    return None if None in results else True
+
+
+def _folded_equality(node: Binary) -> object:
+    """``a = b``, ``a <> b`` or ``a IN list`` of values the statement writes wholly, answered as
+    openCypher answers it -- across kinds and with nulls inside lists and maps, which an engine's
+    typed comparison cannot (it refuses [1, 2] IN [1, [1, 2]]) -- else _UNKNOWN."""
+    if node.op not in ("=", "<>", "!=", "IN", "<", "<=", ">", ">="):
+        return _UNKNOWN
+    left, right = _written_value(node.left), _written_value(node.right)
+    if node.op in ("<", "<=", ">", ">="):
+        if left is _UNKNOWN or right is _UNKNOWN:
+            return _UNKNOWN
+        found = _cypher_order(left, right)
+        if found is None:
+            return None
+        return {"<": found < 0, "<=": found <= 0, ">": found > 0, ">=": found >= 0}[node.op]
+    if node.op == "IN" and isinstance(right, list) and left is _UNKNOWN and not right:
+        return False  # nothing is in an empty list
+    if left is _UNKNOWN or right is _UNKNOWN:
+        return _UNKNOWN
+    if node.op == "IN":
+        if right is None:
+            return None
+        if not isinstance(right, list):
+            return _UNKNOWN
+        found = [_cypher_equal(left, item, node.cross_kinds) for item in right]
+        if True in found:
+            return True
+        return None if None in found else False
+    same = _cypher_equal(left, right, node.cross_kinds)
+    if node.op == "=" or same is None:
+        return same
+    return not same
+
+
 def _reversed_list(items: exp.Expression) -> exp.Expression:
     """A list's items last to first, in the engine functions the IR names (DuckDB's reverse takes
     a string alone): each index from the last down to 1, read. An empty list is itself, as Trino's
@@ -429,6 +544,9 @@ class ExprLowering:
 
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
+        folded = _folded_equality(node)
+        if folded is not _UNKNOWN:
+            return {True: exp.true(), False: exp.false(), None: exp.Null()}[folded]
         if op in _BINARY_CMP:
             same = self._same_element(node)
             if same is not None:
@@ -436,8 +554,11 @@ class ExprLowering:
             self._refuse_mismatched_comparison(node)
             left_kind, right_kind = self._value_kind(node.left), self._value_kind(node.right)
             if left_kind and right_kind and left_kind != right_kind:
-                # Values of two kinds ('1' and 1) are never equal and have no order (openCypher):
-                # never the engine's implicit cast of one to the other.
+                # Values of two kinds ('1' and 1): never the engine's implicit cast of one to the
+                # other. A type error where the language says so (SPARQL), else never equal and
+                # of no order (openCypher).
+                if node.cross_kinds == "error":
+                    return exp.Null()
                 if op == "=":
                     return exp.false()
                 if op in ("<>", "!="):

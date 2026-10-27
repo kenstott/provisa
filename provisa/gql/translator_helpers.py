@@ -726,6 +726,15 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         # (toInteger(substring(x, 1)) shifts the substring's start).
         args = [a.transform(_rewrite_cypher_fn_node) for a in args]
 
+    if name in ("TOINTEGER", "TOINTEGERORNULL") and args:
+        # Toward zero, as Cypher truncates (an engine's cast to an integer rounds): read as a
+        # decimal (a number, or a string of one), cut, then the integer.
+        number = exp.TryCast(this=args[0], to=exp.DataType.build("DECIMAL(38, 10)"))
+        return exp.TryCast(
+            this=exp.Anonymous(this="TRUNC", expressions=[number]),
+            to=exp.DataType.build("BIGINT"),
+        )
+
     if name in _CYPHER_CAST_FNS and args:
         sql_type, use_try = _CYPHER_CAST_FNS[name]
         cls = exp.TryCast if use_try else exp.Cast

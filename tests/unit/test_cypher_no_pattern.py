@@ -123,7 +123,7 @@ def test_a_temporal_value_built_from_a_map_is_that_value():
     [
         "CREATE ()",
         "CREATE (:A)",
-        "CREATE (n:A {name: 'x'}) RETURN n",
+        "CREATE (n:A {name: 'x'}) WITH n RETURN n",  # CREATE ... RETURN is read; WITH between is not
         "UNWIND [1] AS i CREATE (:A)",
     ],
 )

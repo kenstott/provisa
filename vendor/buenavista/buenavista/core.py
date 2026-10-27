@@ -57,31 +57,35 @@ class BVType(enum.Enum):
     OIDARRAY = 32
     OIDVECTOR = 33
     INT2VECTOR = 34
-    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type (oid is OID above).
-    INET = 35
-    CIDR = 36
-    MACADDR = 37
-    XML = 38
-    POINT = 39
-    MONEY = 40
-    MACADDR8 = 41
-    LINE = 42
-    LSEG = 43
-    BOX = 44
-    PATH = 45
-    POLYGON = 46
-    CIRCLE = 47
-    GEOMETRY = 48
-    GEOGRAPHY = 49
-    INT4RANGE = 50
-    INT8RANGE = 51
-    NUMRANGE = 52
-    TSRANGE = 53
-    TSTZRANGE = 54
-    DATERANGE = 55
-    BIT = 56
-    VARBIT = 57
-    TSVECTOR = 58
+    # aclitem[] (text only, as in PostgreSQL), "char"[], inet and pg_lsn.
+    ACLITEMARRAY = 35
+    CHARARRAY = 36
+    INET = 37
+    PG_LSN = 38
+    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type (oid and inet are above).
+    CIDR = 39
+    MACADDR = 40
+    XML = 41
+    POINT = 42
+    MONEY = 43
+    MACADDR8 = 44
+    LINE = 45
+    LSEG = 46
+    BOX = 47
+    PATH = 48
+    POLYGON = 49
+    CIRCLE = 50
+    GEOMETRY = 51
+    GEOGRAPHY = 52
+    INT4RANGE = 53
+    INT8RANGE = 54
+    NUMRANGE = 55
+    TSRANGE = 56
+    TSTZRANGE = 57
+    DATERANGE = 58
+    BIT = 59
+    VARBIT = 60
+    TSVECTOR = 61
 
 
 class RawDataRowBytes(bytes):

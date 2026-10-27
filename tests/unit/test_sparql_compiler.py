@@ -667,3 +667,37 @@ def test_a_float_or_double_division_by_zero_is_infinity(con, expression, quotien
 def test_a_double_zero_divided_by_zero_is_nan(con):
     rows = _answer(con, "SELECT ?x WHERE { ?s p:name 'Ann' BIND(0.0e0 / 0.0e0 AS ?x) }")
     assert len(rows) == 1 and math.isnan(rows[0]["x"])
+
+
+@pytest.mark.parametrize(
+    ("cast", "value"),
+    [
+        ('xsd:integer("12")', 12),
+        ('xsd:integer(" -3 ")', -3),
+        ('xsd:integer("2.9")', None),  # no integer's lexical form: a cast error, unbound
+        ('xsd:integer("foo")', None),
+        ("xsd:integer(2.9)", 2),  # a number toward zero
+        ("xsd:integer(-2.9)", -2),
+        ("xsd:integer(?a / 10)", 4),
+    ],
+)
+def test_xsd_integer_casts_as_xpath_does(con, cast, value):
+    # Not Cypher's toInteger, which reads "2.9" as 2 (SPARQL 1.1 17.1, XPath casting).
+    rows = _answer(con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' ; p:age ?a BIND({cast} AS ?x) }}")
+    assert [r["x"] for r in rows] == [value]
+
+
+@pytest.mark.parametrize(
+    ("comparison", "value"),
+    [
+        ('"a" = true', None),  # two kinds: a type error, unbound (Cypher answers false)
+        ('"a" != true', None),
+        ('"1" IN (true, false)', None),
+        ('"a" = "a"', True),  # one kind compares
+        ('"a" IN ("b", "a")', True),
+    ],
+)
+def test_a_comparison_of_two_kinds_is_a_type_error(con, comparison, value):
+    # SPARQL 1.1 17.3: = of an xsd:string and an xsd:boolean is an error; a BIND of it is unbound.
+    rows = _answer(con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' BIND({comparison} AS ?x) }}")
+    assert [r["x"] for r in rows] == [value]

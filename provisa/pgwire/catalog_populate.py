@@ -38,6 +38,7 @@ from provisa.core.org_forget import on_forget
 from provisa.pgwire.system_tables import _populate_empty_system_tables
 from provisa.pgwire.catalog_constraints import (
     _populate_pg_constraint,
+    _populate_index_classes,
     _populate_pg_index,
     _populate_is_constraints,
 )
@@ -351,7 +352,7 @@ def _populate_is_columns(db, idx: CatalogIndex) -> None:
 
 def _populate_pg_namespace(db, idx: CatalogIndex) -> None:
     db.execute("""CREATE TABLE _pg_namespace (
-        oid INTEGER, nspname VARCHAR, nspowner INTEGER, nspacl VARCHAR)""")
+        oid INTEGER, nspname VARCHAR, nspowner INTEGER, nspacl VARCHAR[])""")
     ns_rows = [(oid, name, 10, None) for name, oid in idx.ns_map.items()]
     db.executemany("INSERT INTO _pg_namespace VALUES (?,?,?,?)", ns_rows)
 
@@ -366,7 +367,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
         relhasrules BOOLEAN, relhastriggers BOOLEAN, relhassubclass BOOLEAN,
         relrowsecurity BOOLEAN, relforcerowsecurity BOOLEAN, relispopulated BOOLEAN,
         relreplident VARCHAR, relispartition BOOLEAN, relrewrite INTEGER,
-        relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR,
+        relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR[],
         reloptions VARCHAR[], relpartbound VARCHAR)""")
     natts_by_toid: dict[int, int] = {}
     for col in idx.all_cols:
@@ -589,7 +590,7 @@ def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
         attnotnull BOOLEAN, atthasdef BOOLEAN, atthasmissing BOOLEAN,
         attidentity VARCHAR, attgenerated VARCHAR, attisdropped BOOLEAN,
         attislocal BOOLEAN, attinhcount INTEGER, attcollation INTEGER,
-        attacl VARCHAR, attoptions VARCHAR[], attfdwoptions VARCHAR[])""")
+        attacl VARCHAR[], attoptions VARCHAR[], attfdwoptions VARCHAR[])""")
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
         pg_oid = _physical_to_pg_oid(col_type)
@@ -731,7 +732,7 @@ def _populate_pg_type(db) -> None:
         typmodin INTEGER, typmodout INTEGER, typanalyze INTEGER,
         typalign VARCHAR, typstorage VARCHAR, typnotnull BOOLEAN,
         typbasetype INTEGER, typtypmod INTEGER, typndims INTEGER, typcollation INTEGER,
-        typdefaultbin VARCHAR, typdefault VARCHAR, typacl VARCHAR)""")
+        typdefaultbin VARCHAR, typdefault VARCHAR, typacl VARCHAR[])""")
     db.executemany(
         f"INSERT INTO _pg_type VALUES ({','.join(['?'] * 31)})",
         [
@@ -840,7 +841,7 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         oid INTEGER, datname VARCHAR, datdba INTEGER, encoding INTEGER,
         datlocprovider VARCHAR, datistemplate BOOLEAN, datallowconn BOOLEAN,
         datconnlimit INTEGER, datfrozenxid INTEGER, datminmxid INTEGER,
-        dattablespace INTEGER, datcollate VARCHAR, datctype VARCHAR, datacl VARCHAR)""")
+        dattablespace INTEGER, datcollate VARCHAR, datctype VARCHAR, datacl VARCHAR[])""")
     db.execute(
         "INSERT INTO _pg_database VALUES "
         "(16384,?,10,6,'c',FALSE,TRUE,-1,726,1,1663,'en_US.UTF-8','en_US.UTF-8',NULL)",
@@ -998,6 +999,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_pg_description(db, idx, raw_tables, raw_domains, metrics)
     constraint_rows = _populate_pg_constraint(db, ctx, idx)
     _populate_pg_index(db, constraint_rows)
+    _populate_index_classes(db, constraint_rows)
     _populate_pg_roles_and_database(db, role_id, state)
     _populate_pg_settings(db)
     _populate_pg_tables_and_am(db, idx)
