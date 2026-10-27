@@ -32,7 +32,7 @@ import re
 import secrets as _secrets
 import threading
 import time as _time
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1869,7 +1869,8 @@ async def govern_statement(
                 governed_semantic = _columns.sql
                 if _columns.calls:
                     _memo["columns"] = _columns
-    if _embed_fn.mentions(governed_semantic):
+    if _embed_fn.mentions(governed_semantic) and not _staging:
+        # (A staged statement's embed() calls are folded read by read, with its transforms.)
         # REQ-2002: embed() is Provisa's: a literal text is embedded now, a text of rows once the
         # rows are read (the plan's ``embedded``); no source or engine sees the call.
         _folded = await _embed_fn.fold(
@@ -2070,10 +2071,12 @@ async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
 
     from provisa.api.data.action_exec import admit_command
     from provisa.codesource import columns_fold
+    from provisa.codesource.columns_stage import own_params, stage_columns
     from provisa.compiler import temp_tables
     from provisa.federation.store_scope import drop_temp_table
     from provisa.federation.temp_address import schema_of
-    from provisa.pgwire.temp_exec import inferred_type, reland
+    from provisa.pgwire.temp_exec import landed_type, reland
+    from provisa.vector import embed_fn
 
     run = plan.staged
     session = temp_tables.current()
@@ -2083,15 +2086,43 @@ async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
     def admit(command: dict, name: str) -> None:
         admit_command(command, state, plan.role_id, name)
 
+    # The statement's parameters, bound or given in its provisa-params comment: each read is given
+    # those it names, renumbered.
+    params = run.params if run.params is not None else run.governed.comment_params
+    gov = run.governed.gov_ctx
+    landed_types: dict[str, dict[str, str]] = {}
+
+    def table_types(ref: str) -> Mapping[str, str] | None:
+        """A stage's table's columns' types: a landed stage's as landed, a registered table's as
+        the model declares them."""
+        if ref in landed_types:
+            return landed_types[ref]
+        table_id = gov.table_map.get(ref)
+        return None if table_id is None else dict(gov.all_columns.get(table_id, []))
+
     async def read(sql: str) -> QueryResult:
+        # Folded as the statement is governed: its column transforms, then its embed() calls,
+        # whose select-list positions are then the folded ones (REQ-2131, REQ-2002).
         folded = columns_fold.fold(sql, transforms, admit)
+        memo: dict[str, Any] = {"columns": folded} if folded.calls else {}
+        statement = folded.sql
+        if embed_fn.mentions(statement):
+            embedded = await embed_fn.fold(
+                statement, await vector_registry(state), embedding_provider
+            )
+            statement = embedded.sql
+            memo["embed"] = embedded
+        given = None
+        if params:
+            statement, given = own_params(statement, params)
         governed = dataclasses.replace(
             run.governed,
-            governed_semantic=folded.sql,
-            parsed=sqlglot.parse_one(folded.sql, read="postgres"),
-            memo={"columns": folded} if folded.calls else {},
+            governed_semantic=statement,
+            parsed=sqlglot.parse_one(statement, read="postgres"),
+            comment_params=None,
+            memo=memo,
         )
-        part = await route_governed(governed, params=run.params, as_of=run.as_of)
+        part = await route_governed(governed, params=given or None, as_of=run.as_of)
         part.audit = None  # the statement's one record is its own
         return (await _execute_plan_bound(part, state)).materialize()
 
@@ -2101,14 +2132,16 @@ async def _run_staged(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2131
             body = stage.body
             if stage.key_read is not None:
                 body = stage.restricted([row[0] for row in (await read(stage.key_read)).rows])
+            # Typed as the model declares its columns, so an empty stage lands an empty table.
+            declared = stage_columns(body, table_types, transforms)
             enriched = await read(body)
-            rows = list(enriched.rows)
-            columns = [
-                (name, inferred_type(name, [row[i] for row in rows]))
-                for i, name in enumerate(enriched.column_names)
-            ]
+            assert [n for n, _ in declared] == list(enriched.column_names), (
+                f"stage {stage.cte!r} gave {enriched.column_names}, where it declares {declared}"
+            )
+            columns = [(name, landed_type(name, kind)) for name, kind in declared]
             landed.append(stage.table)
-            await reland(state, session, stage.table, columns, rows)
+            await reland(state, session, stage.table, columns, list(enriched.rows))
+            landed_types[stage.table] = dict(declared)
         return await read(run.staged.outer)
     finally:
         store = state.federation_engine.engine.materialize_store()
