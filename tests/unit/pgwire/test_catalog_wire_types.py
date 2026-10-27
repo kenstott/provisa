@@ -290,3 +290,36 @@ def test_dbeavers_sequence_query_runs():
     # DBeaver PostgreSequence.java.
     sql = "SELECT * from pg_catalog.pg_sequences WHERE schemaname='public' AND sequencename='s'"
     assert answer(sql, "testrole", _state()).rows == []
+
+
+def test_every_statistics_relation_has_postgresqls_columns_and_no_rows():
+    # Provisa keeps no statistics: each relation is served, empty, never a made-up figure.
+    from provisa.pgwire.catalog_pg17 import RELATIONS
+    from provisa.pgwire.catalog_pg17_tables import STATISTICS_RELATIONS
+
+    for schema, relation in STATISTICS_RELATIONS:
+        served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
+        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+        assert answer(f"SELECT * FROM {schema}.{relation}", "testrole", _state()).rows == []
+
+
+def test_pgadmins_statistics_queries_run():
+    # pgAdmin dashboard/sql/default/dashboard_stats.sql (tps_stats) and
+    # tables/sql/16_plus/coll_table_stats.sql, rendered.
+    tps = (
+        "SELECT 'tps_stats' AS chart_name, pg_catalog.row_to_json(t) AS chart_data\n"
+        "FROM (SELECT\n"
+        "   (SELECT sum(xact_commit) + sum(xact_rollback) FROM pg_catalog.pg_stat_database) "
+        'AS "Transactions",\n'
+        '   (SELECT sum(xact_commit) FROM pg_catalog.pg_stat_database) AS "Commits",\n'
+        '   (SELECT sum(xact_rollback) FROM pg_catalog.pg_stat_database) AS "Rollbacks"\n) t'
+    )
+    assert [r[0] for r in answer(tps, "testrole", _state()).rows] == ["tps_stats"]
+    tables = (
+        'SELECT st.relname AS "Table name", n_tup_ins AS "Tuples inserted", '
+        'last_vacuum AS "Last vacuum", vacuum_count AS "Vacuum counter"\n'
+        "FROM pg_catalog.pg_stat_all_tables st\n"
+        "JOIN pg_catalog.pg_class cl on cl.oid=st.relid and cl.relkind IN ('r','s','t','p')\n"
+        "WHERE schemaname = 'public' ORDER BY st.relname;"
+    )
+    assert answer(tables, "testrole", _state()).rows == []

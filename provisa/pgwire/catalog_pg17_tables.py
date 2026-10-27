@@ -50,10 +50,19 @@ _DUCKDB_TYPES: dict[str, str] = {
     "timestamp with time zone": "TIMESTAMPTZ",
     "interval": "INTERVAL",
     "bytea": "BLOB",
+    # Only the always-empty statistics relations have these (STATISTICS_RELATIONS): no value of
+    # one is ever served, so each is held as text (an array of them as a text list).
+    "anyarray": "VARCHAR",
+    "pg_ndistinct": "VARCHAR",
+    "pg_dependencies": "VARCHAR",
+    "pg_mcv_list": "VARCHAR",
+    "pg_statistic[]": "VARCHAR[]",
 }
 
 
 def duckdb_type(pg_type: str) -> str:
+    if pg_type in _DUCKDB_TYPES:
+        return _DUCKDB_TYPES[pg_type]
     if pg_type.endswith("[]"):
         return f"{duckdb_type(pg_type[:-2])}[]"
     return _DUCKDB_TYPES[pg_type]
@@ -102,10 +111,33 @@ CLIENT_RELATIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+# The statistics relations pgAdmin's dashboard and Statistics tabs and DBeaver read (REQ-2167, tier
+# 2). Provisa keeps no statistics, so each is empty: no figure is made up.
+STATISTICS_RELATIONS: tuple[tuple[str, str], ...] = tuple(
+    ("pg_catalog", name)
+    for name in (
+        "pg_stat_user_functions",
+        "pg_stat_all_tables",
+        "pg_stat_all_indexes",
+        "pg_statio_all_indexes",
+        "pg_stat_replication",
+        "pg_stats_ext",
+        "pg_statio_all_tables",
+        "pg_replication_slots",
+        "pg_stat_database",
+        "pg_stats",
+        "pg_statistic_ext_data",
+        "pg_statio_all_sequences",
+        "pg_stat_subscription",
+        "pg_prepared_xacts",
+    )
+)
+
+
 def populate_client_relations(db) -> None:  # REQ-2167
-    """Create the client relations; list the roles in pg_authid (never a password, as the
+    """Create the client and statistics relations; list the roles in pg_authid (never a password, as the
     catalog has none to give) and the sequences in pg_sequences, from pg_roles and pg_sequence."""
-    for schema, name in CLIENT_RELATIONS:
+    for schema, name in (*CLIENT_RELATIONS, *STATISTICS_RELATIONS):
         create_relation(db, schema, name)
     db.execute(
         "INSERT INTO _pg_authid SELECT oid, rolname, rolsuper, rolinherit, rolcreaterole, "

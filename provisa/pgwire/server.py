@@ -619,6 +619,7 @@ _WIRE_FAMILIES = (
         {BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID, BVType.REGPROC, BVType.REGTYPE}
     ),
     frozenset({BVType.REAL, BVType.FLOAT}),
+    frozenset({BVType.REALARRAY, BVType.FLOATARRAY}),
     frozenset({BVType.TEXT, BVType.INET, BVType.PG_LSN}),
     frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
     frozenset(

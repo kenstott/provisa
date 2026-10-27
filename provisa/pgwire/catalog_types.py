@@ -43,6 +43,13 @@ _SAME_WIRE_FORM = frozenset(
         "information_schema.yes_or_no",
         "information_schema.cardinal_number",
         "information_schema.time_stamp",
+        # Held as text in the always-empty statistics relations (catalog_pg17_tables): described
+        # as PostgreSQL's, though no value of one is ever sent.
+        "anyarray",
+        "pg_ndistinct",
+        "pg_dependencies",
+        "pg_mcv_list",
+        "pg_statistic[]",
     }
 )
 
