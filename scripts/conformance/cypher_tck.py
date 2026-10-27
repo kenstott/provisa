@@ -342,11 +342,16 @@ class Outcome:
     reason: str = ""
 
 
+#: The credential every request presents (main sets it from its argument): the job user's
+#: "Bearer <token>", as the instance's password auth takes it.
+_CREDENTIAL: dict[str, str] = {}
+
+
 def _post(base: str, role: str, query: str, params: dict) -> tuple[int, Any]:
     req = urllib.request.Request(
         f"{base}/data/cypher",
         data=json.dumps({"query": query, "params": params}).encode(),
-        headers={"Content-Type": "application/json", "x-provisa-role": role},
+        headers={"Content-Type": "application/json", "x-provisa-role": role, **_CREDENTIAL},
         method="POST",
     )
     try:
@@ -489,7 +494,8 @@ def markdown(doc: dict) -> str:
 
 
 def main(argv: list[str]) -> int:
-    features, version, base, role, out_json, out_md = argv
+    features, version, base, role, authorization, out_json, out_md = argv
+    _CREDENTIAL["Authorization"] = authorization
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
     outcomes = []
     for s in scenarios:

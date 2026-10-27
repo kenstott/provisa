@@ -24,6 +24,7 @@ its setup from the action and never repeats the commands.
 | `ensure-release` | the draft GitHub release for a tag | `tag` |
 | `apple-signing` | a keychain holding the Developer ID certificate | `p12-base64`, `p12-password` |
 | `nixos-vm` | a booted NixOS guest with the checkout on its disk | none |
+| `conformance-instance` | a running Provisa instance over the job's PostgreSQL, its model loaded, the job user created and its token in `CONFORMANCE_AUTHORIZATION` | none (reads the job's env) |
 
 **The lane workflow** (`.github/workflows/lane.yml`) — one job with a fixed order of steps. Any
 job that runs the container suite or Playwright is a call to it. The order: checkout, the setups

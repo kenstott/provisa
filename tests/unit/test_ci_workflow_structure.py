@@ -769,7 +769,7 @@ def test_the_leaf_check_covers_every_leaf_or_says_why_not():
         if str(step.get("uses", "")).startswith("./.github/actions/")
     }
     actions = {p.parent.name for p in ACTIONS}
-    left_out = {"apple-signing", "nixos-vm"}
+    left_out = {"apple-signing", "nixos-vm", "conformance-instance"}
     assert used == actions - left_out, used ^ (actions - left_out)
     header = text.split("\nname: ", 1)[0]
     for action in left_out:
