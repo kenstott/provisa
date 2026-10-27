@@ -11,7 +11,7 @@
 /** Types matching provisa/api/admin/types.py */
 
 import type { MaskEntry } from "../lib/masks";
-import type { LifecycleStatus } from "../components/lifecycle/StatusBadge";
+import type { LifecycleStatus } from "./lifecycle";
 
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
