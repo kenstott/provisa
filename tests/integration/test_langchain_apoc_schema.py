@@ -151,7 +151,9 @@ def graph(server):
 def test_langchain_loads_the_schema_the_role_reads(graph):
     schema = graph.get_structured_schema
     assert set(schema["node_props"]) == {"Employees", "Departments"}
-    assert {p["property"] for p in schema["node_props"]["Employees"]} == {"id", "name", "dept_id"}
+    # A Cypher property key follows the configured GraphQL naming convention (REQ-471), as
+    # keys(n) and every MATCH name it: dept_id is deptId.
+    assert {p["property"] for p in schema["node_props"]["Employees"]} == {"id", "name", "deptId"}
     assert schema["relationships"] == [
         {"start": "Employees", "type": "WORKS_IN", "end": "Departments"}
     ]
