@@ -134,17 +134,26 @@ jobs:
           done
           # The driver's own test package, run from inside it (its tests/conftest.py applies).
           cd "$RUNNER_TEMP/driver/tests"
-          # --timeout-method=thread: a test hung where no signal reaches it (an event loop waiting on
-          # a socket) has every thread's stack dumped and the run ended, not the step's limit run out.
+          leak="integration/mixed/test_async_cancellation.py::test_async_cancellation_does_not_leak"
           "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --deselect "$leak" \
+            --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q || true
+          # The cancellation leak test on its own: hung where no signal reaches it (its event loop
+          # waiting on a socket), the thread method dumps every thread's stack and ends this call
+          # only, before it writes its junit file -- so that case alone is written failed.
+          "$RUNNER_TEMP/driver-venv/bin/python" -m pytest "$leak" -p no:cacheprovider \
             --timeout="$DRIVER_TEST_TIMEOUT_S" --timeout-method=thread \
-            --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q
+            --junitxml="$RUNNER_TEMP/bolt-junit-leak.xml" -q || true
+          if [ ! -f "$RUNNER_TEMP/bolt-junit-leak.xml" ]; then
+            printf '%s\n' '<testsuites><testsuite name="pytest"><testcase classname="tests.integration.mixed.test_async_cancellation" name="test_async_cancellation_does_not_leak"><failure message="Timeout: the test hung; every thread'"'"'s stack is in this step'"'"'s log"/></testcase></testsuite></testsuites>' \
+              > "$RUNNER_TEMP/bolt-junit-leak.xml"
+          fi
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml" \
+          .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml,$RUNNER_TEMP/bolt-junit-leak.xml" \
             bolt "neo4j-python-driver integration tests" "$DRIVER_VERSION" "tests/integration" \
             "$RUNNER_TEMP/report/conformance-bolt.json" "$RUNNER_TEMP/report/conformance-bolt.md"
           cat "$RUNNER_TEMP/report/conformance-bolt.md" >> "$GITHUB_STEP_SUMMARY"

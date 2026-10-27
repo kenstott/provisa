@@ -126,3 +126,26 @@ def test_an_example_that_changed_fails_the_adaptation_by_name(tmp_path):
 def test_each_case_is_in_the_groups_that_name_it(feature, scenario, kinds):
     case = {"feature": feature, "scenario": scenario, "reason": ""}
     assert {g.kind for g in by_design.groups("bolt") if g.matches(case)} == kinds
+
+
+junit_summary = _load("junit_summary", CONFORMANCE / "junit_summary.py")
+
+
+def _junit(path: Path, cases: dict[str, bool]) -> str:
+    body = "".join(
+        f'<testcase classname="tests.integration.mixed.t" name="{name}">'
+        + ("" if ok else '<failure message="Timeout">stack</failure>')
+        + "</testcase>"
+        for name, ok in cases.items()
+    )
+    path.write_text(f"<testsuites><testsuite>{body}</testsuite></testsuites>")
+    return str(path)
+
+
+def test_a_run_in_two_calls_is_summarised_as_one(tmp_path):
+    """The suite, and its cancellation test in a call of its own, each write a junit file."""
+    suite = _junit(tmp_path / "suite.xml", {"test_a": True, "test_b": True})
+    alone = _junit(tmp_path / "alone.xml", {"test_does_not_leak": False})
+    doc = junit_summary.summarise(f"{suite},{alone}", "bolt", "suite", "1", "tests")
+    assert (doc["passed"], doc["ran"]) == (2, 3)
+    assert [f["scenario"] for f in doc["failures"]] == ["test_does_not_leak"]

@@ -15,7 +15,7 @@ integration tests -- writes the JSON the conformance pages are filled from
 (scripts/conformance/fill_docs.py) and the same as Markdown for the job summary. A failing test
 is data; a skipped one is counted apart. The exit status is non-zero only when no test ran.
 
-Usage: junit_summary.py <junit.xml> <surface> <suite> <version> <tests run> <out.json> <out.md>
+Usage: junit_summary.py <junit.xml>[,<junit.xml>...] <surface> <suite> <version> <tests run> <out.json> <out.md>
 """
 
 # Requirements: REQ-2167
@@ -31,9 +31,14 @@ import by_design
 
 
 def summarise(junit: str, surface: str, suite: str, version: str, tests: str) -> dict:
-    root = ET.parse(junit).getroot()  # nosec B314 -- see above
+    """``junit``: the run's junit files, comma-separated -- one per pytest call of the run."""
+    cases = [
+        case
+        for path in junit.split(",")
+        for case in ET.parse(path).getroot().iter("testcase")  # nosec B314 -- see above
+    ]
     skipped, outcomes = 0, []
-    for case in root.iter("testcase"):
+    for case in cases:
         outcome = next((c for c in case if c.tag in ("failure", "error", "skipped")), None)
         if outcome is not None and outcome.tag == "skipped":
             skipped += 1
