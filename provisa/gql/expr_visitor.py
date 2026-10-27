@@ -445,7 +445,12 @@ class ExprLowering:
         if op == "OR":
             return exp.Or(this=left, expression=right)
         if op == "XOR":
-            return exp.Xor(this=left, expression=right)
+            # Two booleans differ: null where either is null, as Cypher's XOR. exp.Xor is written
+            # `a XOR b`, which PostgreSQL SQL does not read, and its expansion on other dialects
+            # leaves its operands unbracketed.
+            return exp.Paren(
+                this=exp.NEQ(this=exp.Paren(this=left), expression=exp.Paren(this=right))
+            )
         if op == "IN":
             return self._lower_in(left, node.right, right)
         if op == "STARTS WITH":
