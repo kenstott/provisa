@@ -89610,7 +89610,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-27, NO TYPE LEFT UNMAPPED:) Maintainer 2026-10-27: every source type maps onto an IR type or
     subtype; a type that fits none becomes text (varchar), holding the source''s own text form. Registration
     never fails on an unknown source type. A native array, struct or map stays json (REQ-1965), which is
-    PostgreSQL''s convention for them.'
+    PostgreSQL''s convention for them. (Amended 2026-10-27, SUBTYPES KEEP NATIVE SEMANTICS:) Maintainer
+    2026-10-27: a subtype keeps its native semantics wherever the serving engine has the type. When a sort,
+    filter, join or operator touches a subtyped column, the dialect layer casts it to the engine''s native
+    type (PostgreSQL/DuckDB inet, Trino ipaddress, the engine''s spatial and range types, and so on) so
+    ordering and the type''s operators (inet containment, range overlap and containment, spatial predicates)
+    behave as on the source; the model and storage stay on the base. Where the engine has no native equivalent,
+    the column keeps its base type''s semantics and an operator that only the native type defines is refused
+    by name, never evaluated over the text form. A source type that maps to text (no IR type or subtype)
+    has text semantics by design: its platform features are not available.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
