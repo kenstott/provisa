@@ -27,7 +27,7 @@ const api = vi.hoisted(() => ({
   createExpectationCheck: vi.fn(),
 }));
 vi.mock("../../../api/profiler", () => api);
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "steward" } }) }));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "steward" }) }));
 
 import { ProfileConstraintsModal } from "../ProfileConstraintsModal";
 import { ProfileChecksBar } from "../ProfileChecksBar";

@@ -228,7 +228,12 @@ def _viewer_roles(request: Request, x_provisa_role: str | None) -> frozenset[str
             "profile.role_header_required",
             "X-Provisa-Role header required: a profile run is shown as its viewer may see it",
         )
-    return frozenset(r.strip() for r in acting.split(",") if r.strip())
+    from provisa.security.meta_role import acting_roles
+
+    # REQ-1620: a set of roles acts as its meta-role, which no rule names: its members read.
+    return frozenset(
+        m for r in acting.split(",") if r.strip() for m in acting_roles(state, r.strip())
+    )
 
 
 @router.get("/tables/{table_id}/profile-runs")

@@ -24,7 +24,7 @@ const api = vi.hoisted(() => ({
   forgetClassification: vi.fn(),
 }));
 vi.mock("../../../api/profiler", () => api);
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "steward" } }) }));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "steward" }) }));
 
 import { ProfileClassificationsModal } from "../ProfileClassificationsModal";
 

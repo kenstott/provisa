@@ -136,3 +136,19 @@ async def test_a_finding_on_a_column_the_caller_is_not_served_is_not_answered(mo
     assert not await judgments_router._served(None, None, on_salary)
     assert await judgments_router._served(None, None, on_tag)
     assert await judgments_router._served(None, None, on_role)
+
+
+def test_a_run_read_as_a_set_of_roles_is_shown_as_its_members_see_it(monkeypatch):
+    """REQ-1620: a request naming several roles acts as their meta-role; a run's rows are shown
+    as its members are granted them, never as the meta-role's own id, which no rule names."""
+    from provisa.api.admin import profiler_router
+
+    monkeypatch.setattr(
+        profiler_router,
+        "state",
+        types.SimpleNamespace(meta_roles={"meta:analyst+steward": ("analyst", "steward")}),
+    )
+    request = types.SimpleNamespace(state=types.SimpleNamespace(role="meta:analyst+steward"))
+    assert profiler_router._viewer_roles(request, "analyst,steward") == {"analyst", "steward"}
+    one = types.SimpleNamespace(state=types.SimpleNamespace(role="analyst"))
+    assert profiler_router._viewer_roles(one, "analyst") == {"analyst"}
