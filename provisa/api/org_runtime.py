@@ -36,6 +36,7 @@ import asyncio
 from contextvars import ContextVar, Token
 
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from provisa.api.role_surface import LazySurface, RoleSurface, SurfacePart, set_part
@@ -383,7 +384,7 @@ class OrgRuntime:
         return SurfacePart(self, "schema")
 
     @schemas.setter
-    def schemas(self, value: dict) -> None:
+    def schemas(self, value: Mapping) -> None:
         set_part(self, "schema", value)
 
     @property
@@ -391,7 +392,7 @@ class OrgRuntime:
         return SurfacePart(self, "context")
 
     @contexts.setter
-    def contexts(self, value: dict) -> None:
+    def contexts(self, value: Mapping) -> None:
         set_part(self, "context", value)
 
     @property
@@ -399,7 +400,7 @@ class OrgRuntime:
         return SurfacePart(self, "rls")
 
     @rls_contexts.setter
-    def rls_contexts(self, value: dict) -> None:
+    def rls_contexts(self, value: Mapping) -> None:
         set_part(self, "rls", value)
 
     @property
@@ -407,7 +408,7 @@ class OrgRuntime:
         return SurfacePart(self, "table_path_map")
 
     @table_path_maps.setter
-    def table_path_maps(self, value: dict) -> None:
+    def table_path_maps(self, value: Mapping) -> None:
         set_part(self, "table_path_map", value)
 
     @property
@@ -415,7 +416,7 @@ class OrgRuntime:
         return SurfacePart(self, "proto")
 
     @proto_files.setter
-    def proto_files(self, value: dict) -> None:
+    def proto_files(self, value: Mapping) -> None:
         set_part(self, "proto", value)
 
 

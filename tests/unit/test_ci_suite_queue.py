@@ -86,7 +86,7 @@ def test_the_dispatchers_choices_reach_the_lanes():
     secrets = _caller()["jobs"]["lanes"]["secrets"]
     declared = called[True]["workflow_call"]["secrets"]
     assert secrets == {name: f"${{{{ secrets.{name} }}}}" for name in declared}
-    assert len(declared) == 76
+    assert len(declared) == 77  # OPENROUTER_API_KEY: the LLM eval tests' key
 
 
 def _pipelines_without_pipefail(script: str) -> list[str]:
