@@ -3242,7 +3242,7 @@ The Cypher parser is a custom recursive-descent implementation with no dependenc
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.propertyKeys() as introspection procedures that return data from the in-memory semantic layer (CypherLabelMap) without generating or executing any SQL.
+Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.propertyKeys() as introspection procedures that return data from the in-memory semantic layer (CypherLabelMap) without generating or executing any SQL. (Amended 2026-10-27, A SHARED TABLE NAME READS AS A UNION:) Maintainer 2026-10-27: a label names a set of nodes, so a bare table label whose table exists in two or more domains the role reaches (:Orders with Sales:Orders and Returns:Orders) reads every such table as one sparse union by column name, as [REQ-2176](#REQ-2176) reads a label carried by several tables: a column a table lacks reads NULL and conflicting types widen. Each table is read under the role's governance. The compound form (:Sales:Orders) still names one table. The union applies to reads; a CREATE naming such a bare label names no single model table and so follows [REQ-2176](#REQ-2176) (an ephemeral node carrying the label).
 
 **Use case:** Returning schema introspection data from the semantic layer (not the database) lets Neo4j-compatible clients discover the graph schema via standard procedure calls.
 
