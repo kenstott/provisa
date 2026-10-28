@@ -31,6 +31,7 @@ from provisa.compiler.ontology_classes import (
     SOURCE_TABLE_COLUMN,
     class_table_id,
     class_tables,
+    class_view_key,
     reader_body,
     served_class_columns,
     whole_body,
@@ -334,13 +335,13 @@ def built(monkeypatch):
         draft_tables=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
-    monkeypatch.setattr(state, "class_tables", {r["table_name"]: r for r in rows}, raising=False)
+    monkeypatch.setattr(state, "class_tables", {class_view_key(r): r for r in rows}, raising=False)
     monkeypatch.setattr(state, "class_bodies", {}, raising=False)
     monkeypatch.setattr(
         state,
         "view_sql_map",
         {
-            r["table_name"]: lower_to_catalog_physical(whole_body(r), state.view_context)
+            class_view_key(r): lower_to_catalog_physical(whole_body(r), state.view_context)
             for r in rows
         },
         raising=False,
@@ -433,8 +434,10 @@ async def test_the_build_serves_each_class_and_keeps_why_one_is_refused(
     tables = _tables()
     await register_class_tables(conn, tables)
     assert [t["table_name"] for t in tables][-1] == "customer" and len(tables) == 4
-    assert set(state.view_sql_map) == {"a_view", "customer"}
-    assert state.view_sql_map["customer"] == whole_body(state.class_tables["customer"])
+    assert set(state.view_sql_map) == {"a_view", "ontology.customer"}
+    assert state.view_sql_map["ontology.customer"] == whole_body(
+        state.class_tables["ontology.customer"]
+    )
     assert list(state.refused_classes) == [ORDER]
     assert any(r.levelname == "ERROR" and "2nd order" in r.getMessage() for r in caplog.records)
 
@@ -541,3 +544,125 @@ async def test_mcp_serves_a_readers_class_rows_from_only_the_tables_it_is_served
     assert [(r["_source_table"], r["customer_name"]) for r in result["rows"]] == [
         ("sales.customers", "Ada")
     ]
+
+
+# --- a Class named as a table is ----------------------------------------------------------------
+
+
+_CLASS_FOUR = {
+    "ontology.four": 'SELECT \'sales.four\' AS "_source_table", "id" AS "four" FROM "pg"."public"."four"'
+}
+
+
+def test_a_table_named_as_a_class_is_read_as_the_table() -> None:
+    # A keyed table is grounded in a Class named for it (REQ-2141), so the Class ``four`` and the
+    # table ``sales.four`` share a name: reading the table must not read the Class in its place.
+    from provisa.compiler.view_expand import expand_view_refs
+
+    for sql in (
+        "SELECT id FROM sales.four",
+        'SELECT id FROM "sales"."four"',
+        'SELECT id FROM "pg"."public"."four"',
+    ):
+        assert expand_view_refs(sql, _CLASS_FOUR) == sql
+
+
+def test_the_class_is_read_where_the_ontology_schema_is_named() -> None:
+    from provisa.compiler.view_expand import expand_view_refs
+
+    body = _CLASS_FOUR["ontology.four"]
+    for sql in ("SELECT * FROM ontology.four", 'SELECT * FROM "ontology"."four"'):
+        assert expand_view_refs(sql, _CLASS_FOUR) == f'SELECT * FROM ({body}) "four"'
+    assert expand_view_refs('SELECT * FROM "x"."ontology"."four" AS c', _CLASS_FOUR) == (
+        f"SELECT * FROM ({body}) AS c"
+    )
+
+
+def test_views_read_finds_a_class_only_where_the_ontology_schema_is_named() -> None:
+    from provisa.mv.view_read import views_read
+
+    assert views_read("SELECT id FROM sales.four", _CLASS_FOUR) == {}
+    assert set(views_read('SELECT * FROM "ontology"."four"', _CLASS_FOUR)) == {"ontology.four"}
+
+
+def test_a_bare_name_a_class_shares_with_a_table_resolves_to_the_table() -> None:
+    # The retail demo's EU view joins staff to outbound_mail along a relationship. staff is
+    # grounded in a Class named staff (REQ-2141); with the Class registered last under the bare
+    # name too, ``staff`` resolved to the Class, and the join was refused as relating nothing.
+    from sqlglot import exp
+
+    from provisa.compiler.naming import table_id_of
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from provisa.compiler.stage2 import build_governance_context
+
+    staff_id, staff_term = 7, 70
+    staff = {
+        "id": staff_id,
+        "source_id": "pg",
+        "domain_id": "sales",
+        "schema_name": "public",
+        "table_name": "staff",
+        "columns": [_col("id", "integer"), _col("name", "text")],
+    }
+    rows, refused = class_tables([staff], {staff_id: staff_term}, {staff_term: "staff"}, [])
+    assert refused == {}
+    tables = [staff, *rows]
+    ctx = CompilationContext()
+    ctx.tables = {
+        t["table_name"] + str(t["id"]): TableMeta(
+            table_id=t["id"],
+            field_name=t["table_name"],
+            type_name=t["table_name"].title(),
+            source_id=t["source_id"],
+            catalog_name=t["source_id"],
+            schema_name=t["schema_name"],
+            table_name=t["table_name"],
+            domain_id=t["domain_id"],
+        )
+        for t in tables
+    }
+    role = {"id": "analyst", "domain_access": ["*"], "capabilities": ["query_development"]}
+    gov = build_governance_context("analyst", RLSContext.empty(), {}, ctx, tables, role)
+    bare = exp.Table(this=exp.to_identifier("staff"))
+    in_ontology = exp.Table(this=exp.to_identifier("staff"), db=exp.to_identifier("ontology"))
+    assert table_id_of(bare, gov.table_map) == staff_id
+    assert table_id_of(in_ontology, gov.table_map) == class_table_id(staff_term)
+
+
+def test_a_bare_name_a_class_shares_with_a_table_is_lowered_to_the_table() -> None:
+    # A keyed table is grounded in a Class named for it (REQ-2141): ``orders_live`` and the Class
+    # ``orders_live``. Counted as two tables of that name, the bare ref read as ambiguous and was
+    # left unlowered, so the engine was handed ``orders_live`` and found no such table.
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from provisa.compiler.sql_rewrite import normalize_table_refs
+
+    live_id, live_term = 8, 80
+    live = {
+        "id": live_id,
+        "source_id": "files",
+        "domain_id": "sales",
+        "schema_name": "main",
+        "table_name": "orders_live",
+        "columns": [_col("id", "integer")],
+    }
+    rows, refused = class_tables([live], {live_id: live_term}, {live_term: "orders live"}, [])
+    assert refused == {} and rows[0]["table_name"] == "orders_live"
+    ctx = CompilationContext()
+    ctx.tables = {
+        t["table_name"] + str(t["id"]): TableMeta(
+            table_id=t["id"],
+            field_name=t["table_name"],
+            type_name=t["table_name"].title(),
+            source_id=t["source_id"],
+            catalog_name=t["source_id"],
+            schema_name=t["schema_name"],
+            table_name=t["table_name"],
+            domain_id=t["domain_id"],
+        )
+        for t in [live, *rows]
+    }
+    assert '"main"."orders_live"' in normalize_table_refs("SELECT id FROM orders_live", ctx)
+    assert '"ontology"."orders_live"' in normalize_table_refs(
+        "SELECT id FROM ontology.orders_live", ctx
+    )
