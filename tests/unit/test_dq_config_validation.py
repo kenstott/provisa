@@ -259,19 +259,25 @@ def test_a_checker_whose_password_the_deployment_has_not_set_loads_as_written(ch
 
 
 @pytest.mark.parametrize(
-    ("secured", "password"), [(True, "${env:PROVISA_DQ_PASSWORD}"), (False, "")]
+    ("secured", "entered", "stored"),
+    [(True, "${env:MY_DQ_PASSWORD}", "${env:MY_DQ_PASSWORD}"), (False, None, "")],
 )
-def test_a_checker_made_in_the_sources_form_names_a_password_only_under_an_auth_provider(
-    secured, password, monkeypatch
+def test_a_checker_made_in_the_sources_form_stores_the_password_its_steward_entered(
+    secured, entered, stored, monkeypatch
 ):
-    """With no auth provider pgwire is in trust mode and ignores the password, as the shipped
-    dq-checker and dq-soda sources write it; under one, the scan resolves the reference."""
-    from provisa.api.admin import schema_mutation
+    """#276: no auth provider means pgwire is in trust mode and the steward enters no password, so
+    none is stored (empty, as create_source keeps it); under one, the reference they typed is kept
+    as entered and the scan resolves it. The model never writes a password of its own."""
+    from types import SimpleNamespace
+
+    from provisa.api.admin._dq_registration import checker_mapping
     from provisa.api.app import state
 
     monkeypatch.setattr(state, "auth_middleware_active", secured)
-    monkeypatch.setattr(schema_mutation, "_dq_pgwire_port", lambda: "5439")
-    assert schema_mutation.checker_mapping()["password"] == password
+    source = SimpleNamespace(
+        host="localhost", port=5439, database="provisa", username="dq", password=entered
+    )
+    assert checker_mapping(source, entered or "")["password"] == stored
 
 
 def test_the_contracts_rules_are_parsed_once_onto_the_table():

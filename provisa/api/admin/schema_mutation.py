@@ -14,7 +14,6 @@ from __future__ import annotations
 
 
 import logging
-import os
 from datetime import date
 from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
@@ -153,50 +152,6 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _another_govdata_source,
     _validate_govdata_api_key,
 )
-
-
-# The port pgwire is served on when nothing says otherwise: what provisa-install.yaml's own
-# dq-checker/dq-soda entries dial.
-_DQ_STANDARD_PGWIRE_PORT = 5439
-
-
-def _secured() -> bool:
-    """Whether an auth provider secures this deployment: pgwire then checks a password; with
-    none it is in trust mode and asks for none (pgwire/server.py)."""
-    from provisa.api.app import state
-
-    return state.auth_middleware_active
-
-
-def _dq_pgwire_port() -> str:
-    """The pgwire port a data-quality check dials on ``PROVISA_DQ_HOST``.
-
-    This deployment's own pgwire listener when it runs one — the operator setting
-    ``server.pgwire_port`` (REQ-1913). When the listener is off here (port 0), the check is aimed
-    at a host that serves pgwire itself, on the standard port; the default is that design's, the
-    same one the generated dq-checker/dq-soda entries use, not a guess at a missing value.
-    """
-    from provisa.core import settings_registry
-
-    port = settings_registry.value("server.pgwire_port")
-    return str(port if port != 0 else _DQ_STANDARD_PGWIRE_PORT)
-
-
-def checker_mapping() -> dict[str, str]:
-    """The connection a checker source made in the Sources form scans through: this deployment's
-    own pgwire endpoint, with the env-var defaults provisa-install.yaml's dq-checker and dq-soda
-    entries use (REQ-1742, REQ-1443)."""
-    return {
-        "host": os.environ.get("PROVISA_DQ_HOST", "localhost"),
-        "port": _dq_pgwire_port(),
-        "database": "provisa",
-        "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
-        # Under an auth provider, a reference resolved at each scan (dq.scan): unset, the scan
-        # fails naming it. No account's password is assumed. With none, pgwire is in trust mode
-        # and asks for no password, as the shipped dq-checker and dq-soda sources write it.
-        # reference-convention: REQ-1443 -- docs/configuration.md's checker source
-        "password": "${env:PROVISA_DQ_PASSWORD}" if _secured() else "",
-    }
 
 
 async def _table_unread(info: StrawberryInfo, table_id: int) -> MutationResult | None:
@@ -2551,16 +2506,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.dq.registration import is_checker_source_type
 
             if is_checker_source_type(input.type):
-                # REQ-1742 gap: a checker source (soda/great_expectations) has NO connection
-                # fields in the Sources form (NO_CONNECTION_TYPES, constants.ts) — the checker
-                # doesn't connect to a remote system, it scans an already-registered table
-                # through PROVISA'S OWN pgwire endpoint (dq.runner.run_contract's `connection`
-                # arg). The shipped dq-checker/dq-soda demo sources (config/provisa-install.yaml)
-                # hardcode this mapping by hand; a source created THROUGH THE UI never got it at
-                # all, so its mapping stayed permanently empty and every dry-run/scan against it
-                # raised a raw KeyError('host') the first time run_contract indexed into it.
-                # Same env-var defaults provisa-install.yaml's own dq-checker/dq-soda entries use.
-                _mapping = checker_mapping()
+                from provisa.api.admin._dq_registration import checker_mapping
+
+                # The mapping alone holds the password (#276).
+                _mapping, password_ref = checker_mapping(input, password_ref), ""
         model = SourceModel(
             id=input.id,
             type=SourceTypeEnum(input.type),
