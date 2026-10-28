@@ -305,6 +305,10 @@ export default defineConfig((config) => ({
             id.includes("node_modules/react-router-dom")
           )
             return "vendor-react";
+          // A language other than English is loaded whole when it is the session's
+          // (src/i18n/index.ts): one chunk per language, not one per namespace file.
+          const locale = /\/src\/i18n\/locales\/([^/]+)(?:\/[^/]+)?\.json$/.exec(id);
+          if (locale && locale[1] !== "en") return `i18n-${locale[1]}`;
         },
       },
     },
