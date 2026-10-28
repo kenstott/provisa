@@ -71,6 +71,59 @@ def rel_table(rel_type: str) -> str:
     return f"cypher__rel__{rel_type}"
 
 
+@dataclass(frozen=True)
+class Resolved:
+    """A label's session side (REQ-2176): the anchor tables its ephemeral nodes are in, their
+    property columns merged (each name once, its types widened), and the model types a session
+    tag gives it to. The model side -- a tagged type's own columns -- is the role's, merged where
+    a role reads it (read.overlay)."""
+
+    anchors: tuple[str, ...]
+    columns: tuple[tuple[str, str], ...]
+    tagged: tuple[str, ...]
+
+
+def widened_kind(a: str, b: str) -> str:
+    """The one type two columns of one property read as: integers of several widths a bigint,
+    integers and floats a double, else types.widened."""
+    if a == b:
+        return a
+    if {a, b} <= {"bigint", "integer", "smallint", "double"}:
+        return "double" if "double" in {a, b} else "bigint"
+    return types.widened(a, b) or a
+
+
+def view_keys(g: "Graph") -> set[str]:
+    """The labels (as the session holds them) with session matches: each label an ephemeral
+    node carries or a tag gives, each label a session relationship's end is read by, and ``""``
+    when the session holds a node with no label."""
+    keys = set(g.labels)
+    for _, source, target in g.rel_pairs:
+        keys.update((source, target))
+    keys.discard("")
+    if "" in g.label_anchors:
+        keys.add("")
+    return keys
+
+
+def resolve(session: TempSession) -> None:
+    """Each label's Resolved, as the session's graph and tables now hold it."""
+    g = graph(session)
+    resolved: dict[str, Resolved] = {}
+    for key in view_keys(g):
+        anchors = g.label_anchors.get(key, set())
+        held: dict[str, str] = {}
+        for anchor in sorted(anchors):
+            for name, kind in session.tables[anchor].columns:
+                if name == NODE_ID:
+                    continue
+                held[name] = widened_kind(held[name], kind) if name in held else kind
+        resolved[key] = Resolved(
+            tuple(sorted(anchors)), tuple(held.items()), tuple(sorted(g.tag_types.get(key, set())))
+        )
+    g.resolved = resolved
+
+
 @dataclass
 class Graph:
     """What the session's graph holds, kept beside its tables so a statement is planned without
@@ -91,6 +144,9 @@ class Graph:
     node_keys: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # An ephemeral node's id -> its anchor table.
     node_anchors: dict[str, str] = field(default_factory=dict)
+    # Each label with session matches -> its session side, resolved at write time (Resolved): what
+    # the read overlay reads, computing nothing per statement.
+    resolved: dict[str, "Resolved"] = field(default_factory=dict)
     last_id: int = 0
 
     def new_id(self, prefix: str = "e") -> str:
@@ -343,6 +399,7 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
         g.rel_pairs.update(
             (r.rel_type, s, t) for r in writes.rels for s in r.from_labels for t in r.to_labels
         )
+    resolve(session)
 
 
 async def held_labels(state: Any, session: TempSession) -> set[tuple[str, str]]:
@@ -368,6 +425,7 @@ async def remove_labels(state: Any, session: TempSession, removed: set[tuple[str
         g.node_keys[node_id] = left or ("",)
         if not left:
             g.label_anchors.setdefault("", set()).add(g.node_anchors[node_id])
+    resolve(session)
 
 
 def _label_anchors(g: Graph) -> dict[str, set[str]]:
@@ -396,6 +454,7 @@ async def delete_nodes(state: Any, session: TempSession, node_ids: list[str]) ->
         del g.node_anchors[node_id]
     # A label keeps only the anchors that still hold a node carrying it.
     g.label_anchors = _label_anchors(g)
+    resolve(session)
 
 
 async def delete_rels(state: Any, session: TempSession, rel_ids: list[str]) -> None:

@@ -68,50 +68,10 @@ def involved(session: TempSession | None) -> bool:
     return session is not None and not store.graph(session).empty
 
 
-def _view_keys(graph: store.Graph) -> set[str]:
-    """The labels (as the session holds them) with session matches: each label an ephemeral
-    node carries or a tag gives, each label a session relationship's end is read by, and ``""``
-    when the session holds a node with no label."""
-    keys = set(graph.labels)
-    for _, source, target in graph.rel_pairs:
-        keys.update((source, target))
-    keys.discard("")
-    if "" in graph.label_anchors:
-        keys.add("")
-    return keys
-
-
-# --------------------------------------------------------------------------- columns
-
-
-def _widened(a: str, b: str) -> str:
-    from provisa.ephemeral import types
-
-    if a == b:
-        return a
-    if {a, b} <= {"bigint", "integer", "smallint", "double"}:
-        return "double" if "double" in {a, b} else "bigint"
-    return types.widened(a, b) or a
-
-
 def _model_columns(nm: Any) -> list[tuple[str, str, str]]:
     """A model node's (property, the column its relation names it by, type)."""
     types = dict(nm.property_types)
     return [(prop, alias, str(types.get(prop, "text"))) for prop, alias in nm.properties.items()]
-
-
-def _session_columns(session: TempSession, anchors: set[str]) -> list[tuple[str, str]]:
-    """The property columns the anchor tables hold, each name once, its types widened."""
-    held: dict[str, str] = {}
-    for anchor in sorted(anchors):
-        for name, kind in session.tables[anchor].columns:
-            if name == store.NODE_ID:
-                continue
-            held[name] = _widened(held[name], kind) if name in held else kind
-    return list(held.items())
-
-
-# --------------------------------------------------------------------------- 1. the overlay
 
 
 def overlay(model: Any, session: TempSession) -> Any:
@@ -125,20 +85,20 @@ def overlay(model: Any, session: TempSession) -> Any:
         return model
     nodes = dict(model.nodes)
     nodes_by_table = {k: list(v) for k, v in model.nodes_by_table.items()}
-    for key in sorted(_view_keys(graph)):
+    for key, resolved in sorted(graph.resolved.items()):
         held = model.nodes.get(key)
-        anchors = graph.label_anchors.get(key, set())
         properties = {prop: alias for prop, alias, _ in _model_columns(held)} if held else {}
         types = {alias: kind for _, alias, kind in _model_columns(held)} if held else {}
         # A tag's label reads its model nodes' columns beside its ephemeral nodes'.
         tagged = [
             (alias, kind)
-            for type_name in sorted(graph.tag_types.get(key, set()) - {key})
+            for type_name in resolved.tagged
+            if type_name != key
             for _, alias, kind in _model_columns(model.nodes[type_name])
         ]
-        for name, kind in [*tagged, *_session_columns(session, anchors)]:
+        for name, kind in [*tagged, *resolved.columns]:
             properties.setdefault(name, name)
-            types[name] = _widened(types[name], kind) if name in types else kind
+            types[name] = store.widened_kind(types[name], kind) if name in types else kind
         nodes[key] = NodeMapping(
             label=held.label if held else key,
             type_name=key,
@@ -162,7 +122,7 @@ def overlay(model: Any, session: TempSession) -> Any:
     aliases = {k: list(v) for k, v in model.aliases.items()}
     for rel_type, source, target in sorted(graph.rel_pairs):
         # Each end is a label the overlay maps: an ephemeral end's (its unlabeled nodes' "" among
-        # them, _view_keys), a model end's type name.
+        # them, store.view_keys), a model end's type name.
         assert source in nodes and target in nodes, (rel_type, source, target)
         columns = session.tables[store.rel_table(rel_type)].columns
         mapping = RelationshipMapping(
@@ -266,7 +226,8 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
 
     if held is not None:
         parts.append(model_rows(held, "_m", True))
-    for type_name in sorted(graph.tag_types.get(key, set())):
+    resolved = graph.resolved[key]
+    for type_name in resolved.tagged:
         if type_name == key:
             continue  # a model label's own rows are all read already
         tagged_nm = model.nodes[type_name]
@@ -280,7 +241,7 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
         )
         return rows.where(exp.Not(this=exp.Exists(this=held_labels)))
 
-    for anchor in sorted(graph.label_anchors.get(key, set())):
+    for anchor in resolved.anchors:
         anchor_columns = {name for name, _ in session.tables[anchor].columns}
         values = {a: _col(a, "_a") for a, _ in columns if a in anchor_columns}
         rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(
@@ -441,7 +402,7 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         if arms is not None and any(_session_arm(arm) for arm in arms):
             _once_per_node(sub, arms)
     graph = store.graph(session)
-    by_name = {_node_relation(key): key for key in _view_keys(graph) if key in overlaid.nodes}
+    by_name = {_node_relation(key): key for key in graph.resolved if key in overlaid.nodes}
     types = {_rel_relation(t): t for t in graph.types}
     defined: dict[str, str] = {}  # a CTE's definition (its SQL) -> its name
     ctes: list[exp.CTE] = []
