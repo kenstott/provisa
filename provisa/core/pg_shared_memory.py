@@ -44,6 +44,9 @@ from pathlib import Path
 #: ``postmaster.pid`` line 7 (1-based): the segment's key and id, as the postmaster wrote them.
 _SHMEM_LINE = 6
 
+#: A System V key's width (key_t is a 32-bit int on macOS and Linux).
+_KEY_MASK = 0xFFFFFFFF
+
 #: The value PostgreSQL leaves on the last semaphore of every set it makes (``PGSemaMagic``,
 #: sysv_sema.c). Only the creating postmaster operates on that semaphore, so the pid of the last
 #: operation on it is the creator's.
@@ -79,7 +82,9 @@ def recorded_segment(datadir: str | Path) -> tuple[int, int] | None:
     fields = lines[_SHMEM_LINE].split()
     if len(fields) != 2:
         return None
-    return int(fields[0]), int(fields[1])
+    # The postmaster writes its key as an unsigned long; the system keeps a 32-bit key_t, so a key
+    # with its top bit set is read back at that width, as ``ipcs`` lists it.
+    return int(fields[0]) & _KEY_MASK, int(fields[1])
 
 
 def _listed(key: int, shmid: int) -> bool:

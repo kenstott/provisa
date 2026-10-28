@@ -87317,7 +87317,12 @@ Then the schema <catalog>.customer_360 holds both tables, its comment and tags c
     and roles in ODPS''s own fields (not as custom properties), the documentation link as an authoritativeDefinition,
     the product''s tags, tenant and productCreatedTs, and managementPorts for the endpoints that observe
     and control it. A contract''s quality rules are the member''s promises only, never a check another product
-    owns; expectations appear on input ports, never in the product''s own contracts.'
+    owns; expectations appear on input ports, never in the product''s own contracts. (Amended 2026-10-27,
+    ODPS FIELDS WITH NO STORED SOURCE:) 2026-10-28, maintainer decisions: productCreatedTs is the product''s
+    own created_at, set when it is first saved and shown read-only on its page; the product''s tags are
+    the union of the model tags on its member tables; its tenant is its org; its managementPorts are its
+    page, its lineage endpoint and the admin GraphQL endpoint, each with its URL from the deployment''s
+    documentation base URL.'
   use_case: A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
   scenario: "Given a data product customer_360 with two member tables and the Dataplex target configured for the organisation's project
 
