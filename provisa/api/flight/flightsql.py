@@ -286,6 +286,23 @@ def temporary_columns(schema: pa.Schema) -> list[tuple[str, str]]:
 INGEST_BATCH_ROWS = 500
 
 
+def _as_instants(rows: pa.Table) -> pa.Table:
+    """``rows`` with each timestamp column as the instants PostgreSQL holds: a zoned value in UTC
+    (the same instant; in its own zone a value near the range's ends falls outside the years a
+    value can be read in), and a nanosecond one at the microsecond, truncated."""
+    import pyarrow.compute as pc
+
+    columns = []
+    for field, column in zip(rows.schema, rows.columns, strict=True):
+        kind = field.type
+        if pa.types.is_timestamp(kind) and (kind.tz is not None or kind.unit == "ns"):
+            unit = "us" if kind.unit == "ns" else kind.unit
+            target = pa.timestamp(unit, tz="UTC" if kind.tz is not None else None)
+            column = pc.cast(column, target, safe=False)
+        columns.append(column)
+    return pa.table(columns, names=rows.column_names)
+
+
 def ingest_statements(table: str, schema: str | None, rows: pa.Table) -> list[str]:
     """``rows`` as INSERT ... VALUES statements into ``table`` (in ``schema`` when it is named),
     :data:`INGEST_BATCH_ROWS` rows each, every value its SQL literal."""
@@ -294,6 +311,7 @@ def ingest_statements(table: str, schema: str | None, rows: pa.Table) -> list[st
     def quoted(identifier: str) -> str:
         return '"' + identifier.replace('"', '""') + '"'
 
+    rows = _as_instants(rows)
     target = quoted(table) if schema is None else f"{quoted(schema)}.{quoted(table)}"
     columns = ", ".join(quoted(c) for c in rows.column_names)
     statements = []

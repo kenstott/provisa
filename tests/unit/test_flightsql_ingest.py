@@ -136,7 +136,7 @@ def test_a_declared_table_is_not_created_again_or_replaced(served, mode, status,
 @pytest.mark.parametrize(
     ("mode", "status", "message"),
     [
-        ("append", adbc_driver_manager.AdbcStatusCode.NOT_FOUND, "no table 'invoices'"),
+        ("append", adbc_driver_manager.AdbcStatusCode.NOT_FOUND, "table 'invoices' does not exist"),
         ("create", adbc_driver_manager.AdbcStatusCode.NOT_IMPLEMENTED, "defined in the model"),
         (
             "create_append",
@@ -164,3 +164,38 @@ def test_a_column_the_table_does_not_have_is_refused_by_name(served):
     ):
         cur.adbc_ingest("orders", pa.table({"colour": ["red"]}), mode="append")
     assert served.ran == []
+
+
+def test_an_append_to_an_undeclared_table_says_it_does_not_exist(served):
+    """In PostgreSQL's words, which a client reads a missing table by."""
+    with (
+        _connect(served.uri) as conn,
+        conn.cursor() as cur,
+        pytest.raises(adbc_driver_manager.Error, match="table 'invoices' does not exist"),
+    ):
+        cur.adbc_ingest("invoices", _ROWS, mode="append")
+
+
+def test_zoned_and_nanosecond_timestamps_are_written_as_their_instants():
+    """A zoned value is written as its instant in UTC -- 9999-12-31 23:59 UTC is a year past
+    9999 in Asia/Tokyo -- and a nanosecond value at the microsecond PostgreSQL holds, a null as
+    NULL."""
+    import datetime as dt
+
+    from provisa.api.flight import flightsql as fsql
+
+    instant = dt.datetime(9999, 12, 31, 23, 59, tzinfo=dt.UTC)
+    rows = pa.table(
+        {
+            "at": pa.array([instant], pa.timestamp("us", tz="Asia/Tokyo")),
+            "ns": pa.array([1_700_000_000_123_456_789], pa.timestamp("ns")),
+            "gone": pa.array([None], pa.timestamp("ns")),
+            "old": pa.array([-9_223_372_036_854_775_000], pa.timestamp("ns", tz="UTC")),
+        }
+    )
+    (statement,) = fsql.ingest_statements("t", None, rows)
+    assert "CAST('9999-12-31T23:59:00+00:00' AS TIMESTAMPTZ)" in statement
+    assert "CAST('2023-11-14T22:13:20.123456' AS TIMESTAMP)" in statement
+    assert ", NULL," in statement and "NaT" not in statement
+    # Truncated toward the epoch, as Arrow casts: the earliest nanosecond instant still reads.
+    assert "CAST('1677-09-21T00:12:43.145225+00:00' AS TIMESTAMPTZ)" in statement
