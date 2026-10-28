@@ -90102,7 +90102,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     freshness or row count where known, and quality status; a product its status, owner and member count;
     and a ''+N columns'' node the names of the columns it holds. (Amended 2026-10-27, 2D SHOWS ONLY 2D CONTROLS:)
     2026-10-28: in 2D the lane diagram is the only layout, so the layout toggle is not shown, and no control
-    that applies only to the 3D view appears; those controls show only when 3D is selected.'
+    that applies only to the 3D view appears; those controls show only when 3D is selected. (Amended 2026-10-27,
+    ONE ONTOLOGY GRAPH; EVERY OTHER GRAPH IS A SNIPPET OF IT:) 2026-10-28: there is one graph, the model''s
+    ontology in lanes (terms, the columns they bind, their tables, the products those tables belong to),
+    drawn by one component. Every other graph is a snippet of it, named by a focus and a depth: a term''s
+    page opens it focused on that term (its ancestors and descendants, and the columns, tables and products
+    it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
+    the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
+    lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
+    selected. The separate term graph and product graph implementations are replaced by these presets.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
