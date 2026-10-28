@@ -46,12 +46,36 @@ Neither names a requirement: neither is a design decision of Provisa's."""
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 RULES = Path(__file__).resolve().parent / "by_design"
+
+#: REQ-2167 (amended 2026-10-27): the surfaces at their conformance baseline, every case passing. On
+#: one of them a case that fails and no group of the surface excludes is a regression, and fails
+#: the job; on any other surface a failure is data.
+AT_BASELINE = frozenset({"pgwire", "graphql"})
+
+
+def at_baseline(surface: str) -> bool:
+    return surface in AT_BASELINE
+
+
+def baseline_failed(surface: str, failed: int) -> bool:
+    """Whether the run fails its job: ``failed`` cases no group excludes on a surface at its
+    baseline (said as a workflow error)."""
+    if not failed or not at_baseline(surface):
+        return False
+    print(
+        f"::error::{surface}: {failed} case(s) failed that no by-design group of the surface "
+        f"excludes (scripts/conformance/by_design/{surface}.yaml); its baseline is every case "
+        "passing",
+        file=sys.stderr,
+    )
+    return True
 
 
 #: Each kind's fields, besides group and the patterns.

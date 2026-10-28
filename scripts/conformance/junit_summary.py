@@ -13,7 +13,8 @@
 For a suite run with pytest (``--junitxml``) against a Provisa endpoint -- a driver's own
 integration tests -- writes the JSON the conformance pages are filled from
 (scripts/conformance/fill_docs.py) and the same as Markdown for the job summary. A failing test
-is data; a skipped one is counted apart. The exit status is non-zero only when no test ran.
+is data; a skipped one is counted apart. The exit status is non-zero when no test ran, and, for a
+surface at its baseline (by_design.AT_BASELINE), when a test failed that no group excludes.
 
 Usage: junit_summary.py <junit.xml>[,<junit.xml>...] <surface> <suite> <version> <tests run> <out.json> <out.md>
 """
@@ -142,7 +143,10 @@ def main(argv: list[str]) -> int:
     doc = summarise(junit, surface, suite, version, tests)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
-    return 0 if doc["ran"] else 1
+    if not doc["ran"]:
+        return 1
+    # REQ-2167: at its baseline, a failure no by-design or client group excludes fails the job.
+    return 1 if by_design.baseline_failed(surface, doc["failed"]) else 0
 
 
 if __name__ == "__main__":

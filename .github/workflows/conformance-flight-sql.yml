@@ -13,7 +13,9 @@ name: Conformance (Flight SQL)
 #
 # A failing test is data, written to the job summary and to the artifact conformance-flight-sql.json
 # (read by scripts/conformance/fill_docs.py into docs/conformance/flight-sql.md), never a job
-# failure. The job fails only when the Provisa instance did not start or no test ran.
+# failure. The job fails only when the Provisa instance did not start or no test ran, until Flight
+# SQL is at its baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a
+# failure no group excludes.
 
 on:
   workflow_dispatch:
@@ -145,8 +147,9 @@ jobs:
           .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/flight-sql-junit.xml" \
             flight-sql "ADBC driver validation suite" "$VALIDATION_SHA" \
             "with adbc-driver-flightsql $ADBC_FLIGHTSQL_VERSION" \
-            "$RUNNER_TEMP/report/conformance-flight-sql.json" "$RUNNER_TEMP/report/conformance-flight-sql.md"
+            "$RUNNER_TEMP/report/conformance-flight-sql.json" "$RUNNER_TEMP/report/conformance-flight-sql.md" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-flight-sql.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
 
       - name: Upload results
         if: ${{ !cancelled() }}

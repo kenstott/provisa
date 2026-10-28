@@ -5,9 +5,10 @@ name: Conformance (GraphQL over HTTP)
 # pinned version, never vendored, and run by scripts/conformance/graphql_http_audit.mjs as
 # org_admin.
 #
-# A failing audit is data, written to the job summary and to the artifact conformance-graphql.json
-# (read by scripts/conformance/fill_docs.py into docs/conformance/graphql.md), never a job
-# failure. The job fails only when the Provisa instance did not start or no audit ran.
+# Every audit is written to the job summary and to the artifact conformance-graphql.json (read by
+# scripts/conformance/fill_docs.py into docs/conformance/graphql.md). GraphQL over HTTP is at its
+# baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): the job fails when a MUST
+# audit fails, when the Provisa instance did not start, or when no audit ran.
 #
 # The instance is the pgwire conformance job's (see conformance-pgwire.yml).
 
@@ -102,8 +103,14 @@ jobs:
           node scripts/conformance/graphql_http_audit.mjs \
             "$RUNNER_TEMP/graphql-http" "$GRAPHQL_HTTP_VERSION" \
             "http://127.0.0.1:$PROVISA_API_PORT/data/graphql" org_admin "$CONFORMANCE_AUTHORIZATION" \
-            "$RUNNER_TEMP/report/conformance-graphql.json" "$RUNNER_TEMP/report/conformance-graphql.md"
+            "$RUNNER_TEMP/report/conformance-graphql.json" "$RUNNER_TEMP/report/conformance-graphql.md" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-graphql.md" >> "$GITHUB_STEP_SUMMARY"
+          # REQ-2167: GraphQL over HTTP is at its baseline (by_design.AT_BASELINE): a failed MUST
+          # audit fails the job.
+          if [ -z "${ran:-}" ]; then
+            .venv/bin/python scripts/conformance/baseline_gate.py graphql "$RUNNER_TEMP/report/conformance-graphql.json" || ran=$?
+          fi
+          exit "${ran:-0}"
 
       - name: Upload results
         if: ${{ !cancelled() }}

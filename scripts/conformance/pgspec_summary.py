@@ -23,9 +23,9 @@ reports, so a test the binary never reached -- it exited on an earlier test's pa
 as failed and named "not reached" rather than missing from the total. The section of a test is the
 ``// Section N: Title`` comment its top-level function sits under in the source.
 
-pgwire's baseline is every test passing: a failing test that no by-design group of the pgwire
-surface excludes (by_design/pgwire.yaml, by_design.py) is a regression, and the exit status is
-non-zero for one, as it is when the suite did not run (no leaf passed or failed). A test failed by
+The exit status is non-zero when the suite did not run (no leaf passed or failed), and, while
+pgwire is at its baseline (by_design.AT_BASELINE), when a test failed that no by-design group of
+the pgwire surface excludes (by_design/pgwire.yaml): a regression. A test failed by
 design is left out of the counts, in the group naming its decision.
 
 Usage: pgspec_summary.py <pgspec_test.go> <results.jsonl> <out.json> <out.md> [<version>]
@@ -231,16 +231,9 @@ def main(argv: list[str]) -> int:
     if summary["passed"] + summary["failed"] - len(summary["not_reached"]) == 0:
         print("::error::pgspec did not run: no test passed or failed", file=sys.stderr)
         return 1
-    if summary["failed"]:
-        # The baseline is every test passing: a failure no by-design group excludes is a
-        # regression, and fails the job (each is named in the summary above).
-        print(
-            f"::error::pgspec: {summary['failed']} test(s) failed that no by-design group of the "
-            "pgwire surface excludes (scripts/conformance/by_design/pgwire.yaml)",
-            file=sys.stderr,
-        )
-        return 1
-    return 0
+    # REQ-2167: at its baseline, a failure no by-design group excludes fails the job (each is
+    # named in the summary above).
+    return 1 if by_design.baseline_failed("pgwire", summary["failed"]) else 0
 
 
 if __name__ == "__main__":
