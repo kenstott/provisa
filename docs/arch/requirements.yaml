@@ -89169,7 +89169,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a contract holds is edited in the data product''s own form, beside where the Contracts panel shows it;
     elements Provisa derives (a property''s physical type, required and key from the member table, quality
     rules from its checks) are shown there as derived and edited where they are declared. No element is
-    settable only through the API or a file.'
+    settable only through the API or a file. (Amended 2026-10-27, A CONTRACT''S SECTIONS ARE EXPANDING ROWS:)
+    2026-10-28: each contract presents its ODCS sections as expanding rows (Fundamentals, Schema, Quality,
+    SLA, Support and team, Servers, Pricing, Custom properties and tags), collapsed to a one-line summary
+    until opened; the same rows, in the same order, hold the editing of each section in the product''s form.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
