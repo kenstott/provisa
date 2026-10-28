@@ -49,6 +49,8 @@ def landed(monkeypatch):
     def system_rows(state, sql, name):
         return [c for c, _ in tables[name][0]], tables[name][1]
 
+    # A store with no in-place face: each table is landed again whole (the reland path).
+    monkeypatch.setattr(temp_exec, "in_place", lambda state: None)
     monkeypatch.setattr(temp_exec, "_land", land)
     monkeypatch.setattr(temp_exec, "_store_address", address)
     monkeypatch.setattr(temp_exec, "_system_rows", system_rows)

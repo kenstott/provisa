@@ -132,6 +132,13 @@ class PgBackend(NativeEngineBackend):
             native_vectors=True,  # REQ-424: the engine reads its replicas in its own database
         )
 
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: a session's tables are in this engine's own database, written there in
+        place."""
+        from provisa.federation.session_rows import SqlAlchemySessionRows
+
+        return SqlAlchemySessionRows(self._runtime_for(state)._engine_dsn)
+
     def replica_indexer(self, state: Any, *, address: Any) -> Any:
         """REQ-2015: a replica in this engine's own database is indexed there, and read through
         its indexes."""

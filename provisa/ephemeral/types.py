@@ -103,6 +103,31 @@ def columns_for(
     return [(name, kind) for name, kind in types.items() if kind is not None]
 
 
+#: The widenings a store makes in place (``ALTER COLUMN ... TYPE``), each value cast exactly: a
+#: bigint read as a double. Any other -- to JSON, a list's element -- converts the values held, so
+#: the table is landed again whole.
+_IN_PLACE = frozenset({("bigint", "double")})
+
+
+def alteration(
+    held: list[tuple[str, str]], wanted: list[tuple[str, str]]
+) -> list[tuple[str, str, str]] | None:
+    """What turns a table's ``held`` columns into ``wanted`` (:func:`columns_for`'s, its keys
+    first) in place: ``("add", column, type)`` for a new column, ``("retype", column, type)``
+    for a widening the store makes itself; None when a column widens in a way only landing the
+    table again whole expresses."""
+    was = dict(held)
+    changes: list[tuple[str, str, str]] = []
+    for name, kind in wanted:
+        if name not in was:
+            changes.append(("add", name, kind))
+        elif was[name] != kind:
+            if (was[name], kind) not in _IN_PLACE:
+                return None
+            changes.append(("retype", name, kind))
+    return changes
+
+
 def relanded(
     held: list[tuple[str, str]],
     key_columns: tuple[tuple[str, str], ...],

@@ -346,6 +346,91 @@ async def _land(state: Any, session: TempSession, name: str, batch: Any, columns
     session.stored = True
 
 
+# -- a session table written in place (REQ-2176) ---------------------------------------------------
+
+
+def in_place(state: Any) -> Any:
+    """The serving engine's face for writing a session's tables in place
+    (:class:`provisa.federation.session_rows.SessionRows`), or None: its store has none, and a
+    session table is landed again whole on every change."""
+    return state.federation_engine.engine.backend.session_rows(state)
+
+
+async def _held_count(state: Any, session: TempSession, name: str) -> int:
+    at = await _store_address(state, session, name)
+    _, rows = await asyncio.to_thread(_system_rows, state, f"SELECT count(*) FROM {at}", name)
+    return int(rows[0][0])
+
+
+async def keyed_rows(
+    state: Any,
+    session: TempSession,
+    name: str,
+    column: str,
+    values: list[Any],
+    columns: tuple[str, ...],
+) -> list[tuple]:
+    """``columns`` of the rows of the session's table ``name`` whose ``column`` is one of
+    ``values``: read by the key, not the table whole."""
+    from provisa.compiler.sql_literals import sql_literal
+
+    at = await _store_address(state, session, name)
+    listed = ", ".join(sql_literal(v, "postgres") for v in values)
+    selected = ", ".join(_quoted(c) for c in columns)
+    sql = f"SELECT {selected} FROM {at} WHERE {_quoted(column)} IN ({listed})"
+    _, rows = await asyncio.to_thread(_system_rows, state, sql, name)
+    return rows
+
+
+async def append(
+    state: Any,
+    session: TempSession,
+    name: str,
+    rows: list[tuple],
+    writer: Any,
+) -> None:
+    """Add ``rows`` (in the table's columns' order) to the session's table ``name`` in place,
+    within the session's rows."""
+    table = session.tables[name]
+    _within_rows(name, await _held_count(state, session, name) + len(rows))
+    await writer.insert(_schema(session), name, table.columns, _batch(table.columns, rows))
+
+
+async def delete_keys(
+    session: TempSession, name: str, key_columns: tuple[str, ...], keys: list[tuple], writer: Any
+) -> None:
+    """Remove the rows of the session's table ``name`` whose ``key_columns`` hold one of
+    ``keys``."""
+    if keys:
+        await writer.delete(_schema(session), name, key_columns, keys)
+
+
+async def alter(
+    session: TempSession,
+    name: str,
+    changes: list[tuple[str, str, str]],
+    columns: list[tuple[str, str]],
+    writer: Any,
+) -> None:
+    """Make ``changes`` (ephemeral.types.alteration) to the session's table ``name`` in place, so
+    it has ``columns``."""
+    for change, column, kind in changes:
+        # The type as a landing of the table lands it (reland takes the same columns).
+        if change == "add":
+            await writer.add_column(_schema(session), name, column, kind)
+        else:
+            await writer.retype(_schema(session), name, column, kind)
+    if changes:
+        # A new shape: what a statement kept for the session no longer holds.
+        session.tables[name] = TempTable(name, columns)
+        session.generation += 1
+
+
+async def index(session: TempSession, name: str, key_columns: tuple[str, ...], writer: Any) -> None:
+    """Index the session's table ``name`` on its key, as each landing of it is."""
+    await writer.index(_schema(session), name, key_columns)
+
+
 def _next_serial(table: TempTable, column: str) -> int | None:
     """The value an INSERT omitting ``column`` gives it: a SERIAL's next, else NULL."""
     if column not in table.serials:

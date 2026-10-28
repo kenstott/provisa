@@ -41,6 +41,15 @@ class SqlAlchemyBackend(NativeEngineBackend):
             raise RuntimeError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
         return SqlAlchemyFederationRuntime(url=url, catalog_qualified=self.engine.catalog_qualified)
 
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: a session's tables are in this engine's own store, written there in place on
+        its own connection."""
+        from provisa.federation.session_rows import SqlAlchemySessionRows
+
+        return SqlAlchemySessionRows(
+            self._runtime_for(state)._sa.url.render_as_string(hide_password=False)
+        )
+
     def replica_indexer(self, state: Any, *, address: Any) -> Any:
         """REQ-2015: a replica in this engine's own store is indexed by that store's DDL -- a
         PostgreSQL store as every PostgreSQL store is."""
