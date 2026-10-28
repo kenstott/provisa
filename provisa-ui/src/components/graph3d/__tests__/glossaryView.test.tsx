@@ -68,8 +68,8 @@ const term = (id: number, name: string, over: object = {}) => ({
   is_abstract: false,
   deprecated: false,
   retired: false,
-  live: true,
-  grounded: true,
+  status: "approved",
+  grounding: "grounded",
   domains: [{ domain_id: "sales" }],
   refs: [] as { domain_id: string }[],
   ...over,
@@ -77,8 +77,8 @@ const term = (id: number, name: string, over: object = {}) => ({
 const TERMS = [
   term(1, "Customer"),
   term(2, "Party", { is_abstract: true }),
-  term(3, "Old customer", { deprecated: true, live: false }),
-  term(4, "Ancient", { retired: true, live: false }),
+  term(3, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded" }),
+  term(4, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
   // No edge of any type: an orphan.
   term(5, "Lonely", { domains: [{ domain_id: "finance" }] }),
   term(7, "shift coverage"),
@@ -105,8 +105,7 @@ const EDGES = [
   { id: 3, from_term_id: 10, to_term_id: 9, rel_type: "RELATED_TO" },
 ];
 type Term = ReturnType<typeof term>;
-const standing = (t: Term) =>
-  t.retired ? "retired" : t.deprecated ? "deprecated" : t.live ? "live" : "draft";
+const standing = (t: Term) => t.status;
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
   dataGraphql: async (query: string) => {

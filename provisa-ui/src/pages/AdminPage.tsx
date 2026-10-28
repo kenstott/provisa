@@ -170,7 +170,7 @@ export function AdminPage() {
   // Apollo hooks for cache-and-network queries and mutations
   const { sources, loading: sourcesLoading } = useSources();
   const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
-  const { tables, loading: tablesLoading } = useTables();
+  const { tables, loading: tablesLoading } = useTables({ columns: false });
   const { relationships, loading: relsLoading } = useRelationships();
   const { rlsRules, loading: rlsLoading } = useRLSRules();
   const { roles } = useRoles();

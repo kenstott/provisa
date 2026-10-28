@@ -14,7 +14,13 @@ import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus } from "lucide-react";
-import { useDomains, useTables, useUpdateTable, useRoles } from "../hooks/useAdminQueries";
+import {
+  useDomains,
+  useReadTableDetails,
+  useTables,
+  useUpdateTable,
+  useRoles,
+} from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
@@ -26,7 +32,7 @@ import {
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { buildTableUpdateInput } from "./tables/helpers";
-import type { DataProduct } from "../types/admin";
+import type { DataProduct, RegisteredTable } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -102,6 +108,7 @@ export function DataProductsPage() {
   const saving = creatingProduct || updatingProduct;
   const { deleteDataProduct, loading: deleting } = useDeleteDataProduct();
   const { updateTable } = useUpdateTable();
+  const readTableDetails = useReadTableDetails();
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
@@ -347,9 +354,28 @@ export function DataProductsPage() {
       // REQ-1443 clause 10: a checker table's membership is derived; it is never written.
       (tb) => tb.dqContract == null && selected.has(String(tb.id)) !== (tb.productId === productId),
     );
+    // The update takes the whole row; the list holds only what this page shows.
+    let rows = new Map<number, RegisteredTable>();
+    if (changed.length > 0) {
+      try {
+        rows = new Map((await readTableDetails()).map((tb) => [tb.id, tb]));
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : String(e));
+        return;
+      }
+    }
     for (const tb of changed) {
+      const row = rows.get(tb.id);
+      if (row === undefined) {
+        // Unregistered since the list was read.
+        setMsg(`${t("dataProductsTab.saveFailed")}: ${tb.tableName}`);
+        return;
+      }
       await updateTable(
-        buildTableUpdateInput({ ...tb, productId: selected.has(String(tb.id)) ? productId : null }),
+        buildTableUpdateInput({
+          ...row,
+          productId: selected.has(String(tb.id)) ? productId : null,
+        }),
       );
     }
     // REQ-1634: command -> product membership is owned by the function row; reconcile the

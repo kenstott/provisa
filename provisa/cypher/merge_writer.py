@@ -308,15 +308,17 @@ async def written_merge(
     ast: WriteAST, translator: WriteTranslator, provided: dict[str, Any], read: Any, write: Any
 ) -> None:
     """Run a ``merge`` write: its plan settled, the leading MATCHes read, then each MERGE clause
-    in turn per row of what came before it."""
+    in turn per row of what came before it. Patterns of the MATCHes unrelated to one another are
+    each read apart, and their rows combined here (``ast.apart``)."""
     plan = _Merge(ast, translator)
     bindings: list[dict[str, _Bound]] = [{}]
-    if ast.reads:
-        reached = [v for v in ast.matched_labels if v in plan.needed]
+    for reads, variables in ast.apart:
+        reached = [v for v in ast.matched_labels if v in plan.needed and v in variables]
         items = plan.items(reached)
         returned = ", ".join(f"{v}.{p} AS {_KEY_PARAM}c{i}" for i, (v, p) in enumerate(items))
-        _, rows = await read(f"{ast.reads} RETURN {returned or f'1 AS {_KEY_PARAM}row'}", provided)
-        bindings = [plan.bound(items, row[: len(items)]) for row in rows]
+        _, rows = await read(f"{reads} RETURN {returned or f'1 AS {_KEY_PARAM}row'}", provided)
+        found = [plan.bound(items, row[: len(items)]) for row in rows]
+        bindings = [{**binding, **more} for binding in bindings for more in found]
     for part, rels in zip(ast.merges, plan.junctions, strict=True):
         following: list[dict[str, _Bound]] = []
         for binding in bindings:

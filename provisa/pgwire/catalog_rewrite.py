@@ -546,6 +546,16 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     .where(exp.EQ(this=exp.column("oid"), expression=oid_expr))
                 )
                 return exp.Subquery(this=subq)
+            if fn == "pg_get_expr" and len(args) >= 2:
+                # The expression catalog_privileges recorded in adbin, as text; NULL where the
+                # column has none (and for the node trees this catalog never holds).
+                expr = args[0]
+                if (
+                    isinstance(expr, exp.Cast)
+                    and expr.to.sql(dialect="postgres").lower() == "pg_node_tree"
+                ):
+                    expr = expr.this  # the cast names the argument's type; adbin is held as text
+                return exp.cast(expr.transform(_transform), "VARCHAR")
             if fn.startswith("pg_get_") or "pg_tablespace_location" in fn:
                 return _emulated(fn, exp.null())
             if "pg_encoding_to_char" in fn:

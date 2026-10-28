@@ -60293,25 +60293,58 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q3
-  description: 'New DataProduct entity, domain-scoped: id, domain_id (required FK; a data product has exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward),
+  description: 'New DataProduct entity, domain-scoped: id, domain_id (required FK; a data product has exactly
+    one owning domain), name, owner (person accountable for this product, distinct from Domain.steward),
     description. Table gains product_id: str | None (FK -> DataProduct.id), replacing the boolean data_product
-    flag (REQ-1372) as the signal that a table is a data-product member. Membership is product_id being set, not a separate flag. A DataProduct''s member tables must all share its domain_id; a table cannot
-    reference a DataProduct in a different domain. A data product needing data from another domain is
-    composed via a view defined within the owning domain that sources from the other domain, and that
-    view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py)
-    gains a data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner,
-    and description as top-level fields, plus its member TableAssets'' refs — [SUPERSEDED by REQ-1592,
-    2026-10-03 -- TableAsset keeps data_product: bool, derived from product_id, because the model workbook
-    reports it as a column (provisa/api/metadata_export/model.py:102-105). Kept here for history; do not
-    implement against it.] replacing the per-table data_product: bool field REQ-1372 added to TableAsset
-    [END SUPERSEDED BLOCK]. build_snapshot (builder.py) populates this from the new DataProduct entity
-    instead of the boolean filter. Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py,
-    atlas.py, openlineage.py; REQ-1069) maps DataProductAsset to that catalog''s native product/collection
-    construct (e.g. OpenMetadata''s Data Product entity, Collibra''s Data Product asset type) so owner
-    and description register as first-class attributes there, not just an inferred flag on each member
-    table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct checkbox at TableEditForm.tsx:411-421)
-    presents a product_id picker scoped to DataProducts whose domain_id matches the table''s own domain_id. A table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice,
-    enforcing the domain-alignment constraint at selection time, not only as a save-time rejection. (Amended 2026-10-23, STATUS:) A data product has one status, draft, live, deprecated or retired, each asserted by an action; it replaces the free-text status and the publish flag, and nothing else records whether a product is published. A new product is a draft. Publish takes a draft live. Deprecate takes a live product to deprecated with a required reason and an optional retire_on date, not in the past; it stays in service, and on that date the daily planned-retirement job retires it. Retire takes a live or deprecated product to retired with a required reason; its members -- the tables, views and commands that name it -- move to a successor data product, required when it has any, in the same domain, not the product itself and not retired; the product''s own tags stay with it, and the successor is recorded on it. A scheduled retirement of a product that still has members does not happen, a date naming no successor: the product stays deprecated, a retirement_blocked finding (REQ-2146). Restore takes a deprecated product back to live, and a retired one back to a draft with its successor cleared; members that moved stay with the successor. An edit never changes the status; each action records who made it and when. A catalog lists a product as published while it is live or deprecated: Horizon''s listing is PUBLISH = TRUE then and FALSE otherwise; ODPS writes draft, active, deprecated or retired; Purview''s Unified Catalog status is DRAFT for a draft, PUBLISHED for a live or deprecated product and EXPIRED for a retired one; DataZone, Unity Catalog and Dataplex carry the status as it is. A configuration declares a product''s status, reason, retire_on and successor, and the store export writes them back. (Amended 2026-10-23, RETIRED IN CATALOGS:) A retired product reaches every catalog all the same, with no members, so each target says it is retired rather than keeping the listing it last received: Purview EXPIRED, ODPS retired with no output ports, Horizon''s share emptied and its listing PUBLISH = FALSE, DataZone a revision with the retired status and no items. It is sent only to a target an earlier publish put it in, there to be withdrawn; where it was never published there is nothing to withdraw, and it is not created retired. A target whose provider keeps no binding of its own for a product (Horizon, Dataplex, OpenMetadata, OpenLineage) has the product it published recorded by the publish path. A product with no members that is not retired is still not exported.'
+    flag (REQ-1372) as the signal that a table is a data-product member. Membership is product_id being
+    set, not a separate flag. A DataProduct''s member tables must all share its domain_id; a table cannot
+    reference a DataProduct in a different domain. A data product needing data from another domain is composed
+    via a view defined within the owning domain that sources from the other domain, and that view (not the
+    foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py) gains a
+    data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner, and description
+    as top-level fields, plus its member TableAssets'' refs — [SUPERSEDED by REQ-1592, 2026-10-03 -- TableAsset
+    keeps data_product: bool, derived from product_id, because the model workbook reports it as a column
+    (provisa/api/metadata_export/model.py:102-105). Kept here for history; do not implement against it.]
+    replacing the per-table data_product: bool field REQ-1372 added to TableAsset [END SUPERSEDED BLOCK].
+    build_snapshot (builder.py) populates this from the new DataProduct entity instead of the boolean filter.
+    Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py; REQ-1069)
+    maps DataProductAsset to that catalog''s native product/collection construct (e.g. OpenMetadata''s Data
+    Product entity, Collibra''s Data Product asset type) so owner and description register as first-class
+    attributes there, not just an inferred flag on each member table. The table-edit UI (TableEditForm.tsx,
+    replacing the dataProduct checkbox at TableEditForm.tsx:411-421) presents a product_id picker scoped
+    to DataProducts whose domain_id matches the table''s own domain_id. A table in domain "marketing" is
+    never offered a DataProduct owned by domain "sales" as a choice, enforcing the domain-alignment constraint
+    at selection time, not only as a save-time rejection. (Amended 2026-10-23, STATUS:) A data product has
+    one status, draft, live, deprecated or retired, each asserted by an action; it replaces the free-text
+    status and the publish flag, and nothing else records whether a product is published. A new product
+    is a draft. Publish takes a draft live. Deprecate takes a live product to deprecated with a required
+    reason and an optional retire_on date, not in the past; it stays in service, and on that date the daily
+    planned-retirement job retires it. Retire takes a live or deprecated product to retired with a required
+    reason; its members -- the tables, views and commands that name it -- move to a successor data product,
+    required when it has any, in the same domain, not the product itself and not retired; the product''s
+    own tags stay with it, and the successor is recorded on it. A scheduled retirement of a product that
+    still has members does not happen, a date naming no successor: the product stays deprecated, a retirement_blocked
+    finding (REQ-2146). Restore takes a deprecated product back to live, and a retired one back to a draft
+    with its successor cleared; members that moved stay with the successor. An edit never changes the status;
+    each action records who made it and when. A catalog lists a product as published while it is live or
+    deprecated: Horizon''s listing is PUBLISH = TRUE then and FALSE otherwise; ODPS writes draft, active,
+    deprecated or retired; Purview''s Unified Catalog status is DRAFT for a draft, PUBLISHED for a live
+    or deprecated product and EXPIRED for a retired one; DataZone, Unity Catalog and Dataplex carry the
+    status as it is. A configuration declares a product''s status, reason, retire_on and successor, and
+    the store export writes them back. (Amended 2026-10-23, RETIRED IN CATALOGS:) A retired product reaches
+    every catalog all the same, with no members, so each target says it is retired rather than keeping the
+    listing it last received: Purview EXPIRED, ODPS retired with no output ports, Horizon''s share emptied
+    and its listing PUBLISH = FALSE, DataZone a revision with the retired status and no items. It is sent
+    only to a target an earlier publish put it in, there to be withdrawn; where it was never published there
+    is nothing to withdraw, and it is not created retired. A target whose provider keeps no binding of its
+    own for a product (Horizon, Dataplex, OpenMetadata, OpenLineage) has the product it published recorded
+    by the publish path. A product with no members that is not retired is still not exported. (Amended 2026-10-28,
+    A DATA PRODUCT IS VERSIONED; SAVE, SAVE VERSION, CANCEL:) A data product carries a version number on
+    every row that belongs to it (its details, custom properties, tags, input and output ports, and the
+    links to its contracts), as ODPS versions a product. Its edit form''s actions are Save, Save version
+    and Cancel, as for contracts (REQ-2158) and term definitions (REQ-1387): Save writes the edit in place
+    on the current version, Save version writes it as the next version and keeps the current one read-only,
+    and Cancel discards it. The product page steps back through earlier versions.'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
@@ -89424,69 +89457,71 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     elements Provisa derives (a property''s physical type, required and key from the member table, quality
     rules from its checks) are shown there as derived and edited where they are declared. No element is
     settable only through the API or a file. (Amended 2026-10-27, A CONTRACT''S SECTIONS ARE EXPANDING ROWS:)
+    [SUPERSEDED by REQ-2158 amendment A CONTRACT OPENS IN ITS OWN DETAIL PANEL, 2026-10-28 -- a contract
+    opens in a stacked detail panel with section tabs. Kept here for history; do not implement against it.]
     2026-10-28: each contract presents its ODCS sections as expanding rows (Fundamentals, Schema, Quality,
     SLA, Support and team, Servers, Pricing, Custom properties and tags), collapsed to a one-line summary
     until opened; the same rows, in the same order, hold the editing of each section in the product''s form.
-    (Amended 2026-10-28, A CONTRACT''S SCHEMA IS ITS MEMBER''S:) A contract''s schema is its member table''s
-    columns; a contract has no column selection of its own (no "promised columns"). A product that offers
-    a subset of a table makes a view of that subset its member, and the view''s columns are the contract''s
-    schema. (Amended 2026-10-28, A CONTRACT ADVERTISES THE PRODUCT:) A product''s contracts are read-only
-    metadata that advertise it: every role that can see the product sees each contract''s elements, its
-    schema included, whether or not it can read the member''s data. A contract carries no data and grants
-    nothing; reading a member still needs a grant. The product panel''s data quality section keeps REQ-2157''s
-    rule for check results. (Amended 2026-10-28, A PRODUCT''S SAMPLE IS A VIEW EVERY ROLE READS:) Each member
-    of a product may have a sample: [SUPERSEDED by REQ-2158 amendment A SAMPLE IS WHATEVER THE OWNER SUPPLIES,
-    2026-10-28 -- the sample need not be drawn from the member. Kept here for history; do not implement
-    against it.] a view over the member holding a fixed set of rows the owner chose once (not a live limit
-    that can be paged past), with masks on the columns the owner masks, [END SUPERSEDED BLOCK] granted to
-    the standard Viewer role so that every role reads it under its own role, with no role to switch into.
-    [SUPERSEDED by REQ-2158 amendment A SAMPLE DATA PANEL, A TAB PER CONTRACT, 2026-10-28 -- the sample
-    has its own panel. Kept here for history; do not implement against it.] The Contracts panel shows each
-    member''s sample rows beside its schema, and the sample can be queried like any table. [END SUPERSEDED
-    BLOCK] Reading beyond the sample is what a product request (REQ-2180) asks for. (Amended 2026-10-28,
-    A SAMPLE IS WHATEVER THE OWNER SUPPLIES:) [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER
+    [END SUPERSEDED BLOCK] (Amended 2026-10-28, A CONTRACT''S SCHEMA IS ITS MEMBER''S:) A contract''s schema
+    is its member table''s columns; a contract has no column selection of its own (no "promised columns").
+    A product that offers a subset of a table makes a view of that subset its member, and the view''s columns
+    are the contract''s schema. (Amended 2026-10-28, A CONTRACT ADVERTISES THE PRODUCT:) A product''s contracts
+    are read-only metadata that advertise it: every role that can see the product sees each contract''s
+    elements, its schema included, whether or not it can read the member''s data. A contract carries no
+    data and grants nothing; reading a member still needs a grant. The product panel''s data quality section
+    keeps REQ-2157''s rule for check results. (Amended 2026-10-28, A PRODUCT''S SAMPLE IS A VIEW EVERY ROLE
+    READS:) Each member of a product may have a sample: [SUPERSEDED by REQ-2158 amendment A SAMPLE IS WHATEVER
+    THE OWNER SUPPLIES, 2026-10-28 -- the sample need not be drawn from the member. Kept here for history;
+    do not implement against it.] a view over the member holding a fixed set of rows the owner chose once
+    (not a live limit that can be paged past), with masks on the columns the owner masks, [END SUPERSEDED
+    BLOCK] granted to the standard Viewer role so that every role reads it under its own role, with no role
+    to switch into. [SUPERSEDED by REQ-2158 amendment A SAMPLE DATA PANEL, A TAB PER CONTRACT, 2026-10-28
+    -- the sample has its own panel. Kept here for history; do not implement against it.] The Contracts
+    panel shows each member''s sample rows beside its schema, and the sample can be queried like any table.
+    [END SUPERSEDED BLOCK] Reading beyond the sample is what a product request (REQ-2180) asks for. (Amended
+    2026-10-28, A SAMPLE IS WHATEVER THE OWNER SUPPLIES:) [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS
+    THE MEMBER AS DATA BUYER READS IT, 2026-10-28 -- the sample is no separate table or view. Kept here
+    for history; do not implement against it.] [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER
     AS DATA BUYER READS IT, 2026-10-28 -- the sample is no separate table or view. Kept here for history;
-    do not implement against it.] [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA BUYER
-    READS IT, 2026-10-28 -- the sample is no separate table or view. Kept here for history; do not implement
-    against it.] A member''s sample is any table or view the product owner supplies for it: selected real
-    rows (fixed, masked), faked rows (REQ-1494), synthetic data, or rows uploaded or registered from anywhere.
-    Provisa asks only that it is granted to the Viewer role and named as that member''s sample; how it was
-    made is the owner''s choice. [END SUPERSEDED BLOCK] [END SUPERSEDED BLOCK] (Amended 2026-10-28, A SAMPLE
-    DATA PANEL, A TAB PER CONTRACT:) [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA
-    BUYER READS IT, 2026-10-28 -- a contract has no sample field. Kept here for history; do not implement
-    against it.] [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT, 2026-10-28
-    -- a contract has no sample field. Kept here for history; do not implement against it.] A contract names
-    its sample by one field, the sample view''s name; nothing else is declared. [END SUPERSEDED BLOCK] [END
-    SUPERSEDED BLOCK] The product page has an expanding Sample Data panel, presented like the lineage panel,
-    with one tab per contract showing that contract''s sample view rows. The sample can be queried like
-    any table. (Amended 2026-10-28, A CONTRACT''S PROFILE IN THE SAMPLE DATA PANEL:) Each contract''s Sample
-    Data tab also shows its member''s latest profile, split by what a result kind holds. Value-free results
-    describe a column''s structure and never its values, so they are shown for every column of the contract
-    to every role that sees the product: the run (when, sample method, row counts, freshness), each column''s
-    shape (data type, family, null share, distinct ratio, length range), plausible type, classifications
-    (how many sampled values passed a test, so a buyer learns that a column holds national ids), fanout,
-    correlations, dependencies, and constraint and duplicate rows that hold no values. Value-bearing results
-    hold values of the column (quantiles, histogram, top values, shapes, fits, fit quality, joint counts,
-    min, max and the moments, and value-bearing drift, constraint and duplicate rows); they are shown for
-    a column only when that column is served unmasked to the Viewer role, which is how the owner opts a
-    column in. The Terrain view draws ridges only for those columns, as it already omits restricted ones
-    (REQ-2123). A contract may also name a profile view, a view over the member''s profile results granted
-    to Viewer (for example bucketing top values or rounding min and max); when named, the tab shows the
-    profile from that view instead. The split is the profiler''s own (provisa/profiler/governance.py). (Amended
-    2026-10-28, THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT:) A member''s sample is the member itself
-    as the Data buyer role (REQ-2155) reads it: the owner grants its columns to Data buyer, gives each column''s
-    mask list an entry for Data buyer (fake, truncate, regex, constant, or none), and gives Data buyer a
-    row rule selecting a fixed subset (for example a hash of the key modulo 100 equal to 0), which paging
-    cannot get past. The Sample Data tab of each contract queries its member as Data buyer. Wherever this
-    requirement''s sample and profile rules name the Viewer role, they mean Data buyer: value-bearing profile
-    results are shown for a column served unmasked to Data buyer, and a profile view is granted to Data
-    buyer. A Derive sample action on a contract proposes the Data buyer masks (from the profiler''s classifications)
-    and row rule for the owner to edit and save; the docs give guidance (columns that identify someone in
-    combination, small tables, keys that must fake consistently for samples to join) and Provisa adds no
-    checks. (Amended 2026-10-28, THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT:) A member''s sample is
-    the member itself as the Data buyer role (REQ-2155) reads it: the owner grants its columns to Data buyer,
-    gives each column''s mask list an entry for Data buyer (fake, truncate, regex, constant, or none), and
-    gives Data buyer a row rule selecting a fixed subset (for example a hash of the key modulo 100 equal
+    do not implement against it.] A member''s sample is any table or view the product owner supplies for
+    it: selected real rows (fixed, masked), faked rows (REQ-1494), synthetic data, or rows uploaded or registered
+    from anywhere. Provisa asks only that it is granted to the Viewer role and named as that member''s sample;
+    how it was made is the owner''s choice. [END SUPERSEDED BLOCK] [END SUPERSEDED BLOCK] (Amended 2026-10-28,
+    A SAMPLE DATA PANEL, A TAB PER CONTRACT:) [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER
+    AS DATA BUYER READS IT, 2026-10-28 -- a contract has no sample field. Kept here for history; do not
+    implement against it.] [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA BUYER READS
+    IT, 2026-10-28 -- a contract has no sample field. Kept here for history; do not implement against it.]
+    A contract names its sample by one field, the sample view''s name; nothing else is declared. [END SUPERSEDED
+    BLOCK] [END SUPERSEDED BLOCK] The product page has an expanding Sample Data panel, presented like the
+    lineage panel, with one tab per contract showing that contract''s sample view rows. The sample can be
+    queried like any table. (Amended 2026-10-28, A CONTRACT''S PROFILE IN THE SAMPLE DATA PANEL:) Each contract''s
+    Sample Data tab also shows its member''s latest profile, split by what a result kind holds. Value-free
+    results describe a column''s structure and never its values, so they are shown for every column of the
+    contract to every role that sees the product: the run (when, sample method, row counts, freshness),
+    each column''s shape (data type, family, null share, distinct ratio, length range), plausible type,
+    classifications (how many sampled values passed a test, so a buyer learns that a column holds national
+    ids), fanout, correlations, dependencies, and constraint and duplicate rows that hold no values. Value-bearing
+    results hold values of the column (quantiles, histogram, top values, shapes, fits, fit quality, joint
+    counts, min, max and the moments, and value-bearing drift, constraint and duplicate rows); they are
+    shown for a column only when that column is served unmasked to the Viewer role, which is how the owner
+    opts a column in. The Terrain view draws ridges only for those columns, as it already omits restricted
+    ones (REQ-2123). A contract may also name a profile view, a view over the member''s profile results
+    granted to Viewer (for example bucketing top values or rounding min and max); when named, the tab shows
+    the profile from that view instead. The split is the profiler''s own (provisa/profiler/governance.py).
+    (Amended 2026-10-28, THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT:) A member''s sample is the member
+    itself as the Data buyer role (REQ-2155) reads it: the owner grants its columns to Data buyer, gives
+    each column''s mask list an entry for Data buyer (fake, truncate, regex, constant, or none), and gives
+    Data buyer a row rule selecting a fixed subset (for example a hash of the key modulo 100 equal to 0),
+    which paging cannot get past. The Sample Data tab of each contract queries its member as Data buyer.
+    Wherever this requirement''s sample and profile rules name the Viewer role, they mean Data buyer: value-bearing
+    profile results are shown for a column served unmasked to Data buyer, and a profile view is granted
+    to Data buyer. A Derive sample action on a contract proposes the Data buyer masks (from the profiler''s
+    classifications) and row rule for the owner to edit and save; the docs give guidance (columns that identify
+    someone in combination, small tables, keys that must fake consistently for samples to join) and Provisa
+    adds no checks. (Amended 2026-10-28, THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT:) A member''s sample
+    is the member itself as the Data buyer role (REQ-2155) reads it: the owner grants its columns to Data
+    buyer, gives each column''s mask list an entry for Data buyer (fake, truncate, regex, constant, or none),
+    and gives Data buyer a row rule selecting a fixed subset (for example a hash of the key modulo 100 equal
     to 0), which paging cannot get past. The Sample Data tab of each contract queries its member as Data
     buyer. Wherever this requirement''s sample and profile rules name the Viewer role, they mean Data buyer:
     value-bearing profile results are shown for a column served unmasked to Data buyer, and a profile view
@@ -89549,7 +89584,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by it. (Amended 2026-10-28, SAVE, SAVE VERSION, CANCEL:) A contract''s edit form in the product: The
     edit form''s actions are Save, Save version and Cancel: Save writes the edit in place on the current
     version, Save version writes it as the next version and keeps the current one read-only, and Cancel
-    discards it.'
+    discards it. (Amended 2026-10-28, A CONTRACT OPENS IN ITS OWN DETAIL PANEL:) The product panel lists
+    its contracts compactly, one row per contract (member, version, status, the result of its promise checks),
+    with no expanding sections. Clicking a contract opens its own detail panel on the right, stacked over
+    the product panel, with a breadcrumb (product, then contract) back to it, in the app''s list and detail-panel
+    pattern. The contract panel presents the ODCS sections as section tabs, the same tabs for viewing and
+    editing: Fundamentals, Schema, Quality, SLA, Support and team, Servers, Pricing, Custom properties and
+    tags. The version stepper and Save, Save version and Cancel sit in its header. In the Schema tab the
+    versioned, declared fields and the live fields (physical type, required, keys) are separate column groups,
+    the live group marked live. Clicking a schema property or a quality check opens its detail in the same
+    stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 

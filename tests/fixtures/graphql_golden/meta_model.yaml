@@ -271,8 +271,8 @@ tables:
     data_type: boolean
     visible_to:
     - viewer
-  - name: grounded
-    data_type: boolean
+  - name: grounding
+    data_type: text
     visible_to:
     - viewer
   - name: id
@@ -297,10 +297,6 @@ tables:
     visible_to:
     - viewer
   - name: is_rooted
-    data_type: boolean
-    visible_to:
-    - viewer
-  - name: live
     data_type: boolean
     visible_to:
     - viewer

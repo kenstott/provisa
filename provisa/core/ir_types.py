@@ -757,7 +757,8 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
     spelling = native_type.strip().lower()
     shape = parse_native_type(spelling)
     if not shape.nested:
-        subtype = subtype_of(spelling, platform)
+        # ClickHouse's Nullable(IPv4) is the IPv4 it wraps.
+        subtype = subtype_of(shape.spelling, platform)
         if subtype is not None:
             return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
         own = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}) if platform else {}

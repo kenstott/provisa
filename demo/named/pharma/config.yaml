@@ -241,6 +241,7 @@ relationships:
 # formulary's and the public tables' columns derive (availability, classification, days of supply).
 glossary_terms:
 - name: NDC
+  approve: true
   definition: 'National Drug Code: the labeler, product and package code FDA lists every drug under. The product code (labeler-product) names a drug of one strength and form.'
   domains:
   - pharma
@@ -248,6 +249,7 @@ glossary_terms:
   - to: product ndc
     rel_type: RELATED_TO
 - name: formulary
+  approve: true
   definition: 'The list of drugs the pharmacy stocks and its prescribers may order, chosen by its pharmacy and therapeutics (P&T) committee.'
   domains:
   - pharma
@@ -255,6 +257,7 @@ glossary_terms:
   - to: therapeutic class
     rel_type: RELATED_TO
 - name: drug shortage
+  approve: true
   definition: 'A period when the supply of a drug in the US does not meet demand. FDA posts each one, with the availability of each affected package.'
   domains:
   - pharma
@@ -262,6 +265,7 @@ glossary_terms:
   - to: shortage availability
     rel_type: RELATED_TO
 - name: recall class
+  approve: true
   definition: 'FDA''s severity of a recall: Class I may cause serious harm or death, Class II temporary or reversible harm, Class III is unlikely to cause harm.'
   domains:
   - pharma
@@ -269,6 +273,7 @@ glossary_terms:
   - to: classification
     rel_type: RELATED_TO
 - name: supply risk
+  approve: true
   definition: 'The chance that the pharmacy cannot give a drug when it is ordered: a shortage of it, a recall by its maker, or too few days of supply on hand.'
   domains:
   - pharma
@@ -280,6 +285,7 @@ glossary_terms:
   - to: days of supply
     rel_type: RELATED_TO
 - name: days of supply
+  approve: true
   definition: 'How long the stock on hand lasts at the current daily use: units on hand divided by units used a day.'
   domains:
   - pharma

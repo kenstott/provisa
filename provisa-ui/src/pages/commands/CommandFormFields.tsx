@@ -22,7 +22,7 @@ import {
   Title,
 } from "@mantine/core";
 import { X } from "lucide-react";
-import type { Source, RegisteredTable, DataProduct } from "../../types/admin";
+import type { Source, ListedTable, DataProduct } from "../../types/admin";
 import type { TableMetadata } from "../../api/admin";
 import type { ActionArg, InlineField, DatasetColumn } from "../../api/actions";
 import {
@@ -59,7 +59,7 @@ interface CommandFormFieldsProps {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   sources: Source[];
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   domainHints: string[];
   availableFunctions: TableMetadata[];
   loadingFunctions: boolean;

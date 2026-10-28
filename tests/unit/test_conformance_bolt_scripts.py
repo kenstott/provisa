@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The Bolt conformance job's fixture model and the driver examples' adapted setup (REQ-2167)."""
+"""The Bolt conformance job's fixture model: the driver examples' graph in a domain of its own,
+and the role the driver's user acts as there (REQ-2167)."""
 
 # Requirements: REQ-2167
 
@@ -21,7 +22,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from provisa.core.models import Relationship, Table
+from provisa.core.models import Domain, Relationship, Role, Table
 
 CONFORMANCE = Path(__file__).resolve().parents[2] / "scripts" / "conformance"
 sys.path.insert(0, str(CONFORMANCE))  # the scripts' sibling imports
@@ -37,7 +38,6 @@ def _load(name: str, path: Path):
     return module
 
 
-adapt = _load("bolt_adapt", CONFORMANCE / "bolt" / "adapt.py")
 fixtures = _load("bolt_fixtures", CONFORMANCE / "bolt" / "fixtures.py")
 by_design = _load("by_design", CONFORMANCE / "by_design.py")
 pgwire_catalog_types = _load("pgwire_catalog_types", CONFORMANCE / "pgwire_catalog_types.py")
@@ -46,10 +46,15 @@ pgwire_catalog_types = _load("pgwire_catalog_types", CONFORMANCE / "pgwire_catal
 def test_the_examples_graph_is_writable_tables_and_junction_relationships():
     tables = {t["table"]: Table(**t) for t in fixtures.tables()}
     assert set(tables) == {"person", "company", "greeting", "knows", "works_for"}
+    assert {t.domain_id for t in tables.values()} == {"bolt_examples"}
     assert {(g.role, g.operation) for g in tables["person"].write_grants} == {
-        ("org_admin", "insert"),
-        ("org_admin", "update"),
-        ("org_admin", "delete"),
+        ("bolt_examples", "insert"),
+        ("bolt_examples", "update"),
+        ("bolt_examples", "delete"),
+    }
+    assert {c.name: c.visible_to for c in tables["person"].columns} == {
+        "id": ["bolt_examples"],
+        "name": ["bolt_examples"],
     }
     rels = {r["alias"]: Relationship(**r) for r in fixtures.relationships()}
     assert {a: (r.source_table_id, r.target_table_id, r.kind) for a, r in rels.items()} == {
@@ -58,11 +63,11 @@ def test_the_examples_graph_is_writable_tables_and_junction_relationships():
     }
 
 
-def test_a_persons_relationships_cascade_with_it_and_the_named_companies_are_seeded():
+def test_a_persons_relationships_cascade_with_it_and_the_tables_start_empty():
+    # Each example writes the rows it reads, after its own cleanup has emptied the graph.
     ddl = "\n".join(fixtures.ddl())
     assert ddl.count("ON DELETE CASCADE") == 4
-    for company in ("Wayne Enterprises", "LexCorp", "Neo4j"):
-        assert f"'{company}'" in ddl
+    assert "INSERT" not in ddl
 
 
 def test_the_model_carries_a_jobs_relationships(tmp_path, monkeypatch):
@@ -76,32 +81,57 @@ def test_the_model_carries_a_jobs_relationships(tmp_path, monkeypatch):
     assert {t["table"] for t in config["tables"]} >= {"person", "knows"}
 
 
-def _examples(root: Path) -> Path:
-    tests = root / "integration"
-    for name, text, _replacement, count in adapt.REWRITES:
-        path = tests / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        before = path.read_text() if path.exists() else ""
-        if text not in before:
-            path.write_text(before + "\n".join(f"session.run({text})" for _ in range(count)) + "\n")
-    return tests
+def test_the_drivers_user_acts_as_a_role_reaching_the_examples_domain_alone():
+    access = fixtures.access("conformance")
+    assert [Domain(**d).id for d in access["domains"]] == ["bolt_examples"]
+    (role,) = (Role(**r) for r in access["roles"])
+    assert (role.id, role.domain_access) == ("bolt_examples", ["bolt_examples"])
+    assert "write" in role.capabilities
+    assert access["role_mapping"] == [
+        {"claim": "username", "type": "exact", "value": "conformance", "role": "bolt_examples"}
+    ]
 
 
-def test_only_the_examples_setup_and_cleanup_are_rewritten(tmp_path):
-    tests = _examples(tmp_path)
-    adapt.adapt(tests)
-    bookmarks = (tests / "examples/test_pass_bookmarks_example.py").read_text()
-    assert "DETACH" not in bookmarks and "MERGE" not in bookmarks
-    assert bookmarks.count(adapt.PERSONS_DELETED) == 2
-    assert '"CREATE (a)-[:KNOWS]->(b)"' in bookmarks
+def _bolt_config(tmp_path, monkeypatch) -> dict:
+    monkeypatch.setattr(pgwire_catalog_types, "registrable_columns", lambda dsn: [])
+    tables, rels, access = tmp_path / "t.yaml", tmp_path / "r.yaml", tmp_path / "a.yaml"
+    tables.write_text(yaml.safe_dump(fixtures.tables()))
+    rels.write_text(yaml.safe_dump(fixtures.relationships()))
+    access.write_text(yaml.safe_dump(fixtures.access("conformance")))
+    pgwire_catalog_types.write_config(tmp_path / "provisa.yaml", 5432, "dsn", tables, rels, access)
+    return yaml.safe_load((tmp_path / "provisa.yaml").read_text())
 
 
-def test_an_example_that_changed_fails_the_adaptation_by_name(tmp_path):
-    tests = _examples(tmp_path)
-    session = tests / "examples/test_session_example.py"
-    session.write_text(session.read_text().replace(adapt.CLEANUP, '"MATCH (n) DETACH DELETE n"', 1))
-    with pytest.raises(SystemExit, match="test_session_example.py"):
-        adapt.adapt(tests)
+def test_the_model_maps_the_drivers_user_to_its_role_beside_the_shared_fixture(
+    tmp_path, monkeypatch
+):
+    config = _bolt_config(tmp_path, monkeypatch)
+    roles = {r["id"]: r for r in config["roles"]}
+    # The shared fixture's domain is not the examples' role's: their DETACH DELETE never sees it.
+    assert roles["bolt_examples"]["domain_access"] == ["bolt_examples"]
+    assert {t["table"]: t["domain_id"] for t in config["tables"]}["types_fixture"] == "conformance"
+    assert {d["id"] for d in config["domains"]} >= {"conformance", "bolt_examples"}
+    mapped = {m["value"]: m["role"] for m in config["auth"]["role_mapping"]}
+    assert mapped["conformance"] == "bolt_examples"
+    assert mapped[pgwire_catalog_types.TCK_SESSION_USER] == "tck_empty"
+
+
+def test_an_access_file_with_another_field_is_refused_by_name(tmp_path, monkeypatch):
+    monkeypatch.setattr(pgwire_catalog_types, "registrable_columns", lambda dsn: [])
+    access = tmp_path / "a.yaml"
+    access.write_text(yaml.safe_dump({**fixtures.access("conformance"), "tables": []}))
+    with pytest.raises(SystemExit, match="a.yaml: has .*'tables'"):
+        pgwire_catalog_types.write_config(tmp_path / "p.yaml", 5432, "dsn", None, None, access)
+
+
+def test_the_examples_run_as_written():
+    """No step rewrites the driver's examples: their MERGE and DETACH DELETE run as written
+    (REQ-2176), and no group of the page says their cleanup or MERGE became anything else."""
+    workflow = (CONFORMANCE.parents[1] / ".github/workflows/conformance-bolt.yml").read_text()
+    assert "adapt.py" not in workflow
+    assert not (CONFORMANCE / "bolt" / "adapt.py").exists()
+    groups = {g.group for g in by_design.groups("bolt")}
+    assert not groups & {"DETACH DELETE cleanup", "MERGE in an empty graph"}
 
 
 @pytest.mark.parametrize(
@@ -118,8 +148,9 @@ def test_an_example_that_changed_fails_the_adaptation_by_name(tmp_path):
             "test_async_cancellation_does_not_leak",
             {"adapted"},
         ),
-        # MERGE is MATCH then CREATE (REQ-2176): a failure until it lands, never by design.
-        ("tests.integration.test_readme", "test_should_run_readme", set()),
+        # The README's graph is the examples' (Person, KNOWS), its MERGE and cleanup as written.
+        ("tests.integration.test_readme", "test_should_run_readme", {"adapted"}),
+        ("tests.integration.test_readme", "test_readme_contains_example", set()),
         ("tests.integration.examples.test_service_unavailable_example", "test_example", set()),
     ],
 )

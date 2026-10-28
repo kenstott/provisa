@@ -1343,7 +1343,17 @@ Registration records the subtype whenever the source's native type maps to one. 
 | `oid` | `bigint` | Postgres object identifier; integer arithmetic and ordering |
 | `money` | `numeric` | Fixed-decimal currency; numeric arithmetic and ordering |
 
-Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there: Postgres `inet` and `cidr`, Trino `ipaddress`, ClickHouse `IPv4`/`IPv6`, Cassandra `inet`, and DuckDB `inet` all register as `inet`. SQL Server and Oracle `money` types register as `money`. SQL Server and Oracle XML types register as `xml`.
+Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there:
+
+| Subtype | Native types that register as it |
+|---|---|
+| `inet` | Postgres, CockroachDB and YugabyteDB `inet`; Trino `ipaddress`; ClickHouse `IPv4` and `IPv6` (also inside `Nullable` or `LowCardinality`); Elasticsearch `ip`; Cassandra `inet`; DuckDB `INET` |
+| `cidr` | Postgres, CockroachDB and YugabyteDB `cidr` (its own subtype, since Postgres has a distinct `cidr` type) |
+| `money` | Postgres `money`; SQL Server `money` and `smallmoney` |
+| `xml` | Postgres and SQL Server `xml`; Oracle `XMLTYPE` |
+| `geometry` | MySQL, MariaDB, TiDB and SingleStore `point`, `linestring`, `polygon` and the other spatial types; SQL Server `geometry`; Elasticsearch `point` and `shape` |
+| `geography` | SQL Server `geography`; Elasticsearch `geo_point` and `geo_shape` |
+| `point` | Postgres `point` |
 
 A type not in this table registers as its nearest base type. Model tables never change after registration; re-registering a source does not change a column's recorded subtype.
 

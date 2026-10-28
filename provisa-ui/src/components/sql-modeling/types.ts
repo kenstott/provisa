@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Relationship, RegisteredTable } from "../../types/admin";
+import type { Relationship, ListedTable } from "../../types/admin";
 
 export interface ModelingCandidate {
   id: string;
@@ -22,7 +22,7 @@ export interface ModelingCandidate {
 }
 
 export interface Props {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   existingRels: Relationship[];
   onClose: () => void;
   onPromote?: (candidate: ModelingCandidate) => Promise<void>;
@@ -55,7 +55,7 @@ export interface CanvasJoin {
   cardinality: "many-to-one" | "one-to-many";
 }
 export interface JoinCanvasProps {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   existingRels: Relationship[];
   onGenerateSql: (sql: string) => void;
 }

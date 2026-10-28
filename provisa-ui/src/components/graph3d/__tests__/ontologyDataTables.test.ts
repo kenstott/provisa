@@ -62,7 +62,8 @@ const term = (
   ref_count: 0,
   deprecated: false,
   retired: false,
-  live: true,
+  status: "approved",
+  grounding: "grounded",
   domains: [{ domain_id: domain }],
   refs,
 });

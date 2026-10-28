@@ -11,10 +11,10 @@
 """REQ-1591, REQ-1387: a term's domains and its groundedness in the meta domain.
 
 _domains_ontology restates provisa.core.repositories.glossary.term_domains (a term's
-refs' domains while it holds refs, its declared domains otherwise) and _terms_ontology.grounded
-restates provisa.core.glossary.grounded_term_ids (connected over in-service edges to a term holding
-a ref, defined or not). Both run on the real control plane and are checked against the Python rule
-they restate.
+refs' domains while it holds refs, its declared domains otherwise) and _terms_ontology.grounding
+restates provisa.core.glossary.term_grounding (grounded, grounded_pending or not_grounded, looking
+down a term's paths to data). Both run on the real control plane and are checked against the
+Python rule they restate.
 """
 
 # Requirements: REQ-1591, REQ-1387
@@ -27,8 +27,13 @@ from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 
 # Terms: ROOTED holds a ref (and a stale declared domain); ABSTRACT declares the enterprise scope;
-# BARE has neither; UNDEFINED has no definition but an edge to ROOTED; RETIRED is out of service.
-ROOTED, ABSTRACT, BARE, UNDEFINED, RETIRED = 1, 2, 3, 4, 5
+# BARE has neither; UNDEFINED has no definition but an edge to ROOTED; RETIRED is out of service;
+# TOP is approved and reaches data only through draft UNDEFINED. Down follows each edge type's
+# direction (REQ-1387, DOWN IS FROM BROADER TO NARROWER): ROOTED is a kind of UNDEFINED, a kind of
+# TOP; SIBLING is another kind of UNDEFINED, holding no data; SYNONYM is a synonym of TOP; RELATED is
+# related to ROOTED; PART is a part of ROOTED.
+ROOTED, ABSTRACT, BARE, UNDEFINED, RETIRED, TOP = 1, 2, 3, 4, 5, 6
+SIBLING, SYNONYM, RELATED, PART = 8, 9, 10, 11
 
 
 async def _seed(conn) -> None:
@@ -58,6 +63,11 @@ async def _seed(conn) -> None:
         dict(id=BARE, name="Lead", definition="A prospect"),
         dict(id=UNDEFINED, name="Account", definition=""),
         dict(id=RETIRED, name="Client", definition="Old word", retired=True),
+        dict(id=TOP, name="Holder", definition="Who holds an account", approved=True),
+        dict(id=SIBLING, name="Supplier", definition="Who sells to us", approved=True),
+        dict(id=SYNONYM, name="Owner", definition="Who holds an account", approved=True),
+        dict(id=RELATED, name="Order", definition="What a buyer places", approved=True),
+        dict(id=PART, name="Email", definition="A buyer's address", approved=True),
     ]
     for t in terms:
         await conn.execute_core(insert(glossary_terms).values(**t))
@@ -68,9 +78,18 @@ async def _seed(conn) -> None:
         await conn.execute_core(
             insert(glossary_term_domains).values(term_id=term_id, domain_id=domain)
         )
-    for a, b in ((UNDEFINED, ROOTED), (RETIRED, ROOTED)):
+    for a, b, rel_type in (
+        (ROOTED, UNDEFINED, "KIND_OF"),
+        (ROOTED, RETIRED, "KIND_OF"),
+        (UNDEFINED, TOP, "KIND_OF"),
+        (SIBLING, UNDEFINED, "KIND_OF"),
+        (SYNONYM, TOP, "SYNONYM_OF"),
+        (RELATED, ROOTED, "RELATED_TO"),
+        (ROOTED, RELATED, "RELATED_TO"),
+        (PART, ROOTED, "PART_OF"),
+    ):
         await conn.execute_core(
-            insert(glossary_term_edges).values(from_term_id=a, to_term_id=b, rel_type="RELATED_TO")
+            insert(glossary_term_edges).values(from_term_id=a, to_term_id=b, rel_type=rel_type)
         )
 
 
@@ -79,7 +98,7 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
     from sqlalchemy import select, text
 
     from provisa.api.startup_seed import _adapt_view_ddl
-    from provisa.core.glossary import grounded_term_ids
+    from provisa.core.glossary import term_grounding
     from provisa.core.repositories.glossary import term_domains
     from provisa.core.schema_org import glossary_term_edges, glossary_terms
 
@@ -95,9 +114,9 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
             ).fetchall():
                 view_domains.setdefault(r.term_id, set()).add(r.domain_id)
             flags = {
-                r.id: (r.grounded, r.live)
+                r.id: r.grounding
                 for r in (
-                    await conn.execute_core(text("SELECT id, grounded, live FROM _terms_ontology"))
+                    await conn.execute_core(text("SELECT id, grounding FROM _terms_ontology"))
                 ).fetchall()
             }
             python_domains = await term_domains(conn)
@@ -106,21 +125,27 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
                 for r in (await conn.execute_core(select(glossary_terms))).fetchall()
             ]
             edges = [
-                (r.from_term_id, r.to_term_id)
+                (r.from_term_id, r.to_term_id, r.rel_type)
                 for r in (await conn.execute_core(select(glossary_term_edges))).fetchall()
             ]
-            python_grounded = grounded_term_ids(terms, edges, {ROOTED})
+            python_grounding = term_grounding(terms, edges, {ROOTED})
     finally:
         await db.close()
 
     # The refs' domain wins over the stale declared one; the abstract term keeps its declared *.
     assert view_domains == {ROOTED: {"sales"}, ABSTRACT: {"*"}} == python_domains
 
-    # The undefined term is grounded but not live; the retired one conducts nothing.
-    assert {t for t, (grounded, _) in flags.items() if grounded} == python_grounded
-    assert flags[UNDEFINED] == (True, False)
-    assert flags[RETIRED] == (False, False)
-    assert flags[BARE] == (False, False)
+    # The draft next to data is grounded; the approved term above it is pending; the retired one
+    # conducts nothing.
+    assert flags == python_grounding
+    assert flags[UNDEFINED] == "grounded"
+    assert flags[TOP] == "grounded_pending"
+    assert flags[RETIRED] == "not_grounded"
+    assert flags[BARE] == "not_grounded"
+    assert flags[SIBLING] == "not_grounded"  # never up to UNDEFINED and back down
+    assert flags[SYNONYM] == "grounded_pending"  # through TOP, then draft UNDEFINED
+    assert flags[RELATED] == "not_grounded"
+    assert flags[PART] == "not_grounded"  # a part of data is not grounded by it
 
 
 def test_a_term_reaches_its_domains_and_back():

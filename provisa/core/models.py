@@ -661,9 +661,8 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
     A config-declared term holds no column refs of its own, so ``domains`` (required,
     non-empty) is the only thing that scopes it — see ``create_abstract_term``'s docstring for
     why an unscoped term is a governance gap. Until it grounds something it is a Concept, and
-    otherwise inert — the live/approved admission rule requires it be *grounded*, reachable by
-    an edge from a term that does hold a column ref — so ``edges`` is how config connects it to
-    the concrete terms it actually means. Whether it is abstract is derived, never declared
+    otherwise inert — it reaches data only through an edge to a term that does hold a column
+    ref — so ``edges`` is how config connects it to the concrete terms it actually means. Whether it is abstract is derived, never declared
     (REQ-2141).
     """
 
@@ -671,7 +670,10 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
-    # REQ-2144: the asserted parts of its status, one at most; draft and live are computed.
+    # REQ-1387, REQ-2144: its status, set by people. ``approve`` approves it (it needs a
+    # definition), and only an approved term is deprecated; of deprecate, retire and restore one
+    # at most.
+    approve: bool = False
     deprecate: GlossaryTermDeprecation | None = None
     retire: GlossaryTermRetirement | None = None
     restore: bool = False
@@ -682,6 +684,13 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
             raise ValueError(
                 f"glossary term {self.name!r} states more than one of deprecate, retire and restore"
             )
+        if self.approve and (self.retire is not None or self.restore):
+            raise ValueError(
+                f"glossary term {self.name!r} states approve with retire or restore; approve goes "
+                "alone or with deprecate"
+            )
+        if self.approve and not (self.definition or "").strip():
+            raise ValueError(f"glossary term {self.name!r} is approved, which needs a definition")
         return self
 
     @model_validator(mode="before")

@@ -248,7 +248,7 @@ describe("what each lane node says (EVERY LANE NODE INFORMS AND LINKS)", () => {
     hover("term:customer");
     const facts = await screen.findByTestId("graph3d-lanes-tip-facts");
     expect(facts).toHaveTextContent("A person or company that has bought from us.");
-    expect(facts).toHaveTextContent("Live");
+    expect(facts).toHaveTextContent("Approved");
     expect(facts).toHaveTextContent("ada");
   });
 

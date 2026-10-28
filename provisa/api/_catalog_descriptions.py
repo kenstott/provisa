@@ -505,16 +505,15 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "ref_count": "How many physical columns the term binds to",
         "is_rooted": "True when the term holds at least one physical ref of its own, to a column "
         "or a whole table",
-        "live": "True when the term is in service, defined, and connected over in-service "
-        "edges to a term holding a physical ref",
-        "status": "draft (not admitted), live (admitted), deprecated (its column went, or a "
-        "curator deprecated it; in service until retired) or retired (out of service)",
+        "status": "Set by people: draft (the default), approved (a steward approved it), "
+        "deprecated (its column went, or a curator deprecated it) or retired (out of service)",
         "status_reason": "Why a curator deprecated or retired the term",
         "retire_on": "The date a deprecated term is retired on, when a curator planned one",
         "tenant_id": _TENANT,
         # REQ-1387
-        "grounded": "True when the term is connected over in-service edges to a term holding a "
-        "physical ref, defined or not",
+        "grounding": "Computed: grounded (some path down to a term holding a physical ref has no "
+        "draft term strictly between), grounded_pending (every such path has one) or "
+        "not_grounded (no path over in-service terms reaches data)",
         "identity_gap": "True when the term grounds several tables that same-entity "
         "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "

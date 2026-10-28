@@ -497,6 +497,53 @@ export interface RegisteredTable {
   implicitDimensions: string[]; // REQ-1360: metadata-only, populated only when enableGroupBy
 }
 
+/** The fields of a table every table list reads (fragment ListedTableFields, hooks/admin.graphql). */
+export const LISTED_TABLE_FIELDS = [
+  "id",
+  "sourceId",
+  "domainId",
+  "schemaName",
+  "tableName",
+  "alias",
+  "description",
+  "draft",
+  "viewSql",
+  "materialize",
+  "productId",
+  "dqContract",
+  "dqDataset",
+  "timeTravel",
+  "apiEndpoint",
+  "modelingRole",
+  "viewMetrics",
+] as const;
+
+/** The fields of a column TableListQuery reads. */
+export const LISTED_COLUMN_FIELDS = [
+  "id",
+  "columnName",
+  "alias",
+  "computedSqlAlias",
+  "description",
+  "dataType",
+  "nativeFilterType",
+  "nativeFilterRequired",
+  "requiredBySteward",
+  "isPrimaryKey",
+  "isForeignKey",
+] as const;
+
+/** A table as TableRowsQuery reads it: without its columns. */
+export type TableRow = Pick<RegisteredTable, (typeof LISTED_TABLE_FIELDS)[number]>;
+
+/** A column as TableListQuery reads it. */
+export type ListedColumn = Pick<TableColumn, (typeof LISTED_COLUMN_FIELDS)[number]>;
+
+/** A table as TableListQuery reads it: what the pages that pick, name or count tables use. */
+export interface ListedTable extends TableRow {
+  columns: ListedColumn[];
+}
+
 // REQ-1318: declarative metric-composed view definition. Mutually exclusive with
 // viewSql — the server generates (and regenerates on metric change) the view SQL.
 export interface ViewMetricsSpec {

@@ -11,14 +11,14 @@
 import { useTranslation } from "react-i18next";
 import { Checkbox, MultiSelect, Paper, Select, Stack, TextInput } from "@mantine/core";
 import { keyList } from "../../naming";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import { tableRef, type RelForm } from "./relationship-types";
 import { FormChecks, FormField, FormLayout } from "../form/FormLayout";
 
 interface JunctionPanelProps {
   form: RelForm;
   setForm: (f: RelForm) => void;
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   testIdPrefix: string;
 }
 

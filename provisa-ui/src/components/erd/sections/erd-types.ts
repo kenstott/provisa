@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { RegisteredTable, Relationship, Domain } from "../../../types/admin";
+import type { ListedTable, Relationship, Domain } from "../../../types/admin";
 
 export interface TooltipState {
   visible: boolean;
@@ -19,7 +19,7 @@ export interface TooltipState {
 }
 
 export interface ErdPanelProps {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   relationships: Relationship[];
   domains: Domain[];
   // Domains to render, driven by the host page's own domain filter. Null means unfiltered (show all).
@@ -29,7 +29,7 @@ export interface ErdPanelProps {
 }
 
 export interface ErdModalProps {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   relationships: Relationship[];
   domains: Domain[];
   checkedDomains: Set<string> | null;

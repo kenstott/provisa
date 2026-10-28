@@ -220,6 +220,7 @@ relationships:
 # terms the model derives (cve, weakness, cvss v31 score, due date, severity).
 glossary_terms:
 - name: common vulnerabilities and exposures
+  approve: true
   definition: 'CVE: the public catalog of known vulnerabilities, one identifier (CVE-YYYY-NNNN) for each. The NVD records each one''s description and score.'
   domains:
   - security
@@ -227,6 +228,7 @@ glossary_terms:
   - to: cve
     rel_type: RELATED_TO
 - name: known exploited vulnerability
+  approve: true
   definition: 'KEV: a CVE that attackers are known to exploit in the wild. CISA keeps the catalog, with a date by which federal agencies must remediate each one.'
   domains:
   - security
@@ -236,6 +238,7 @@ glossary_terms:
   - to: due date
     rel_type: RELATED_TO
 - name: common weakness enumeration
+  approve: true
   definition: 'CWE: MITRE''s catalog of the kinds of mistake in software that vulnerabilities are instances of -- injection, deserialization of untrusted data, path traversal.'
   domains:
   - security
@@ -243,6 +246,7 @@ glossary_terms:
   - to: weakness
     rel_type: RELATED_TO
 - name: common vulnerability scoring system
+  approve: true
   definition: 'CVSS: a score from 0 to 10 of how severe a vulnerability is, from how it is exploited and what it reaches. It does not say whether anyone exploits it.'
   domains:
   - security
@@ -250,6 +254,7 @@ glossary_terms:
   - to: cvss v31 score
     rel_type: RELATED_TO
 - name: dependency alert
+  approve: true
   definition: 'An alert raised when a repository pins a package version with a published advisory: the package, the CVE and the version that fixes it.'
   domains:
   - security
@@ -259,6 +264,7 @@ glossary_terms:
   - to: common vulnerabilities and exposures
     rel_type: RELATED_TO
 - name: remediation due date
+  approve: true
   definition: 'The date by which a known exploited vulnerability must be fixed. CISA sets one for federal agencies; many companies hold themselves to it.'
   domains:
   - security

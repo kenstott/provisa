@@ -27,6 +27,7 @@ import {
   Modal,
   NavLink,
   MultiSelect,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -38,7 +39,9 @@ import { notifications } from "@mantine/notifications";
 import {
   Archive,
   ArchiveRestore,
+  BadgeCheck,
   BookOpen,
+  ClipboardList,
   Hourglass,
   Pencil,
   Plus,
@@ -51,6 +54,8 @@ import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
 import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
+import { TermImpactPreview } from "./TermImpactPreview";
+import { StewardshipSummary } from "./StewardshipSummary";
 import { tableNames, toReview } from "./termFindings";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
@@ -60,6 +65,7 @@ import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
   GLOSSARY_REL_TYPES,
+  approveGlossaryTerm,
   createGlossaryTerm,
   deleteGlossaryTerm,
   fetchGlossaryTerm,
@@ -76,7 +82,12 @@ import { useAuth } from "../../context/AuthContext";
 import { ENTERPRISE_DOMAIN } from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
-import type { GlossaryTermDetail, GlossaryTermSummary } from "../../api/glossary";
+import type {
+  GlossaryTermDetail,
+  GlossaryTermSummary,
+  TermGrounding,
+  TermStatus,
+} from "../../api/glossary";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { getStored, setStored } from "../../lib/browserStorage";
@@ -160,9 +171,23 @@ export function GlossaryTab() {
   const [showDeprecated, setShowDeprecated] = useState(() =>
     readStoredBool("glossary.showDeprecated", true),
   );
-  // Draft terms (not yet admitted) are the raw output of the semantic layer's derivation, not
-  // curated — unchecking this narrows the list to terms in service or past it.
-  const [showDraft, setShowDraft] = useState(() => readStoredBool("glossary.showDraft", true));
+  // REQ-2144: the list filtered by a term's status and, apart, by its grounding (REQ-1387).
+  const [statusFilter, setStatusFilterState] = useState<TermStatus | null>(
+    () => readStoredString("glossary.status") as TermStatus | null,
+  );
+  const setStatusFilter = (value: TermStatus | null) => {
+    setStatusFilterState(value);
+    writeStored("glossary.status", value ?? "");
+  };
+  const [groundingFilter, setGroundingFilterState] = useState<TermGrounding | null>(
+    () => readStoredString("glossary.grounding") as TermGrounding | null,
+  );
+  const setGroundingFilter = (value: TermGrounding | null) => {
+    setGroundingFilterState(value);
+    writeStored("glossary.grounding", value ?? "");
+  };
+  // The approval being confirmed, its impact shown first (REQ-2144).
+  const [approveOpen, setApproveOpen] = useState(false);
   // REQ-2146: narrow the list to the terms with findings.
   const [toReviewOnly, setToReviewOnlyState] = useState(() =>
     readStoredBool("glossary.toReview", false),
@@ -175,10 +200,6 @@ export function GlossaryTab() {
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
   }, [showDeprecated]);
-
-  useEffect(() => {
-    writeStoredBool("glossary.showDraft", showDraft);
-  }, [showDraft]);
 
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<number | null>(() => {
@@ -484,9 +505,19 @@ export function GlossaryTab() {
   const otherTermOptions = terms
     .filter((term) => term.id !== detail?.id)
     .map((term) => ({ value: String(term.id), label: term.name }));
-  const displayedTerms = (
-    showDraft ? terms : terms.filter((term) => term.status !== "draft")
-  ).filter((term) => !toReviewOnly || toReview(term));
+  const displayedTerms = terms.filter(
+    (term) =>
+      (!statusFilter || term.status === statusFilter) &&
+      (!groundingFilter || term.grounding === groundingFilter) &&
+      (!toReviewOnly || toReview(term)),
+  );
+  const statusOptions = (["draft", "approved", "deprecated", "retired"] as const).map((st) => ({
+    value: st,
+    label: t(`glossaryTab.status_${st}`),
+  }));
+  const groundingOptions = (["grounded", "grounded_pending", "not_grounded"] as const).map(
+    (g) => ({ value: g, label: t(`glossaryTab.groundingValue_${g}`) }),
+  );
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -518,6 +549,21 @@ export function GlossaryTab() {
               {t("glossaryTab.newTerm")}
             </Button>
           )}
+          <Tip text={t("glossaryTab.stewardshipHint")} named>
+            <ActionIcon
+              size="input-sm"
+              variant={!ontology && selectedId === null ? "light" : "subtle"}
+              aria-label={t("glossaryTab.stewardshipHint")}
+              onClick={() => {
+                setOntology(false);
+                setSelectedId(null);
+                setDetail(null);
+              }}
+              data-testid="glossary-stewardship-btn"
+            >
+              <ClipboardList size={16} aria-hidden />
+            </ActionIcon>
+          </Tip>
           <OntologyToggle open={ontology} onChange={setOntology} />
           {canEdit ? (
             // The AI drafts, both behind one sparkle: relationships between the terms, and the
@@ -579,7 +625,7 @@ export function GlossaryTab() {
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
           <div
             style={{
-              width: 280,
+              width: 340,
               flexShrink: 0,
               display: "flex",
               flexDirection: "column",
@@ -597,14 +643,7 @@ export function GlossaryTab() {
                 styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-show-deprecated"
               />
-              <Checkbox
-                size="xs"
-                label={t("glossaryTab.status_draft")}
-                checked={showDraft}
-                onChange={(e) => setShowDraft(e.currentTarget.checked)}
-                styles={{ label: { whiteSpace: "nowrap" } }}
-                data-testid="glossary-show-draft"
-              />
+
               <Checkbox
                 size="xs"
                 label={t("glossaryTab.toReview")}
@@ -612,6 +651,30 @@ export function GlossaryTab() {
                 onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
                 styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-to-review-only"
+              />
+            </Group>
+            <Group gap={6} px="xs" pb={6} wrap="nowrap" grow>
+              <Select
+                size="xs"
+                placeholder={t("glossaryTab.filterStatus")}
+                aria-label={t("glossaryTab.filterStatus")}
+                data={statusOptions}
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v as TermStatus | null)}
+                clearable
+                comboboxProps={{ withinPortal: true, width: "max-content" }}
+                data-testid="glossary-status-filter"
+              />
+              <Select
+                size="xs"
+                placeholder={t("glossaryTab.filterGrounding")}
+                aria-label={t("glossaryTab.filterGrounding")}
+                data={groundingOptions}
+                value={groundingFilter}
+                onChange={(v) => setGroundingFilter(v as TermGrounding | null)}
+                clearable
+                comboboxProps={{ withinPortal: true, width: "max-content" }}
+                data-testid="glossary-grounding-filter"
               />
             </Group>
             <div style={{ flex: 1, overflow: "auto" }}>
@@ -646,9 +709,12 @@ export function GlossaryTab() {
                 <Loader size="xs" />
               </Group>
             ) : !detail ? (
-              <Text size="sm" c="dimmed" py="sm">
-                {t("glossaryTab.selectTerm")}
-              </Text>
+              // REQ-2144: with no term open, the stewardship summary.
+              <StewardshipSummary
+                canEdit={canEdit}
+                navigateToTerm={navigateToTerm}
+                onApproved={() => void refreshList()}
+              />
             ) : (
               <Stack gap="md" pb="md">
                 {actionError && (
@@ -663,8 +729,23 @@ export function GlossaryTab() {
                 {detail.status === "draft" && (
                   <Alert color="yellow" data-testid="glossary-draft">
                     {(detail.definition ?? "").trim()
-                      ? t("glossaryTab.draftUngrounded")
+                      ? t("glossaryTab.draftDefined")
                       : t("glossaryTab.draftUndefined")}
+                  </Alert>
+                )}
+                {/* REQ-1387: what keeps it from reaching data, or from reaching it cleanly. */}
+                {detail.grounding === "not_grounded" &&
+                  (detail.status === "draft" || detail.status === "approved") && (
+                    <Alert color="orange" data-testid="glossary-ungrounded">
+                      {t("glossaryTab.draftUngrounded")}
+                    </Alert>
+                  )}
+                {detail.grounding === "grounded_pending" && detail.pending_on.length > 0 && (
+                  <Alert color="yellow" variant="outline" data-testid="glossary-pending-on">
+                    {t("glossaryTab.groundingValue_grounded_pending")} —{" "}
+                    {t("glossaryTab.pendingOn", {
+                      terms: detail.pending_on.map((p) => p.name).join(", "),
+                    })}
                   </Alert>
                 )}
 
@@ -679,10 +760,32 @@ export function GlossaryTab() {
                     >
                       {t("glossaryTab.edit")}
                     </Button>
-                    {/* REQ-2144: each status change is an action with a reason. A live term can be
-                        deprecated; any term in service retired; a deprecation or a retirement
-                        undone. */}
-                    {detail.status === "live" && (
+                    {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
+                        approved, its impact seen first; an approved term deprecated, with a
+                        reason; any term in service retired; a deprecation or a retirement undone. */}
+                    {detail.status === "draft" && (
+                      <Tip
+                        text={
+                          (detail.definition ?? "").trim()
+                            ? t("glossaryTab.approveHint")
+                            : t("glossaryTab.approveNeedsDefinition")
+                        }
+                      >
+                        <span>
+                          <Button
+                            variant="light"
+                            color="teal"
+                            leftSection={<BadgeCheck size={14} />}
+                            disabled={!(detail.definition ?? "").trim()}
+                            onClick={() => setApproveOpen(true)}
+                            data-testid="glossary-approve-btn"
+                          >
+                            {t("glossaryTab.approve")}
+                          </Button>
+                        </span>
+                      </Tip>
+                    )}
+                    {detail.status === "approved" && (
                       <Tip text={t("glossaryTab.deprecateHint")}>
                         <Button
                           variant="light"
@@ -804,8 +907,25 @@ export function GlossaryTab() {
                                 },
                               ]
                             : [];
+                        case "path_pending":
+                          // REQ-1387: open each term whose approval grounds this one.
+                          return (f.params.approve ? f.params.approve.split(", ") : []).flatMap(
+                            (name) => {
+                              const term = terms.find((x) => x.name === name);
+                              return term
+                                ? [
+                                    {
+                                      label: t("glossaryTab.findingFix_path_pending", { term: name }),
+                                      run: () => navigateToTerm(term.id),
+                                      testId: `glossary-finding-fix-open-${term.id}`,
+                                    },
+                                  ]
+                                : [];
+                            },
+                          );
                         case "class_and_attribute":
                         case "no_data":
+                        case "approved_not_grounded":
                           return canEdit ? [edit] : [];
                       }
                     }}
@@ -934,6 +1054,34 @@ export function GlossaryTab() {
             void act(async () => undefined, t("glossaryTab.retireDone"));
           }}
         />
+      )}
+      {detail && approveOpen && (
+        <Modal
+          opened
+          onClose={() => setApproveOpen(false)}
+          title={t("glossaryTab.impactTitle_approve", { term: detail.name })}
+          data-testid="glossary-approve-dialog"
+        >
+          <Stack gap="sm">
+            <TermImpactPreview termId={detail.id} action="approve" />
+            <FormFooter
+              onCancel={() => setApproveOpen(false)}
+              action={
+                <Button
+                  color="teal"
+                  leftSection={<BadgeCheck size={14} />}
+                  onClick={() => {
+                    setApproveOpen(false);
+                    void act(() => approveGlossaryTerm(detail.id), t("glossaryTab.approveDone"));
+                  }}
+                  data-testid="glossary-approve-confirm"
+                >
+                  {t("glossaryTab.approve")}
+                </Button>
+              }
+            />
+          </Stack>
+        </Modal>
       )}
     </Stack>
   );

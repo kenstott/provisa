@@ -32,7 +32,7 @@ import { notifications } from "@mantine/notifications";
 import { Plus, Trash2 } from "lucide-react";
 import { useDeleteTable, useRegisterTable, useTables } from "../../hooks/useAdminQueries";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
@@ -42,7 +42,7 @@ export function ReportsTab() {
   const { t } = useTranslation();
   // REQ-1620: a report is read as the selected roles, the "Role: All" set included.
   const { actingRoles } = useAuth();
-  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables({ inPage: true });
   const { registerTable } = useRegisterTable();
   const { deleteTable } = useDeleteTable();
 
@@ -84,7 +84,7 @@ export function ReportsTab() {
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState("");
 
-  const handleSelect = (report: RegisteredTable) => {
+  const handleSelect = (report: ListedTable) => {
     setSelectedId(report.id);
   };
 
@@ -119,7 +119,7 @@ export function ReportsTab() {
     }
   };
 
-  const handleDelete = async (report: RegisteredTable) => {
+  const handleDelete = async (report: ListedTable) => {
     if (!window.confirm(t("reportsTab.deleteConfirm", { name: report.alias || report.tableName })))
       return;
     const result = await deleteTable(report.id);

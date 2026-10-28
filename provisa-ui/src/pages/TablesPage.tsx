@@ -38,7 +38,7 @@ import { fetchSettings, profileTable, runSql } from "../api/admin";
 import { downloadModelReport } from "../api/modelReport";
 import type { PlatformSettings } from "../api/admin";
 import {
-  useTables,
+  useTableDetails,
   useSources,
   useDomains,
   useRoles,
@@ -119,7 +119,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     loading: tablesLoading,
     error: tablesError,
     refetch: refetchTables,
-  } = useTables();
+  } = useTableDetails();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634

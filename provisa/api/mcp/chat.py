@@ -345,10 +345,11 @@ _TOOLS: list[Any] = [
     {
         "name": "list_glossary_terms",
         "description": (
-            "Search/list the org's ontology terms. Each result's `status` is draft (not "
-            "admitted: undefined, or grounded to no real column directly or through edges), "
-            "live (admitted), deprecated or retired. Use this before create_glossary_term to "
-            "avoid creating a duplicate."
+            "Search/list the org's ontology terms. Each result's `status` is set by people: "
+            "draft (the default), approved, deprecated or retired; its `grounding` is computed: "
+            "grounded, grounded_pending (it reaches data only through terms not yet approved) "
+            "or not_grounded. Use this before create_glossary_term to avoid creating a "
+            "duplicate."
         ),
         "input_schema": {
             "type": "object",
@@ -365,18 +366,20 @@ _TOOLS: list[Any] = [
             "{kind, message, params}. Kinds: unlinked_tables (a class's tables not all joined "
             "as one entity), class_and_attribute (a class holding non-key columns, or a table "
             "left without a class), tag_wrong_kind (a term tag on a term that is not a "
-            "property), retirement_blocked (due for retirement but still holding data) and "
-            "no_data (a concept that reaches no data). A plain draft term is not a finding."
+            "property), retirement_blocked (due for retirement but still holding data), "
+            "no_data (a draft concept that reaches no data), approved_not_grounded (an "
+            "approved term that reaches no data) and path_pending (a term reaching data only "
+            "through terms not yet approved, naming the approval that grounds it). A plain "
+            "draft term is not a finding."
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "create_glossary_term",
         "description": (
-            "Create a new ontology term (name + definition). It starts a draft — "
-            "there is no separate flag to mark it finalized/live. A draft term becomes live "
-            "either automatically (a real column gets registered and lands on it) or by calling "
-            "add_glossary_term_edge to connect it to a term that is already live. If the org runs "
+            "Create a new ontology term (name + definition). It starts a draft; a steward "
+            "approves it with approve_glossary_term once it has a definition. Its grounding "
+            "follows from its edges (add_glossary_term_edge) and bindings. If the org runs "
             "multi-domain, pass at least one domain id."
         ),
         "input_schema": {
@@ -409,10 +412,22 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "approve_glossary_term",
+        "description": (
+            "Approve a draft ontology term. It needs a definition. Approval is a person's "
+            "choice: call it only when the user asks for this term to be approved."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}},
+            "required": ["term_id"],
+        },
+    },
+    {
         "name": "deprecate_glossary_term",
         "description": (
-            "Deprecate a live ontology term, with a reason and an optional planned retirement "
-            "date (ISO, not in the past). It stays in service until then and is retired on it."
+            "Deprecate an approved ontology term, with a reason and an optional planned "
+            "retirement date (ISO, not in the past). It is retired on that date."
         ),
         "input_schema": {
             "type": "object",
@@ -1069,16 +1084,17 @@ _SYSTEM = (
     "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
     "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
     "and mark a Property term pii with tag_glossary_term/untag_glossary_term, "
-    "and change a term's status with deprecate_glossary_term/retire_glossary_term/"
-    "restore_glossary_term (each takes a reason, except restore), "
+    "and change a term's status with approve_glossary_term/deprecate_glossary_term/"
+    "retire_glossary_term/restore_glossary_term (each takes a reason, except approve and "
+    "restore), "
     "directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
     "need no admin_mutation. Still always confirm with the user "
     "(present_choice, mode='yes_no') before delete_glossary_term specifically, since it's "
     "irreversible; create/update/edge actions are safe to do directly once asked. Check list_"
-    "glossary_terms first to avoid creating a duplicate term, and remember 'finalizing' a term "
-    "has no direct flag — it happens by grounding it (a real column, or add_glossary_term_edge to "
-    "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
+    "glossary_terms first to avoid creating a duplicate term. A term's status is set by people "
+    "(approve_glossary_term approves a defined draft); its grounding is computed from its "
+    "edges and bindings and is never set. Per "
     "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/list_data_product_findings/create_data_product/"
@@ -1473,6 +1489,7 @@ async def _execute_tool(
         "unground_glossary_term_from_table",
         "tag_glossary_term",
         "untag_glossary_term",
+        "approve_glossary_term",
         "deprecate_glossary_term",
         "retire_glossary_term",
         "restore_glossary_term",
@@ -1499,7 +1516,12 @@ async def _execute_tool(
                 definition=args.get("definition"),
                 export_excluded=args.get("export_excluded"),
             )
-        if name in ("deprecate_glossary_term", "retire_glossary_term", "restore_glossary_term"):
+        if name in (
+            "approve_glossary_term",
+            "deprecate_glossary_term",
+            "retire_glossary_term",
+            "restore_glossary_term",
+        ):
             action = name.split("_", 1)[0]
             body = {
                 k: args[k]
