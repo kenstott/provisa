@@ -92,6 +92,7 @@ import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
 import { COSMOSDB, cosmosHints } from "./sources/cosmosdb";
+import { excelHintsOf, filesMappingJson, repeatedNames } from "./sources/excelHints";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
 import { NEW_SOURCE, keepFolderAs, resendHeldFolder } from "./sources/folderZip";
@@ -179,6 +180,9 @@ export function SourcesPage() {
   // only for a type with no dedicated branch -- never overrides a branch's own intentional {} (e.g.
   // hiveserver2 omitting the default PLAIN auth_mechanism on purpose).
   const [editingSourceHintsJson, setEditingSourceHintsJson] = useState<string | null>(null);
+  // The edited source's mapping, so that a field the form shows is saved over it and the rest of
+  // it is kept (a files source's Excel hints beside its crawl).
+  const [editingSourceMappingJson, setEditingSourceMappingJson] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
   const [error, setError] = useState<string | null>(null);
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
@@ -519,6 +523,7 @@ export function SourcesPage() {
     if (!seedFrom(s)) return;
     setEditingSourceId(s.id);
     setEditingSourceHintsJson(s.federationHintsJson ?? null);
+    setEditingSourceMappingJson(s.mappingJson ?? null);
     updateExpanded(s.id);
     setShowForm(false);
   };
@@ -535,6 +540,7 @@ export function SourcesPage() {
     setShowForm(false);
     setEditingSourceId(null);
     setEditingSourceHintsJson(null);
+    setEditingSourceMappingJson(null);
     setForm({
       id: "",
       type: "postgresql",
@@ -584,6 +590,10 @@ export function SourcesPage() {
     // blocks the save before any mutation runs.
     if (!sourceLoadFieldsValid(form, cacheTtlRequired)) {
       setError(t("sourceFormFieldsExtended.loadManagementFixErrors"));
+      return;
+    }
+    if (form.type === "files" && repeatedNames(excelHintsOf(authFields)).size > 0) {
+      setError(t("excelHints.repeatedFix"));
       return;
     }
     setSubmitting(true);
@@ -750,55 +760,57 @@ export function SourcesPage() {
             )
           : authFields;
       const spMappingJson =
-        form.type === "data_profiler"
-          ? profilerMappingJson(authFields) // REQ-1934
-          : CODE_SOURCE_TYPES.has(form.type)
-            ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
-            : form.type === "cloudops"
-              ? cloudopsMappingJson(authFields) // REQ-1947
-              : form.type === "sparql"
-                ? sparqlMappingJson(authFields) // REQ-2138
-                : form.type === GOOGLE_WORKSPACE
-                  ? JSON.stringify(gwMapping(authFields)) // REQ-1923
-                  : form.type === MICROSOFT_365
-                    ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
-                    : form.type === LOGS
-                      ? JSON.stringify(logsMapping(authFields)) // REQ-1996
-                      : form.type === "salesforce"
-                        ? salesforceMappingJson(authFields) // REQ-1946
-                        : form.type === "sharepoint"
-                          ? JSON.stringify({
-                              auth_type: spAuthType,
-                              ...(spAuthType === "CERTIFICATE"
-                                ? {
-                                    certificate_path: spCertPath,
-                                    certificate_password: spCertPassword,
-                                  }
-                                : {}),
-                              ...(spAuthType === "USERNAME_PASSWORD"
-                                ? { sp_username: spUsername, sp_password: spPassword }
-                                : {}),
-                            })
-                          : form.type === "splunk"
+        form.type === "files"
+          ? filesMappingJson(editingSourceId ? editingSourceMappingJson : null, authFields)
+          : form.type === "data_profiler"
+            ? profilerMappingJson(authFields) // REQ-1934
+            : CODE_SOURCE_TYPES.has(form.type)
+              ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
+              : form.type === "cloudops"
+                ? cloudopsMappingJson(authFields) // REQ-1947
+                : form.type === "sparql"
+                  ? sparqlMappingJson(authFields) // REQ-2138
+                  : form.type === GOOGLE_WORKSPACE
+                    ? JSON.stringify(gwMapping(authFields)) // REQ-1923
+                    : form.type === MICROSOFT_365
+                      ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
+                      : form.type === LOGS
+                        ? JSON.stringify(logsMapping(authFields)) // REQ-1996
+                        : form.type === "salesforce"
+                          ? salesforceMappingJson(authFields) // REQ-1946
+                          : form.type === "sharepoint"
                             ? JSON.stringify({
-                                use_token: splunkAuthMode === "token",
-                                ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                                auth_type: spAuthType,
+                                ...(spAuthType === "CERTIFICATE"
+                                  ? {
+                                      certificate_path: spCertPath,
+                                      certificate_password: spCertPassword,
+                                    }
+                                  : {}),
+                                ...(spAuthType === "USERNAME_PASSWORD"
+                                  ? { sp_username: spUsername, sp_password: spPassword }
+                                  : {}),
                               })
-                            : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                              // sheet id (which rides in `database`), so it travels in the mapping like the other
-                              // connectors' extra options.
-                              form.type === "google_sheets"
+                            : form.type === "splunk"
                               ? JSON.stringify({
-                                  credentials_json: authFields.credentials_json ?? "",
+                                  use_token: splunkAuthMode === "token",
+                                  ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
                                 })
-                              : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                                // region/endpoint) are a mapping-discriminated config choice read by
-                                // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                                // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                                // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                                form.type === "hive" || form.type === "hive_s3"
-                                ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                                : undefined;
+                              : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                                // sheet id (which rides in `database`), so it travels in the mapping like the other
+                                // connectors' extra options.
+                                form.type === "google_sheets"
+                                ? JSON.stringify({
+                                    credentials_json: authFields.credentials_json ?? "",
+                                  })
+                                : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                                  // region/endpoint) are a mapping-discriminated config choice read by
+                                  // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                                  // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                                  // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                                  form.type === "hive" || form.type === "hive_s3"
+                                  ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                                  : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
