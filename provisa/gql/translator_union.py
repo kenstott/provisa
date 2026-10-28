@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
+from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.path_walk import graph_identity
 from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
     _const_literal,
@@ -410,6 +412,7 @@ class _UnionMixin:  # mixin for _Translator
         }
         branches: list[exp.Select] = []
         had_resolvable = False
+        walk = self._lm.session_walk
         for label in type_labels:
             nm = self._lm.nodes.get(label)
             if nm is None:
@@ -434,6 +437,10 @@ class _UnionMixin:  # mixin for _Translator
             ]
             if as_one_value:
                 select_items.append(exp.alias_(_node_value(nm), alias=NODE_COLUMN))
+            if walk is not None:
+                # REQ-348: in a graph session a node is joined to the session's relationships by
+                # its graph identity, which a path function's walk reads it by.
+                select_items.append(exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID))
             for prop in props:
                 phys_col = nm.physical_properties.get(prop)
                 value = (
@@ -469,6 +476,7 @@ class _UnionMixin:  # mixin for _Translator
                 exp.alias_(exp.null(), alias="__label"),
                 exp.alias_(exp.null(), alias="__id"),
                 *([exp.alias_(exp.null(), alias=NODE_COLUMN)] if as_one_value else []),
+                *([exp.alias_(exp.null(), alias=GRAPH_ID)] if walk is not None else []),
             ] + [exp.alias_(exp.null(), alias=exp.Identifier(this=p, quoted=True)) for p in props]
             zero_row = exp.select(*zero_items).where(exp.false())
             return exp.alias_(exp.Subquery(this=zero_row), alias=var)  # pyright: ignore[reportReturnType]

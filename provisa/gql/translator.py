@@ -63,6 +63,7 @@ from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.path_expr import PathExprMixin
 from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
+from provisa.gql.path_walk import SessionWalkMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
 from provisa.gql.group_by import GroupByMixin
@@ -518,6 +519,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     PathExprMixin,
     TermsMixin,
     PathFunctionsMixin,
+    SessionWalkMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
     GroupByMixin,
@@ -606,6 +608,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
+        self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
         self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source

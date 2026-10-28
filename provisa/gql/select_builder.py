@@ -267,6 +267,21 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         Recursive CTE paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', hops)
         """
         src_var, tgt_var, is_recursive = self._path_vars[path_var]
+        walk_ends = getattr(self, "_walk_paths", {}).get(path_var)
+        if walk_ends is not None:
+            # REQ-348: a session walk's path, from its start to its end, of its hops.
+            start, end = walk_ends
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("start"),
+                    start.copy(),
+                    exp.Literal.string("end"),
+                    end.copy(),
+                    exp.Literal.string("length"),
+                    exp.Column(this=exp.Identifier(this="hops"), table=exp.Identifier(this="_t")),
+                ],
+            )
         path_step_info = getattr(self, "_path_steps", {}).get(path_var)
         if path_step_info is not None:
             step_nodes, step_edges = path_step_info

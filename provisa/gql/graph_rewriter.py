@@ -25,7 +25,7 @@ from typing import cast
 import sqlglot.expressions as exp
 
 from provisa.gql.translator_types import NODE_COLUMN, GraphVarKind
-from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import GRAPH_ID, CypherLabelMap, NodeMapping
 
 
 def apply_graph_rewrites(  # REQ-349, REQ-350
@@ -267,7 +267,8 @@ def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> lis
                 props: list[str] = []
                 for expr in first_select.expressions:
                     alias = expr.alias if hasattr(expr, "alias") else None
-                    if alias and alias not in ("__id", "__label"):
+                    # A graph session's union names each node's graph identity too (REQ-348).
+                    if alias and alias not in ("__id", "__label", GRAPH_ID):
                         props.append(alias)
                 return props
     return []

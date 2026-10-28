@@ -129,7 +129,7 @@ class _RelJoinMixin:  # mixin for _Translator
         ) -> exp.Expression: ...
 
         def _translate_path_function(
-            self, clause: _MatchClause
+            self, clause: _MatchClause, joined: set[str] | None = None
         ) -> tuple[exp.Expression, list[dict]]: ...
 
         def _translate_path_expr(
@@ -1040,7 +1040,7 @@ class _RelJoinMixin:  # mixin for _Translator
                     )
                     if rel.variable and clause.variable:
                         self._varlen_rel_vars[rel.variable] = clause.variable
-                    pf_from, pf_joins = self._translate_path_function(pf_clause)
+                    pf_from, pf_joins = self._translate_path_function(pf_clause, joined)
                     if from_expr is None:
                         from_expr = pf_from
                     joins.extend(pf_joins)
