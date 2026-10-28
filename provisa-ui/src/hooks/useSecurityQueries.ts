@@ -13,6 +13,7 @@
 
 import { useQuery, useMutation } from "@apollo/client/react";
 import type { MutationResult, RLSRule } from "../types/admin";
+import type { LlmLimit, LlmWindow } from "../types/auth";
 import {
   RolesQuery as ROLES_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY,
@@ -117,6 +118,8 @@ export function useUpsertRole() {
           requestsPerSecond: number | null;
           maxQueryComplexity: number | null;
           maxQueryTimeMs: number | null;
+          llmCallCap: LlmLimit | null; // REQ-1174
+          llmWindows: Record<LlmWindow, LlmLimit | null>;
         } | null;
         parents?: string[]; // REQ-2155: in declared order
         residencyValues?: string[]; // REQ-1921

@@ -216,6 +216,14 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             "matching": 1,
             "differing": {},
             "not_served": {"pg_catalog.foo(integer)": "function foo does not exist"},
+            "by_design": [
+                {
+                    "group": "Geometric functions",
+                    "requirement": "REQ-2167",
+                    "decision": "d",
+                    "count": 2,
+                }
+            ],
         },
         "type_conversions": {
             "fixture_columns": [],
@@ -241,6 +249,7 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         assert heading in md
     assert "`pg_catalog.pg_stat_database`" in md
     assert "`pg_catalog.foo(integer)`" in md
+    assert "Functions not served by design (2)" in md and "| Geometric functions | 2 |" in md
     assert "| `SELECT 'x'::name AS v` | name | text |" in md
 
 
@@ -308,3 +317,58 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     }
     assert set(sampled) == {"c_numeric"}
     assert cfg.sources[0].port == 55432
+
+
+class _Probe:
+    """A server answering the catalog function probe: each function either answers or refuses."""
+
+    def __init__(self, functions: list[tuple[str, str]], refused: set[str]) -> None:
+        self._functions = functions
+        self._refused = refused
+
+    def rows(self, sql: str) -> list[tuple]:
+        return [(name, args, "f", False, "integer", []) for name, args in self._functions]
+
+    def run(self, sql: str, result_format: int = 0) -> dict:
+        name = sql.split('pg_catalog."', 1)[1].split('"', 1)[0]
+        if name in self._refused:
+            return {"ok": False, "error": f"Scalar Function with name {name} does not exist!"}
+        return {"ok": True, "fields": [{"type_oid": 23}]}
+
+
+def test_a_catalog_function_of_a_by_design_family_is_left_out_of_not_served():
+    # PGWIRE'S CATALOG FUNCTIONS (REQ-2167): a function of a family no client calls is not
+    # served by design; one a client calls stays not served, to be answered.
+    m = _load("pgwire_catalog_types")
+    functions = [("point_above", ""), ("pg_cancel_backend", ""), ("abs", "")]
+    pg = _Probe(functions, refused=set())
+    provisa = _Probe(functions, refused={"point_above", "pg_cancel_backend"})
+    report = m.catalog_functions(pg, provisa, {23: "int4"})
+    assert list(report["not_served"]) == ["pg_cancel_backend()"]
+    assert [(g["group"], g["count"]) for g in report["by_design"]] == [("Geometric functions", 1)]
+    assert report["matching"] == 1
+
+
+def test_no_by_design_function_group_names_a_function_a_client_calls():
+    import by_design
+
+    called = [
+        "pg_cancel_backend",
+        "pg_terminate_backend",
+        "pg_get_indexdef",
+        "pg_get_functiondef",
+        "aclexplode",
+        "quote_ident",
+        "quote_literal",
+        "pg_database_size",
+        "pg_relation_size",
+        "pg_options_to_table",
+        "unnest",
+        "btrim",
+        "json_to_record",
+        "pg_encoding_to_char",
+    ]
+    groups = [g for g in by_design.groups("pgwire") if g.kind == "design"]
+    for name in called:
+        failure = {"feature": "catalog function", "scenario": f"{name}()", "reason": ""}
+        assert not [g.group for g in groups if g.matches(failure)], name

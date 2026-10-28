@@ -73,10 +73,24 @@ export type Capability =
   | "dq_read"
   | "dq_rw";
 
+/** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */
+export interface LlmLimit {
+  amount: number;
+  unit: "tokens" | "usd";
+}
+
+/** REQ-1174: the rolling windows a role's LLM spend is held to. */
+export const LLM_WINDOWS = ["hour", "day", "week", "month"] as const;
+export type LlmWindow = (typeof LLM_WINDOWS)[number];
+
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
   maxQueryComplexity: number | null;
   maxQueryTimeMs: number | null;
+  /** REQ-1174: the most one Polly turn or LLM service call may use. */
+  llmCallCap?: LlmLimit | null;
+  /** REQ-1174: null when the role sets no window; a window not set is null. */
+  llmWindows?: Partial<Record<LlmWindow, LlmLimit | null>> | null;
 }
 
 /** REQ-1682: one of a role's constant session values. */

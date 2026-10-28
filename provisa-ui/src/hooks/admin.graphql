@@ -85,6 +85,28 @@ query RolesQuery {
       requestsPerSecond
       maxQueryComplexity
       maxQueryTimeMs
+      llmCallCap {
+        amount
+        unit
+      }
+      llmWindows {
+        hour {
+          amount
+          unit
+        }
+        day {
+          amount
+          unit
+        }
+        week {
+          amount
+          unit
+        }
+        month {
+          amount
+          unit
+        }
+      }
     }
   }
 }

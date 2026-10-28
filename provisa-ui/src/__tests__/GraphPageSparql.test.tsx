@@ -19,7 +19,6 @@ import { MantineProvider } from "@mantine/core";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import "../i18n";
 import type { FrameData } from "../components/graph/graph-model";
-import { LITERAL_LABEL } from "../components/graph/sparql";
 
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
@@ -219,9 +218,9 @@ describe("the SPARQL tab", () => {
     expect(headers.Accept).toContain("application/n-triples");
     const frame = framesSeen.filter((f) => f.status === "done").at(-1)!;
     const labels = [...frame.nodes.values()].map((n) => n.label).sort();
-    // The order typed by its class, its amount a literal drawn apart.
-    expect(labels).toEqual([LITERAL_LABEL, "sales", "sales:orders"]);
-    expect(frame.edges.size).toBe(2);
+    // The order typed by its class, its amount a property of it (a literal node on the toggle).
+    expect(labels).toEqual(["sales", "sales:orders"]);
+    expect(frame.edges.size).toBe(1);
     // Each frame is drawn as a SPARQL query's frame.
     expect(new Set(languagesSeen)).toEqual(new Set(["sparql"]));
     // Kept apart from Cypher's: the SPARQL history holds the query, Cypher's does not.

@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "LLM 預算",
+    "hint": "以權杖計，或按模型價目表以 USD 計。以多個角色操作的用戶適用最寬鬆的角色。留空表示不設上限。",
+    "callCap": "每次呼叫",
+    "window_hour": "每小時",
+    "window_day": "每天",
+    "window_week": "每週",
+    "window_month": "每 30 天",
+    "unit_tokens": "權杖",
+    "unit_usd": "USD",
+    "unitOf": "{{limit}} 的單位",
+    "noLimit": "不設上限",
+    "tokens": "{{amount}} 個權杖",
+    "used": "已用 {{used}}，上限 {{limit}}",
+    "freesAt": "{{at}} 起釋放額度"
+  }
+}

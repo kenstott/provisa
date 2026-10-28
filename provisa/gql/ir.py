@@ -331,6 +331,7 @@ class DeleteClause:
 
     expressions: list[CypherExpr]
     detach: bool = False
+    start: int = -1  # as CreateClause.start
 
 
 @dataclass
@@ -340,6 +341,7 @@ class MergeClause:
     pattern: PathPattern
     on_create: list[SetItem] = field(default_factory=list)
     on_match: list[SetItem] = field(default_factory=list)
+    start: int = -1  # as CreateClause.start
 
 
 WriteClause = CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause

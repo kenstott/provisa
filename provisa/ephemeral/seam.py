@@ -29,6 +29,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import read
 from provisa.ephemeral.labels import Labelled, write_labels
+from provisa.ephemeral.merge import merge
 from provisa.ephemeral.write import Created, Read, Write, create
 
 
@@ -64,6 +65,8 @@ async def write(
     if session is None:
         return None
     made = await create(statement, params, model, session, state, run_read, run_write)
+    if made is None:
+        made = await merge(statement, params, model, session, state, run_read, run_write)
     if made is not None:
         return made
     return await write_labels(statement, params, model, session, state, run_read)

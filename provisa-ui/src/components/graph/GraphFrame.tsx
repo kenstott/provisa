@@ -34,6 +34,8 @@ const { getCypherLanguageExtensions: _getGFCypherExts, cypherLinter: _gfCypherLi
 const _gfCypherLangExts = _getGFCypherExts({ cypherLanguage: true });
 import { json as jsonLang } from "@codemirror/lang-json";
 import { sparqlLanguage } from "./sparqlLanguage";
+import { SparqlDrawControls } from "./SparqlDrawControls";
+import { useSparqlDraw } from "./useSparqlDraw";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -116,7 +118,7 @@ interface GraphFrameProps {
 }
 
 export function GraphFrame({
-  frame,
+  frame: answered,
   requestedView,
   onClose,
   onRerun,
@@ -146,6 +148,8 @@ export function GraphFrame({
   language = "cypher",
 }: GraphFrameProps) {
   const { t } = useTranslation();
+  const sparqlDraw = useSparqlDraw(answered);
+  const frame = sparqlDraw.frame;
   // The editors sit inside the app chrome, so they follow the app's scheme rather than staying
   // dark on a light page. undefined = CodeMirror's own light theme.
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
@@ -778,6 +782,7 @@ export function GraphFrame({
       </div>
       <div className="gf-body-content">
         {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
+        <SparqlDrawControls draw={sparqlDraw} onDrawn={() => setView("graph")} />
         {frame.status === "loading" && <FrameRunning />}
         {frame.status === "error" && <FrameError frame={frame} />}
         {frame.redirect && (

@@ -49,6 +49,8 @@ from typing import Any
 import psycopg
 from psycopg import pq
 
+import by_design
+
 FIXTURE_SCHEMA = "conformance"
 FIXTURE_TABLE = "types_fixture"
 
@@ -525,6 +527,14 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
             )
         else:
             matching.append(fn["signature"])
+    # REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): a function of a family no client calls is not served
+    # by design (by_design/pgwire.yaml), counted in its group rather than as not served.
+    unserved = [
+        {"feature": "catalog function", "scenario": signature, "reason": error}
+        for signature, error in not_served.items()
+    ]
+    remaining, excluded = by_design.classify(unserved, by_design.groups("pgwire"))
+    left = {f["scenario"]: f["reason"] for f in remaining}
     return {
         "postgres_functions": len(fns) - len(not_probed),
         "excluded": (
@@ -535,7 +545,8 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         "served": len(matching) + len(differing),
         "matching": len(matching),
         "differing": dict(sorted(differing.items())),
-        "not_served": dict(sorted(not_served.items())),
+        "not_served": dict(sorted(left.items())),
+        "by_design": excluded,
     }
 
 
@@ -658,6 +669,11 @@ def markdown(report: dict[str, Any]) -> str:
     out += _details(
         f"Functions PostgreSQL has that Provisa does not serve ({len(fn['not_served'])})",
         _md_list(list(fn["not_served"]), limit=3000),
+    )
+    not_served_by_design = sum(g["count"] for g in fn["by_design"])
+    out += _details(
+        f"Functions not served by design ({not_served_by_design})",
+        by_design.table(fn["by_design"]),
     )
     out += _details(
         "Catalog relations Provisa serves that PostgreSQL does not have "

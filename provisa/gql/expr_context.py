@@ -189,18 +189,27 @@ class TranslatorExprContext:
         if var is not None:
             if var in t._all_rels_rel_vars:
                 # The edge's own properties, never its JSON: that carries an id built from both
-                # endpoints' keys (translator_union._build_all_rels_union).
-                return _anon(
+                # endpoints' keys (translator_union._build_all_rels_union). Its one type, where
+                # every relationship holding it agrees, else its text.
+                from provisa.gql.translator_union import attribute_type
+
+                value = _anon(
                     "JSON_EXTRACT_SCALAR",
                     exp.column(edge_properties_column(var)),
                     exp.Literal.string(f"$.{name}"),
                 )
+                held = attribute_type(name, t._all_rels_mappings)
+                return value if held is None else exp.Cast(this=value, to=held)
             if var in t._all_rels_node_vars:
-                return _anon(
+                from provisa.gql.translator_union import union_type
+
+                value = _anon(
                     "JSON_EXTRACT_SCALAR",
                     exp.column(var),
                     exp.Literal.string(f"$.properties.{name}"),
                 )
+                held = union_type(name, t._all_rels_ends.get(var, []), t._lm)
+                return value if held is None else exp.Cast(this=value, to=held)
             if var in t._map_unwind_vars:
                 cast = exp.Cast(
                     this=_anon("element_at", exp.column(var), exp.Literal.string(name)),
@@ -582,6 +591,9 @@ class TranslatorExprContext:
                 return None
             return exp.Array(expressions=[exp.Literal.string(k) for k in sorted(nm.properties)])
         if name == "type":
+            if var in t._all_rels_rel_vars:
+                # A read of every relationship: the type its row's edge names.
+                return _anon("JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.type"))
             named = t._rel_var_type_exprs.get(var)
             if named is not None:
                 return named.copy()  # an alternation: the type its row's discriminator names

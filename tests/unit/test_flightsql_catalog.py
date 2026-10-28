@@ -207,3 +207,20 @@ def test_a_catalog_needs_a_role():
             conn.get_objects(adbc_driver_manager.GetObjectsDepth.CATALOGS)
     finally:
         server.shutdown()
+
+
+def test_a_columns_nullability_is_the_models(served):
+    """Each column is listed nullable or not as its registration records it, and says so in the
+    xdbc metadata a client may read it by (REQ-2175). The ADBC Flight SQL driver does not read
+    that metadata into GetObjects' xdbc fields (by_design/flight-sql.yaml), so the listed
+    schema is what is checked."""
+    (row,) = _command(
+        served.uri,
+        pb.CommandGetTables(table_name_filter_pattern="orders", include_schema=True),
+    ).to_pylist()
+    schema = pa.ipc.read_schema(pa.py_buffer(row["table_schema"]))
+    assert not schema.field("id").nullable
+    assert schema.field("customer_id").nullable
+    metadata = schema.field("id").metadata
+    assert (metadata[b"XDBC_NULLABLE"], metadata[b"XDBC_IS_NULLABLE"]) == (b"0", b"NO")
+    assert schema.field("_name_").metadata[b"XDBC_IS_NULLABLE"] == b"YES"

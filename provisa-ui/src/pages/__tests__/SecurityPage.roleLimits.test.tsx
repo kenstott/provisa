@@ -139,9 +139,51 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
           requestsPerSecond: 5,
           maxQueryComplexity: 200,
           maxQueryTimeMs: 3000,
+          llmCallCap: null,
+          llmWindows: { hour: null, day: null, week: null, month: null },
         },
       }),
       false, // a role that exists is updated
+    );
+  });
+
+  // REQ-1174: the role's LLM budget -- a per-call cap and rolling windows, each in tokens or USD.
+  it("stages the LLM per-call cap and windows, each with its unit", async () => {
+    upsertRoleSpy.mockClear();
+    renderPage();
+    editRole("analyst");
+    fireEvent.change(input("role-llm-cap-amount"), { target: { value: "4000" } });
+    fireEvent.change(input("role-llm-hour-amount"), { target: { value: "20000" } });
+    fireEvent.change(input("role-llm-month-amount"), { target: { value: "50" } });
+    const unit = input("role-llm-month-unit");
+    fireEvent.click(unit);
+    await waitFor(() => {
+      if (!unit.getAttribute("aria-controls")) throw new Error("dropdown not open");
+    });
+    fireEvent.click(
+      within(document.getElementById(unit.getAttribute("aria-controls") as string)!).getByRole(
+        "option",
+        { name: "USD", hidden: true },
+      ),
+    );
+    fireEvent.click(screen.getByTestId("save-role-analyst"));
+    await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalledTimes(1));
+    expect(upsertRoleSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rateLimit: {
+          requestsPerSecond: null,
+          maxQueryComplexity: null,
+          maxQueryTimeMs: null,
+          llmCallCap: { amount: 4000, unit: "tokens" },
+          llmWindows: {
+            hour: { amount: 20000, unit: "tokens" },
+            day: null,
+            week: null,
+            month: { amount: 50, unit: "usd" },
+          },
+        },
+      }),
+      false,
     );
   });
 

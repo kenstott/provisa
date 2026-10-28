@@ -169,3 +169,22 @@
     The model records a numeric column's precision and scale, a scale of 0 to the precision, so a
     column of negative scale (decimal128(2, -2)) cannot be declared to ingest into.
   case: "TestIngest::test_create\\[provisa:flightsql:ingest/decimal_scale_negative\\]"
+
+- kind: client
+  group: GetObjects reports no xdbc nullability
+  client: adbc-driver-flightsql 1.12.0 (the Go driver)
+  behavior: >-
+    Leaves every xdbc field it reads by metadata key -- xdbc_nullable and xdbc_is_nullable among
+    them -- null in GetObjects: its Flight SQL metadata handler keeps a column's metadata for its
+    own fields (type name, scope, autoincrement) and never hands it to the shared xdbc builder
+    that reads XDBC_NULLABLE and XDBC_IS_NULLABLE (go/adbc/driver/flightsql/
+    flightsql_connection.go, flightSqlMetadata.SetMetadata, at apache-arrow-adbc-24), so the
+    suite skips test_not_null for a driver that cannot claim them.
+  evidence: >-
+    Provisa lists each column nullable or not as its registration records, with XDBC_NULLABLE
+    and XDBC_IS_NULLABLE in the column's metadata of GetTables' table schema, as
+    tests/unit/test_flightsql_catalog.py shows; GetObjects through the driver answers both null.
+  workaround: >-
+    Read nullability from GetTables with include_schema (each field's nullable flag and
+    metadata), or from adbc_get_table_schema.
+  case: "TestIngest::test_not_null\\["

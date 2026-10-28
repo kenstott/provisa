@@ -30,6 +30,8 @@
     "downloadJpg": "JPG",
     "downloadSvg": "SVG",
     "viewGraph": "图",
+    "sparqlLiteralsAsNodes": "字面量显示为节点",
+    "sparqlDrawAsGraph": "绘制为图",
     "viewTable": "表格",
     "viewJson": "JSON",
     "viewGraphStats": "图统计信息",

@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "LLM 预算",
+    "hint": "以令牌计，或按模型价目表以 USD 计。以多个角色操作的用户适用最宽松的角色。留空表示不限。",
+    "callCap": "每次调用",
+    "window_hour": "每小时",
+    "window_day": "每天",
+    "window_week": "每周",
+    "window_month": "每 30 天",
+    "unit_tokens": "令牌",
+    "unit_usd": "USD",
+    "unitOf": "{{limit}} 的单位",
+    "noLimit": "不限",
+    "tokens": "{{amount}} 个令牌",
+    "used": "已用 {{used}}，上限 {{limit}}",
+    "freesAt": "{{at}} 起释放额度"
+  }
+}

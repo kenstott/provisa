@@ -416,3 +416,32 @@ def test_a_regtype_array_is_written_as_type_names():
     oid, text, binary = BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY]
     assert oid == 2211 and text([23, 25]) == "{integer,text}"
     assert binary([23]) == struct.pack("!iiiii", 1, 0, 2206, 1, 1) + struct.pack("!iI", 4, 23)
+
+
+# PGWIRE'S CATALOG FUNCTIONS (REQ-2167), part 2: a catalog function a client calls, called on its
+# own, is answered as the catalog's rewrite answers it inside a catalog statement.
+_ANSWERED_ALONE = {
+    'pg_catalog."pg_get_indexdef"(NULL::oid)': (TEXT, None),
+    'pg_catalog."pg_get_functiondef"(NULL::oid)': (TEXT, None),
+    'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, "provisa"),
+    'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, "UTF8"),
+    'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, 0),
+    "pg_total_relation_size(NULL::regclass)": (INT8, 0),
+    'pg_catalog."pg_tablespace_location"(NULL::oid)': (TEXT, None),
+}
+
+
+def test_a_client_called_catalog_function_is_answered_on_its_own():
+    from provisa.pgwire.catalog import classify
+
+    for call, (oid, value) in _ANSWERED_ALONE.items():
+        sql = f"SELECT {call} AS v"
+        assert classify(sql) == "INTERCEPT", call
+        assert _oids(sql) == {"v": oid}, call
+        assert answer(sql, "testrole", _state()).rows == [(value,)], call
+
+
+def test_a_statement_reading_a_model_table_is_not_taken_for_a_catalog_function_call():
+    from provisa.pgwire.catalog import classify
+
+    assert classify("SELECT pg_relation_size('dogs') AS v, name FROM dogs") == "PASS_THROUGH"

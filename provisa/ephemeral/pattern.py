@@ -58,7 +58,7 @@ class CreateOf:
     trailing: str | None
 
 
-_TRAILING = {
+TRAILING = {
     "CreateClause": "CREATE",
     "SetClause": "SET",
     "RemoveClause": "REMOVE",
@@ -73,7 +73,8 @@ _TRAILING = {
 
 def create_of(statement: str) -> CreateOf | None:
     """The statement's CREATE read from the graph IR (parse_cypher_statement), or None when it
-    creates nothing. A statement of two CREATE clauses is refused by name."""
+    creates nothing. CREATE clauses one after another are read as one; CREATE clauses with
+    another clause between them are refused by name."""
     from provisa.cypher.parser import parse_cypher_statement, writes_in
     from provisa.gql.ir import CreateClause
 
@@ -83,14 +84,23 @@ def create_of(statement: str) -> CreateOf | None:
     creates = [i for i, step in enumerate(ast.pipeline) if isinstance(step, CreateClause)]
     if not creates:
         return None
-    if len(creates) > 1:
-        raise CypherParseError("A statement creating ephemeral objects has one CREATE clause")
+    # CREATE clauses one after another are one CREATE of their patterns, in order: a later one's
+    # node reaches back to an earlier one's by its variable, as a later pattern of one CREATE does.
+    if creates != list(range(creates[0], creates[0] + len(creates))):
+        raise CypherParseError(
+            "A statement creating ephemeral objects has its CREATE clauses one after another"
+        )
     at = creates[0]
-    create = ast.pipeline[at]
-    assert isinstance(create, CreateClause)
-    after = ast.pipeline[at + 1 :]
+    clauses = [ast.pipeline[i] for i in creates]
+    first = clauses[0]
+    assert isinstance(first, CreateClause)
+    create = CreateClause(
+        patterns=[path for c in clauses if isinstance(c, CreateClause) for path in c.patterns],
+        start=first.start,
+    )
+    after = ast.pipeline[creates[-1] + 1 :]
     trailing = (
-        _TRAILING[type(after[0]).__name__]
+        TRAILING[type(after[0]).__name__]
         if after
         else "RETURN"
         if ast.return_clause is not None
@@ -99,7 +109,7 @@ def create_of(statement: str) -> CreateOf | None:
     return CreateOf(
         statement[: create.start].strip(),
         _pattern(create),
-        _bound(ast.pipeline[:at]),
+        bound_by(ast.pipeline[:at]),
         trailing,
     )
 
@@ -107,8 +117,13 @@ def create_of(statement: str) -> CreateOf | None:
 def _pattern(create: Any) -> CreatePattern:
     """A CREATE clause's patterns: each node occurrence in order, each relationship between the
     two it joins, each property's value as written."""
+    return paths_pattern(create.patterns)
+
+
+def paths_pattern(paths: list[Any]) -> CreatePattern:
+    """Write patterns (the IR's PathPattern) as the ephemeral layer reads them."""
     out = CreatePattern()
-    for path in create.patterns:
+    for path in paths:
         base = len(out.nodes)
         for node in path.nodes:
             out.nodes.append(
@@ -129,7 +144,7 @@ def _pattern(create: Any) -> CreatePattern:
     return out
 
 
-def _bound(steps: list[Any]) -> set[str]:
+def bound_by(steps: list[Any]) -> set[str]:
     """The variables a write's leading clauses (MATCH, UNWIND, WITH) bind."""
     from provisa.gql.ir import MatchStep, UnwindClause, WithClause
 

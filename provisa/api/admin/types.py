@@ -930,12 +930,33 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
 
 
 @strawberry.type
+class LlmLimitType:  # REQ-1174
+    """An LLM spend limit: an amount of tokens, or of USD at polly.model_prices."""
+
+    amount: float
+    unit: str  # tokens | usd
+
+
+@strawberry.type
+class LlmWindowsType:  # REQ-1174
+    """The rolling windows a role's LLM spend is held to; None: that window is not set."""
+
+    hour: LlmLimitType | None = None
+    day: LlmLimitType | None = None
+    week: LlmLimitType | None = None
+    month: LlmLimitType | None = None
+
+
+@strawberry.type
 class RoleRateLimitType:  # REQ-1174
-    """Per-role rate + query-complexity limits (None = unlimited on that dimension)."""
+    """Per-role rate + query-complexity limits (None = unlimited on that dimension), and the
+    role's LLM budget: its per-call cap and rolling windows."""
 
     requests_per_second: int | None = None
     max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
+    llm_call_cap: LlmLimitType | None = None
+    llm_windows: LlmWindowsType | None = None
 
 
 @strawberry.type
@@ -1665,10 +1686,26 @@ class MetricInput:  # REQ-1317
 
 
 @strawberry.input
+class LlmLimitInput:  # REQ-1174
+    amount: float
+    unit: str  # tokens | usd
+
+
+@strawberry.input
+class LlmWindowsInput:  # REQ-1174
+    hour: LlmLimitInput | None = None
+    day: LlmLimitInput | None = None
+    week: LlmLimitInput | None = None
+    month: LlmLimitInput | None = None
+
+
+@strawberry.input
 class RoleRateLimitInput:  # REQ-1174
     requests_per_second: int | None = None
     max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
+    llm_call_cap: LlmLimitInput | None = None
+    llm_windows: LlmWindowsInput | None = None
 
 
 @strawberry.input

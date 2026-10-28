@@ -11,9 +11,10 @@
 // REQ-2135 phase 5: SPARQL in the graph visualizer. The role's vocabulary as /data/sparql/vocabulary
 // serves it, IRIs shown compacted by its prefixes, a pill's triple pattern added to the query in the
 // bar, and an answer of /data/sparql made a frame: a CONSTRUCT's triples drawn as a graph (a literal
-// a node of its own, drawn apart from the resources), a SELECT's and an ASK's rows a table.
+// a property of its subject, or a node of its own on request), a SELECT's and an ASK's rows a table,
+// a SELECT of resources that pair into subject and object also drawable as a graph.
 
-import type { FrameStatement, GEdge, GNode } from "./graph-model";
+import type { FrameData, FrameStatement, GEdge, GNode } from "./graph-model";
 
 /** The role's vocabulary (GET /data/sparql/vocabulary). */
 export interface SparqlVocabulary {
@@ -282,19 +283,76 @@ const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 /** A literal's label in the drawing: one of its own, so a literal is drawn apart from resources. */
 export const LITERAL_LABEL = "Literal";
 
+/** The last two path segments of an IRI (``pets/3`` of ``https://x.example/id/pet-store/pets/3``),
+ * the tail that identifies it without its base; the whole IRI where it has no path. */
+export function iriTail(iri: string): string {
+  const path = iri.replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/]*/, "");
+  const segments = path.split("/").filter((x) => x !== "");
+  return segments.length === 0 ? iri : segments.slice(-2).join("/");
+}
+
+/** An IRI's local name: what follows its last ``/``, ``#`` or ``:``. */
+const iriLocal = (iri: string): string =>
+  iri
+    .split(/[/#:]/)
+    .filter((x) => x !== "")
+    .pop() ?? iri;
+
+/** A resource or class named for the drawing: its compacted name where the vocabulary has a prefix
+ * for it, else the tail of its IRI; a blank node by its label. */
+const resourceName = (c: RdfCell): string =>
+  c.rdfTerm === "iri" && c.shown.startsWith("<") ? iriTail(c.value) : c.shown;
+
+/** Predicates that name what they are said of, in the order they are preferred: a predicate's
+ * local name, lower-cased (``rdfs:label`` and a column's ``name`` both read so). */
+const NAMING = ["name", "label", "preflabel"];
+
+const predicateLocal = (iri: string): string => iri.split(/[/#:]/).pop()?.toLowerCase() ?? "";
+
+const isString = (c: RdfCell): boolean =>
+  c.datatype === undefined || c.datatype === "http://www.w3.org/2001/XMLSchema#string";
+
+/** What a resource is captioned by: its name-like literal (name, label, rdfs:label,
+ * skos:prefLabel), else its first string literal, else its name (resourceName). */
+function captionOf(subject: RdfCell, literals: Triple[]): string {
+  const mine = literals.filter(
+    (t) => t.s.value === subject.value && t.s.rdfTerm === subject.rdfTerm,
+  );
+  for (const key of NAMING) {
+    const named = mine.find((t) => predicateLocal(t.p.value) === key && isString(t.o));
+    if (named) return named.o.shown;
+  }
+  const first = mine.find((t) => isString(t.o));
+  return first ? first.o.shown : resourceName(subject);
+}
+
 /**
  * The triples as the canvas draws them: each resource a node, labelled by its class where a triple
- * types it (else its namespace's prefix), each literal object a node of its own labelled Literal,
- * and each triple an edge named by its predicate. An rdf:type triple is drawn too.
+ * types it (else its namespace's prefix), and each triple whose object is a resource an edge named
+ * by its predicate; an rdf:type triple is drawn too. A literal object is a property of its subject,
+ * as the Cypher view shows a node's properties (a predicate with several literals holds a list);
+ * with ``literalNodes`` it is a node of its own labelled Literal, drawn apart from the resources.
  */
-export function triplesGraph(triples: Triple[]): {
+export function triplesGraph(
+  triples: Triple[],
+  literalNodes = false,
+  /** The class a query types a resource as, where no triple does (a SELECT's rows). */
+  typed: ReadonlyMap<string, string> = new Map(),
+): {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
 } {
   const typeOf = new Map<string, string>();
   for (const { s, p, o } of triples)
     if (p.value === RDF_TYPE && o.rdfTerm === "iri" && !typeOf.has(s.value))
-      typeOf.set(s.value, o.shown);
+      typeOf.set(s.value, resourceName(o));
+  for (const [iri, label] of typed) if (!typeOf.has(iri)) typeOf.set(iri, label);
+  const literals = triples.filter((t) => t.o.rdfTerm === "literal");
+  // A class (an rdf:type object) is captioned in its circle by its local name (pets), its compacted
+  // name (pet-store:pets) kept as a property for the hover and the inspector.
+  const classValues = new Set(
+    triples.filter((t) => t.p.value === RDF_TYPE && t.o.rdfTerm === "iri").map((t) => t.o.value),
+  );
   // Keyed as GraphCanvas keys a node (`${label}:${id}`), which draws an edge only between two
   // nodes it finds so; a resource is found again by its term.
   const nodes = new Map<string, GNode>();
@@ -316,7 +374,9 @@ export function triplesGraph(triples: Triple[]): {
         id: next++,
         label,
         tableLabel: label,
-        properties: { name: c.shown, iri: c.value },
+        properties: classValues.has(c.value)
+          ? { name: iriLocal(c.value), class: resourceName(c), iri: c.value }
+          : { name: captionOf(c, literals), iri: c.value },
       };
       resources.set(key, add(n));
     }
@@ -324,7 +384,13 @@ export function triplesGraph(triples: Triple[]): {
   };
   triples.forEach(({ s, p, o }, i) => {
     const a = resource(s);
-    // A literal is the triple's own: the same value under two subjects is two nodes.
+    if (o.rdfTerm === "literal" && !literalNodes) {
+      const held = a.properties[p.shown];
+      a.properties[p.shown] =
+        held === undefined ? o.shown : Array.isArray(held) ? [...held, o.shown] : [held, o.shown];
+      return;
+    }
+    // A literal node is the triple's own: the same value under two subjects is two nodes.
     const b =
       o.rdfTerm === "literal"
         ? add({
@@ -344,12 +410,93 @@ export function triplesGraph(triples: Triple[]): {
       start: a.id,
       end: b.id,
       type: p.shown,
-      properties: { iri: p.value },
+      properties: p.value === "" ? {} : { iri: p.value },
       startNode: a,
       endNode: b,
     });
   });
   return { nodes, edges };
+}
+
+/** The class each variable of ``query`` is typed as (``?s a pet-store:pets``), as the query names
+ * it; the tail of its IRI where the query writes it in full. */
+function queryClasses(query: string): Map<string, string> {
+  return new Map(
+    [...typedVariables(query)].map(([variable, classes]) => {
+      const [first] = classes;
+      return [variable, first.startsWith("<") ? iriTail(first.slice(1, -1)) : first];
+    }),
+  );
+}
+
+/** How a SELECT's variables pair into an edge: its subject and object columns, and the column a
+ * bound predicate is read from (null where the query binds none). */
+export interface SelectPairing {
+  subject: string;
+  predicate: string | null;
+  object: string;
+}
+
+const isResource = (v: unknown): boolean =>
+  isRdfCell(v) && (v.rdfTerm === "iri" || v.rdfTerm === "bnode");
+
+/**
+ * Whether a SELECT's rows can be drawn as a graph (REQ-2135): every variable binds a resource in
+ * every row, and the variables pair into a subject and an object -- two variables, or three where
+ * the query's own triple pattern puts the middle one in predicate position. Null for any other.
+ */
+export function selectPairing(
+  query: string,
+  columns: string[],
+  rows: Record<string, unknown>[],
+): SelectPairing | null {
+  if (rows.length === 0 || columns.length < 2 || columns.length > 3) return null;
+  if (!rows.every((r) => columns.every((c) => isResource(r[c])))) return null;
+  if (columns.length === 2) return { subject: columns[0], predicate: null, object: columns[1] };
+  const [s, p, o] = columns;
+  const pattern = new RegExp(`[?$]${s}\\s+[?$]${p}\\s+[?$]${o}(?![\\w])`);
+  // The pattern is read in the WHERE group, never in the SELECT clause that lists the variables.
+  return pattern.test(query.slice(query.indexOf("{")))
+    ? { subject: s, predicate: p, object: o }
+    : null;
+}
+
+/** A SELECT's rows as triples, one per row: the predicate bound where the pairing has one, else
+ * an unnamed edge. */
+export function pairedTriples(pairing: SelectPairing, rows: Record<string, unknown>[]): Triple[] {
+  const unnamed: RdfCell = { rdfTerm: "iri", value: "", shown: "" };
+  return rows.map((r) => ({
+    s: r[pairing.subject] as RdfCell,
+    p: pairing.predicate === null ? unnamed : (r[pairing.predicate] as RdfCell),
+    o: r[pairing.object] as RdfCell,
+  }));
+}
+
+/** ``frame`` as it is drawn: a CONSTRUCT's triples with their literals as properties or, with
+ * ``literalNodes``, as nodes; a pairable SELECT's rows, once ``drawSelect`` asks, as nodes and
+ * edges. Any other frame is as answered. */
+export function sparqlDrawn(
+  frame: FrameData,
+  literalNodes: boolean,
+  drawSelect: boolean,
+): FrameData {
+  if (frame.sparqlTriples) return { ...frame, ...triplesGraph(frame.sparqlTriples, literalNodes) };
+  if (drawSelect && frame.sparqlPairing) {
+    const pairing = frame.sparqlPairing;
+    // The class the query types each end as (``?s a pet-store:pets``), for the nodes' labels.
+    const classes = queryClasses(frame.query);
+    const typed = new Map<string, string>();
+    for (const [column, variable] of [
+      [pairing.subject, pairing.subject],
+      [pairing.object, pairing.object],
+    ]) {
+      const cls = classes.get(variable);
+      if (cls === undefined) continue;
+      for (const r of frame.rows) typed.set((r[column] as RdfCell).value, cls);
+    }
+    return { ...frame, ...triplesGraph(pairedTriples(pairing, frame.rows), false, typed) };
+  }
+  return frame;
 }
 
 /** A refused /data/sparql request's message: the error its JSON body names, else its body. */
@@ -384,6 +531,7 @@ export async function sparqlStatement(
       rows: triples.map((t) => ({ subject: t.s, predicate: t.p, object: t.o })),
       columns: ["subject", "predicate", "object"],
       sparqlForm: "graph",
+      sparqlTriples: triples,
     };
   }
   const body = (await res.json()) as {
@@ -404,7 +552,16 @@ export async function sparqlStatement(
   const rows = (body.results?.bindings ?? []).map((b) =>
     Object.fromEntries(columns.map((v) => [v, b[v] ? cellOf(b[v], prefixes) : null])),
   );
-  return { ...empty, query, status: "done", rows, columns, sparqlForm: "rows" };
+  const pairing = selectPairing(query, columns, rows);
+  return {
+    ...empty,
+    query,
+    status: "done",
+    rows,
+    columns,
+    sparqlForm: "rows",
+    ...(pairing ? { sparqlPairing: pairing } : {}),
+  };
 }
 
 /** What /data/sparql is asked to answer in: a SELECT's or an ASK's rows as JSON, a CONSTRUCT's

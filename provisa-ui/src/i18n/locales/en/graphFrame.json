@@ -30,6 +30,8 @@
     "downloadJpg": "JPG",
     "downloadSvg": "SVG",
     "viewGraph": "Graph",
+    "sparqlLiteralsAsNodes": "Literals as nodes",
+    "sparqlDrawAsGraph": "Draw as graph",
     "viewTable": "Table",
     "viewJson": "JSON",
     "viewGraphStats": "Graph statistics",
