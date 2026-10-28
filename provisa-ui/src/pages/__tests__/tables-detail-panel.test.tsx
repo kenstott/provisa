@@ -208,7 +208,12 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useRoles: () => ({ roles: ROLES, loading: false, refetch: vi.fn() }),
   useDataProducts: () => ({ dataProducts: [], loading: false, refetch: vi.fn() }),
   useAllRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
-  useAvailableColumnsMetadataLazy: () => async () => [],
+  useAvailableColumnsMetadataLazy: () => ({
+    fetchColumns: async () => [],
+    late: null,
+    starting: false,
+    startingTimedOut: false,
+  }),
   useRefreshPolicyPreview: () => async () => null,
   useUpdateTable: () => ({ updateTable, loading: false }),
   useUpdateTableNaming: () => ({ updateTableNaming, loading: false }),

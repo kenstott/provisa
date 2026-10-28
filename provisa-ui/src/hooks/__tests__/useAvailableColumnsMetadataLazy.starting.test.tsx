@@ -10,8 +10,8 @@
 
 
 // The columns read of a source whose connector server is still booting answers STARTING
-// (REQ-1824). Like the table list, it asks again every few seconds; once the server answers, the
-// columns are in the cache and the next read returns them.
+// (REQ-1824). The read reports that as null (not as no columns), exposes the starting state, asks
+// again every few seconds, and hands the columns to the caller when the server answers.
 
 import { describe, expect, it } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -37,7 +37,7 @@ const column = {
 
 describe("useAvailableColumnsMetadataLazy", () => {
   it(
-    "asks again while the connector reports STARTING, and returns the columns once it answers",
+    "reports STARTING, asks again, and hands the caller the columns once the server answers",
     async () => {
       const request = { query: AvailableColumnsMetadata, variables };
       const mocks = [
@@ -53,14 +53,16 @@ describe("useAvailableColumnsMetadataLazy", () => {
         <MockedProvider mocks={mocks}>{children}</MockedProvider>
       );
       const { result } = renderHook(() => useAvailableColumnsMetadataLazy(), { wrapper });
-      expect(await result.current("e2e_splunk", "main", "events")).toEqual([]);
-      await waitFor(
-        async () => {
-          const columns = await result.current("e2e_splunk", "main", "events");
-          expect(columns.map((c) => c.name)).toEqual(["id"]);
-        },
-        { timeout: STILL_STARTING_POLL_MS * 3 },
-      );
+      // No answer yet: not an empty table.
+      expect(await result.current.fetchColumns("e2e_splunk", "main", "events")).toBeNull();
+      await waitFor(() => expect(result.current.starting).toBe(true));
+      expect(result.current.late).toBeNull();
+      // The poll's answer reaches the caller, with the table it belongs to.
+      await waitFor(() => expect(result.current.late?.columns.map((c) => c.name)).toEqual(["id"]), {
+        timeout: STILL_STARTING_POLL_MS * 3,
+      });
+      expect(result.current.late).toMatchObject(variables);
+      await waitFor(() => expect(result.current.starting).toBe(false));
     },
     STILL_STARTING_POLL_MS * 4,
   );

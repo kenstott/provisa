@@ -8,25 +8,46 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useLazyQuery } from "@apollo/client/react";
 import type { ColumnMetadata } from "../api/admin";
 import { AvailableColumnsMetadata } from "./admin.graphql";
 import { isStillStarting, useStartingPoll } from "./discoveryStartingPoll";
 
+/** The columns a read answered after the source reported STARTING, with the table they belong to. */
+export interface LateColumns {
+  sourceId: string;
+  schemaName: string;
+  tableName: string;
+  columns: ColumnMetadata[];
+}
+
+/** `fetchColumns` resolves null while the source reports STARTING (REQ-1824) -- no answer yet, not
+ * an empty table. It is asked again every few seconds; the answer arrives as `late`, with the
+ * table it belongs to. Any other error throws. */
 export function useAvailableColumnsMetadataLazy() {
   const [run, { error, refetch }] = useLazyQuery<{ availableColumnsMetadata: ColumnMetadata[] }>(
     AvailableColumnsMetadata,
     { fetchPolicy: "cache-first", errorPolicy: "all" },
   );
-  // STARTING (REQ-1824) is polled for, as the table list is.
-  useStartingPoll(error, refetch);
-  return useCallback(
-    async (sourceId: string, schemaName: string, tableName: string): Promise<ColumnMetadata[]> => {
+  const asked = useRef<Omit<LateColumns, "columns"> | null>(null);
+  const [late, setLate] = useState<LateColumns | null>(null);
+  const poll = useCallback(async () => {
+    const r = await refetch();
+    if (asked.current && !r.error && r.data) {
+      setLate({ ...asked.current, columns: r.data.availableColumnsMetadata });
+    }
+  }, [refetch]);
+  const { starting, timedOut } = useStartingPoll(error, poll);
+  const fetchColumns = useCallback(
+    async (sourceId: string, schemaName: string, tableName: string) => {
+      asked.current = { sourceId, schemaName, tableName };
+      setLate(null);
       const { data, error: e } = await run({ variables: { sourceId, schemaName, tableName } });
       if (e && !isStillStarting(e)) throw e;
-      return data?.availableColumnsMetadata ?? [];
+      return e ? null : (data?.availableColumnsMetadata ?? []);
     },
     [run],
   );
+  return { fetchColumns, late, starting, startingTimedOut: timedOut };
 }
