@@ -663,13 +663,13 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
     def _parse_write_clause(
         self, kw: str
     ) -> CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause:
-        self._advance()
+        start = self._advance().pos
         if kw == "CREATE":
             patterns = [self._parse_write_pattern()]
             while (_c := self._peek()) and _c.type == "COMMA":
                 self._advance()
                 patterns.append(self._parse_write_pattern())
-            return CreateClause(patterns=patterns)
+            return CreateClause(patterns=patterns, start=start)
         if kw == "MERGE":
             merge = MergeClause(pattern=self._parse_write_pattern())
             while self._match_keyword("ON"):
@@ -681,9 +681,9 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 (merge.on_create if on_create else merge.on_match).extend(self._set_items())
             return merge
         if kw == "SET":
-            return SetClause(items=self._set_items())
+            return SetClause(items=self._set_items(), start=start)
         if kw == "REMOVE":
-            return RemoveClause(items=self._remove_items())
+            return RemoveClause(items=self._remove_items(), start=start)
         detach = kw == "DETACH"
         if detach:
             self._consume_keyword("DELETE")
@@ -1484,6 +1484,13 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
     return ast
 
 
+def writes_in(query: str) -> bool:
+    """Whether the statement holds a write clause's keyword outside a string (REQ-2176): a read
+    holds none, and is then never parsed as a write."""
+    tokens, _ = _tokenize(_normalize_legacy_params(query))
+    return any(t.type == "IDENT" and t.value.upper() in _WRITE_KEYWORDS for t in tokens)
+
+
 def parse_cypher_statement(  # REQ-2176, REQ-2135
     query: str, label_map: CypherLabelMap | None = None
 ) -> CypherAST:
@@ -1496,9 +1503,7 @@ def parse_cypher_statement(  # REQ-2176, REQ-2135
     refuse_multiple_statements(query)
     refuse_cypher_definition(query)
     try:
-        ast = _Parser(tokens, query, comments, writes=True).parse()
-        _refuse_deep_literals(ast)
-        return ast
+        return _Parser(tokens, query, comments, writes=True).parse()
     except CypherExprParseError as exc:
         raise CypherParseError(str(exc)) from exc
 

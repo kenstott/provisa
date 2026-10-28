@@ -138,19 +138,17 @@ async def create(
     leading clauses give, each governed row is written by the governed path and the session's
     parts land in the session. The two paths are not one transaction: the outcome is the parts
     written as statements of their own."""
-    split = pattern.create_clause(statement)
-    if split is None:
+    create = pattern.create_of(statement)
+    if create is None:
         return None
-    prefix, patterns, trailing = split
-    p = pattern.parse_patterns(patterns)
-    bound = pattern.bound(prefix)
+    prefix, p, bound = create.prefix, create.pattern, create.bound
     graph = store.graph(session)
     kind = classify_create(p, bound, label_map, graph)
     if kind.governed:
         return None
-    if trailing is not None:
+    if create.trailing is not None:
         raise CypherParseError(
-            f"A CREATE of ephemeral objects ends its statement; it is followed by {trailing}"
+            f"A CREATE of ephemeral objects ends its statement; it is followed by {create.trailing}"
         )
     for rel, governed in zip(p.rels, kind.rels_governed, strict=True):
         if governed:

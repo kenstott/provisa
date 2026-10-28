@@ -21,17 +21,14 @@ own label is its table, which no label write removes.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.cypher.parser import CypherParseError
-from provisa.ephemeral import pattern, store
+from provisa.ephemeral import store
 from provisa.ephemeral.classify import resolve
 from provisa.ephemeral.write import Read, _identity
-
-_ITEM = re.compile(rf"^({pattern._IDENT})((?:\s*:\s*{pattern._IDENT})+)$")
 
 
 @dataclass(frozen=True)
@@ -44,26 +41,30 @@ class LabelClause:
 
 
 def label_clause(statement: str) -> LabelClause | None:
-    """The statement's label SET or REMOVE, or None when it is anything else (a property SET, a
-    read, a CREATE): only a clause of label items alone, ending the statement, is one."""
-    scanned = pattern._scan(statement)
-    plain = "".join(ch if depth == 0 else " " for depth, ch in scanned)
-    found = list(re.finditer(r"\b(SET|REMOVE)\b", plain, re.IGNORECASE))
-    if len(found) != 1:
+    """The statement's label SET or REMOVE, read from the graph IR, or None when it is anything
+    else (a property SET, a read, a CREATE): only one SET or REMOVE of label items alone, ending
+    the statement, is one."""
+    from provisa.cypher.parser import parse_cypher_statement, writes_in
+    from provisa.gql.ir import RemoveClause, SetClause
+
+    if not writes_in(statement):
         return None
-    at = found[0]
-    if re.search(
-        r"\b(RETURN|WITH|DELETE|MERGE|MATCH|UNWIND|CREATE)\b", plain[at.end() :], re.IGNORECASE
-    ):
+    ast = parse_cypher_statement(statement)
+    writes = ast.writes
+    if len(writes) != 1 or ast.return_clause is not None or ast.pipeline[-1] is not writes[0]:
         return None
-    items: list[tuple[str, tuple[str, ...]]] = []
-    for part in pattern.split_top(statement[at.end() :]):
-        m = _ITEM.match(part)
-        if m is None:
-            return None
-        names = tuple(pattern._unquote(n.strip()) for n in m.group(2).split(":") if n.strip())
-        items.append((pattern._unquote(m.group(1)), names))
-    return LabelClause(statement[: at.start()].strip(), at.group(1).upper(), tuple(items))
+    [clause] = writes
+    if not isinstance(clause, (SetClause, RemoveClause)):
+        return None
+    if any(item.property is not None for item in clause.items):
+        return None
+    if isinstance(clause, SetClause) and any(item.value is not None for item in clause.items):
+        return None
+    return LabelClause(
+        statement[: clause.start].strip(),
+        "SET" if isinstance(clause, SetClause) else "REMOVE",
+        tuple((item.variable, tuple(item.labels)) for item in clause.items),
+    )
 
 
 @dataclass(frozen=True)

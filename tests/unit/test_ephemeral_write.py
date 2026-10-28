@@ -17,6 +17,7 @@ governed write is left to its own path."""
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import pytest
@@ -119,7 +120,6 @@ def test_the_anchor_a_free_label_creates_anchors_its_later_nodes(written):
     [
         "CREATE (:Person {id: 1})",
         "CREATE (n:Person {id: 1}) RETURN n",
-        "CREATE INDEX FOR (n:Temp) ON (n.k)",
         "MATCH (n:Person) RETURN n",
     ],
 )
@@ -178,3 +178,14 @@ def test_a_model_relationship_of_a_split_goes_to_the_governed_path(written):
 def test_an_ephemeral_create_ends_its_statement(written):
     with pytest.raises(CypherParseError, match="followed by RETURN"):
         _run("CREATE (n:Temp {k: 1}) RETURN n", [])
+
+
+def test_a_definition_is_refused_in_the_governed_paths_own_words(written):
+    from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
+
+    statement = "CREATE INDEX FOR (n:Temp) ON (n.k)"
+    with pytest.raises(Exception) as governed:
+        parse_cypher_write(statement)
+    assert not isinstance(governed.value, CypherWriteParseError)
+    with pytest.raises(type(governed.value), match=re.escape(str(governed.value))):
+        _run(statement, [])

@@ -287,6 +287,9 @@ class CreateClause:
     reaches back to (bound before it) named by itself alone."""
 
     patterns: list[PathPattern]
+    #: Where the clause begins in the statement as written: the text before it is the leading
+    #: clauses a write reads what it writes through.
+    start: int = -1
 
 
 @dataclass
@@ -304,6 +307,7 @@ class SetItem:
 @dataclass
 class SetClause:
     items: list[SetItem]
+    start: int = -1  # as CreateClause.start
 
 
 @dataclass
@@ -318,6 +322,7 @@ class RemoveItem:
 @dataclass
 class RemoveClause:
     items: list[RemoveItem]
+    start: int = -1  # as CreateClause.start
 
 
 @dataclass
