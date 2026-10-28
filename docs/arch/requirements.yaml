@@ -47172,7 +47172,13 @@
     how autonomous agents, and any other automation, reliably find data they may operate on and cite where
     it came from. An agent starts from vocabulary a person approved, follows a route to data whose trust
     it can see (grounded or pending approval, with undefined terms as anonymous hops), and arrives at relations
-    it reads under its role''s grants, row rules and masks; every step can be named in a citation (REQ-2177).'
+    it reads under its role''s grants, row rules and masks; every step can be named in a citation (REQ-2177).
+    (Amended 2026-10-27, TERMS ENRICH DISCOVERY; THEY NEVER GATE IT:) 2026-10-28: these rules decide which
+    terms an agent sees, never which data it can find. Table and column metadata (names, descriptions) are
+    the starting point of discovery, searched for every role its grants allow; the term network enriches
+    meaning where that metadata falls short (definitions, synonyms, hierarchy, relationships) and so adds
+    routes to data. A table that no term reaches is as discoverable as before. Governance (grants, row rules,
+    masks) is the only gate on data.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -90562,14 +90568,20 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: rest-and-jsonapi-resolve
   priority: MUST
   type: behavioral
-  description: 'An agent that cites its sources gets a citation it can hand over intact. The discovery operation (resolve
-    a term to its governed relations, with the path and its trust, on MCP and the API) and every agent-facing query
-    return a citation record: the term URIs it started from, with each term''s status and grounding at the time; the
-    path from term to relation, an undefined term kept as an anonymous hop; the provisa:// semantic URIs of the data it
-    read (table, column and row where relevant, REQ-1385); the statement it ran; the model version (environment and
-    model commit); the data time (as_of, as_recorded); and the role whose governed view it saw. resolve (REQ-1365)
-    accepts a citation and either reproduces the answer or says exactly why it now differs: the model changed, the data
-    changed, or the role''s rights changed. Citations carry no physical location.'
+  description: 'An agent that cites its sources gets a citation it can hand over intact. The discovery operation
+    (resolve a term to its governed relations, with the path and its trust, on MCP and the API) and every
+    agent-facing query return a citation record: the term URIs it started from, with each term''s status
+    and grounding at the time; the path from term to relation, an undefined term kept as an anonymous hop;
+    the provisa:// semantic URIs of the data it read (table, column and row where relevant, REQ-1385); the
+    statement it ran; the model version (environment and model commit); the data time (as_of, as_recorded);
+    and the role whose governed view it saw. resolve (REQ-1365) accepts a citation and either reproduces
+    the answer or says exactly why it now differs: the model changed, the data changed, or the role''s rights
+    changed. Citations carry no physical location. (Amended 2026-10-27, DISCOVERY IS METADATA PLUS TERMS;
+    THE CITATION NAMES THE ROUTE:) 2026-10-28: the discovery operation searches table and column metadata
+    and the term network together. A relation found through its own metadata is cited by its semantic URIs
+    as a direct route; one found through terms is cited with the term URIs and their path down to it, with
+    its trust (grounded or pending approval). Both are valid results; the citation records which route found
+    it.'
   scenario: 'Given an approved, grounded term Customer bound to sales.customers
     When an agent resolves Customer and reads a row
     Then its answer carries a citation naming Customer''s URI and grounding, the path to sales.customers, the row''s
