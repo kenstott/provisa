@@ -10,7 +10,7 @@
 // matches the physical schema (e.g. a sample-wrapper or column mismatch), which
 // previously only surfaced by manually running each report in the UI.
 
-import { test, expect } from "./coverage";
+import { test, expect, type Page } from "./coverage";
 
 // Kept in sync with provisa/api/_meta_views.py::_OPS_REPORT_VIEWS.
 const STANDARD_REPORTS = [
@@ -28,9 +28,22 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
 });
 
+/**
+ * Open the Reports tab and wait out the app's start: the pre-React splash (index.html) stands until
+ * the app has mounted, and the code-split admin page's fallback (page-loading) until its modules
+ * arrive -- both served cold by the lane's dev server, which in run 40692080291 mounted the app 25 s
+ * after the goto began and asked for the admin page 14 s after that. With both gone, the checks
+ * that follow measure the reports list, not the dev server.
+ */
+async function openReports(page: Page) {
+  await page.goto("/admin/reports");
+  await expect(page.locator("#provisa-splash")).toHaveCount(0, { timeout: 60000 });
+  await expect(page.getByTestId("page-loading")).toHaveCount(0, { timeout: 60000 });
+}
+
 for (const reportName of STANDARD_REPORTS) {
   test(`REQ-1386: standard report "${reportName}" loads without error`, async ({ page }) => {
-    await page.goto("/admin/reports");
+    await openReports(page);
     const item = page.getByTestId(`report-item-${reportName}`);
     await expect(item).toBeVisible({ timeout: 15000 });
     await item.click();
@@ -47,10 +60,8 @@ for (const reportName of STANDARD_REPORTS) {
   });
 }
 
-test("REQ-1386: reports list is seeded with every standard report on install", async ({
-  page,
-}) => {
-  await page.goto("/admin/reports");
+test("REQ-1386: reports list is seeded with every standard report on install", async ({ page }) => {
+  await openReports(page);
   for (const reportName of STANDARD_REPORTS) {
     await expect(page.getByTestId(`report-item-${reportName}`)).toBeVisible({ timeout: 15000 });
   }
