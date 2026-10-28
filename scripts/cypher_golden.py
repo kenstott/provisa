@@ -350,7 +350,9 @@ def model_inputs(config_path: Path, *, parameters: bool = False) -> tuple[Any, l
     from provisa.core.db import fold_config_grants
 
     fold_config_grants(tables, raw.get("roles") or [])
-    role = {"id": "org_admin", "domain_access": ["*"], "capabilities": []}
+    # REQ-2155: org_admin reads the catalog's data products (data_product_read comes through
+    # data_product_owner and data_steward), as it did when the baseline was captured.
+    role = {"id": "org_admin", "domain_access": ["*"], "capabilities": ["data_product_read"]}
     naming.configure(gql="apollo_graphql")
     schema_input = SchemaInput(
         tables=tables,
