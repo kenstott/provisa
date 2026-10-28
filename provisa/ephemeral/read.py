@@ -180,6 +180,7 @@ def overlay(model: Any, session: TempSession) -> Any:
                 type_name=_rel_relation(rel_type),
                 source_columns=("from_id",),
                 target_columns=("to_id",),
+                identity_column=store.REL_ID,
                 attributes={name: name for name, _ in columns if name != store.REL_ID},
                 attribute_types=tuple(
                     (name, _spelled(kind)) for name, kind in columns if name != store.REL_ID
@@ -299,6 +300,7 @@ def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
     props = [n for n, _ in session.tables[store.rel_table(rel_type)].columns if n != store.REL_ID]
     return (
         exp.select(
+            _col(store.REL_ID, "_r"),
             _col("from_id", "_r"),
             _col("to_id", "_r"),
             *(_col(p, "_p") for p in props),
