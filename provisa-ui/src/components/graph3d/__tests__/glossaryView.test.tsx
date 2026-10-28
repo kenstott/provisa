@@ -205,9 +205,19 @@ describe("the Glossary page's Ontology View", () => {
   it("runs its layers, domains, edge types and statuses in its query, not after it", async () => {
     render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    // Every layer and no filter, for the controls' choices; then the defaults: retired hidden.
+    // Every layer and no filter, for the controls' choices -- but Lineage, read only once it is on
+    // (one read per product) -- then the defaults: retired hidden.
     expect(asked.scopes[0]).toEqual({
-      layers: ["ontology", "domains", "data", "columns", "ownerTables"],
+      layers: [
+        "ontology",
+        "domains",
+        "data",
+        "columns",
+        "ownerTables",
+        "commands",
+        "quality",
+        "productLinks",
+      ],
       domains: [],
       edgeTypes: [],
       hiddenStatuses: [],
