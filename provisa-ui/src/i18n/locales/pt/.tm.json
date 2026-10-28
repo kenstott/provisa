@@ -2108,6 +2108,8 @@
   "pt/graphFrame.json::graphFrame.unpinHint": "Unpin (unpin to allow sorting)",
   "pt/graphFrame.json::graphFrame.viewCode": "Code",
   "pt/graphFrame.json::graphFrame.viewGraph": "Graph",
+  "pt/graphFrame.json::graphFrame.sparqlLiteralsAsNodes": "Literals as nodes",
+  "pt/graphFrame.json::graphFrame.sparqlDrawAsGraph": "Draw as graph",
   "pt/graphFrame.json::graphFrame.viewGraphStats": "Graph statistics",
   "pt/graphFrame.json::graphFrame.viewJson": "JSON",
   "pt/graphFrame.json::graphFrame.viewTable": "Table",
