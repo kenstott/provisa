@@ -89521,7 +89521,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     in the job''s fixture model (or a temp table where the surface allows one), and the test then runs its
     real assertion against them. The adapted test keeps the suite''s own test id and is marked adapted on
     the conformance page, with what its setup became. Only a test whose subject is the object creation itself
-    is counted as not runnable by design.'
+    is counted as not runnable by design. (Amended 2026-10-27, A SURFACE AT ITS BASELINE FAILS ON ANY UNEXCLUDED
+    FAILURE:) Maintainer 2026-10-27: a surface whose every failing case is either fixed or excluded by a
+    by-design group fails its conformance job on any failure no group excludes, so a regression turns CI
+    red rather than lowering a score silently; pgwire is the first. A surface still carrying open failures
+    reports its score as before until it reaches that point, and the lead compares its score to main''s
+    before landing. TCK scenarios whose setup builds their graph with statements run in one ephemeral session
+    per scenario (REQ-2176): the setup''s writes build session nodes and relationships and the query reads
+    them; setups needing a write form the session does not yet take wait for it.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
