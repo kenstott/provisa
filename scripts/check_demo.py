@@ -45,6 +45,7 @@ import json
 import re
 import subprocess
 import sys
+import tarfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -158,6 +159,46 @@ def check_images(home: Path) -> list[str]:
     return problems
 
 
+#: What a demo can use that only a newer Provisa runs, with the first release carrying it: a demo
+#: using one needs requires_provisa at least that release, or an older Provisa loads its bundle and
+#: fails at query time. Raise DEMO_FORMAT (provisa/core/demo_bundles.py) with each entry.
+_FEATURES = (
+    ("roles with parents, or grants naming data_steward (REQ-2155)", "0.1.0a496"),
+    ("a code export taking inputs (REQ-2100)", "0.1.0a496"),
+)
+_INPUTS = re.compile(r"\binputs\b")
+
+
+def _uses_role_parents(home: Path) -> bool:
+    text = (home / "config.yaml").read_text()
+    config = yaml.safe_load(text) or {}
+    has_parents = any(r.get("parents") for r in config.get("roles") or [])
+    return has_parents or re.search(r"\bdata_steward\b", text) is not None
+
+
+def _uses_export_inputs(home: Path) -> bool:
+    for archive in sorted((home / "code").glob("*.tar.gz")):
+        with tarfile.open(archive) as tar:
+            for member in tar.getmembers():
+                if member.isfile() and member.name.endswith((".py", ".ts", ".js", ".mjs")):
+                    text = tar.extractfile(member).read().decode("utf-8", "replace")
+                    if _INPUTS.search(text):
+                        return True
+    return False
+
+
+def check_features(home: Path, required: str) -> list[str]:
+    """The features this demo uses that come after ``required``, one problem each."""
+    from provisa.core import demo_bundles as bundles
+
+    used = (_uses_role_parents(home), _uses_export_inputs(home))
+    return [
+        f"demo.yaml: requires_provisa {required} is older than {first}, which {feature} needs"
+        for (feature, first), uses in zip(_FEATURES, used)
+        if uses and bundles.provisa_version_key(required) < bundles.provisa_version_key(first)
+    ]
+
+
 def check_bundle(home: Path) -> list[str]:
     from provisa.core import demo_bundles as bundles
 
@@ -169,7 +210,7 @@ def check_bundle(home: Path) -> list[str]:
         bundles.check_directory(home)
     except bundles.BundleError as e:
         return [f"demo.yaml: {e}"]
-    return []
+    return check_features(home, required)
 
 
 def _shared_type(role: str | None, image: str) -> str | None:
