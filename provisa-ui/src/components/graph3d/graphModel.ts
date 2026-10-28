@@ -107,6 +107,35 @@ export interface GraphNode {
    * Ontology View a data product's column is the Data layer's as well as Columns'. Empty: drawn
    * only as the end of an edge drawn (a table reached through its displayed columns). */
   layers?: LayerId[];
+  /** REQ-2174 (amended 2026-10-28, EVERY LANE NODE INFORMS AND LINKS): what helps a reader of
+   * the node, as its hover card and the detail panel say it (nodeFacts). Never drawn. */
+  info?: NodeInfo;
+}
+
+/** A node's facts as its graph read them; a fact not read (or not the role's to read) is absent. */
+export interface NodeInfo {
+  /** A term's or a product's status, as read: on a term the graph does not filter by it. */
+  status?: string;
+  /** A term's experts (its stewards), by user. */
+  stewards?: string[];
+  /** A product's owner role. */
+  owner?: string;
+  /** A column's type. */
+  dataType?: string;
+  /** A column's or a table's description. */
+  description?: string;
+  /** A column's sensitive tags, where the graph reads them as a fact and not as a filter (the
+   * glossary's: GraphNode.sensitivities is the product graph's filter). */
+  sensitive?: string[];
+  /** Whether a column is masked for some reader (its mask list holds a mask). */
+  masked?: boolean;
+  /** A table's source. */
+  source?: string;
+  /** A table's quality: its checkers' latest outcome, worst first ("fail", then "pass"); "none"
+   * when it has checkers that have never run. Absent when no checker scans it. */
+  quality?: "pass" | "fail" | "none";
+  /** When its checkers last ran, the latest. */
+  checkedAt?: string;
 }
 
 export interface GraphEdge {
@@ -281,6 +310,9 @@ export interface QueryScope {
   /** The page's search, as searchItems splits it: the terms it matches and their neighbourhood
    * (neighbourhood.ts) are read; none, the whole graph. */
   search: string[];
+  /** REQ-2174: drawn as the 2D lane diagram, whose product lane names the product each table
+   * drawn belongs to, whatever the layers. Absent: drawn in 3D. */
+  lanes?: boolean;
 }
 
 export const NO_FILTERS: GraphFilters = {
@@ -390,7 +422,9 @@ export function visibleGraph(
     const a = fold(e.a);
     const b = fold(e.b);
     if (a === b) return;
-    const id = `${e.kind}:${a}>${b}`;
+    // REQ-2174: a term edge of each type is its own edge, so a lateral edge between two terms
+    // never hides a rank edge between them.
+    const id = `${e.kind}:${a}>${b}${e.kind === "term_edge" && e.label ? `:${e.label}` : ""}`;
     const seen = edges.get(id);
     if (seen) seen.paths = (seen.paths ?? 1) + (e.paths ?? 1);
     else edges.set(id, { ...e, id, a, b });

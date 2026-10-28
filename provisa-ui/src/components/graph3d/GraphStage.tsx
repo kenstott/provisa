@@ -15,9 +15,10 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
-import { edgesOf, type GraphData, type LayoutKind, type NodeType } from "./graphModel";
+import type { GraphData, LayoutKind, NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
 import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
+import { hoverBody } from "./hoverBody";
 import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
 
 export interface StageState {
@@ -132,35 +133,7 @@ export function GraphStage({
     else if (command.target != null) scene.focus(command.target);
   }, [scene, command]);
 
-  let body = null;
-  if (tip?.h.kind === "node") {
-    const node = s.graph.nodes.find((n) => n.id === tip.h.id);
-    if (node) {
-      body = (
-        <>
-          <b>{node.label}</b>
-          <span>{t(kindKey(node))}</span>
-          <span className="p3d-num">
-            {t("graph3d.tipLinks", { count: edgesOf(s.graph, node.id).length })}
-          </span>
-        </>
-      );
-    }
-  } else if (tip?.h.kind === "edge") {
-    const e = s.graph.edges.find((x) => x.id === tip.h.id);
-    if (e) {
-      const name = (id: string) => s.graph.nodes.find((n) => n.id === id)?.label ?? id;
-      body = (
-        <>
-          <b>{`${name(e.a)} → ${name(e.b)}`}</b>
-          <span>{e.label ?? t(`graph3d.edge_${e.kind}`)}</span>
-          {(e.paths ?? 1) > 1 && (
-            <span className="p3d-num">{t("graph3d.paths", { count: e.paths })}</span>
-          )}
-        </>
-      );
-    }
-  }
+  const body = tip ? hoverBody(s.graph, tip.h, t) : null;
 
   return (
     <Stage3D
@@ -183,7 +156,7 @@ export function GraphStage({
 
 /** Each look the graph draws -- a shape for the kind, a colour for the variant -- and, where terms
  * carry a status, the four styles a term's name takes. */
-function GraphLegend({ graph }: { graph: GraphData }) {
+export function GraphLegend({ graph }: { graph: GraphData }) {
   const { t } = useTranslation();
   const looks = new Map<string, { type: NodeType; name: string } & Look>();
   for (const type of LEGEND)

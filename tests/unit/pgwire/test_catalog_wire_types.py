@@ -453,3 +453,47 @@ def test_a_statement_reading_a_model_table_is_not_taken_for_a_catalog_function_c
     from provisa.pgwire.catalog import classify
 
     assert classify("SELECT pg_relation_size('dogs') AS v, name FROM dogs") == "PASS_THROUGH"
+
+
+RECORD, VOID = 2249, 2278
+
+
+def test_a_record_returning_statistics_function_is_a_null_record():
+    # Provisa has no activity, archiver, WAL or replication statistics to report.
+    for call in (
+        "pg_catalog.pg_stat_get_archiver()",
+        "pg_catalog.pg_stat_get_activity(NULL::integer)",
+        "pg_catalog.pg_stat_get_wal()",
+    ):
+        sql = f"SELECT {call} AS v"
+        assert _oids(sql) == {"v": RECORD}, call
+        assert answer(sql, "testrole", _state()).rows == [(None,)], call
+
+
+def test_pg_sleep_sleeps_and_returns_void():
+    import time
+
+    from provisa.pgwire.catalog import classify
+
+    assert _oids('SELECT pg_catalog."pg_sleep"(NULL::double precision) AS v') == {"v": VOID}
+    assert answer("SELECT pg_sleep(NULL)", "testrole", _state()).rows == [(None,)]
+    assert classify("SELECT pg_sleep(0.05)") == "INTERCEPT"
+    start = time.monotonic()
+    assert answer("SELECT pg_sleep(0.05)", "testrole", _state()).rows == [("",)]
+    assert time.monotonic() - start >= 0.05
+
+
+def test_pg_sleep_ends_with_the_requests_timeout():
+    import time
+
+    import pytest
+
+    from provisa.core import request_deadline
+
+    deadline = request_deadline.Deadline(
+        0.05, transport="pgwire", setting="the pgwire request timeout"
+    )
+    start = time.monotonic()
+    with request_deadline.bound(deadline), pytest.raises(TimeoutError):
+        answer("SELECT pg_sleep(30)", "testrole", _state())
+    assert time.monotonic() - start < 5

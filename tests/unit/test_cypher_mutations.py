@@ -230,7 +230,7 @@ def test_parse_unknown_raises():
 
 
 # ---------------------------------------------------------------------------
-# parse_cypher_write — relationship writes rejected (REQ-665)
+# parse_cypher_write — relationship writes outside the junction forms rejected (REQ-665)
 # ---------------------------------------------------------------------------
 
 
@@ -239,14 +239,21 @@ def test_parse_unknown_raises():
     [
         "CREATE (a:Person)-[r:KNOWS]->(b:Person)",
         "CREATE (a)-->(b)",
-        "MATCH (a:Person)-[r:KNOWS]->(b) DELETE r",
         "MATCH (a:Person)-[r]-(b) SET r.weight = 5",
     ],
 )
 def test_parse_relationship_write_rejected(query):
-    """Relationships are FK-derived, not stored edges — writing one is a hard error."""
+    """A relationship write outside the junction forms (REQ-665, amended 2026-10-28) -- ends
+    that are rows with no property, no type, or a relationship deleted or set -- is refused,
+    naming the relationship."""
     with pytest.raises(CypherWriteParseError, match="relationship"):
         parse_cypher_write(query)
+
+
+def test_a_relationship_delete_is_the_delete_of_its_junction_row():
+    """DELETE of a relationship a registered junction backs deletes that row (REQ-665, amended
+    2026-10-27): read through the graph IR, its junction checked when it is written."""
+    assert parse_cypher_write("MATCH (a:Person)-[r:KNOWS]->(b) DELETE r").kind == "erase"
 
 
 @pytest.mark.parametrize(

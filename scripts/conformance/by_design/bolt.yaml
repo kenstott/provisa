@@ -9,8 +9,9 @@
   group: The examples' graph
   became: >-
     The labels and relationship types the examples create are declared in the job's fixture
-    model, writable by the job's role: Person, Company and Greeting, KNOWS (Person to Person) and
-    WORKS_FOR (Person to Company), each relationship a junction table. The companies the examples
+    model, writable by the job's role: Person, Company and Greeting, KNOWS (Person to Person, with
+    the from property the driver introduction example writes) and WORKS_FOR (Person to Company),
+    each relationship a junction table. The companies the examples
     employ people at as already there (Wayne Enterprises, LexCorp, Neo4j) are seeded.
   case: "examples\\.test_(autocommit_transaction|hello_world|pass_bookmarks|read_write_transaction|result_consume|result_retain|session|transaction_function|transaction_metadata_config|transaction_timeout_config)_example::"
 

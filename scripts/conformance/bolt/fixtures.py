@@ -15,7 +15,8 @@ Provisa creates no label or relationship type through a query surface, so the la
 the driver's examples create as their setup are declared here, in the job's PostgreSQL (schema
 ``conformance``) and in the model's ``conformance`` domain, writable by ``org_admin``: Person,
 Company and Greeting, and KNOWS (Person to Person) and WORKS_FOR (Person to Company), each a
-junction table. The examples then write and read their own rows of them. The companies the
+junction table; KNOWS carries the ``from`` property the driver's introduction example writes. The
+examples then write and read their own rows of them. The companies the
 examples name as already there (Wayne Enterprises, LexCorp, Neo4j) are seeded. A junction's keys
 cascade a deleted person or company, as the examples' DETACH DELETE cleanup does.
 
@@ -48,6 +49,8 @@ JUNCTIONS: dict[str, tuple[str, str, str]] = {
     "knows": ("KNOWS", "person", "person"),
     "works_for": ("WORKS_FOR", "person", "company"),
 }
+#: Each junction table's attribute columns: the relationship's properties the examples write.
+ATTRIBUTES: dict[str, list[str]] = {"knows": ["from"], "works_for": []}
 
 
 def ddl() -> list[str]:
@@ -59,10 +62,12 @@ def ddl() -> list[str]:
         cols = ", ".join(f"{c} text" for c in columns)
         statements.append(f"CREATE TABLE {SCHEMA}.{table} (id serial PRIMARY KEY, {cols})")
     for table, (_type, source, target) in JUNCTIONS.items():
+        # An attribute's name may be a SQL keyword (``from``): quoted.
+        attrs = "".join(f', "{c}" text' for c in ATTRIBUTES[table])
         statements.append(
             f"CREATE TABLE {SCHEMA}.{table} (id serial PRIMARY KEY, "
             f"from_id integer NOT NULL REFERENCES {SCHEMA}.{source}(id) ON DELETE CASCADE, "
-            f"to_id integer NOT NULL REFERENCES {SCHEMA}.{target}(id) ON DELETE CASCADE)"
+            f"to_id integer NOT NULL REFERENCES {SCHEMA}.{target}(id) ON DELETE CASCADE{attrs})"
         )
     statements.append(
         f"INSERT INTO {SCHEMA}.company (name) VALUES "
@@ -105,7 +110,7 @@ def tables() -> list[dict]:
     """The model's entries for every node and junction table."""
     return [
         *(_table(t, cols) for t, cols in NODES.items()),
-        *(_table(t, ["from_id", "to_id"]) for t in JUNCTIONS),
+        *(_table(t, ["from_id", "to_id", *ATTRIBUTES[t]]) for t in JUNCTIONS),
     ]
 
 
