@@ -43,19 +43,35 @@ export function nodeCaption(
 
 /** Average glyph width as a share of the font size, for the labels' sans-serif face. */
 const GLYPH_EM = 0.58;
-export const CAPTION_FONT_MIN = 6;
+/** How far past its node's width a caption beneath it may run, in pixels. */
+const OUTSIDE_MARGIN = 24;
+const LABEL_FONT = 10;
+const CLUSTER_FONT = 7;
 
-/** The font size a caption is drawn at in a node ``available`` pixels wide: ``base`` where it fits,
- * scaled down to ``min`` where it does not; below that the caption is truncated. */
-export function fitFont(
-  caption: string,
-  available: number,
-  base: number,
-  min = CAPTION_FONT_MIN,
-): number {
-  if (caption.length === 0) return base;
-  const fit = available / (caption.length * GLYPH_EM);
-  return Math.max(min, Math.min(base, fit));
+/** Whether ``caption`` fits inside a node ``width`` pixels wide at ``font`` size. */
+export function captionFits(caption: string, width: number, font = LABEL_FONT): boolean {
+  return caption.length * GLYPH_EM * font <= width - 8;
+}
+
+/** ``caption`` broken into at most two lines of ``available`` pixels, the second ending in an
+ * ellipsis where the caption runs on; breaks fall at spaces where there is one. */
+export function captionLines(caption: string, available: number, font = LABEL_FONT): string {
+  const per = Math.max(1, Math.floor(available / (GLYPH_EM * font)));
+  if (caption.length <= per) return caption;
+  const cut = caption.lastIndexOf(" ", per);
+  const first = cut > 0 ? caption.slice(0, cut) : caption.slice(0, per);
+  const rest = caption.slice(first.length).trimStart();
+  const second = rest.length <= per ? rest : `${rest.slice(0, Math.max(1, per - 1)).trimEnd()}…`;
+  return `${first}\n${second}`;
+}
+
+/** The caption's font: the canvas's normal one, smaller only in a collapsed cluster. */
+const fontOf = (ele: CyElement): number => (ele.data("_inCluster") ? CLUSTER_FONT : LABEL_FONT);
+
+/** Whether a node's caption fits inside its circle. */
+function insideCaption(ele: CyElement, labelProperty: Record<string, string>): boolean {
+  const cap = nodeCaption(ele.data("_node") as GNode | undefined, ele.data("label"), labelProperty);
+  return captionFits(cap, ele.width(), fontOf(ele));
 }
 
 export function buildGraphStylesheet({
@@ -72,26 +88,26 @@ export function buildGraphStylesheet({
           const lbl = ele.data("label") as string;
           return colorOverridesRef.current[lbl] ?? labelColor(lbl);
         },
-        label: (ele: CyElement) =>
-          nodeCaption(
+        // A caption that fits its circle stays inside; a longer one goes beneath the node, two lines
+        // at most at its width and a margin, the full caption on hover (GraphCanvas).
+        label: (ele: CyElement) => {
+          const cap = nodeCaption(
             ele.data("_node") as GNode | undefined,
             ele.data("label"),
             labelPropertyRef.current,
-          ),
-        color: "#fff",
-        // A caption longer than its circle is scaled down to a minimum before it is truncated.
-        "font-size": (ele: CyElement) =>
-          fitFont(
-            nodeCaption(
-              ele.data("_node") as GNode | undefined,
-              ele.data("label"),
-              labelPropertyRef.current,
-            ),
-            ele.width() - 8,
-            10,
-          ),
-        "text-valign": "center",
+          );
+          const font = fontOf(ele);
+          return captionFits(cap, ele.width(), font)
+            ? cap
+            : captionLines(cap, ele.width() + OUTSIDE_MARGIN, font);
+        },
+        color: (ele: CyElement) =>
+          insideCaption(ele, labelPropertyRef.current) ? "#fff" : "#d6d8e2",
+        "font-size": fontOf,
+        "text-valign": (ele: CyElement) =>
+          insideCaption(ele, labelPropertyRef.current) ? "center" : "bottom",
         "text-halign": "center",
+        "text-margin-y": (ele: CyElement) => (insideCaption(ele, labelPropertyRef.current) ? 0 : 4),
         width: (ele: CyElement) => {
           const lbl = ele.data("label") as string;
           return sizeOverridesRef.current[lbl] ?? 44;
@@ -100,12 +116,9 @@ export function buildGraphStylesheet({
           const lbl = ele.data("label") as string;
           return sizeOverridesRef.current[lbl] ?? 44;
         },
-        "text-wrap": "ellipsis",
-        "text-max-width": (ele: CyElement) => {
-          const lbl = ele.data("label") as string;
-          const sz = sizeOverridesRef.current[lbl] ?? 44;
-          return `${sz - 8}px`;
-        },
+        "text-wrap": "wrap",
+        "text-max-width": (ele: CyElement) =>
+          `${insideCaption(ele, labelPropertyRef.current) ? ele.width() - 8 : ele.width() + OUTSIDE_MARGIN}px`,
         "border-width": 2,
         "border-color": (ele: CyElement) => {
           const lbl = ele.data("label") as string;
@@ -235,21 +248,6 @@ export function buildGraphStylesheet({
           const lbl = ele.data("label") as string;
           return (sizeOverridesRef.current[lbl] ?? 44) / 2;
         },
-        "font-size": (ele: CyElement) =>
-          fitFont(
-            nodeCaption(
-              ele.data("_node") as GNode | undefined,
-              ele.data("label"),
-              labelPropertyRef.current,
-            ),
-            ele.width() - 4,
-            7,
-            CAPTION_FONT_MIN - 1,
-          ),
-        "text-max-width": (ele: CyElement) => {
-          const lbl = ele.data("label") as string;
-          return `${(sizeOverridesRef.current[lbl] ?? 44) / 2 - 4}px`;
-        },
       },
     },
     {
@@ -267,6 +265,7 @@ export function buildGraphStylesheet({
         "font-size": 9,
         "text-wrap": "wrap" as const,
         "text-max-width": "56px",
+        "text-margin-y": 0,
         "text-valign": "center" as const,
         "text-halign": "center" as const,
       },

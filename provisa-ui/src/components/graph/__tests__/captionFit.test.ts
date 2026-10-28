@@ -8,27 +8,37 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A node's caption longer than its circle is drawn at a smaller font, down to a minimum, before
-// it is truncated; the caption itself (what the hover shows in full) is the label property's.
+// A node's caption stays inside its circle where it fits, at the canvas's normal font; a longer one
+// goes beneath the node, two lines at most, ending in an ellipsis; the caption itself (what the hover
+// shows in full) is the label property's.
 
 import { describe, expect, it } from "vitest";
-import { CAPTION_FONT_MIN, fitFont, nodeCaption } from "../graph-stylesheet";
+import { captionFits, captionLines, nodeCaption } from "../graph-stylesheet";
 import type { GNode } from "../graph-model";
 
-describe("a caption's font", () => {
-  it("stays at the base size where the caption fits its circle", () => {
-    expect(fitFont("Rex", 36, 10)).toBe(10);
+describe("a caption's place", () => {
+  it("stays inside a circle it fits, at the normal font", () => {
+    expect(captionFits("Rex", 44)).toBe(true);
+    expect(captionFits("Customer", 44)).toBe(false);
   });
 
-  it("scales down in proportion where it does not, never below the minimum", () => {
-    const scaled = fitFont("Customer", 36, 10);
-    expect(scaled).toBeLessThan(10);
-    expect(scaled).toBeGreaterThan(CAPTION_FONT_MIN);
-    expect(fitFont("a very long caption indeed here", 36, 10)).toBe(CAPTION_FONT_MIN);
+  it("is kept whole beneath the node where it fits a line", () => {
+    expect(captionLines("Customer", 68)).toBe("Customer");
   });
 
-  it("is the base size for an empty caption", () => {
-    expect(fitFont("", 36, 10)).toBe(10);
+  it("wraps beneath the node to two lines, at a space where there is one", () => {
+    expect(captionLines("Sir Barksalot Bartholomew", 68)).toBe("Sir\nBarksalot…");
+    expect(captionLines("Sir Barksalot", 60)).toBe("Sir\nBarksalot");
+  });
+
+  it("ends in an ellipsis where two lines do not hold it", () => {
+    const lines = captionLines("pet-store:adopters-and-fosterers-of-small-animals", 68).split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1].endsWith("…")).toBe(true);
+  });
+
+  it("is never empty for a narrow node", () => {
+    expect(captionLines("abc def", 1)).not.toBe("");
   });
 });
 
