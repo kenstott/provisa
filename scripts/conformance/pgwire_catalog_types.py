@@ -398,12 +398,14 @@ def write_config(
     pg_dsn: str,
     extra_tables: Path | None = None,
     extra_relationships: Path | None = None,
+    extra_access: Path | None = None,
 ) -> None:
     """The model, with a job's own fixture tables (``extra_tables``, a YAML list of model table
     entries a job seeded into the same PostgreSQL, e.g. scripts/conformance/flightsql/fixtures.py)
-    registered beside ``types_fixture``, and the relationships between them
-    (``extra_relationships``, a YAML list of model relationship entries, e.g.
-    scripts/conformance/bolt/fixtures.py)."""
+    registered beside ``types_fixture``, the relationships between them (``extra_relationships``,
+    a YAML list of model relationship entries, e.g. scripts/conformance/bolt/fixtures.py), and the
+    domains, roles and role mapping rules its user acts by (``extra_access``, a YAML mapping of
+    ``domains``, ``roles`` and ``role_mapping``, e.g. scripts/conformance/bolt/fixtures.py)."""
     import yaml
 
     config = provisa_config(pg_port, pg_dsn)
@@ -411,6 +413,16 @@ def write_config(
         config["tables"].extend(yaml.safe_load(extra_tables.read_text()))
     if extra_relationships is not None:
         config["relationships"] = yaml.safe_load(extra_relationships.read_text())
+    if extra_access is not None:
+        access = yaml.safe_load(extra_access.read_text())
+        fields = {"domains", "roles", "role_mapping"}
+        if set(access) != fields:
+            raise SystemExit(
+                f"{extra_access}: has {sorted(access)}, where a job's access is {sorted(fields)}"
+            )
+        config["domains"].extend(access["domains"])
+        config["roles"].extend(access["roles"])
+        config["auth"]["role_mapping"].extend(access["role_mapping"])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {path}")
@@ -757,6 +769,9 @@ def main(argv: list[str]) -> int:
     c.add_argument("--pg", required=True, help="the job's PostgreSQL: unsized numerics' scale")
     c.add_argument("--extra-tables", type=Path, help="a job's own seeded fixture tables (YAML)")
     c.add_argument("--extra-relationships", type=Path, help="the relationships between them (YAML)")
+    c.add_argument(
+        "--extra-access", type=Path, help="a job's domains, roles and role mapping rules (YAML)"
+    )
     p = sub.add_parser("probe")
     p.add_argument("--pg", required=True)
     p.add_argument("--provisa", required=True)
@@ -766,7 +781,14 @@ def main(argv: list[str]) -> int:
     if args.command == "seed":
         seed(args.pg)
     elif args.command == "config":
-        write_config(args.out, args.pg_port, args.pg, args.extra_tables, args.extra_relationships)
+        write_config(
+            args.out,
+            args.pg_port,
+            args.pg,
+            args.extra_tables,
+            args.extra_relationships,
+            args.extra_access,
+        )
     else:
         probe(args.pg, args.provisa, args.out_json, args.out_md)
     return 0

@@ -21,11 +21,10 @@ test.describe("the SPARQL tab", () => {
     const vocabulary = page.getByTestId("sparql-vocabulary");
     // OnboardGate withholds the page until the auth bootstrap settles.
     await expect(vocabulary).toBeVisible({ timeout: 60_000 });
-    const classes = vocabulary.locator('[data-testid^="sparql-class-"]');
-    await expect(classes.first(), "the role reads at least one class").toBeVisible({
-      timeout: 30_000,
-    });
-    const pill = classes.first();
+    // The meta domain's Domains table: always readable, and needing no parameter (the first class
+    // listed may be a parameterized table, which a read gives no value for and which is refused).
+    const pill = vocabulary.getByTestId("sparql-class-meta:domains");
+    await expect(pill, "the role reads the meta domain's class").toBeVisible({ timeout: 30_000 });
     const shown = (await pill.textContent())?.split("⊂")[0].trim() ?? "";
     await pill.click();
     // The bar holds the pill's pattern, its PREFIX declared.
@@ -57,11 +56,9 @@ test.describe("the SPARQL tab", () => {
     await editor.click();
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.insertText("CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 10");
-    const tableClass = page
-      .getByTestId("sparql-vocabulary")
-      .locator('[data-testid^="sparql-class-"]:not([data-testid^="sparql-class-term:"])')
-      .first();
-    await expect(tableClass, "the role reads at least one table's class").toBeVisible({
+    // The meta domain's Domains table: a table's class that needs no parameter.
+    const tableClass = page.getByTestId("sparql-vocabulary").getByTestId("sparql-class-meta:domains");
+    await expect(tableClass, "the role reads the meta domain's table class").toBeVisible({
       timeout: 30_000,
     });
     const shown = (await tableClass.textContent())?.split("⊂")[0].trim() ?? "";

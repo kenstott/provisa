@@ -29,6 +29,7 @@ import pytest
 from provisa.core import connection_loop as cl_mod
 from provisa.core.connection_loop import (
     DEFAULT_BACKGROUND_WORKERS,
+    cancel_background,
     configure_background_workers,
     shutdown_background,
     spawn_after,
@@ -159,6 +160,41 @@ async def test_running_work_is_cancelled_and_has_ended_when_shutdown_returns():
     await asyncio.to_thread(shutdown_background, 30)
     assert events == ["cleaned up"]
     assert time.monotonic() - began < 5  # cancelled, not waited out
+
+
+async def test_a_task_cancelled_by_name_ends_and_others_run_on():
+    """Work keyed to something going away (a deleted source's catalog walk) is stopped by its
+    name: the named task is cancelled at its next await and its future is done once it ended; a
+    queued one of that name never starts; a task of another name is left running."""
+    configure_background_workers(1)
+    started = threading.Event()
+    release = threading.Event()
+    events: list[str] = []
+
+    async def _walk(label: str) -> None:
+        started.set()
+        try:
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+            events.append(f"{label} finished")
+        finally:
+            events.append(f"{label} ended")
+
+    running = spawn_background(_walk("gone"), name="catalog-index:org:gone")
+    assert await asyncio.to_thread(started.wait, 5)
+    queued = spawn_background(_walk("queued"), name="catalog-index:org:gone")
+    other = spawn_background(_walk("kept"), name="catalog-index:org:kept")
+
+    stopped = cancel_background("catalog-index:org:gone")
+
+    assert stopped == [running]
+    assert queued.cancelled()
+    await asyncio.wait_for(asyncio.wrap_future(running), 5)
+    assert events == ["gone ended"]
+    release.set()
+    await asyncio.wait_for(asyncio.wrap_future(other), 5)
+    assert events == ["gone ended", "kept finished", "kept ended"]
+    assert cancel_background("catalog-index:org:gone") == []
 
 
 async def test_a_long_lived_loop_runs_on_its_own_thread_and_stops_at_shutdown():

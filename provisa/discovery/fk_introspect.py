@@ -77,10 +77,10 @@ JOIN information_schema.key_column_usage       AS kcu
 JOIN information_schema.referential_constraints AS rc
     ON rc.constraint_schema = tc.constraint_schema
    AND rc.constraint_name   = tc.constraint_name
-JOIN information_schema.key_column_usage       AS ref
-    ON ref.constraint_schema = rc.unique_constraint_schema
-   AND ref.constraint_name   = rc.unique_constraint_name
-   AND ref.ordinal_position  = kcu.position_in_unique_constraint
+JOIN information_schema.key_column_usage       AS pk
+    ON pk.constraint_schema = rc.unique_constraint_schema
+   AND pk.constraint_name   = rc.unique_constraint_name
+   AND pk.ordinal_position  = kcu.position_in_unique_constraint
 WHERE tc.constraint_type = 'FOREIGN KEY'
 """
 
@@ -89,8 +89,8 @@ _PG_OUTBOUND = (
     """
 SELECT
     kcu.column_name          AS fk_column,
-    ref.table_name           AS ref_table,
-    ref.column_name          AS ref_column
+    pk.table_name           AS ref_table,
+    pk.column_name          AS ref_column
 """
     + _PG_FK_PAIRS
     + """
@@ -106,12 +106,12 @@ _PG_INBOUND = (
 SELECT
     kcu.table_name           AS fk_table,
     kcu.column_name          AS fk_column,
-    ref.column_name          AS ref_column
+    pk.column_name          AS ref_column
 """
     + _PG_FK_PAIRS
     + """
-  AND ref.table_schema   = $1
-  AND ref.table_name     = $2
+  AND pk.table_schema   = $1
+  AND pk.table_name     = $2
 ORDER BY kcu.table_name, tc.constraint_name, kcu.ordinal_position
 """
 )

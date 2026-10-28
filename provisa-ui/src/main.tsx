@@ -22,7 +22,7 @@ import { Notifications } from "@mantine/notifications";
 import { I18nextProvider } from "react-i18next";
 import { theme } from "./theme/theme.ts";
 import "./theme/tokens.css";
-import i18n from "./i18n/index.ts";
+import i18n, { i18nReady } from "./i18n/index.ts";
 import { DirectionSync } from "./i18n/direction.tsx";
 import "./index.css";
 import App from "./App.tsx";
@@ -94,6 +94,8 @@ async function bootstrap() {
   // has to finish before the first render, or the dashboard's initial queries run against an empty
   // cache and the warm start is lost. It never rejects (see cacheRestored).
   await cacheRestored;
+  // A reader of another language is shown it from the first paint, not English first.
+  await i18nReady;
 
   createRoot(document.getElementById("root")!).render(
     <DirectionProvider>

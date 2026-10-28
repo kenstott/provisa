@@ -23,6 +23,14 @@ inputs:
       entries (the Bolt job's, from scripts/conformance/bolt/fixtures.py). Empty for none.
     required: false
     default: ""
+  extra-access:
+    description: >-
+      The domains, roles and role mapping rules a job's user acts by: a YAML mapping of domains,
+      roles and role_mapping, added to the model's (the Bolt job's, from
+      scripts/conformance/bolt/fixtures.py, whose driver user acts as a role of its own). Empty
+      for none: the job user is org_admin.
+    required: false
+    default: ""
   password-cost:
     description: >-
       The bcrypt cost the job user's password is stored at, when not the server's own: a job whose
@@ -52,6 +60,7 @@ runs:
         extra=()
         if [ -n "${{ inputs.extra-tables }}" ]; then extra=(--extra-tables "${{ inputs.extra-tables }}"); fi
         if [ -n "${{ inputs.extra-relationships }}" ]; then extra+=(--extra-relationships "${{ inputs.extra-relationships }}"); fi
+        if [ -n "${{ inputs.extra-access }}" ]; then extra+=(--extra-access "${{ inputs.extra-access }}"); fi
         .venv/bin/python scripts/conformance/pgwire_catalog_types.py config \
           --out "$home/provisa.yaml" --pg-port "$CONFORMANCE_PG_PORT" \
           --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
@@ -107,7 +116,8 @@ runs:
         done
         (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
         # The job user: created by the break-glass account, so its SCRAM verifier is written
-        # with it (REQ-1394); org_admin by the model's default assignment.
+        # with it (REQ-1394); org_admin by the model's default assignment, unless a role mapping
+        # rule of the job's (extra-access) maps it to a role of its own.
         status=$(curl -s -o "$home/user-response.txt" -w '%{http_code}' -u "$su" \
           -X POST -H 'Content-Type: application/json' \
           --data "{\"username\": \"$CONFORMANCE_USER\", \"password\": \"$CONFORMANCE_PASSWORD\"}" \

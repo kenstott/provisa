@@ -287,13 +287,40 @@ Apply it in a select list, and its output columns take the place of the call:
 SELECT id, clean_address(raw_address) FROM suppliers
 ```
 
-This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list: Provisa runs the function on the rows once they are read, so a call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused, and so is an alias on the call. Each output column is a named step of the projection's lineage.
+This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list or of a CTE's select list (see [Column transforms in CTEs](#column-transforms-in-ctes) below). A call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused, and so is an alias on the call. Each output column is a named step of the projection's lineage.
 
-The rows go to the function in batches of 1,000. A function that keeps no state between calls lets the batches run side by side, across the source's workers: set **Workers** on the source's form (`workers` in its mapping, see [Dev mode and workers](#workers)) to run more than one, and each added worker adds throughput. A batch answered with a different number of results than rows it was given is refused, naming the function.
+**Streaming.** Column transforms stream. The statement reads its input as Arrow record batches; each batch is cut to 1,000 rows before being sent to a worker, and the worker's output columns are passed on as soon as that batch is answered. The result is never materialized whole: memory stays flat whatever the row count, and the first rows reach the caller before the last rows are read. Order is kept.
+
+The workers run batches in parallel when you set more than one on the source's form (`workers` in its mapping, see [Dev mode and workers](#workers)); each added worker adds throughput. A function that keeps no state between calls benefits most. A batch answered with a different number of results than rows it was given is refused, naming the function.
 
 The function can call Provisa's services, the LLM service among them, so one model call can clean, classify or enrich a whole batch. Each call is metered and capped against the source like any of its other calls ([Calling a model](#calling-a-model)).
 
 A view that applies a column transform is landed, whether or not you declare it a materialized view: Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
+
+#### Column transforms in CTEs {: #column-transforms-in-ctes }
+
+A column transform can also appear in a common table expression (CTE). The CTE becomes a staged step: Provisa runs it on its own — reading its input, sending the rows to the function in 1,000-row batches, and landing the enriched rows in a session temporary table — before the rest of the statement runs against that table.
+
+```sql
+WITH enriched AS (
+    SELECT id, region, clean_address(raw_address) FROM suppliers
+)
+SELECT region, COUNT(*) AS n
+FROM enriched
+WHERE country = 'DE'
+GROUP BY region
+```
+
+The `WHERE country = 'DE'` filter cannot push past the transform (the column is computed), so it runs after the CTE is staged. But conditions on input columns can push down into the CTE's read, and a join key from another part of the statement can restrict the CTE's rows before the function is called, so only the rows the statement actually uses are enriched.
+
+Two pushdown rules apply:
+
+- A condition on an input column whose value is known before the statement runs (a literal, a bound parameter, a session variable) is pushed into the CTE's read at once.
+- When the CTE is inner-joined to another relation on its input columns, that side runs first and its keys restrict the CTE's read.
+
+Each rule is applied only where it leaves the answer unchanged. A condition on a computed output column, a condition under `OR`, and an outer join do not trigger a pushdown.
+
+Statements with no column transform are compiled and run exactly as they always were; the staging logic is entered only when a transform is called.
 
 ### Writing to a table: commands {: #writes }
 

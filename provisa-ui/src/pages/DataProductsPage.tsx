@@ -178,6 +178,10 @@ export function DataProductsPage() {
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
   const core = useProductCore(expanded, coreVersion);
+  // The expanded product's lineage and contracts are read again only when its members can have
+  // changed -- a save, or a retirement that moves them to the successor. Every other status change
+  // leaves both as they were, so it does not read them again.
+  const [membersVersion, setMembersVersion] = useState(0);
   // REQ-2158: the open product's contracts, read with its panel core.
   const contracts = core.data ? coreContracts(core.data) : [];
   const reader = useMetaReader();
@@ -227,7 +231,7 @@ export function DataProductsPage() {
     return () => {
       cancelled = true;
     };
-  }, [expanded, coreVersion]);
+  }, [expanded, membersVersion]);
 
   useEffect(() => {
     if (contractsOf === null) return;
@@ -246,7 +250,7 @@ export function DataProductsPage() {
     return () => {
       cancelled = true;
     };
-  }, [contractsOf, coreVersion]);
+  }, [contractsOf, membersVersion]);
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
@@ -400,20 +404,25 @@ export function DataProductsPage() {
     }
     products.reload();
     setCoreVersion((v) => v + 1);
+    setMembersVersion((v) => v + 1);
     closeForm();
   };
 
-  // REQ-1634 STATUS: a status change. The products and their findings are read again, and the
-  // panel's core and the tables and commands with it: a retirement moves the members.
-  const statusChanged = (message: string) => {
+  // REQ-1634 STATUS: a status change. The products, their findings and the panel's core are read
+  // again. Only a retirement moves members (to the successor), so only it reads the tables, the
+  // commands, the lineage and the contracts again: the tables are every registered table, the
+  // page's heaviest read, and reading them after each change held the badge back.
+  const statusChanged = (message: string, membersMoved: boolean) => {
     notifications.show({ color: "green", message });
     products.reload();
     void productFindings.refetch();
+    setCoreVersion((v) => v + 1);
+    if (!membersMoved) return;
     void refetchTables();
     fetchActions()
       .then((actions) => setFunctions(actions.functions))
       .catch(() => setFunctions([]));
-    setCoreVersion((v) => v + 1);
+    setMembersVersion((v) => v + 1);
   };
 
   const handleDelete = async () => {

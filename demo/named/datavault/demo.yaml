@@ -18,7 +18,7 @@ screenshot: card.png
 published: true
 group: provision
 # The oldest Provisa this demo's bundle runs on (REQ-2049).
-requires_provisa: 0.1.0a489
+requires_provisa: 0.1.0a496
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Data Vault Sounds Hard. It's Not."

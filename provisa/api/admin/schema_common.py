@@ -850,7 +850,7 @@ async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> N
 
 def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     """Schedule background catalog indexing for NL table search (REQ-464)."""
-    from provisa.discovery.catalog_cache import index_source as _index_source
+    from provisa.discovery.catalog_cache import index_source as _index_source, index_task_name
 
     from provisa.core.connection_loop import spawn_background
 
@@ -864,7 +864,7 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
             state.source_types,
             state,
         ),
-        name=f"catalog-index:{input.id}",
+        name=index_task_name("index", input.id),
     )
 
 
