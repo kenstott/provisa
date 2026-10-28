@@ -8507,5 +8507,6 @@
   "zh-HK/graph3d.json::graph3d.factMembers": "Member tables",
   "zh-HK/graph3d.json::graph3d.factColumns": "Columns",
   "zh-HK/graph3d.json::graph3d.depth": "Depth",
-  "zh-HK/graph3d.json::graph3d.lateral": "Lateral edges"
+  "zh-HK/graph3d.json::graph3d.lateral": "Lateral edges",
+  "zh-HK/graph3d.json::graph3d.layer_productLinks": "Links to other products"
 }

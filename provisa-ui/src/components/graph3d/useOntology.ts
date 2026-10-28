@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 import { ONTOLOGY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
 import { dataGraphql, metaReader } from "../../api/metaGraph";
+import { fetchProductLineage } from "../../api/lineage";
 import {
   flatTerms,
   ontologyCountQuery,
@@ -24,6 +25,7 @@ import {
   ontologyQuery,
   overviewGraph,
   termEdges,
+  withProductLineage,
   type CountRow,
   type OntologyRows,
 } from "./ontologyData";
@@ -48,7 +50,19 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
   // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
   const terms = flatTerms(rows._terms);
-  return { data: ontologyGraph(terms, termEdges(terms), rows.data_products), query };
+  const products = rows.data_products ?? [];
+  const data = ontologyGraph(terms, termEdges(terms), products);
+  if (!scope.layers.has("lineage")) return { data, query };
+  // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): under Lineage each product read has its
+  // lineage, from the product lineage endpoint (REQ-2156).
+  const lineages = await Promise.all(products.map((p) => fetchProductLineage(p.id)));
+  return {
+    data: products.reduce(
+      (g, p, i) => withProductLineage(g, p.id, lineages[i], p.member_tables ?? []),
+      data,
+    ),
+    query,
+  };
 }
 
 // Before the first scoped read: nothing drawn yet.
@@ -58,10 +72,13 @@ const EMPTY: GraphData = { nodes: [], edges: [] };
  * holding them. */
 export const SNIPPET_LAYERS: LayerId[] = ["ontology", "columns", "ownerTables", "data"];
 
-/** Every layer, no filter: what the view's controls choose from. */
+/** Every layer, no filter: what the view's controls choose from. A layer read only once it is on
+ * is offered by the node it hangs off (ONTOLOGY_SCOPE.readWhenOn), so it is not read here. */
 function everything(preset: OntologyPreset): QueryScope {
   return {
-    layers: new Set<LayerId>(ONTOLOGY_SCOPE.layerOrder),
+    layers: new Set<LayerId>(
+      ONTOLOGY_SCOPE.layerOrder.filter((l) => !(l in ONTOLOGY_SCOPE.readWhenOn)),
+    ),
     domains: [],
     edgeTypes: [],
     hiddenStatuses: [],

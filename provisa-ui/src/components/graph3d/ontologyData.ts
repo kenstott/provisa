@@ -26,6 +26,8 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import type { MaskEntry } from "../../lib/masks";
+import type { ProductInput, ProductLineage } from "../../api/lineage";
+import { catalogTableName, relationName } from "../../naming";
 import type {
   GraphData,
   GraphEdge,
@@ -425,6 +427,50 @@ export function overviewGraph(
   };
 }
 
+/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): the layers a product's own parts are drawn on,
+ * read with the products only while they are on. */
+export const PRODUCT_LAYERS: LayerId[] = ["commands", "quality", "productLinks", "lineage"];
+
+/** A product's own parts its optional layers draw, as ``s`` has them on: its commands (Commands),
+ * its links to other products (Product links). A linked product is a bare node: its own parts
+ * are its own, never read through this one. */
+function productParts(s: QueryScope): NonNullable<Selection["rels"]> {
+  return {
+    ...(s.layers.has("commands")
+      ? { commands: { alias: "commands", sel: { fields: ["name", "domain_id"] } } }
+      : {}),
+    ...(s.layers.has("productLinks")
+      ? {
+          edges: {
+            alias: "edges",
+            sel: {
+              fields: ["kind", "path_count", "aliases"],
+              rels: {
+                target_product: {
+                  alias: "targetProduct",
+                  sel: { fields: ["id", "name", "domain_id"] },
+                },
+              },
+            },
+            // REQ-2126: the links to other products are its relationship rows.
+            where: { kind: { eq: "relationship" }, target_product_id: { is_null: false } },
+          },
+        }
+      : {}),
+  };
+}
+
+/** A member table's quality (Quality): the table a checker member checks (REQ-1443), and the
+ * table's profiles. */
+function memberQuality(s: QueryScope): NonNullable<Selection["rels"]> {
+  return s.layers.has("quality")
+    ? {
+        checks: { alias: "checks", sel: { fields: ["id"] } },
+        profile_results: { alias: "profileResults", sel: { fields: ["id", "table_name"] } },
+      }
+    : {};
+}
+
 function productsField(m: MetaReader, s: QueryScope): string | null {
   return rootField(
     m,
@@ -432,13 +478,16 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
     {
       fields: ["id", "name", "domain_id", ...PRODUCT_FACTS],
       rels: {
+        ...productParts(s),
         member_tables: {
           alias: "memberTables",
           sel: {
-            fields: ["id", "domain_id", "table_name", ...TABLE_FACTS.fields],
+            // A member with a contract is a checker (REQ-1443): quality evidence, not a dataset.
+            fields: ["id", "domain_id", "table_name", "dq_contract", ...TABLE_FACTS.fields],
             rels: {
               ...TABLE_FACTS.rels,
               ...TAGS,
+              ...memberQuality(s),
               table_columns: {
                 to: "table_columns",
                 sel: {
@@ -464,17 +513,23 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
   );
 }
 
+/** Whether ``s`` reads the data products: the one a product's snippet is focused on; every one
+ * for the whole ontology under Data or a layer of a product's own parts; none for a term's (its
+ * columns' tables name theirs). */
+export function readsProducts(s: QueryScope): boolean {
+  return (
+    focusProduct(s) !== null ||
+    (s.focus === null && ["data", ...PRODUCT_LAYERS].some((l) => s.layers.has(l as LayerId)))
+  );
+}
+
 /** The ontology's one query for ``s``: its terms, each with the edges leaving it under the
- * Ontology layer, and the data products -- every one under Data, the one a product's snippet is
- * focused on, none for a term's (its columns' tables name theirs); null when the role cannot read
- * the terms. A part the role cannot read is left out. */
+ * Ontology layer, and the data products readsProducts says; null when the role cannot read the
+ * terms. A part the role cannot read is left out. */
 export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
   const terms = termsField(m, s);
   if (terms === null) return null;
-  const products =
-    focusProduct(s) !== null || (s.focus === null && s.layers.has("data"))
-      ? productsField(m, s)
-      : null;
+  const products = readsProducts(s) ? productsField(m, s) : null;
   return operation(
     "Ontology",
     [terms, products].filter((f): f is string => f !== null),
@@ -579,6 +634,17 @@ export interface ProductRow {
   domain_id: string;
   status?: string | null;
   owner_role?: string | null;
+  // Under Commands.
+  commands?: { name: string; domain_id: string }[] | null;
+  // Under Product links: its relationship rows to other products.
+  edges?:
+    | {
+        kind: string;
+        path_count: number;
+        aliases: string | null;
+        target_product?: { id: string; name: string; domain_id: string } | null;
+      }[]
+    | null;
   // One-to-many: null when there are none (see rowsOf).
   member_tables?:
     | (TableFacts &
@@ -586,6 +652,11 @@ export interface ProductRow {
           id: number;
           domain_id: string;
           table_name: string;
+          // Set on a checker member (REQ-1443).
+          dq_contract?: string | null;
+          // Under Quality: the table a checker checks, and the table's profiles.
+          checks?: { id: number } | null;
+          profile_results?: { id: number; table_name: string }[] | null;
           table_columns?:
             | (ColumnFacts &
                 Tagged & {
@@ -782,9 +853,32 @@ export function ontologyGraph(
     }
   }
   for (const p of products) {
+    const pid = `p:${p.id}`;
     product(p.id, p.name, p.domain_id, p);
+    for (const c of p.commands ?? []) {
+      node({ id: `f:${c.name}`, type: "command", label: c.name, domains: [c.domain_id] });
+      edge(pid, `f:${c.name}`, "command");
+    }
     for (const m of p.member_tables ?? []) {
       const tid = `t:${m.id}`;
+      if (m.dq_contract != null) {
+        // A checker member (REQ-1443): quality evidence, drawn under Quality, never as a dataset.
+        const kid = `k:${m.id}`;
+        node({
+          id: kid,
+          type: "checker",
+          label: `${m.domain_id}.${m.table_name}`,
+          domains: [m.domain_id],
+        });
+        edge(pid, kid, "member", undefined, ["quality"]);
+        if (m.checks) edge(kid, `t:${m.checks.id}`, "checks");
+        continue;
+      }
+      for (const r of m.profile_results ?? []) {
+        // Its table is its parent: a profile is reached on its table's page.
+        node({ id: `r:${r.id}`, type: "profile", label: r.table_name, parent: tid });
+        edge(`r:${r.id}`, tid, "profiled");
+      }
       table(m.id, m.domain_id, m.table_name, true, m);
       edge(`p:${p.id}`, tid, "member");
       for (const c of m.table_columns ?? []) {
@@ -817,6 +911,25 @@ export function ontologyGraph(
       relationships(m.id, m.source_relationships);
     }
   }
+  // Product links last: a linked product read as itself is Data's; one only linked to is a bare
+  // node, drawn by its link alone.
+  for (const p of products)
+    for (const e of p.edges ?? []) {
+      const to = e.target_product;
+      // A link to a product the role cannot read has no end to draw.
+      if (!to) continue;
+      const b = productNode(to.id);
+      node({
+        id: b,
+        type: "product",
+        label: to.name,
+        domains: [to.domain_id],
+        layers: ["productLinks"],
+      });
+      edge(`p:${p.id}`, b, "product_link", e.aliases ?? undefined);
+      const link = out.get(`product_link:p:${p.id}>${b}${e.aliases ? `:${e.aliases}` : ""}`);
+      if (link) link.paths = e.path_count;
+    }
   for (const e of edges) {
     const a = `term:${e.from_term_id}`;
     const b = `term:${e.to_term_id}`;
@@ -824,4 +937,92 @@ export function ontologyGraph(
     if (nodes.has(a) && nodes.has(b)) edge(a, b, "term_edge", e.rel_type);
   }
   return { nodes: [...nodes.values()], edges: [...out.values()] };
+}
+
+/** REQ-2156: an input as its reader knows it -- a registered table or view by its catalog name, a
+ * member read straight from its source by the source and the names it gives the object. */
+function inputLabel(i: ProductInput): string {
+  if (i.kind !== "source")
+    return catalogTableName({ domainId: i.domain_id, tableName: i.table_name });
+  return sourceObject(i);
+}
+
+/** An object read straight from its source, by the names the source gives it: the source, then
+ * its schema and table where it has them. */
+function sourceObject(n: {
+  source_id?: string | null;
+  source_schema?: string | null;
+  source_table?: string | null;
+}): string {
+  const object = [n.source_schema, n.source_table].filter(Boolean).join(".");
+  return object ? `${n.source_id} · ${object}` : (n.source_id as string);
+}
+
+/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): ``g`` with ``product``'s lineage on the Lineage
+ * layer, from the product lineage endpoint (REQ-2156, cut to what the reader can read): each input
+ * feeds the product; an input that is another product's member stands for that product, which
+ * the product is built from. Its column lineage (REQ-2129) joins the columns it names: a member's
+ * or an input's column by its table, any other by its relation. ``tables`` gives the relation each
+ * of the product's member tables is served under. */
+export function withProductLineage(
+  g: GraphData,
+  product: string,
+  lineage: ProductLineage,
+  tables: { id: number; domain_id: string; table_name: string }[],
+): GraphData {
+  const pid = productNode(product);
+  const nodes = new Map(g.nodes.map((n) => [n.id, n]));
+  const edges = new Map(g.edges.map((e) => [e.id, e]));
+  for (const i of lineage.inputs) {
+    const from =
+      i.product_id && i.product_id !== product ? productNode(i.product_id) : `l:${i.relation}`;
+    if (!nodes.has(from))
+      nodes.set(
+        from,
+        from === `l:${i.relation}`
+          ? { id: from, type: "relation", label: inputLabel(i), domains: [i.domain_id] }
+          : { id: from, type: "product", label: i.product_id as string, domains: [i.domain_id] },
+      );
+    const id = `lineage:${from}>${pid}`;
+    if (!edges.has(id)) edges.set(id, { id, a: from, b: pid, kind: "lineage" });
+  }
+  const tableOf = new Map<string, number>([
+    ...tables.map(
+      (t) =>
+        [relationName({ domainId: t.domain_id, tableName: t.table_name }), t.id] as [
+          string,
+          number,
+        ],
+    ),
+    ...lineage.inputs.map((i) => [i.relation, i.table_id] as [string, number]),
+  ]);
+  const columnOf = new Map<string, string>();
+  for (const n of lineage.nodes) {
+    const tid = n.relation === null ? undefined : tableOf.get(n.relation);
+    const id = tid === undefined ? `lc:${n.id}` : `c:${tid}:${n.column}`;
+    columnOf.set(n.id, id);
+    // A column the ontology's read did not draw stands alone, named by where it is read from,
+    // drawn by Lineage alone.
+    if (!nodes.has(id))
+      nodes.set(id, {
+        id,
+        type: "column",
+        label:
+          n.kind === "native"
+            ? `${sourceObject(n)}.${n.column}`
+            : `${n.relation === null ? "" : `${n.relation}.`}${n.column}`,
+        inProduct: false,
+        layers: ["lineage"],
+      });
+  }
+  for (const e of lineage.edges) {
+    const a = columnOf.get(e.source);
+    const b = columnOf.get(e.target);
+    // The endpoint sends every node its edges name.
+    if (a === undefined || b === undefined)
+      throw new Error(`lineage edge ${e.source} -> ${e.target} names a node the response lacks`);
+    const id = `column_lineage:${a}>${b}`;
+    if (!edges.has(id)) edges.set(id, { id, a, b, kind: "column_lineage" });
+  }
+  return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }

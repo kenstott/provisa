@@ -24,6 +24,7 @@
     "layer_relationships": "Связи между участниками",
     "layer_outside": "Связи с внешними таблицами",
     "layer_lineage": "Происхождение",
+    "layer_productLinks": "Связи с другими продуктами",
     "filterDomain": "Домены",
     "filterTag": "Теги",
     "filterSensitivity": "Чувствительность",

@@ -120,6 +120,31 @@ function snippetScopes(): [string, QueryScope][] {
   return out;
 }
 
+/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): the full view with each layer of a product's
+ * own parts on, alone and with Data, and all of them at once. */
+function productLayerScopes(): [string, QueryScope][] {
+  const parts: LayerId[] = ["commands", "quality", "productLinks", "lineage"];
+  const sets: LayerId[][] = [
+    ...parts.flatMap((l): LayerId[][] => [[l], ["data", l]]),
+    ["data", ...parts],
+  ];
+  return sets.map((layers) => [
+    `layers=${layers.join("+")}`,
+    {
+      layers: new Set<LayerId>(["ontology", "domains", "columns", ...layers]),
+      search: [],
+      hiddenStatuses: ["retired"],
+      edgeTypes: [],
+      domains: [],
+      orphans: true,
+      tags: [],
+      sensitivities: [],
+      focus: null,
+      depth: 2,
+    },
+  ]);
+}
+
 /** Each distinct query the builders produce over the grid, by the first scope that builds it. */
 function corpus(): Record<string, string> {
   const m = reader();
@@ -138,6 +163,7 @@ function corpus(): Record<string, string> {
     add(`ontology snippet: ${key}`, ontologyQuery(m, s));
     add(`ontology snippet count: ${key}`, ontologyCountQuery(m, s));
   }
+  for (const [key, s] of productLayerScopes()) add(`ontology product layers: ${key}`, ontologyQuery(m, s));
   return out;
 }
 

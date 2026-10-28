@@ -24,6 +24,7 @@
     "layer_relationships": "成員之間的關係",
     "layer_outside": "與外部表的關係",
     "layer_lineage": "血緣",
+    "layer_productLinks": "連往其他產品的連結",
     "filterDomain": "網域",
     "filterTag": "標籤",
     "filterSensitivity": "敏感度",

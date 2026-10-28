@@ -8506,5 +8506,6 @@
   "de/graph3d.json::graph3d.factMembers": "Member tables",
   "de/graph3d.json::graph3d.factColumns": "Columns",
   "de/graph3d.json::graph3d.depth": "Depth",
-  "de/graph3d.json::graph3d.lateral": "Lateral edges"
+  "de/graph3d.json::graph3d.lateral": "Lateral edges",
+  "de/graph3d.json::graph3d.layer_productLinks": "Links to other products"
 }

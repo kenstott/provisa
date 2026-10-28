@@ -150,4 +150,5 @@ export const ENGINE_SCOPE: GraphScope = {
   implicitLayers: [],
   menus: true,
   neighbourhood: NEIGHBOURHOOD,
+  readWhenOn: {},
 };

@@ -24,6 +24,7 @@
     "layer_relationships": "メンバー間のリレーションシップ",
     "layer_outside": "外部テーブルへのリレーションシップ",
     "layer_lineage": "リネージ",
+    "layer_productLinks": "他のプロダクトへのリンク",
     "filterDomain": "ドメイン",
     "filterTag": "タグ",
     "filterSensitivity": "機密度",

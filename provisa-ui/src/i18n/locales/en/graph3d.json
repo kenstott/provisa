@@ -24,6 +24,7 @@
     "layer_relationships": "Relationships between members",
     "layer_outside": "Relationships to outside tables",
     "layer_lineage": "Lineage",
+    "layer_productLinks": "Links to other products",
     "filterDomain": "Domains",
     "filterTag": "Tags",
     "filterSensitivity": "Sensitivity",

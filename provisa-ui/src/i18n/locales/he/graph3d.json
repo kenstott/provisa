@@ -24,6 +24,7 @@
     "layer_relationships": "קשרים בין חברים",
     "layer_outside": "קשרים לטבלאות חיצוניות",
     "layer_lineage": "Data Lineage",
+    "layer_productLinks": "קישורים למוצרים אחרים",
     "filterDomain": "תחומים",
     "filterTag": "תגיות",
     "filterSensitivity": "רגישות",

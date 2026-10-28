@@ -24,6 +24,7 @@
     "layer_relationships": "Relacionamentos entre membros",
     "layer_outside": "Relacionamentos com tabelas externas",
     "layer_lineage": "Linhagem",
+    "layer_productLinks": "Ligações a outros produtos",
     "filterDomain": "Domínios",
     "filterTag": "Tags",
     "filterSensitivity": "Sensibilidade",

@@ -24,6 +24,7 @@
     "layer_relationships": "सदस्यों के बीच संबंध",
     "layer_outside": "बाहरी टेबल से संबंध",
     "layer_lineage": "लिनिएज",
+    "layer_productLinks": "अन्य उत्पादों से लिंक",
     "filterDomain": "डोमेन",
     "filterTag": "टैग",
     "filterSensitivity": "संवेदनशीलता",

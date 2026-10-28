@@ -64,7 +64,9 @@ export type LayerId =
   | "data"
   | "columns"
   // The tables of the columns drawn, with the relationships between them (with Columns).
-  | "ownerTables";
+  | "ownerTables"
+  // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): a product's links to other products.
+  | "productLinks";
 
 /** Force, or layers where edges have direction (REQ-2174; REQ-2130's Taxonomy). */
 export type LayoutKind = "force" | "layered";
@@ -195,6 +197,10 @@ export interface GraphScope {
   menus: boolean;
   /** What a focus draws around each match (neighbourhood.ts). */
   neighbourhood: Neighbourhood;
+  /** Layers read only once they are on (each costs a read of its own): offered whenever a node
+   * of the given type is drawn, since the read of every layer the controls choose from leaves
+   * them out. */
+  readWhenOn: Partial<Record<LayerId, NodeType>>;
 }
 
 /** REQ-2174 (ONE ONTOLOGY GRAPH): the one graph's scope, REQ-2130's Ontology View. Terms and their edges; the domains each term is in
@@ -211,8 +217,25 @@ export const ONTOLOGY_SCOPE: GraphScope = {
     // Toggled beside the filters (Columns, and Tables with it), not in the Layers row.
     columns: { nodes: ["column"], edges: ["term_binding"] },
     ownerTables: { nodes: [], edges: ["relationship"] },
+    // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): what the product graph showed, off by
+    // default -- a product's commands, its quality checks (its checkers and its tables'
+    // profiles), its links to other products and its lineage.
+    commands: { nodes: ["command"], edges: ["command"] },
+    quality: { nodes: ["checker", "profile"], edges: ["checks", "profiled"] },
+    productLinks: { nodes: [], edges: ["product_link"] },
+    lineage: { nodes: [], edges: ["lineage", "column_lineage"] },
   },
-  layerOrder: ["ontology", "domains", "data", "columns", "ownerTables"],
+  layerOrder: [
+    "ontology",
+    "domains",
+    "data",
+    "columns",
+    "ownerTables",
+    "commands",
+    "quality",
+    "productLinks",
+    "lineage",
+  ],
   presets: {
     // Every edge type, in a force layout, with the columns each term is.
     ontology: { layers: ["ontology", "domains", "columns"] },
@@ -228,6 +251,8 @@ export const ONTOLOGY_SCOPE: GraphScope = {
   implicitLayers: ["ontology"],
   menus: true,
   neighbourhood: NEIGHBOURHOOD,
+  // A product's lineage is the product lineage endpoint's, one read per product.
+  readWhenOn: { lineage: "product" },
 };
 
 export interface GraphFilters {
@@ -303,6 +328,8 @@ export function availableLayers(data: GraphData, scope: GraphScope): Set<LayerId
   const out = new Set<LayerId>();
   for (const e of data.edges) for (const l of edgeLayers(scope, e)) out.add(l);
   for (const n of data.nodes) for (const l of nodeLayers(scope, n)) out.add(l);
+  for (const [l, type] of Object.entries(scope.readWhenOn) as [LayerId, NodeType][])
+    if (data.nodes.some((n) => n.type === type)) out.add(l);
   return out;
 }
 
@@ -389,8 +416,9 @@ export function visibleGraph(
       if (!filters.edgeTypes.includes(e.label ?? "")) continue;
     }
     // REQ-2129: a column's upstream columns are drawn once its table is expanded to its columns;
-    // until then the product's relation-level lineage stands for them.
-    if (e.kind === "column_lineage") {
+    // until then the product's relation-level lineage stands for them. A graph drawing columns
+    // as themselves draws it whenever its layer is on.
+    if (e.kind === "column_lineage" && scope.foldColumns) {
       const parent = byId.get(e.b)?.parent;
       if (!parent || !expanded.has(parent)) continue;
     }
