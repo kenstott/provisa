@@ -47237,7 +47237,10 @@
     choice, as a contract''s is (REQ-2158): New version copies the current definition and examples to the
     next number for editing and keeps every earlier version read-only. A minor or cosmetic edit (a typo,
     wording that does not change the meaning) is made in place on the current version and creates none.
-    A draft''s definition is always edited in place.'
+    A draft''s definition is always edited in place. (Amended 2026-10-28, SAVE, SAVE VERSION, CANCEL:) A
+    term''s definition edit form: The edit form''s actions are Save, Save version and Cancel: Save writes
+    the edit in place on the current version, Save version writes it as the next version and keeps the current
+    one read-only, and Cancel discards it.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -89543,7 +89546,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     for it (a date become a string, a number become text), and passes on a change of width, length or precision
     within the same logical type, which stays an accepted risk unless a check covers it. A failing type
     check is handled as any failing promise check, by the data quality steward; nothing is re-versioned
-    by it.'
+    by it. (Amended 2026-10-28, SAVE, SAVE VERSION, CANCEL:) A contract''s edit form in the product: The
+    edit form''s actions are Save, Save version and Cancel: Save writes the edit in place on the current
+    version, Save version writes it as the next version and keeps the current one read-only, and Cancel
+    discards it.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
