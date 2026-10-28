@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "LLM-budget",
+    "hint": "Tokens, of USD volgens de modelprijslijst. Een gebruiker die met meerdere rollen werkt, krijgt de ruimste. Leeg betekent geen limiet.",
+    "callCap": "Per aanroep",
+    "window_hour": "Per uur",
+    "window_day": "Per dag",
+    "window_week": "Per week",
+    "window_month": "Per 30 dagen",
+    "unit_tokens": "tokens",
+    "unit_usd": "USD",
+    "unitOf": "Eenheid van {{limit}}",
+    "noLimit": "geen limiet",
+    "tokens": "{{amount}} tokens",
+    "used": "{{used}} van {{limit}} verbruikt",
+    "freesAt": "ruimte vrij op {{at}}"
+  }
+}

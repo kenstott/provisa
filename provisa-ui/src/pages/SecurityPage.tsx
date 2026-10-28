@@ -41,6 +41,8 @@ import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
 import { RoleRead } from "./security/RoleRead";
+import { LlmBudgetFields } from "./security/LlmBudget";
+import { llmBudgetForm, llmBudgetInput } from "../lib/llmBudget";
 import { RoleCapabilities } from "./security/RoleCapabilities";
 import { RoleDataAccess } from "./security/RoleDataAccess";
 import { SessionValuesField } from "./security/SessionValuesField";
@@ -73,6 +75,7 @@ const EMPTY_ROLE = {
   reqPerSec: "" as number | "",
   maxComplexity: "" as number | "",
   maxTimeMs: "" as number | "",
+  llmBudget: llmBudgetForm(null), // REQ-1174: the per-call cap and rolling windows
   // REQ-2077: remove a grant of the role once unused this many days ("" = never).
   inactivityDays: "" as number | "",
 };
@@ -143,8 +146,12 @@ export function SecurityRolesPage() {
         requestsPerSecond: _n(roleForm.reqPerSec),
         maxQueryComplexity: _n(roleForm.maxComplexity),
         maxQueryTimeMs: _n(roleForm.maxTimeMs),
+        ...llmBudgetInput(roleForm.llmBudget),
       };
-      const hasLimit = Object.values(rateLimit).some((v) => v !== null);
+      const { llmWindows, ...flat } = rateLimit;
+      const hasLimit = [...Object.values(flat), ...Object.values(llmWindows)].some(
+        (v) => v !== null,
+      );
       const res = await upsertRole(
         {
           id: roleForm.id,
@@ -217,6 +224,7 @@ export function SecurityRolesPage() {
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
       maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
+      llmBudget: llmBudgetForm(role.rateLimit), // REQ-1174
       inactivityDays: role.inactivityDays ?? "", // REQ-2077
     });
     setEditingRoleInRow(role.id);
@@ -538,6 +546,10 @@ export function SecurityRolesPage() {
                 }
               />
             </FormField>
+            <LlmBudgetFields
+              value={roleForm.llmBudget}
+              onChange={(llmBudget) => setRoleForm({ ...roleForm, llmBudget })}
+            />
             <FormFooter
               panel
               problem={error || undefined}

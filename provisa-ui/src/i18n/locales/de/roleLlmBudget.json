@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "LLM-Budget",
+    "hint": "Tokens oder USD laut Modellpreisliste. Ein Benutzer mit mehreren Rollen erhält das großzügigste Budget. Leer bedeutet kein Limit.",
+    "callCap": "Pro Aufruf",
+    "window_hour": "Pro Stunde",
+    "window_day": "Pro Tag",
+    "window_week": "Pro Woche",
+    "window_month": "Pro 30 Tage",
+    "unit_tokens": "Tokens",
+    "unit_usd": "USD",
+    "unitOf": "Einheit für {{limit}}",
+    "noLimit": "kein Limit",
+    "tokens": "{{amount}} Tokens",
+    "used": "{{used}} von {{limit}} verbraucht",
+    "freesAt": "wieder frei ab {{at}}"
+  }
+}

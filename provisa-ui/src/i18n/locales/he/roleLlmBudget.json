@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "תקציב LLM",
+    "hint": "טוקנים, או USD לפי מחירון המודלים. משתמש הפועל בכמה תפקידים כפוף לנדיב שבהם. שדה ריק פירושו ללא מגבלה.",
+    "callCap": "לכל קריאה",
+    "window_hour": "לשעה",
+    "window_day": "ליום",
+    "window_week": "לשבוע",
+    "window_month": "ל-30 יום",
+    "unit_tokens": "טוקנים",
+    "unit_usd": "USD",
+    "unitOf": "יחידה של {{limit}}",
+    "noLimit": "ללא מגבלה",
+    "tokens": "{{amount}} טוקנים",
+    "used": "נוצלו {{used}} מתוך {{limit}}",
+    "freesAt": "מקום מתפנה ב-{{at}}"
+  }
+}

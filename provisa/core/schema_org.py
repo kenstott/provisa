@@ -1895,6 +1895,19 @@ code_source_llm_usage = Table(
 )
 
 
+# REQ-1174 (amended 2026-10-27): what each role's LLM calls used, counted once per role whoever acts
+# as it: per-minute buckets kept an hour, per-hour a week, per-day 31 days (security.llm_budget).
+role_llm_usage = Table(
+    "role_llm_usage",
+    metadata,
+    Column("role_id", Text, primary_key=True),
+    Column("grain", Text, primary_key=True),  # minute | hour | day
+    Column("bucket", DateTime(timezone=True), primary_key=True),  # the bucket's start, UTC
+    Column("tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("usd", Float, nullable=False, server_default="0"),
+)
+
+
 # REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
 # archive kept on the node that built it), and why it failed.
 code_source_builds = Table(
