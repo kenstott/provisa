@@ -57,7 +57,9 @@ def state(monkeypatch):
             {
                 "id": "r",
                 "description": "Test role.",
-                "capabilities": ["usage"],
+                # REQ-2155: data_products is listed only to a role holding data_product_read,
+                # as the org_admin this role stands for does.
+                "capabilities": ["usage", "data_product_read"],
                 "domain_access": ["*"],
             }
         ],
