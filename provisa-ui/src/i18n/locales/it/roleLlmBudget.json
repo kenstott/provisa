@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "Budget LLM",
+    "hint": "Token, o USD secondo il listino prezzi dei modelli. A un utente che agisce con più ruoli si applica il più generoso. Vuoto non imposta limiti.",
+    "callCap": "Per chiamata",
+    "window_hour": "Per ora",
+    "window_day": "Per giorno",
+    "window_week": "Per settimana",
+    "window_month": "Per 30 giorni",
+    "unit_tokens": "token",
+    "unit_usd": "USD",
+    "unitOf": "Unità di {{limit}}",
+    "noLimit": "nessun limite",
+    "tokens": "{{amount}} token",
+    "used": "{{used}} di {{limit}} consumati",
+    "freesAt": "spazio libero dal {{at}}"
+  }
+}

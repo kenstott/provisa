@@ -11,10 +11,27 @@
 // A role's panel shows every value of the role under its form's labels, label beside value as
 // every detail panel lays them out, an empty one as "—".
 
-import { describe, it, expect } from "vitest";
-import { render, screen, within } from "../../../test-utils/render";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, waitFor, within } from "../../../test-utils/render";
 import type { Role } from "../../../types/auth";
 import { RoleRead } from "../RoleRead";
+
+// REQ-1174: what each budget window has spent, as GET /admin/roles/{id}/llm-usage answers it.
+const usage = vi.fn(async (_roleId: string) => ({
+  windows: [
+    {
+      window: "hour" as const,
+      unit: "tokens" as const,
+      limit: 10000,
+      used: 2500,
+      frees_at: "2026-10-27T13:10:00+00:00",
+    },
+    { window: "month" as const, unit: "usd" as const, limit: 50, used: 0, frees_at: null },
+  ],
+}));
+vi.mock("../../../api/roleRights", () => ({
+  fetchRoleLlmUsage: (roleId: string) => usage(roleId),
+}));
 
 const steward: Role = {
   id: "data_steward",
@@ -110,5 +127,47 @@ describe("a role's read view", () => {
     for (const [, value] of limits.slice(0, -1)) expect(value).toBe("—");
     // REQ-2077: a role that removes no grant for going unused says so.
     expect(limits.at(-1)).toEqual(["Remove grants unused for (days)", "never"]);
+  });
+});
+
+describe("a role's LLM budget (REQ-1174)", () => {
+  const budgeted: Role = {
+    ...steward,
+    rateLimit: {
+      requestsPerSecond: null,
+      maxQueryComplexity: null,
+      maxQueryTimeMs: null,
+      llmCallCap: { amount: 4000, unit: "tokens" },
+      llmWindows: {
+        hour: { amount: 10000, unit: "tokens" },
+        day: null,
+        week: null,
+        month: { amount: 50, unit: "usd" },
+      },
+    },
+  };
+
+  it("shows each limit, what each window has spent and when room frees up", async () => {
+    usage.mockClear();
+    render(<RoleRead role={budgeted} />);
+    expect(usage).toHaveBeenCalledWith("data_steward");
+    await waitFor(() =>
+      expect(screen.getByTestId("role-llm-hour-data_steward")).toHaveTextContent(
+        "2,500 tokens of 10,000 tokens spent · room frees at",
+      ),
+    );
+    const read = fields("role-read-llm-budget");
+    expect(read[0]).toEqual(["Per call", "4,000 tokens"]);
+    expect(read[2]).toEqual(["Per day", "—"]);
+    expect(read[3]).toEqual(["Per week", "—"]);
+    // Nothing spent: no time room frees up.
+    expect(read[4]).toEqual(["Per 30 days", "$0.00 of $50.00 spent"]);
+  });
+
+  it("asks for no use of a role that sets no window", () => {
+    usage.mockClear();
+    render(<RoleRead role={steward} />);
+    expect(usage).not.toHaveBeenCalled();
+    for (const [, value] of fields("role-read-llm-budget")) expect(value).toBe("—");
   });
 });

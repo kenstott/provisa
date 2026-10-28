@@ -88,3 +88,22 @@ export async function fetchRoleEffective(roleId: string): Promise<RoleEffective>
   }
   return resp.json();
 }
+
+/** REQ-1174: one LLM budget window of a role: its limit, what is spent in it now, and when its
+ *  oldest spend leaves it -- null with nothing spent. */
+export interface LlmWindowUse {
+  window: "hour" | "day" | "week" | "month";
+  unit: "tokens" | "usd";
+  limit: number;
+  used: number;
+  frees_at: string | null;
+}
+
+export async function fetchRoleLlmUsage(roleId: string): Promise<{ windows: LlmWindowUse[] }> {
+  const resp = await fetch(`${API_BASE}/admin/roles/${encodeURIComponent(roleId)}/llm-usage`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("LLM use", resp.status)));
+  }
+  return resp.json();
+}

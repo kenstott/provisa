@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type { Role } from "../../types/auth";
 import { DetailFields } from "../../components/detail/DetailFields";
+import { LlmBudgetRead } from "./LlmBudget";
 
 /**
  * Every value of a role, read-only, under the labels its form gives them. An empty value is
@@ -95,6 +96,7 @@ export function RoleRead({ role: r }: { role: Role }) {
           },
         ]}
       />
+      <LlmBudgetRead role={r} />
     </div>
   );
 }
