@@ -462,7 +462,31 @@ class _UnionMixin:  # mixin for _Translator
 
         if not branches:
             if not had_resolvable:
-                raise CypherTranslateError(f"Domain {domain_name!r} has no resolvable types")
+                # No type to draw from (a role served no tables, a session holding no nodes): the
+                # match is over nothing, so it reads no rows, each column typed as an arm types it.
+                text = exp.DataType.build("VARCHAR")
+                typed: list[exp.Expr] = [
+                    exp.alias_(exp.Cast(this=exp.null(), to=text), alias="__label"),
+                    exp.alias_(exp.Cast(this=exp.null(), to=text), alias="__id"),
+                    *(
+                        [
+                            exp.alias_(
+                                exp.Cast(this=exp.null(), to=exp.DataType.build("JSON")),
+                                alias=NODE_COLUMN,
+                            )
+                        ]
+                        if as_one_value
+                        else []
+                    ),
+                ] + [
+                    exp.alias_(
+                        exp.Cast(this=exp.null(), to=held_as[p]),
+                        alias=exp.Identifier(this=p, quoted=True),
+                    )
+                    for p in props
+                ]
+                empty = exp.select(*typed).where(exp.false())
+                return exp.alias_(exp.Subquery(this=empty), alias=var)  # pyright: ignore[reportReturnType]
             # All types exist but none have the required properties — return zero rows without
             # scanning any tables (metadata resolved this at translation time).
             zero_items: list[exp.Expr] = [
