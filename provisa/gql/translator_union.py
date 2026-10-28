@@ -32,7 +32,7 @@ from provisa.gql.translator_helpers import (
 from provisa.gql.translator_types import NODE_COLUMN, CypherTranslateError
 
 if TYPE_CHECKING:
-    from provisa.gql.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
 
 _INTEGERS = frozenset({"smallint", "integer", "bigint"})
@@ -43,6 +43,30 @@ def union_labels(lm: "CypherLabelMap", domain_name: str) -> list[str]:
     """The node types a node matched by a domain alone (or by no label, ``__all__``) is drawn
     from."""
     return list(lm.nodes.keys()) if domain_name == "__all__" else lm.domains[domain_name]
+
+
+def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType | None:
+    """The one type a relationship property read across several relationships has (as
+    union_type for nodes): the type every junction holding it registers it as, integers of
+    several widths a bigint, integers and floats a double; None when they disagree or one does
+    not say."""
+    from provisa.core.ir_types import to_ir
+
+    registered = [
+        dict(rm.via.attribute_types).get(prop)
+        for rm in rels
+        if rm.via is not None and prop in rm.via.attributes
+    ]
+    if not registered or None in registered:
+        return None
+    if len(set(registered)) == 1:
+        return exp.DataType.build(str(registered[0]), dialect="postgres")
+    kinds = {to_ir(str(t)) for t in registered}
+    if kinds <= _INTEGERS:
+        return exp.DataType.build("BIGINT")
+    if kinds <= _NUMBERS:
+        return exp.DataType.build("DOUBLE")
+    return None
 
 
 def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.DataType | None:
@@ -109,6 +133,8 @@ class _UnionMixin:  # mixin for _Translator
         from provisa.gql.label_map import CypherLabelMap
 
         _lm: CypherLabelMap
+        _all_rels_ends: dict[str, list[str]]
+        _all_rels_mappings: list[RelationshipMapping]
 
         def _collect_var_props(self, var: str) -> list[str]: ...
 
@@ -124,8 +150,10 @@ class _UnionMixin:  # mixin for _Translator
         *,
         src_type: str | None = None,
         tgt_type: str | None = None,
+        rel_type: str | None = None,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns.
+        """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns
+        (only ``rel_type``'s when it names one).
 
         src_domain / tgt_domain constrain the union to only include rels whose
         source / target node belongs to the named domain (PascalCase domain label).
@@ -160,6 +188,10 @@ class _UnionMixin:  # mixin for _Translator
         tgt_props_wanted = set(self._collect_var_props(tgt_col))
 
         branches: list[exp.Select] = []
+        # The node types each end may be, and the relationships the edge may be, which a property
+        # read of one of them takes its one type from (expr_context.resolve_property).
+        self._all_rels_ends = {src_col: [], tgt_col: []}
+        self._all_rels_mappings = []
         for rm in self._lm.relationships.values():
             src_nm = self._lm.nodes.get(rm.source_label)
             tgt_nm = self._lm.nodes.get(rm.target_label)
@@ -178,6 +210,8 @@ class _UnionMixin:  # mixin for _Translator
             if src_type is not None and rm.source_label != src_type:
                 continue
             if tgt_type is not None and rm.target_label != tgt_type:
+                continue
+            if rel_type is not None and rm.rel_type.upper() != rel_type:
                 continue
             # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
             # These are not real FK traversals and would pull in unrelated domain nodes.
@@ -349,6 +383,9 @@ class _UnionMixin:  # mixin for _Translator
                     join_type="INNER",
                 )
             branches.append(branch)
+            self._all_rels_ends[src_col].append(rm.source_label)
+            self._all_rels_ends[tgt_col].append(rm.target_label)
+            self._all_rels_mappings.append(rm)
 
         if not branches:
             raise CypherTranslateError("No relationship types found in schema")

@@ -604,6 +604,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_node_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # The labels each end of a read of every relationship may be, and its relationships
+        # (translator_union._build_all_rels_union).
+        self._all_rels_ends: dict[str, list[str]] = {}
+        self._all_rels_mappings: list = []
         # column names in the all-rels subquery for src node, rel, tgt node JSON objects
         self._all_rels_src_col: str | None = None
         self._all_rels_rel_col: str | None = None
