@@ -6,10 +6,13 @@
 # over a fixture model, and until it is, it counts as a failure. A write to a label the fixture
 # model registers is in scope (REQ-818), so writes are not excluded either.
 
-- group: REMOVE
-  requirement: REQ-818
-  decision: '"Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected."'
-  reason: "Cypher write pattern 'REMOVE'"
+- group: REMOVE of a property
+  requirement: REQ-2176
+  decision: >-
+    "SET n:L and REMOVE n:L write node_labels rows on ephemeral or model nodes; a node never moves
+    table. SET of a property is a governed write on a model node (declared columns only)": a
+    REMOVE is a label write, and a REMOVE of a property is refused by name.
+  reason: "A REMOVE of a property is not written"
 
 - group: Labels the model does not have
   requirement: REQ-778
