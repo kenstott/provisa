@@ -71,6 +71,7 @@ import { ModelingForm } from "./tables/ModelingForm";
 import { TableReadView } from "./tables/TableReadView";
 import { TABLE_SECTIONS, type TableSection } from "./tables/tableSections";
 import { COLUMN_TABS, type ColumnTab } from "./tables/columnTopics";
+import { EndpointErrorMark } from "./tables/EndpointErrorMark";
 import { ReplicatingMark } from "./tables/ReplicatingMark";
 import { buildOf } from "./tables/replicaBuild";
 import { ReplicaBuildsContext } from "./tables/replicaBuildsContext";
@@ -1234,6 +1235,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             <Group gap="0.35rem">
                               {t.alias || t.tableName}
                               <ReplicatingMark build={buildOf(replicaBuilds?.builds, t)} />
+                              <EndpointErrorMark
+                                error={t.apiEndpointError}
+                                testId={`tables-endpoint-error-${t.tableName}`}
+                              />
                               {/* REQ-1320: star-schema role is metadata on the registration itself —
                                 the badge derives live from it, so it can never drift from the def. */}
                               {t.modelingRole ? (

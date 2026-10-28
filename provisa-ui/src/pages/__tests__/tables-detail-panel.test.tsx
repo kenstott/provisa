@@ -96,6 +96,7 @@ function table(
     dqDataset: null,
     qualityCheckers: [],
     apiEndpoint: null,
+    apiEndpointError: null,
     viewSql: null,
     dqContract: null,
     materialize: false,

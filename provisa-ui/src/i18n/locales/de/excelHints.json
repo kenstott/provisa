@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Excel-Tabellen",
+    "note": "Wie Tabellen in den Arbeitsmappen dieser Quelle gefunden werden. Lassen Sie einen Hinweis auf „Automatisch erkennen“, solange eine Arbeitsmappe richtig gelesen wird.",
+    "auto": "Automatisch erkennen",
+    "autoValue": "Automatisch erkennen ({{value}})",
+    "hint": {
+      "header_rows": "Kopfzeilen",
+      "max_header_rows": "Höchstens Kopfzeilen",
+      "table_gap_rows": "Leerzeilen zwischen Tabellen",
+      "column_gap": "Leerspalten zwischen Tabellen",
+      "min_columns": "Mindestens Spalten",
+      "min_data_rows": "Mindestens Datenzeilen",
+      "range": "Bereich"
+    },
+    "help": {
+      "header_rows": "Die genaue Anzahl der Kopfzeilen. Setzen Sie sie, wenn eine Datenzeile als Kopfzeile gelesen wird oder eine Kopfzeile als Daten.",
+      "max_header_rows": "Die meisten Zeilen, die als Kopfzeilen gelesen werden. 1 bedeutet, dass jede Tabelle eine einzige Kopfzeile hat.",
+      "table_gap_rows": "Wie viele aufeinanderfolgende Leerzeilen eine Tabelle beenden. Setzen Sie 1, wenn Tabellen durch eine Leerzeile getrennt sind.",
+      "column_gap": "Wie viele aufeinanderfolgende Leerspalten nebeneinanderliegende Tabellen trennen. Setzen Sie 1, wenn eine Leerspalte sie trennt.",
+      "min_columns": "Die wenigsten Spalten einer Tabelle. Setzen Sie 1, um einspaltige Tabellen zu lesen.",
+      "min_data_rows": "Die wenigsten Datenzeilen einer Tabelle. Eine Tabelle mit weniger wird nicht gelesen.",
+      "range": "Die Zellen dieser Tabelle, genau so gelesen, etwa Sheet1!A3:F200. Setzen Sie einen Blattnamen mit Leerzeichen in Anführungszeichen: 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "Für eine Arbeitsmappe oder Tabelle",
+    "entriesNote": "Ein Hinweis hier hat Vorrang vor demselben Hinweis oben. Eine Tabelle heißt datei__blatt, wie sie aufgeführt wird.",
+    "scope": "Für",
+    "scopeWorkbook": "Arbeitsmappe",
+    "scopeTable": "Tabelle",
+    "workbookName": "Arbeitsmappendatei",
+    "workbookNameHelp": "Der Dateiname der Arbeitsmappe, etwa report.xlsx.",
+    "tableName": "Tabelle",
+    "tableNameHelp": "Der Name der Tabelle, wie die Quelle ihn aufführt, etwa report__summary. Mit einem Bereich ist das der Name, den die Tabelle des Bereichs erhält.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Zweimal genannt; geben Sie jeder Arbeitsmappe oder Tabelle einen Eintrag.",
+    "repeatedFix": "Excel-Tabellen: Eine Arbeitsmappe oder Tabelle ist in zwei Einträgen genannt. Geben Sie jeder einen Eintrag.",
+    "add": "Arbeitsmappe oder Tabelle hinzufügen",
+    "remove": "Entfernen"
+  }
+}

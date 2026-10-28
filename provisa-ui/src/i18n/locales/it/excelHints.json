@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Tabelle Excel",
+    "note": "Come vengono trovate le tabelle nelle cartelle di lavoro di questa origine. Lasci un'indicazione su Rilevamento automatico, a meno che una cartella di lavoro non venga letta male.",
+    "auto": "Rilevamento automatico",
+    "autoValue": "Rilevamento automatico ({{value}})",
+    "hint": {
+      "header_rows": "Righe di intestazione",
+      "max_header_rows": "Righe di intestazione al massimo",
+      "table_gap_rows": "Righe vuote tra tabelle",
+      "column_gap": "Colonne vuote tra tabelle",
+      "min_columns": "Colonne almeno",
+      "min_data_rows": "Righe di dati almeno",
+      "range": "Intervallo"
+    },
+    "help": {
+      "header_rows": "Il numero esatto di righe di intestazione. Lo indichi quando una riga di dati viene letta come intestazione, o un'intestazione come dati.",
+      "max_header_rows": "Il numero massimo di righe lette come intestazione. 1 significa che ogni tabella ha una sola riga di intestazione.",
+      "table_gap_rows": "Quante righe vuote consecutive chiudono una tabella. Indichi 1 quando le tabelle sono separate da una riga vuota.",
+      "column_gap": "Quante colonne vuote consecutive separano tabelle affiancate. Indichi 1 quando le separa una colonna vuota.",
+      "min_columns": "Il numero minimo di colonne di una tabella. Indichi 1 per leggere tabelle di una colonna.",
+      "min_data_rows": "Il numero minimo di righe di dati di una tabella. Una tabella con meno righe non viene letta.",
+      "range": "Le celle di questa tabella, lette esattamente, ad esempio Sheet1!A3:F200. Racchiuda tra apici il nome di un foglio con spazi: 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "Per una cartella di lavoro o una tabella",
+    "entriesNote": "Un'indicazione qui prevale sulla stessa indicazione sopra. Una tabella si chiama file__foglio, come appare nell'elenco.",
+    "scope": "Per",
+    "scopeWorkbook": "Cartella di lavoro",
+    "scopeTable": "Tabella",
+    "workbookName": "File della cartella di lavoro",
+    "workbookNameHelp": "Il nome del file della cartella di lavoro, ad esempio report.xlsx.",
+    "tableName": "Tabella",
+    "tableNameHelp": "Il nome della tabella come lo elenca l'origine, ad esempio report__summary. Con un intervallo, è il nome che prende la tabella dell'intervallo.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Indicato due volte; dia a ogni cartella di lavoro o tabella una sola voce.",
+    "repeatedFix": "Tabelle Excel: una cartella di lavoro o una tabella compare in due voci. Ne dia una sola a ciascuna.",
+    "add": "Aggiungi una cartella di lavoro o una tabella",
+    "remove": "Rimuovi"
+  }
+}

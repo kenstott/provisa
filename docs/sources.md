@@ -351,6 +351,40 @@ A folder shared without encryption must be mounted with locks that reach every n
 
 Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia): the source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
 
+#### Excel workbooks
+
+A sheet can hold several tables. The reader takes the workbook's own Excel tables (**Format as Table**) and named ranges first. It then searches the rest of each sheet for blocks of cells: two blank rows end a table, and two blank columns separate tables side by side. Within each block it finds a title row, header rows and data rows. A table is named `<file>__<sheet>`, followed by `_<title>` when a title row stands above it.
+
+When a workbook is read wrong, give the source hints under **Excel tables** on its form. Every hint shows Auto-detect until you give it a number.
+
+| Hint | What it sets | Auto |
+| --- | --- | --- |
+| Header rows | The exact number of header rows | detected |
+| Most header rows | The most rows read as header rows | 3 |
+| Blank rows between tables | How many blank rows in a row end a table | 2 |
+| Blank columns between tables | How many blank columns in a row separate tables | 2 |
+| Fewest columns | The fewest columns a table has | 2 |
+| Fewest data rows | The fewest data rows a table has | 1 |
+| Range | The exact cells of one table, such as `Sheet1!A3:F200` | none |
+
+A hint at the top applies to every workbook of the source. Under **For one workbook or table**, you can set one for a single workbook by its file name, or for a single table by its name; that hint wins over the one above. The blank-row and blank-column hints apply to a workbook, and a range applies to a table, which takes the name you give it. In the config the hints are the source's `mapping.excel_hints`:
+
+```yaml
+- id: books
+  type: files
+  path: /data/books/**
+  mapping:
+    excel_hints:
+      max_header_rows: 1
+      workbooks:
+        watch_list.xlsx: {column_gap: 1}
+      tables:
+        report__totals: {range: "summary!H3:K20", header_rows: 2}
+```
+
+A hint the reader does not take is refused when the source is saved, and the message names it.
+
+
 On the DuckDB engine, `files` is read natively, with a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory. On an engine with no `files` connector of its own, rows land through the same Calcite pgwire server bundled with the connector (`pgwire-file`) that sharepoint and splunk use. See [Enterprise SaaS Connectors](#enterprise-saas-connectors) below.
 
 #### Logs {: #logs }

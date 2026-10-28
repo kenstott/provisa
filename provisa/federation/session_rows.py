@@ -51,6 +51,11 @@ class SessionRows(Protocol):
         """Index the table on its key ``key_columns``, which no two rows share."""
         ...
 
+    async def lookup_index(self, schema: str, table: str, columns: tuple[str, ...]) -> None:
+        """Index the table on ``columns``, which a read looks rows up by (REQ-2176: a
+        relationship by either end or its type, a node by its label); rows may share them."""
+        ...
+
 
 def _ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
@@ -62,6 +67,13 @@ def _index_name(table: str) -> str:
     # Short and fixed, as a build table's name is: a long table name cannot run it past the
     # store's identifier limit.
     return "key__" + hashlib.sha256(table.encode()).hexdigest()[:24]
+
+
+def _lookup_index_name(table: str, columns: tuple[str, ...]) -> str:
+    import hashlib
+
+    # As _index_name, one per table and column list: a schema holds one index of each name.
+    return "on__" + hashlib.sha256("|".join((table, *columns)).encode()).hexdigest()[:24]
 
 
 def _column_type(kind: str, dialect: Any, *, dialect_name: str | None = None) -> str:
@@ -183,6 +195,14 @@ class DuckDBSessionRows:
         )
         await self._run(lambda con: con.execute(sql), unseen=True)
 
+    async def lookup_index(self, schema: str, table: str, columns: tuple[str, ...]) -> None:
+        cols = ", ".join(_ident(c) for c in columns)
+        sql = (
+            f"CREATE INDEX IF NOT EXISTS {_ident(_lookup_index_name(table, columns))} "
+            f"ON {self._table(schema, table)} ({cols})"
+        )
+        await self._run(lambda con: con.execute(sql), unseen=True)
+
 
 class SqlAlchemySessionRows:
     """A session's tables in a PostgreSQL or other SQLAlchemy store, written on the store's own
@@ -250,6 +270,17 @@ class SqlAlchemySessionRows:
         await self._execute(
             text(
                 f"CREATE UNIQUE INDEX IF NOT EXISTS {_ident(_index_name(table))} "
+                f"ON {_ident(schema)}.{_ident(table)} ({cols})"
+            )
+        )
+
+    async def lookup_index(self, schema: str, table: str, columns: tuple[str, ...]) -> None:
+        from sqlalchemy import text
+
+        cols = ", ".join(_ident(c) for c in columns)
+        await self._execute(
+            text(
+                f"CREATE INDEX IF NOT EXISTS {_ident(_lookup_index_name(table, columns))} "
                 f"ON {_ident(schema)}.{_ident(table)} ({cols})"
             )
         )

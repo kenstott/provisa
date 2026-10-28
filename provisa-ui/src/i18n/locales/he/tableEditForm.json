@@ -144,6 +144,7 @@
     "enableGroupByLabel": "הפעלת Group By",
     "enableGroupByDesc": "(חשיפת שדה השורש _group_by ב-GraphQL)",
     "apiEndpointLabel": "נקודת קצה של API",
+    "apiEndpointUnread": "לא ניתן היה לקרוא את מסמך ה-API של המקור שלה",
     "changeSignalLabel": "אות שינוי",
     "changeSignalHelp": "איך Provisa לומד ששורות השתנו. ttl = רענון לפי טיימר ה-TTL של המטמון; probe = שאילתת טריות ילידית למקור, משיכה מחדש רק בשינוי; ttl_probe = בדיקה לאחר חלוף רצפת ה-TTL; native/debezium/kafka = דחיפה מהמקור. ירושה = לפי ברירת המחדל ברמת המקור.",
     "csInherit": "ירושה מהמקור",

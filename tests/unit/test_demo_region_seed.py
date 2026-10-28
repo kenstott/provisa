@@ -182,3 +182,40 @@ async def test_a_sandbox_on_the_regions_tier_runs_in_its_regions_store(monkeypat
     await demo_sandbox._sandbox_runtime("sbxrwarehouse1")
     await demo_sandbox._sandbox_runtime("sbxplain1")
     assert built == [("sbxrwarehouse1", "postgresql://warehouse_store"), ("sbxplain1", None)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("regional", "storage_url", "named", "pinned"),
+    [
+        (False, "postgresql://eu/data", "postgresql://eu/data", "embedded"),
+        (True, "postgresql://eu/data", None, "postgresql://eu/data"),
+        # A template's first build: the lane is read off the model its build has just loaded.
+        (True, None, "postgresql://eu/data", "postgresql://eu/data"),
+        (True, None, None, "embedded"),
+    ],
+)
+async def test_a_sandbox_lands_where_its_loaded_model_names(
+    monkeypatch, regional, storage_url, named, pinned
+):
+    from provisa.api import app
+    from provisa.federation import engine
+
+    monkeypatch.setattr(demo_region_seed, "regional", lambda: regional)
+    monkeypatch.setattr(engine, "embedded_store_dsn", lambda _org: "embedded")
+
+    async def _lane(_org, _env):
+        return None if named is None else SimpleNamespace(materialize_url=named)
+
+    monkeypatch.setattr(app, "_region_lane_of", _lane)
+    assert await app._sandbox_store("tpl", "prod", storage_url) == pinned
+
+
+def test_a_sandbox_store_is_pinned_once_its_model_is_loaded():
+    import inspect
+
+    from provisa.api import app
+
+    build = inspect.getsource(app._build_org_runtime)
+    assert build.index("rebuild_from_config(") < build.index("_sandbox_store(")
+    assert build.index("_sandbox_store(") < build.index("land_from_seed(")

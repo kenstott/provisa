@@ -144,6 +144,7 @@
     "enableGroupByLabel": "啟用分組",
     "enableGroupByDesc": "（在 GraphQL 中公開 _group_by 根欄位）",
     "apiEndpointLabel": "API 端點",
+    "apiEndpointUnread": "無法讀取其來源的 API 文件",
     "changeSignalLabel": "變更訊號",
     "changeSignalHelp": "Provisa 得知資料列已變更的方式。ttl = 依快取 TTL 計時器重新整理；probe = 來源原生的新鮮度查詢，僅在變更時重新拉取；ttl_probe = TTL 下限經過後再探測；native/debezium/kafka = 來源推送。繼承 = 遵循數據來源層級的預設值。",
     "csInherit": "繼承數據來源",

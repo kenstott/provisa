@@ -275,13 +275,16 @@ class _UnionMixin:  # mixin for _Translator
                     exp.Anonymous(this="JSON_OBJECT", expressions=tgt_props_exprs),
                 ],
             )
-            edge_id = exp.DPipe(
+            edge_id: exp.Expression = exp.DPipe(
                 this=exp.DPipe(this=node_key_text(sa, src_nm), expression=exp.Literal.string("-")),
                 expression=node_key_text(ta, tgt_nm),
             )
             # REQ-1586: the junction row's own columns are this edge's properties, so an
             # all-relationships result carries them exactly as a named pattern does.
             via_alias = via_alias_for(rm, rel_var or ta) if rm.via is not None else None
+            if rm.via is not None and rm.via.identity_column is not None:
+                assert via_alias is not None
+                edge_id = via_column(via_alias, rm.via.identity_column)  # REQ-2176
             edge_props: list[exp.Expression] = []
             if rm.via is not None:
                 assert via_alias is not None

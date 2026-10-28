@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "Impliciete dimensie — 'Group by inschakelen' staat aan voor deze tabel"
     },
     "derived": "afgeleid",
+    "endpointUnread": "Het API-document van de bron kon niet worden gelezen",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
