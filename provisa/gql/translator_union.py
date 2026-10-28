@@ -137,6 +137,7 @@ class _UnionMixin:  # mixin for _Translator
         _lm: CypherLabelMap
         _all_rels_ends: dict[str, list[str]]
         _all_rels_mappings: list[RelationshipMapping]
+        _graph_id_unions: set[str]
 
         def _collect_var_props(self, var: str) -> list[str]: ...
 
@@ -413,6 +414,7 @@ class _UnionMixin:  # mixin for _Translator
         branches: list[exp.Select] = []
         had_resolvable = False
         walk = self._lm.session_walk
+        arms: list[NodeMapping] = []
         for label in type_labels:
             nm = self._lm.nodes.get(label)
             if nm is None:
@@ -437,10 +439,6 @@ class _UnionMixin:  # mixin for _Translator
             ]
             if as_one_value:
                 select_items.append(exp.alias_(_node_value(nm), alias=NODE_COLUMN))
-            if walk is not None:
-                # REQ-348: in a graph session a node is joined to the session's relationships by
-                # its graph identity, which a path function's walk reads it by.
-                select_items.append(exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID))
             for prop in props:
                 phys_col = nm.physical_properties.get(prop)
                 value = (
@@ -466,6 +464,17 @@ class _UnionMixin:  # mixin for _Translator
                 )
             )
             branches.append(branch)
+            arms.append(nm)
+
+        if walk is not None and any(nm.catalog_name == walk.catalog_name for nm in arms):
+            # REQ-348: a union holding a graph session's nodes names each one's graph identity,
+            # which the session's relationships, and a path function's walk, join it by. A union
+            # of the model's nodes alone has it already: __id.
+            for branch, nm in zip(branches, arms):
+                branch.select(
+                    exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID), copy=False
+                )
+            self._graph_id_unions.add(var)
 
         if not branches:
             if not had_resolvable:
@@ -476,7 +485,6 @@ class _UnionMixin:  # mixin for _Translator
                 exp.alias_(exp.null(), alias="__label"),
                 exp.alias_(exp.null(), alias="__id"),
                 *([exp.alias_(exp.null(), alias=NODE_COLUMN)] if as_one_value else []),
-                *([exp.alias_(exp.null(), alias=GRAPH_ID)] if walk is not None else []),
             ] + [exp.alias_(exp.null(), alias=exp.Identifier(this=p, quoted=True)) for p in props]
             zero_row = exp.select(*zero_items).where(exp.false())
             return exp.alias_(exp.Subquery(this=zero_row), alias=var)  # pyright: ignore[reportReturnType]

@@ -610,6 +610,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: the node unions that name each node's graph identity (translator_union)
+        self._graph_id_unions: set[str] = set()
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
         self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source

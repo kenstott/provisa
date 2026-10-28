@@ -107,6 +107,7 @@ class SessionWalkMixin:  # REQ-348
     _path_vars: dict
     _cut_checks: list
     _varlen_rel_vars: dict
+    _graph_id_unions: set
     # path variable -> (its start's identity, its end's identity) as RETURN p names them
     _walk_paths: dict
 
@@ -139,7 +140,8 @@ class SessionWalkMixin:  # REQ-348
                 "shortestPath/allShortestPaths require type-labeled (not domain-only) nodes"
             )
         relation = self._build_domain_union(alias, domain)  # type: ignore[attr-defined]
-        return relation, _col(GRAPH_ID, alias), _col("__id", alias)
+        graph_id = GRAPH_ID if alias in self._graph_id_unions else "__id"
+        return relation, _col(graph_id, alias), _col("__id", alias)
 
     def _refuse_model_hops(self, walk: SessionWalk, rel: RelPattern | None, error: type) -> None:
         """Refuse a walk the model's relationships could take a hop of: on the model graph each
