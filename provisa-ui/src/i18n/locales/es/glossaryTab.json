@@ -147,7 +147,6 @@
     "lastAppliedColumns": "Columnas: {{columns}}",
     "lastAppliedTables": "Tablas: {{tables}}",
     "status_draft": "Borrador",
-    "status_live": "Activo",
     "status_deprecated": "Obsoleto",
     "status_retired": "Retirado",
     "draftUndefined": "Borrador: derivado de los nombres de la columna y la tabla. Dele una definición: es lo que leen los agentes y los catálogos. El nombre proviene de las columnas de abajo, y las columnas que se normalizan igual acaban en un mismo término: asigne un alias a una columna en la página Tablas para cambiar a qué término alimenta. Cambiar el nombre aquí solo altera la redacción de este término.",

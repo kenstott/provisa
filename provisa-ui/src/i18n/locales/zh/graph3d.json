@@ -92,7 +92,6 @@
     "look_in_product": "数据产品中的列",
     "look_out_of_product": "数据产品之外的列",
     "look_stored": "表",
-    "status_live": "有效",
     "openAsQuery": "作为查询打开",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

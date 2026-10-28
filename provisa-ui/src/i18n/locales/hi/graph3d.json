@@ -92,7 +92,6 @@
     "look_in_product": "डेटा उत्पाद में कॉलम",
     "look_out_of_product": "डेटा उत्पादों से बाहर कॉलम",
     "look_stored": "टेबल",
-    "status_live": "सक्रिय",
     "openAsQuery": "क्वेरी के रूप में खोलें",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

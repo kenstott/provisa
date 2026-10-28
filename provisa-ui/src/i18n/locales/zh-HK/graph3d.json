@@ -92,7 +92,6 @@
     "look_in_product": "數據產品中的欄",
     "look_out_of_product": "數據產品之外的欄",
     "look_stored": "資料表",
-    "status_live": "有效",
     "openAsQuery": "以查詢開啟",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

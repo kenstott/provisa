@@ -687,8 +687,7 @@
       "retire_on_invalid": "The planned retirement date {{retire_on}} is not a date (use YYYY-MM-DD).",
       "successor_is_self": "A term cannot be its own successor.",
       "successor_retired": "The successor '{{successor}}' is retired. Choose a term that is in service.",
-      "term_not_live": "Only a live term can be deprecated; this one is {{status}}.",
-      "status_by_action": "A term's status changes through Deprecate, Retire or Restore, each with a reason.",
+      "status_by_action": "A term's status changes through Approve, Deprecate, Retire or Restore.",
       "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
       "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
       "no_retirement_history": "The model's history has no retirement of this term.",
@@ -698,8 +697,18 @@
         "class_and_attribute_table": "Table {{table}} has no class: its concept is this term, which holds columns that aren't keys ({{columns}}).",
         "tag_wrong_kind": "This term carries tags ({{tags}}) only a property passes to its columns; it is a {{role}}.",
         "retirement_blocked": "This term was due for retirement on {{retire_on}} but still holds data. Retire it with a successor to take it.",
-        "no_data": "This concept is connected to no term that holds data."
-      }
+        "no_data": "This draft concept is connected to no term that holds data.",
+        "approved_not_grounded": "This term is approved but reaches no data, so no agent sees it.",
+        "path_pending": "Grounded · path pending approval: it reaches data only through terms not yet approved.",
+        "path_pending_approve": "Grounded · path pending approval: approving {{approve}} grounds it."
+      },
+      "term_not_approved": "Only an approved term can be deprecated; this one is {{status}}.",
+      "term_not_draft": "Only a draft term can be approved; this one is {{status}}.",
+      "definition_required": "Give the term a definition before approving it.",
+      "not_bulk_approvable": "Only defined, grounded draft terms are approved together; not: {{terms}}.",
+      "term_ids_required": "Name the terms to approve.",
+      "impact_action": "There is no preview for that action.",
+      "impact_table_required": "Binding names a table, or one of its columns."
     },
     "tag": {
       "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",

@@ -147,7 +147,6 @@
     "lastAppliedColumns": "Spalten: {{columns}}",
     "lastAppliedTables": "Tabellen: {{tables}}",
     "status_draft": "Entwurf",
-    "status_live": "Aktiv",
     "status_deprecated": "Veraltet",
     "status_retired": "Außer Dienst",
     "draftUndefined": "Entwurf: aus den Spalten- und Tabellennamen abgeleitet. Geben Sie ihm eine Definition — sie ist es, was Agenten und Kataloge lesen. Der Name stammt aus den unten aufgeführten Spalten, und Spalten, die gleich normalisiert werden, landen auf einem Begriff: Vergeben Sie auf der Tabellenseite einen Alias für eine Spalte, um zu ändern, welchem Begriff sie zufließt. Umbenennen ändert hier nur die Formulierung dieses Begriffs.",

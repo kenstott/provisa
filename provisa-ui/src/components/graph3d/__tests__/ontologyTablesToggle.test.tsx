@@ -73,7 +73,8 @@ const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow
   ref_count: 0,
   deprecated: false,
   retired: false,
-  live: true,
+  status: "approved",
+  grounding: "grounded",
   domains: [{ domain_id: "sales" }],
   refs,
 });

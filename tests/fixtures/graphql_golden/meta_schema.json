@@ -2745,10 +2745,10 @@
        }
       },
       {
-       "name": "grounded",
+       "name": "grounding",
        "type": {
         "kind": "SCALAR",
-        "name": "Boolean"
+        "name": "String"
        }
       },
       {
@@ -2788,13 +2788,6 @@
       },
       {
        "name": "isRooted",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "live",
        "type": {
         "kind": "SCALAR",
         "name": "Boolean"

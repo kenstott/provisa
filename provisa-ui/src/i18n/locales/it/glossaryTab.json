@@ -147,7 +147,6 @@
     "lastAppliedColumns": "Colonne: {{columns}}",
     "lastAppliedTables": "Tabelle: {{tables}}",
     "status_draft": "Bozza",
-    "status_live": "Attivo",
     "status_deprecated": "Deprecato",
     "status_retired": "Ritirato",
     "draftUndefined": "Bozza: derivato dai nomi della colonna e della tabella. Dagli una definizione: è ciò che leggono gli agenti e i cataloghi. Il nome deriva dalle colonne qui sotto, e le colonne che si normalizzano allo stesso modo confluiscono in un unico termine: assegna un alias a una colonna nella pagina Tabelle per cambiare il termine a cui contribuisce. Rinominare qui cambia solo la formulazione di questo termine.",

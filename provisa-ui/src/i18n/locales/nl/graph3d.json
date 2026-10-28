@@ -92,7 +92,6 @@
     "look_in_product": "kolom in een dataproduct",
     "look_out_of_product": "kolom buiten dataproducten",
     "look_stored": "tabel",
-    "status_live": "Actief",
     "openAsQuery": "Openen als query",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

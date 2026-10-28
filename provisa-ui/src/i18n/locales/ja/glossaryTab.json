@@ -147,7 +147,6 @@
     "lastAppliedColumns": "列: {{columns}}",
     "lastAppliedTables": "テーブル: {{tables}}",
     "status_draft": "下書き",
-    "status_live": "有効",
     "status_deprecated": "非推奨",
     "status_retired": "廃止済み",
     "draftUndefined": "下書き: 列名とテーブル名から導出されました。定義を付けてください — エージェントとカタログが読むのは定義です。名前は下の列に由来し、同じように正規化される列は一つの用語にまとまります。列がどの用語に入るかを変えるには、テーブルページでその列にエイリアスを設定してください。ここでの名前変更は、この用語の表記だけを変えます。",

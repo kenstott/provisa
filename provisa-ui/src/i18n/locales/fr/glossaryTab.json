@@ -147,7 +147,6 @@
     "lastAppliedColumns": "Colonnes : {{columns}}",
     "lastAppliedTables": "Tables : {{tables}}",
     "status_draft": "Brouillon",
-    "status_live": "Actif",
     "status_deprecated": "Obsolète",
     "status_retired": "Retiré",
     "draftUndefined": "Brouillon: dérivé des noms de la colonne et de la table. Donnez-lui une définition — c'est ce que lisent les agents et les catalogues. Le nom provient des colonnes ci-dessous, et les colonnes qui se normalisent de la même façon aboutissent à un seul terme : donnez un alias à une colonne sur la page Tables pour changer le terme qu'elle alimente. Renommer ici ne change que la formulation de ce terme.",

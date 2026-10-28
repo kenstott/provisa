@@ -687,7 +687,6 @@
       "retire_on_invalid": "Das geplante Ausmusterungsdatum {{retire_on}} ist kein Datum (verwenden Sie JJJJ-MM-TT).",
       "successor_is_self": "Ein Begriff kann nicht sein eigener Nachfolger sein.",
       "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie einen Begriff, der in Gebrauch ist.",
-      "term_not_live": "Nur ein aktiver Begriff kann als veraltet markiert werden; dieser ist {{status}}.",
       "status_by_action": "Der Status eines Begriffs ändert sich über Veralten, Ausmustern oder Wiederherstellen, jeweils mit einem Grund.",
       "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
       "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",

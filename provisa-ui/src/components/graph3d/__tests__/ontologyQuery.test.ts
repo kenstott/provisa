@@ -60,7 +60,8 @@ function reader(): MetaReader {
           isAbstract: scalar,
           deprecated: scalar,
           retired: scalar,
-          live: scalar,
+          status: scalar,
+          grounding: scalar,
           termDomains: scalar,
           identityGap: scalar,
           domains: list("ONT__Domains"),
@@ -177,12 +178,15 @@ describe("the Ontology View's query", () => {
 
   it("leaves the hidden statuses out in its where", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired"] })));
-    expect(q).toContain("ont__terms(where: { retired: { eq: false } })");
+    // REQ-1387: by the status a person set.
+    expect(q).toContain(
+      'ont__terms(where: { status: { in: ["approved","draft","deprecated"] } })',
+    );
     const two = squash(
       ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired", "draft"] })),
     );
     expect(two).toContain(
-      "ont__terms(where: { _and: [{ retired: { eq: false } }, { _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: true } }] }] })",
+      'ont__terms(where: { _and: [{ status: { in: ["approved","draft","deprecated"] } }, { status: { in: ["approved","deprecated","retired"] } }] })',
     );
   });
 
@@ -221,7 +225,7 @@ describe("the Ontology View's query", () => {
         }),
       ),
     );
-    const kept = "{ retired: { eq: false } }";
+    const kept = '{ status: { in: ["approved","draft","deprecated"] } }';
     expect(q).toContain(
       `ont__terms(where: { _and: [${kept}, { _or: [` +
         `{ edgesOut: { _and: [{ relType: { in: ["KIND_OF"] } }, { targetTerm: ${kept} }] } }, ` +
@@ -313,7 +317,8 @@ describe("REQ-2143: a nested read, flattened", () => {
     ref_count: 0,
     deprecated: false,
     retired: false,
-    live: true,
+    status: "approved",
+    grounding: "grounded",
     ...over,
   });
 

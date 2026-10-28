@@ -92,7 +92,6 @@
     "look_in_product": "עמודה במוצר נתונים",
     "look_out_of_product": "עמודה מחוץ למוצרי נתונים",
     "look_stored": "טבלה",
-    "status_live": "פעיל",
     "openAsQuery": "פתח כשאילתה",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

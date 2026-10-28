@@ -92,7 +92,6 @@
     "look_in_product": "colonne d’un produit de données",
     "look_out_of_product": "colonne hors des produits de données",
     "look_stored": "table",
-    "status_live": "Actif",
     "openAsQuery": "Ouvrir comme requête",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

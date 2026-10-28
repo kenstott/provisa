@@ -687,7 +687,6 @@
       "retire_on_invalid": "计划的停用日期 {{retire_on}} 不是日期（请使用 YYYY-MM-DD）。",
       "successor_is_self": "术语不能成为自己的继任者。",
       "successor_retired": "继任者“{{successor}}”已停用。请选择一个仍在使用的术语。",
-      "term_not_live": "只有已发布的术语才能弃用；该术语为 {{status}}。",
       "status_by_action": "术语的状态通过“弃用”“停用”或“恢复”更改，每项都需要原因。",
       "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
       "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",

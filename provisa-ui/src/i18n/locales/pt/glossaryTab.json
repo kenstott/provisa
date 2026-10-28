@@ -147,7 +147,6 @@
     "lastAppliedColumns": "Colunas: {{columns}}",
     "lastAppliedTables": "Tabelas: {{tables}}",
     "status_draft": "Rascunho",
-    "status_live": "Ativo",
     "status_deprecated": "Obsoleto",
     "status_retired": "Retirado",
     "draftUndefined": "Rascunho: derivado dos nomes da coluna e da tabela. Dê-lhe uma definição — é o que os agentes e os catálogos leem. O nome vem das colunas abaixo, e colunas que normalizam da mesma forma acabam num único termo: atribua um alias a uma coluna na página Tabelas para mudar o termo que ela alimenta. Renomear aqui altera apenas a redação deste termo.",

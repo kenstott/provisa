@@ -147,7 +147,6 @@
     "lastAppliedColumns": "Kolommen: {{columns}}",
     "lastAppliedTables": "Tabellen: {{tables}}",
     "status_draft": "Ontwerp",
-    "status_live": "Actief",
     "status_deprecated": "Verouderd",
     "status_retired": "Buiten gebruik",
     "draftUndefined": "Ontwerp: afgeleid van de kolom- en tabelnamen. Geef het een definitie — dat is wat agents en catalogi lezen. De naam komt van de kolommen hieronder, en kolommen die gelijk normaliseren komen op één term uit: geef een kolom een alias op de pagina Tabellen om te wijzigen welke term hij voedt. Hernoemen verandert hier alleen de formulering van deze term.",

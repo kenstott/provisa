@@ -687,7 +687,6 @@
       "retire_on_invalid": "予定された廃止日 {{retire_on}} は日付ではありません（YYYY-MM-DD を使ってください）。",
       "successor_is_self": "用語を自分自身の後継にすることはできません。",
       "successor_retired": "後継の「{{successor}}」は廃止されています。使用中の用語を選んでください。",
-      "term_not_live": "非推奨にできるのは公開中の用語だけです。この用語は {{status}} です。",
       "status_by_action": "用語のステータスは「非推奨にする」「廃止する」「復元する」で変更し、それぞれに理由が必要です。",
       "successor_required": "この用語にはまだ列またはテーブルがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
       "successor_role": "{{role}} の後継は {{role}} か概念でなければなりません。「{{successor}}」は {{successor_role}} です。",

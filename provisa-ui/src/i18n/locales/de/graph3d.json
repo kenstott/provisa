@@ -92,7 +92,6 @@
     "look_in_product": "Spalte in einem Datenprodukt",
     "look_out_of_product": "Spalte außerhalb von Datenprodukten",
     "look_stored": "Tabelle",
-    "status_live": "Aktiv",
     "openAsQuery": "Als Abfrage öffnen",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",

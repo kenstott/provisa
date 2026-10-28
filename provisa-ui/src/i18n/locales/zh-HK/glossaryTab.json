@@ -147,7 +147,6 @@
     "lastAppliedColumns": "欄位：{{columns}}",
     "lastAppliedTables": "資料表：{{tables}}",
     "status_draft": "草稿",
-    "status_live": "生效",
     "status_deprecated": "已棄用",
     "status_retired": "已停用",
     "draftUndefined": "草稿：由欄名和表名推導而來。請為它加上定義——代理和目錄讀取的正是定義。名稱來自下方的欄，正規化結果相同的欄會歸入同一個術語：如需改變某欄歸入哪個術語，請在「表」頁面為該欄設定別名。在此重新命名只會改變該術語的措辭。",

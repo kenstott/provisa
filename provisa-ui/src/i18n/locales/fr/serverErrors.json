@@ -687,7 +687,6 @@
       "retire_on_invalid": "La date de retrait prévue {{retire_on}} n'est pas une date (utilisez AAAA-MM-JJ).",
       "successor_is_self": "Un terme ne peut pas être son propre successeur.",
       "successor_retired": "Le successeur « {{successor}} » est retiré. Choisissez un terme en service.",
-      "term_not_live": "Seul un terme actif peut être déprécié ; celui-ci est {{status}}.",
       "status_by_action": "Le statut d'un terme change par Déprécier, Retirer ou Restaurer, chacun avec une raison.",
       "successor_required": "Ce terme a encore des colonnes ou des tables ; le retirer les transfère à un successeur. Choisissez-en un.",
       "successor_role": "Le successeur d'un {{role}} doit être un {{role}} ou un concept ; « {{successor}} » est un {{successor_role}}.",
