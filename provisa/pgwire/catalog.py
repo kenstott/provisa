@@ -382,7 +382,7 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     """pg_sleep(seconds): sleeps that long and answers void (empty text); strict, so a NULL
     argument answers NULL without sleeping. A sleep longer than the request has left ends with
     the request's timeout."""
-    import time
+    import threading
 
     import sqlglot
 
@@ -398,11 +398,14 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     finally:
         con.close()
     if seconds is not None and seconds > 0:
-        # Within the request's own budget (REQ-1905): a sleep past it ends as the request does.
+        # Within the request's own budget (REQ-1905): the sleep is a wait the deadline's cancel
+        # wakes, so a CancelRequest or the request timeout ends it early, as it ends a driver's
+        # statement; the deadline's own error (57014) follows.
         from provisa.core import request_deadline
 
-        left = request_deadline.remaining()
-        time.sleep(seconds if left is None else min(seconds, max(left, 0.0)))
+        woken = threading.Event()
+        with request_deadline.cancel_on_deadline(woken.set):
+            woken.wait(seconds)
         request_deadline.check()
     return QueryResult(
         rows=[(None if seconds is None else "",)],
