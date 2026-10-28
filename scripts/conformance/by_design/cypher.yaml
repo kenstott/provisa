@@ -6,17 +6,10 @@
 # over a fixture model, and until it is, it counts as a failure. A write to a label the fixture
 # model registers is in scope (REQ-818), so writes are not excluded either.
 
-- group: MERGE and REMOVE
+- group: REMOVE
   requirement: REQ-818
   decision: '"Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected."'
-  reason: "Cypher write pattern '(MERGE|REMOVE)'"
-
-- group: DETACH DELETE
-  requirement: REQ-671
-  decision: >-
-    "DETACH DELETE (cascading delete across derived relationships) is not supported. Attempting
-    DETACH DELETE is a hard error at parse or translation time."
-  reason: "Cypher write pattern 'DETACH'"
+  reason: "Cypher write pattern 'REMOVE'"
 
 - group: Labels the model does not have
   requirement: REQ-778

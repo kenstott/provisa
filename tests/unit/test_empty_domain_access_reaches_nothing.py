@@ -52,7 +52,7 @@ DOMAIN_OF = {SALES: "sales", FINANCE: "finance", META: META_DOMAIN_ID, OPS: "ops
 NAME_OF = {SALES: "orders", FINANCE: "ledger", META: "registered_tables_meta", OPS: "queries"}
 
 # The root field each table gets (GraphQL Query field and proto Query message alike).
-ROOT_OF = {SALES: "orders", FINANCE: "ledger", META: "registeredTablesMeta", OPS: "queries"}
+ROOT_OF = {SALES: "orders", FINANCE: "ledger", META: "registeredTablesMeta", OPS: "op_queries"}
 
 CASES = [
     pytest.param([], set(), id="empty-reaches-nothing"),
@@ -115,10 +115,12 @@ def _schema_input(role: dict) -> SchemaInput:
 def _ctx() -> CompilationContext:
     ctx = CompilationContext()
     for tid, domain in DOMAIN_OF.items():
-        ctx.tables[NAME_OF[tid]] = TableMeta(
+        # REQ-2163: the ops table's field carries the ops schema's SDL prefix, as the build names it.
+        field = ROOT_OF[tid] if tid == OPS else NAME_OF[tid]
+        ctx.tables[field] = TableMeta(
             table_id=tid,
-            field_name=NAME_OF[tid],
-            type_name=NAME_OF[tid].title(),
+            field_name=field,
+            type_name=field.title(),
             source_id="pg",
             catalog_name="pg",
             schema_name="public",

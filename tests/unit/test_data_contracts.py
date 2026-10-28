@@ -114,6 +114,19 @@ def test_a_save_keeps_the_stored_contract_and_a_new_product_starts_a_draft():
     assert _for_save(stored=stored, stored_product_id="other").version == FIRST_CONTRACT_VERSION
 
 
+def test_a_contract_keeps_when_it_was_created_through_every_version():
+    """REQ-2118: contractCreatedTs is when the contract was first created, never a later save."""
+    first = _for_save()
+    assert first.created_at is not None
+    stored = first.model_dump(mode="json")
+    released = _for_save(
+        stored=stored, stored_product_id="p", declared=_contract("2.0.0", id="INTEGER")
+    )
+    assert (released.version, released.created_at) == ("2.0.0", first.created_at)
+    # A contract declared for a new member is created by that save.
+    assert _for_save(declared=_contract("1.0.0", id="INTEGER")).created_at is not None
+
+
 # -- the table's save -----------------------------------------------------------------------------
 
 

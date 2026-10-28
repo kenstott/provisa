@@ -723,6 +723,7 @@ def _build_domain_to_label(
     domain_to_sql_name,
 ) -> dict[tuple[str, str], str]:
     """Build reverse lookup: (sql_domain, field_name) → node display label."""
+    from provisa.compiler.naming import bare_field_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     domain_to_label: dict[tuple[str, str], str] = {}
@@ -732,11 +733,7 @@ def _build_domain_to_label(
             continue
         nm = label_map.nodes[type_name]
         sql_domain = domain_to_sql_name(table_meta.domain_id)
-        field_key = (
-            table_meta.field_name.split("__", 1)[1]
-            if "__" in table_meta.field_name
-            else table_meta.field_name
-        )
+        field_key = bare_field_name(table_meta.field_name, table_meta.domain_id)
         lbl = label_map.display_label(nm)
         # Semantic SQL names a table by its field or by its own name before a physical alias (a
         # meta view's *_meta), or by the name it writes itself (semantic_table_name: an ontology

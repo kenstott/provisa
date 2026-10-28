@@ -19,8 +19,9 @@ other a session node) and takes ON CREATE SET. A later row with the same values 
 earlier one made, and matches it.
 
 It is MATCH, then insert -- not an upsert. Transactions are a no-op by design (REQ-883), so two
-MERGEs at once may both find nothing and both insert. A MERGE of a model relationship is the
-governed path's (it refuses a MERGE until the governed writer takes one).
+MERGEs at once may both find nothing and both insert. A MERGE of model data the session layer
+does not write -- a model relationship, several MERGE clauses of model nodes, or a property ON
+CREATE / ON MATCH SET of model nodes -- is the governed path's (provisa.cypher.merge_writer).
 """
 
 # Requirements: REQ-2176, REQ-883
@@ -182,13 +183,13 @@ async def merge(
     nothing or merges a model relationship (the governed path's)."""
     from provisa.ephemeral.write import _identity
 
+    graph = store.graph(session)
+    if _governed(statement, label_map, graph):
+        return None
     m = merge_of(statement)
     if m is None:
         return None
-    graph = store.graph(session)
     kind = classify_create(m.pattern, m.bound, label_map, graph)
-    if any(kind.rels_governed):
-        return None
     if m.trailing is not None:
         raise CypherParseError(
             f"A MERGE of ephemeral objects ends its statement; it is followed by {m.trailing}"
@@ -232,6 +233,28 @@ async def merge(
     given += _give([ids[i] for i in again], on_match, index, graph)
     await add_labels(state, session, given)
     return created
+
+
+def _governed(statement: str, label_map: Any, graph: store.Graph) -> bool:
+    """Whether the statement's MERGE is the governed path's (REQ-2176, amended 2026-10-28): its
+    patterns all model data, and a model relationship, more than one MERGE clause, or a property
+    ON CREATE / ON MATCH SET -- what the session layer does not write of model data."""
+    from provisa.cypher.parser import parse_cypher_statement, writes_in
+    from provisa.gql.ir import MergeClause
+
+    if not writes_in(statement):
+        return False
+    ast = parse_cypher_statement(statement)
+    merges = [step for step in ast.pipeline if isinstance(step, MergeClause)]
+    if not merges:
+        return False
+    at = ast.pipeline.index(merges[0])
+    p = pattern.paths_pattern([m.pattern for m in merges])
+    kind = classify_create(p, pattern.bound_by(ast.pipeline[:at]), label_map, graph)
+    if any(kind.rels_governed):
+        return True
+    sets_property = any(not i.labels for m in merges for i in m.on_create + m.on_match)
+    return kind.governed and (len(merges) > 1 or sets_property)
 
 
 def _matchable(m: MergeOf, kind: Any, label_map: Any, graph: store.Graph) -> bool:

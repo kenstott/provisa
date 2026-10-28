@@ -31,12 +31,12 @@ describe("the role's root fields", () => {
               {
                 domain_id: "ontology",
                 table_name: "_terms",
-                graphql_field: "ont__terms",
+                graphql_field: "on_terms",
               },
               {
                 domain_id: "ontology",
                 table_name: "_term_edges",
-                graphql_field: "ont__termEdges",
+                graphql_field: "on_termEdges",
               },
             ],
             relationship_types: [],
@@ -47,7 +47,7 @@ describe("the role's root fields", () => {
     );
     const roots = await rootFields("steward");
     expect(asked).toEqual(["steward"]);
-    expect(roots.get(rootKey("ontology", "_term_edges"))).toBe("ont__termEdges");
-    expect(roots.get(rootKey("ontology", "_terms"))).toBe("ont__terms");
+    expect(roots.get(rootKey("ontology", "_term_edges"))).toBe("on_termEdges");
+    expect(roots.get(rootKey("ontology", "_terms"))).toBe("on_terms");
   });
 });

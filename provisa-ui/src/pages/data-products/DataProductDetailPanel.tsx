@@ -42,6 +42,7 @@ import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineag
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
 import { ContractView } from "./ContractView";
+import type { OdcsContract } from "../../api/dataProductContracts";
 import { ClampedDetail } from "./ClampedDetail";
 import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
@@ -127,6 +128,10 @@ interface DataProductDetailPanelProps {
   // lineage endpoint) -- rendered with the same LineageDag component the Lineage page uses
   // (REQ-1161/1627). Any reader of the product sees it.
   lineageGraph: ProductLineage | null;
+  // REQ-2158, REQ-2118: each output port's ODCS contract, declared and derived, by its member's
+  // address (source.schema.table); null while it is read. odcsError: why it could not be read.
+  odcs: Record<string, OdcsContract> | null;
+  odcsError: string;
   // REQ-1667: the member relations the DAG's swimlanes are built around (lane 0).
   lineageMembers?: ReadonlySet<string>;
   // A field's registered description for the lineage hover, over every table (not just members).
@@ -141,7 +146,8 @@ interface DataProductDetailPanelProps {
   products: DataProduct[];
   members: string[];
   findings: ProductFinding[];
-  onStatusChanged: (message: string) => void;
+  /** ``membersMoved``: the change moved the product's members (a retirement). */
+  onStatusChanged: (message: string, membersMoved: boolean) => void;
   onStatusFailed: (message: string) => void;
   openProduct: (id: string) => void;
   statusActions: DataProductStatus;
@@ -246,6 +252,8 @@ export function DataProductDetailPanel({
   lineageLoading,
   lineageError,
   lineageGraph,
+  odcs,
+  odcsError,
   lineageMembers,
   describeColumn,
   relationLabel,
@@ -607,11 +615,27 @@ export function DataProductDetailPanel({
             label={t("dataProductsTab.contract.label")}
             hint={t("dataProductsTab.contract.hint")}
           >
-            <Stack gap="md">
-              {contracts.map((c) => (
-                <ContractView key={c.tableId} contract={c} />
-              ))}
-            </Stack>
+            {odcsError ? (
+              <Alert color="red" data-testid={`data-product-contracts-error-${p.id}`}>
+                {t("dataProductsTab.contract.loadError", { error: odcsError })}
+              </Alert>
+            ) : odcs === null ? (
+              <Loader size="sm" data-testid={`data-product-contracts-loading-${p.id}`} />
+            ) : (
+              <Stack gap="md">
+                {contracts.map((c) => {
+                  const member = `${c.sourceId}.${c.schemaName}.${c.tableName}`;
+                  const document = odcs[member];
+                  return document ? (
+                    <ContractView key={c.tableId} contract={document} tableId={c.tableId} />
+                  ) : (
+                    <Alert key={c.tableId} color="red" data-testid={`data-contract-${c.tableId}`}>
+                      {t("dataProductsTab.contract.notExported", { member })}
+                    </Alert>
+                  );
+                })}
+              </Stack>
+            )}
           </DetailCard>
         )}
         {(outputTables !== undefined || core.commands !== undefined) && (

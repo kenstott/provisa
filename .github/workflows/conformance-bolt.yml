@@ -3,7 +3,7 @@ name: Conformance (Bolt)
 # REQ-2167: Provisa's Bolt endpoint against the official Neo4j Python driver's own integration tests
 # (github.com/neo4j/neo4j-python-driver, tests/integration, Apache-2.0), cloned at a pinned release
 # tag, never vendored, installed with its test dependency group in its own virtualenv and run with
-# pytest against Provisa's Bolt port as org_admin.
+# pytest against Provisa's Bolt port as the examples' own role (bolt_examples).
 #
 # A failing test is data, written to the job summary and to the artifact conformance-bolt.json
 # (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md), never a job failure.
@@ -12,7 +12,9 @@ name: Conformance (Bolt)
 # group excludes.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance), with password
-# auth: the driver signs in as the job user, who holds org_admin.
+# auth: the driver signs in as the job user, whom a role mapping rule maps to bolt_examples, a role
+# reaching only the examples' domain (Person, Company, Greeting): the examples' MATCH (a) DETACH
+# DELETE a cleanup empties their own graph and never reaches conformance.types_fixture.
 
 on:
   workflow_dispatch:
@@ -95,14 +97,15 @@ jobs:
             "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
 
       # REQ-2167 (setup that creates objects is adapted, not excluded): the examples' labels and
-      # relationship types, seeded into the PostgreSQL service and declared in the model, and
-      # their setup and cleanup adapted to them (scripts/conformance/bolt/fixtures.py, adapt.py).
-      - name: Seed the examples' graph and adapt their setup
+      # relationship types, seeded into the PostgreSQL service and declared in a model domain of
+      # their own, with the role the job user acts as there (scripts/conformance/bolt/fixtures.py).
+      # The examples run as written.
+      - name: Seed the examples' graph
         run: |
-          .venv/bin/python scripts/conformance/bolt/fixtures.py seed \
+          .venv/bin/python scripts/conformance/bolt/fixtures.py seed --user "$CONFORMANCE_USER" \
             --tables "$RUNNER_TEMP/bolt-tables.yaml" --relationships "$RUNNER_TEMP/bolt-relationships.yaml" \
+            --access "$RUNNER_TEMP/bolt-access.yaml" \
             --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
-          .venv/bin/python scripts/conformance/bolt/adapt.py "$RUNNER_TEMP/driver/tests/integration"
 
       # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
       # its token in CONFORMANCE_AUTHORIZATION. The driver signs in once per connection, and its
@@ -114,6 +117,7 @@ jobs:
         with:
           extra-tables: ${{ runner.temp }}/bolt-tables.yaml
           extra-relationships: ${{ runner.temp }}/bolt-relationships.yaml
+          extra-access: ${{ runner.temp }}/bolt-access.yaml
           password-cost: "4"
 
 

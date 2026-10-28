@@ -21,7 +21,7 @@ group: compliance
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release whose column transforms (REQ-2131) run its matching as a code resolver
 # rather than host code (REQ-2134).
-requires_provisa: 0.1.0a495
+requires_provisa: 0.1.0a496
 # Its matching embeds each message with a local sentence-transformers model: the vector extra.
 extras:
 - vector

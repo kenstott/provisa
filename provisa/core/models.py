@@ -15,7 +15,7 @@
 # REQ-250, REQ-251, REQ-281, REQ-369, REQ-370, REQ-393, REQ-399, REQ-400, REQ-415, REQ-419, REQ-421
 
 import re
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
@@ -620,6 +620,9 @@ class DataContract(BaseModel):  # REQ-2158
     terms: ContractTerms = Field(default_factory=ContractTerms)
     sla: list[ContractSlaProperty] = Field(default_factory=list)
     columns: list[ContractColumn] = Field(default_factory=list)
+    # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
+    # every later version (data_contracts.for_save).
+    created_at: datetime | None = None
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641

@@ -605,6 +605,9 @@ def adapter(monkeypatch):
         def await_catalog(self, ports, timeout):
             raise AssertionError("discovery waited on the adapter's pg_catalog")
 
+        def catalog_preparing(self):
+            return False
+
     def _answers(sql):
         # Rows as the server returns them: its column labels are upper case (ORACLE lexer), so
         # a reader that asks a row for "table_name" finds nothing.
@@ -680,6 +683,9 @@ def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
         def catalog_pending(self):
             return catalog_pending
 
+        def catalog_preparing(self):
+            return False
+
     class _Cancelling:
         async def fetch(self, sql, *args, timeout=None):
             statements.append(sql)
@@ -725,6 +731,46 @@ def test_a_catalog_is_pending_until_it_is_prepared_or_has_failed():
     assert not replica.catalog_pending()
     replica._catalog_ready, replica._catalog_error = False, RuntimeError("bad model")
     assert not replica.catalog_pending()
+
+
+@pytest.mark.asyncio
+async def test_no_read_is_sent_while_the_catalog_is_being_prepared(monkeypatch):
+    """The adapter holds a statement behind its first catalog query: a listing sent then waited
+    out the preparation (a minute and more). It is answered STARTING at once, sending nothing."""
+    sent: list[str] = []
+
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            return pr.PortPair(5440, "127.0.0.1", 5540)
+
+        def catalog_preparing(self):
+            return True
+
+    async def _connect(host, port, password):
+        sent.append("connect")
+        raise AssertionError("a read was sent while the catalog was being prepared")
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        await pr.adapter_tables(_source(), "sec")
+    assert raised.value.preparing_catalog
+    assert "is listening" in str(raised.value)
+    assert sent == []
+
+
+def test_a_catalog_is_being_prepared_only_while_its_first_query_is_unanswered():
+    replica = pr.ConnectorReplica.__new__(pr.ConnectorReplica)
+    replica._start_lock = threading.Lock()
+    replica._catalog_ready, replica._catalog_error = False, None
+    replica._catalog_thread = None
+    assert not replica.catalog_preparing()  # not sent yet: a read is answered
+    replica._catalog_thread = threading.Thread(target=lambda: None)
+    assert replica.catalog_preparing()
+    replica._catalog_ready = True
+    assert not replica.catalog_preparing()
+    replica._catalog_ready, replica._catalog_error = False, RuntimeError("bad model")
+    assert not replica.catalog_preparing()
 
 
 @pytest.mark.asyncio
@@ -1096,6 +1142,43 @@ async def test_saving_while_askamerica_issues_no_credentials_is_not_called_a_bad
         await _validate_govdata_api_key(_input("aa-key"))
 
 
+def _timing_out(monkeypatch) -> list[float]:
+    """AskAmerica's credentials API not answering: httpx gives up after the timeout it is given."""
+    import httpx
+
+    timeouts: list[float] = []
+
+    def get(url, *, headers, timeout):
+        timeouts.append(timeout)
+        raise httpx.ReadTimeout("The read operation timed out")
+
+    monkeypatch.setattr(httpx, "get", get)
+    return timeouts
+
+
+def test_a_key_check_that_times_out_is_askamerica_unavailable_within_ten_seconds(monkeypatch):
+    timeouts = _timing_out(monkeypatch)
+    with pytest.raises(
+        aa.AskAmericaUnavailable, match="did not answer within 10 seconds"
+    ) as raised:
+        aa.resolve_storage_credentials("aa-key")
+    assert timeouts == [10.0] and aa.REQUEST_SECONDS == 10.0
+    assert "read operation timed out" not in str(raised.value)
+    assert "aa-key" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_saving_while_askamerica_does_not_answer_is_reported_as_askamerica_unavailable(
+    monkeypatch,
+):
+    """Never a raw read timeout, and never a refused key: the steward can retry."""
+    from provisa.api.admin.schema_common import _validate_govdata_api_key
+
+    _timing_out(monkeypatch)
+    with pytest.raises(aa.AskAmericaUnavailable, match="AskAmerica's credentials API"):
+        await _validate_govdata_api_key(_input("aa-key"))
+
+
 @pytest.mark.asyncio
 async def test_a_key_askamerica_accepts_saves(monkeypatch):
     from provisa.api.admin.schema_common import _validate_govdata_api_key
@@ -1323,8 +1406,15 @@ def test_starting_the_server_logs_no_secret(tmp_path, caplog, monkeypatch):
 
 
 def _replica_with_server(
-    *, healthy: bool, exit_code: int | None, catalog_ready: bool = True, prepare=None
+    *,
+    healthy: bool,
+    exit_code: int | None,
+    catalog_ready: bool = True,
+    prepare=None,
+    in_use: bool = True,
 ):
+    """The source's replica with a server; ``in_use``: a table of the source is registered or a
+    statement has read it (REQ-540), so its catalog is prepared."""
     replica = pr.ConnectorReplica(_source(), prepare_catalog=prepare)
     replica._server = SimpleNamespace(  # type: ignore[assignment]
         health=lambda: healthy,
@@ -1334,6 +1424,7 @@ def _replica_with_server(
         stop=lambda: None,
     )
     replica._catalog_ready = catalog_ready
+    replica._catalog_wanted = in_use
     return replica
 
 
@@ -1535,6 +1626,166 @@ def test_no_pgwire_family_source_has_a_subscription_provider(stype):
 # A listening adapter's FIRST catalog query can take far longer than any later one (a catalog
 # not prebuilt for its model is built then). An engine's attach issues that query, and the attach pass runs on the request path
 # under the engine's one attach lock: paid for there, it held every statement of every source.
+
+
+def test_a_source_not_yet_in_use_has_no_catalog_preparation_sent():
+    """REQ-540: saved, listening, nothing registered from it. The adapter would hold every
+    statement for minutes behind its first catalog query, so none is sent: an attach is
+    answered still starting at once, and its information_schema stays readable."""
+    asked: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: asked.append(ports),
+        in_use=False,
+    )
+    ports = pr.PortPair(5440, "127.0.0.1", 5540)
+    started = time.monotonic()
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        replica.await_catalog(ports, 5)
+    assert time.monotonic() - started < 1
+    assert raised.value.preparing_catalog
+    assert replica._catalog_thread is None and asked == []
+    assert not replica.catalog_preparing()  # the Register Table lists are read at once
+
+
+def test_an_attach_of_a_source_not_yet_in_use_sends_no_preparation(monkeypatch):
+    asked: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: asked.append(ports),
+        in_use=False,
+    )
+    replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    for timeout in (None, pr.DISCOVERY_READY_SECONDS):
+        with pytest.raises(pr.SourceStillStartingError):
+            pr.ensure_endpoint(_attachable(), timeout=timeout)
+    assert replica._catalog_thread is None and asked == []
+
+
+def test_a_saved_askamerica_source_is_not_in_use_and_a_sibling_is():
+    assert not pr.ConnectorReplica(_source())._catalog_wanted
+    assert pr.ConnectorReplica(Source(id="docs", type=SourceType.files, path="/d"))._catalog_wanted
+
+
+def test_its_first_registered_table_starts_the_preparation_at_once(monkeypatch):
+    """Registering a table is the source's first use by the engine: the preparation is sent
+    then, without waiting for it, so a query that follows finds the catalog on its way."""
+    release = threading.Event()
+    asked: list[pr.PortPair] = []
+
+    def prepare(ports, password):
+        asked.append(ports)
+        release.wait(5)
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare, in_use=False
+    )
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    started = time.monotonic()
+    pr.use_catalog_of(_source())
+    assert time.monotonic() - started < 1
+    assert replica.catalog_preparing()
+    release.set()
+    replica._catalog_thread.join(5)  # type: ignore[union-attr]
+    assert replica._catalog_ready and asked == [pr.PortPair(5440, "127.0.0.1", 5540)]
+
+
+def test_a_table_registered_before_its_server_listens_has_the_catalog_prepared_once_it_does(
+    monkeypatch,
+):
+    asked: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=False,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: asked.append(ports),
+        in_use=False,
+    )
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    pr.use_catalog_of(_source())
+    assert replica._catalog_thread is None  # nothing listens to send it to
+    replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 5)  # the attach that follows
+    assert len(asked) == 1
+
+
+def test_registering_a_table_of_another_type_leaves_its_server_alone(monkeypatch):
+    monkeypatch.setattr(
+        pr, "_endpoint_replica", lambda source: pytest.fail("no replica is asked for")
+    )
+    pr.use_catalog_of(Source(id="docs", type=SourceType.files, path="/d"))
+
+
+def test_a_statement_on_the_source_starts_the_preparation(monkeypatch):
+    asked: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: asked.append(ports),
+        in_use=False,
+    )
+    monkeypatch.setitem(pr._ENDPOINTS, source_key("test-askamerica"), replica)
+    with pytest.raises(pr.SourceStillStartingError):
+        pr.await_serving("test-askamerica", "govdata", 0)
+    assert replica._catalog_wanted
+    pr.await_serving("test-askamerica", "govdata", 5)  # the SQL page's rerun
+    assert len(asked) == 1
+
+
+def test_a_replica_build_of_a_registered_table_starts_the_preparation(monkeypatch):
+    asked: list[pr.PortPair] = []
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: asked.append(ports),
+        in_use=False,
+    )
+    replica.endpoint = lambda timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)  # type: ignore[method-assign]
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    pr.serve_for_build(_source())
+    assert replica._catalog_ready and len(asked) == 1
+
+
+@pytest.mark.asyncio
+async def test_registering_a_table_marks_its_source_in_use(monkeypatch):
+    from provisa.api.admin import schema_mutation_ops as ops
+    from provisa.federation import registry_view
+
+    used: list[str] = []
+    registered: list[str] = []
+    monkeypatch.setattr(pr, "use_catalog_of", lambda source: used.append(source.id))
+
+    async def sources(_state):
+        return [_source()]
+
+    async def no_mapping(pool, model):
+        return None
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def bound():
+        yield
+
+    monkeypatch.setattr(registry_view, "registered_sources", sources)
+    monkeypatch.setattr(
+        "provisa.api.admin.schema_common._synthesize_mapping_dsl_tables", no_mapping
+    )
+    monkeypatch.setattr("provisa.core.secrets_store.bound_to_request_org", bound)
+    state = SimpleNamespace(
+        source_catalogs={"test-askamerica": "test_askamerica"},
+        federation_engine=SimpleNamespace(
+            register_source=lambda model, password, catalog_name: registered.append(model.id)
+        ),
+    )
+    await ops.reprovision_source_after_registration(None, state, "test-askamerica")
+    assert used == ["test-askamerica"] and registered == ["test-askamerica"]
 
 
 def test_a_listening_server_is_still_starting_until_its_catalog_is_prepared():

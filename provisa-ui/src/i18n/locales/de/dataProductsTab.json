@@ -174,7 +174,6 @@
       "column": "Spalte",
       "type": "Typ",
       "required": "Nie null",
-      "yes": "Ja",
       "versionLabel": "Contract-Version",
       "statusLabel": "Contract-Status",
       "descriptionLabel": "Wofür er dient",
@@ -186,7 +185,36 @@
       "slaValue": "Wert",
       "slaUnit": "Einheit",
       "slaRemove": "Service-Level entfernen",
-      "slaAdd": "Service-Level hinzufügen"
+      "slaAdd": "Service-Level hinzufügen",
+      "notDeclared": "Nicht deklariert",
+      "loadError": "Die Verträge konnten nicht gelesen werden: {{error}}",
+      "notExported": "{{member}} hat keinen exportierten Vertrag",
+      "section": {
+        "fundamentals": "Grundlagen",
+        "schema": "Schema",
+        "quality": "Qualität",
+        "sla": "SLA",
+        "support": "Support und Team",
+        "servers": "Server",
+        "pricing": "Preise",
+        "custom": "Benutzerdefinierte Eigenschaften und Tags"
+      },
+      "summary": {
+        "properties_one": "{{count}} Eigenschaft",
+        "properties_other": "{{count}} Eigenschaften",
+        "rules_one": "{{count}} Regel",
+        "rules_other": "{{count}} Regeln",
+        "serviceLevels_one": "{{count}} Service-Level",
+        "serviceLevels_other": "{{count}} Service-Levels",
+        "supportChannels_one": "{{count}} Support-Kanal",
+        "supportChannels_other": "{{count}} Support-Kanäle",
+        "roles_one": "{{count}} Rolle",
+        "roles_other": "{{count}} Rollen",
+        "customProperties_one": "{{count}} benutzerdefinierte Eigenschaft",
+        "customProperties_other": "{{count}} benutzerdefinierte Eigenschaften",
+        "tags_one": "{{count}} Tag",
+        "tags_other": "{{count}} Tags"
+      }
     }
   }
 }

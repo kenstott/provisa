@@ -2045,6 +2045,11 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
             )
     if deleted:
         assert _existing is not None  # delete reported a row, so get found one
+        # A catalog walk still reading the source ends before its catalog goes: left running,
+        # it failed on the source the org no longer has.
+        from provisa.discovery.catalog_cache import stop_indexing
+
+        await stop_indexing(id)
         state.graphql_remote_sources.pop(id, None)
         # REQ-1730: was never called here at all — see _drop_source_on_engine's own comment for
         # the exact orphaned-catalog accumulation this closes.
@@ -3004,6 +3009,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.discovery.catalog_cache import (
             invalidate_source as _invalidate,
             index_source as _index_source,
+            index_task_name,
         )
 
         async def _reindex():
@@ -3021,7 +3027,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # when the request ends).
         from provisa.core.connection_loop import spawn_background
 
-        spawn_background(_reindex(), name=f"catalog-reindex:{input.id}")
+        spawn_background(_reindex(), name=index_task_name("reindex", input.id))
 
         if input.type == "data_profiler":  # REQ-1934: a changed schedule reschedules
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers

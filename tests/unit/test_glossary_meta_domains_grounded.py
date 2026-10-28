@@ -236,8 +236,8 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
     for i, view in enumerate(GLOSSARY_SCOPED_VIEWS, start=400):
         ctx.tables[view] = TableMeta(
             table_id=i,
-            field_name=view,
-            type_name=view,
+            field_name=f"on_{view}",  # REQ-2163: the ontology schema's SDL prefix
+            type_name=f"ON_{view}",
             source_id="provisa-admin",
             catalog_name="main",
             schema_name="public",
