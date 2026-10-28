@@ -72,7 +72,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <Stack gap={6} data-testid={testId}>
+    <Stack gap={6} align="flex-start" data-testid={testId}>
       <Group gap={6} wrap="nowrap">
         <Title order={6}>{title}</Title>
         <Badge size="sm" variant="light" color="gray" data-testid={`${testId}-count`}>

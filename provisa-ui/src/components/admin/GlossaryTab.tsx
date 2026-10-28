@@ -625,7 +625,7 @@ export function GlossaryTab() {
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
           <div
             style={{
-              width: 280,
+              width: 340,
               flexShrink: 0,
               display: "flex",
               flexDirection: "column",

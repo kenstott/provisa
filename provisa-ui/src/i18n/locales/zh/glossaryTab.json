@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "标签对象类型错误",
     "finding_retirement_blocked": "停用受阻",
     "finding_no_data": "无数据",
+    "finding_approved_not_grounded": "已批准，无数据",
+    "finding_path_pending": "路径待批准",
     "findingFix_unlinked_tables": "标记为同一实体…",
     "findingFix_retirement_blocked": "选择继任术语…",
     "findingUnmark": "取消 {{tag}}",

@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "Tag on wrong kind",
     "finding_retirement_blocked": "Retirement blocked",
     "finding_no_data": "No data",
+    "finding_approved_not_grounded": "Approved, no data",
+    "finding_path_pending": "Path pending approval",
     "findingFix_unlinked_tables": "Mark same-entity…",
     "findingFix_retirement_blocked": "Choose a successor…",
     "findingUnmark": "Unmark {{tag}}",

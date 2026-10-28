@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "対象種別の誤ったタグ",
     "finding_retirement_blocked": "廃止がブロック",
     "finding_no_data": "データなし",
+    "finding_approved_not_grounded": "承認済み、データなし",
+    "finding_path_pending": "経路が承認待ち",
     "findingFix_unlinked_tables": "同一エンティティを設定…",
     "findingFix_retirement_blocked": "後継を選択…",
     "findingUnmark": "{{tag}} を外す",

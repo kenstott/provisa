@@ -2,7 +2,7 @@
 
 The ontology is a living vocabulary over your data model. Every physical column resolves to a term, and columns that carry the same meaning share one term, however differently they spell it. Each term can hold a definition, typed relationships to other terms, a list of subject-matter experts, and tags such as `pii` that every column with that meaning carries.
 
-It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until it has a definition and reaches data. The ontology is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
+It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
 
 That shared vocabulary connects business language to physical data. An AI agent that knows "customer" names every column carrying a customer identifier doesn't have to guess which of `cust_id`, `customerId` and `CUSTOMER_KEY` is the right one. They all resolve to the same term, and the term carries the definition.
 
@@ -74,30 +74,60 @@ Some table names describe an access path instead of a concept: `user_by_name` is
 
 Without the cut, `user_by_name` would propose a Class `user name` that collides with the real `users.name` attribute. The cut applies to table concepts only. In a column name, `by` is part of the compound noun, so `pet_by_name` and `pet_name` normalize to the same term, `pet name`.
 
+## Why approval and grounding matter
+
+Agents and other automation find the data they operate on through the ontology, and they cite it. An agent starts from a term a person approved. It follows a route down to data whose trust it can see, grounded or still waiting on an approval. It arrives at tables and columns it reads under its role's grants, row rules and masks. Every step of that route has a name an agent can put in a citation.
+
+So two facts about a term decide what an agent can do with it. People set its **status**. Provisa computes its **grounding**. The page shows them as two separate chips, and you filter on each.
+
 ## Status
 
-A term has one status at a time.
+A person sets a term's status. It has one at a time.
 
 | Status | Meaning | How it gets there |
 | --- | --- | --- |
-| **Draft** | Not available to agents, search or catalogs until it has a definition and reaches data. | Every derived term starts here. |
-| **Live** | Admitted: offered to agents, search and catalogs. | Defined and grounded, and in service. |
-| **Deprecated** | On its way out. | A curator deprecates a live term, or a curated term loses its last column. |
+| **Draft** | Not yet approved. | Every derived term starts here, and so does every term you create. |
+| **Approved** | A steward's choice: this is vocabulary to work with. | A steward approves it. Approval needs a definition. |
+| **Deprecated** | On its way out. | A curator deprecates an approved term, or a curated term loses its last column. |
 | **Retired** | Out of service, kept as a record. | A curator retires it and names a successor. |
 
-### The admission rule
+A definition alone approves nothing. Approve a term once its definition says what the business means by it.
 
-A term is live when it meets three conditions.
+## Grounding
 
-1. **In service.** It isn't retired, and it hasn't been deprecated by losing its last column. A term a curator deprecated stays in service until its planned retirement.
-2. **Defined.** It carries a definition. A term derived from a column name is only a token. Without a definition it is a draft awaiting a curator, never vocabulary an agent can ground a question on.
-3. **Grounded.** It is connected, over terms in service, to a term holding a column or a table. The ontology is an entry point into the data, so every chain must end at the data.
+Grounding says whether a term reaches data. Nobody sets it: Provisa works it out from the term's relationships each time the graph changes.
 
-Connectivity spreads through the graph. A Concept reaches data through any in-service neighbor that does. Terms out of service don't conduct, so a retired term doesn't keep its dependents alive.
+A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table: the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
+
+| Grounding | Chip | Meaning |
+| --- | --- | --- |
+| **Grounded** | `grounded` | Some path down has no draft term between the term and the data end. |
+| **Grounded · path pending approval** | `~grounded` | Every path down has a draft term in between. Hover the chip: it reads "Reaches data, but only through terms not yet approved". |
+| **Not grounded** | none | No path reaches data. |
+
+Some cases follow directly from the rule:
+
+- A draft Concept you are drafting above an approved chain is grounded. Its status chip still says Draft, and the terms below it don't change.
+- A term derived from a column is a draft at the data end. It never makes the chain above it pending.
+- A draft term in the middle of the only path makes every term above it `~grounded`. Approving that one draft grounds them.
+- A second path that is clean is enough. A draft beside it changes nothing.
+- Deprecated and retired terms break the chain. A term whose only path ran through one stops being grounded, and its chips and filters say so.
+
+## What an agent sees
+
+The MCP term search, SPARQL's vocabulary and every other agent-facing surface show an agent the same slice of the ontology:
+
+- an approved term on a path to data;
+- a defined draft term on a path to data that holds at least one approved term, marked draft;
+- an undefined term on such a path only as an anonymous hop, with no name or definition. Each hop stays distinct, so the shape of the route is unchanged.
+
+Nothing else reaches an agent. A chain with no approved term on it stays hidden, and so do terms that reach no data and deprecated or retired terms. People see every term on the Ontology page, with its status and its grounding.
+
+Each search result carries the term's status and grounding, its columns and tables, its experts and its paths down to data. Every step on a path is a named term or an anonymous hop, and the data end lists what it is bound to. That route is what an agent follows and cites.
 
 ### Deprecating a term
 
-Deprecate a live term when it is on its way out but still in use. You give a reason, which is required, and optionally a planned retirement date, today or later. The term stays in service, and keeps conducting the admission rule, until that date. Then the scheduler retires it.
+Deprecate an approved term when it is on its way out. You give a reason, which is required, and optionally a planned retirement date, today or later. On that date the scheduler retires it. A deprecated term breaks the chain through it from the moment you deprecate it, so the impact preview is worth reading first.
 
 A term due for retirement that still holds columns or tables can't be retired by date, because only a successor can take them. It waits, and **To review** lists it as *retirement blocked* until you retire it with a successor.
 
@@ -111,13 +141,13 @@ Retiring a term moves everything attached to it to a **successor**, then takes i
 - A Class's tables move to the successor, and their keys follow them. It must be a Class or a Concept.
 - A Concept holds nothing, so its successor is optional.
 
-The retirement needs a reason, and it writes a `REPLACES` edge from the successor to the retired term. The retired term stays as an inert record: its definition, tags, relationships, experts and the reason. It conducts nothing.
+The retirement needs a reason, and it writes a `REPLACES` edge from the successor to the retired term. The retired term stays as an inert record: its definition, tags, relationships, experts and the reason. It conducts nothing. The successor keeps its own status; a retirement never approves it.
 
 Because its columns now belong to the successor, a retired term's panel shows what it **last applied to**: its columns and tables as the model held them in the commit before the retirement. Its panel also links to the term that replaces it.
 
 ### Restoring a term
 
-**Restore** undoes what a curator asserted. A deprecated term is no longer deprecated. A retired term comes back as an empty Concept and a draft, since its columns went to its successor, and its `REPLACES` edge is removed.
+**Restore** undoes what a curator asserted. A deprecated term is approved again. A retired term comes back as an empty Concept and a draft, since its columns went to its successor, and its `REPLACES` edge is removed.
 
 ### What makes a term curated
 
@@ -170,7 +200,7 @@ A Concept that can't reach any column or table through the relationship graph na
 
 PII is a property of what a column means, so Provisa lets you mark it once, on the term, and covers every column with that meaning, including columns registered later.
 
-The `pii` tag goes on a column or on a Property term, never on a source, a table, a Class or a Concept. A term must be defined and in service (live or deprecated) to take it. Marking a draft term is refused with "Define *term* to mark it", and you can't clear the definition of a tagged term until you unmark it.
+The `pii` tag goes on a column or on a Property term, never on a source, a table, a Class or a Concept. A term must be defined and not retired to take it. Marking a draft term is refused with "Define *term* to mark it", and you can't clear the definition of a tagged term until you unmark it.
 
 Every column of a tagged term carries `pii`, and `sensitive` with it, wherever tags are read: governance, masking, sensitivity, export and the tag views. Nothing is copied to the columns. A column moved onto the term carries the tag at once, and a column moved off no longer does. Each column says where its tag comes from: set on the column, with its reason, or through a term, naming it.
 
@@ -195,7 +225,7 @@ A column that keeps the tag through its own mark needs no confirmation. Moves th
 
 ## To review
 
-The ontology reports what needs your attention as findings. A term with any finding is **To review**, and the term list filters on it. A plain draft isn't a finding; drafts are the ontology's ordinary state.
+The ontology reports what needs your attention as findings. A term with any finding is **To review**, and the term list filters on it. A plain draft isn't a finding; drafts are the ontology's ordinary state. A term that reaches data only through drafts is one, because one approval would put it in front of agents.
 
 | Finding | What it means | The fix |
 | --- | --- | --- |
@@ -203,15 +233,17 @@ The ontology reports what needs your attention as findings. A term with any find
 | Class and attribute | A Class holds columns that aren't its keys, or a keyed table has no Class because its concept is a Property. | Move the columns to a Property, or reground the table. |
 | Tag on wrong kind | A term that isn't a Property carries a tag only a Property passes to columns. | Unmark the tag. |
 | Retirement blocked | A deprecated term is past its planned retirement but still holds columns or tables. | Retire it with a successor. |
-| No data | A Concept in service reaches no data. | Relate it to a term that holds data. |
+| No data | A draft Concept reaches no data. | Relate it to a term that holds data. |
+| Approved, not grounded | An approved term reaches no data, so no agent sees it. | Relate it to a term that holds data. |
+| Grounded · path pending approval | Every path down to data runs through a draft. The finding names the draft whose approval grounds the term. | Open that term and approve it. |
 
 Findings report; they change nothing until you act.
 
 ## Metadata export
 
-The ontology publishes to external data catalogs as part of metadata export. Only live terms publish, judged on the columns and tables that actually publish. A term whose columns are all withheld from export, because their tables aren't data products or because technical filters exclude them, isn't grounded for export, even if it holds columns in the model store.
+The ontology publishes to external data catalogs as part of metadata export. Approved terms publish, each with its grounding: `grounded`, `grounded_pending` or `not_grounded`. A draft never leaves Provisa. Grounding for export is judged on the columns and tables that actually publish. A term whose columns are all withheld from export, because their tables aren't data products or because technical filters exclude them, is withheld with them.
 
-A deprecated term publishes with its status, its reason and its planned retirement date, so each catalog can map it to its own deprecation marker.
+An approved term a curator deprecated since publishes with its status, its reason and its planned retirement date, so each catalog can map it to its own deprecation marker.
 
 Relationship edges publish only when both endpoint terms publish. Column assets export independently, so excluding a term doesn't hide the underlying data.
 
@@ -223,9 +255,17 @@ What counts is whether the business uses the word. An ETL batch identifier has a
 
 ## Working with the ontology
 
-Open **Ontology** in the navigation bar. The left panel lists every term with its role and, unless it is live, its status. The **Deprecated** and **Draft** boxes show or hide those terms, and **To review** narrows the list to terms with findings. Click a term to open its panel.
+Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, and **To review** narrows it to terms with findings. Click a term to open its panel.
 
-The panel shows the term's role, status and, for a Property, its PII mark with the number of columns it covers. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
+The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A `~grounded` term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
+
+### Stewardship summary
+
+With no term open, the panel shows the stewardship summary. It lists the terms agents can see, the `~grounded` terms each waiting on one approval with the term to approve, and the approved terms that reach no data. **Approve defined, grounded drafts** lists every draft that has a definition and is grounded; untick any whose definition isn't right, and approve the rest together. The clipboard button in the header brings the summary back.
+
+### Seeing the impact first
+
+Approving, retiring and binding a term each change what reaches data. Before any of them, the page shows what the action would change: how many terms become grounded, `~grounded` or not grounded, and how many tables agents gain or lose a path to. For example, "Approving region makes 3 terms grounded and gives agents a path to 2 more tables". **Approve** opens the preview with its confirm button, **Retire** shows it under the successor you pick, and grounding a table in the edit form shows it under the table before you save.
 
 **Edit** opens the whole term as one form. Save applies every change together.
 
@@ -237,11 +277,11 @@ The panel shows the term's role, status and, for a Property, its PII mark with t
 - **Add a relationship**, choosing its type. Retype an existing edge in place instead of deleting and re-adding it.
 - **Assign experts** by user ID, as `expert` or `author`.
 
-Beside Edit, the panel offers the status actions the term allows: **Deprecate** a live term, **Retire** any term in service, and **Restore** a deprecated or retired one.
+Beside Edit, the panel offers the status actions the term allows: **Approve** a defined draft, **Deprecate** an approved term, **Retire** any term in service, and **Restore** a deprecated or retired one.
 
 From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** proposes typed edges across the full term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped.
 
-The **Draft** banner on a term tells you whether it is undefined (alias the column or add a definition) or ungrounded (relate it to a term that has data). While you see it, agents and catalogs can't reach the term.
+The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data: relate it to a term that has data.
 
 ## Querying the ontology
 
@@ -249,7 +289,7 @@ The ontology is a schema you can query, named `ontology`, beside the `meta` sche
 
 | Table | One row per |
 |---|---|
-| `_terms` | Term, with its status, its definition and whether it is a Class, a Property or both |
+| `_terms` | Term, with its status, its grounding, its definition and whether it is a Class, a Property or both |
 | `_term_refs` | Binding of a Property to a column, with the column's table and domain |
 | `_term_edges` | Relationship between two terms |
 | `_domains` | Domain a term belongs to |
@@ -317,7 +357,7 @@ Five views expose the glossary's contents:
 
 | View | Contents |
 | --- | --- |
-| `_terms` | Every live term: its name, role (Class, Property, Concept), definition, and status. |
+| `_terms` | Every term: its name, role (Class, Property, Concept), definition, status and grounding. |
 | `_term_refs` | Every term-to-column binding: the term name, the source, the table, and the column. |
 | `_term_edges` | Every relationship edge: source term, edge type, and target term. |
 | `_domains` | Domain membership: the term name and each domain it belongs to. |
@@ -329,7 +369,7 @@ A **term binding** — a term bound to a column, recorded in `_term_refs` — is
 
 ### Class tables
 
-Each live Class term becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
+Each Class term that is not retired becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
 
 In a union view, every source table's rows appear, with a column identifying which table each row came from. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column. TBD: the name of the source-table column.
 

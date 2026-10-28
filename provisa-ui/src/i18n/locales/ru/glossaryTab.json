@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "Тег не для того типа",
     "finding_retirement_blocked": "Вывод из обращения заблокирован",
     "finding_no_data": "Нет данных",
+    "finding_approved_not_grounded": "Утверждён, нет данных",
+    "finding_path_pending": "Путь ожидает утверждения",
     "findingFix_unlinked_tables": "Отметить как ту же сущность…",
     "findingFix_retirement_blocked": "Выбрать преемника…",
     "findingUnmark": "Снять {{tag}}",

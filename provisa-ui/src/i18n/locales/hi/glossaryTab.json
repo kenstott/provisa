@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "गलत प्रकार पर टैग",
     "finding_retirement_blocked": "सेवा से हटाना अवरुद्ध",
     "finding_no_data": "कोई डेटा नहीं",
+    "finding_approved_not_grounded": "स्वीकृत, कोई डेटा नहीं",
+    "finding_path_pending": "पथ स्वीकृति के लिए लंबित",
     "findingFix_unlinked_tables": "same-entity चिह्नित करें…",
     "findingFix_retirement_blocked": "उत्तराधिकारी चुनें…",
     "findingUnmark": "{{tag}} हटाएँ",

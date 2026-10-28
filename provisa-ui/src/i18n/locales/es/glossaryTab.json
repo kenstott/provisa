@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "Etiqueta de tipo incorrecto",
     "finding_retirement_blocked": "Retirada bloqueada",
     "finding_no_data": "Sin datos",
+    "finding_approved_not_grounded": "Aprobado, sin datos",
+    "finding_path_pending": "Ruta pendiente de aprobación",
     "findingFix_unlinked_tables": "Marcar como misma entidad…",
     "findingFix_retirement_blocked": "Elegir un sucesor…",
     "findingUnmark": "Quitar {{tag}}",

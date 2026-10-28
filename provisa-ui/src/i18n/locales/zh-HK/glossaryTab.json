@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "標籤物件類型錯誤",
     "finding_retirement_blocked": "停用受阻",
     "finding_no_data": "無資料",
+    "finding_approved_not_grounded": "已批准，無資料",
+    "finding_path_pending": "路徑待批准",
     "findingFix_unlinked_tables": "標記為同一實體…",
     "findingFix_retirement_blocked": "選擇繼任術語…",
     "findingUnmark": "取消 {{tag}}",

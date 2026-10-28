@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "Tag op verkeerd soort object",
     "finding_retirement_blocked": "Buiten gebruik stellen geblokkeerd",
     "finding_no_data": "Geen gegevens",
+    "finding_approved_not_grounded": "Goedgekeurd, geen data",
+    "finding_path_pending": "Pad wacht op goedkeuring",
     "findingFix_unlinked_tables": "Als dezelfde entiteit markeren…",
     "findingFix_retirement_blocked": "Opvolger kiezen…",
     "findingUnmark": "{{tag}} verwijderen",

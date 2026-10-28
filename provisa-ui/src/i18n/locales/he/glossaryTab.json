@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "תגית מסוג שגוי",
     "finding_retirement_blocked": "ההוצאה משימוש חסומה",
     "finding_no_data": "אין נתונים",
+    "finding_approved_not_grounded": "מאושר, ללא נתונים",
+    "finding_path_pending": "נתיב ממתין לאישור",
     "findingFix_unlinked_tables": "סמן כאותה ישות…",
     "findingFix_retirement_blocked": "בחר מחליף…",
     "findingUnmark": "הסר את {{tag}}",

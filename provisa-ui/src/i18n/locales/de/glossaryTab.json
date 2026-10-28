@@ -115,6 +115,8 @@
     "finding_tag_wrong_kind": "Tag für falsche Objektart",
     "finding_retirement_blocked": "Außerdienststellung blockiert",
     "finding_no_data": "Keine Daten",
+    "finding_approved_not_grounded": "Freigegeben, keine Daten",
+    "finding_path_pending": "Pfad wartet auf Freigabe",
     "findingFix_unlinked_tables": "Als dieselbe Entität markieren…",
     "findingFix_retirement_blocked": "Nachfolger wählen…",
     "findingUnmark": "{{tag}} entfernen",

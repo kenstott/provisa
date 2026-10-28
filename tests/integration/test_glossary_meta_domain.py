@@ -11,7 +11,7 @@
 """REQ-1584, REQ-1585: the glossary and the tag graph as queryable meta-domain views.
 
 Real PG, real catalog registration, the real view DDL the startup seed installs. The
-questions the views exist to answer are asked in SQL: does the recursive `live` flag agree
+questions the views exist to answer are asked in SQL: does the recursive `grounding` agree
 with the Python admission rule it restates, does the synthesized column_key resolve a term
 to its column, is a retired term returned with its flag rather than withheld, and does a
 term reach the governance tags on the columns it binds.
@@ -147,30 +147,34 @@ async def _terms(conn) -> dict[str, dict]:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_live_flag_agrees_with_the_python_admission_rule(tenant_db):
-    """The recursive CTE restates live_term_ids; it must not approximate it."""
+async def test_grounding_agrees_with_the_python_rule(tenant_db):
+    """The recursive CTEs restate term_grounding (REQ-1387); they must not approximate it."""
     async with tenant_db.acquire() as conn:
         await _setup(conn, {"orders": ["cust_id", "order_dt"]})
         terms = await _terms(conn)
-        # defined + rooted -> live; the abstract term reaches data only through it.
+        # the abstract term reaches data through the rooted one; a second one only through it.
         await glossary_repo.set_definition(conn, terms["customer"]["id"], "A buying party.")
         abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.set_definition(conn, abstract, "Anyone we transact with.")
         await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
-        # defined but grounded in nothing, and rooted but undefined: neither is live.
+        top = await glossary_repo.create_abstract_term(
+            conn, "counterparty", definition="The other side.", domains=set()
+        )
+        await glossary_repo.approve_term(conn, top, by=None)
+        await glossary_repo.add_edge(conn, top, abstract, "KIND_OF")
+        # grounded in nothing
         floating = await glossary_repo.create_abstract_term(conn, "ambition", domains=set())
         await glossary_repo.set_definition(conn, floating, "Wired to no column.")
 
-        expected = await glossary_repo.live_ids(conn)
-        rows = await conn.fetch("SELECT id, name, live FROM _terms_ontology")
+        expected = await glossary_repo.grounding(conn)
+        rows = await conn.fetch("SELECT id, name, grounding FROM _terms_ontology")
 
-    from_view = {r["id"] for r in rows if r["live"]}
+    assert {r["id"]: r["grounding"] for r in rows} == expected
     by_name = {r["name"]: r for r in rows}
-    assert from_view == expected
-    assert by_name["customer"]["live"] is True
-    assert by_name["party"]["live"] is True  # grounded transitively over the edge
-    assert by_name["ambition"]["live"] is False  # defined, but grounded in nothing
-    assert by_name["order date"]["live"] is False  # rooted, but undefined
+    assert by_name["customer"]["grounding"] == "grounded"
+    assert by_name["party"]["grounding"] == "grounded"  # nothing strictly between
+    assert by_name["counterparty"]["grounding"] == "grounded_pending"  # draft party between
+    assert by_name["ambition"]["grounding"] == "not_grounded"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -208,13 +212,13 @@ async def test_retired_and_export_excluded_terms_are_flagged_not_withheld(tenant
         rows = {
             r["name"]: r
             for r in await conn.fetch(
-                "SELECT name, retired, export_excluded, live FROM _terms_ontology"
+                "SELECT name, retired, export_excluded, grounding FROM _terms_ontology"
             )
         }
     assert set(rows) == {"customer", "order date", "client"}
     assert rows["customer"]["retired"] is True
     assert rows["client"]["retired"] is False
-    assert rows["customer"]["live"] is False  # out of service, so not admitted
+    assert rows["customer"]["grounding"] == "not_grounded"  # out of service
     assert rows["order date"]["export_excluded"] is True
 
 
