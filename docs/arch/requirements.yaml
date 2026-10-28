@@ -47225,12 +47225,19 @@
     up to a shared parent and back down. The metadata export publishes an approved term a curator later
     deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish. (Amended 2026-10-28,
     DEFINITIONS ARE VERSIONED; EDGES ARE RETIRED, NOT DELETED:) A term''s lifecycle is already kept; its
-    definition is versioned too. Editing the definition (and its examples) of an approved term writes the
-    next version and keeps every earlier one read-only; a draft''s definition is edited in place until it
-    is approved. The term page steps through the definition''s versions with a difference between them.
+    definition is versioned too. [SUPERSEDED by REQ-1387 amendment A NEW DEFINITION VERSION IS EXPLICIT,
+    2026-10-28 -- versioning is the steward''s explicit choice. Kept here for history; do not implement
+    against it.] Editing the definition (and its examples) of an approved term writes the next version and
+    keeps every earlier one read-only; a draft''s definition is edited in place until it is approved. [END
+    SUPERSEDED BLOCK] The term page steps through the definition''s versions with a difference between them.
     A relationship between terms (KIND_OF, PART_OF, VALID_VALUE_OF, SYNONYM_OF and the others) is never
     deleted: removing it retires it, kept with the time it was retired. A retired edge does not conduct
-    grounding and is not shown as current, but remains for history and for resolving citations.'
+    grounding and is not shown as current, but remains for history and for resolving citations. (Amended
+    2026-10-28, A NEW DEFINITION VERSION IS EXPLICIT:) A new definition version is the steward''s explicit
+    choice, as a contract''s is (REQ-2158): New version copies the current definition and examples to the
+    next number for editing and keeps every earlier version read-only. A minor or cosmetic edit (a typo,
+    wording that does not change the meaning) is made in place on the current version and creates none.
+    A draft''s definition is always edited in place.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
