@@ -7,7 +7,9 @@ name: Conformance (Bolt)
 #
 # A failing test is data, written to the job summary and to the artifact conformance-bolt.json
 # (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md), never a job failure.
-# The job fails only when the Provisa instance did not start or no test ran.
+# The job fails only when the Provisa instance did not start or no test ran, until Bolt is at its
+# baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a failure no
+# group excludes.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance), with password
 # auth: the driver signs in as the job user, who holds org_admin.
@@ -155,8 +157,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/report"
           .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml,$RUNNER_TEMP/bolt-junit-leak.xml" \
             bolt "neo4j-python-driver integration tests" "$DRIVER_VERSION" "tests/integration" \
-            "$RUNNER_TEMP/report/conformance-bolt.json" "$RUNNER_TEMP/report/conformance-bolt.md"
+            "$RUNNER_TEMP/report/conformance-bolt.json" "$RUNNER_TEMP/report/conformance-bolt.md" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-bolt.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
 
       - name: Upload results
         if: ${{ !cancelled() }}

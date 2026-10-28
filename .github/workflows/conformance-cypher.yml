@@ -8,7 +8,8 @@ name: Conformance (Cypher)
 # (read by scripts/conformance/fill_docs.py into docs/conformance/cypher.md), never a job failure. A
 # scenario whose setup builds its own graph is counted apart as not runnable by design: a Provisa
 # graph's vocabulary is its model's. The job fails only when the Provisa instance did not start or
-# the suite did not run.
+# the suite did not run, until Cypher is at its baseline (scripts/conformance/by_design.py
+# AT_BASELINE, REQ-2167): then also on a failure no group excludes.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance): the embedded
 # PostgreSQL control plane and `uvicorn main:app` on the DuckDB engine, natively on the runner,
@@ -101,8 +102,9 @@ jobs:
           .venv/bin/python scripts/conformance/cypher_tck.py \
             "$RUNNER_TEMP/opencypher/tck/features" "$TCK_VERSION" \
             "http://127.0.0.1:$PROVISA_API_PORT" org_admin "$CONFORMANCE_AUTHORIZATION" \
-            "$RUNNER_TEMP/report/conformance-cypher.json" "$RUNNER_TEMP/report/conformance-cypher.md"
+            "$RUNNER_TEMP/report/conformance-cypher.json" "$RUNNER_TEMP/report/conformance-cypher.md" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-cypher.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
 
       - name: Upload results
         if: ${{ !cancelled() }}

@@ -550,7 +550,10 @@ def main(argv: list[str]) -> int:
     doc = report(outcomes, version)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
-    return 0 if doc["ran"] else 1
+    if not doc["ran"]:
+        return 1
+    # REQ-2167: at its baseline, a failure no by-design group excludes fails the job.
+    return 1 if by_design.baseline_failed("cypher", doc["failed"]) else 0
 
 
 if __name__ == "__main__":
