@@ -86,7 +86,8 @@ def _r818_when_execute(r818: dict, monkeypatch) -> None:
         return types.SimpleNamespace(sql=sql)
 
     async def _execute(plan, _state):
-        return types.SimpleNamespace(rowcount=1, rows=[])
+        # A QueryResult's shape: an INSERT with no RETURNING names no columns.
+        return types.SimpleNamespace(rowcount=1, rows=[], column_names=[])
 
     monkeypatch.setattr(pipeline, "_govern_and_route_compiled", _govern)
     monkeypatch.setattr(pipeline, "_execute_plan", _execute)
