@@ -463,6 +463,15 @@ def _substitute_params(sql: str, params: list | None) -> str:
     return result
 
 
+def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
+    """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
+    transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
+    the read on the connection's loop."""
+    from provisa.auth.held_assignments import held_assignments
+
+    return {a.role_id for a in run(held_assignments(state, identity, org_id))} | {mapped}
+
+
 def _write_tag(sql: str, result: Any) -> str:
     """PostgreSQL's command tag for a data write: ``INSERT 0 n``, ``UPDATE n``, ``DELETE n``,
     ``MERGE n`` — the count the client reads as its rowcount."""
@@ -2708,16 +2717,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if requested:
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
-            from provisa.auth.role_mapping import resolve_assignments
             from provisa.security.meta_role import (
                 RoleNotHeld,
                 acting_roles,
                 resolve_requested_role,
             )
 
-            permitted = {a.role_id for a in resolve_assignments(identity)} | {role}
             org_token = None
             org_id = getattr(ctx.session, "org_id", None)
+            permitted = _held_roles(_state, identity, role, org_id, run=run_on_connection_loop)
             if org_id is not None:
                 from provisa.core.request_context import set_current_org
 
