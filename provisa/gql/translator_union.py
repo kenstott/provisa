@@ -151,9 +151,15 @@ class _UnionMixin:  # mixin for _Translator
         src_type: str | None = None,
         tgt_type: str | None = None,
         rel_type: str | None = None,
+        columns: tuple[str, str, str] | None = None,
+        undirected: bool = False,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns
         (only ``rel_type``'s when it names one).
+
+        ``columns`` names the source, relationship and target columns where the variables do not
+        (an end the statement already holds, an anonymous end of a later hop). ``undirected``: each
+        relationship is read from either end, a self-loop once.
 
         src_domain / tgt_domain constrain the union to only include rels whose
         source / target node belongs to the named domain (PascalCase domain label).
@@ -162,9 +168,11 @@ class _UnionMixin:  # mixin for _Translator
         """
         # An anonymous end's column is named as no variable is, so an outer statement's variable
         # an inner statement reads (its ``n``) is never this union's column.
-        src_col = src_var or "__src"
-        rel_col = rel_var or "__rel"
-        tgt_col = tgt_var or "__tgt"
+        src_col, rel_col, tgt_col = columns or (
+            src_var or "__src",
+            rel_var or "__rel",
+            tgt_var or "__tgt",
+        )
         alias = "_all_rels"
         self._all_rels_alias = alias
         self._all_rels_src_col = src_col
@@ -188,12 +196,16 @@ class _UnionMixin:  # mixin for _Translator
         # on node types the query never asked for don't trip V003 column-visibility checks.
         src_props_wanted = set(self._collect_var_props(src_col))
         tgt_props_wanted = set(self._collect_var_props(tgt_col))
+        if undirected:
+            # Either end of a relationship may be either column's node.
+            src_props_wanted = tgt_props_wanted = src_props_wanted | tgt_props_wanted
 
         branches: list[exp.Select] = []
         # The node types each end may be, and the relationships the edge may be, which a property
         # read of one of them takes its one type from (expr_context.resolve_property).
-        self._all_rels_ends = {src_col: [], tgt_col: []}
-        self._all_rels_mappings = []
+        # Held across the hops of a statement: each hop's columns are its own.
+        self._all_rels_ends.setdefault(src_col, [])
+        self._all_rels_ends.setdefault(tgt_col, [])
         for rm in self._lm.relationships.values():
             src_nm = self._lm.nodes.get(rm.source_label)
             tgt_nm = self._lm.nodes.get(rm.target_label)
@@ -205,13 +217,19 @@ class _UnionMixin:  # mixin for _Translator
             # too, or this union would emit a direct FROM the role is V001-blocked on.
             if src_nm.traversal_only or tgt_nm.traversal_only:
                 continue
-            if src_type_set is not None and rm.source_label not in src_type_set:
-                continue
-            if tgt_type_set is not None and rm.target_label not in tgt_type_set:
-                continue
-            if src_type is not None and rm.source_label != src_type:
-                continue
-            if tgt_type is not None and rm.target_label != tgt_type:
+
+            def ends(near: str, far: str) -> bool:
+                # The source column's node is ``near``, the target column's ``far``.
+                return (
+                    (src_type_set is None or near in src_type_set)
+                    and (tgt_type_set is None or far in tgt_type_set)
+                    and (src_type is None or near == src_type)
+                    and (tgt_type is None or far == tgt_type)
+                )
+
+            forward = ends(rm.source_label, rm.target_label)
+            backward = undirected and ends(rm.target_label, rm.source_label)
+            if not forward and not backward:
                 continue
             if rel_type is not None and rm.rel_type.upper() != rel_type:
                 continue
@@ -387,10 +405,23 @@ class _UnionMixin:  # mixin for _Translator
                     ),
                     join_type="INNER",
                 )
-            branches.append(branch)
-            self._all_rels_ends[src_col].append(rm.source_label)
-            self._all_rels_ends[tgt_col].append(rm.target_label)
             self._all_rels_mappings.append(rm)
+            if forward:
+                branches.append(branch)
+                self._all_rels_ends[src_col].append(rm.source_label)
+                self._all_rels_ends[tgt_col].append(rm.target_label)
+            if backward:
+                # Read from its target an edge's ends are the other way round; the edge is the same.
+                reverse = branch.copy()
+                reverse.selects[0].set("this", tgt_json.copy())
+                reverse.selects[2].set("this", src_json.copy())
+                branches.append(
+                    reverse.where(
+                        exp.NEQ(this=src_compound_id.copy(), expression=tgt_compound_id.copy())
+                    )
+                )
+                self._all_rels_ends[src_col].append(rm.target_label)
+                self._all_rels_ends[tgt_col].append(rm.source_label)
 
         if not branches:
             raise CypherTranslateError("No relationship types found in schema")

@@ -661,6 +661,16 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 )
                 continue
 
+            # A relationship a union of relationships matched, carried by a WITH: its JSON, as
+            # that WITH holds it.
+            if is_bare and expr_text in getattr(self, "_all_rels_carried", set()):
+                name = alias or expr_text
+                self._graph_vars[name] = GraphVarKind.PASSTHROUGH
+                held_in = self._var_table[expr_text][0]
+                column = exp.column(expr_text, table=held_in, quoted=True)
+                exprs.append(exp.alias_(column, name))
+                continue
+
             # Varlen relationship variable: RETURN c where c is from [c*..5]
             varlen_rel_vars = getattr(self, "_varlen_rel_vars", {})
             if is_bare and expr_text in varlen_rel_vars:

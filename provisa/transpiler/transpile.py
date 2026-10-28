@@ -95,11 +95,45 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
     return exp.Anonymous(this="ROW", expressions=[rank, number, ended])
 
 
+#: json_kind(x): a JSON value's kind as openCypher names it (expr_visitor), from the first
+#: character of its JSON text.
+_JSON_KIND_BY_FIRST = [
+    ('"', "string"),
+    ("[", "list"),
+    ("{", "map"),
+    ("t", "boolean"),
+    ("f", "boolean"),
+    ("n", "null"),
+]
+
+
+def _json_kind(text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_kind(x), ``x``'s kind read from ``text``, its JSON text: string, list, map, boolean,
+    null, else number; null for no value."""
+    first = exp.Anonymous(
+        this="substr", expressions=[text, exp.Literal.number(1), exp.Literal.number(1)]
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(this=exp.Is(this=text.copy(), expression=exp.Null()), true=exp.Null()),
+            *(
+                exp.If(
+                    this=exp.EQ(this=first.copy(), expression=exp.Literal.string(c)),
+                    true=exp.Literal.string(k),
+                )
+                for c, k in _JSON_KIND_BY_FIRST
+            ),
+        ],
+        default=exp.Literal.string("number"),
+    )
+
+
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
     if not any(
-        name in sql.upper() for name in ("JSON_SIZE", "JSON_ORDER_KEY", "RANGE_STEP", "JSON_KEYS")
+        name in sql.upper()
+        for name in ("JSON_SIZE", "JSON_ORDER_KEY", "JSON_KIND", "RANGE_STEP", "JSON_KEYS")
     ):
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
@@ -122,6 +156,9 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
             return _json_order_key(
                 value, exp.Anonymous(this="json_format", expressions=[value.copy()])
             )
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_KIND":
+            (value,) = node.expressions
+            return _json_kind(exp.Anonymous(this="json_format", expressions=[value.copy()]))
         if not (isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_SIZE"):
             return node
         (value,) = node.expressions
@@ -595,6 +632,7 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "SEQUENCE",
         "JSON_SIZE",
         "JSON_ORDER_KEY",
+        "JSON_KIND",
         "RANGE_STEP",
     }
 )
@@ -666,6 +704,9 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
             return _json_order_key(
                 value, exp.Cast(this=value.copy(), to=exp.DataType.build("VARCHAR"))
             )
+        if name == "JSON_KIND":
+            (value,) = args
+            return _json_kind(exp.Cast(this=value.copy(), to=exp.DataType.build("VARCHAR")))
         if name == "JSON_SIZE":
             # A JSON value's size: a list's items, a string's characters (expr_visitor).
             (value,) = args

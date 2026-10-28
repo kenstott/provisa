@@ -513,6 +513,64 @@ def _reversed_list(items: exp.Expression) -> exp.Expression:
     )
 
 
+#: The kind of value a conversion function gives (_value_kind).
+_CONVERTED_KIND = {
+    "tointeger": "number",
+    "tofloat": "number",
+    "tostring": "text",
+    "toboolean": "boolean",
+}
+
+#: A value kind (_value_kind) as json_kind names it, and the type its JSON is read as.
+_JSON_KIND = {
+    "number": ("number", "DOUBLE"),
+    "text": ("string", "TEXT"),
+    "boolean": ("boolean", "BOOLEAN"),
+}
+
+
+def _json_string(value: exp.Expression) -> exp.Expression:
+    """An item of a list of several types (its JSON) as a string: its text where it is a JSON
+    string, else null."""
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(
+                    this=_anon("json_kind", value), expression=exp.Literal.string("string")
+                ),
+                true=_anon("JSON_EXTRACT_SCALAR", value.copy(), exp.Literal.string("$")),
+            )
+        ]
+    )
+
+
+def _json_equals(item: exp.Expression, other: exp.Expression, kind: str) -> exp.Expression:
+    """``item`` (an item of a list of several types, its JSON) = ``other`` (a value of ``kind``):
+    null where the item is null, false where it is of another kind, else their values compared."""
+    named, typed = _JSON_KIND[kind]
+    item_kind = _anon("json_kind", item)
+    value = exp.Cast(
+        this=_anon("JSON_EXTRACT_SCALAR", item.copy(), exp.Literal.string("$")),
+        to=exp.DataType.build(typed),
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.Or(
+                    this=exp.Is(this=item_kind, expression=exp.Null()),
+                    expression=exp.EQ(this=item_kind.copy(), expression=exp.Literal.string("null")),
+                ),
+                true=exp.Null(),
+            ),
+            exp.If(
+                this=exp.EQ(this=item_kind.copy(), expression=exp.Literal.string(named)),
+                true=exp.EQ(this=value, expression=other),
+            ),
+        ],
+        default=exp.false(),
+    )
+
+
 def _lam(var: str, body: exp.Expression) -> exp.Lambda:
     """An engine lambda ``var -> body`` (sqlglot ``Lambda``)."""
     return exp.Lambda(this=body, expressions=[exp.to_identifier(var)])
@@ -716,6 +774,8 @@ class ExprLowering:
             return "boolean"
         if self._ctx.is_text(node):
             return "text"
+        if isinstance(node, FunctionCall) and len(node.args) == 1:
+            return _CONVERTED_KIND.get(node.name.lower())
         return None
 
     def _lower_Binary(self, node: Binary) -> exp.Expression:
@@ -746,6 +806,16 @@ class ExprLowering:
                 if op in ("<>", "!="):
                     return exp.true()
                 return exp.Null()
+            if op in ("=", "<>", "!="):
+                # An item of a list of several types beside a value of a known kind: equal only
+                # where the item is of that kind, never the engine's cast of its JSON to it.
+                for item, other, kind in (
+                    (node.left, node.right, right_kind),
+                    (node.right, node.left, left_kind),
+                ):
+                    if kind and self._ctx.is_json_value(item):
+                        same = _json_equals(self.lower(item), self.lower(other), kind)
+                        return same if op == "=" else exp.Not(this=exp.Paren(this=same))
         left = self.lower(node.left)
         right = self.lower(node.right)
         # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
@@ -840,6 +910,13 @@ class ExprLowering:
         } & {"number", "boolean"}:
             # A string predicate of a value that is no string is null (openCypher).
             return exp.Null()
+        if op in ("STARTS WITH", "ENDS WITH", "CONTAINS"):
+            # An item of a list of several types is a string only where its JSON is one: any
+            # other is no string, and the predicate of it null (openCypher).
+            if self._ctx.is_json_value(node.left):
+                left = _json_string(left)
+            if self._ctx.is_json_value(node.right):
+                right = _json_string(right)
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
         if op == "ENDS WITH":
