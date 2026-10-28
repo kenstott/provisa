@@ -32,8 +32,7 @@ from provisa.core.schema_admin import (
     superadmin_bootstrap,
     user_profiles,
 )
-from provisa.auth.role_grants import in_force as grant_in_force
-from provisa.core.schema_org import user_directory, user_role_assignments
+from provisa.core.schema_org import user_directory
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
@@ -480,28 +479,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         member's grant is only visible when this runs with THEIR org bound. Applies configured
         default_assignments only when the user has no explicit rows."""
         assert self._db_pool, "no tenant control plane bound for the active org"
+        from provisa.auth.held_assignments import read_assignments
+
         # REQ-2092: what reading the grants in force costs a request
         with _stage(_tracer, "auth.read_assignments", name="assignments", request_only=True):
-            async with self._db_pool.acquire() as conn:
-                result = await conn.execute_core(
-                    select(
-                        user_role_assignments.c.role_id,
-                        user_role_assignments.c.domain_id,
-                    ).where(
-                        user_role_assignments.c.user_id == identity.user_id,
-                        # REQ-2077: an expired grant is not held from the instant it expires.
-                        grant_in_force(),
-                    )
-                )
-                rows = [dict(r._mapping) for r in result.fetchall()]
-        if rows:
-            return [RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows]
-        if self._default_assignments:
-            return [
-                RoleAssignment(role_id=a["role_id"], domain_id=a.get("domain_id", "*"))
-                for a in self._default_assignments
-            ]
-        return []
+            # The one reader every transport's sign-in uses (provisa.auth.held_assignments).
+            return await read_assignments(self._db_pool, identity, self._default_assignments)
 
     async def _served_binding(
         self, request: Request, org_id: str, identity: AuthIdentity | None
