@@ -460,7 +460,7 @@ _KEPT = 'relType: { in: ["KIND_OF", "PART_OF"] }'
 #: The Ontology View's one query: live terms with an edge of a kept type to a live term, either
 #: way, or a table; each with its edges out of those types, each edge's target, and its tables.
 _ONTOLOGY = (
-    "{ ont__terms(where: { retired: { eq: false }, _or: ["
+    "{ on_terms(where: { retired: { eq: false }, _or: ["
     f"{{ edgesOut: {{ {_KEPT}, targetTerm: {{ retired: {{ eq: false }} }} }} }}, "
     f"{{ edgesIn: {{ {_KEPT}, sourceTerm: {{ retired: {{ eq: false }} }} }} }}, "
     "{ tables: {} } ] }) { id name "
@@ -481,14 +481,14 @@ def test_the_ontology_view_s_one_query_is_its_cypher(meta):
     "query",
     [
         # A filtered root with a to-many junction field: the filter is the root's, not dropped.
-        '{ ont__terms(where: { name: { eq: "ledger" } }) { id '
+        '{ on_terms(where: { name: { eq: "ledger" } }) { id '
         f"edgesOut(where: {{ {_KEPT} }}) {{ id toTermId }} }} }}",
         # One kept type, and the edges into a term.
-        '{ ont__terms { id edgesIn(where: { relType: { eq: "KIND_OF" } }) { id fromTermId } } }',
+        '{ on_terms { id edgesIn(where: { relType: { eq: "KIND_OF" } }) { id fromTermId } } }',
         # A relationship's condition over the junction, either way, with its far term's own.
-        f"{{ ont__terms(where: {{ edgesIn: {{ {_KEPT}, sourceTerm: {{ name: {{ eq: "
+        f"{{ on_terms(where: {{ edgesIn: {{ {_KEPT}, sourceTerm: {{ name: {{ eq: "
         '"ledger" } } } }) { id } }',
-        "{ ont__terms(where: { tables: {} }) { id tables { tableName } } }",
+        "{ on_terms(where: { tables: {} }) { id tables { tableName } } }",
     ],
 )
 def test_a_junction_field_or_condition_is_its_relationships(meta, query):
@@ -500,7 +500,7 @@ def test_a_junction_field_or_condition_is_its_relationships(meta, query):
 def test_a_junction_field_not_kept_to_declared_types_has_no_cypher_form(meta):
     # Every edge row, ANTONYM_OF's included: it has the declared types' rows and others'.
     (schema, ctx, lm), _con = meta
-    (root,) = compile_query(parse("{ ont__terms { id edgesOut { id } } }"), ctx)
+    (root,) = compile_query(parse("{ on_terms { id edgesOut { id } } }"), ctx)
     semantic = make_semantic_sql(root.sql, ctx)
     assert semantic_sql_to_cypher(semantic, lm, ctx, params=root.params) is None
 

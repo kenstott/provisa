@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
     apply_cql_property as _apply_cql_property,
+    unprefixed_field_name,
 )
 from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.compiler.sql_types import key_list
@@ -643,7 +644,10 @@ def _build_node_mappings(
             # Single-domain mode: the default domain is implicit — never label with it.
             domain_id = None
         domain_label = _apply_cql_label(domain_id) if domain_id else None
-        _, table_label = _split_cypher_labels(field_name)
+        # REQ-2163: a system schema's SDL prefix (on_, op_) is no part of its bare label.
+        _, table_label = _split_cypher_labels(
+            unprefixed_field_name(field_name, table_meta.domain_id)
+        )
         cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
         logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
         physical_table = table_meta.table_name

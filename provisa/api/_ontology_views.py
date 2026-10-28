@@ -19,20 +19,12 @@ are from ``*_meta`` views. Dialect-neutral, as meta's are (provisa.api._meta_vie
 
 from __future__ import annotations
 
+from provisa.compiler.ontology_classes import DEFINITION_TABLES
 from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, SKOS, xsd_of_sql
 
 
-#: The definition tables, in the order their views are created: _domains first, since the
-#: others read each term's domains from it.
-ONTOLOGY_TABLES: list[str] = [
-    "_terms",
-    "_term_refs",
-    "_term_edges",
-    "_domains",
-    "_experts",
-    "_axioms",
-    "_closure",
-]
+#: The definition tables, in the order their views are created (provisa.compiler.ontology_classes).
+ONTOLOGY_TABLES: list[str] = list(DEFINITION_TABLES)
 
 #: Each definition table's view.
 ONTOLOGY_TABLE_ALIAS: dict[str, str] = {t: f"{t}_ontology" for t in ONTOLOGY_TABLES}

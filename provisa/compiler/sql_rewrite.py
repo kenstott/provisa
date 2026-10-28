@@ -169,13 +169,9 @@ def travel_ref(ref: str, field_node: Any, variables: dict | None) -> str:  # REQ
 
 def semantic_table_name(meta: TableMeta) -> str:  # REQ-641
     """Bare (unquoted) semantic table name — central naming authority always."""
-    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.naming import apply_sql_name, bare_field_name
 
-    raw = (
-        meta.display_name
-        if meta.display_name
-        else (meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name)
-    )
+    raw = meta.display_name or bare_field_name(meta.field_name, meta.domain_id)
     return apply_sql_name(raw)
 
 
@@ -590,7 +586,7 @@ def _row_value(qualifier: str, key_column: str, values: dict[int, str]) -> exp.E
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
-    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.naming import bare_field_name, domain_to_sql_name
 
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str, str]] = set()
@@ -605,10 +601,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
         semantic = semantic_ref(meta)
         physical = _table_ref(meta, use_catalog=False)
         replacements[semantic] = physical
-        if "__" in meta.field_name:
-            table_part = meta.field_name.split("__", 1)[1]
-        else:
-            table_part = meta.field_name
+        table_part = bare_field_name(meta.field_name, meta.domain_id)
         domain_sql = domain_to_sql_name(meta.domain_id)
         ref = f"{_q(domain_sql)}.{_q(table_part)}"
         if ref not in replacements:

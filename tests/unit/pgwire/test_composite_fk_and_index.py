@@ -25,7 +25,9 @@ from provisa.pgwire.system_tables import _populate_empty_system_tables
 
 
 def _tm(table_id: int, name: str):
-    return SimpleNamespace(table_id=table_id, type_name=name, field_name=name, display_name="")
+    return SimpleNamespace(
+        table_id=table_id, type_name=name, field_name=name, display_name="", domain_id="public"
+    )
 
 
 class _Idx:

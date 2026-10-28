@@ -170,6 +170,10 @@ def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     ]
     table = Table.model_validate(fields)
     written = _written(table)
+    if "contract" in written:
+        # REQ-2118: created_at is the store's record of when the contract was first created, as a
+        # product's created_at is: the config declares the contract, the store stamps its creation.
+        written["contract"].pop("created_at", None)
     # A table's identity is written out whole, defaults included: readers of a configuration key
     # tables by (source, schema, table).
     written["schema"] = table.schema_name
