@@ -90085,7 +90085,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When a view opens, the layout is layered if its drawn rank and flow edges are all of one class and form
     no cycle, else force; a Force/Layered control lets the reader override it, Layered disabled where a
     cycle makes it impossible. A layered layout is flat in 3D as the tree is. It extends today''s tree layout
-    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views.'
+    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views. (Amended 2026-10-27,
+    THE 2D VIEW IS A LANE DIAGRAM:) 2026-10-28: the Graph panel''s 2D view is a lane diagram read left to
+    right: the term hierarchy, then the columns its terms bind, then their tables, then the products those
+    tables belong to. Inside the term lane only rank edges (kind of, part of, valid value of) are drawn,
+    top-down; a chain ends at the columns that bind it. A table''s unbound columns are one ''+N columns''
+    node that expands in place on a click. The product lane is optional: a table in no product ends at the
+    tables lane, and on the Ontology preset every product the tables belong to is shown. Lateral and flow
+    edges and lineage are not drawn in this view. It is the existing graph view laid out with ELK''s layered
+    algorithm in fixed lane partitions, so every interaction (clicking through to a node''s page, hover,
+    selection, the detail panel) is kept, and its diagram can be copied as Mermaid text. The 3D view stays
+    the free-form explorer.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
