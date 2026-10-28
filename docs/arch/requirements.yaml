@@ -25011,13 +25011,11 @@
     And it executes as a direct table write, returns affected_rows, and runs the one after-write step
 
 
-    Given a MERGE or DETACH statement
+    Given a MERGE of a label the model does not have
 
-    When parsed
+    When executed via the /data/cypher endpoint
 
-    Then it is rejected at parse time with a precise error
-
-    '
+    Then it matches the session node with those properties, or creates one ephemeral node (REQ-2176)'
   stakeholders:
   - data-engineer
   - compliance
@@ -90511,7 +90509,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And the same query over pgwire answers the same rows'
 - id: REQ-2176
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
