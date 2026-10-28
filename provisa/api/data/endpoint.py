@@ -824,22 +824,38 @@ async def _handle_query(
     if plan is not None:
         prepared = plan.prepared_copies()
     else:
-        # REQ-1365: _resolve(uri, as_of, as_recorded) dereferences a semantic address through the one pipeline.
+        # REQ-1365: the meta domain's resolve(uri, as_of, as_recorded) dereferences a semantic
+        # address through the one pipeline.
         from provisa.api.data.resolve import (
             AddressError,
             AddressNotFound,
             execute_resolve_fields,
+            may_resolve,
             resolve_selections,
         )
+        from provisa.compiler.schema_gen import resolve_field
         from provisa.core.request_context import require_current_org
 
-        resolve_sels, other_names = resolve_selections(document)
+        resolver = None
+        if may_resolve(document):
+            surface = role_surface(state, role_id)
+            if surface is None:
+                raise ApiError(
+                    400,
+                    "data.no_schema_available_for_role",
+                    f"No schema available for role {role_id!r}",
+                    role_id=role_id,
+                )
+            resolver = resolve_field(surface.schema)
+        resolve_sels, other_names = (
+            resolve_selections(document, resolver) if resolver is not None else ([], [])
+        )
         if resolve_sels:
             if other_names:
                 raise ApiError(
                     400,
                     "data.mixed_resolve_and_other_fields",
-                    "_resolve cannot be combined with other root fields in one operation",
+                    f"{resolver} cannot be combined with other root fields in one operation",
                 )
             try:
                 resolved = await execute_resolve_fields(

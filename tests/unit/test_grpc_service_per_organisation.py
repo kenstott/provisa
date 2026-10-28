@@ -385,10 +385,11 @@ def built(monkeypatch):
 
 def _table_fields(schema) -> list[str]:
     """The root fields a role's Query type serves its tables through: every field but the
-    semantic-address resolver every schema carries (REQ-1365), which reads no one table."""
-    from provisa.compiler.schema_gen import RESOLVE_FIELD
+    semantic-address resolver every schema carries (meta's resolve, REQ-1365), which reads no one
+    table."""
+    from provisa.compiler.schema_gen import resolve_field
 
-    return sorted(f for f in schema.query_type.fields if f != RESOLVE_FIELD)
+    return sorted(f for f in schema.query_type.fields if f != resolve_field(schema))
 
 
 def _service(file: descriptor_pb2.FileDescriptorProto) -> tuple[set[str], dict[str, list[str]]]:
@@ -597,10 +598,14 @@ def test_the_generic_command_rpc_is_every_roles(meta_reach):
 
 
 def test_every_roles_service_resolves_a_semantic_address(meta_reach):
-    """REQ-1365, REQ-1929: _resolve is in every role's GraphQL schema, so its RPC is in every
+    """REQ-1365, REQ-1929: meta's resolve is in every role's GraphQL schema, so its RPC is in every
     role's service, generated from the same rule."""
+    from provisa.compiler.schema_gen import resolve_field
+
     for role in ("sales_reader", "cataloguer"):
-        assert "_resolve" in meta_reach.schemas[role].query_type.fields
+        schema = meta_reach.schemas[role]
+        assert "_resolve" not in schema.query_type.fields
+        assert resolve_field(schema).endswith("resolve")
         assert "Resolve" in _rpcs(meta_reach.proto_files[role])
 
 

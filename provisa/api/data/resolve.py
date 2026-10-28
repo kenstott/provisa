@@ -20,8 +20,9 @@ it. A composite key is ``pk=<v1>,<v2>`` in the model's key-column order, each va
 percent-encoded. The column may also be written as the REQ-1385 fragment ``#field:<column>``;
 the path form is canonical. With no column the whole governed row is returned.
 
-There is one function here, :func:`resolve`, and every surface (the GraphQL ``_resolve`` field,
-REST ``GET /data/rest/_resolve``, the MCP ``_resolve`` tool) is a thin wrapper over it. It builds
+There is one function here, :func:`resolve`, and every surface (the meta domain's GraphQL
+``resolve`` field, REST ``GET /data/rest/meta/resolve``, the MCP ``meta_resolve`` tool) is a thin
+wrapper over it. It builds
 ONE ``SELECT`` over the table's semantic name with the key values as bound parameters and hands
 it to the settled pipeline (``_govern_and_route`` then ``_execute_plan``). Role scoping, RLS,
 masking, the row cap, the audit record and its provenance all come from that path; nothing here
@@ -270,12 +271,24 @@ async def resolve(
 # -- the GraphQL field (REQ-1929: the other surfaces offer what GraphQL offers) -------------------
 
 
-def resolve_selections(document: Any) -> tuple[list[Any], list[str]]:
-    """The ``resolve`` root selections of a GraphQL document, and the names of its other root
-    fields."""
+def may_resolve(document: Any) -> bool:
+    """Whether a root field of ``document`` may be the resolver -- meta's ``resolve``, however
+    meta prefixes it -- a cheap check before its name is read off the role's schema."""
     from graphql import FieldNode
 
-    from provisa.compiler.schema_gen import RESOLVE_FIELD
+    return any(
+        isinstance(selection, FieldNode)
+        and (selection.name.value == "resolve" or selection.name.value.endswith("__resolve"))
+        for definition in document.definitions
+        if getattr(definition, "selection_set", None) is not None
+        for selection in definition.selection_set.selections
+    )
+
+
+def resolve_selections(document: Any, field: str) -> tuple[list[Any], list[str]]:
+    """The root selections of a GraphQL document of the resolver ``field`` (the role's schema's,
+    :func:`provisa.compiler.schema_gen.resolve_field`), and the names of its other root fields."""
+    from graphql import FieldNode
 
     found: list[Any] = []
     others: list[str] = []
@@ -286,7 +299,7 @@ def resolve_selections(document: Any) -> tuple[list[Any], list[str]]:
         for selection in selection_set.selections:
             if not isinstance(selection, FieldNode):
                 continue
-            if selection.name.value == RESOLVE_FIELD:
+            if selection.name.value == field:
                 found.append(selection)
             else:
                 others.append(selection.name.value)
@@ -301,7 +314,7 @@ async def execute_resolve_fields(
     *,
     org_id: str | None,
 ) -> dict[str, Any]:
-    """Answer each ``_resolve`` root selection, keyed by its response name, at the time its own
+    """Answer each resolver root selection, keyed by its response name, at the time its own
     ``as_of``/``as_recorded`` arguments say (REQ-1163)."""
     from provisa.compiler.sql_where import _extract_value
 

@@ -134,9 +134,9 @@ def _arg_proto_type(arg_type: str) -> str:
     return _ARG_PROTO_TYPE.get((arg_type or "").lower(), "string")
 
 
-#: REQ-1365: the RPC that dereferences a semantic address -- the GraphQL ``_resolve`` root field,
-#: which every role's schema carries, so every role's service carries it too (REQ-1929). A proto
-#: identifier cannot start with an underscore, so the RPC is ``Resolve``.
+#: REQ-1365: the RPC that dereferences a semantic address -- the meta domain's GraphQL ``resolve``
+#: field, which every role's schema carries, so every role's service carries it too (REQ-1929). A
+#: command's RPC carries no domain prefix, so it is ``Resolve``.
 RESOLVE_RPC = "Resolve"
 
 

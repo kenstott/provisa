@@ -50,6 +50,7 @@ from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError
 from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.compiler.complexity import ComplexityLimitExceeded
+from provisa.security.rights import META_DOMAIN_ID
 
 log = logging.getLogger(__name__)
 
@@ -511,15 +512,16 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         return HTMLResponse(content=swagger_ui_html(theme))
 
-    @rest_router.get("/_resolve")
+    # Before the table route, which ``/meta/resolve`` would otherwise match as a table of meta.
+    @rest_router.get(f"/{META_DOMAIN_ID}/resolve")
     async def rest_resolve_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1365
         request: Request,
         uri: str = Query(...),
         as_of: str | None = Query(None),
         as_recorded: str | None = Query(None),
     ):
-        """Dereference a semantic address: the REST form of the GraphQL ``_resolve`` field
-        (REQ-1929), under the same name and with the same arguments."""
+        """Dereference a semantic address: the REST form of the meta domain's GraphQL ``resolve``
+        field (REQ-1929), under meta's path and with the same arguments."""
         from provisa.api.data.resolve import AddressError, AddressNotFound, resolve
         from provisa.core.request_context import require_current_org
 
