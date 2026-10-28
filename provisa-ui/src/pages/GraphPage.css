@@ -460,6 +460,10 @@
   inset-inline-end: 8px;
 }
 
+.graph-query-editor-wrap .gf-clear-query-btn {
+  inset-inline-end: 36px;
+}
+
 .graph-query-input {
   width: 100%;
 }

@@ -10,7 +10,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ActionIcon, useComputedColorScheme } from "@mantine/core";
-import { CirclePlus, Play } from "lucide-react";
+import { CirclePlus, Play, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useScreenEditor } from "../../mcp/screenState";
 import CodeMirror from "@uiw/react-codemirror";
@@ -98,6 +98,11 @@ export function QueryBar({
     onQueryChange(val);
   };
 
+  const handleClear = () => {
+    setQuery("");
+    onQueryChange("");
+  };
+
   const handleCollapsedClickWithFormat = useCallback(() => {
     // A SPARQL query keeps the lines it was written in.
     const formatted = sparql
@@ -182,6 +187,18 @@ export function QueryBar({
           />
         )}
         <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
+        <Tip text={t("queryBar.clear")} named>
+          <ActionIcon
+            type="button"
+            variant="transparent"
+            className="gf-copy-query-btn gf-clear-query-btn"
+            aria-label={t("queryBar.clear")}
+            data-testid="clear-query-button"
+            onClick={handleClear}
+          >
+            <Trash2 size={13} aria-hidden />
+          </ActionIcon>
+        </Tip>
       </div>
       {/* Imputing relationships between drawn nodes is Cypher's. */}
       {!sparql && (

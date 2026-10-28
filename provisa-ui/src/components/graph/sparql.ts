@@ -116,6 +116,15 @@ export function pickedQuery(
   return addPattern(query, pattern, [term], p);
 }
 
+/** The query a class or property pill runs as its own result card, as a label pill's
+ * ``MATCH (n:Label) RETURN n LIMIT 25`` does in Cypher: a class's instances, a property's triples. */
+export function pillQuery(
+  pick: Extract<VocabularyPick, { iri: string }>,
+  vocabulary: SparqlVocabulary,
+): string {
+  return pickedQuery("", pick, vocabulary);
+}
+
 /** The variables ``query`` types, each with the classes it is typed as (``?s a pet-store:pets``). */
 function typedVariables(query: string): Map<string, Set<string>> {
   const held = new Map<string, Set<string>>();
