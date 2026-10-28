@@ -296,6 +296,13 @@ def table_id_of(table: Any, table_map: Mapping[str, int]) -> int | None:
         found = table_map.get(f"{table.db}.{table.name}")
         if found is not None:
             return found
+        return table_map.get(table.name)
+    from provisa.compiler import temp_tables
+
+    if table.name in temp_tables.names():
+        # REQ-615: the session's own temporary table, ahead of a model table of its name -- as
+        # PostgreSQL's pg_temp comes first, and as the validator reads it.
+        return None
     return table_map.get(table.name)
 
 

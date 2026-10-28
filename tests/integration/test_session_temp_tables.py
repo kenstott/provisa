@@ -249,3 +249,13 @@ def test_on_flight_sql_the_session_is_its_cookie(boot):
     with _flight(boot) as third, third.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM orders")
         assert cur.fetchone() == (3,)
+
+
+def test_on_pgwire_a_temporary_table_comes_ahead_of_a_model_table_of_its_name(boot):
+    """REQ-615: named by its own name, the session's temporary table is the one read, as
+    PostgreSQL's pg_temp comes first; the model table is still read by its schema."""
+    with _pgwire(boot) as conn:
+        conn.execute("CREATE TEMP TABLE orders (id INTEGER, region TEXT)")
+        conn.execute("INSERT INTO orders VALUES (9, 'pluto')")
+        assert conn.execute("SELECT id, region FROM orders").fetchall() == [(9, "pluto")]
+        assert conn.execute("SELECT COUNT(*) FROM sales.orders").fetchone() == (3,)
