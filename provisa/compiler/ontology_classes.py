@@ -64,6 +64,13 @@ def class_table_id(term_id: int) -> int:
     return -term_id
 
 
+def class_view_key(row: dict[str, Any]) -> str:
+    """A Class table's key in the view map: ``ontology.<name>``, so it is read only where the
+    ontology schema is named (provisa.compiler.view_expand), never in place of a table that shares
+    its name."""
+    return f"{row['schema_name']}.{row['table_name']}"
+
+
 def is_class_table_id(table_id: int) -> bool:
     """Whether ``table_id`` is a Class table's (:func:`class_table_id`)."""
     return table_id < 0

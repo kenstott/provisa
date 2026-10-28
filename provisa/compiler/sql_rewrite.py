@@ -28,6 +28,7 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.native_nested import mark_native_nested_reads
 from provisa.compiler.native_subtype import mark_subtype_operations
+from provisa.compiler.ontology_classes import is_class_table_id
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.core.ir_types import EPOCH_UNITS
 
@@ -222,6 +223,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     by_name: dict[str, list[tuple[str, str]]] = {}
     # (schema_lower, name_lower) → (catalog_name, schema_name, table_name) canonical triple
     by_schema_name: dict[tuple[str, str], tuple[str, str, str]] = {}
+    # field name (lower) → its table's physical pair, for an unqualified ref no table is named by
+    by_field: dict[str, tuple[str, str]] = {}
 
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
@@ -231,7 +234,14 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         seen.add(key)
         nl = meta.table_name.lower()
         sl = meta.schema_name.lower()
-        by_name.setdefault(nl, []).append((meta.schema_name, meta.table_name))
+        # REQ-2163: a Class is named only under the ontology schema. A keyed table is grounded in
+        # a Class named for it (REQ-2141), so the bare name stays the table's: counted as the
+        # Class's too, it read as ambiguous and was left unlowered.
+        if not is_class_table_id(meta.table_id):
+            by_name.setdefault(nl, []).append((meta.schema_name, meta.table_name))
+            # Its field name, unqualified (the domain-prefixed ``sa__orders``): read when no
+            # table is named so (governance resolves it the same way, stage2).
+            by_field.setdefault(meta.field_name.lower(), (meta.schema_name, meta.table_name))
         by_schema_name[(sl, nl)] = (meta.catalog_name, meta.schema_name, meta.table_name)
         # Also map pre-alias name → physical name (e.g. "registered_tables" → "registered_tables_meta")
         orig_nl: str | None = meta.original_table_name.lower() if meta.original_table_name else None
@@ -287,6 +297,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         else:
             # Unqualified — try unique match
             matches = by_name.get(name.lower(), [])
+            if not matches and name.lower() in by_field:
+                matches = [by_field[name.lower()]]
             if len(matches) == 1:
                 schema_q, table_q = matches[0]
                 catalog_q = None
