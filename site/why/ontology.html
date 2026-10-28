@@ -58,6 +58,16 @@
       </div>
 
       <div class="doc-body">
+        <p>
+          An ontology enriches how people and automation understand your data, and how that
+          data connects to the concepts, synonyms, policies, regulations and processes of the
+          business. People read it in the UI and in reports, agents over MCP, and OWL and RDF
+          tools over SPARQL, and each uses it to reason about definitions and data. What
+          reduces variation most, though, is taking the reasoning out of the agent's hands
+          where an answer must be exact: derived views, code resolvers and commands put
+          business logic in the data estate, where every agent gets the same result.
+        </p>
+
         <h2>The hidden step</h2>
         <p>
           Somewhere inside the agent's reasoning, one step turns your words into a query. Its
@@ -167,13 +177,14 @@
           An agent composes its answers from statistical patterns. That suits open questions.
           It doesn't suit a business rule, a calculation, a policy check or a lookup that takes
           several steps, where there is exactly one right answer. Encode those in the model
-          and the agent calls them, instead of composing them afresh each time.
+          and the agent calls them, instead of composing them afresh each time. Of everything
+          on this page, this does the most to reduce variation.
         </p>
         <ul>
           <li><strong>Metrics.</strong> A named aggregate defined once, such as net revenue as
             order amounts less refunds. Each query breaks it out by the dimensions it asks
             for.</li>
-          <li><strong>Views.</strong> A dataset defined once in SQL and read like any
+          <li><strong>Derived views.</strong> A dataset defined once in SQL and read like any
             table.</li>
           <li><strong>Code resolvers.</strong> A Python or Node function that returns rows
             becomes a governed table, joinable to the rest of the model.</li>
@@ -182,13 +193,22 @@
             invokes it over MCP, and a command can require approval before it runs.</li>
         </ul>
         <p>
+          A derived view and a code resolver's table are tables, so terms bind to them and to
+          their columns like any other. A term can lead straight to the logic that computes
+          it: ground "churn rate" in the view or the resolver that calculates it, and an agent
+          that asks about churn rate reads the calculation your organization agreed, instead
+          of writing its own.
+        </p>
+        <p>
           Each one lives in the model and is governed like a table, so every agent and every
           wording of the question gets the same answer.
         </p>
 
         <h2>Standard interfaces for two kinds of automation</h2>
         <p>
-          Agents reach the model over MCP. Tools built on OWL and RDF, such as reasoners,
+          People read the ontology on its page in the UI, and in reports, because the
+          ontology is a schema you can query like any other. Agents reach the model over MCP.
+          Tools built on OWL and RDF, such as reasoners,
           ontology editors and RDF pipelines, reach it over SPARQL 1.1. The endpoint takes
           queries as the SPARQL protocol sends them, answers SELECT, ASK and CONSTRUCT, and
           writes results as SPARQL JSON, XML, CSV or TSV, and graphs as Turtle, N-Triples or
@@ -233,8 +253,8 @@
         </p>
         <ul>
           <li><strong>Only approved, grounded routes steer an agent to data.</strong> A term
-            that reaches no data isn't offered, and a draft term an agent does see is marked
-            as a draft.</li>
+            that reaches no data is never offered as a route to data, and a draft term an
+            agent does see is marked as a draft.</li>
           <li><strong>Citations expose a wrong binding.</strong> Each one names the term and
             the path that led to the data, so a bad route shows up in the first answer that
             uses it.</li>
