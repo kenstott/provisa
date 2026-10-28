@@ -308,3 +308,29 @@ def test_this_session_keeps_mcp_certificates_outside_the_real_home():
     folder = _cert_dir().resolve()
     real = (Path.home() / ".provisa").resolve()
     assert real not in (folder, *folder.parents)
+
+
+def test_every_e2e_backend_names_pgwire_ports_of_its_own():
+    """A source's pgwire server, left to scan up from 5433, reaches the ports another backend's
+    servers (and local-dev's) take: two backends starting one at once both found 5433 free. Each
+    backend names a block of its own (REQ-955)."""
+    playwright = _playwright_config()
+    servers = playwright.count("exec .venv/bin/uvicorn main:app")
+    assert playwright.count("PROVISA_PGWIRE_PORTS: pgwirePorts(") == servers
+    assert "PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker)," in playwright
+    # The Trino backend's block is past every core worker's.
+    assert "PROVISA_PGWIRE_PORTS: pgwirePorts(E2E_WORKERS)," in playwright
+
+
+def test_the_e2e_pgwire_ports_are_outside_the_pytest_lease_range():
+    """A pytest session on the same machine leases ports from tests/port_lease.py's range; an e2e
+    backend's pgwire block inside it could be handed to a test stack while the backend uses it."""
+    import re
+
+    from tests.port_lease import LEASE_LAST
+
+    playwright = _playwright_config()
+    base = int(re.search(r"PROVISA_E2E_PGWIRE_PORTS_BASE \?\? (\d+)\)", playwright).group(1))
+    # Every block the config hands out (core workers, then the Trino backend's) counts up from the
+    # base, so all of them are clear of the lease range when the base is past it.
+    assert base > LEASE_LAST
