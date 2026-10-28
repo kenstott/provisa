@@ -36,12 +36,7 @@ const product = (id: string, over: Partial<DataProduct> = {}): DataProduct => ({
 
 const answer = (r: MutationResult) => vi.fn(() => Promise.resolve(r));
 const done = (code: string, id = "c360") =>
-  answer({
-    success: true,
-    message: "",
-    code: `data_product.status.${code}`,
-    params: { data_product: id },
-  });
+  answer({ success: true, message: "", code: `data_product.status.${code}`, params: { data_product: id } });
 
 function actions(over: Partial<DataProductStatus> = {}): DataProductStatus {
   return {
@@ -118,11 +113,7 @@ describe("a data product's status actions", () => {
     const status = actions();
     const onChanged = vi.fn();
     render(
-      <Lifecycle
-        product={product("c360", { status: "draft" })}
-        status={status}
-        onChanged={onChanged}
-      />,
+      <Lifecycle product={product("c360", { status: "draft" })} status={status} onChanged={onChanged} />,
     );
     fireEvent.click(screen.getByTestId("data-product-publish-c360"));
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 published."));
@@ -334,12 +325,7 @@ describe("a data product's findings", () => {
   it("choose a successor for a blocked retirement, and edit for the rest; a reader who cannot edit gets neither", async () => {
     const onEdit = vi.fn();
     const { unmount } = render(
-      <Lifecycle
-        product={product("c360")}
-        findings={findings}
-        status={actions()}
-        onEdit={onEdit}
-      />,
+      <Lifecycle product={product("c360")} findings={findings} status={actions()} onEdit={onEdit} />,
     );
     fireEvent.click(chip(2));
     fireEvent.click(screen.getByText("Choose a successor…"));
@@ -354,12 +340,7 @@ describe("a data product's findings", () => {
     unmount();
 
     render(
-      <Lifecycle
-        product={product("c360")}
-        findings={findings}
-        status={actions()}
-        canEdit={false}
-      />,
+      <Lifecycle product={product("c360")} findings={findings} status={actions()} canEdit={false} />,
     );
     fireEvent.click(chip(2));
     expect(fixes()).toEqual([]);
