@@ -90775,7 +90775,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     given properties (a node on its label''s key or the stated properties, a relationship on its two ends
     and its type) and creates only when nothing matches, each part through the governed write path (write
     grants, row rules); ON CREATE SET and ON MATCH SET apply to the part they name. MERGE of a foreign-key
-    relationship is refused by name. MERGE of session objects is unchanged.'
+    relationship is refused by name. MERGE of session objects is unchanged. (Amended 2026-10-28, REMOVE
+    OF A SESSION NODE''S PROPERTY; CLASS LABELS ARE READ-ONLY:) REMOVE n.p on a graph-session node clears
+    the property, exactly as SET n.p = null does, as Neo4j defines it. On a model node it stays refused
+    by name: a model node''s property is a governed column, written only by SET of a declared column. A
+    label written by SET n:L or removed by REMOVE n:L may be followed in the same statement by reads (WITH,
+    RETURN), which see the write. An ontology Class label (REQ-2163) is never written or removed on a model
+    node by SET or REMOVE: a node''s Class comes from its table''s binding, and both are refused by name.'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
