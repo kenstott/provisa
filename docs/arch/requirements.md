@@ -26619,3 +26619,19 @@ Provisa's Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow's Fl
 **Code:** `provisa/api/graph_session.py`, `provisa/api/rest/cypher_session.py`, `provisa/api/rest/cypher_router.py`, `provisa/ephemeral/store.py`, `provisa/compiler/temp_tables.py`, `provisa/pgwire/temp_exec.py`, `provisa/pgwire/temp_keeper.py`, `provisa/pgwire/_pipeline.py`, `provisa/cache/key.py`, `provisa-ui/src/components/graph/SessionPills.tsx`
 
 **Tests:** `tests/unit/test_cypher_page_session.py`, `tests/integration/test_graph_session_shared.py`, `provisa-ui/src/components/graph/__tests__/SessionPills.test.tsx`, `provisa-ui/src/__tests__/GraphPageSession.test.tsx`
+
+## 4. Source Connectors
+
+### REQ-2096 · File & Lake Sources {#REQ-2096}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A files source reads each Excel workbook as the tables it holds. The workbook's own Excel tables (Format as Table, with their header row count) and named ranges of a single block are read first, as declared; the rest of each sheet is searched for blocks of cells separated by blank rows and blank columns (two each), so tables side by side are read as two, and a single blank row or column inside a table stays. In each block a single-cell row above a wider row is the table's title and names it (<file>__<sheet>_<title>); header rows follow, and a row no wider than the header row above it is data, so a sheet of ids or codes keeps its first rows; a cell holding an empty string is blank and a formula is judged by its value. The source's mapping.excel_hints overrides each rule where a workbook is read wrong: header_rows (exact), max_header_rows (3), table_gap_rows (2), column_gap (2), min_columns (2), min_data_rows (1), for every workbook of the source, for one workbook by file name (workbooks) or for one table by the name it is read as (tables, which also take range, Sheet!A3:F200, naming the table those cells are). The narrowest that sets a hint wins; one left unset is the reader's own rule, shown in the source form as Auto-detect. Both engines give the file adapter the same hints (its excelHints operand; Trino's excel-hints catalog property). A hint the reader would not take is refused when the source is saved, naming it. A workbook read under other hints is read again, and the tables found before are gone.
+
+**Use case:** A control room keeps its watch list in a workbook whose deal_team sheet holds only ids and timestamps; the source reads it with its header row and every member, and a summary sheet whose header row is years is read with header_rows: 1.
+
+**Code:** `provisa/file_source/excel_hints.py`, `provisa/federation/pgwire_replica.py`, `provisa/federation/trino_connectors.py`, `provisa/api/admin/schema_common.py`, `provisa-ui/src/pages/sources/excelHints.ts`, `provisa-ui/src/pages/sources/ExcelHintsFields.tsx`
+
+**Tests:** `tests/unit/test_excel_hints.py`, `provisa-ui/src/pages/sources/__tests__/excelHints.test.tsx`
+
+**Docs:** [sources.md](../sources.md)
