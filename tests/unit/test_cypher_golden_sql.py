@@ -86,6 +86,8 @@ _ADDED_AFTER_THE_SPLIT = frozenset(
         "sql_only_tables",
         "sql_only_relationships",
         "sql_only_aliases",
+        "attribute_types",  # REQ-2176: a junction attribute's registered type
+        "directed",  # REQ-2176: a stored edge (only the session's) has one direction
     }
 )
 

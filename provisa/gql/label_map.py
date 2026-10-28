@@ -130,6 +130,9 @@ class JunctionMapping:  # REQ-1586
     type_column: str | None = None
     type_value: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    #: Each attribute's registered data type, (property, type), where it is known: what a read of
+    #: every relationship (translator_union) reads it as, not its text.
+    attribute_types: tuple[tuple[str, str], ...] = ()
     #: The type column's property name: a row's own type, read where a hop reads every row of the
     #: junction (an untyped hop), whatever its type.
     type_attribute: str | None = None
@@ -161,6 +164,10 @@ class RelationshipMapping:
     )
     many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
     via: JunctionMapping | None = None  # REQ-1586: set on a junction-backed edge, None on FK/PK
+    #: A stored edge with one direction (a session relationship, REQ-2176): a directed pattern
+    #: traverses it only from its source to its target. A model relationship is a join, which a
+    #: directed pattern may read from either end (False).
+    directed: bool = False
 
     @property
     def properties(self) -> dict[str, str]:
@@ -693,8 +700,11 @@ def junction_rel_type(via: JunctionMapping) -> str:  # REQ-1586
     raise ValueError(f"Junction on {via.table_name!r} has no label source nomination")
 
 
-def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # REQ-1586
-    """Convert a compiler JunctionMeta into the Cypher-side JunctionMapping."""
+def _junction_mapping(
+    via: "JunctionMeta | None", column_types: "dict[str, str]"
+) -> JunctionMapping | None:  # REQ-1586
+    """Convert a compiler JunctionMeta into the Cypher-side JunctionMapping (``column_types``: the
+    junction table's columns' data types, by column)."""
     if via is None:
         return None
     return JunctionMapping(
@@ -707,6 +717,9 @@ def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # 
         type_column=via.type_column,
         type_value=via.type_value,
         attributes=dict(via.attributes),
+        attribute_types=tuple(
+            (prop, column_types[col]) for prop, col in via.attributes if col in column_types
+        ),
         type_attribute=via.type_attribute,
         label_source=via.label_source,
         label_fixed=via.label_fixed,
@@ -724,7 +737,13 @@ def _build_relationship_mappings(
             continue
         cypher_alias = getattr(join_meta, "cypher_alias", None)
         cardinality = getattr(join_meta, "cardinality", None)
-        via = _junction_mapping(getattr(join_meta, "via", None))
+        _via_meta = getattr(join_meta, "via", None)
+        via = _junction_mapping(
+            _via_meta,
+            dict(ctx_typed.aggregate_columns.get(_via_meta.table.table_id, []))
+            if _via_meta is not None
+            else {},
+        )
         # REQ-1586: a junction edge is named by its nomination, not by the GraphQL field it would
         # have had — the field name describes the junction table, the nomination describes the edge.
         rel_type = (
@@ -801,6 +820,11 @@ def _junction_from_rel_dict(  # REQ-1586
             for c in all_column_types.get(via_id, [])
             if c.column_name not in keys
         },
+        attribute_types=tuple(
+            (_apply_cql_property(c.column_name), c.data_type)
+            for c in all_column_types.get(via_id, [])
+            if c.column_name not in keys
+        ),
         type_attribute=_apply_cql_property(type_column) if type_column else None,
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",

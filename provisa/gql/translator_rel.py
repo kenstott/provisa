@@ -125,6 +125,7 @@ class _RelJoinMixin:  # mixin for _Translator
             *,
             src_type: str | None = None,
             tgt_type: str | None = None,
+            rel_type: str | None = None,
         ) -> exp.Expression: ...
 
         def _translate_path_function(
@@ -172,7 +173,12 @@ class _RelJoinMixin:  # mixin for _Translator
         if rel_var and rm.via is not None:
             self._rel_var_via[rel_var] = (via_alias_for(rm, rel_var), rm.via)
 
-    def _resolve_early_rel_mapping(self, rel: "RelPattern") -> "RelationshipMapping | None":
+    def _resolve_early_rel_mapping(
+        self,
+        rel: "RelPattern",
+        src_node: "NodePattern | None" = None,
+        tgt_node: "NodePattern | None" = None,
+    ) -> "RelationshipMapping | None":
         """Resolve early rel_mapping for domain-node path and anonymous node inference."""
         if not rel.types:
             return None
@@ -181,7 +187,53 @@ class _RelJoinMixin:  # mixin for _Translator
         if not _early_matches:
             _rm_early = self._lm.relationships.get(_rt_early)
             _early_matches = [_rm_early] if _rm_early else []
+        if any(m.directed for m in _early_matches):
+            # REQ-2176: a stored edge is read along its direction, so the end it infers is the
+            # one across from a node the pattern names (_is_bwd_for_candidate); an undirected
+            # pattern infers from an edge leaving its first node.
+            along = [m for m in _early_matches if self._directed_from(m, rel, src_node, tgt_node)]
+            _early_matches = along or _early_matches
         return _early_matches[0] if _early_matches else None
+
+    def _stored_edges_of_unnamed_ends(
+        self, rel: "RelPattern", src_node: "NodePattern", tgt_node: "NodePattern"
+    ) -> bool:
+        """Whether ``rel`` is one directed hop of a type of stored edges (REQ-2176) between two
+        nodes it names no type of, which no one pair of tables reads."""
+        if len(rel.types) != 1 or rel.variable_length or rel.direction == "none":
+            return False
+        if src_node.labels or tgt_node.labels:
+            return False
+        for node in (src_node, tgt_node):
+            if node.variable and self._var_table.get(node.variable, (None, None))[1] is not None:
+                return False
+        mappings = self._lm.aliases.get(rel.types[0].upper(), [])
+        return any(m.directed for m in mappings)
+
+    def _directed_from(
+        self,
+        m: "RelationshipMapping",
+        rel: "RelPattern",
+        src_node: "NodePattern | None",
+        tgt_node: "NodePattern | None",
+    ) -> bool:
+        """Whether the directed edge ``m`` runs the way ``rel`` reads it between the nodes it
+        names (an end the pattern names no type of agrees with any)."""
+        backward = rel.direction == "left"
+        src = (
+            self._var_table.get(src_node.variable, (None, None))[1]
+            if src_node and src_node.variable
+            else None
+        )
+        tgt = (
+            self._var_table.get(tgt_node.variable, (None, None))[1]
+            if tgt_node and tgt_node.variable
+            else None
+        )
+        first, last = (
+            (m.target_label, m.source_label) if backward else (m.source_label, m.target_label)
+        )
+        return (src is None or src.type_name == first) and (tgt is None or tgt.type_name == last)
 
     def _infer_src_from_rel(
         self,
@@ -239,14 +291,22 @@ class _RelJoinMixin:  # mixin for _Translator
         *,
         src_type: "str | None" = None,
         tgt_type: "str | None" = None,
+        rel_type: "str | None" = None,
     ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Handle an untyped rel pattern: UNION ALL over the relationship types whose endpoints
         are of the node types the pattern labels (``src_type`` / ``tgt_type``), every type where
-        it labels neither."""
+        it labels neither; only ``rel_type``'s relationships when it names one."""
         src_domain = self._domain_nodes.get(src_var) if src_var else None
         tgt_domain = self._domain_nodes.get(tgt_var) if tgt_var else None
         from_expr = self._build_all_rels_union(
-            src_var, rel_var, tgt_var, src_domain, tgt_domain, src_type=src_type, tgt_type=tgt_type
+            src_var,
+            rel_var,
+            tgt_var,
+            src_domain,
+            tgt_domain,
+            src_type=src_type,
+            tgt_type=tgt_type,
+            rel_type=rel_type,
         )
         if src_var:
             self._domain_nodes.pop(src_var, None)
@@ -293,7 +353,11 @@ class _RelJoinMixin:  # mixin for _Translator
                 if m.target_label == src_nm.type_name
                 and (tgt_nm is None or m.source_label == tgt_nm.type_name)
             ]
-            if not backward and fwd_exact:
+            if bidir and any(m.directed for m in alias_matches):
+                # REQ-2176: an undirected pattern reads a stored edge either way it runs: the
+                # edges leaving the node and those reaching it are each their own mapping.
+                alias_matches = fwd_exact + [m for m in bwd_exact if m not in fwd_exact]
+            elif not backward and fwd_exact:
                 alias_matches = fwd_exact
             elif bwd_exact:
                 alias_matches = bwd_exact
@@ -603,7 +667,21 @@ class _RelJoinMixin:  # mixin for _Translator
         # Variable-length hops take a different path (path_functions) and carry the full list.
         alternation = len(rel.types) > 1 and not rel.variable_length
 
-        rel_mapping = self._resolve_early_rel_mapping(rel)
+        if (
+            i == 0
+            and not held_target
+            and not new_source
+            and self._stored_edges_of_unnamed_ends(rel, src_node, tgt_node)
+        ):
+            # REQ-2176: stored edges of one type between nodes the pattern names no type of: each
+            # edge its own row with its own ends, as a read of every relationship reads them.
+            near, far = (tgt_var, src_var) if rel.direction == "left" else (src_var, tgt_var)
+            from_expr = self._handle_unlabeled_rel_pattern(
+                near, rel.variable, far, rel_type=rel.types[0].upper()
+            )
+            return from_expr, joins, True
+
+        rel_mapping = self._resolve_early_rel_mapping(rel, src_node, tgt_node)
         src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
             src_node, tgt_node, rel_mapping, from_expr, backward=rel.direction == "left"
         )

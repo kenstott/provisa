@@ -365,6 +365,16 @@ def _is_bwd_for_candidate(
 
     Returns None if the candidate should be filtered out (direction mismatch).
     """
+    if rm.directed and not bidir:
+        # REQ-2176: a stored edge is matched only along its direction: the pattern's source
+        # (its target when written backward) is the edge's source.
+        if src_nm is not None:
+            along = rm.target_label if backward else rm.source_label
+            return backward if along == src_nm.type_name else None
+        if tgt_nm is not None:
+            along = rm.source_label if backward else rm.target_label
+            return backward if along == tgt_nm.type_name else None
+        return backward
     if bidir:
         if src_nm is not None:
             canonical_fwd = rm.source_label == src_nm.type_name

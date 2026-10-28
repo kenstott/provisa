@@ -179,3 +179,40 @@ def test_several_create_clauses_after_leading_clauses(monkeypatch):
     s.run("MATCH (p:Person) WHERE p.name = 'Ann' CREATE (t:Tag {n: 1}) CREATE (p)-[:HAS]->(t)")
     rows = s.run("MATCH (p:Person)-[:HAS]->(t:Tag) RETURN p.name, t.n")
     assert _values(rows) == [("Ann", 1)]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("MATCH (a:X)-[r:R]->() RETURN a.k, r.w", [(1, 1)]),
+        ("MATCH ()-[r:R]->(b:X) RETURN b.k, r.w", [(2, 2)]),
+        ("MATCH (a:X)<-[r:R]-() RETURN a.k, r.w", [(2, 2)]),
+        ("MATCH (a:X)-[r:R]-() RETURN a.k, r.w", [(1, 1), (2, 2)]),
+    ],
+)
+def test_a_session_relationship_is_matched_along_its_direction(monkeypatch, query, expected):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X {k: 1})-[:R {w: 1}]->(), ()-[:R {w: 2}]->(:X {k: 2})")
+    assert _values(s.run(query)) == expected
+
+
+def test_a_read_of_every_relationship_types_its_edges_and_values(monkeypatch):
+    # type(r) on a relationship whose ends name no label, and its and its ends' properties as
+    # the one type each is registered as, not their text.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X {k: 1})-[:R {w: 1}]->(), ()-[:S {w: 2}]->(:X {k: 2})")
+    assert _values(s.run("MATCH ()-[r]->() RETURN type(r), r.w")) == [("R", 1), ("S", 2)]
+    assert _values(s.run("MATCH (a)-[r]->() WHERE a.k = 1 RETURN a.k")) == [(1,)]
+
+
+def test_stored_edges_of_one_type_between_unnamed_ends_each_keep_their_ends(monkeypatch):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X {k: 1})-[:R {w: 1}]->(), ()-[:R {w: 2}]->(:X {k: 2})")
+    assert _values(s.run("MATCH (a)-[r:R]->(b) RETURN a.k, r.w, b.k")) == [
+        (1, 1, None),
+        (None, 2, 2),
+    ]
+    assert _values(s.run("MATCH (b)<-[r:R]-(a) RETURN a.k, r.w, b.k")) == [
+        (1, 1, None),
+        (None, 2, 2),
+    ]

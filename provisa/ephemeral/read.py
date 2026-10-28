@@ -172,6 +172,7 @@ def overlay(model: Any, session: TempSession) -> Any:
             join_source_column=GRAPH_ID,
             join_target_column=GRAPH_ID,
             field_name=f"{SESSION_CATALOG}:{rel_type}:{source}:{target}",
+            directed=True,
             via=JunctionMapping(
                 catalog_name=SESSION_CATALOG,
                 schema_name=SESSION_SCHEMA,
@@ -180,6 +181,9 @@ def overlay(model: Any, session: TempSession) -> Any:
                 source_columns=("from_id",),
                 target_columns=("to_id",),
                 attributes={name: name for name, _ in columns if name != store.REL_ID},
+                attribute_types=tuple(
+                    (name, _spelled(kind)) for name, kind in columns if name != store.REL_ID
+                ),
             ),
         )
         relationships[mapping.field_name] = mapping
@@ -206,12 +210,15 @@ def _col(name: str, table: str | None = None) -> exp.Column:
     )
 
 
+def _spelled(kind: str) -> str:
+    """A session type of types.py (or a registered type) as SQL spells it."""
+    spelled = {"zoned_time": "TIMETZ", "json": "JSON"}.get(kind, kind)
+    return f"{_spelled(spelled[5:-1])}[]" if spelled.startswith("list<") else spelled
+
+
 def _typed(value: exp.Expression, kind: str) -> exp.Expression:
     """``value`` as a column of ``kind`` (a registered type, or a session type of types.py)."""
-    spelled = {"zoned_time": "TIMETZ", "json": "JSON"}.get(kind, kind)
-    if spelled.startswith("list<"):
-        spelled = f"{spelled[5:-1]}[]"
-    return exp.Cast(this=value, to=exp.DataType.build(spelled, dialect="postgres"))
+    return exp.Cast(this=value, to=exp.DataType.build(_spelled(kind), dialect="postgres"))
 
 
 def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expression:
