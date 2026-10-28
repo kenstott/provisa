@@ -228,6 +228,8 @@ describe("the Glossary page's Ontology View", () => {
         tags: [],
         sensitivities: [],
         search: [],
+        // Drawn in 3D: no lane diagram's products to name.
+        lanes: false,
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.

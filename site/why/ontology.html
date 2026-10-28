@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Why your AI agent gives different answers — Provisa</title>
+  <meta name="description" content="Reword a question and an AI agent picks different tables or a different definition, because it guesses meaning from table and column names. Provisa lets you fix table and column metadata, add terms, bindings, approval and grounding where names fall short, encode exact logic the agent calls, and cite how each answer was reached." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/ontology" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/compare">Compare</a>
+        <a href="/#deploy">Deploy</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Ontology</span></p>
+        <h1>Why your AI agent gives different answers to the same question</h1>
+        <p class="lead">
+          Ask an assistant how much revenue came from enterprise clients last quarter. Then
+          ask what enterprise customers spent over the same three months. To you it's one
+          question. The agent may answer it from two different tables, or with two different
+          definitions of revenue, and nothing in either answer tells you which one it used.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <p>
+          An ontology enriches how people and automation understand your data, and how that
+          data connects to the concepts, synonyms, policies, regulations and processes of the
+          business. People read it in the UI and in reports, agents over MCP, and OWL and RDF
+          tools over SPARQL, and each uses it to reason about definitions and data. What
+          reduces variation most, though, is taking the reasoning out of the agent's hands
+          where an answer must be exact: derived views, code resolvers and commands put
+          business logic in the data estate, where every agent gets the same result.
+        </p>
+
+        <h2>The hidden step</h2>
+        <p>
+          Somewhere inside the agent's reasoning, one step turns your words into a query. Its
+          technical name is text-to-SQL. In a copilot or a reasoning agent you rarely see it
+          run. To write the query, the agent has to decide what your words mean, and the only
+          evidence it has is the names of tables and columns.
+        </p>
+        <p>
+          Names are weak evidence. "Revenue" might be <code>order_total</code>,
+          <code>net_amount</code>, or order amounts less refunds. "Client" and "customer" are
+          the same thing in one domain and different things in another. "Churn" appears in no
+          column at all; it's a rule someone wrote down once. Each time the agent meets one of
+          these words it guesses again, so a reworded question gets a fresh guess. A better
+          model guesses more fluently. It still guesses from the same names.
+        </p>
+
+        <h2>Fix the names and descriptions first</h2>
+        <p>
+          Since the agent reads names, start with the names. Many sources do a poor job of
+          describing themselves, and some do none at all: a table called
+          <code>tbl_cust_seg</code>, a column called <code>usr_nm</code>, no description
+          anywhere. Provisa lets you correct that without touching the source, and it is often
+          the largest single gain you can make.
+        </p>
+        <ul>
+          <li><strong>Descriptions.</strong> Give every table and column a description in the
+            table form, or have AI draft one for you to edit. The description appears in the
+            API schema, in the data catalog, in the table and column listings an agent reads
+            over MCP, and in AI-assisted query generation.</li>
+          <li><strong>Aliases.</strong> Rename <code>tbl_cust_seg</code> to
+            <code>customer_segments</code> and <code>usr_nm</code> to <code>user_name</code>.
+            The alias is the name every query language uses, and an agent sees the alias in
+            place of the physical name.</li>
+          <li><strong>Naming conventions and rules.</strong> Set how names are cased per source
+            or per table, and strip a prefix such as <code>prod_pg_</code> from every table's
+            GraphQL name with one rule.</li>
+          <li><strong>Relationships.</strong> Register how tables join, so an agent joins along
+            paths your domains agreed.</li>
+        </ul>
+        <p>
+          Good metadata also seeds the ontology. A draft term follows a column's alias, so
+          renaming <code>usr_nm</code> to <code>user name</code> fixes the term along with the
+          column.
+        </p>
+
+        <h2>Where names fall short, a few simple primitives</h2>
+        <p>
+          Some meaning no name can carry. "Revenue" spans several columns, "client" and
+          "customer" are one idea under two words, and "churn" is a rule. Provisa gives your
+          organization a place to write down what its words mean and where the data for each
+          one lives, and gives the agent a way to read that before it writes a query.
+        </p>
+
+        <h3>Terms, and the relationships between them</h3>
+        <p>
+          A term is a word your organization uses, with a definition. You don't start from a
+          blank page: every column name becomes a draft term, so <code>cust_id</code>,
+          <code>customerId</code> and <code>CUSTOMER_KEY</code> all land on
+          <code>customer</code>. You add the words no column carries, such as "revenue" or
+          "churn". Typed relationships connect terms. "Client" can be a synonym of "customer",
+          "enterprise customer" a kind of customer, and "revenue" can have order amount and
+          refund amount as its parts.
+        </p>
+
+        <h3>Bindings</h3>
+        <p>
+          A binding ties a term to the tables or columns that hold its values.
+          <code>customer</code> binds to <code>sales.customers</code> and
+          <code>crm.contacts</code>, and <code>customer email</code> to the email column of
+          each. A term with no binding of its own, like "revenue", reaches data through the
+          terms it relates to.
+        </p>
+
+        <h3>Approval</h3>
+        <p>
+          People set a term's status. Every term starts as a draft. A steward approves it once
+          it has a definition the organization agrees on. Deprecating and retiring a term are steward decisions too, each
+          with a reason, and a retired term hands its columns to the term that replaces it.
+        </p>
+
+        <h3>Grounding</h3>
+        <p>
+          Grounding is computed, never set. A term is grounded when a path from it leads down
+          to data. Its chip reads <strong>grounded</strong> when a path gets there without
+          passing through a draft term, and <strong>~grounded</strong> when every path still
+          waits on a term nobody has approved. A term with no path to data gets no chip. Status
+          and grounding sit side by side, so an approved term that reaches nothing stands out.
+        </p>
+
+        <h3>Two kinds of search</h3>
+        <p>
+          Term discovery answers "what do we mean by active customer?" It returns the term, its
+          definition, its status and the terms around it. Data discovery answers "where is the
+          data about active customers?" It searches table and column metadata and the terms
+          together, and returns the tables and columns either one leads to, each with the route
+          that found it.
+        </p>
+        <p>
+          Table and column metadata, curated as above, stays the starting point. Terms add meaning and routes
+          where the names fall short, and a table no term reaches is as easy to find as it was
+          before. Terms never decide who may read data. Grants, row rules and masks do that,
+          for an agent exactly as for a person.
+        </p>
+
+        <h2>Turn guesses into deterministic answers</h2>
+        <p>
+          An agent composes its answers from statistical patterns. That suits open questions.
+          It doesn't suit a business rule, a calculation, a policy check or a lookup that takes
+          several steps, where there is exactly one right answer. Encode those in the model
+          and the agent calls them, instead of composing them afresh each time. Of everything
+          on this page, this does the most to reduce variation.
+        </p>
+        <ul>
+          <li><strong>Metrics.</strong> A named aggregate defined once, such as net revenue as
+            order amounts less refunds. Each query breaks it out by the dimensions it asks
+            for.</li>
+          <li><strong>Derived views.</strong> A dataset defined once in SQL and read like any
+            table.</li>
+          <li><strong>Code resolvers.</strong> A Python or Node function that returns rows
+            becomes a governed table, joinable to the rest of the model.</li>
+          <li><strong>Commands.</strong> A registered operation, such as a stored procedure,
+            a service call or a Python function, with typed inputs and outputs. An agent
+            invokes it over MCP, and a command can require approval before it runs.</li>
+        </ul>
+        <p>
+          A derived view and a code resolver's table are tables, so terms bind to them and to
+          their columns like any other. A term can lead straight to the logic that computes
+          it: ground "churn rate" in the view or the resolver that calculates it, and an agent
+          that asks about churn rate reads the calculation your organization agreed, instead
+          of writing its own.
+        </p>
+        <p>
+          Each one lives in the model and is governed like a table, so every agent and every
+          wording of the question gets the same answer.
+        </p>
+
+        <h2>Standard interfaces for two kinds of automation</h2>
+        <p>
+          People read the ontology on its page in the UI, and in reports, because the
+          ontology is a schema you can query like any other. Agents reach the model over MCP.
+          Tools built on OWL and RDF, such as reasoners,
+          ontology editors and RDF pipelines, reach it over SPARQL 1.1. The endpoint takes
+          queries as the SPARQL protocol sends them, answers SELECT, ASK and CONSTRUCT, and
+          writes results as SPARQL JSON, XML, CSV or TSV, and graphs as Turtle, N-Triples or
+          JSON-LD. Your ontology's classes and properties are its vocabulary, and the ontology
+          itself answers in RDFS, OWL and SKOS, so an RDF tool reads it as it reads any OWL
+          ontology. The same governance applies to every SPARQL query.
+        </p>
+        <p>
+          Reasoning works in the other direction too. A SPARQL source can name the HermiT OWL
+          reasoner and an axioms document, and Provisa serves the inferred class memberships
+          and properties as governed tables.
+        </p>
+
+        <h2>A citation records the judgement</h2>
+        <p>
+          When an agent answers from data, its answer carries a citation. The citation names
+          the term the question was taken to mean, with its status and grounding at the time.
+          It shows how that term leads to the tables and columns, and which data was read, down
+          to the row where that matters. It names the statement that ran, the model version,
+          the time of the data and the role whose view the agent saw. Anyone can follow the
+          reasoning from the word to the row and check it. Hand the citation back later and
+          Provisa reproduces the answer, or tells you whether the model, the data or the
+          role's rights changed.
+        </p>
+        <p>
+          A term is citable on its own. Its address and definition are the organization's
+          agreed meaning of the word, for an agent, a report or a person to point to.
+        </p>
+        <p>
+          When an answer is wrong, the citation shows where. Maybe "client" was bound to the
+          prospects table, or a synonym joined two words the business keeps apart. Either way
+          it's a specific mistake in shared meaning. You fix it once, on the term, and every
+          later question that goes through the term gets the fix.
+        </p>
+
+        <h2>A poor ontology hurts more than it helps</h2>
+        <p>
+          An agent guessing from names is wrong in different ways on different days. An agent
+          following a bad binding is wrong the same way every time, with a citation that looks
+          official. Consistency is only worth having when the meaning is right, so Provisa
+          keeps the quality of the meaning in view.
+        </p>
+        <ul>
+          <li><strong>Only approved, grounded routes steer an agent to data.</strong> A term
+            that reaches no data is never offered as a route to data, and a draft term an
+            agent does see is marked as a draft.</li>
+          <li><strong>Citations expose a wrong binding.</strong> Each one names the term and
+            the path that led to the data, so a bad route shows up in the first answer that
+            uses it.</li>
+          <li><strong>Stewards see the impact before they act.</strong> Before you approve,
+            retire or bind a term, the page shows what changes: "Approving Region makes 3 terms
+            grounded and gives agents a path to 2 more tables." A stewardship summary lists the
+            ~grounded terms each waiting on one approval, and the approved terms that reach no
+            data.</li>
+        </ul>
+        <p>
+          The primitives are simple on purpose. How much they help your agents depends on how
+          well your stewards use them.
+        </p>
+
+        <h2>Start with one word</h2>
+        <ol>
+          <li><strong>Pick the word</strong> behind the questions that come back with different
+            answers.</li>
+          <li><strong>Check the names and descriptions</strong> of the tables and columns it
+            should lead to, and fix them.</li>
+          <li><strong>Define it and bind it</strong> to the data it means, then have a steward
+            approve it.</li>
+          <li><strong>Ask again and read the citation</strong> to see which meaning the agent
+            used and where it led.</li>
+        </ol>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/docs/ontology/">The ontology in the docs</a>
+        <a class="more" href="/docs/business-logic/">Business logic in the docs</a>
+        <a class="more" href="/docs/code-sources/">How code resolvers work</a>
+        <a class="more" href="/why/ai">Governed data for AI</a>
+        <a class="more" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">Try it on your data</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -58,6 +58,9 @@ _DUCKDB_TYPES = {
     "text": "VARCHAR",
     "name": "VARCHAR",
     "inet": "VARCHAR",
+    # A record-returning statistics function (pg_stat_get_activity, ..._archiver, ..._wal):
+    # Provisa has nothing to report, so its answer is a NULL record.
+    "record": "VARCHAR",
 }
 _COUNTS = frozenset({"BIGINT", "INTEGER", "SMALLINT", "UINTEGER", "DOUBLE", "FLOAT"})
 

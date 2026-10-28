@@ -20,7 +20,8 @@ import {
   type Selection,
   type Where,
 } from "../../api/metaGraph";
-import type { GraphData, GraphEdge, GraphNode, QueryScope } from "./graphModel";
+import type { GraphData, GraphEdge, GraphNode, NodeInfo, QueryScope } from "./graphModel";
+import type { MaskEntry } from "../../lib/masks";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
 
@@ -72,23 +73,41 @@ const sensitiveTo = (xs: string[]): Where => ({
 const sensitiveColumn = (f: ProductFilters): Where | undefined =>
   f.sensitivities.length === 0 ? undefined : { sensitivity: sensitiveTo(f.sensitivities) };
 
+/** REQ-2174 (EVERY LANE NODE INFORMS AND LINKS): a term as a node's facts need it -- its name,
+ * definition, status and stewards (its experts). */
+export const TERM_FACTS: Selection = {
+  fields: ["id", "name", "definition", "status"],
+  rels: { experts: { alias: "experts", sel: { fields: ["user_id", "kind"] } } },
+};
+
+/** A column's facts: its type, description and masks (its sensitivity is read beside them). */
+export const COLUMN_FACTS = ["data_type", "description", "masks"];
+
+/** A table's facts: its source and description, and its checkers' latest scans (its quality). */
+export const TABLE_FACTS: Selection = {
+  fields: ["source_id", "description"],
+  rels: {
+    checked_by: { alias: "checkedBy", sel: { fields: ["latest_outcome", "latest_run_at"] } },
+  },
+};
+
+/** A product's facts: its status and owner (its members are counted from the graph). */
+export const PRODUCT_FACTS = ["status", "owner_role"];
+
+/** REQ-2174: the term edges that rank one term under another, the term hierarchy's. */
+export const RANK_TYPES = ["KIND_OF", "PART_OF", "VALID_VALUE_OF"];
+
 function columnSel(f: ProductFilters): Selection {
   return {
-    fields: ["column_name", "column_key"],
+    fields: ["column_name", "column_key", ...COLUMN_FACTS],
     rels: {
       glossary_ref: {
         alias: "glossaryRef",
         sel: {
           fields: ["term_id"],
           rels: {
-            term: {
-              alias: "term",
-              sel: {
-                // The bound term alone: a product's neighbourhood ends at the terms its columns
-                // are bound to (neighbourhood.ts), so their edges to other terms are not read.
-                fields: ["id", "name"],
-              },
-            },
+            // The bound term; its hierarchy is the rank edges read beside the products.
+            term: { alias: "term", sel: TERM_FACTS },
           },
         },
       },
@@ -101,8 +120,9 @@ function columnSel(f: ProductFilters): Selection {
 function tableSel(f: ProductFilters): Selection {
   const dom = inDomains(f);
   return {
-    fields: ["id", "domain_id", "table_name", "dq_contract", "product_id"],
+    fields: ["id", "domain_id", "table_name", "dq_contract", "product_id", ...TABLE_FACTS.fields],
     rels: {
+      ...TABLE_FACTS.rels,
       table_columns: {
         to: "table_columns",
         sel: columnSel(f),
@@ -131,7 +151,7 @@ function tableSel(f: ProductFilters): Selection {
 function productSel(f: ProductFilters): Selection {
   const dom = inDomains(f);
   return {
-    fields: ["id", "name", "domain_id"],
+    fields: ["id", "name", "domain_id", ...PRODUCT_FACTS],
     rels: {
       member_tables: {
         alias: "memberTables",
@@ -175,16 +195,30 @@ interface Tagged {
   tags?: { tag_id: string }[] | null;
 }
 
-interface ColumnRow extends Tagged {
+/** A term as TERM_FACTS reads it; a field the role cannot read is absent. */
+export interface TermFactsRow {
+  id: number;
+  name: string;
+  definition?: string | null;
+  status?: string | null;
+  experts?: { user_id: string; kind: string }[] | null;
+}
+
+/** A column's, a table's and a product's facts, as their *_FACTS read them. */
+interface ColumnFacts {
+  data_type?: string | null;
+  description?: string | null;
+  // table_columns.masks: the ordered mask list (REQ-2059), as JSON.
+  masks?: unknown;
+}
+
+interface ColumnRow extends Tagged, ColumnFacts {
   column_name: string;
   column_key: string;
   glossary_ref?:
     | {
         term_id: number;
-        term?: {
-          id: number;
-          name: string;
-        } | null;
+        term?: TermFactsRow | null;
       }[]
     | null;
   // Its row in sensitive_coverage when it is sensitive; undefined when the role cannot read it.
@@ -195,6 +229,9 @@ interface TableRow extends Tagged {
   id: number;
   domain_id: string;
   table_name: string;
+  source_id?: string | null;
+  description?: string | null;
+  checked_by?: { latest_outcome: "pass" | "fail" | null; latest_run_at: string | null }[] | null;
   dq_contract?: string | null;
   product_id?: string | null;
   table_columns?: ColumnRow[] | null;
@@ -230,6 +267,8 @@ export interface ProductRow extends Tagged {
   id: string;
   name: string;
   domain_id: string;
+  status?: string | null;
+  owner_role?: string | null;
   member_tables?: TableRow[] | null;
   commands?: { name: string; domain_id: string }[] | null;
   edges?: EdgeRow[] | null;
@@ -240,8 +279,29 @@ export interface TermEdgeRow {
   from_term_id: number;
   to_term_id: number;
   rel_type: string;
-  from_term: string;
-  to_term: string;
+  /** The terms it joins, with their facts (RANK_EDGES reads them). */
+  source_term?: TermFactsRow | null;
+  target_term?: TermFactsRow | null;
+}
+
+/** REQ-2174: the rank edges among terms (``f``'s edge types among them), with the terms they
+ * join; productGraph keeps those on a chain up from a bound term. */
+export const RANK_EDGES: Selection = {
+  fields: ["id", "from_term_id", "to_term_id", "rel_type"],
+  rels: {
+    source_term: { alias: "sourceTerm", sel: TERM_FACTS },
+    target_term: { alias: "targetTerm", sel: TERM_FACTS },
+  },
+};
+
+function rankTypes(f: ProductFilters): string[] {
+  return f.edgeTypes.length === 0 ? RANK_TYPES : RANK_TYPES.filter((t) => f.edgeTypes.includes(t));
+}
+
+/** What the product graph's query answers: a part the role cannot read is absent. */
+export interface ProductGraphRows {
+  data_products: ProductRow[];
+  _term_edges?: TermEdgeRow[] | null;
 }
 
 export interface SensitiveRow {
@@ -270,15 +330,45 @@ export function productGraphQuery(
         : { member_tables: { table_columns: { sensitivity: sensitiveTo(f.sensitivities) } } },
     ]),
   );
-  return field === null ? null : operation("DataProductGraph", [field]);
+  if (field === null) return null;
+  // REQ-2174: the term hierarchy above the bound terms, so the lane diagram draws it top-down.
+  const ranks = rankField(m, rankTypes(f));
+  return operation("DataProductGraph", ranks === null ? [field] : [field, ranks]);
+}
+
+/** The root field reading the rank edges of ``types``; null when there are none to read or the
+ * role cannot read the term edges. */
+export function rankField(m: MetaReader, types: string[]): string | null {
+  return types.length === 0
+    ? null
+    : rootField(m, "_term_edges", RANK_EDGES, { rel_type: { in: types } });
+}
+
+/** The rank edges on a chain up from a term bound to one of ``products``' columns: the bound
+ * terms' broader terms, theirs, and so on. */
+export function rankChains(products: ProductRow[], edges: TermEdgeRow[]): TermEdgeRow[] {
+  const up = new Map<number, TermEdgeRow[]>();
+  for (const e of edges) up.set(e.from_term_id, [...(up.get(e.from_term_id) ?? []), e]);
+  const seen = new Set<number>();
+  const kept: TermEdgeRow[] = [];
+  const climb = (id: number) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    for (const e of up.get(id) ?? []) {
+      kept.push(e);
+      climb(e.to_term_id);
+    }
+  };
+  boundTermIds(products).forEach(climb);
+  return kept;
 }
 
 /**
  * The graph of the product graph's one query: its columns' sensitivity read off the columns, null
- * when the role cannot read it (as toGraphData takes it). The bound terms are read without their
- * edges to other terms, so the graph holds none.
+ * when the role cannot read it (as toGraphData takes it). Of the term edges, those ranking a bound
+ * term under another, up the chain (rankChains); none when the role cannot read them.
  */
-export function productGraph(products: ProductRow[]): GraphData {
+export function productGraph(products: ProductRow[], ranks: TermEdgeRow[] = []): GraphData {
   const columns = products.flatMap((p) =>
     (p.member_tables ?? []).flatMap((t) =>
       (t.table_columns ?? []).map((c) => ({ table: t.id, c })),
@@ -295,8 +385,7 @@ export function productGraph(products: ProductRow[]): GraphData {
         })),
       )
     : null;
-  // No term edges: the read stops at the bound terms.
-  return toGraphData(products, [], sensitive);
+  return toGraphData(products, rankChains(products, ranks), sensitive);
 }
 
 export const productNode = (id: string) => `p:${id}`;
@@ -417,7 +506,8 @@ export function toGraphData(
     if (!nodes.has(n.id)) nodes.set(n.id, n);
   };
   const edge = (a: string, b: string, kind: GraphEdge["kind"], label?: string) => {
-    const id = `${kind}:${a}>${b}`;
+    // Two terms joined by edges of two types keep both (a rank edge beside a lateral one).
+    const id = `${kind}:${a}>${b}${kind === "term_edge" && label ? `:${label}` : ""}`;
     if (!edges.has(id)) edges.set(id, { id, a, b, kind, ...(label ? { label } : {}) });
   };
   const tagIds = (row: Tagged) => rowsOf(row.tags)?.map((t) => t.tag_id);
@@ -429,7 +519,14 @@ export function toGraphData(
   };
   const sens = new Map<string, string[]>();
   for (const s of sensitive ?? []) sens.set(s.column_key, s.tags.split(", "));
-  const term = (id: number, name: string) => node({ id: `term:${id}`, type: "term", label: name });
+  const term = (row: TermFactsRow) =>
+    node({
+      id: `term:${row.id}`,
+      type: "term",
+      label: row.name,
+      ...(row.definition ? { definition: row.definition } : {}),
+      ...facts(termFacts(row)),
+    });
 
   for (const p of products) {
     const pid = productNode(p.id);
@@ -440,6 +537,7 @@ export function toGraphData(
       label: p.name,
       domains: [p.domain_id],
       tags: tagIds(p),
+      ...facts({ status: p.status ?? undefined, owner: p.owner_role ?? undefined }),
     });
     node({ id: `d:${p.domain_id}`, type: "domain", label: p.domain_id });
     edge(pid, `d:${p.domain_id}`, "in_domain");
@@ -483,6 +581,7 @@ export function toGraphData(
         domains: [t.domain_id],
         tags: tagIds(t),
         ...(sensitive === null ? {} : { sensitivities: [...new Set(columnSens)] }),
+        ...facts(tableFacts(t)),
       });
       edge(pid, tid, "member");
       tag(t, tid);
@@ -499,12 +598,13 @@ export function toGraphData(
           inProduct: true,
           tags: tagIds(c),
           ...(sensitive === null ? {} : { sensitivities: sens.get(c.column_key) ?? [] }),
+          ...facts(columnFacts(c)),
         });
         edge(tid, cid, "has_column");
         tag(c, cid);
         for (const r of c.glossary_ref ?? []) {
           if (!r.term) continue;
-          term(r.term.id, r.term.name);
+          term(r.term);
           edge(`term:${r.term.id}`, cid, "term_binding");
         }
       }
@@ -532,9 +632,65 @@ export function toGraphData(
     }
   }
   for (const e of termEdges ?? []) {
-    term(e.from_term_id, e.from_term);
-    term(e.to_term_id, e.to_term);
+    // An edge to a term the role cannot read has no end to draw.
+    if (!e.source_term || !e.target_term) continue;
+    term(e.source_term);
+    term(e.target_term);
     edge(`term:${e.from_term_id}`, `term:${e.to_term_id}`, "term_edge", e.rel_type);
   }
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
+}
+
+/** ``info`` on a node, its facts not read left out; nothing when none was read. */
+export function facts(info: NodeInfo): { info?: NodeInfo } {
+  const kept = Object.fromEntries(
+    Object.entries(info).filter(([, v]) => v !== undefined && v !== null && v !== ""),
+  ) as NodeInfo;
+  return Object.keys(kept).length === 0 ? {} : { info: kept };
+}
+
+/** A term's facts, as TERM_FACTS reads them: its experts are its stewards. */
+export function termFacts(t: TermFactsRow): NodeInfo {
+  return {
+    status: t.status ?? undefined,
+    // One-to-many: null when it has none (rowsOf); absent when the role cannot read them.
+    stewards: rowsOf(t.experts)
+      ?.filter((x) => x.kind === "expert")
+      .map((x) => x.user_id),
+  };
+}
+
+/** A column's facts, as COLUMN_FACTS reads them. */
+export function columnFacts(c: ColumnFacts): NodeInfo {
+  // A JSON column comes back as its text or as its value, as the role's schema types it
+  // (asProduct reads custom_properties the same way).
+  const masks = (typeof c.masks === "string" ? JSON.parse(c.masks) : c.masks) as
+    | MaskEntry[]
+    | null
+    | undefined;
+  return {
+    dataType: c.data_type ?? undefined,
+    description: c.description ?? undefined,
+    masked: masks == null ? undefined : masks.some((m) => m.mask !== null),
+  };
+}
+
+/** A table's facts, as TABLE_FACTS reads them: its quality is its checkers' worst latest scan. */
+export function tableFacts(t: Pick<TableRow, "source_id" | "description" | "checked_by">): NodeInfo {
+  const runs = t.checked_by ?? [];
+  const outcomes = runs.map((r) => r.latest_outcome);
+  const at = runs.map((r) => r.latest_run_at).filter((x): x is string => x !== null);
+  return {
+    source: t.source_id ?? undefined,
+    description: t.description ?? undefined,
+    quality:
+      runs.length === 0
+        ? undefined
+        : outcomes.includes("fail")
+          ? "fail"
+          : outcomes.includes("pass")
+            ? "pass"
+            : "none",
+    checkedAt: at.length === 0 ? undefined : at.sort().at(-1),
+  };
 }

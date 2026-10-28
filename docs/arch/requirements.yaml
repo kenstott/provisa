@@ -10760,7 +10760,13 @@
     must already exist (matched in the statement); a relationship write never creates its end nodes. The
     junction write is governed as any write to that table (writable source, the role''s write grant, row
     rules, masks, admission), and a write that would break the relationship''s declared keys or cardinality
-    is refused by name.'
+    is refused by name. (Amended 2026-10-27, A JUNCTION CREATE MAY END ON ROWS THE SAME STATEMENT CREATES:)
+    2026-10-28, maintainer decision: a governed junction CREATE may end on rows the same statement creates,
+    as a Neo4j client expects (CREATE (a:Person {...}) CREATE (b:Person {...}) CREATE (a)-[:KNOWS {...}]->(b)
+    RETURN a, b, k): the end rows and the junction row are written in one governed write, a generated key
+    is returned as the row''s identity, and RETURN after the CREATE answers the written rows. This replaces
+    ''a relationship write never creates its end nodes''; both ends must still be governed rows of the junction''s
+    end tables.'
   use_case: Relationship immutability prevents accidental FK manipulation and keeps relationship metadata
     consistent with the declared join paths.
   code:
@@ -47178,7 +47184,16 @@
     the starting point of discovery, searched for every role its grants allow; the term network enriches
     meaning where that metadata falls short (definitions, synonyms, hierarchy, relationships) and so adds
     routes to data. A table that no term reaches is as discoverable as before. Governance (grants, row rules,
-    masks) is the only gate on data.'
+    masks) is the only gate on data. (Amended 2026-10-27, TWO KINDS OF SEARCH: TERM DISCOVERY AND DATA DISCOVERY:)
+    2026-10-28: there are two kinds of search, for people and agents alike. Term discovery answers ''what
+    do we mean by X?'': it searches the vocabulary (names, definitions, synonyms, hierarchy) and returns
+    approved terms whether or not they are grounded, each marked with its status and grounding; draft terms
+    are returned only when asked for (always shown to people), marked draft; deprecated and retired terms
+    only when asked for. Data discovery answers ''where is the data about X?'': it searches table and column
+    metadata plus routes through terms, under the agent-visibility rules above (an ungrounded term is never
+    a route), and returns the relations the role may read, each with its route and trust. The agent-visibility
+    rules above govern data discovery; term discovery follows this amendment. Both are offered on MCP and
+    the API as separate operations (search_terms, find_data).'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -90581,7 +90596,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and the term network together. A relation found through its own metadata is cited by its semantic URIs
     as a direct route; one found through terms is cited with the term URIs and their path down to it, with
     its trust (grounded or pending approval). Both are valid results; the citation records which route found
-    it.'
+    it. (Amended 2026-10-27, A CITATION NAMES WHAT WAS USED:) 2026-10-28: a citation names what an answer
+    used, for people and agents alike. A term-only citation, for meaning used without data (a definitional
+    answer, a policy judgement, a drafted text), holds the term''s URI, its definition as it read then (fixed
+    by the model version), and its status and grounding at the time; a route citation, when data was used,
+    holds the record above. Term discovery returns term-only citations, data discovery route citations.'
   scenario: 'Given an approved, grounded term Customer bound to sales.customers
     When an agent resolves Customer and reads a row
     Then its answer carries a citation naming Customer''s URI and grounding, the path to sales.customers, the row''s
@@ -90593,3 +90612,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1387
   stakeholders:
   - app-developer
+- id: REQ-2178
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'A term can be linked to the commands that carry it out, as it is bound to the tables and columns that
+    hold its data. A process, policy or operational term ("close of day", "refresh customer 360") names the governed
+    commands that perform it; the link is a steward''s, kept with the term''s other links, and shown on the term and on
+    the command. Term discovery returns a term''s linked commands; an agent reaches a command from its term and invokes
+    it under the command''s own grants. A linked command does not make a term grounded: grounding stays a path to data.'
+  scenario: 'Given an approved term "refresh customer 360" linked to the command refresh_customer_360
+    When an agent searches terms for "refresh customer 360"
+    Then the result names the command, and the agent may invoke it if its role holds the command''s grant'
+  related_reqs:
+  - REQ-1387
+  - REQ-2177
+  stakeholders:
+  - data-steward
+
