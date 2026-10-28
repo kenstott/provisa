@@ -174,7 +174,6 @@
       "column": "Столбец",
       "type": "Тип",
       "required": "Никогда не null",
-      "yes": "Да",
       "versionLabel": "Версия контракта",
       "statusLabel": "Статус контракта",
       "descriptionLabel": "Для чего он",
@@ -186,7 +185,36 @@
       "slaValue": "Значение",
       "slaUnit": "Единица",
       "slaRemove": "Удалить уровень обслуживания",
-      "slaAdd": "Добавить уровень обслуживания"
+      "slaAdd": "Добавить уровень обслуживания",
+      "notDeclared": "Не объявлено",
+      "loadError": "Не удалось прочитать контракты: {{error}}",
+      "notExported": "У {{member}} нет экспортированного контракта",
+      "section": {
+        "fundamentals": "Основное",
+        "schema": "Схема",
+        "quality": "Качество",
+        "sla": "SLA",
+        "support": "Поддержка и команда",
+        "servers": "Серверы",
+        "pricing": "Цены",
+        "custom": "Пользовательские свойства и теги"
+      },
+      "summary": {
+        "properties_one": "Свойств: {{count}}",
+        "properties_other": "Свойств: {{count}}",
+        "rules_one": "Правил: {{count}}",
+        "rules_other": "Правил: {{count}}",
+        "serviceLevels_one": "Уровней обслуживания: {{count}}",
+        "serviceLevels_other": "Уровней обслуживания: {{count}}",
+        "supportChannels_one": "Каналов поддержки: {{count}}",
+        "supportChannels_other": "Каналов поддержки: {{count}}",
+        "roles_one": "Ролей: {{count}}",
+        "roles_other": "Ролей: {{count}}",
+        "customProperties_one": "Пользовательских свойств: {{count}}",
+        "customProperties_other": "Пользовательских свойств: {{count}}",
+        "tags_one": "Тегов: {{count}}",
+        "tags_other": "Тегов: {{count}}"
+      }
     }
   }
 }
