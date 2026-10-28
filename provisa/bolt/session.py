@@ -350,7 +350,7 @@ class BoltSession:
         identity = await self._authenticate(app_state, scheme, principal, credentials)
         if identity is None:
             return None
-        roles = self._selectable_roles(app_state, identity)
+        roles = await self._selectable_roles(app_state, identity)
         if not roles:
             return None
         self._credential_org = identity.active_org_id
@@ -395,22 +395,25 @@ class BoltSession:
             return None
 
     @staticmethod
-    def _selectable_roles(app_state, identity) -> list[str]:
+    async def _selectable_roles(app_state, identity) -> list[str]:
         """The roles this identity may select, mapped role first (REQ-273, REQ-551).
 
-        The server derives them from the validated identity — the claim-mapped role plus whatever
-        the identity's own assignments carry — and keeps only those that exist as compiled
-        contexts. A role the identity does not hold is not selectable, whatever database the
-        client names.
+        The server derives them from the validated identity — the claim-mapped role plus its
+        assignments, as every transport reads them (provisa.auth.held_assignments) — and keeps
+        only those that exist as compiled contexts. A role the identity does not hold is not
+        selectable, whatever database the client names.
         """
-        from provisa.auth.role_mapping import resolve_assignments, resolve_role
+        from provisa.auth.held_assignments import held_assignments
+        from provisa.auth.role_mapping import resolve_role
 
         default_role = app_state.auth_config.get("default_role")
         if not default_role:
             # No admin default: an identity matching no mapping rule is refused, not escalated.
             raise RuntimeError("bolt auth requires auth.default_role to be configured")
         mapped = resolve_role(identity, app_state.auth_config.get("role_mapping", []), default_role)
-        held = [a.role_id for a in resolve_assignments(identity)]
+        held = [
+            a.role_id for a in await held_assignments(app_state, identity, identity.active_org_id)
+        ]
         ordered = [mapped, *[r for r in held if r != mapped]]
         return [r for r in ordered if r in app_state.contexts]
 

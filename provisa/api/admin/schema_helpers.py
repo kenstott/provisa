@@ -20,8 +20,10 @@ from __future__ import annotations
 
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+import httpx
 
 from sqlalchemy import func, or_, select
 
@@ -271,6 +273,9 @@ class TableListing:
     sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
+    # OpenAPI source -> why its document could not be read: its tables are listed all the same,
+    # saying so, since one source out of reach fails no listing.
+    endpoint_errors: dict[str, str] = field(default_factory=dict)
 
 
 #: Each OpenAPI source's operations, parsed once per spec it holds: (that spec, its queries).
@@ -335,8 +340,21 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     ).fetchall()
     known = {r.id: (r.type, r.path) for r in source_rows}
     endpoints: dict[str, tuple[str, dict[str, Any]]] = {}
+    endpoint_errors: dict[str, str] = {}
     for source_id, (source_type, path) in known.items():
-        if source_type == "openapi" and path and await _ensure_openapi_spec(source_id):
+        if source_type != "openapi" or not path:
+            continue
+        try:
+            loaded = await _ensure_openapi_spec(source_id)
+        except (httpx.HTTPError, OSError) as exc:
+            # A document out of reach (its host, its file) is that source's alone: named on its
+            # tables and logged, the rest listed.
+            endpoint_errors[source_id] = (
+                f"the API document of source {source_id!r} could not be read: {exc}"
+            )
+            log.warning("%s", endpoint_errors[source_id])
+            continue
+        if loaded:
             operations = _openapi_operations(source_id)
             if operations is not None:
                 endpoints[source_id] = operations
@@ -346,6 +364,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         sources=known,
         grants=await write_grant_repo.for_tables(conn, ids),
         endpoints=endpoints,
+        endpoint_errors=endpoint_errors,
     )
 
 
@@ -494,6 +513,7 @@ async def _fetch_table_with_columns(
         write_grants=write_grants,
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
+        api_endpoint_error=listing.endpoint_errors.get(row["source_id"]),
         role_ttl=[
             RoleTtlType(role=role, ttl=ttl) for role, ttl in dict(row["role_ttl"]).items()
         ],  # REQ-1907

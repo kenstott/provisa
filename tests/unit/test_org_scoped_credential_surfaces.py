@@ -175,9 +175,11 @@ class TestBolt:
         session = BoltSession.__new__(BoltSession)
         session._credential_org = None
         monkeypatch.setattr(BoltSession, "_authenticate", staticmethod(_authenticated))
-        monkeypatch.setattr(
-            BoltSession, "_selectable_roles", lambda self, _state, _identity: ["analyst"]
-        )
+
+        async def _selectable(_state, _identity):
+            return ["analyst"]
+
+        monkeypatch.setattr(BoltSession, "_selectable_roles", staticmethod(_selectable))
         assert await session._resolve_user("bearer", "", "token") == ("u1", ["analyst"])
         assert session._credential_org == "acme"
 

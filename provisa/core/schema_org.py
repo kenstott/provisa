@@ -1835,6 +1835,26 @@ session_temp_schemas = Table(
     Column("beat_at", DateTime(timezone=True), nullable=False),
 )
 
+# REQ-2176: STATE, not model -- each principal's ephemeral graph session in this environment: what
+# the session knows of the tables its store schema holds (each table's shape and serials), its
+# generation and its ephemeral graph's index, read for each statement of the principal under a lock
+# and written back when the statement changed it. ``roles``, ``assigned`` and ``rights`` are the
+# rights it was made under: a session whose principal's rights changed is ended. Read and written
+# only by ``provisa.api.graph_session``; never copied to another environment (``env_classes``).
+graph_sessions = Table(
+    "graph_sessions",
+    metadata,
+    Column("user_id", Text, primary_key=True),
+    Column("generation", BigInteger, nullable=False),
+    Column("stored", Boolean, nullable=False),  # its store schema exists
+    Column("tables", JSON, nullable=False),  # [{name, columns, serials}]
+    Column("graph", JSON, nullable=False),
+    Column("roles", JSON, nullable=False),  # the role claims the principal held
+    Column("assigned", JSON, nullable=False),  # of those, the ones the org assigned it
+    Column("rights", Text, nullable=False),  # the fingerprint of its rights then
+    Column("used_at", DateTime(timezone=True), nullable=False),
+)
+
 # The replica builds that ended: one row a build that completed or failed, appended as its
 # replica_state record is written. Bounded per replica: its last REPLICA_BUILD_LOG_KEEP builds
 # (federation/replica_state.py), pruned as each is written. V1: schema-defined, no migration.

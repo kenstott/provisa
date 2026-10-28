@@ -37,6 +37,7 @@ def _load(name: str):
 
 
 by_design = _load("by_design")  # the scripts import it as their sibling
+bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
 tck = _load("cypher_tck")
 fill_docs = _load("fill_docs")
 
@@ -219,14 +220,20 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
         '<testsuites><testsuite name="pytest">'
         '<testcase classname="tests.integration.examples" name="test_ok"/>'
         '<testcase classname="tests.integration.examples.test_temporal_types_example" '
-        'name="test_time"><failure message="assert Time(7, 47, 0, 4000) == Time(7, 47, 0, 4123)">'
+        'name="test_time"><failure message="AssertionError: assert '
+        "'07:47:00.000004000-04:00' == '07:47:00.000004123-04:00'\">"
+        "t</failure></testcase>"
+        # Another difference than the digits below the microsecond is no part of the group.
+        '<testcase classname="tests.integration.examples.test_temporal_types_example" '
+        'name="test_local_time"><failure message="AssertionError: assert '
+        "'07:47:00.000004000+00:00' == '07:47:00.000004123'\">"
         "t</failure></testcase>"
         '<testcase classname="tests.integration.examples" name="test_bookmark">'
         '<failure message="assert Bookmarks">t</failure></testcase>'
         "</testsuite></testsuites>"
     )
     doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "tests/integration")
-    assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (2, 1, 1, 1)
+    assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (3, 1, 2, 1)
     assert doc["by_design"] == [
         {
             "group": "Digits below the microsecond",
@@ -237,9 +244,9 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
             "count": 1,
         }
     ]
-    assert [f["scenario"] for f in doc["failures"]] == ["test_bookmark"]
+    assert [f["scenario"] for f in doc["failures"]] == ["test_local_time", "test_bookmark"]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
+    assert rate == "33.3% (1 of 3); 1 cases not runnable by design"
     assert "| Digits below the microsecond | 1 |" in cases
     assert "REQ-" not in cases  # the requirement is the artifact's; a published page names none
 
@@ -288,3 +295,80 @@ def test_a_cell_s_own_escapes_are_undone_before_its_value_is_read():
 def test_a_number_s_exponent_is_its_own(text, value):
     # Literals5: 1e-305 is a number, not the word 1e and a stray -305.
     assert tck.tck_value(text) == value
+
+
+def test_a_setup_that_builds_its_graph_runs_with_its_query_in_one_session(scenarios, monkeypatch):
+    # REQ-2167, amended 2026-10-27: with a Bolt session configured, [3]'s setup and its query run
+    # on one connection (REQ-2176), its answer's node compared, and it is marked adapted.
+    sent = []
+
+    def session(setups, query, params):
+        sent.append((list(setups), query))
+        return 200, {"columns": ["a"], "rows": [[("node", frozenset({"A"}), {})]]}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", session)
+    outcome = tck.run(scenarios[3], "http://x", "org_admin")
+    assert sent == [(["CREATE (:A)"], "MATCH (a) RETURN a")]
+    assert (outcome.status, outcome.reason) == ("passed", tck.IN_A_SESSION)
+    doc = tck.report([outcome], "2024.3")
+    assert doc["adapted"][0]["group"] == "Setups that build their graph"
+
+
+def test_a_setup_waiting_on_a_write_form_is_named_so(scenarios, monkeypatch):
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(
+        bolt,
+        "run",
+        lambda *_a: (
+            400,
+            {"detail": "setup: A statement creating ephemeral objects has one CREATE clause"},
+        ),
+    )
+    outcome = tck.run(scenarios[3], "http://x", "org_admin")
+    assert outcome.status == "failed"
+    assert outcome.reason.startswith("waits on step 2c (multi-CREATE): refused (400): setup:")
+
+
+@pytest.mark.parametrize(
+    ("text", "got", "same"),
+    [
+        ("(:A:B {name: 'x'})", ("node", frozenset({"A", "B"}), {"name": "x"}), True),
+        ("(:A {name: 'x'})", ("node", frozenset({"A"}), {"name": "y"}), False),
+        ("[:T {k: 1}]", ("relationship", "T", {"k": 1}), True),
+        (
+            "<(:A)-[:T]->(:B)>",
+            (
+                "path",
+                [
+                    ("node", frozenset({"A"}), {}),
+                    ("relationship", "T", {}),
+                    ("node", frozenset({"B"}), {}),
+                ],
+            ),
+            True,
+        ),
+    ],
+)
+def test_a_node_relationship_or_path_is_compared(text, got, same):
+    # A session's Bolt answer gives graph values; a path's arrows are no nesting (<- and ->).
+    assert tck._same(tck.tck_value(text), got, False) is same
+
+
+def test_a_temporal_value_from_bolt_is_written_as_opencypher_writes_it():
+    import datetime
+
+    from neo4j import time
+
+    assert bolt.value(time.Time(10, 35)) == "10:35"
+    assert bolt.value(time.Time(12, 31, 14, 645876000)) == "12:31:14.645876"
+    assert (
+        bolt.value(time.Time(12, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=-1))))
+        == "12:00-01:00"
+    )
+    assert bolt.value(time.Date(1984, 10, 11)) == "1984-10-11"
+    assert bolt.value(time.DateTime(1984, 10, 11, 12, 31, tzinfo=datetime.timezone.utc)) == (
+        "1984-10-11T12:31Z"
+    )
+    assert bolt.value(time.Duration(months=14, days=3, seconds=3700)) == "P1Y2M3DT1H1M40S"
+    assert bolt.value(time.Duration()) == "PT0S"

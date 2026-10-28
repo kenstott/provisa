@@ -143,6 +143,8 @@ class QueryResult:
 class Session:
     def __init__(self):
         self.id = uuid.uuid4()
+        # The connection's backend process id (BackendKeyData), set when its context is made.
+        self.process_id = 0
 
     def cursor(self):
         raise NotImplementedError

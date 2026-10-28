@@ -56,6 +56,9 @@ function serve(
     vi.fn(async (url: string) => {
       if (String(url).includes("/data/graph-counts")) return counts();
       if (String(url).includes("/data/graph-schema")) return schema();
+      // The graph session (REQ-2176): empty, so it adds nothing to what these tests count.
+      if (String(url).includes("/data/cypher/session"))
+        return ok({ labels: [], types: [], empty: true });
       return ok({});
     }),
   );
