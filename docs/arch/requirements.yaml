@@ -89351,6 +89351,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     :Party answers every instance of Party and of its subclasses, and rdfs:subPropertyOf chains likewise,
     computed in SQL and governed as any read: a role that cannot read a subclass''s table gets none of its
     instances.'
+  code:
+  - provisa/compiler/ontology_classes.py
+  - provisa/compiler/supertype.py
+  - provisa/api/_ontology_classes.py
+  - provisa/compiler/schema_gen.py
+  tests:
+  - tests/unit/test_ontology_classes.py
   scenario: 'Given Class term Customer bound to sales.customers (key id) with Property terms name and
     segment bound to its columns
 
