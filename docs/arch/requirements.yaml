@@ -90290,7 +90290,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     as stated above. (Amended 2026-10-27, A PRINCIPAL''S RIGHTS ARE THE UNION OF ITS ROLES:) Maintainer
     2026-10-27: the saved session is deleted when the principal''s rights change: the roles granted to the
     principal, or the grants of any of them. A principal''s rights are the union of all its roles; acting
-    within one of them, or switching which it acts as, is not a change and keeps the saved session.'
+    within one of them, or switching which it acts as, is not a change and keeps the saved session. (Amended
+    2026-10-27, ONE GRAPH SESSION PER PRINCIPAL, THE SAME ON EVERY CLIENT:) Maintainer 2026-10-27, replacing
+    the per-tab, per-connection, idle-expiry and save-and-restore rules above: a principal has one ephemeral
+    graph session in an environment, and it behaves identically on every client with no surprises: every
+    tab of the Provisa Cypher page, every Bolt connection (Neo4j Browser and Bloom pool their connections,
+    and each sees the same graph), MCP, and every server worker. Its tables live in the environment''s store
+    under the principal''s own schema and its metadata (table shapes, generation, graph index) in the control
+    plane, read for each statement and written back under a lock, so whichever worker or connection a statement
+    reaches sees what every earlier statement made. It is durable: it is not lost when a connection closes,
+    a tab closes, a user signs out or a worker restarts, and nothing needs saving or restoring. It ends
+    when the principal clears it (the page''s clear action or a Cypher procedure call), when its retention
+    after last use lapses (a deployment setting, default 7 days), or when the principal''s rights change.
+    Every client lists its labels and relationship types (db.labels and db.relationshipTypes include them).
+    A SQL temporary table keeps PostgreSQL''s per-connection scope (REQ-615); only the graph session is
+    the principal''s.'
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
