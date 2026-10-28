@@ -1809,16 +1809,19 @@ async def _execute_cypher(
         # Try write path first; fall through to read path if it doesn't parse as a write.
         from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
 
+        # Only the parse decides the path: an error the write itself raises is its answer, never
+        # taken for "not a write" and sent on to the read path.
         try:
             parse_cypher_write(cypher)
+        except CypherWriteParseError:
+            pass
+        else:
             return (
                 *await _execute_write_cypher(
                     cypher, parameters, role_id, ctx, include_ops, app_state
                 ),
                 None,
             )
-        except CypherWriteParseError:
-            pass
 
         model_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
         label_map = seam.label_map(model_map, temp)
@@ -1947,5 +1950,6 @@ async def _execute_write_cypher(
         # source see the values, never their names. A relationship's ends and a RETURN are read
         # as every read is (written).
         return await written(write_ast, translator, parameters, _read, _write)
-    except CypherParamError as exc:
+    except (CypherParamError, CypherWriteParseError) as exc:
+        # A write the translator refuses (a label it cannot write, say) is refused in its words.
         raise ValueError(str(exc)) from exc
