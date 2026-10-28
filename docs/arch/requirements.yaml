@@ -90612,3 +90612,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1387
   stakeholders:
   - app-developer
+- id: REQ-2178
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'A term can be linked to the commands that carry it out, as it is bound to the tables and columns that
+    hold its data. A process, policy or operational term ("close of day", "refresh customer 360") names the governed
+    commands that perform it; the link is a steward''s, kept with the term''s other links, and shown on the term and on
+    the command. Term discovery returns a term''s linked commands; an agent reaches a command from its term and invokes
+    it under the command''s own grants. A linked command does not make a term grounded: grounding stays a path to data.'
+  scenario: 'Given an approved term "refresh customer 360" linked to the command refresh_customer_360
+    When an agent searches terms for "refresh customer 360"
+    Then the result names the command, and the agent may invoke it if its role holds the command''s grant'
+  related_reqs:
+  - REQ-1387
+  - REQ-2177
+  stakeholders:
+  - data-steward
+

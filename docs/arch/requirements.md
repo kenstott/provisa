@@ -26647,3 +26647,15 @@ An agent that cites its sources gets a citation it can hand over intact. The dis
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2178 · Business Glossary & Ontology {#REQ-2178}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A term can be linked to the commands that carry it out, as it is bound to the tables and columns that hold its data. A process, policy or operational term ("close of day", "refresh customer 360") names the governed commands that perform it; the link is a steward's, kept with the term's other links, and shown on the term and on the command. Term discovery returns a term's linked commands; an agent reaches a command from its term and invokes it under the command's own grants. A linked command does not make a term grounded: grounding stays a path to data.
+
+**Code:** —
+
+**Tests:** —
