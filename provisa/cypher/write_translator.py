@@ -383,9 +383,9 @@ def _parse_graph(query: str) -> WriteAST | None:
             label = ":".join(node.labels)
             if not node.labels or not node.property_text:
                 raise CypherWriteParseError(
-                    f"each row a CREATE makes is a labelled node with a property: "
-                    f"({var}{':' + label if label else ''}) is not. A Cypher write takes one of "
-                    f"these forms: {WRITE_FORMS}"
+                    f"each row a CREATE makes, a relationship's end included, is a labelled node "
+                    f"with a property: ({var}{':' + label if label else ''}) is not. A Cypher "
+                    f"write takes one of these forms: {WRITE_FORMS}"
                 )
             props = {k: _parse_literal(v) for k, v in node.property_text.items()}
             created.append(CreatedNode(var, label, props))
