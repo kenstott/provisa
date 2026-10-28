@@ -27,6 +27,7 @@ import types
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
+from provisa.auth.models import AuthIdentity
 from provisa.compiler.write_admission import WriteNotAdmitted
 from provisa.cypher.write_translator import (
     CypherLabelMap,
@@ -34,6 +35,7 @@ from provisa.cypher.write_translator import (
     NodeMapping,
     parse_cypher_write,
 )
+from tests.unit.graph_session_double import empty_graph_sessions
 from tests.write_governance import admitted, run_after_write, target_ref, write_governance
 
 scenarios("../features/REQ-818.feature")
@@ -94,7 +96,11 @@ def _r818_when_execute(r818: dict, monkeypatch) -> None:
     monkeypatch.setattr(cypher_router, "_build_label_map", lambda *_a: _users_label_map())
     monkeypatch.setattr(appmod.state, "contexts", {"writer": object()}, raising=False)
 
-    request = types.SimpleNamespace(state=types.SimpleNamespace(role="writer"))
+    # REQ-2176: every statement runs in its principal's graph session; the stand-in state has no
+    # control plane to hold one, so each is given an empty one for the principal below.
+    empty_graph_sessions(monkeypatch)
+    identity = AuthIdentity(user_id="ada", email=None, display_name=None, roles=["writer"])
+    request = types.SimpleNamespace(state=types.SimpleNamespace(role="writer", identity=identity))
     body = cypher_router.CypherRequest(query=r818["create"], params={})
     response = asyncio.run(cypher_router.cypher_query(body, request, None, None))  # type: ignore[arg-type]
     r818["status"] = response.status_code
