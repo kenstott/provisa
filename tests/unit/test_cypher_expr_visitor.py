@@ -36,9 +36,6 @@ class _FakeCtx:
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
 
-    def parameter_value(self, name):
-        raise KeyError(name)
-
     def temporal_kind(self, expr):
         return None  # no temporal values in scope here
 
@@ -56,6 +53,9 @@ class _FakeCtx:
 
     def is_null(self, expr):
         return getattr(expr, "kind", None) == "null"
+
+    def given_value(self, expr):
+        return False, None
 
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)

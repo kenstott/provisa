@@ -40,6 +40,7 @@ from provisa.gql.expr_ast import (
     CypherExpr,
     Literal as ExprLiteral,
     MapLiteral,
+    Parameter as ExprParameter,
     Paren,
     Property,
     Variable,
@@ -549,6 +550,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._json_value_vars: set[str] = set()
         # A variable a WITH binds to null (WITH null AS m): m[k] is null.
         self._null_vars: set[str] = set()
+        # A variable a WITH binds to a parameter (WITH $expr AS expr) -> the parameter's name.
+        self._param_vars: dict[str, str] = {}
         # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
         self._param_kinds: dict[str, str] = {}
         self._param_zones: dict[str, str] = {}
@@ -1584,6 +1587,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for i in items
             if i.alias and isinstance(i.expression, ExprLiteral) and i.expression.kind == "null"
         }
+        bound_params: dict[str, str] = {}
+        for i in items:
+            name = i.alias or (i.expression.name if isinstance(i.expression, Variable) else None)
+            if not name:
+                continue
+            if isinstance(i.expression, ExprParameter):
+                bound_params[name] = i.expression.name
+            elif isinstance(i.expression, Variable) and i.expression.name in self._param_vars:
+                bound_params[name] = self._param_vars[i.expression.name]
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
         for item in items:
@@ -1634,6 +1646,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._json_list_vars = json_lists
         self._json_value_vars = json_values
         self._null_vars = nulls
+        self._param_vars = bound_params
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.

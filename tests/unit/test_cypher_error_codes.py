@@ -163,7 +163,7 @@ def test_an_answer_holding_a_number_json_cannot_carry_is_400_naming_it():
     from provisa.api.rest.cypher_router import _serialize_rows
 
     rows = [{"v": 1.5}, {"v": math.inf}]
-    refused = _serialize_rows(rows, {}, lambda r, _graph_vars: r, lambda r: r)
+    refused = _serialize_rows(rows, {}, lambda r, _graph_vars: r, lambda r: r, ["v"])
 
     assert not isinstance(refused, tuple) and refused.status_code == 400
     assert json.loads(bytes(refused.body)) == {
@@ -392,3 +392,16 @@ def test_every_direct_route_runs_a_statement_transpile_wrote_for_its_source():
         assert isinstance(call, ast.Call) and getattr(call.func, "id", "") == "transpile", (
             ast.unparse(value)
         )
+
+
+def test_an_answer_of_no_rows_names_its_columns():
+    # openCypher TCK Unwind1 [8]/[9], ReturnSkipLimit1 [4]: UNWIND [] AS x RETURN x answers the
+    # column x, with no rows.
+    from provisa.api.rest.cypher_router import _answered_columns, _serialize_rows
+    from provisa.executor.result import QueryResult
+
+    result = QueryResult(rows=[], column_names=["empty", "__cut"])
+    answered = _serialize_rows(
+        [], {}, lambda r, _graph_vars: r, lambda r: r, _answered_columns(result)
+    )
+    assert answered == (["empty"], [])

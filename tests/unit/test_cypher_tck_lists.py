@@ -267,3 +267,11 @@ def test_a_string_indexed_like_a_list_is_refused(query, params):
 
     with pytest.raises(CypherTranslateError, match="cannot be indexed like a list"):
         cypher_to_sql(parse_cypher(query), _EMPTY, params)
+
+
+def test_a_collect_inside_size_or_head_collects():
+    # List12 [3]: size([x IN collect(r) WHERE x <> null]) -- the collect inside size() was left
+    # unrenamed, which no engine has.
+    assert _rows(
+        "UNWIND [1, 2] AS x RETURN size([y IN collect(x) WHERE y <> null]) AS c, head(collect(x)) AS h"
+    ) == [(0, 1)]
