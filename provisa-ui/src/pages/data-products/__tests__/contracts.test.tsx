@@ -21,6 +21,7 @@ import { contractChanged, contractDraft } from "../contractDraft";
 import { lifecycleProps } from "./lifecycleProps";
 import type { DataProduct } from "../../../types/admin";
 import type { DataContractInput } from "../../../hooks/useDataProductMutations";
+import type { OdcsContract } from "../../../api/dataProductContracts";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/GraphPanel", () => ({
@@ -93,36 +94,127 @@ describe("a product's contracts", () => {
     }
   });
 
-  it("are shown on the panel with their version, status, service levels and columns", () => {
-    render(
-      <DataProductDetailPanel
-        p={PRODUCT}
-        core={core(STORED)}
-        coreError={null}
-        reader={null}
-        canEdit={false}
-        canDelete={false}
-        owner
-        lineageLoading={false}
-        lineageError=""
-        lineageGraph={null}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-        {...lifecycleProps()}
-      />,
-    );
+  it("show every ODCS section as a collapsed row with a one-line summary", () => {
+    panel(ODCS);
     expect(screen.getByTestId("data-contract-version-7")).toHaveTextContent("v2.0.0");
     expect(screen.getByTestId("data-contract-status-7")).toHaveTextContent("Active");
-    expect(screen.getByTestId("data-contract-sla-7")).toHaveTextContent("availability: 99.9 %");
-    const rows = within(screen.getByTestId("data-contract-columns-7")).getAllByRole("row");
-    expect(rows.map((r) => r.textContent)).toEqual([
-      "ColumnTypeNever null",
-      "dayDATEYes",
-      "amountNUMERIC(12, 2)",
-    ]);
+    const sections = [
+      "fundamentals",
+      "schema",
+      "quality",
+      "sla",
+      "support",
+      "servers",
+      "pricing",
+      "custom",
+    ];
+    for (const section of sections) {
+      expect(screen.getByTestId(`data-contract-7-${section}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("data-contract-7-schema-summary")).toHaveTextContent(
+      "wh.public.daily_revenue · 2 properties",
+    );
+    expect(screen.getByTestId("data-contract-7-quality-summary")).toHaveTextContent("1 rules");
+    expect(screen.getByTestId("data-contract-7-servers-summary")).toHaveTextContent("pgwire, rest");
+    expect(screen.getByTestId("data-contract-7-pricing-summary")).toHaveTextContent("Not declared");
+    // Collapsed until opened: nothing of a section's body is mounted.
+    expect(screen.queryByTestId("data-contract-columns-7")).toBeNull();
     expect(screen.queryByTestId("data-contract-8")).toBeNull();
   });
+
+  it("open to every element, declared, derived or not declared", async () => {
+    panel(ODCS);
+    fireEvent.click(screen.getByTestId("data-contract-7-schema-toggle"));
+    const rows = within(await screen.findByTestId("data-contract-columns-7")).getAllByRole("row", {
+      hidden: true, // the panel is still opening: Mantine marks it hidden until its transition ends
+    });
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "namelogicalTypephysicalTyperequireduniqueprimaryKeyclassificationdescriptionexamples",
+      "daydateDATEYesYesYes",
+      "amountnumberNUMERIC(12, 2)restrictedThe day's total",
+    ]);
+    fireEvent.click(screen.getByTestId("data-contract-7-fundamentals-toggle"));
+    const fundamentals = await screen.findByTestId("data-contract-7-fundamentals");
+    expect(fundamentals).toHaveTextContent("dataProductRevenue");
+    // tenant is declared on the contract (REQ-2158), and this one declares none.
+    expect(fundamentals).toHaveTextContent("tenantNot declared");
+    fireEvent.click(screen.getByTestId("data-contract-7-sla-toggle"));
+    expect(await screen.findByTestId("data-contract-sla-7")).toHaveTextContent(
+      "property: availability · value: 99.9 · unit: %",
+    );
+  });
+
+  it("say why they could not be read", () => {
+    panel(null, "no such product");
+    expect(screen.getByTestId("data-product-contracts-error-revenue")).toHaveTextContent(
+      "no such product",
+    );
+  });
 });
+
+/** The member's ODCS contract, as the contracts endpoint serves it. */
+const ODCS: OdcsContract = {
+  apiVersion: "v3.1.0",
+  kind: "DataContract",
+  id: "provisa://acme/sales/tables/daily_revenue",
+  name: "daily_revenue",
+  version: "2.0.0",
+  status: "active",
+  domain: "sales",
+  dataProduct: "Revenue",
+  schema: [
+    {
+      name: "daily_revenue",
+      physicalName: "wh.public.daily_revenue",
+      physicalType: "table",
+      properties: [
+        {
+          name: "day",
+          logicalType: "date",
+          physicalType: "DATE",
+          required: true,
+          unique: true,
+          primaryKey: true,
+        },
+        {
+          name: "amount",
+          logicalType: "number",
+          physicalType: "NUMERIC(12, 2)",
+          classification: "restricted",
+          description: "The day's total",
+          quality: [{ type: "library", metric: "nullValues", mustBe: 0 }],
+        },
+      ],
+    },
+  ],
+  slaProperties: [{ property: "availability", value: 99.9, unit: "%" }],
+  servers: [
+    { server: "pgwire", type: "postgres" },
+    { server: "rest", type: "api" },
+  ],
+};
+
+function panel(odcs: OdcsContract | null, odcsError = "") {
+  render(
+    <DataProductDetailPanel
+      p={PRODUCT}
+      core={core(STORED)}
+      coreError={null}
+      reader={null}
+      canEdit={false}
+      canDelete={false}
+      owner
+      lineageLoading={false}
+      lineageError=""
+      lineageGraph={null}
+      odcs={odcs === null ? null : { "wh.public.daily_revenue": odcs }}
+      odcsError={odcsError}
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+      {...lifecycleProps()}
+    />,
+  );
+}
 
 function Editing({ onDraft }: { onDraft: (d: DataContractInput) => void }) {
   const [contract] = coreContracts(core(STORED));

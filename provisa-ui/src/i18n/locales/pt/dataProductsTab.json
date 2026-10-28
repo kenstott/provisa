@@ -186,7 +186,27 @@
       "slaValue": "Valor",
       "slaUnit": "Unidade",
       "slaRemove": "Remover nível de serviço",
-      "slaAdd": "Adicionar nível de serviço"
+      "slaAdd": "Adicionar nível de serviço",
+      "notDeclared": "Não declarado",
+      "loadError": "Não foi possível ler os contratos: {{error}}",
+      "notExported": "{{member}} não tem contrato exportado",
+      "section": {
+        "fundamentals": "Fundamentos",
+        "schema": "Esquema",
+        "quality": "Qualidade",
+        "sla": "SLA",
+        "support": "Suporte e equipe",
+        "servers": "Servidores",
+        "pricing": "Preços",
+        "custom": "Propriedades personalizadas e tags"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} propriedades",
+        "quality": "{{n}} regras",
+        "sla": "{{n}} níveis de serviço",
+        "support": "{{channels}} canais de suporte · {{roles}} papéis",
+        "custom": "{{props}} propriedades personalizadas · {{tags}} tags"
+      }
     }
   }
 }

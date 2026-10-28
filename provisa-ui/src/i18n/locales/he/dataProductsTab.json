@@ -186,7 +186,27 @@
       "slaValue": "ערך",
       "slaUnit": "יחידה",
       "slaRemove": "הסרת רמת שירות",
-      "slaAdd": "הוספת רמת שירות"
+      "slaAdd": "הוספת רמת שירות",
+      "notDeclared": "לא הוצהר",
+      "loadError": "לא ניתן לקרוא את החוזים: {{error}}",
+      "notExported": "ל-{{member}} אין חוזה מיוצא",
+      "section": {
+        "fundamentals": "יסודות",
+        "schema": "סכמה",
+        "quality": "איכות",
+        "sla": "SLA",
+        "support": "תמיכה וצוות",
+        "servers": "שרתים",
+        "pricing": "תמחור",
+        "custom": "מאפיינים מותאמים ותגיות"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} מאפיינים",
+        "quality": "{{n}} כללים",
+        "sla": "{{n}} רמות שירות",
+        "support": "{{channels}} ערוצי תמיכה · {{roles}} תפקידים",
+        "custom": "{{props}} מאפיינים מותאמים · {{tags}} תגיות"
+      }
     }
   }
 }

@@ -186,7 +186,27 @@
       "slaValue": "मान",
       "slaUnit": "इकाई",
       "slaRemove": "सेवा स्तर हटाएँ",
-      "slaAdd": "सेवा स्तर जोड़ें"
+      "slaAdd": "सेवा स्तर जोड़ें",
+      "notDeclared": "घोषित नहीं",
+      "loadError": "अनुबंध पढ़े नहीं जा सके: {{error}}",
+      "notExported": "{{member}} का कोई निर्यातित अनुबंध नहीं है",
+      "section": {
+        "fundamentals": "मूल बातें",
+        "schema": "स्कीमा",
+        "quality": "गुणवत्ता",
+        "sla": "SLA",
+        "support": "सहायता और टीम",
+        "servers": "सर्वर",
+        "pricing": "मूल्य निर्धारण",
+        "custom": "कस्टम गुण और टैग"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} गुण",
+        "quality": "{{n}} नियम",
+        "sla": "{{n}} सेवा स्तर",
+        "support": "{{channels}} सहायता चैनल · {{roles}} भूमिकाएँ",
+        "custom": "{{props}} कस्टम गुण · {{tags}} टैग"
+      }
     }
   }
 }

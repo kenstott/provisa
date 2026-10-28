@@ -8474,5 +8474,21 @@
   "ru/writeGrants.json::writeGrants.saved": "Grants saved.",
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "ru/writeGrants.json::writeGrants.source_session": "A session variable"
+  "ru/writeGrants.json::writeGrants.source_session": "A session variable",
+  "ru/dataProductsTab.json::dataProductsTab.contract.notDeclared": "Not declared",
+  "ru/dataProductsTab.json::dataProductsTab.contract.loadError": "Could not read the contracts: {{error}}",
+  "ru/dataProductsTab.json::dataProductsTab.contract.notExported": "{{member}} has no exported contract",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.fundamentals": "Fundamentals",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.schema": "Schema",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.quality": "Quality",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.sla": "SLA",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.support": "Support and team",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.servers": "Servers",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.pricing": "Pricing",
+  "ru/dataProductsTab.json::dataProductsTab.contract.section.custom": "Custom properties and tags",
+  "ru/dataProductsTab.json::dataProductsTab.contract.summary.schema": "{{object}} · {{n}} properties",
+  "ru/dataProductsTab.json::dataProductsTab.contract.summary.quality": "{{n}} rules",
+  "ru/dataProductsTab.json::dataProductsTab.contract.summary.sla": "{{n}} service levels",
+  "ru/dataProductsTab.json::dataProductsTab.contract.summary.support": "{{channels}} support channels · {{roles}} roles",
+  "ru/dataProductsTab.json::dataProductsTab.contract.summary.custom": "{{props}} custom properties · {{tags}} tags"
 }

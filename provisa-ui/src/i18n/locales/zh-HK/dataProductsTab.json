@@ -186,7 +186,27 @@
       "slaValue": "值",
       "slaUnit": "單位",
       "slaRemove": "移除服務級別",
-      "slaAdd": "新增服務級別"
+      "slaAdd": "新增服務級別",
+      "notDeclared": "未聲明",
+      "loadError": "無法讀取契約：{{error}}",
+      "notExported": "{{member}} 沒有已匯出的契約",
+      "section": {
+        "fundamentals": "基本資料",
+        "schema": "架構",
+        "quality": "質素",
+        "sla": "SLA",
+        "support": "支援與團隊",
+        "servers": "伺服器",
+        "pricing": "定價",
+        "custom": "自訂屬性和標籤"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} 個屬性",
+        "quality": "{{n}} 條規則",
+        "sla": "{{n}} 個服務水平",
+        "support": "{{channels}} 個支援渠道 · {{roles}} 個角色",
+        "custom": "{{props}} 個自訂屬性 · {{tags}} 個標籤"
+      }
     }
   }
 }

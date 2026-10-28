@@ -186,7 +186,27 @@
       "slaValue": "值",
       "slaUnit": "单位",
       "slaRemove": "移除服务级别",
-      "slaAdd": "添加服务级别"
+      "slaAdd": "添加服务级别",
+      "notDeclared": "未声明",
+      "loadError": "无法读取契约：{{error}}",
+      "notExported": "{{member}} 没有已导出的契约",
+      "section": {
+        "fundamentals": "基本信息",
+        "schema": "架构",
+        "quality": "质量",
+        "sla": "SLA",
+        "support": "支持与团队",
+        "servers": "服务器",
+        "pricing": "定价",
+        "custom": "自定义属性和标签"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} 个属性",
+        "quality": "{{n}} 条规则",
+        "sla": "{{n}} 个服务级别",
+        "support": "{{channels}} 个支持渠道 · {{roles}} 个角色",
+        "custom": "{{props}} 个自定义属性 · {{tags}} 个标签"
+      }
     }
   }
 }

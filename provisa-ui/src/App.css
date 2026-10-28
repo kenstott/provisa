@@ -554,6 +554,13 @@ main {
   /* A header is shown whole, however short its column's content. */
   white-space: nowrap;
 }
+/* REQ-2158: a contract's schema table, inside a list's expanded row: each row one line of text tall,
+ * with no extra vertical space -- the list's own cell padding is not its. */
+table.contract-properties th,
+table.contract-properties td {
+  padding: 0 var(--mantine-spacing-xs);
+  font-size: inherit;
+}
 /* A cell of text asks for no more width than its column's cap (components/list/ListCell.tsx; the
  * numbers are in listCellLimits.ts). The cap bounds what the column ASKS for: where the list has
  * room to spare the column is given more and the text uses it. */

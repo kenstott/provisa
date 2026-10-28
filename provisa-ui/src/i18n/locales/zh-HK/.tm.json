@@ -8475,5 +8475,21 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.notDeclared": "Not declared",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.loadError": "Could not read the contracts: {{error}}",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.notExported": "{{member}} has no exported contract",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.fundamentals": "Fundamentals",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.schema": "Schema",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.quality": "Quality",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.sla": "SLA",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.support": "Support and team",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.servers": "Servers",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.pricing": "Pricing",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.section.custom": "Custom properties and tags",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.summary.schema": "{{object}} · {{n}} properties",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.summary.quality": "{{n}} rules",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.summary.sla": "{{n}} service levels",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.summary.support": "{{channels}} support channels · {{roles}} roles",
+  "zh-HK/dataProductsTab.json::dataProductsTab.contract.summary.custom": "{{props}} custom properties · {{tags}} tags"
 }

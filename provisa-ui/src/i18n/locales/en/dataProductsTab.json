@@ -186,7 +186,27 @@
       "slaValue": "Value",
       "slaUnit": "Unit",
       "slaRemove": "Remove service level",
-      "slaAdd": "Add service level"
+      "slaAdd": "Add service level",
+      "notDeclared": "Not declared",
+      "loadError": "Could not read the contracts: {{error}}",
+      "notExported": "{{member}} has no exported contract",
+      "section": {
+        "fundamentals": "Fundamentals",
+        "schema": "Schema",
+        "quality": "Quality",
+        "sla": "SLA",
+        "support": "Support and team",
+        "servers": "Servers",
+        "pricing": "Pricing",
+        "custom": "Custom properties and tags"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} properties",
+        "quality": "{{n}} rules",
+        "sla": "{{n}} service levels",
+        "support": "{{channels}} support channels · {{roles}} roles",
+        "custom": "{{props}} custom properties · {{tags}} tags"
+      }
     }
   }
 }

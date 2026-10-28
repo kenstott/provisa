@@ -8474,5 +8474,21 @@
   "registerTableForm.json::registerTableForm.dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
-  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds."
+  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
+  "fr/dataProductsTab.json::dataProductsTab.contract.notDeclared": "Not declared",
+  "fr/dataProductsTab.json::dataProductsTab.contract.loadError": "Could not read the contracts: {{error}}",
+  "fr/dataProductsTab.json::dataProductsTab.contract.notExported": "{{member}} has no exported contract",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.fundamentals": "Fundamentals",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.schema": "Schema",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.quality": "Quality",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.sla": "SLA",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.support": "Support and team",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.servers": "Servers",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.pricing": "Pricing",
+  "fr/dataProductsTab.json::dataProductsTab.contract.section.custom": "Custom properties and tags",
+  "fr/dataProductsTab.json::dataProductsTab.contract.summary.schema": "{{object}} · {{n}} properties",
+  "fr/dataProductsTab.json::dataProductsTab.contract.summary.quality": "{{n}} rules",
+  "fr/dataProductsTab.json::dataProductsTab.contract.summary.sla": "{{n}} service levels",
+  "fr/dataProductsTab.json::dataProductsTab.contract.summary.support": "{{channels}} support channels · {{roles}} roles",
+  "fr/dataProductsTab.json::dataProductsTab.contract.summary.custom": "{{props}} custom properties · {{tags}} tags"
 }

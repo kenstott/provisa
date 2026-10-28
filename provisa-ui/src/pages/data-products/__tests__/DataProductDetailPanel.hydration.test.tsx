@@ -12,7 +12,7 @@
 // (productCore.loadProductCore) is every card's content. That is the test of how well the meta
 // schema is defined. The decided exceptions are named below, never hidden: lineage, Input Ports and
 // Data Quality (the product lineage endpoint, REQ-2156 and REQ-2157) and the owner and team roles'
-// people (resolveOwners).
+// people (resolveOwners), and each contract's ODCS document (the contracts endpoint, REQ-2158).
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -54,6 +54,9 @@ const LINEAGE = [
   "describeColumn",
   "relationLabel",
 ];
+/** Decided (REQ-2158, amended 2026-10-28): the Contracts card shows each ODCS element declared or
+ * derived, and the derivation is the export's (REQ-2118): the product's contracts endpoint. */
+const CONTRACTS = ["odcs", "odcsError"];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
@@ -156,6 +159,8 @@ function panelFromMetaAlone() {
       canDelete={false}
       owner
       lineageLoading={false}
+      odcs={null}
+      odcsError=""
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}
@@ -199,7 +204,7 @@ describe("a data product's panel hydrates from the meta query", () => {
       source.indexOf("\n}\n", source.indexOf("interface DataProductDetailPanelProps")),
     );
     const names = [...props.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]).sort();
-    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE].sort());
+    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...CONTRACTS].sort());
   });
 
   it("reads inside its own parts only where named", () => {

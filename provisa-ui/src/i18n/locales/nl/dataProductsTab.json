@@ -186,7 +186,27 @@
       "slaValue": "Waarde",
       "slaUnit": "Eenheid",
       "slaRemove": "Serviceniveau verwijderen",
-      "slaAdd": "Serviceniveau toevoegen"
+      "slaAdd": "Serviceniveau toevoegen",
+      "notDeclared": "Niet gedeclareerd",
+      "loadError": "De contracten konden niet worden gelezen: {{error}}",
+      "notExported": "{{member}} heeft geen geëxporteerd contract",
+      "section": {
+        "fundamentals": "Basisgegevens",
+        "schema": "Schema",
+        "quality": "Kwaliteit",
+        "sla": "SLA",
+        "support": "Support en team",
+        "servers": "Servers",
+        "pricing": "Prijzen",
+        "custom": "Aangepaste eigenschappen en tags"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} eigenschappen",
+        "quality": "{{n}} regels",
+        "sla": "{{n}} serviceniveaus",
+        "support": "{{channels}} supportkanalen · {{roles}} rollen",
+        "custom": "{{props}} aangepaste eigenschappen · {{tags}} tags"
+      }
     }
   }
 }

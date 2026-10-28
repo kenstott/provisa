@@ -186,7 +186,27 @@
       "slaValue": "値",
       "slaUnit": "単位",
       "slaRemove": "サービスレベルを削除",
-      "slaAdd": "サービスレベルを追加"
+      "slaAdd": "サービスレベルを追加",
+      "notDeclared": "未宣言",
+      "loadError": "契約を読み込めませんでした: {{error}}",
+      "notExported": "{{member}} にはエクスポートされた契約がありません",
+      "section": {
+        "fundamentals": "基本情報",
+        "schema": "スキーマ",
+        "quality": "品質",
+        "sla": "SLA",
+        "support": "サポートとチーム",
+        "servers": "サーバー",
+        "pricing": "価格",
+        "custom": "カスタムプロパティとタグ"
+      },
+      "summary": {
+        "schema": "{{object}} · {{n}} 個のプロパティ",
+        "quality": "{{n}} 件のルール",
+        "sla": "{{n}} 件のサービスレベル",
+        "support": "サポートチャネル {{channels}} 件 · ロール {{roles}} 件",
+        "custom": "カスタムプロパティ {{props}} 件 · タグ {{tags}} 件"
+      }
     }
   }
 }
