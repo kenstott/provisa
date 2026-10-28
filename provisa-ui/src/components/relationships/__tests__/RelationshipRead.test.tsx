@@ -105,7 +105,7 @@ describe("a relationship's read view", () => {
       ["Refresh Interval (s)", "600"],
     ]);
     expect(fields("relationship-read-junction")).toEqual([
-      ["Properties table", "pet_relations"],
+      ["Junction table", "pet_relations"],
       ["Column linking to the source", "pet_id"],
       ["Column linking to the target", "other_pet_id"],
       ["Relationship type column", "relation_type"],
