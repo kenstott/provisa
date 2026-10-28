@@ -122,14 +122,20 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             ):
                 new_expressions.append(sel_expr)
                 continue
-            # Find node meta: prefer alias_to_node lookup, then direct search
+            out_alias = alias_name or graph_var
+            tbl = table_ref or graph_var
+            # Find node meta: prefer alias_to_node lookup, then direct search. A node drawn from
+            # a union of labels (no label, or a domain) is no one label's, whatever its name: a
+            # variable `a` is never the label A's node (_find_node_meta matches names).
             node_meta = (
                 alias_to_node.get(graph_var)
                 or inner.meta.get("provisa_node")  # select_builder.NODE_OF_STAR
-                or _find_node_meta(graph_var, table_ref, label_map)
+                or (
+                    None
+                    if _from_node_union(sql_ast, tbl)
+                    else _find_node_meta(graph_var, table_ref, label_map)
+                )
             )
-            out_alias = alias_name or graph_var
-            tbl = table_ref or graph_var
             if node_meta is not None:
                 rewritten = _build_row_cast(tbl, node_meta)
             else:
@@ -320,6 +326,14 @@ def _is_domain_arm(body: exp.Expression) -> bool:  # pyright: ignore[reportPriva
     return isinstance(body, exp.Select) and any(
         getattr(e, "alias", None) == "__label" for e in body.expressions
     )
+
+
+def _from_node_union(sql_ast: exp.Select, alias: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``alias`` names a union of labels' rows (translator_union), or one arm of one."""
+    for subq in sql_ast.find_all(exp.Subquery):
+        if subq.alias == alias and (isinstance(subq.this, exp.Union) or _is_domain_arm(subq.this)):
+            return True
+    return False
 
 
 def _find_node_meta(

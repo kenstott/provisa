@@ -73,7 +73,8 @@ TRAILING = {
 
 def create_of(statement: str) -> CreateOf | None:
     """The statement's CREATE read from the graph IR (parse_cypher_statement), or None when it
-    creates nothing. A statement of two CREATE clauses is refused by name."""
+    creates nothing. CREATE clauses one after another are read as one; CREATE clauses with
+    another clause between them are refused by name."""
     from provisa.cypher.parser import parse_cypher_statement, writes_in
     from provisa.gql.ir import CreateClause
 
@@ -83,12 +84,21 @@ def create_of(statement: str) -> CreateOf | None:
     creates = [i for i, step in enumerate(ast.pipeline) if isinstance(step, CreateClause)]
     if not creates:
         return None
-    if len(creates) > 1:
-        raise CypherParseError("A statement creating ephemeral objects has one CREATE clause")
+    # CREATE clauses one after another are one CREATE of their patterns, in order: a later one's
+    # node reaches back to an earlier one's by its variable, as a later pattern of one CREATE does.
+    if creates != list(range(creates[0], creates[0] + len(creates))):
+        raise CypherParseError(
+            "A statement creating ephemeral objects has its CREATE clauses one after another"
+        )
     at = creates[0]
-    create = ast.pipeline[at]
-    assert isinstance(create, CreateClause)
-    after = ast.pipeline[at + 1 :]
+    clauses = [ast.pipeline[i] for i in creates]
+    first = clauses[0]
+    assert isinstance(first, CreateClause)
+    create = CreateClause(
+        patterns=[path for c in clauses if isinstance(c, CreateClause) for path in c.patterns],
+        start=first.start,
+    )
+    after = ast.pipeline[creates[-1] + 1 :]
     trailing = (
         TRAILING[type(after[0]).__name__]
         if after

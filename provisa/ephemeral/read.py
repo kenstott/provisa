@@ -161,8 +161,9 @@ def overlay(model: Any, session: TempSession) -> Any:
     relationships = dict(model.relationships)
     aliases = {k: list(v) for k, v in model.aliases.items()}
     for rel_type, source, target in sorted(graph.rel_pairs):
-        if "" in (source, target) or source not in nodes or target not in nodes:
-            continue  # an end with no label: read by a match of any node (not yet overlaid)
+        # Each end is a label the overlay maps: an ephemeral end's (its unlabeled nodes' "" among
+        # them, _view_keys), a model end's type name.
+        assert source in nodes and target in nodes, (rel_type, source, target)
         columns = session.tables[store.rel_table(rel_type)].columns
         mapping = RelationshipMapping(
             rel_type=rel_type,
