@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Why your AI agent gives different answers — Provisa</title>
-  <meta name="description" content="Reword a question and an AI agent picks different tables or a different definition, because it guesses meaning from table and column names. Provisa gives you terms, bindings, approval, grounding and citations, so the meaning an agent uses is one your organization agreed and anyone can check." />
+  <meta name="description" content="Reword a question and an AI agent picks different tables or a different definition, because it guesses meaning from table and column names. Provisa lets you fix table and column metadata, add terms, bindings, approval and grounding where names fall short, encode exact logic the agent calls, and cite how each answer was reached." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -74,11 +74,41 @@
           model guesses more fluently. It still guesses from the same names.
         </p>
 
-        <h2>A few simple primitives</h2>
+        <h2>Fix the names and descriptions first</h2>
         <p>
-          Provisa doesn't guess on the agent's behalf. It gives your organization a place to
-          write down what its words mean and where the data for each one lives, and it gives
-          the agent a way to read that before it writes a query.
+          Since the agent reads names, start with the names. Many sources do a poor job of
+          describing themselves, and some do none at all: a table called
+          <code>tbl_cust_seg</code>, a column called <code>usr_nm</code>, no description
+          anywhere. Provisa lets you correct that without touching the source, and it is often
+          the largest single gain you can make.
+        </p>
+        <ul>
+          <li><strong>Descriptions.</strong> Give every table and column a description in the
+            table form, or have AI draft one for you to edit. The description appears in the
+            API schema, in the data catalog, in the table and column listings an agent reads
+            over MCP, and in AI-assisted query generation.</li>
+          <li><strong>Aliases.</strong> Rename <code>tbl_cust_seg</code> to
+            <code>customer_segments</code> and <code>usr_nm</code> to <code>user_name</code>.
+            The alias is the name every query language uses, and an agent sees the alias in
+            place of the physical name.</li>
+          <li><strong>Naming conventions and rules.</strong> Set how names are cased per source
+            or per table, and strip a prefix such as <code>prod_pg_</code> from every table's
+            GraphQL name with one rule.</li>
+          <li><strong>Relationships.</strong> Register how tables join, so an agent joins along
+            paths your domains agreed.</li>
+        </ul>
+        <p>
+          Good metadata also seeds the ontology. A draft term follows a column's alias, so
+          renaming <code>usr_nm</code> to <code>user name</code> fixes the term along with the
+          column.
+        </p>
+
+        <h2>Where names fall short, a few simple primitives</h2>
+        <p>
+          Some meaning no name can carry. "Revenue" spans several columns, "client" and
+          "customer" are one idea under two words, and "churn" is a rule. Provisa gives your
+          organization a place to write down what its words mean and where the data for each
+          one lives, and gives the agent a way to read that before it writes a query.
         </p>
 
         <h3>Terms, and the relationships between them</h3>
@@ -126,10 +156,50 @@
           that found it.
         </p>
         <p>
-          Table and column metadata stays the starting point. Terms add meaning and routes
+          Table and column metadata, curated as above, stays the starting point. Terms add meaning and routes
           where the names fall short, and a table no term reaches is as easy to find as it was
           before. Terms never decide who may read data. Grants, row rules and masks do that,
           for an agent exactly as for a person.
+        </p>
+
+        <h2>Turn guesses into deterministic answers</h2>
+        <p>
+          An agent composes its answers from statistical patterns. That suits open questions.
+          It doesn't suit a business rule, a calculation, a policy check or a lookup that takes
+          several steps, where there is exactly one right answer. Encode those in the model
+          and the agent calls them, instead of composing them afresh each time.
+        </p>
+        <ul>
+          <li><strong>Metrics.</strong> A named aggregate defined once, such as net revenue as
+            order amounts less refunds. Each query breaks it out by the dimensions it asks
+            for.</li>
+          <li><strong>Views.</strong> A dataset defined once in SQL and read like any
+            table.</li>
+          <li><strong>Code resolvers.</strong> A Python or Node function that returns rows
+            becomes a governed table, joinable to the rest of the model.</li>
+          <li><strong>Commands.</strong> A registered operation, such as a stored procedure,
+            a service call or a Python function, with typed inputs and outputs. An agent
+            invokes it over MCP, and a command can require approval before it runs.</li>
+        </ul>
+        <p>
+          Each one lives in the model and is governed like a table, so every agent and every
+          wording of the question gets the same answer.
+        </p>
+
+        <h2>Standard interfaces for two kinds of automation</h2>
+        <p>
+          Agents reach the model over MCP. Tools built on OWL and RDF, such as reasoners,
+          ontology editors and RDF pipelines, reach it over SPARQL 1.1. The endpoint takes
+          queries as the SPARQL protocol sends them, answers SELECT, ASK and CONSTRUCT, and
+          writes results as SPARQL JSON, XML, CSV or TSV, and graphs as Turtle, N-Triples or
+          JSON-LD. Your ontology's classes and properties are its vocabulary, and the ontology
+          itself answers in RDFS, OWL and SKOS, so an RDF tool reads it as it reads any OWL
+          ontology. The same governance applies to every SPARQL query.
+        </p>
+        <p>
+          Reasoning works in the other direction too. A SPARQL source can name the HermiT OWL
+          reasoner and an axioms document, and Provisa serves the inferred class memberships
+          and properties as governed tables.
         </p>
 
         <h2>A citation records the judgement</h2>
@@ -183,6 +253,8 @@
         <ol>
           <li><strong>Pick the word</strong> behind the questions that come back with different
             answers.</li>
+          <li><strong>Check the names and descriptions</strong> of the tables and columns it
+            should lead to, and fix them.</li>
           <li><strong>Define it and bind it</strong> to the data it means, then have a steward
             approve it.</li>
           <li><strong>Ask again and read the citation</strong> to see which meaning the agent
@@ -192,6 +264,8 @@
 
       <div class="doc-next">
         <a class="more" href="/docs/ontology/">The ontology in the docs</a>
+        <a class="more" href="/docs/business-logic/">Business logic in the docs</a>
+        <a class="more" href="/docs/code-sources/">How code resolvers work</a>
         <a class="more" href="/why/ai">Governed data for AI</a>
         <a class="more" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">Try it on your data</a>
       </div>
