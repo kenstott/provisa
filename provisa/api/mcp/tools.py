@@ -1240,20 +1240,33 @@ def cytoscape_elements(rows: list) -> dict:
 
 
 async def run_cypher(
-    state: Any, role: str, cypher: str, params: dict | None = None, limit: int | None = None
+    state: Any,
+    role: str,
+    cypher: str,
+    params: dict | None = None,
+    limit: int | None = None,
+    *,
+    principal: tuple[str, list[str]],
 ) -> dict:
     """Run Cypher under ``role`` through the pipeline every Cypher surface uses (the Bolt
     server's: parse, translate, govern, route, execute -- a write as a write) and answer its rows
     and the graph they hold as Cytoscape elements. Rows are capped like run_sql's; the elements
-    are those of the rows returned. A PermissionError from governance propagates."""
+    are those of the rows returned. A PermissionError from governance propagates.
+
+    REQ-2176: it runs in ``principal``'s graph session (its user id and the roles it holds), the
+    one the Cypher page, Bolt and every other client of that principal run in."""
+    from provisa.api import graph_session
     from provisa.bolt.session import _execute_cypher
+    from provisa.cypher.parser import writes_in
 
     require_role(role, state)
     cap = _max_rows()
     page = cap if limit is None else min(int(limit), cap)
     if page <= 0:
         raise ValueError("limit must be a positive integer")
-    columns, rows, _redirect = await _execute_cypher(cypher, params or {}, role, roles=[role])
+    user_id, claims = principal
+    async with graph_session.session_for(state, user_id, claims, writes=writes_in(cypher)):
+        columns, rows, _redirect = await _execute_cypher(cypher, params or {}, role, roles=[role])
     window = rows[:page]
     records = [dict(zip(columns, r)) for r in window]
     return {
@@ -1264,6 +1277,15 @@ async def run_cypher(
         "truncated": len(window) < len(rows),
         "elements": cytoscape_elements(records),
     }
+
+
+async def clear_graph_session(state: Any, principal: tuple[str, list[str]]) -> dict:
+    """End ``principal``'s graph session (REQ-2176): the labels, nodes and relationships its
+    Cypher statements made, on every client, are dropped."""
+    from provisa.api import graph_session
+
+    await graph_session.clear(state, principal[0])
+    return {"cleared": True}
 
 
 #: render_graph's renderer: provisa-ui/graph-render bundled (the image builds it there; in a

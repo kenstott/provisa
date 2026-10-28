@@ -232,6 +232,7 @@ class AppState:
     _hot_refresh_task: LongLived | None = None
     _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
     _temp_keeper_task: LongLived | None = None  # REQ-1926: the keeper of sessions' temp tables
+    _graph_session_task: LongLived | None = None  # REQ-2176: the sweep of graph sessions
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
@@ -3405,6 +3406,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         await write_checker_targets(conn, _checked)
 
+    # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
+    # its roles) is ended.
+    from datetime import UTC as _UTC, datetime as _datetime
+
+    from provisa.api.graph_session import sweep as _sweep_graph_sessions
+
+    await _sweep_graph_sessions(state, _datetime.now(_UTC))
+
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
     # visible_columns and all_columns; without this assignment the list is always empty and
@@ -3864,6 +3873,8 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # Stop the Hot promotion evaluation (REQ-826)
     if state._replica_hot_task:
         await _stop_long_lived(state._replica_hot_task)
+    if state._graph_session_task:
+        await _stop_long_lived(state._graph_session_task)
     if state._temp_keeper_task:
         await _stop_long_lived(state._temp_keeper_task)
     if state.hot_manager is not None:
@@ -4902,8 +4913,10 @@ def create_app() -> FastAPI:
     # Cypher query endpoint (Phase AU)
     try:
         from provisa.api.rest.cypher_router import router as cypher_router
+        from provisa.api.rest.cypher_session import router as cypher_session_router
 
         app.include_router(cypher_router)
+        app.include_router(cypher_session_router)  # REQ-2176: the principal's graph session
     except ImportError:
         pass
 

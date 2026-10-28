@@ -118,7 +118,14 @@ def pipe(monkeypatch, bind_org):
         patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_counted_route)),
         audit_identity_scope("u-1", "analyst"),
     ):
-        yield SimpleNamespace(state=state, mod=_pipeline, counts=counts, audits=audits)
+        # REQ-2176: every Cypher statement reads its principal's graph session; the stand-in
+        # state has no control plane to hold one, so each is given an empty one, and counted.
+        from tests.unit.graph_session_double import empty_graph_sessions
+
+        sessions = empty_graph_sessions(monkeypatch)
+        yield SimpleNamespace(
+            state=state, mod=_pipeline, counts=counts, audits=audits, sessions=sessions
+        )
 
 
 async def _raw(p, sql, params, **kw):

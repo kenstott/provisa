@@ -336,9 +336,10 @@ async def _land(state: Any, session: TempSession, name: str, batch: Any, columns
     async def progress(rows: int) -> None:
         del rows  # a session's own table reports nothing
 
-    if not session.stored:
+    if not session.stored and not session.kept:
         # Recorded before anything is written, so a schema the store holds is one the keeper
-        # can drop when the session is gone without ending (provisa.pgwire.temp_keeper).
+        # can drop when the session is gone without ending (provisa.pgwire.temp_keeper). A kept
+        # session's schema is its own sweep's (REQ-2176).
         from provisa.pgwire.temp_keeper import note_stored
 
         await note_stored(state, session, _schema(session))
@@ -557,7 +558,8 @@ async def end(session: TempSession, state: Any) -> None:
 
         schema = _schema(session)
         await drop_temp_schema(state.federation_engine.engine.materialize_store(), schema)
-        await note_ended(state, session, schema)
+        if not session.kept:  # REQ-2176: a kept session's schema was never the keeper's
+            await note_ended(state, session, schema)
     session.tables.clear()
     session.extensions.clear()
     session.stored = False

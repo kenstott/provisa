@@ -32,6 +32,16 @@ from provisa.core.schema_org import domains, registered_tables, sources
 _VIS = ["admin"]
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as provisa.api.app declares it for a single-tenant state."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _columns(*names: str) -> list[Column]:
     return [Column(name=n, data_type="text", visible_to=_VIS) for n in names]
 

@@ -83,15 +83,16 @@ async def validate_bearer_credential(state, token: str, surface: str):
     return await throttled(validator, token, principal=None)
 
 
-def authorize_role(state, identity, requested: str | None) -> str:
+def authorize_role(state, identity, requested: str | None, held: list) -> str:
     """The role a call executes as — derived from the validated identity, never asserted.
 
     A call may REQUEST a role (one, or a comma-separated set of held roles acting as their
-    meta-role), and it is honored only when the identity's own assignments carry it; anything
-    else is a privilege claim by the client and raises PermissionError. With no request, the
-    identity's claims map to a role through the same rules every other surface uses.
+    meta-role), and it is honored only when ``held`` -- the identity's assignments, as every
+    transport reads them (provisa.auth.held_assignments) -- carries it; anything else is a
+    privilege claim by the client and raises PermissionError. With no request, the identity's
+    claims map to a role through the same rules every other surface uses.
     """
-    from provisa.auth.role_mapping import resolve_assignments, resolve_role
+    from provisa.auth.role_mapping import resolve_role
     from provisa.security.meta_role import resolve_requested_role
 
     auth_config = state.auth_config
@@ -104,7 +105,7 @@ def authorize_role(state, identity, requested: str | None) -> str:
     mapped = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
     if not requested:
         return mapped
-    permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
+    permitted = {a.role_id for a in held} | {mapped}
     # REQ-2057: a derived role the identity holds is named like any role.
     return resolve_requested_role(
         state, permitted, requested, lambda: principal_of(state, identity)[1]
@@ -135,8 +136,11 @@ def authorize_role_or_probe(
         org_id = state.org_id
     if run(role_probe.suspended(identity, org_id, transport)):
         raise PermissionError(role_probe.NOT_PERMITTED)
+    from provisa.auth.held_assignments import held_assignments
+
+    held = run(held_assignments(state, identity, org_id)) if requested else []
     try:
-        return authorize_role(state, identity, requested)
+        return authorize_role(state, identity, requested, held)
     except RoleNotHeld as refused:
         probe = role_probe.probe_of(
             identity, refused, org_id=org_id, transport=transport, endpoint=endpoint, client=client
