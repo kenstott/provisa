@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "conformance"))  # the scripts' sibling imports
 
 
 def _load(name: str):
@@ -113,7 +114,9 @@ def test_a_top_level_test_that_failed_before_its_subtests_counts_them_not_itself
     assert {"TestStartup/Version30", "TestStartup/WrongVersion"} <= set(s["not_reached"])
 
 
-def test_the_summary_fails_only_when_the_suite_did_not_run(tmp_path):
+def test_the_summary_fails_when_the_suite_did_not_run_or_a_test_failed(tmp_path):
+    # pgwire's baseline is every test passing: a failure no by-design group excludes is a
+    # regression, and fails the job.
     m = _load("pgspec_summary")
     src = tmp_path / "pgspec_test.go"
     src.write_text(_SOURCE)
@@ -127,8 +130,48 @@ def test_the_summary_fails_only_when_the_suite_did_not_run(tmp_path):
     assert m.main(["x", str(src), str(skipped), *args]) == 1
     failing = tmp_path / "failing.jsonl"
     failing.write_text(json.dumps(_ev("fail", "TestLone")))
-    assert m.main(["x", str(src), str(failing), *args]) == 0
+    assert m.main(["x", str(src), str(failing), *args]) == 1
     assert json.loads((tmp_path / "o.json").read_text())["failed"] == 5
+    passing = tmp_path / "passing.jsonl"
+    passing.write_text(
+        "\n".join(
+            json.dumps(_ev("pass", t))
+            for t in (
+                "TestStartup/Version30",
+                "TestStartup/WrongVersion",
+                "TestSimpleQuery/Insert",
+                "TestSimpleQuery/Cancel",
+                "TestLone",
+            )
+        )
+    )
+    assert m.main(["x", str(src), str(passing), *args]) == 0
+
+
+def test_a_failure_a_by_design_group_names_is_left_out_and_fails_nothing(tmp_path, monkeypatch):
+    m = _load("pgspec_summary")
+    rules = tmp_path / "by_design"
+    rules.mkdir()
+    (rules / "pgwire.yaml").write_text(
+        "- group: Cancel\n"
+        "  requirement: REQ-2167\n"
+        "  decision: a test decision.\n"
+        '  case: "TestSimpleQuery::Cancel"\n'
+    )
+    monkeypatch.setattr(m.by_design, "RULES", rules)
+    events = [
+        _ev("pass", t)
+        for t in ("TestStartup/Version30", "TestStartup/WrongVersion", "TestSimpleQuery/Insert")
+    ] + [_ev("fail", "TestSimpleQuery/Cancel"), _ev("pass", "TestLone")]
+    s = m.summarise(_SOURCE, events)
+    assert (s["total"], s["passed"], s["failed"], s["not_runnable"]) == (4, 4, 0, 1)
+    assert s["by_design"][0]["group"] == "Cancel" and s["by_design"][0]["count"] == 1
+    src, results = tmp_path / "pgspec_test.go", tmp_path / "r.jsonl"
+    src.write_text(_SOURCE)
+    results.write_text("\n".join(json.dumps(e) for e in events))
+    assert (
+        m.main(["x", str(src), str(results), str(tmp_path / "o.json"), str(tmp_path / "o.md")]) == 0
+    )
 
 
 def test_catalog_columns_are_compared_by_name_order_type_and_typmod():

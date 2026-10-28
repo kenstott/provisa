@@ -1493,10 +1493,24 @@ class _KeptResultShape:
     def subtyped(self) -> list[tuple[str, str]] | None:
         """REQ-2171: the shape of a statement that reads a table with a subtyped column, for one
         whose columns are otherwise typed by what the engine returned (not described first);
-        None for any other statement, which is not derived. Read on the caller's own thread."""
-        _sql, table_map, _ctx, state = self._args
+        None for any other statement, which is not derived. Read on the caller's own thread.
+
+        The tables are the ones the statement reads, not every table of the role (``table_map``
+        maps them all): a statement reading none of the subtyped ones -- a table-less SELECT, as
+        a temporary table's CREATE is planned (compiler.temp_tables) -- is not derived."""
+        import sqlglot
+        import sqlglot.expressions as exp
+
+        from provisa.compiler.result_shape import _resolve_table
+
+        sql, table_map, _ctx, state = self._args
         column_types = state.schema_build_cache["column_types"]
-        if not any(c.subtype for tid in set(table_map.values()) for c in column_types.get(tid, [])):
+        read = {
+            table_id
+            for table in sqlglot.parse_one(sql, read="postgres").find_all(exp.Table)
+            if (table_id := _resolve_table(table, table_map)) is not None
+        }
+        if not any(c.subtype for tid in read for c in column_types.get(tid, [])):
             return None
         return self.now()
 

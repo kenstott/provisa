@@ -13,9 +13,10 @@ name: Conformance (pgwire)
 #   * type conversions: type OID, typmod, text and binary encoding of each fixture type and of the
 #     casts tools commonly issue, against the same statement on that PostgreSQL.
 #
-# A failing test or a difference is data, written to the job summary and to the artifact
-# conformance-pgwire.json, never a job failure. The job fails only when the Provisa instance did
-# not start or the suite did not run.
+# Every result is written to the job summary and to the artifact conformance-pgwire.json. A catalog
+# or type difference is data. pgspec's baseline is every test passing: the job fails when a test
+# fails that no by-design group of the pgwire surface excludes (scripts/conformance/by_design/
+# pgwire.yaml), when the Provisa instance did not start, or when the suite did not run.
 #
 # The instance is the one the core UI lane boots (provisa-ui/playwright.config.ts): the embedded
 # PostgreSQL control plane (provisa.core.control_plane_pg) and `uvicorn main:app` on the DuckDB
@@ -156,7 +157,7 @@ jobs:
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report"
-          python3 scripts/conformance/pgspec_summary.py \
+          .venv/bin/python scripts/conformance/pgspec_summary.py \
             "$PGSPEC_DIR/test/pgspec/pgspec_test.go" "$RUNNER_TEMP/pgspec-results.jsonl" \
             "$RUNNER_TEMP/pgspec.json" "$RUNNER_TEMP/pgspec.md" "$PGSPEC_VERSION" || ran=$?
           if [ -f "$RUNNER_TEMP/catalog-types.json" ]; then

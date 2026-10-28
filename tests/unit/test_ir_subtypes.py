@@ -396,16 +396,41 @@ def test_an_undescribed_statements_subtyped_columns_are_sent_as_their_postgresql
 _SHAPE = [("id", "integer"), ("ip", "inet")]
 
 
-def _kept(table_map):
+def _kept(table_map, sql="SELECT id, ip FROM net.hosts"):
     from provisa.pgwire._pipeline import _kept_result_shape
 
     state = SimpleNamespace(schema_build_cache={"column_types": {**_HOSTS, 2: _HOSTS[1][:1]}})
-    return _kept_result_shape({}, "SELECT id, ip FROM net.hosts", table_map, _catalog_ctx(), state)
+    return _kept_result_shape({}, sql, table_map, _catalog_ctx(), state)
 
 
 def test_only_a_statement_reading_a_subtyped_column_derives_its_shape_for_the_wire():
     assert _kept({"net.hosts": 1}).subtyped() == _SHAPE
     assert _kept({"net.ids": 2}).subtyped() is None
+
+
+def test_a_statement_reading_no_subtyped_table_derives_no_shape_where_the_role_has_one():
+    # The role's tables include net.hosts (subtyped); the statement reads none of them, as the
+    # SELECT a column-list CREATE TEMP TABLE is planned as (temp_tables._NOTHING) reads none.
+    roles_tables = {"net.hosts": 1, "net.ids": 2}
+    assert _kept(roles_tables, "SELECT 1 AS n WHERE FALSE").subtyped() is None
+    assert _kept(roles_tables, "SELECT id FROM net.ids").subtyped() is None
+    assert _kept(roles_tables).subtyped() == _SHAPE
+
+
+def test_a_temporary_table_statement_answers_its_command_not_its_selects_rows():
+    # CREATE TEMP TABLE ... AS SELECT reads a subtyped table, and answers a command (no columns).
+    from types import SimpleNamespace as NS
+
+    from provisa.pgwire.server import _undescribed_read_shape
+
+    create_as = "CREATE TEMP TABLE h AS SELECT id, ip FROM net.hosts"
+    plan = NS(temp=object(), writes_tables=False, result_shape=_kept({"net.hosts": 1}))
+    assert _undescribed_read_shape(plan, None) is None, create_as
+    write = NS(temp=None, writes_tables=True, result_shape=_kept({"net.hosts": 1}))
+    assert _undescribed_read_shape(write, None) is None  # a write answers its command
+    plan = NS(temp=None, writes_tables=False, result_shape=_kept({"net.hosts": 1}))
+    assert _undescribed_read_shape(plan, None) == _SHAPE
+    assert _undescribed_read_shape(plan, [("id", "integer")]) is None  # described: its own shape
 
 
 @pytest.mark.asyncio

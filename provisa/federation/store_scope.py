@@ -27,6 +27,7 @@ an expiring environment writes may outlive it).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from provisa.core.environments import PROD, org_schema
 from provisa.federation.replica_address import SYNTHETIC_INFIX
@@ -105,28 +106,51 @@ async def drop_synthetic_table(dsn: str, schema: str, table: str) -> None:
     log.info("Dropped %s from synthetic dataset schema %s", table, schema)
 
 
-async def drop_temp_schema(dsn: str, schema: str) -> None:
-    """Remove the schema of one session's temporary tables from the store at ``dsn`` (REQ-615)."""
+def _embedded_duckdb_file(dsn: str) -> str | None:
+    """The file of an embedded DuckDB store, which only its broker opens (REQ-989: one writer per
+    file, under the store's lock); None for a server store, written on a connection of its own."""
+    from sqlalchemy.engine import make_url
+
+    url = make_url(dsn)
+    return url.database if url.get_backend_name() == "duckdb" else None
+
+
+async def _drop_in_store(dsn: str, statement: Callable[[str], str]) -> None:
+    """Run ``statement(catalog)`` -- the statement, its names prefixed with ``catalog`` -- in the
+    store at ``dsn``: an embedded DuckDB file through its broker, as every other writer of it --
+    opened beside the broker, the file was held while another session's statement attached it --
+    any other store on a connection of its own."""
+    import asyncio
+
     from sqlalchemy import text
 
-    from provisa.federation.replica_address import TEMP_INFIX, is_replicas_schema
+    path = _embedded_duckdb_file(dsn)
+    if path is not None:
+        from provisa.federation.materialize_broker import get_broker
+
+        await asyncio.to_thread(get_broker(path).execute, statement("mat_store."))
+        return
     from provisa.federation.store_writer import store_connection
+
+    async with store_connection(dsn) as conn:
+        await conn.execute_core(text(statement("")))
+
+
+def _temp_schema_checked(schema: str) -> None:
+    from provisa.federation.replica_address import TEMP_INFIX, is_replicas_schema
 
     if TEMP_INFIX not in schema or not is_replicas_schema(schema):
         raise ValueError(f"{schema!r} is not the schema of a session's temporary tables")
-    async with store_connection(dsn) as conn:
-        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+
+
+async def drop_temp_schema(dsn: str, schema: str) -> None:
+    """Remove the schema of one session's temporary tables from the store at ``dsn`` (REQ-615)."""
+    _temp_schema_checked(schema)
+    await _drop_in_store(dsn, lambda catalog: f'DROP SCHEMA IF EXISTS {catalog}"{schema}" CASCADE')
 
 
 async def drop_temp_table(dsn: str, schema: str, table: str) -> None:
     """Remove one temporary table from its session's schema in the store at ``dsn`` (REQ-615)."""
-    from sqlalchemy import text
-
-    from provisa.federation.replica_address import TEMP_INFIX, is_replicas_schema
-    from provisa.federation.store_writer import store_connection
-
-    if TEMP_INFIX not in schema or not is_replicas_schema(schema):
-        raise ValueError(f"{schema!r} is not the schema of a session's temporary tables")
+    _temp_schema_checked(schema)
     quoted = '"' + table.replace('"', '""') + '"'
-    async with store_connection(dsn) as conn:
-        await conn.execute_core(text(f'DROP TABLE IF EXISTS "{schema}".{quoted}'))
+    await _drop_in_store(dsn, lambda catalog: f'DROP TABLE IF EXISTS {catalog}"{schema}".{quoted}')
