@@ -89346,7 +89346,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     an ontology Class table is reached in the graph only by its qualified label (Ontology:Person); it never
     takes the bare label of a model table, so a bare label (Person) stays the model table on every surface
     (Bolt, the Cypher page, MCP, SPARQL), its instances are counted once, and writes to it route to that
-    table.'
+    table. (Amended 2026-10-27, THE ONTOLOGY AND OPS SCHEMAS ARE PREFIXED IN THE SDL:) 2026-10-28: in the
+    GraphQL SDL, every root field and type the auto-generated ontology schema gives carries the prefix on_,
+    and every one the ops schema gives carries op_, whether or not the deployment prefixes domains, so neither
+    ever shares a name with a model table''s field or type. This replaces the 2026-10-28 rule that renamed
+    only a Class colliding with a model table; the bare label and SQL rules are unchanged.'
   code:
   - provisa/compiler/ontology_classes.py
   - provisa/compiler/supertype.py
