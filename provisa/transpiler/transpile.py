@@ -392,11 +392,39 @@ def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
         _lengths_for_duckdb(
             _null_order_as_key(
                 _rewrite_list_functions_for_duckdb(
-                    _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+                    _rewrite_json_agg_for_duckdb(
+                        transpile(_catalog_functions_unqualified(pg_sql), "duckdb")
+                    )
                 )
             )
         )
     )
+
+
+def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
+    """A function named in pg_catalog -- ``pg_catalog."abs"(x)``, as psql, pgjdbc and the
+    conformance probe name built-ins -- is that function, as PostgreSQL resolves it: written
+    unqualified and read again, so a function DuckDB spells otherwise is translated as any call of
+    it is. Left as written, it read as a column of a relation named pg_catalog."""
+    if "pg_catalog" not in pg_sql.lower():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+
+    def _call(node: exp.Expr) -> exp.Expr:
+        if not (
+            isinstance(node, exp.Dot)
+            and isinstance(node.this, exp.Identifier)
+            and node.this.name.lower() == "pg_catalog"
+            and isinstance(node.expression, exp.Func)
+        ):
+            return node
+        function = node.expression
+        if not isinstance(function, exp.Anonymous):
+            return function.transform(_call)
+        args = ", ".join(a.transform(_call).sql(dialect="postgres") for a in function.expressions)
+        return sqlglot.parse_one(f"{function.name}({args})", read="postgres")
+
+    return tree.transform(_call).sql(dialect="postgres")
 
 
 #: The error a zero divisor raises on DuckDB: PostgreSQL's own message, reported with its
