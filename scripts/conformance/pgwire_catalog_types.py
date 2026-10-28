@@ -322,14 +322,31 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
             },
             "assignments_source": "provisa",
-            "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
+            # tck_empty too: the Cypher TCK's sessions act as it (scripts/conformance/cypher_tck_bolt.py).
+            "default_assignments": [
+                {"domain_id": "*", "role_id": "org_admin"},
+                {"domain_id": "*", "role_id": "tck_empty"},
+            ],
             # The role a pgwire login acts as when its user names none.
             "default_role": "org_admin",
         },
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
-        "domains": [{"id": FIXTURE_SCHEMA, "description": "pgwire conformance fixtures"}],
-        "roles": [],
+        "domains": [
+            {"id": FIXTURE_SCHEMA, "description": "pgwire conformance fixtures"},
+            {"id": "tck_empty", "description": "No tables: the openCypher TCK's empty graph"},
+        ],
+        "roles": [
+            {
+                # The openCypher TCK's empty graph (REQ-2167, amended 2026-10-27): a role that
+                # reaches no model domain, so a session's graph is its own alone.
+                "id": "tck_empty",
+                "description": "Reaches no model domain: the openCypher TCK's empty graph",
+                "capabilities": ["query_development", "full_results"],
+                # A domain of its own, which holds no table.
+                "domain_access": ["tck_empty"],
+            }
+        ],
         "sources": [
             {
                 "id": "conformance-pg",

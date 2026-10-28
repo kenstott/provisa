@@ -37,6 +37,7 @@ def _load(name: str):
 
 
 by_design = _load("by_design")  # the scripts import it as their sibling
+bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
 tck = _load("cypher_tck")
 fill_docs = _load("fill_docs")
 
@@ -288,3 +289,80 @@ def test_a_cell_s_own_escapes_are_undone_before_its_value_is_read():
 def test_a_number_s_exponent_is_its_own(text, value):
     # Literals5: 1e-305 is a number, not the word 1e and a stray -305.
     assert tck.tck_value(text) == value
+
+
+def test_a_setup_that_builds_its_graph_runs_with_its_query_in_one_session(scenarios, monkeypatch):
+    # REQ-2167, amended 2026-10-27: with a Bolt session configured, [3]'s setup and its query run
+    # on one connection (REQ-2176), its answer's node compared, and it is marked adapted.
+    sent = []
+
+    def session(setups, query, params):
+        sent.append((list(setups), query))
+        return 200, {"columns": ["a"], "rows": [[("node", frozenset({"A"}), {})]]}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "user": "u", "password": "p"})
+    monkeypatch.setattr(bolt, "run", session)
+    outcome = tck.run(scenarios[3], "http://x", "org_admin")
+    assert sent == [(["CREATE (:A)"], "MATCH (a) RETURN a")]
+    assert (outcome.status, outcome.reason) == ("passed", tck.IN_A_SESSION)
+    doc = tck.report([outcome], "2024.3")
+    assert doc["adapted"][0]["group"] == "Setups that build their graph"
+
+
+def test_a_setup_waiting_on_a_write_form_is_named_so(scenarios, monkeypatch):
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "user": "u", "password": "p"})
+    monkeypatch.setattr(
+        bolt,
+        "run",
+        lambda *_a: (
+            400,
+            {"detail": "setup: A statement creating ephemeral objects has one CREATE clause"},
+        ),
+    )
+    outcome = tck.run(scenarios[3], "http://x", "org_admin")
+    assert outcome.status == "failed"
+    assert outcome.reason.startswith("waits on multi-CREATE: refused (400): setup:")
+
+
+@pytest.mark.parametrize(
+    ("text", "got", "same"),
+    [
+        ("(:A:B {name: 'x'})", ("node", frozenset({"A", "B"}), {"name": "x"}), True),
+        ("(:A {name: 'x'})", ("node", frozenset({"A"}), {"name": "y"}), False),
+        ("[:T {k: 1}]", ("relationship", "T", {"k": 1}), True),
+        (
+            "<(:A)-[:T]->(:B)>",
+            (
+                "path",
+                [
+                    ("node", frozenset({"A"}), {}),
+                    ("relationship", "T", {}),
+                    ("node", frozenset({"B"}), {}),
+                ],
+            ),
+            True,
+        ),
+    ],
+)
+def test_a_node_relationship_or_path_is_compared(text, got, same):
+    # A session's Bolt answer gives graph values; a path's arrows are no nesting (<- and ->).
+    assert tck._same(tck.tck_value(text), got, False) is same
+
+
+def test_a_temporal_value_from_bolt_is_written_as_opencypher_writes_it():
+    import datetime
+
+    from neo4j import time
+
+    assert bolt.value(time.Time(10, 35)) == "10:35"
+    assert bolt.value(time.Time(12, 31, 14, 645876000)) == "12:31:14.645876"
+    assert (
+        bolt.value(time.Time(12, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=-1))))
+        == "12:00-01:00"
+    )
+    assert bolt.value(time.Date(1984, 10, 11)) == "1984-10-11"
+    assert bolt.value(time.DateTime(1984, 10, 11, 12, 31, tzinfo=datetime.timezone.utc)) == (
+        "1984-10-11T12:31Z"
+    )
+    assert bolt.value(time.Duration(months=14, days=3, seconds=3700)) == "P1Y2M3DT1H1M40S"
+    assert bolt.value(time.Duration()) == "PT0S"

@@ -97,7 +97,15 @@ jobs:
 
       - name: Run the TCK
         timeout-minutes: 40
+        env:
+          # A scenario whose setup builds its graph runs it and its query in one ephemeral session
+          # over Bolt (REQ-2167, amended 2026-10-27): the instance's Bolt port (API port + 3).
+          CONFORMANCE_BOLT_URI: bolt://127.0.0.1:8904
         run: |
+          for _ in $(seq 1 60); do
+            (exec 3<>"/dev/tcp/127.0.0.1/8904") 2>/dev/null && break
+            sleep 2
+          done
           mkdir -p "$RUNNER_TEMP/report"
           .venv/bin/python scripts/conformance/cypher_tck.py \
             "$RUNNER_TEMP/opencypher/tck/features" "$TCK_VERSION" \
