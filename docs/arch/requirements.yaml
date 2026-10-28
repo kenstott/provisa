@@ -24547,11 +24547,14 @@
   feature: neo4j-compatibility-bolt
   priority: MUST
   type: structural
-  description: Bolt auth model establishes principal = user, database = role. A user holds a set of roles;
+  description: 'Bolt auth model establishes principal = user, database = role. A user holds a set of roles;
     SHOW DATABASES lists one database per (view × role) pair. Database names follow the pattern `provisa_<role>`
-    (business domains only) and `provisa_ops_<role>` (includes system/meta/ops domains). The Bolt Browser's
-    database dropdown / `:use` command selects the active role and view. Home database defaults to the
-    user's first role.
+    (business domains only) and `provisa_ops_<role>` (includes system/meta/ops domains). The Bolt Browser''s
+    database dropdown / `:use` command selects the active role and view. Home database defaults to the user''s
+    first role. (Amended 2026-10-28, NEO4J NAMES THE HOME DATABASE:) The database name neo4j names the home
+    database, the business database of the user''s default role, as provisa does. Neo4j drivers, Neo4j Browser
+    and Bloom ask for neo4j by default, so they connect unchanged. It is a named alias, not a fallback:
+    any other name outside the forms REQ-808 lists is still DatabaseNotFound.'
   use_case: Bolt Browser users can switch contexts by role and view (ops vs business) without reauthenticating.
     The database abstraction maps cleanly to role-based domain visibility.
   code:
@@ -89365,7 +89368,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     metadata that advertise it: every role that can see the product sees each contract''s elements, its
     schema included, whether or not it can read the member''s data. A contract carries no data and grants
     nothing; reading a member still needs a grant. The product panel''s data quality section keeps REQ-2157''s
-    rule for check results.'
+    rule for check results. (Amended 2026-10-28, A PRODUCT''S SAMPLE IS A VIEW EVERY ROLE READS:) Each member
+    of a product may have a sample: a view over the member holding a fixed set of rows the owner chose once
+    (not a live limit that can be paged past), with masks on the columns the owner masks, granted to the
+    standard Viewer role so that every role reads it under its own role, with no role to switch into. The
+    Contracts panel shows each member''s sample rows beside its schema, and the sample can be queried like
+    any table. Reading beyond the sample is what a product request (REQ-2180) asks for.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
