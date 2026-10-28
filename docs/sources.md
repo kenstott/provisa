@@ -1343,7 +1343,7 @@ Registration records the subtype whenever the source's native type maps to one. 
 | `oid` | `bigint` | Postgres object identifier; integer arithmetic and ordering |
 | `money` | `numeric` | Fixed-decimal currency; numeric arithmetic and ordering |
 
-Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there: Postgres `inet` and `cidr`, Trino `ipaddress`, ClickHouse `IPv4`/`IPv6`, Elasticsearch `ip`, Cassandra `inet`, and DuckDB `inet` all register as `inet`. SQL Server and Oracle `money` types register as `money`. SQL Server and Oracle XML types register as `xml`.
+Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there: Postgres `inet` and `cidr`, Trino `ipaddress`, ClickHouse `IPv4`/`IPv6`, Cassandra `inet`, and DuckDB `inet` all register as `inet`. SQL Server and Oracle `money` types register as `money`. SQL Server and Oracle XML types register as `xml`.
 
 A type not in this table registers as its nearest base type. Model tables never change after registration; re-registering a source does not change a column's recorded subtype.
 

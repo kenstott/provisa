@@ -196,7 +196,7 @@ Rules:
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload).
 - `MERGE` rewrites to MATCH then CREATE under the same write rules above: a governed model write when the result label names exactly one model table, ephemeral otherwise.
 - `DETACH DELETE` of a model node is governed when its label names exactly one model table and each relationship it detaches is a registered junction row. A foreign-key relationship cannot be detached and is refused by name.
-- `REMOVE` is unsupported on model nodes and rejected at parse time.
+- `REMOVE n:Label` takes a session label off a node. `REMOVE` of a model node's properties is refused.
 
 ---
 
@@ -215,7 +215,7 @@ Cypher reaches the same governed pipeline over two transports:
 
 ## Graph Session
 
-Each Bolt connection and each pgwire connection carries a session graph. Within that session you can create nodes and relationships that exist only in memory — visible to your connection alone, dropped when the connection closes — and read them beside your governed model data in the same query.
+Each principal has one session graph, shared by its Bolt connections, HTTP Cypher requests and MCP calls. Within that session you can create nodes and relationships that exist only in the session — visible to that principal alone — and read them beside your governed model data in the same query.
 
 ### Creating ephemeral nodes
 
@@ -260,13 +260,13 @@ If the session holds `Note` nodes, this returns model customers joined to their 
 
 ### Session scope
 
-On Bolt the session is the connection. On HTTP Cypher and MCP, which have no persistent connection, the session is one request: ephemeral objects you create in a statement are visible to the rest of the same request body and gone when the response is sent.
+The session belongs to the principal on every surface: Bolt, HTTP Cypher and MCP. It is stored per principal and kept for `temp_tables.graph_session_retention_days` after its last use. It ends when the principal clears it, when the principal's rights change, or when the retention expires.
 
 One session store serves all languages over that connection: a pgwire temp table is also an ephemeral table to Cypher, and a Cypher session node is a temp table to SQL.
 
 ### Clearing the session
 
-Send `CALL db.clearSession()` to drop all ephemeral objects for the current connection at once. The session graph is also cleared when the connection closes.
+Clear the session from the Cypher page (`DELETE /data/cypher/session`) or through the MCP tool. Bolt has no procedure for it.
 
 ---
 
@@ -274,7 +274,14 @@ Send `CALL db.clearSession()` to drop all ephemeral objects for the current conn
 
 ### Design constraints
 
-1. **Write clauses supported: `CREATE`, `MATCH … SET`, `MATCH … DELETE`, `MERGE`, and `DETACH DELETE`.** Each executes as a governed table write. `MERGE` runs MATCH then CREATE under the same write rules. `DETACH DELETE` is governed when the node has an exact model target and each detached relationship is a registered junction. `REMOVE` is not supported. APOC procedures are not supported.
+1. **Write clauses supported:**
+   - `CREATE`
+   - `MATCH … SET`
+   - `MATCH … DELETE`
+   - `MERGE`
+   - `DETACH DELETE`
+
+   Each executes as a governed table write. `MERGE` runs MATCH then CREATE under the same write rules. `DETACH DELETE` is governed when the node has an exact model target and each detached relationship is a registered junction. `REMOVE n:Label` removes a session label; `REMOVE` of a model node's properties is refused. APOC procedures are not supported.
 
 2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema: it's an edge here and a table everywhere else.
 

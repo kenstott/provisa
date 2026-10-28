@@ -26,19 +26,18 @@ A `geometry` or `geography` column is reported with its PostGIS type name and is
 
 ### Catalog functions
 
-Provisa intercepts the scalar catalog functions tools call to introspect schemas and format type names. Each one is answered from the role's governed model view, not from a backend Postgres:
+Provisa intercepts the scalar catalog functions tools call to introspect schemas and format type names. Each one is answered from the role's governed model view:
 
 | Function | Behavior |
 |---|---|
 | `format_type(typid, typmod)` | Returns the type name tools display in schema panels. Subtypes report by their subtype name (`inet`, `macaddr`, `money`), not the base type. |
 | `col_description(relid, colnum)` | Returns the column's description from the model. Columns with no description return `NULL`. |
 | `pg_get_constraintdef(oid)` | Returns a text rendering of the constraint — `PRIMARY KEY (col)`, `FOREIGN KEY (col) REFERENCES other(col)`, or `UNIQUE (col)` — derived from the model's declared keys and joins. |
-| `pg_get_expr(expr, relid)` | Returns a text rendering of a default expression. Provisa returns `NULL` for columns with no default and the literal default value for those that have one. |
-| `has_table_privilege(user, table, privilege)` | Returns `true` when the role holds the named privilege (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) on the table, judged from its write grants. |
+| `pg_get_expr(expr, relid)` | Always returns `NULL`. |
 | `current_schema()` | Returns `'public'`. |
 | `obj_description(oid, catalog)` | Returns the description of the named catalog object (table or schema) from the model, or `NULL`. |
 
-Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL` rather than an error, matching PostgreSQL's own behavior for missing objects.
+Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
 
 ### Server version
 

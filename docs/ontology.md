@@ -323,7 +323,7 @@ Five views expose the glossary's contents:
 | `_domains` | Domain membership: the term name and each domain it belongs to. |
 | `_experts` | Expert assignments: the term name, user ID, and role (`expert` or `author`). |
 
-A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns `subject` (IRI text), `predicate` (IRI text), and `object` (IRI or literal text). Tools that prefer triples over tabular rows read from here.
+A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
 
 A **term binding** — a term bound to a column, recorded in `_term_refs` — is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
 
