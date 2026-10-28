@@ -115,7 +115,12 @@ export function GraphStage({
     // Into or out of 2D the layout changes too, and the camera is reset to the new one.
     scene.setFlat(s.flat);
     scene.setArcs(s.layout === "layered");
-    scene.setData(s.graph, s.at, was.frame !== s.frame || was.flat !== s.flat);
+    // A new layout kind (Force to Layered) is fitted afresh too: it faces another way.
+    scene.setData(
+      s.graph,
+      s.at,
+      was.frame !== s.frame || was.flat !== s.flat || was.layout !== s.layout,
+    );
   }, [scene, s.graph, s.at, s.frame, s.flat, s.layout]);
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);

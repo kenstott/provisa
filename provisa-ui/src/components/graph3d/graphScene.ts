@@ -215,6 +215,8 @@ export class GraphScene extends BaseScene<GraphHover> {
   /** REQ-2174: in a layered layout the lateral edges are arcs laid over the rank and flow edges. */
   setArcs(on: boolean) {
     this.arcs = on;
+    // A layered layout is flat (z = 0): the 3D view faces it, as the 2D one does.
+    this.planar = on;
   }
 
   setFlat(on: boolean) {
@@ -246,6 +248,12 @@ export class GraphScene extends BaseScene<GraphHover> {
    * the content in front of the camera. */
   private fitDistance(): number {
     const half = THREE.MathUtils.degToRad(this.persp.fov / 2);
+    // Facing a planar layout, far enough that its bounds and a margin fill the frame, as 2D's fit.
+    if (this.planar && !this.flat)
+      return Math.max(
+        (this.extentY + 2) / Math.tan(half),
+        (this.extentX + 2) / (Math.tan(half) * Math.max(this.aspect, 0.5)),
+      );
     const across = Math.atan(Math.tan(half) * Math.max(this.aspect, 0.5));
     return (this.reach + 2) / Math.sin(Math.min(half, across));
   }

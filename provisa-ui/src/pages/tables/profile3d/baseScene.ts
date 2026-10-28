@@ -101,6 +101,9 @@ export abstract class BaseScene<H> {
   protected camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.persp;
   /** Whether the stage is in 2D (setFlat). */
   protected flat = false;
+  /** REQ-2174: the content lies in the z = 0 plane (a layered layout), so even the 3D view opens
+   * face-on, turning about the plane's normal. */
+  protected planar = false;
   /** REQ-2174: the view that shows the most of the content, once computed (settleView). */
   protected best: View | null = null;
   protected controls: OrbitControls;
@@ -314,7 +317,8 @@ export abstract class BaseScene<H> {
    * 2D the view is face-on. A scene calls it once its content is laid out. */
   protected settleView(): View | null {
     const content = this.viewContent();
-    this.best = this.flat ? FACE_ON : content ? bestView(content.nodes, content.edges) : null;
+    this.best =
+      this.flat || this.planar ? FACE_ON : content ? bestView(content.nodes, content.edges) : null;
     this.turnAxis.copy(this.best ? this.best.axis : UP_AXIS);
     this.alignFloor();
     return this.best;
@@ -326,7 +330,7 @@ export abstract class BaseScene<H> {
   protected alignFloor() {
     const content = this.viewContent();
     if (!this.floor || !this.best || !content || content.nodes.length === 0) return;
-    const normal = this.flat ? FACE_ON.dir : this.best.up;
+    const normal = this.flat || this.planar ? FACE_ON.dir : this.best.up;
     const lowest = Math.min(...content.nodes.map((n) => n.at.dot(normal) - n.radius));
     this.floor.quaternion.setFromUnitVectors(UP_AXIS, normal);
     this.floor.position.copy(normal).multiplyScalar(lowest - 1.5);
