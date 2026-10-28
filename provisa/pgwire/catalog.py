@@ -140,6 +140,29 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "pg_relation_size",
         "pg_total_relation_size",
         "pg_indexes_size",
+        # Decision 2b: answered by the catalog's macros (catalog_macros) or its rewrite.
+        "getdatabaseencoding",
+        "pg_char_to_encoding",
+        "pg_database_size",
+        "pg_table_size",
+        "pg_tablespace_size",
+        "pg_column_size",
+        "quote_literal",
+        "pg_statistics_obj_is_visible",
+        "aclexplode",
+        "pg_options_to_table",
+        "pg_partition_tree",
+        "pg_partition_ancestors",
+        "pg_show_all_settings",
+        "pg_describe_object",
+        "pg_identify_object",
+        "acldefault",
+        "oidvectortypes",
+        "pg_cursor",
+        "pg_sequence_last_value",
+        "setval",
+        "plpgsql_validator",
+        "fmgr_c_validator",
     }
 )
 
@@ -147,7 +170,14 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
 def _calls_a_catalog_function_alone(tree) -> bool:
     import sqlglot.expressions as exp
 
-    if any(True for _ in tree.find_all(exp.Table)):
+    # A set-returning one read in FROM is a table only in form.
+    if any(
+        not (
+            isinstance(t.this, exp.Anonymous)
+            and t.this.name.lower() in _STANDALONE_CATALOG_FUNCTIONS
+        )
+        for t in tree.find_all(exp.Table)
+    ):
         return False
     return any(
         fn.name.lower() in _STANDALONE_CATALOG_FUNCTIONS for fn in tree.find_all(exp.Anonymous)

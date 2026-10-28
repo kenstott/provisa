@@ -425,9 +425,17 @@ _ANSWERED_ALONE = {
     'pg_catalog."pg_get_functiondef"(NULL::oid)': (TEXT, None),
     'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, "provisa"),
     'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, "UTF8"),
-    'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, 0),
-    "pg_total_relation_size(NULL::regclass)": (INT8, 0),
+    'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, None),
+    "pg_total_relation_size(NULL::regclass)": (INT8, None),
     'pg_catalog."pg_tablespace_location"(NULL::oid)': (TEXT, None),
+    # Part 2b.
+    'pg_catalog."getdatabaseencoding"()': (NAME, "UTF8"),
+    "pg_char_to_encoding('UTF8')": (INT4, 6),
+    'pg_catalog."quote_literal"(NULL::text)': (TEXT, None),
+    "pg_database_size(NULL::name)": (INT8, None),
+    "pg_column_size(NULL::text)": (INT4, None),
+    "pg_sequence_last_value(NULL::regclass)": (INT8, None),
+    'pg_catalog."pg_describe_object"(NULL::oid, NULL::oid, NULL::integer)': (TEXT, None),
 }
 
 
