@@ -10998,9 +10998,12 @@
   feature: cypher-and-graph-analytics-writes
   priority: MUST
   type: constraint
-  description: DETACH DELETE (cascading delete across derived relationships) is not supported. Attempting
-    DETACH DELETE is a hard error at parse or translation time. Clients must explicitly DELETE each table
-    in the correct dependency order.
+  description: '[SUPERSEDED by REQ-2176, 2026-10-28 -- DETACH DELETE of a model node is governed: each junction
+    row it is an end of and its own row are deleted through governed writes, and a foreign-key relationship
+    is refused by name. Kept here for history; do not implement against it.] DETACH DELETE (cascading delete
+    across derived relationships) is not supported. Attempting DETACH DELETE is a hard error at parse or
+    translation time. Clients must explicitly DELETE each table in the correct dependency order. [END SUPERSEDED
+    BLOCK]'
   use_case: Explicit cascade prevention avoids accidental data deletion across unintended table relationships.
   code:
   - provisa/cypher/write_translator.py
@@ -90516,7 +90519,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     after last use lapses (a deployment setting, default 7 days), or when the principal''s rights change.
     Every client lists its labels and relationship types (db.labels and db.relationshipTypes include them).
     A SQL temporary table keeps PostgreSQL''s per-connection scope (REQ-615); only the graph session is
-    the principal''s.'
+    the principal''s. (Amended 2026-10-27, GOVERNED MERGE ON MODEL DATA:) 2026-10-28, maintainer decision:
+    MERGE of a model node or of a registered junction relationship is a governed write: it matches on the
+    given properties (a node on its label''s key or the stated properties, a relationship on its two ends
+    and its type) and creates only when nothing matches, each part through the governed write path (write
+    grants, row rules); ON CREATE SET and ON MATCH SET apply to the part they name. MERGE of a foreign-key
+    relationship is refused by name. MERGE of session objects is unchanged.'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
