@@ -40,6 +40,7 @@ _NOT_COLUMN_VISIBILITY: dict[tuple[str, str], str] = {
     ("nl/runner.py", "run_nl_job"): "a metric's grant",
     ("pgwire/catalog_populate.py", "role_catalog_index"): "a metric's grant",
     ("compiler/schema_gen.py", "_build_visible_tables"): "a metric's grant",
+    ("api/graph_session.py", "_role_grants"): "a metric's grant",
     ("security/mutation_authz.py", "command_assigned"): "a command's assignment",
     ("api/rest/openapi_spec.py", "generate_rest_openapi_spec"): "a function's assignment",
     ("compiler/actions_schema.py", "_build_action_fields"): "a command's assignment",

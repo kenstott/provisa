@@ -297,6 +297,10 @@ def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
     return registered
 
 
+#: The user the Cypher TCK's Bolt sessions sign in as (.github/workflows/conformance-cypher.yml).
+TCK_SESSION_USER = "tck-session"
+
+
 def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     """The model the conformance instance boots with.
 
@@ -325,13 +329,36 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
             },
             "assignments_source": "provisa",
             "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
+            # The Cypher TCK's session user acts as tck_empty (scripts/conformance/cypher_tck_bolt.py):
+            # a Bolt sign-in holds the role its claims map to, not the control plane's assignments.
+            "role_mapping": [
+                {
+                    "claim": "username",
+                    "type": "exact",
+                    "value": TCK_SESSION_USER,
+                    "role": "tck_empty",
+                }
+            ],
             # The role a pgwire login acts as when its user names none.
             "default_role": "org_admin",
         },
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
-        "domains": [{"id": FIXTURE_SCHEMA, "description": "pgwire conformance fixtures"}],
-        "roles": [],
+        "domains": [
+            {"id": FIXTURE_SCHEMA, "description": "pgwire conformance fixtures"},
+            {"id": "tck_empty", "description": "No tables: the openCypher TCK's empty graph"},
+        ],
+        "roles": [
+            {
+                # The openCypher TCK's empty graph (REQ-2167, amended 2026-10-27): a role that
+                # reaches no model domain, so a session's graph is its own alone.
+                "id": "tck_empty",
+                "description": "Reaches no model domain: the openCypher TCK's empty graph",
+                "capabilities": ["query_development", "full_results"],
+                # A domain of its own, which holds no table.
+                "domain_access": ["tck_empty"],
+            }
+        ],
         "sources": [
             {
                 "id": "conformance-pg",

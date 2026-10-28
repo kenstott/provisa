@@ -24,6 +24,16 @@ from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
+
+def _the_rest_goes_out() -> None:
+    """Only the remote endpoint is mocked. Any other host the deployment's config reaches -- the
+    OpenAPI source whose document the tables listing reads -- is called as it would be, and
+    fares as it does there (its host may not resolve in the lane: the listing names that on
+    the source's tables). Added after the test's own routes, so it matches only what they do
+    not."""
+    respx.route().pass_through()
+
+
 REMOTE_URL = "https://remote-graphql.example.com/graphql"
 
 SAMPLE_INTROSPECTION_RESPONSE = {
@@ -147,6 +157,7 @@ class TestGraphQLRemoteSourceRegistration:
         respx.post(REMOTE_URL).mock(
             return_value=httpx.Response(200, json=SAMPLE_INTROSPECTION_RESPONSE)
         )
+        _the_rest_goes_out()
         resp = await client.post(
             "/admin/sources/graphql-remote",
             json={
@@ -347,6 +358,7 @@ class TestGitHubBrandedSource:
     @respx.mock
     async def test_adding_github_registers_no_tables_and_offers_them_all(self, client):
         respx.post(GITHUB_URL).mock(side_effect=_github)
+        _the_rest_goes_out()
         resp = await client.post(
             "/admin/sources/graphql-remote",
             json={
@@ -511,6 +523,7 @@ class TestGitLabBrandedSource:
         self, client
     ):
         respx.post(GITLAB_URL).mock(side_effect=_gitlab)
+        _the_rest_goes_out()
         resp = await client.post(
             "/admin/sources/graphql-remote",
             json={

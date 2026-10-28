@@ -309,6 +309,18 @@ def _pinned_stdio_role() -> str:
     return role.strip()
 
 
+def _call_principal(state: Any) -> tuple[str, list[str]]:
+    """The graph-session principal of a tool call (REQ-2176): a remote caller's identity, as on
+    every client; a local one (stdio, or the unsecured loopback) is the anonymous principal, the
+    one an unsecured page and Bolt connection share."""
+    from provisa.api import graph_session
+
+    identity = _request_identity.get()
+    if identity is None:
+        return graph_session.ANONYMOUS, []
+    return graph_session.principal(state, identity)
+
+
 def _call_actor() -> str | None:
     """The member a tool call was made by, or None for a call no member signed (stdio, or the
     unsecured loopback) -- the system author stands in, as for an HTTP request (REQ-1524)."""
@@ -734,7 +746,15 @@ def build_mcp_server(state: Any):
         Cytoscape elements ({nodes: [{data: {id, label, tableLabel, properties}}], edges:
         [{data: {id, source, target, label, properties}}]}), properties as the role sees them.
         Call cypher_field_names first for the real labels and properties."""
-        return await tools.run_cypher(state, _role(role), cypher, params, limit)
+        return await tools.run_cypher(
+            state, _role(role), cypher, params, limit, principal=_call_principal(state)
+        )
+
+    @_tool
+    async def clear_graph_session() -> dict:
+        """Clear the caller's graph session: the labels, nodes and relationships its Cypher
+        statements made (on this and every other client) are dropped."""
+        return await tools.clear_graph_session(state, _call_principal(state))
 
     @_tool
     async def render_graph(

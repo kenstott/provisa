@@ -35,6 +35,16 @@ STRIPE = BRANDS["stripe"]
 API = "https://api.stripe.com"
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as provisa.api.app declares it for a single-tenant state."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 @pytest.fixture(scope="module")
 def offered():
     return parse_spec(brand_spec("stripe"))

@@ -404,6 +404,7 @@ code:not(pre code) {
 .spot-head .eyebrow { color: var(--primary-hover); margin-bottom: 8px; }
 .spot-head h3 { margin: 0 0 10px; font-size: clamp(1.25rem, 2.6vw, 1.6rem); letter-spacing: -0.02em; line-height: 1.2; }
 .spot-lead { margin: 0; color: var(--text-muted); max-width: 720px; }
+.spot-lead + .spot-lead { margin-top: 12px; }
 .spot-lead em { font-style: normal; color: var(--accent); font-weight: 600; }
 .spot-steps {
   list-style: none; margin: 26px 0 0; padding: 0;

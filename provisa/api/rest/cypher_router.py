@@ -277,8 +277,11 @@ def _build_sql_from_ast(
     apply_graph_rewrites: Any,
     role_id: str,
     state: Any,
+    *,
+    expand: Any = None,
 ) -> tuple[Any, list, dict] | Response:
-    """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response."""
+    """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response.
+    ``expand`` puts the graph session's relations in place (REQ-2176, ``ephemeral.seam.expand``)."""
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
@@ -298,6 +301,8 @@ def _build_sql_from_ast(
 
     try:
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+        if expand is not None:
+            sql_ast = expand(sql_ast)
     except Exception as exc:
         log.exception("Cypher graph rewrite failed")
         return cypher_error(
@@ -594,7 +599,7 @@ async def _each_statement(
     for statement in split_cypher_statements(body.query):
         one = CypherRequest(query=statement, params=body.params)
         try:
-            answered = await cypher_query(one, request, None, x_provisa_stats)
+            answered = await _answer(one, request, x_provisa_stats)
         except (
             Exception
         ) as exc:  # allow-ble: answered as this statement's error, by the app's own handler for it
@@ -617,11 +622,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     query_id: str | None = Query(None),
     x_provisa_stats: str | None = Header(None),
 ) -> Response:
-    """Execute a Cypher read or write query and return typed rows or affected_rows."""
-    from provisa.api.app import state
-
-    if body.results == "each":
-        return await _each_statement(body, request, x_provisa_stats)
+    """Execute a Cypher read or write query and return typed rows or affected_rows. A request
+    runs in its principal's graph session (REQ-2176), and its answer says when it wrote to it."""
+    from provisa.api.rest import cypher_session
 
     if query_id:
         return cypher_error(
@@ -630,6 +633,107 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             "execute-by-approved-query-id is removed; submit the Cypher query "
             "directly — access is governed by table/view and relationship rights",
         )
+
+    async with cypher_session.statement(request, body.query) as held:
+        response = await _answer(body, request, x_provisa_stats)
+    return cypher_session.answered(response, held)
+
+
+class _SessionReadRefused(Exception):
+    """A read or write the ephemeral layer made was answered by an error: its answer too."""
+
+    def __init__(self, response: Response) -> None:
+        super().__init__(response.status_code)
+        self.response = response
+
+
+async def _session_write(
+    body: CypherRequest, request: Request, x_provisa_stats: str | None, state: Any
+) -> Response | None:
+    """REQ-2176: a statement of the principal's graph session the governing rule does not make wholly the
+    governed write is done by the ephemeral layer (its governed parts through this route's own
+    governed write); None for every other statement."""
+    from provisa.compiler import temp_tables
+    from provisa.cypher.parser import CypherParseError
+    from provisa.ephemeral import seam
+
+    temp = temp_tables.current()
+    if temp is None:
+        return None
+    role_id = _resolve_role_id(request, state)
+    surface = role_surface(state, role_id)
+    if surface is None:
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
+
+    async def run(statement: str, values: dict) -> dict:
+        answer = await _answer(
+            CypherRequest(query=statement, params=values),
+            request,
+            x_provisa_stats,
+            internal=True,
+        )
+        if answer.status_code != 200:
+            raise _SessionReadRefused(answer)
+        return json.loads(bytes(answer.body))
+
+    async def run_read(statement: str, values: dict) -> list[dict]:
+        content = await run(statement, values)
+        return [
+            dict(zip(content["columns"], r)) if not isinstance(r, dict) else r
+            for r in content["rows"]
+        ]
+
+    async def run_write(statement: str, values: dict) -> None:
+        await run(statement, values)
+
+    try:
+        made = await seam.write(
+            body.query,
+            body.params,
+            _build_label_map(surface.context, role_id, state),
+            temp,
+            state,
+            run_read,
+            run_write,
+        )
+    except _SessionReadRefused as refused:
+        return refused.response
+    except CypherParseError as exc:
+        return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
+    if made is None:
+        return None
+    if any(vars(made).values()):
+        from provisa.api import graph_session
+
+        held = graph_session.bound()
+        assert held is not None, "an ephemeral write is made in the principal's graph session"
+        held.wrote = True
+    return JSONResponse(
+        content={"type": "cypher", "columns": [], "rows": [], "counters": vars(made)}
+    )
+
+
+async def _answer(
+    body: CypherRequest,
+    request: Request,
+    x_provisa_stats: str | None,
+    *,
+    internal: bool = False,
+) -> Response:
+    """The answer to one Cypher request, in the graph session bound for it. ``internal``
+    is a statement the ephemeral layer makes of its own: done as the governed statement it is,
+    and its nodes keep their graph identities."""
+    from provisa.api.app import state
+
+    if body.results == "each":
+        return await _each_statement(body, request, x_provisa_stats)
+
+    if not internal:
+        _made = await _session_write(body, request, x_provisa_stats, state)
+        if _made is not None:
+            return _made
 
     # --- Write path (REQ-670): CREATE / DELETE / UPDATE ---
     from provisa.cypher.write_translator import (  # noqa: PLC0415
@@ -667,8 +771,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
         async def _read(query: str, params: dict) -> tuple[list[str], list[list[Any]]]:
             # A relationship's ends and a RETURN are read as this route reads any query.
-            response = await cypher_query(
-                CypherRequest(query=query, params=params), request, None, x_provisa_stats
+            response = await _answer(
+                CypherRequest(query=query, params=params), request, x_provisa_stats
             )
             _answered.append(response)
             if response.status_code != 200:
@@ -737,16 +841,25 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         )
     ctx = surface.context
 
-    label_map = _build_label_map(ctx, role_id, state)
+    # REQ-2176: a read while the graph session holds ephemeral objects compiles over the
+    # session's overlay of the model, and is never kept: its answer is the session's own.
+    from provisa.compiler import temp_tables
+    from provisa.ephemeral import read as ephemeral_read
+    from provisa.ephemeral import seam
 
-    _pre = await intercept_precompile(body, state, role_id, label_map)  # procs + REQ-872 CALLs
+    temp = temp_tables.current()
+    involved = ephemeral_read.involved(temp)
+    model_map = _build_label_map(ctx, role_id, state)
+    label_map = seam.label_map(model_map, temp)
+
+    _pre = await intercept_precompile(body, state, role_id, model_map)  # procs + REQ-872 CALLs
     if _pre is not None:
         return _pre
 
     # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query
     if state.model_db is not None:
-        query_text = await _resolve_id_references(query_text, state.model_db, label_map)
+        query_text = await _resolve_id_references(query_text, state.model_db, model_map)
 
     # REQ-1877: a read this role already translated and was admitted for under this schema
     # generation is not parsed, translated or validated again — only its values are bound.
@@ -762,7 +875,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         cypher=query_text,
         params=body.params,
     )
-    translation = kept.cached()
+    translation = None if involved else kept.cached()
     if translation is None:
         # Stage 1: Parse
         from provisa.gql.translator_types import CypherMistake
@@ -797,7 +910,14 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
         # Stages 1-2: Translate + graph rewrites
         _sql_result = _build_sql_from_ast(
-            ast, label_map, body, cypher_to_sql, apply_graph_rewrites, role_id, state
+            ast,
+            label_map,
+            body,
+            cypher_to_sql,
+            apply_graph_rewrites,
+            role_id,
+            state,
+            expand=lambda sql_ast: seam.expand(sql_ast, label_map, model_map, temp),
         )
         if isinstance(_sql_result, Response):
             return _sql_result
@@ -822,7 +942,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             param_names=tuple(param_names),
             graph_vars=graph_vars,
         )
-        if not composed:
+        if not composed and not involved:
             kept.record(translation)
 
     semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
@@ -903,8 +1023,11 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # Register nodes and relationships, replacing composite string IDs with stable integers
     from provisa.gql.assembler import register_node_ids, register_rel_ids
 
-    await register_node_ids(serializable_rows, state.model_db)
-    await register_rel_ids(serializable_rows, state.model_db)
+    if not (involved or internal):
+        # REQ-2176: an ephemeral node is the session's alone, never registered in the model's
+        # node ids; a read of the session keeps every node's graph identity.
+        await register_node_ids(serializable_rows, state.model_db)
+        await register_rel_ids(serializable_rows, state.model_db)
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"
