@@ -163,10 +163,24 @@ def test_as_of_on_a_table_with_no_history_is_refused_by_name():
 # -- the one function runs the one pipeline --------------------------------------------------------
 
 
+RESOLVER = "m__resolve"  # meta's resolve, where domains prefix their fields (meta's alias "m")
+
+
+def _schema():
+    """A role's schema as far as the resolver is concerned: meta's resolve and a table."""
+    from graphql import GraphQLField, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLString
+
+    from provisa.compiler.schema_gen import _add_resolve_field
+
+    fields = {"orders": GraphQLField(GraphQLList(GraphQLString))}
+    _add_resolve_field(fields, RESOLVER)
+    return GraphQLSchema(query=GraphQLObjectType("Query", fields))
+
+
 def _state():
     return SimpleNamespace(
         multitenancy=True,
-        surfaces={"analyst": SimpleNamespace(context=_ctx())},
+        surfaces={"analyst": SimpleNamespace(context=_ctx(), schema=_schema())},
         bitemporal_view_reads={},
     )
 
@@ -238,20 +252,36 @@ async def test_an_unknown_role_is_refused(pipeline):
 # -- the surfaces are the GraphQL field's (REQ-1929) ----------------------------------------------
 
 
-def test_every_roles_graphql_schema_offers_resolve():
+def test_every_roles_graphql_schema_offers_meta_s_resolve_and_no_root_resolver():
+    from provisa.compiler.schema_gen import resolve_field
     from tests.unit.test_sql_gen_aggregate import _fact_schema_and_ctx
 
     schema, _ = _fact_schema_and_ctx()
-    field = schema.query_type.fields["_resolve"]
+    assert "_resolve" not in schema.query_type.fields
+    field = schema.query_type.fields[resolve_field(schema)]
     assert set(field.args) == {"uri", "as_of", "as_recorded"}
     assert str(field.args["uri"].type) == "String!"
+
+
+@pytest.mark.parametrize(
+    ("domain_prefix", "aliases", "name"),
+    [
+        (True, {"meta": "m"}, "m__resolve"),
+        (True, {}, "meta__resolve"),
+        (False, {"meta": "m"}, "resolve"),
+    ],
+)
+def test_the_resolver_is_named_as_a_field_of_the_meta_domain(domain_prefix, aliases, name):
+    from provisa.compiler.schema_gen import resolve_field_name
+
+    assert resolve_field_name(domain_prefix, aliases) == name
 
 
 def test_resolve_selections_split_a_document():
     from graphql import parse
 
-    document = parse('{ a: _resolve(uri: "provisa://x") orders { id } }')
-    found, others = resolve_mod.resolve_selections(document)
+    document = parse('{ a: m__resolve(uri: "provisa://x") orders { id } }')
+    found, others = resolve_mod.resolve_selections(document, RESOLVER)
     assert [s.alias.value for s in found] == ["a"]
     assert others == ["orders"]
 
@@ -281,7 +311,7 @@ async def test_the_graphql_field_answers_with_the_bound_org_at_its_own_as_of(res
     from provisa.api.data.endpoint import _handle_query
 
     document = parse(
-        '{ a: _resolve(uri: "provisa://acme/sales/tables/orders/pk=7", as_of: "2026-01-01") }'
+        '{ a: m__resolve(uri: "provisa://acme/sales/tables/orders/pk=7", as_of: "2026-01-01") }'
     )
     response = await _handle_query(
         document,
@@ -313,7 +343,7 @@ async def test_resolve_mixed_with_another_root_field_is_refused(resolved):
     from provisa.api.data.endpoint import _handle_query
     from provisa.api.errors import ApiError
 
-    document = parse('{ _resolve(uri: "provisa://x") orders { id } }')
+    document = parse('{ m__resolve(uri: "provisa://x") orders { id } }')
     with pytest.raises(ApiError) as refused:
         await _handle_query(
             document,
@@ -330,7 +360,7 @@ async def test_resolve_mixed_with_another_root_field_is_refused(resolved):
     assert resolved == []
 
 
-def test_rest_answers_under_the_graphql_name_with_the_bound_org(resolved):
+def test_rest_answers_under_meta_with_the_bound_org(resolved):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -351,14 +381,14 @@ def test_rest_answers_under_the_graphql_name_with_the_bound_org(resolved):
     app.include_router(create_rest_router(_state()))
     uri = "provisa://acme/sales/tables/orders/pk=7"
     response = TestClient(app).get(
-        "/data/rest/_resolve", params={"uri": uri, "as_of": "2026-01-01"}
+        "/data/rest/meta/resolve", params={"uri": uri, "as_of": "2026-01-01"}
     )
     assert response.status_code == 200, response.text
     assert response.json() == {"uri": uri, "row": {"amount": 1}}
     assert [(c["role"], c["org"]) for c in resolved] == [("analyst", "acme")]
 
 
-async def test_the_mcp_tool_answers_with_the_bound_org(resolved, monkeypatch):
+async def test_the_mcp_tool_answers_under_meta_with_the_bound_org(resolved, monkeypatch):
     import json
 
     from provisa.api.mcp import server
@@ -367,7 +397,7 @@ async def test_the_mcp_tool_answers_with_the_bound_org(resolved, monkeypatch):
     token = server._request_role.set("analyst")  # what the bearer token resolves to
     try:
         content = await server.build_mcp_server(_make_state()).call_tool(
-            "_resolve", {"uri": "provisa://acme/sales/tables/orders/pk=7"}
+            "meta_resolve", {"uri": "provisa://acme/sales/tables/orders/pk=7"}
         )
     finally:
         server._request_role.reset(token)

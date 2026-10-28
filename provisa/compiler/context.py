@@ -630,17 +630,14 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
     to produce the same field_name/type_name mapping.
     """
-    from provisa.compiler.naming import domain_gql_alias
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
     ctx = CompilationContext(role_id=si.role["id"])
 
-    domain_alias_map = {
-        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
-        for d in si.domains
-        if domain_gql_alias(d["id"], d.get("graphql_alias"))
-    }
+    from provisa.compiler.naming import domain_alias_map as _domain_alias_map
+
+    domain_alias_map = _domain_alias_map(si.domains)
     tables = _build_visible_tables(si)
     if not tables:
         _register_draft_names(si, ctx, domain_alias_map)  # REQ-1921: drafts are named still

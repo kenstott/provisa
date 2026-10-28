@@ -40,7 +40,7 @@ import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
-import { domainGqlAlias } from "../types/admin";
+import { domainAliasMap, domainGqlAlias } from "../types/admin";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
@@ -223,6 +223,8 @@ export function AdminPage() {
 
   // REQ-1940: sort and group are the shared list mechanism.
   const assignable = new Set(assignableDomainIds(domains.map((d) => d.id)));
+  // REQ-471: each domain's alias as its root fields are named, every one its own.
+  const aliases = domainAliasMap(domains);
   const userDomains = domains.filter((d) => assignable.has(d.id));
   const domainColumns: ListColumn<(typeof domains)[number]>[] = [
     { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
@@ -231,7 +233,7 @@ export function AdminPage() {
       label: t("adminPage.colDescription"),
       sortValue: (d) => d.description ?? "",
     },
-    { key: "alias", label: t("adminPage.colGqlAlias"), sortValue: (d) => domainGqlAlias(d) },
+    { key: "alias", label: t("adminPage.colGqlAlias"), sortValue: (d) => aliases[d.id] },
     {
       key: "parent",
       label: t("adminPage.colParentDomain"),
@@ -490,7 +492,7 @@ export function AdminPage() {
                               <Table.Td>{d.description || "—"}</Table.Td>
                               <Table.Td>
                                 <Text c="dimmed" ff="monospace" fz="sm">
-                                  {domainGqlAlias(d)}
+                                  {aliases[d.id]}
                                 </Text>
                               </Table.Td>
                               <Table.Td>{d.parentDomainId || "—"}</Table.Td>

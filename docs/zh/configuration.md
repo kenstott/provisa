@@ -980,7 +980,7 @@ SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_rec
 }
 ```
 
-REST 以表端点的查询参数 `as_of` 和 `as_recorded` 接收它们，MCP 工具 `describe_table` 说明一张表接受哪些参数。`_resolve` 字段（GraphQL、REST 和 MCP）也接受 `as_of` 和 `as_recorded`，传给它的范围会返回该行的 `versions` 而不是它的 `row`；gRPC 调用 `Resolve` 也是如此。Arrow Flight 票据以其 `as_of` 和 `as_recorded` 选项接收它们，pgwire 会话用 `SET provisa.as_of` 和 `SET provisa.as_recorded` 为其运行的语句设定默认值，引用自身的参数会覆盖该默认值。SQL 浏览器的“As of”和“As recorded at”选择器会把参数写入语句。每条语句的审计记录在语句只在一个时间读取时保存该时间，`as_of` 和 `as_recorded`。权限、掩码和行规则与任何读取一样适用。
+REST 以表端点的查询参数 `as_of` 和 `as_recorded` 接收它们，MCP 工具 `describe_table` 说明一张表接受哪些参数。`meta` 域的 `resolve` 字段（GraphQL、REST 和 MCP）也接受 `as_of` 和 `as_recorded`，传给它的范围会返回该行的 `versions` 而不是它的 `row`；gRPC 调用 `Resolve` 也是如此。Arrow Flight 票据以其 `as_of` 和 `as_recorded` 选项接收它们，pgwire 会话用 `SET provisa.as_of` 和 `SET provisa.as_recorded` 为其运行的语句设定默认值，引用自身的参数会覆盖该默认值。SQL 浏览器的“As of”和“As recorded at”选择器会把参数写入语句。每条语句的审计记录在语句只在一个时间读取时保存该时间，`as_of` 和 `as_recorded`。权限、掩码和行规则与任何读取一样适用。
 
 每个带历史的视图还会返回三列，其授权方式与它的数据源时间列相同（没有时则与第一个键列相同）：
 

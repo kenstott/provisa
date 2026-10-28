@@ -231,6 +231,24 @@ def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-4
     return acronym.lower() if acronym else domain_id[0].lower()
 
 
+def domain_alias_map(domains: list[dict]) -> dict[str, str]:  # REQ-471
+    """Each domain's alias (:func:`domain_gql_alias`), every one its own: a computed alias another
+    domain's alias also is -- ontology's and ops's are both "o" -- is the domain's own name
+    instead, so no domain's tables are named, typed or grouped as another's. A stored alias is the
+    domain's, as written."""
+    aliases = {d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias")) for d in domains}
+    taken = [a for a in aliases.values() if a]
+    return {
+        d["id"]: (
+            domain_to_sql_name(d["id"])
+            if not d.get("graphql_alias") and taken.count(aliases[d["id"]]) > 1
+            else aliases[d["id"]]
+        )
+        for d in domains
+        if aliases[d["id"]]
+    }
+
+
 @functools.lru_cache(maxsize=16384)
 def _to_snake_case(name: str) -> str:
     """Convert camelCase or PascalCase to snake_case."""
