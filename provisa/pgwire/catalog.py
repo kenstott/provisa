@@ -384,15 +384,19 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     the request's timeout."""
     import time
 
-    import duckdb
     import sqlglot
 
+    from provisa.core import engine_memory
     from provisa.executor.result import QueryResult
 
     seconds_sql = sqlglot.transpile(
         f"SELECT CAST(({match['arg']}) AS DOUBLE PRECISION)", read="postgres", write="duckdb"
     )[0]
-    ((seconds,),) = duckdb.connect().execute(seconds_sql).fetchall()
+    con = engine_memory.connect()
+    try:
+        ((seconds,),) = con.execute(seconds_sql).fetchall()
+    finally:
+        con.close()
     if seconds is not None and seconds > 0:
         # Within the request's own budget (REQ-1905): a sleep past it ends as the request does.
         from provisa.core import request_deadline
