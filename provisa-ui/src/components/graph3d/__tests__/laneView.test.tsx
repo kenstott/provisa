@@ -182,7 +182,7 @@ describe("the product panel in 2D", () => {
   it("draws the product's lanes: terms with their hierarchy, columns, tables, the product", async () => {
     panel();
     fireEvent.click(
-      within(await screen.findByTestId("graph-panel")).getByRole("radio", { name: "2D" }),
+      within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
     );
     await screen.findByTestId("graph-panel-lanes");
     // Party, the term Customer is a kind of, heads the chain though the card draws no term edge.
@@ -209,7 +209,7 @@ describe("the product panel in 2D", () => {
   it("expands a table's +N columns node in place", async () => {
     panel();
     fireEvent.click(
-      within(await screen.findByTestId("graph-panel")).getByRole("radio", { name: "2D" }),
+      within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
     );
     await screen.findByTestId("graph-panel-lanes");
     expect(ids("more")).toEqual(["more:t:orders"]);

@@ -218,7 +218,15 @@ export function OntologySnippet({
           testId={testId}
         />
       ) : (
-        seen && <ReadState read={read} testId={testId} />
+        // Until it is read and drawn it holds the panel's place under the panel's test id: the
+        // card is not empty, the reader (or a test) can scroll to it, and drawing does not move
+        // the page (REQ-2128: what loads in view is the panel's content, not the panel).
+        <div className="g3d-panel" data-testid={testId}>
+          <div className="g3d-panel-bar" />
+          <div className="p3d g3d-panel-view g3d-panel-wait">
+            {seen && <ReadState read={read} testId={testId} />}
+          </div>
+        </div>
       )}
       <OntologyModal
         opened={open}

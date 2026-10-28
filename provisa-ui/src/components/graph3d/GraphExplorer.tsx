@@ -513,7 +513,7 @@ export function GraphExplorer({
   if (snippet)
     return (
       <div className="g3d-panel" data-testid={testId}>
-        <Group justify="flex-end" gap="xs">
+        <Group justify="flex-end" gap="xs" className="g3d-panel-bar">
           {depthControl}
           <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
           {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}

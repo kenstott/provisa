@@ -21,6 +21,15 @@
   height: 320px;
   margin-top: var(--mantine-spacing-xs);
 }
+/* A snippet's bar is as tall waiting (empty) as drawn (its xs segmented controls), so drawing does
+   not move the page. */
+.g3d-panel-bar {
+  min-height: 31px;
+}
+.g3d-panel-wait {
+  align-items: center;
+  justify-content: center;
+}
 .g3d-panel-view .p3d-stage {
   flex: 1;
   border: 1px solid var(--border);
