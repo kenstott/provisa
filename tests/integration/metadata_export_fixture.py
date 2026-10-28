@@ -57,7 +57,7 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         view_sql=view_sql,
         materialize=view_sql is not None,
         product_id="prod",
-        contract=data_contracts.draft({c.name: c.data_type for c in columns if c.data_type}),
+        contract=data_contracts.draft(),
     )
 
 

@@ -242,6 +242,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         getattr(tm, "table_id", None): getattr(tm, "domain_id", None)
         for tm in getattr(ctx, "tables", {}).values()
     }
+    # REQ-2155 (DATA BUYER): a table's catalog name, before the meta view's alias.
+    _name_by_tid: dict[int | None, str] = {
+        getattr(tm, "table_id", None): tm.original_table_name or tm.table_name
+        for tm in getattr(ctx, "tables", {}).values()
+    }
 
     _public: set[int] = set()
     # Build table_map, visible_columns, all_columns from raw tables
@@ -288,7 +293,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                     for c in cols
                     if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
                 )
-                if _lists_products or tbl["table_name"] not in META_PRODUCT_TABLES
+                if _lists_products or _name_by_tid[table_id] not in META_PRODUCT_TABLES
                 else frozenset()
             )
         else:

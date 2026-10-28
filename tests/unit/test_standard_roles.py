@@ -34,6 +34,7 @@ class TestTheSet:
     def test_the_roster(self):
         assert set(STANDARD_ROLES) == {
             "viewer",
+            "data_buyer",
             "analyst",
             "developer",
             "modeler",
@@ -69,8 +70,31 @@ class TestTheSet:
 
 
 class TestWhatEachHolds:
-    def test_viewer_reads_the_glossary_and_data_products(self):
-        assert _rights("viewer") == {"glossary_read", "data_product_read"}
+    def test_viewer_reads_the_glossary_and_no_data_products(self):
+        assert _rights("viewer") == {"glossary_read"}
+
+    def test_data_buyer_is_viewer_plus_reading_and_requesting_data_products(self):
+        assert STANDARD_ROLES["data_buyer"].parents == ("viewer",)
+        assert _rights("data_buyer") == _rights("viewer") | {
+            "data_product_read",
+            "data_product_request",
+        }
+
+    @pytest.mark.parametrize("role", ["data_product_owner", "data_steward", "org_admin", SANDBOX])
+    def test_who_reads_data_products_holds_it_without_inheriting_data_buyer(self, role):
+        """REQ-2155 (DATA BUYER): the sample rules targeted at data_buyer never reach them."""
+        assert "data_product_read" in _rights(role)
+        chains = role_chains(
+            [{"id": rid, "parents": list(s.parents)} for rid, s in STANDARD_ROLES.items()]
+        )
+        assert "data_buyer" not in chains[role]
+
+    def test_no_standard_role_inherits_data_buyer(self):
+        assert not any("data_buyer" in spec.parents for spec in STANDARD_ROLES.values())
+
+    @pytest.mark.parametrize("role", ["viewer", "analyst", "developer", "modeler", "dq_reader"])
+    def test_a_role_built_on_viewer_alone_reads_no_data_products(self, role):
+        assert "data_product_read" not in _rights(role)
 
     def test_analyst_queries(self):
         assert _rights("analyst") == _rights("viewer") | {"usage", "query_development"}
@@ -108,7 +132,10 @@ class TestWhatEachHolds:
         assert _rights("dq_reader") == _rights("viewer") | {"dq_read"}
 
     def test_a_data_product_owner_edits_only_what_it_owns(self):
-        assert _rights("data_product_owner") == _rights("viewer") | {"data_product_owned_rw"}
+        assert _rights("data_product_owner") == _rights("viewer") | {
+            "data_product_read",
+            "data_product_owned_rw",
+        }
 
     def test_org_admin_holds_every_other_standard_role_and_its_own(self):
         for rid in set(STANDARD_ROLES) - {"org_admin", "modeler", "sandbox", "platform_admin"}:
@@ -132,6 +159,7 @@ class TestTheSandbox:
             "create_view",
             "write",
             "environment_switch",
+            "data_product_request",
         }
         assert _rights("developer") - _rights(SANDBOX) == {"environment_owned_management"}
         assert set(STANDARD_ROLES[SANDBOX].parents) == {

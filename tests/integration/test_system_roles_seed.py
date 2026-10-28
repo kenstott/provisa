@@ -116,13 +116,12 @@ async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_
     )
     # analyst reads: no authoring, no governance, no member management.
     # glossary_read is read access to the org's term definitions — reading, which is what the role
-    # is for; it authors nothing (glossary_rw and org_glossary_rw stay out). data_product_read
-    # (REQ-1638) mirrors glossary_read for data products — read-only; data_product_rw stays out.
+    # is for; it authors nothing (glossary_rw and org_glossary_rw stay out). REQ-2155 (DATA
+    # BUYER): reading data products is data_buyer's, not Viewer's, so analyst holds none of it.
     assert set(seeded["analyst"]) == {
         "usage",
         "query_development",
         "glossary_read",
-        "data_product_read",
     }
     assert "data_product_rw" not in set(seeded["analyst"])
     assert not ({"create_view", "user_management", "write"} & set(seeded["analyst"]))

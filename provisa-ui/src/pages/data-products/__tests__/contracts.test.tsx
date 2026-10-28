@@ -44,10 +44,6 @@ const STORED = {
   description: "Revenue by day",
   terms: { usage: "Join on day", limitations: null, notice_period: "P3M" },
   sla: [{ property: "availability", value: 99.9, unit: "%", description: null }],
-  columns: [
-    { name: "day", type: "DATE", description: null, required: true },
-    { name: "amount", type: "NUMERIC(12, 2)", description: null, required: false },
-  ],
 };
 
 function core(contract: unknown): ProductCore {
@@ -87,10 +83,8 @@ describe("a product's contracts", () => {
       expect(rest).toEqual([]);
       expect(c.contractId).toBe("revenue/public.daily_revenue");
       expect([c.version, c.status, c.terms.noticePeriod]).toEqual(["2.0.0", "active", "P3M"]);
-      expect(c.columns.map((x) => [x.name, x.required])).toEqual([
-        ["day", true],
-        ["amount", false],
-      ]);
+      // REQ-2158: a contract's schema is its member's columns; it selects none of its own.
+      expect(c).not.toHaveProperty("columns");
     }
   });
 
@@ -254,11 +248,6 @@ function Editing({ onDraft }: { onDraft: (d: DataContractInput) => void }) {
     <ContractEditor
       contract={contract}
       draft={draft}
-      memberColumns={[
-        { name: "day", dataType: "DATE" },
-        { name: "amount", dataType: "NUMERIC(12, 2)" },
-        { name: "region", dataType: "TEXT" },
-      ]}
       onChange={(d) => {
         setDraft(d);
         onDraft(d);
@@ -274,7 +263,7 @@ describe("a contract's editor", () => {
     expect(contractChanged(contract, { ...contractDraft(contract), version: "3.0.0" })).toBe(true);
   });
 
-  it("edits the version and keeps each promise's type", () => {
+  it("edits the version and offers no column selection", () => {
     const drafts: DataContractInput[] = [];
     render(<Editing onDraft={(d) => drafts.push(d)} />);
     fireEvent.change(screen.getByTestId("data-contract-version-input-7"), {
@@ -282,10 +271,9 @@ describe("a contract's editor", () => {
     });
     const last = drafts[drafts.length - 1];
     expect(last.version).toBe("3.0.0");
-    expect(last.columns.map((c) => [c.name, c.type])).toEqual([
-      ["day", "DATE"],
-      ["amount", "NUMERIC(12, 2)"],
-    ]);
+    expect(last).not.toHaveProperty("columns");
+    expect(screen.queryByTestId("data-contract-columns-input-7")).toBeNull();
+    expect(screen.queryByTestId("data-contract-required-input-7")).toBeNull();
   });
 
   it("adds and removes a service level", () => {

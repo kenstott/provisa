@@ -10,11 +10,9 @@
 
 """A data product member's contract, its output port, declared and versioned on its own (REQ-2158).
 
-A member is given a draft contract at 0.1.0 promising its columns. A contract that stops promising
-a column, or promises it as another type, is a new version: the same version is refused, naming
-the contract. A member keeps every column its contract promises: a save that drops or retypes one
-is refused, unless the contract's new version stops promising it in the same save. A table that
-leaves its product, and a checker table, has none.
+A member is given a draft contract at 0.1.0. A contract's schema is its member table's columns: it
+holds no column selection of its own (no promised columns), so a member's columns changing refuses
+nothing and re-versions nothing. A table that leaves its product, and a checker table, has none.
 """
 
 # Requirements: REQ-2158
@@ -22,6 +20,7 @@ leaves its product, and a checker table, has none.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import insert, select
 
 from provisa.core import data_contracts
@@ -30,7 +29,6 @@ from provisa.core.database import Database
 from provisa.core.models import (
     FIRST_CONTRACT_VERSION,
     Column,
-    ContractColumn,
     DataContract,
     DataProduct,
     Table,
@@ -40,65 +38,39 @@ from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, registered_tables, sources
 
 
-def _contract(version: str, **columns: str) -> DataContract:
-    return DataContract(
-        version=version, columns=[ContractColumn(name=n, type=t) for n, t in columns.items()]
-    )
+def _contract(version: str) -> DataContract:
+    return DataContract(version=version)
 
 
 # -- the rules ------------------------------------------------------------------------------------
 
 
-def test_a_new_member_is_given_a_draft_promising_its_columns():
-    contract = data_contracts.draft({"id": "INTEGER", "amount": "NUMERIC(10, 2)"})
+def test_a_new_member_is_given_a_draft_selecting_no_columns():
+    contract = data_contracts.draft()
     assert (contract.version, contract.status) == (FIRST_CONTRACT_VERSION, "draft")
-    assert [(c.name, c.type) for c in contract.columns] == [
-        ("id", "INTEGER"),
-        ("amount", "NUMERIC(10, 2)"),
-    ]
+    assert "columns" not in contract.model_dump()
 
 
-def test_a_contract_that_stops_promising_a_column_is_a_new_version():
-    old = _contract("1.0.0", id="INTEGER", amount="INTEGER")
-    with pytest.raises(ContractRefused, match=r"p/s\.t version 1\.0\.0 stops promising amount"):
-        data_contracts.require_new_version("p/s.t", old, _contract("1.0.0", id="INTEGER"))
-    with pytest.raises(ContractRefused, match=r"amount \(INTEGER -> TEXT\)"):
-        data_contracts.require_new_version(
-            "p/s.t", old, _contract("1.0.0", id="INTEGER", amount="TEXT")
+def test_a_contract_holds_no_column_selection_of_its_own():
+    with pytest.raises(ValidationError, match="columns"):
+        DataContract.model_validate(
+            {"version": "1.0.0", "columns": [{"name": "id", "type": "INTEGER"}]}
         )
-    data_contracts.require_new_version("p/s.t", old, _contract("2.0.0", id="INTEGER"))
-    # Promising more is no break.
-    data_contracts.require_new_version(
-        "p/s.t", old, _contract("1.0.0", id="INTEGER", amount="INTEGER", note="TEXT")
-    )
 
 
-def test_a_member_provides_what_its_contract_promises():
-    promised = _contract("1.0.0", id="INTEGER", amount="INTEGER")
-    with pytest.raises(ContractRefused, match=r"promises amount \(INTEGER\)"):
-        data_contracts.require_provided("p/s.t", promised, {"id": "INTEGER"})
-    with pytest.raises(ContractRefused, match=r"amount \(INTEGER, now TEXT\)"):
-        data_contracts.require_provided("p/s.t", promised, {"id": "INTEGER", "amount": "TEXT"})
-    data_contracts.require_provided(
-        "p/s.t", promised, {"id": "INTEGER", "amount": "INTEGER", "note": "TEXT"}
-    )
-
-
-def test_a_promised_type_is_spelled_as_a_column_type_is_stored():
-    contract = data_contracts.as_stored("p/s.t", _contract("1.0.0", amount="numeric(10,2)"))
-    assert contract.columns[0].type == data_contracts.stored_type_of("numeric(10,2)")
+def test_no_rule_holds_a_member_to_columns_its_contract_selected():
+    # The checks are the promise (REQ-2157); there is no column promise to keep or to break.
+    assert not hasattr(data_contracts, "require_new_version")
+    assert not hasattr(data_contracts, "require_provided")
 
 
 def _for_save(**kw):
     args = {
         "product_id": "p",
         "is_checker": False,
-        "schema_name": "s",
-        "table_name": "t",
         "declared": None,
         "stored": None,
         "stored_product_id": None,
-        "column_types": {"id": "INTEGER"},
     }
     return data_contracts.for_save(**{**args, **kw})
 
@@ -109,7 +81,7 @@ def test_a_table_in_no_product_or_a_checker_has_no_contract():
 
 
 def test_a_save_keeps_the_stored_contract_and_a_new_product_starts_a_draft():
-    stored = _contract("3.0.0", id="INTEGER").model_dump()
+    stored = _contract("3.0.0").model_dump()
     assert _for_save(stored=stored, stored_product_id="p").version == "3.0.0"
     assert _for_save(stored=stored, stored_product_id="other").version == FIRST_CONTRACT_VERSION
 
@@ -119,12 +91,10 @@ def test_a_contract_keeps_when_it_was_created_through_every_version():
     first = _for_save()
     assert first.created_at is not None
     stored = first.model_dump(mode="json")
-    released = _for_save(
-        stored=stored, stored_product_id="p", declared=_contract("2.0.0", id="INTEGER")
-    )
+    released = _for_save(stored=stored, stored_product_id="p", declared=_contract("2.0.0"))
     assert (released.version, released.created_at) == ("2.0.0", first.created_at)
     # A contract declared for a new member is created by that save.
-    assert _for_save(declared=_contract("1.0.0", id="INTEGER")).created_at is not None
+    assert _for_save(declared=_contract("1.0.0")).created_at is not None
 
 
 # -- the table's save -----------------------------------------------------------------------------
@@ -165,33 +135,31 @@ async def _stored(db: Database) -> tuple[int, DataContract | None]:
     return row.id, None if row.contract is None else DataContract.model_validate(row.contract)
 
 
-async def test_joining_a_product_gives_the_member_a_draft_of_its_columns(plane):
+async def test_joining_a_product_gives_the_member_a_draft(plane):
     _, contract = await _stored(plane)
     assert contract is not None
     assert contract.version == FIRST_CONTRACT_VERSION
-    assert [c.name for c in contract.columns] == ["id", "amount"]
 
 
-async def test_a_save_that_drops_a_promised_column_is_refused_and_changes_nothing(plane):
-    with pytest.raises(ContractRefused, match=r"p/public\.orders version 0\.1\.0 promises amount"):
-        async with plane.acquire() as conn:
-            await table_repo.upsert(conn, _table("id"))
-    _, contract = await _stored(plane)
-    assert contract is not None and [c.name for c in contract.columns] == ["id", "amount"]
-
-
-async def test_a_new_version_without_the_column_in_the_same_save_lets_it_go(plane):
-    declared = _contract("1.0.0", id="INTEGER")
+async def test_a_save_that_drops_a_column_keeps_the_contract_as_it_is(plane):
     async with plane.acquire() as conn:
-        await table_repo.upsert(conn, _table("id", contract=declared))
+        await table_repo.upsert(conn, _table("id"))
+    _, contract = await _stored(plane)
+    assert contract is not None and contract.version == FIRST_CONTRACT_VERSION
+
+
+async def test_a_new_version_declared_in_the_same_save_is_stored(plane):
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _table("id", contract=_contract("1.0.0")))
     _, contract = await _stored(plane)
     assert contract is not None and contract.version == "1.0.0"
 
 
-async def test_the_same_version_without_the_column_is_refused(plane):
-    with pytest.raises(ContractRefused, match="a change that breaks a contract is a new version"):
-        async with plane.acquire() as conn:
-            await table_repo.upsert(conn, _table("id", contract=_contract("0.1.0", id="INTEGER")))
+async def test_the_same_version_declared_with_a_column_dropped_is_stored(plane):
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _table("id", contract=_contract("0.1.0")))
+    _, contract = await _stored(plane)
+    assert contract is not None and contract.version == "0.1.0"
 
 
 async def test_leaving_the_product_takes_the_contract_away(plane):
@@ -204,26 +172,28 @@ async def test_leaving_the_product_takes_the_contract_away(plane):
 # -- the contract's own save ----------------------------------------------------------------------
 
 
-async def test_a_contract_saved_at_a_new_version_may_stop_promising_a_column(plane):
+async def test_a_contract_saved_at_a_new_version_is_stored(plane):
     table_id, _ = await _stored(plane)
     async with plane.acquire() as conn:
-        await data_product_repo.save_contract(conn, table_id, _contract("1.0.0", id="integer"))
+        await data_product_repo.save_contract(conn, table_id, _contract("1.0.0"))
     _, contract = await _stored(plane)
-    assert contract is not None and (contract.version, len(contract.columns)) == ("1.0.0", 1)
-    # The column, now promised by no contract, may go.
+    assert contract is not None and contract.version == "1.0.0"
+    # A column no contract selects may go.
     async with plane.acquire() as conn:
         await table_repo.upsert(conn, _table("id"))
 
 
-async def test_a_contract_breaking_its_version_or_promising_what_is_not_there_is_refused(plane):
+async def test_a_contract_saved_at_its_own_version_is_written_in_place(plane):
     table_id, _ = await _stored(plane)
     async with plane.acquire() as conn:
-        with pytest.raises(ContractRefused, match="stops promising amount"):
-            await data_product_repo.save_contract(conn, table_id, _contract("0.1.0", id="integer"))
-        with pytest.raises(ContractRefused, match=r"promises note \(text\)"):
-            await data_product_repo.save_contract(
-                conn, table_id, _contract("0.2.0", id="integer", amount="integer", note="text")
-            )
+        await data_product_repo.save_contract(
+            conn, table_id, DataContract(version="0.1.0", description="edited")
+        )
+    _, contract = await _stored(plane)
+    assert contract is not None and (contract.version, contract.description) == (
+        "0.1.0",
+        "edited",
+    )
 
 
 async def test_a_table_in_no_product_has_no_contract_to_save(plane):

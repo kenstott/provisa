@@ -34,7 +34,6 @@ from provisa.api.metadata_export.odps import (
 from provisa.core import data_contracts
 from provisa.core.models import (
     Column,
-    ContractColumn,
     ContractSlaProperty,
     ContractTerms,
     DataContract,
@@ -62,12 +61,6 @@ ORDERS_CONTRACT = DataContract(
     description="Every order placed",
     terms=ContractTerms(usage="Join on id", limitations="No refunds", notice_period="P3M"),
     sla=[ContractSlaProperty(property="availability", value=99.9, unit="%")],
-    columns=[
-        ContractColumn(name="id", type="integer", required=True),
-        ContractColumn(name="amount", type="numeric", description="The order's total"),
-        ContractColumn(name="ssn", type="text"),
-        ContractColumn(name="margin", type="numeric"),
-    ],
 )
 
 
@@ -147,12 +140,11 @@ def test_each_member_contract_is_valid_odcs_with_its_schema_freshness_and_tags()
     (schema,) = orders["schema"]
     columns = {p["name"]: p for p in schema["properties"]}
     assert columns["amount"]["logicalType"] == "number"
-    # A promise's own description; else the member column's.
-    assert columns["amount"]["description"] == "The order's total"
+    # REQ-2158: a contract's schema is its member's columns, each described as the member is.
+    assert columns["amount"]["description"] == "Order total in cents"
     assert columns["id"]["logicalType"] == "integer"
-    assert columns["id"]["required"] is True
-    # The contract promises its declared columns, and no other of the member's.
-    assert set(columns) == {"id", "amount", "ssn", "margin"}
+    assert "required" not in columns["id"]
+    assert set(columns) == {"id", "amount", "customer_id", "ssn", "margin"}
     # A masked column, or one hidden from some readers, is restricted: that a rule applies,
     # never the rule itself (REQ-2118). Its table's row rule rides as the object's tag.
     assert columns["ssn"]["classification"] == "restricted"
@@ -419,7 +411,7 @@ def test_the_schema_object_is_addressed_and_its_keys_and_types_are_derived():
     )
     orders.columns.append(Column(name="n", data_type="bigint", visible_to=["admin"]))
     orders.unique_constraints = [UniqueConstraint(name="orders_email", columns=["email"])]
-    orders.contract = data_contracts.draft({c.name: c.data_type for c in orders.columns})
+    orders.contract = data_contracts.draft()
     config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     (product,) = snapshot.data_products

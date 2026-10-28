@@ -122,7 +122,6 @@ export interface DataProduct {
   createdAt: string;
 }
 
-// REQ-2158: a column an output port promises, of the type it is stored as.
 // REQ-2158: a declared ODCS service-level property; freshness is the member's own.
 export interface ContractSlaProperty {
   property: string;

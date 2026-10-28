@@ -1078,14 +1078,15 @@ def test_the_ontology_sheet_states_each_terms_axioms():
 
 def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_served_columns():
     """REQ-1592 (2026-10-27): each output port's contract (REQ-2158) -- version, status, purpose,
-    usage, limitations and the columns it promises, a column the caller is not served absent."""
+    usage, limitations and its schema: the member's columns the caller is served (a contract
+    selects none of its own)."""
     from provisa.api.metadata_export.model import (
         AssetKind,
         AssetRef,
         DataProductAsset,
         MetadataSnapshot,
     )
-    from provisa.core.models import ContractColumn, ContractTerms, DataContract, DataProduct
+    from provisa.core.models import ContractTerms, DataContract, DataProduct
 
     orders = dataclasses.replace(
         _asset_table("orders", ["id", "total"]),
@@ -1095,11 +1096,6 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
             status="active",
             description="every order placed",
             terms=ContractTerms(usage="reporting", limitations="no PII"),
-            columns=[
-                ContractColumn(name="id", type="integer", required=True),
-                ContractColumn(name="total", type="decimal"),
-                ContractColumn(name="margin", type="decimal"),  # not served to this caller
-            ],
         ),
     )
     drafts = _asset_table("drafts", ["id"])  # a member with no contract declared
@@ -1143,6 +1139,6 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
             "purpose": "every order placed",
             "usage": "reporting",
             "limitations": "no PII",
-            "columns": "id (integer, required), total (decimal)",
+            "columns": "id (int), total (int)",
         }
     ]
