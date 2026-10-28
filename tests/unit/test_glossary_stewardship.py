@@ -42,15 +42,16 @@ async def _note(db, ids) -> int:
 
 
 async def _chain(db, ids, *, approve_ledger: bool = True) -> int:
-    """ledger (approved) - party (defined draft) - note (the data end, on customers)."""
+    """ledger (approved) - party (defined draft) - note (the data end, on customers): note is a
+    kind of party, a kind of ledger, so grounding runs down from ledger to note."""
     note = await _note(db, ids)
     async with db.acquire() as conn:
         await glossary_repo.set_definition(conn, ids["party"], "Someone we deal with.")
         await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
         if approve_ledger:
             await glossary_repo.approve_term(conn, ids["ledger"], by=None)
-        await glossary_repo.add_edge(conn, ids["ledger"], ids["party"], "RELATED_TO")
-        await glossary_repo.add_edge(conn, ids["party"], note, "RELATED_TO")
+        await glossary_repo.add_edge(conn, ids["party"], ids["ledger"], "KIND_OF")
+        await glossary_repo.add_edge(conn, note, ids["party"], "KIND_OF")
     return note
 
 

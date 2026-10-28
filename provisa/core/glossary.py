@@ -333,22 +333,47 @@ def _conducting(terms: "Iterable[Mapping]") -> dict[int, "Mapping"]:
     return {t["id"]: t for t in terms if term_status(t) in ("draft", "approved")}
 
 
-def _adjacency(
-    conducting: "AbstractSet[int]", edges: "Iterable[tuple[int, int]]"
+#: Edge types read from the broader ``b`` end down to the narrower ``a`` end: ``a`` is a kind of,
+#: a part of, or a valid value of ``b`` (REQ-1387, DOWN IS FROM BROADER TO NARROWER).
+NARROWING_EDGE_TYPES = ("KIND_OF", "PART_OF", "VALID_VALUE_OF")
+#: Edge types grounding crosses both ways: the two words mean the same thing. Every other edge
+#: type (related-to, derived-from, replaces, translation-of, antonym-of, preferred-term-for)
+#: conducts no grounding.
+EQUIVALENCE_EDGE_TYPES = ("SYNONYM_OF",)
+
+
+def _down(
+    conducting: "AbstractSet[int]", edges: "Iterable[tuple[int, int, str]]"
 ) -> dict[int, set[int]]:
-    adjacency: dict[int, set[int]] = {}
-    for a, b in edges:
-        if a in conducting and b in conducting and a != b:
-            adjacency.setdefault(a, set()).add(b)
-            adjacency.setdefault(b, set()).add(a)
-    return adjacency
+    """Each in-service term's next terms down toward data: the terms narrower than it, and its
+    synonyms. A term is never reached by going up to a shared parent and back down."""
+    down: dict[int, set[int]] = {}
+    for a, b, rel_type in edges:
+        if a not in conducting or b not in conducting or a == b:
+            continue
+        if rel_type in NARROWING_EDGE_TYPES:
+            down.setdefault(b, set()).add(a)
+        elif rel_type in EQUIVALENCE_EDGE_TYPES:
+            down.setdefault(a, set()).add(b)
+            down.setdefault(b, set()).add(a)
+    return down
+
+
+def _up(down: "Mapping[int, set[int]]") -> dict[int, set[int]]:
+    """``down`` reversed: each term's next terms up, the terms whose paths down run through it."""
+    up: dict[int, set[int]] = {}
+    for upper, lowers in down.items():
+        for lower in lowers:
+            up.setdefault(lower, set()).add(upper)
+    return up
 
 
 def grounded_term_ids(
-    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int, str]]", rooted: "AbstractSet[int]"
 ) -> set[int]:
-    """Term ids connected, over in-service terms, to a term holding a physical ref: every term
-    whose grounding is not ``not_grounded``.
+    """Term ids with a path down, over in-service terms, to a term holding a physical ref: every
+    term whose grounding is not ``not_grounded``. Down follows each edge type's direction
+    (:data:`NARROWING_EDGE_TYPES`, :data:`EQUIVALENCE_EDGE_TYPES`).
 
     Structural only: status and definition do not matter, and a deprecated or retired term
     conducts nothing. ``rooted`` is the set of term ids holding at least one physical ref, to a
@@ -357,11 +382,11 @@ def grounded_term_ids(
     column actually publishes.
     """
     conducting = _conducting(terms)
-    adjacency = _adjacency(set(conducting), edges)
+    up = _up(_down(set(conducting), edges))
     frontier = [tid for tid in rooted if tid in conducting]
     grounded = set(frontier)
     while frontier:
-        for neighbor in adjacency.get(frontier.pop(), ()):
+        for neighbor in up.get(frontier.pop(), ()):
             if neighbor not in grounded:
                 grounded.add(neighbor)
                 frontier.append(neighbor)
@@ -370,13 +395,13 @@ def grounded_term_ids(
 
 def _clean_ids(
     conducting: "Mapping[int, Mapping]",
-    adjacency: "Mapping[int, set[int]]",
+    up: "Mapping[int, set[int]]",
     rooted: "AbstractSet[int]",
     approved: "AbstractSet[int]",
 ) -> set[int]:
     """The terms with a path down to data that has no draft term strictly between the term and
-    the term at the data end. A term holding a binding is its own data end; a term next to one,
-    or next to an approved term that has such a path, has one too."""
+    the term at the data end. A term holding a binding is its own data end; a term directly above
+    one, or directly above an approved term that has such a path, has one too."""
     frontier = [tid for tid in rooted if tid in conducting]
     clean = set(frontier)
     while frontier:
@@ -384,7 +409,7 @@ def _clean_ids(
         # Only a binding (the data end) or an approved term may stand between a term and data.
         if current not in rooted and current not in approved:
             continue
-        for neighbor in adjacency.get(current, ()):
+        for neighbor in up.get(current, ()):
             if neighbor not in clean:
                 clean.add(neighbor)
                 frontier.append(neighbor)
@@ -392,7 +417,7 @@ def _clean_ids(
 
 
 def term_grounding(
-    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int, str]]", rooted: "AbstractSet[int]"
 ) -> dict[int, str]:
     """Every term's grounding (REQ-1387, GROUNDING LOOKS DOWN, STRICTLY BETWEEN).
 
@@ -404,17 +429,20 @@ def term_grounding(
     * ``grounded_pending`` -- every path down has a draft term in between;
     * ``not_grounded`` -- no path reaches data, or the term is deprecated or retired.
 
-    Paths run over in-service terms; a deprecated or retired term breaks the chain. A draft term
+    Down follows each edge type's direction (REQ-1387, DOWN IS FROM BROADER TO NARROWER): from a
+    broader term to the terms that are a kind of it, a part of it or a valid value of it, and
+    across a synonym either way; other edge types conduct nothing. Paths run over in-service
+    terms; a deprecated or retired term breaks the chain. A draft term
     at either end of a path counts against nothing: a draft abstract term drafted above an
     approved chain is grounded, and an auto-derived draft term at the data end leaves the chain
     above it unchanged.
     """
     terms = list(terms)
     conducting = _conducting(terms)
-    adjacency = _adjacency(set(conducting), edges)
+    up = _up(_down(set(conducting), edges))
     approved = {tid for tid, t in conducting.items() if t.get("approved")}
     reached = grounded_term_ids(terms, edges, rooted)
-    clean = _clean_ids(conducting, adjacency, rooted, approved)
+    clean = _clean_ids(conducting, up, rooted, approved)
     return {
         t["id"]: GROUNDED
         if t["id"] in clean
@@ -426,14 +454,15 @@ def term_grounding(
 
 
 def approvals_that_ground(
-    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int, str]]", rooted: "AbstractSet[int]"
 ) -> dict[int, list[int]]:
     """For each ``grounded_pending`` term, the draft terms whose approval alone makes it
     grounded (REQ-1387 findings: the term whose approval makes it grounded). A pending term no
     single approval grounds is absent."""
     terms = list(terms)
+    edges = list(edges)
     conducting = _conducting(terms)
-    adjacency = _adjacency(set(conducting), edges)
+    up = _up(_down(set(conducting), edges))
     approved = {tid for tid, t in conducting.items() if t.get("approved")}
     grounding = term_grounding(terms, edges, rooted)
     pending = {tid for tid, g in grounding.items() if g == GROUNDED_PENDING}
@@ -448,7 +477,7 @@ def approvals_that_ground(
         if tid not in approved and tid not in rooted and grounding[tid] != NOT_GROUNDED
     )
     for candidate in candidates:
-        clean = _clean_ids(conducting, adjacency, rooted, approved | {candidate})
+        clean = _clean_ids(conducting, up, rooted, approved | {candidate})
         for tid in sorted(pending & clean):
             out.setdefault(tid, []).append(candidate)
     return out
@@ -464,35 +493,35 @@ class AgentView:
 
     ``named`` maps each term an agent may see by name to its status (approved, or draft for a
     defined draft term). ``hops`` are the undefined terms an agent traverses with no name or
-    definition, each kept distinct. ``edges`` are the in-service edges between seen terms, named
-    or hop, so the shape of the lineage is unchanged.
+    definition, each kept distinct. ``edges`` are the edges between seen terms, named or hop,
+    each as ``(a, b, rel_type)``, so the shape of the lineage is unchanged.
     """
 
     named: "dict[int, str]"
     hops: "frozenset[int]"
-    edges: "tuple[tuple[int, int], ...]"
+    edges: "tuple[tuple[int, int, str], ...]"
 
     def seen(self) -> set[int]:
         return set(self.named) | set(self.hops)
 
 
 def agent_view(
-    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int, str]]", rooted: "AbstractSet[int]"
 ) -> AgentView:
     """The terms an agent may see, and how (REQ-1387): an approved term on a path to data; a
     defined draft term on a path to data that holds at least one approved term, marked draft; an
     undefined term on such a path only as an anonymous hop; nothing else -- nothing on a path with
     no approved term, nothing not grounded, nothing deprecated or retired.
 
-    A path to data runs over in-service terms and ends at the first term holding a binding: a
-    term holding one is its own path. Every simple path is walked; the terms between a start and
-    its binding are Concepts (terms holding no binding), which a curator creates by hand, so the
-    walk is over that small part of the graph.
+    A path to data runs down over in-service terms, in each edge type's direction, and ends at the
+    first term holding a binding: a term holding one is its own path. Every simple path is walked;
+    the terms between a start and its binding are Concepts (terms holding no binding), which a
+    curator creates by hand, so the walk is over that small part of the graph.
     """
     terms = list(terms)
     edges = list(edges)
     conducting = _conducting(terms)
-    adjacency = _adjacency(set(conducting), edges)
+    down = _down(set(conducting), edges)
     approved = {tid for tid, t in conducting.items() if t.get("approved")}
     on_approved_path: set[int] = set()
 
@@ -501,7 +530,7 @@ def agent_view(
             on_approved_path.update(path)
 
     def walk(path: list[int], members: set[int]) -> None:
-        for neighbor in sorted(adjacency.get(path[-1], ())):
+        for neighbor in sorted(down.get(path[-1], ())):
             if neighbor in members:
                 continue
             if neighbor in rooted:
@@ -525,7 +554,9 @@ def agent_view(
     }
     hops = frozenset(on_approved_path - set(named))
     seen = set(named) | hops
-    seen_edges = tuple(sorted({(a, b) for a, b in edges if a in seen and b in seen and a != b}))
+    seen_edges = tuple(
+        sorted({(a, b, r) for a, b, r in edges if a in seen and b in seen and a != b})
+    )
     return AgentView(named=named, hops=hops, edges=seen_edges)
 
 
@@ -537,11 +568,11 @@ def agent_paths(view: AgentView, rooted: "AbstractSet[int]", start: int) -> list
         return []
     if start in rooted:
         return [[start]]
-    adjacency = _adjacency(seen, view.edges)
+    down = _down(seen, view.edges)
     paths: list[list[int]] = []
 
     def walk(path: list[int]) -> None:
-        for neighbor in sorted(adjacency.get(path[-1], ())):
+        for neighbor in sorted(down.get(path[-1], ())):
             if neighbor in path:
                 continue
             if neighbor in rooted:

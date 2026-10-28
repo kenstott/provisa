@@ -82,9 +82,10 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-1584: the business glossary as queryable metadata. `grounding` restates
     # provisa.core.glossary.term_grounding in SQL rather than approximating it (REQ-1387): a term is
-    # grounded when some path down to a term holding a physical ref -- a column, or a whole table
-    # (REQ-1387, GROUNDED TO A TABLE) -- has no draft term strictly between, grounded_pending when
-    # every path has one, and not_grounded when no path over in-service terms reaches data.
+    # grounded when some path down (in each edge type's direction: conducting_edges) to a term
+    # holding a physical ref -- a column, or a whole table (REQ-1387, GROUNDED TO A TABLE) -- has no
+    # draft term strictly between, grounded_pending when every path has one, and not_grounded when
+    # no path over in-service terms reaches data.
     # `status` is the human-set one: draft, approved, deprecated or retired.
     # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
     # ontology schema is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
@@ -107,16 +108,25 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
                   SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
             JOIN in_service s ON s.id = r.term_id
         ),
+        -- Each conducting edge as (a, b): b is directly above a on a path down to data. A kind,
+        -- part or valid value (from_term_id) sits below the term it narrows (to_term_id); a
+        -- synonym conducts both ways; every other edge type conducts nothing (REQ-1387, DOWN IS
+        -- FROM BROADER TO NARROWER: provisa.core.glossary.NARROWING_EDGE_TYPES and
+        -- EQUIVALENCE_EDGE_TYPES).
         conducting_edges AS (
             SELECT e.from_term_id AS a, e.to_term_id AS b
             FROM glossary_term_edges e
             JOIN in_service sa ON sa.id = e.from_term_id
             JOIN in_service sb ON sb.id = e.to_term_id
+            WHERE e.rel_type IN ('KIND_OF', 'PART_OF', 'VALID_VALUE_OF', 'SYNONYM_OF')
+              AND e.from_term_id <> e.to_term_id
             UNION ALL
             SELECT e.to_term_id, e.from_term_id
             FROM glossary_term_edges e
             JOIN in_service sa ON sa.id = e.from_term_id
             JOIN in_service sb ON sb.id = e.to_term_id
+            WHERE e.rel_type = 'SYNONYM_OF'
+              AND e.from_term_id <> e.to_term_id
         ),
         grounded AS (
             SELECT id FROM rooted

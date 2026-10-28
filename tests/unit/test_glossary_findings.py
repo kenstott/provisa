@@ -123,7 +123,7 @@ async def test_no_data_and_a_plain_draft_is_no_finding(control_plane, monkeypatc
         assert note not in everything
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            await glossary_repo.add_edge(conn, ids["ledger"], ids["party"], "RELATED_TO")
+            await glossary_repo.add_edge(conn, ids["party"], ids["ledger"], "KIND_OF")
         assert not {ids["party"], ids["ledger"]} & set(await _found("no_data"))
 
 
@@ -175,8 +175,8 @@ async def test_a_pending_term_names_the_approval_that_grounds_it(control_plane, 
             )
             await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
             await glossary_repo.approve_term(conn, ids["ledger"], by=None)
-            await glossary_repo.add_edge(conn, ids["ledger"], middle, "RELATED_TO")
-            await glossary_repo.add_edge(conn, middle, note, "RELATED_TO")
+            await glossary_repo.add_edge(conn, middle, ids["ledger"], "KIND_OF")
+            await glossary_repo.add_edge(conn, note, middle, "KIND_OF")
         [finding] = (await _found("path_pending"))[ids["ledger"]]
         assert finding["code"] == "glossary.finding.path_pending_approve"
         assert finding["params"] == {"approve": "remark"}

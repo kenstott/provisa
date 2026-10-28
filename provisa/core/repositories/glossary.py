@@ -574,13 +574,13 @@ def _is_concept(node: dict) -> bool:
 class _TermGraph:
     """In-memory term graph for the dangling-abstract-term reachability check."""
 
-    def __init__(self, terms: dict[int, dict], edges: list[tuple[int, int]]):
+    def __init__(self, terms: dict[int, dict], edges: list[tuple[int, int, str]]):
         self.terms = terms
         self.edges = edges
 
     def remove(self, term_id: int) -> None:
         self.terms.pop(term_id, None)
-        self.edges = [(a, b) for a, b in self.edges if term_id not in (a, b)]
+        self.edges = [e for e in self.edges if term_id not in (e[0], e[1])]
 
     def dangling(
         self,
@@ -594,7 +594,7 @@ class _TermGraph:
         operation being judged), so its dependents never read as "already dangling".
         """
         adjacency: dict[int, set[int]] = {}
-        for a, b in self.edges:
+        for a, b, _ in self.edges:
             if a in excluded or b in excluded:
                 continue
             adjacency.setdefault(a, set()).add(b)
@@ -642,7 +642,11 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
     }
     edge_rows = (
         await conn.execute_core(
-            select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id)
+            select(
+                glossary_term_edges.c.from_term_id,
+                glossary_term_edges.c.to_term_id,
+                glossary_term_edges.c.rel_type,
+            )
         )
     ).fetchall()
     expert_rows = (
@@ -676,7 +680,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         }
         for r in term_rows
     }
-    return _TermGraph(terms, [(r.from_term_id, r.to_term_id) for r in edge_rows])
+    return _TermGraph(terms, [(r.from_term_id, r.to_term_id, r.rel_type) for r in edge_rows])
 
 
 def _rooted(graph: _TermGraph) -> set[int]:
@@ -725,7 +729,7 @@ def _is_curated(graph: _TermGraph, node: dict) -> bool:
         or node["retired"]
         or node["has_expert"]
         or node["tagged"]
-        or any(node["id"] in edge for edge in graph.edges)
+        or any(node["id"] in (a, b) for a, b, _ in graph.edges)
     )
 
 
@@ -2299,7 +2303,7 @@ class ImpactRefused(ValueError):
 
 def _agent_tables(
     terms: "dict[int, dict]",
-    edges: "list[tuple[int, int]]",
+    edges: "list[tuple[int, int, str]]",
     binds: "list[tuple[int, int, str | None]]",
 ) -> set[int]:
     """The tables an agent has a path to: those bound to a term it sees, named or as a hop."""

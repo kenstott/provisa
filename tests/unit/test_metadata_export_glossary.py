@@ -205,7 +205,8 @@ def test_a_term_reaching_data_only_through_a_draft_is_exported_pending():
         }
     )
     glossary["terms"][2]["approved"] = False  # party, between counterparty and customer
-    glossary["edges"].append({"from_term_id": 5, "to_term_id": 3, "rel_type": "KIND_OF"})
+    # party is a kind of counterparty: grounding runs down from counterparty through party.
+    glossary["edges"].append({"from_term_id": 3, "to_term_id": 5, "rel_type": "KIND_OF"})
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
@@ -357,3 +358,26 @@ def test_axioms_ride_along_with_the_terms_they_state():
         (1, f"{RDFS}subClassOf", 3, None),
         (1, f"{RDFS}range", None, f"{XSD}integer"),
     ]
+
+
+def test_an_approved_term_a_curator_deprecated_publishes_marked_and_a_retired_one_does_not():
+    """REQ-1387 (DOWN IS FROM BROADER TO NARROWER): the export publishes an approved term a
+    curator later deprecated, marked deprecated, so catalogs keep the marker; retired terms do
+    not publish."""
+    config = _config([_table("orders", columns=["cust_id"])])
+    glossary = _glossary()
+    glossary["terms"][0]["deprecation_asserted"] = True  # a curator deprecated customer
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert {(t.name, t.status) for t in snapshot.glossary_terms} == {
+        ("customer", "deprecated"),
+        ("party", "approved"),
+    }
+
+    glossary = _glossary()
+    glossary["terms"][0].update(retired=True, approved=False, deprecation_asserted=False)
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert "customer" not in {t.name for t in snapshot.glossary_terms}

@@ -342,7 +342,8 @@ async def test_a_term_grounded_only_in_a_table_is_grounded_and_conducts_to_its_n
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         async with db.acquire() as conn:
             assert ids["party"] not in await glossary_repo.grounded_ids(conn)
-            await glossary_repo.add_edge(conn, ids["ledger"], ids["party"], "KIND_OF")
+            # party is a kind of ledger: grounding runs down from ledger to party.
+            await glossary_repo.add_edge(conn, ids["party"], ids["ledger"], "KIND_OF")
             await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:

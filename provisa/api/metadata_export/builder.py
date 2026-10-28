@@ -652,7 +652,7 @@ def _glossary_assets(
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
     grounding = term_grounding(
         glossary.get("terms", []),
-        [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
+        [(e["from_term_id"], e["to_term_id"], e["rel_type"]) for e in glossary.get("edges", [])],
         set(refs_by_term) | classes,
     )
     published_roots = set(refs_by_term) | classes

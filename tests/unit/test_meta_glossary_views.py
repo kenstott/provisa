@@ -170,14 +170,15 @@ class TestGlossaryMetaViews:
 
     def test_a_draft_strictly_between_makes_a_term_pending(self, db: sqlite3.Connection) -> None:
         """REQ-1387 (GROUNDING LOOKS DOWN, STRICTLY BETWEEN), the SQL restatement of
-        core.glossary.term_grounding: counterparty reaches data only through draft party."""
+        core.glossary.term_grounding: counterparty reaches data only through draft party, a kind
+        of counterparty."""
         db.execute(
             "INSERT INTO glossary_terms (id, name, definition, is_abstract, deprecated, retired,"
             " export_excluded, approved, tenant_id)"
             " VALUES ('t-cp', 'counterparty', 'The other side.', 1, 0, 0, 0, 1, 'org1')"
         )
         db.execute(
-            "INSERT INTO glossary_term_edges VALUES ('e2', 't-cp', 't-party', 'KIND_OF', 'org1')"
+            "INSERT INTO glossary_term_edges VALUES ('e2', 't-party', 't-cp', 'KIND_OF', 'org1')"
         )
         grounding = lambda: {  # noqa: E731
             r["id"]: r["grounding"] for r in db.execute("SELECT id, grounding FROM _terms_ontology")

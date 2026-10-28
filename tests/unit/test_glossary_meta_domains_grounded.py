@@ -28,8 +28,12 @@ from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 
 # Terms: ROOTED holds a ref (and a stale declared domain); ABSTRACT declares the enterprise scope;
 # BARE has neither; UNDEFINED has no definition but an edge to ROOTED; RETIRED is out of service;
-# TOP is approved and reaches data only through draft UNDEFINED.
+# TOP is approved and reaches data only through draft UNDEFINED. Down follows each edge type's
+# direction (REQ-1387, DOWN IS FROM BROADER TO NARROWER): ROOTED is a kind of UNDEFINED, a kind of
+# TOP; SIBLING is another kind of UNDEFINED, holding no data; SYNONYM is a synonym of TOP; RELATED is
+# related to ROOTED; PART is a part of ROOTED.
 ROOTED, ABSTRACT, BARE, UNDEFINED, RETIRED, TOP = 1, 2, 3, 4, 5, 6
+SIBLING, SYNONYM, RELATED, PART = 8, 9, 10, 11
 
 
 async def _seed(conn) -> None:
@@ -60,6 +64,10 @@ async def _seed(conn) -> None:
         dict(id=UNDEFINED, name="Account", definition=""),
         dict(id=RETIRED, name="Client", definition="Old word", retired=True),
         dict(id=TOP, name="Holder", definition="Who holds an account", approved=True),
+        dict(id=SIBLING, name="Supplier", definition="Who sells to us", approved=True),
+        dict(id=SYNONYM, name="Owner", definition="Who holds an account", approved=True),
+        dict(id=RELATED, name="Order", definition="What a buyer places", approved=True),
+        dict(id=PART, name="Email", definition="A buyer's address", approved=True),
     ]
     for t in terms:
         await conn.execute_core(insert(glossary_terms).values(**t))
@@ -70,9 +78,18 @@ async def _seed(conn) -> None:
         await conn.execute_core(
             insert(glossary_term_domains).values(term_id=term_id, domain_id=domain)
         )
-    for a, b in ((UNDEFINED, ROOTED), (RETIRED, ROOTED), (TOP, UNDEFINED)):
+    for a, b, rel_type in (
+        (ROOTED, UNDEFINED, "KIND_OF"),
+        (ROOTED, RETIRED, "KIND_OF"),
+        (UNDEFINED, TOP, "KIND_OF"),
+        (SIBLING, UNDEFINED, "KIND_OF"),
+        (SYNONYM, TOP, "SYNONYM_OF"),
+        (RELATED, ROOTED, "RELATED_TO"),
+        (ROOTED, RELATED, "RELATED_TO"),
+        (PART, ROOTED, "PART_OF"),
+    ):
         await conn.execute_core(
-            insert(glossary_term_edges).values(from_term_id=a, to_term_id=b, rel_type="RELATED_TO")
+            insert(glossary_term_edges).values(from_term_id=a, to_term_id=b, rel_type=rel_type)
         )
 
 
@@ -108,7 +125,7 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
                 for r in (await conn.execute_core(select(glossary_terms))).fetchall()
             ]
             edges = [
-                (r.from_term_id, r.to_term_id)
+                (r.from_term_id, r.to_term_id, r.rel_type)
                 for r in (await conn.execute_core(select(glossary_term_edges))).fetchall()
             ]
             python_grounding = term_grounding(terms, edges, {ROOTED})
@@ -125,6 +142,10 @@ async def test_domains_and_groundedness_restate_the_python_rules(control_plane):
     assert flags[TOP] == "grounded_pending"
     assert flags[RETIRED] == "not_grounded"
     assert flags[BARE] == "not_grounded"
+    assert flags[SIBLING] == "not_grounded"  # never up to UNDEFINED and back down
+    assert flags[SYNONYM] == "grounded_pending"  # through TOP, then draft UNDEFINED
+    assert flags[RELATED] == "not_grounded"
+    assert flags[PART] == "not_grounded"  # a part of data is not grounded by it
 
 
 def test_a_term_reaches_its_domains_and_back():

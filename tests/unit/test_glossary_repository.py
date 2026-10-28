@@ -338,7 +338,8 @@ async def test_abstract_term_is_offered_only_while_a_chain_reaches_a_physical_re
         # Approved, in service, but wired to nothing: no chain, no data, not offered.
         assert await glossary_repo.search_terms(conn, "business date") == []
 
-        await glossary_repo.add_edge(conn, abstract_id, rooted["id"], "KIND_OF")
+        # order date is a kind of business date: grounding runs down from the broader term.
+        await glossary_repo.add_edge(conn, rooted["id"], abstract_id, "KIND_OF")
         [found] = await glossary_repo.search_terms(conn, "business date")
         assert (found["name"], found["status"], found["grounding"]) == (
             "business date",
