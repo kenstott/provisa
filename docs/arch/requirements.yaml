@@ -10998,9 +10998,12 @@
   feature: cypher-and-graph-analytics-writes
   priority: MUST
   type: constraint
-  description: DETACH DELETE (cascading delete across derived relationships) is not supported. Attempting
-    DETACH DELETE is a hard error at parse or translation time. Clients must explicitly DELETE each table
-    in the correct dependency order.
+  description: '[SUPERSEDED by REQ-2176, 2026-10-28 -- DETACH DELETE of a model node is governed: each junction
+    row it is an end of and its own row are deleted through governed writes, and a foreign-key relationship
+    is refused by name. Kept here for history; do not implement against it.] DETACH DELETE (cascading delete
+    across derived relationships) is not supported. Attempting DETACH DELETE is a hard error at parse or
+    translation time. Clients must explicitly DELETE each table in the correct dependency order. [END SUPERSEDED
+    BLOCK]'
   use_case: Explicit cascade prevention avoids accidental data deletion across unintended table relationships.
   code:
   - provisa/cypher/write_translator.py
@@ -47193,7 +47196,13 @@
     metadata plus routes through terms, under the agent-visibility rules above (an ungrounded term is never
     a route), and returns the relations the role may read, each with its route and trust. The agent-visibility
     rules above govern data discovery; term discovery follows this amendment. Both are offered on MCP and
-    the API as separate operations (search_terms, find_data).'
+    the API as separate operations (search_terms, find_data). (Amended 2026-10-27, DOWN IS FROM BROADER
+    TO NARROWER:) 2026-10-28: ''down'' follows each edge type''s direction: from a broader term to the terms
+    that are a kind of it, a part of it or a valid value of it, and from a term to its bindings. Synonym
+    edges conduct both ways, as the two words mean the same thing. Related-to, derived-from, replaces, translation-of
+    and antonym-of edges do not conduct grounding. So a term is never grounded in a sibling''s data by going
+    up to a shared parent and back down. The metadata export publishes an approved term a curator later
+    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -90190,7 +90199,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
     the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
     lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
-    selected. The separate term graph and product graph implementations are replaced by these presets.'
+    selected. The separate term graph and product graph implementations are replaced by these presets. (Amended
+    2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
+    1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
+    page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
+    with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
+    one graph has optional layers for a product''s commands, its quality checks, links to other products
+    and product lineage, off by default in snippets and available in the full view.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -90516,7 +90531,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     after last use lapses (a deployment setting, default 7 days), or when the principal''s rights change.
     Every client lists its labels and relationship types (db.labels and db.relationshipTypes include them).
     A SQL temporary table keeps PostgreSQL''s per-connection scope (REQ-615); only the graph session is
-    the principal''s.'
+    the principal''s. (Amended 2026-10-27, GOVERNED MERGE ON MODEL DATA:) 2026-10-28, maintainer decision:
+    MERGE of a model node or of a registered junction relationship is a governed write: it matches on the
+    given properties (a node on its label''s key or the stated properties, a relationship on its two ends
+    and its type) and creates only when nothing matches, each part through the governed write path (write
+    grants, row rules); ON CREATE SET and ON MATCH SET apply to the part they name. MERGE of a foreign-key
+    relationship is refused by name. MERGE of session objects is unchanged.'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
@@ -90631,6 +90651,45 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-1387
   - REQ-2177
+  stakeholders:
+  - data-steward
+- id: REQ-2179
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'The glossary''s Generate with AI menu gains From a document: a steward provides a document
+    (PDF, Word, Markdown, HTML) and the glossary proposes the concepts it defines and uses (business concepts,
+    roles, organization types, policies, processes, regulations), never named individuals (a particular
+    person, company or policy edition). Within the document, mentions of one concept are resolved into one
+    candidate term, its variants (case, plural, articles, abbreviations, references such as "as defined
+    in Section 2") proposed as synonyms; one word used with two meanings in different sections becomes two
+    candidates, each scoped by its passages. An explicit definition ("X means ...", a definitions section)
+    is the primary definition; other explanations are kept as supporting passages; with no explicit definition
+    a synthesized one is proposed, marked synthesized and listing every passage it drew from; explanations
+    that cannot both be true are shown side by side, never blended. Every proposal keeps its source passages
+    (document, section or page, quoted text). Candidates are then matched against the glossary''s terms
+    and synonyms and proposed as merges or synonyms rather than duplicates, and handed to the existing Generate
+    Relationships action. Everything lands as draft in a review queue the steward works through (accept,
+    edit, merge, reject, bulk accept), run by Polly under the org''s AI settings and the role''s LLM budget
+    (REQ-1174). The existing Generate Definitions and Generate Relationships actions likewise produce drafts.
+    (Amended 2026-10-27, FIND TERMS IN A DOCUMENT, BY FILE OR URL:) 2026-10-28: the menu item is ''Find
+    terms in a document''. The document is given as a file or as an http(s) URL, since many policies and
+    regulations are published as web pages; a URL is fetched once and its content treated as the document,
+    its source passages citing the URL. A later step, not part of this requirement, may follow links from
+    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960).'
+  scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
+    and "CX" elsewhere
+    When a steward runs From a document
+    Then one draft term Client is proposed with the definitions-section text as its definition, "customer" and "CX" as
+    proposed synonyms, each with its source passage
+    And if the glossary already holds Customer, a merge into it is proposed instead of a duplicate'
+  related_reqs:
+  - REQ-1387
+  - REQ-1174
   stakeholders:
   - data-steward
 

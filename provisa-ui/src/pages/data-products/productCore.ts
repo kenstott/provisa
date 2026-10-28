@@ -17,14 +17,22 @@
 import { runSql } from "../../api/admin";
 import {
   dataGraphql,
+  operation,
   rootQuery,
   rowsOf,
   type MetaReader,
   type Selection,
 } from "../../api/metaGraph";
 import {
+  COLUMN_FACTS,
+  RANK_TYPES,
+  TABLE_FACTS,
+  TERM_FACTS,
+  rankChains,
+  rankField,
   toGraphData,
   type ProductRow as GraphProductRow,
+  type TermEdgeRow,
 } from "../../components/graph3d/productGraphData";
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
@@ -54,7 +62,11 @@ export const PRODUCT_FIELDS = [
 
 type ProductRow = Record<(typeof PRODUCT_FIELDS)[number], unknown>;
 
-const TERM: Selection = { fields: ["id", "name", "definition", "is_abstract", "live"] };
+// With the facts the graph's hover card and detail panel give a term (REQ-2174).
+const TERM: Selection = {
+  fields: [...new Set([...TERM_FACTS.fields, "is_abstract", "live"])],
+  rels: TERM_FACTS.rels,
+};
 
 // REQ-1443 clause 10: a checker table's rules, parsed from its contract at registration.
 const DQ_RULES: NonNullable<Selection["rels"]>[string] = {
@@ -80,12 +92,14 @@ const PANEL: Selection = {
           "contract",
         ],
         rels: {
+          // Its checkers' latest scans: its quality on the graph (REQ-2174).
+          ...TABLE_FACTS.rels,
           checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
           dq_rules: DQ_RULES,
           table_columns: {
             to: "table_columns",
             sel: {
-              fields: ["column_name", "column_key"],
+              fields: ["column_name", "column_key", ...COLUMN_FACTS],
               rels: {
                 glossary_ref: {
                   alias: "glossaryRef",
@@ -158,6 +172,8 @@ export interface CoreTerm {
   definition: string | null;
   is_abstract: boolean;
   live: boolean;
+  status?: string | null;
+  experts?: { user_id: string; kind: string }[] | null;
 }
 
 export interface CoreTable {
@@ -172,11 +188,15 @@ export interface CoreTable {
   // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
   contract?: StoredContract | string | null;
   checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;
+  checked_by?: { latest_outcome: "pass" | "fail" | null; latest_run_at: string | null }[] | null;
   dq_rules?: CoreDqRule[] | null;
   table_columns?:
     | {
         column_name: string;
         column_key: string;
+        data_type?: string | null;
+        description?: string | null;
+        masks?: unknown;
         glossary_ref?: { term_id: number; term?: CoreTerm | null }[] | null;
       }[]
     | null;
@@ -313,6 +333,9 @@ export interface ProductCore {
   tags?: string[];
   terms?: CoreTerm[];
   edges?: CoreEdge[];
+  /** REQ-2174: the term edges ranking one term under another, the graph's term hierarchy;
+   * absent when the role cannot read them. */
+  ranks?: TermEdgeRow[];
   queries: { graphql: string; sql: string; jsonapi: string };
 }
 
@@ -407,13 +430,21 @@ export async function loadProductCore(
 ): Promise<ProductCore | null> {
   const queries = panelQueries(m, product);
   if (queries === null) return null;
-  const [nested, sql, jsonapi] = await Promise.all([
+  const ranksField = rankField(m, RANK_TYPES);
+  const [nested, sql, jsonapi, ranked] = await Promise.all([
     dataGraphql<{ data_products: PanelRow[] }>(queries.graphql, {}, role),
     runSql(queries.sql, role),
     fetch(queries.jsonapi, { headers: { "X-Provisa-Role": role } }).then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
       return (await r.json()) as { data: { attributes: Record<string, unknown> }[] };
     }),
+    ranksField === null
+      ? null
+      : dataGraphql<{ _term_edges: TermEdgeRow[] | null }>(
+          operation("TermRanks", [ranksField]),
+          {},
+          role,
+        ),
   ]);
   if (sql.error) throw new Error(sql.error);
   const [row] = nested.data_products;
@@ -439,6 +470,7 @@ export async function loadProductCore(
       ? await termClosure(m, role, [...bound.values()])
       : undefined,
     edges: rowsOf(row.edges),
+    ranks: ranked === null ? undefined : rowsOf(ranked._term_edges),
     queries,
   };
 }
@@ -451,10 +483,13 @@ export function coreGraph(core: ProductCore): GraphData {
     id: core.product.id,
     name: core.product.name,
     domain_id: core.product.domainId,
+    status: core.product.status,
+    owner_role: core.product.ownerRole,
     member_tables: core.tables ?? [],
     commands: core.commands ?? [],
     edges: core.edges ?? [],
     tags: (core.tags ?? []).map((tag_id) => ({ tag_id })),
   };
-  return toGraphData([row], null, null);
+  // The term hierarchy above the bound terms, when the role reads the term edges.
+  return toGraphData([row], core.ranks ? rankChains([row], core.ranks) : null, null);
 }
