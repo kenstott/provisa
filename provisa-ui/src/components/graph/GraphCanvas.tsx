@@ -38,7 +38,7 @@ import cytoscape from "cytoscape";
 import "./canvas/cytoscape-extensions";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
 import { applyHighlight } from "./canvas/highlight";
-import { computeLabelSizeRanges, applyNodeSize, resolveNodeLabel } from "./canvas/canvas-helpers";
+import { computeLabelSizeRanges, applyNodeSize } from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
 import { CanvasControls } from "./canvas/CanvasControls";
 import { NodeRingMenuOverlay } from "./canvas/NodeRingMenuOverlay";
@@ -190,7 +190,6 @@ export function GraphCanvas({
     clusterLevelRef,
     sizeByPropertyRef,
     colorOverridesRef,
-    labelPropertyRef,
     sizeMultiplierRef,
     sizeOverridesRef,
     computeHullsRef,
@@ -786,11 +785,8 @@ export function GraphCanvas({
     if (!cy) return;
     cy.batch(() => {
       cy.nodes().forEach((node) => {
-        const n = node.data("_node") as GNode | undefined;
-        if (!n) return;
-        const prop = labelPropertyRef.current[n.label];
-        const txt = prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n);
-        node.style("label", txt);
+        // Back to the stylesheet's caption, which reads the label property and places the text.
+        node.removeStyle("label");
       });
     });
   }, [labelProperty]);

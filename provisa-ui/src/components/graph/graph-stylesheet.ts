@@ -11,6 +11,7 @@
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, RelLineOverride } from "./graph-model";
 import type { CyElement } from "./cytoscape-types";
+import { resolveNodeLabel } from "./canvas/canvas-helpers";
 
 export const PIN_SVG =
   "data:image/svg+xml;utf8," +
@@ -38,7 +39,7 @@ export function nodeCaption(
   if (!n) return String(label ?? "");
   const prop = labelProperty[n.label];
   if (prop) return String(n.properties[prop] ?? n.id);
-  return String(n.properties["name"] ?? n.id);
+  return resolveNodeLabel(n);
 }
 
 /** Average glyph width as a share of the font size, for the labels' sans-serif face. */
