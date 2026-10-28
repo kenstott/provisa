@@ -41,6 +41,15 @@ _NOW = 1_800_000_000.0
 
 
 @pytest.fixture(autouse=True)
+def _graph_sessions(monkeypatch):
+    """REQ-2176: every Cypher statement reads its principal's graph session; the stand-in state
+    has no control plane to hold one, so each is given an empty one."""
+    from tests.unit.graph_session_double import empty_graph_sessions
+
+    empty_graph_sessions(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
 def _frozen_clock(monkeypatch):
     from types import SimpleNamespace
 

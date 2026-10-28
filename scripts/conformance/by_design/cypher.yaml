@@ -68,3 +68,18 @@
     zone database's (Europe/Stockholm in 1818 is +01:12:12), not another database's.
   case: "^Temporal2 - .*::\\[6\\] Should parse date time with named time zone from string #5$"
   reason: "1818-07-21T21:40:32\\.142\\+01:12:12\\[Europe/Stockholm\\]"
+
+- kind: adapted
+  group: Setups that build their graph
+  became: >-
+    the scenario's setup and its query run in one ephemeral session over Bolt, acting as a role
+    that reaches no model domain: the setup's CREATEs make the session's own nodes and
+    relationships, and the query reads them.
+  reason: "\\[in a session\\]$"
+
+- kind: adapted
+  group: The empty graph
+  became: >-
+    the query runs in a fresh ephemeral session over Bolt, acting as a role that reaches no model
+    domain: MATCH sees only the session's own nodes, of which there are none.
+  reason: "\\[in a session, empty graph\\]$"

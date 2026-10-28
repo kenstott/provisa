@@ -33,8 +33,8 @@ table again whole, its columns grown and widened (:mod:`.types`).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass, field, fields, is_dataclass
+from typing import Any, get_args, get_origin, get_type_hints
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import types
@@ -174,6 +174,53 @@ class Graph:
     @property
     def empty(self) -> bool:
         return not (self.node_keys or self.labels or self.types)
+
+
+def _to_json(value: Any) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _to_json(getattr(value, f.name)) for f in fields(value)}
+    if isinstance(value, (set, frozenset)):
+        return sorted((_to_json(v) for v in value), key=repr)
+    if isinstance(value, tuple):
+        return [_to_json(v) for v in value]
+    if isinstance(value, dict):
+        if all(isinstance(k, str) for k in value):
+            return {k: _to_json(v) for k, v in value.items()}
+        # A JSON object's keys are strings: a dict keyed otherwise (pair_counts' tuples) is
+        # held as its [key, value] pairs.
+        return [[_to_json(k), _to_json(v)] for k, v in value.items()]
+    return value
+
+
+def _from_json(value: Any, kind: Any) -> Any:
+    origin, args = get_origin(kind), get_args(kind)
+    if origin is set:
+        return {_from_json(v, args[0]) for v in value}
+    if origin is tuple:
+        if len(args) == 2 and args[1] is Ellipsis:
+            return tuple(_from_json(v, args[0]) for v in value)
+        return tuple(_from_json(v, a) for v, a in zip(value, args, strict=True))
+    if origin is dict:
+        if args[0] is str:
+            return {k: _from_json(v, args[1]) for k, v in value.items()}
+        return {_from_json(k, args[0]): _from_json(v, args[1]) for k, v in value}
+    if isinstance(kind, type) and is_dataclass(kind):
+        hints = get_type_hints(kind)
+        return kind(**{f.name: _from_json(value[f.name], hints[f.name]) for f in fields(kind)})
+    if kind in (str, int):
+        return kind(value)
+    raise TypeError(f"Graph field type {kind!r} has no JSON form")
+
+
+def graph_to_json(g: Graph) -> dict[str, Any]:
+    """``g`` as JSON (REQ-2176: kept in the control plane between a session's statements)."""
+    return {f.name: _to_json(getattr(g, f.name)) for f in fields(g)}
+
+
+def graph_from_json(held: dict[str, Any]) -> Graph:
+    """The Graph :func:`graph_to_json` gave ``held`` for."""
+    hints = get_type_hints(Graph)
+    return Graph(**{f.name: _from_json(held[f.name], hints[f.name]) for f in fields(Graph)})
 
 
 _KEY = "cypher"

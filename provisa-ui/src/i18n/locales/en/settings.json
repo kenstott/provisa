@@ -758,6 +758,10 @@
         "label": "Temporary tables per session",
         "help": "The most temporary tables one session (a pgwire connection, or one SQL request) may hold at once. A table past it is refused; drop one first. 0 allows none."
       },
+      "graph_session_retention_days": {
+        "label": "Graph session retention",
+        "help": "How long a principal's graph session (the labels, nodes and relationships its Cypher statements made, on every client) is kept after its last use. It also ends when the principal clears it, or when the principal's roles or their grants change."
+      },
       "max_rows": {
         "label": "Rows per temporary table",
         "help": "The most rows one temporary table may hold. A temporary table is a real table in the engine's store that a role with no write right can fill, so it is bounded. A table that would pass the limit is refused; nothing is cut to fit."

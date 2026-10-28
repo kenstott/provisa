@@ -423,3 +423,31 @@ def test_a_statement_that_is_not_cypher_is_invalid_input_as_neo4j_says_it():
     the token the statement cannot start with is "Invalid input"."""
     with pytest.raises(CypherParseError, match=r"^Invalid input 'SELECT'"):
         parse_cypher("SELECT * FROM Employees WHERE name = $name")
+
+
+@pytest.mark.parametrize(
+    ("query", "orders"),
+    [
+        # openCypher's long sort directions (TCK ReturnOrderBy*, WithOrderBy*).
+        ("UNWIND [3, 1] AS x RETURN x ORDER BY x DESCENDING", ["DESC"]),
+        ("UNWIND [3, 1] AS x RETURN x ORDER BY x ASCENDING", ["ASC"]),
+        # A comma or bracket inside a map, list or call is the item's own.
+        (
+            "WITH {a: 1, b: 2} AS m RETURN m ORDER BY m.a + size([1, 2]) ASCENDING, m.b DESC",
+            ["ASC", "DESC"],
+        ),
+        ("UNWIND [1] AS x RETURN x ORDER BY [x, 2][1]", ["ASC"]),
+    ],
+)
+def test_an_order_by_item_reads_to_its_direction(query, orders):
+    assert [o.direction for o in parse_cypher(query).order_by] == orders
+
+
+def test_a_pattern_written_as_a_predicate_is_whether_it_matches():
+    # openCypher: WHERE (n)-[:R]->() is EXISTS { (n)-[:R]->() }; (a) - (b) is still arithmetic.
+    from provisa.cypher.expr_parser import parse_expression
+    from provisa.gql.expr_ast import Binary, SubqueryExpr, Unary
+
+    assert isinstance(parse_expression("(n)-[:R]->()"), SubqueryExpr)
+    assert isinstance(parse_expression("NOT (n)<--()"), Unary)
+    assert isinstance(parse_expression("(a) - (b)"), Binary)

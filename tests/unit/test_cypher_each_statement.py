@@ -47,7 +47,7 @@ def _request():
 async def test_each_statement_is_run_on_its_own_and_answered_in_order(monkeypatch):
     ran: list[CypherRequest] = []
 
-    async def one(body, request, query_id, x_provisa_stats):
+    async def one(body, request, x_provisa_stats):
         ran.append(body)
         if "Secret" in body.query:
             raise PermissionError("Label Secret is not visible to role analyst")
@@ -55,7 +55,7 @@ async def test_each_statement_is_run_on_its_own_and_answered_in_order(monkeypatc
             return cypher_router.cypher_error(400, "cypher.refused", "Unknown label Broken")
         return JSONResponse(content={"columns": ["n"], "rows": [[body.query]]})
 
-    monkeypatch.setattr(cypher_router, "cypher_query", one)
+    monkeypatch.setattr(cypher_router, "_answer", one)
     body = CypherRequest(
         query="MATCH (a:Pets) RETURN a; MATCH (s:Secret) RETURN s; "
         "MATCH (b:Broken) RETURN b; MATCH (o:Owners) WHERE o.id = $id RETURN o",

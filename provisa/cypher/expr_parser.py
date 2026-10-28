@@ -356,6 +356,13 @@ def _build_grammar() -> pp.ParserElement:
 
     paren = (_LPAR + expr + _RPAR).set_parse_action(lambda t: Paren(inner=_e(t[0])))
 
+    # A pattern written as a predicate, (n)-[:R]->(): whether it matches, EXISTS { the pattern }.
+    pattern_node = r"\(\s*\w*(?:\s*:\s*\w+)*\s*(?:\{[^{}]*\})?\s*\)"
+    pattern_rel = r"\s*(?:<-|-)\s*(?:\[[^\[\]]*\])?\s*(?:->|-)\s*"
+    pattern_pred = pp.Regex(rf"{pattern_node}(?:{pattern_rel}{pattern_node})+").set_parse_action(
+        lambda t: SubqueryExpr(kind="EXISTS", body=cast(Any, _BodyText(str(t[0]))))
+    )
+
     atom = (
         _number
         | _string
@@ -372,6 +379,7 @@ def _build_grammar() -> pp.ParserElement:
         | pattern_comp
         | list_lit
         | map_lit
+        | pattern_pred
         | paren
         | _variable
     )

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sys
 import urllib.error
@@ -45,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 import by_design
+import cypher_tck_bolt as bolt
 
 # --- the feature files -------------------------------------------------------------------------
 
@@ -207,12 +209,21 @@ class _Value:
         if ch == "(":
             return ("node", self._element(")"))
         if ch == "<":
+            # A path: to the > after its last node, outside any (, [ or { (an arrow's > is in
+            # none, but follows a ] or -, never a node's closing ")").
             self.i += 1
-            depth = 1
             start = self.i
-            while depth:
-                depth += {"<": 1, ">": -1}.get(self.s[self.i], 0)
+            depth = 0
+            while True:
+                c = self.s[self.i]
+                if c in "([{":
+                    depth += 1
+                elif c in ")]}":
+                    depth -= 1
+                elif c == ">" and depth == 0 and self.s[start : self.i].rstrip().endswith(")"):
+                    break
                 self.i += 1
+            self.i += 1
             return ("path", self.s[start : self.i - 1])
         if ch in "'\"":
             return self._string(ch)
@@ -315,7 +326,9 @@ def tck_value(text: str) -> Any:
 
 def _same(expected: Any, got: Any, ignore_list_order: bool) -> bool:
     if isinstance(expected, tuple):
-        return False  # a node, relationship or path: not compared (see the module docstring)
+        # A node, relationship or path: as a session's Bolt answer gives it (cypher_tck_bolt).
+        kind, text = expected
+        return bolt.same_element(bolt.expected_element(kind, text, tck_value), got, _same)
     if expected is None or isinstance(expected, bool):
         return got is expected or got == expected and type(got) is type(expected)
     if isinstance(expected, int):
@@ -351,11 +364,51 @@ def _same(expected: Any, got: Any, ignore_list_order: bool) -> bool:
 
 # --- running a scenario ------------------------------------------------------------------------
 
-#: A setup that builds a graph: Provisa's graph is the model's, so the scenario cannot run.
+#: A setup that builds a graph: Provisa's graph is the model's, so the scenario cannot run --
+#: unless a Bolt session is configured, in which a setup's statements build the session's own
+#: graph (REQ-2167, amended 2026-10-27).
 _NOT_RUNNABLE = (
     ("having executed", "builds its graph with a statement"),
     ("there exists a procedure", "declares a test procedure"),
 )
+
+#: What a session scenario's outcome is marked with, for its adapted group (by_design/cypher.yaml).
+IN_A_SESSION = "[in a session]"
+EMPTY_GRAPH = "[in a session, empty graph]"
+
+#: A refusal of a setup's write that waits on another piece of work, named so.
+_WAITS = (
+    ("has one CREATE clause", "waits on step 2c (multi-CREATE)"),
+    ("MERGE", "waits on step 4a landing (MERGE)"),
+    ("DETACH", "waits on write form"),
+    ("REMOVE", "waits on write form"),
+    ("a SET must say", "waits on write form"),
+    ("Cannot parse SET assignment", "waits on write form"),
+)
+
+
+def _session_scenario(scenario: Scenario) -> str | None:
+    """How a scenario runs in a Bolt session, when one is configured: IN_A_SESSION for a setup
+    that builds its graph, EMPTY_GRAPH for an empty graph its query matches a pattern on (the
+    session's graph alone is empty); None to run it over HTTP."""
+    if not bolt.configured():
+        return None
+    texts = [s.text for s in scenario.steps if s.keyword in ("Given", "And")]
+    if any(t.startswith("there exists a procedure") or t.startswith("the ") for t in texts):
+        return None
+    if any(t.startswith("having executed") for t in texts):
+        return IN_A_SESSION
+    query = next((s.doc or "" for s in scenario.steps if s.text.startswith("executing query")), "")
+    if "an empty graph" in texts and re.search(r"\bMATCH\b", query, re.I):
+        return EMPTY_GRAPH
+    return None
+
+
+def _waiting(reason: str) -> str:
+    for marker, waits in _WAITS:
+        if marker in reason and reason.startswith(("refused (400): setup:", "refused (400):")):
+            return f"{waits}: {reason}"
+    return reason
 
 
 @dataclass
@@ -392,8 +445,19 @@ def _rows(body: Any) -> tuple[list[str], list[list[Any]]]:
 
 
 def run(scenario: Scenario, base: str, role: str) -> Outcome:
+    session = _session_scenario(scenario)
+    setups: list[str] = []
+
     def out(status: str, reason: str = "") -> Outcome:
-        return Outcome(scenario.feature, scenario.name, status, reason)
+        if session is None:
+            return Outcome(scenario.feature, scenario.name, status, reason)
+        marked = _waiting(reason) if status == "failed" else reason
+        return Outcome(scenario.feature, scenario.name, status, f"{marked} {session}".strip())
+
+    def ask(query: str, params: dict) -> tuple[int, Any]:
+        if session is None:
+            return _post(base, role, query, params)
+        return bolt.run(setups, query, params)
 
     params: dict = {}
     query: str | None = None
@@ -401,6 +465,9 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
         text = step.text
         if step.keyword == "Given" or (step.keyword == "And" and query is None):
             if text in ("an empty graph", "any graph"):
+                continue
+            if session is not None and text.startswith("having executed"):
+                setups.append(step.doc or "")
                 continue
             if text == "parameters are" and step.table:
                 params = {r[0]: tck_value(r[1]) for r in step.table}
@@ -414,12 +481,12 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
         if text.startswith("executing control query"):
             return out("not_runnable", "checks state with a control query")
         if "should be raised" in text:
-            status, body = _post(base, role, query, params)
+            status, body = ask(query, params)
             if status >= 400:
                 return out("passed")
             return out("failed", f"expected {text.split(' should')[0][2:]}; the query ran")
         if text.startswith("the result should be"):
-            status, body = _post(base, role, query, params)
+            status, body = ask(query, params)
             if status >= 400:
                 detail = (body or {}).get("detail") if isinstance(body, dict) else body
                 return out("failed", f"refused ({status}): {str(detail)[:200]}")
@@ -434,8 +501,6 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
                 expected = [[tck_value(c) for c in r] for r in expected_raw]
             except ValueError as exc:
                 return out("failed", f"expected value unreadable: {exc}")
-            if any(isinstance(v, tuple) for r in expected for v in r):
-                return out("failed", "returns nodes, relationships or paths (not compared)")
             ignore = "ignoring element order" in text
             ordered = "in order" in text
             if len(rows) != len(expected):
@@ -500,8 +565,23 @@ def report(outcomes: list[Outcome], version: str) -> dict:
         for o in outcomes
         if o.status in ("failed", "not_runnable")
     ]
-    failures, excluded = by_design.classify(unmet, by_design.groups("cypher"))
+    declared = by_design.groups("cypher")
+    failures, excluded = by_design.classify(unmet, declared)
     ran = passed + len(failures)
+    # A scenario run in a session is adapted: its group says what its setup became.
+    adapted = by_design.adapted(
+        [
+            {
+                "feature": o.feature,
+                "scenario": o.scenario,
+                "reason": o.reason,
+                "outcome": o.status,
+            }
+            for o in outcomes
+            if o.status in ("passed", "failed")
+        ],
+        declared,
+    )
     return {
         "surface": "cypher",
         "suite": "openCypher TCK",
@@ -514,6 +594,7 @@ def report(outcomes: list[Outcome], version: str) -> dict:
         "by_design": excluded,
         "pass_rate": round(passed / ran, 4) if ran else None,
         "failures": failures,
+        "adapted": adapted,
     }
 
 
@@ -526,6 +607,10 @@ def markdown(doc: dict) -> str:
         f"{doc['not_runnable']} not runnable by design.",
         "",
         *by_design.table(doc["by_design"]),
+        "",
+        "### Adapted",
+        "",
+        *by_design.adapted_lines(doc["adapted"]),
         "",
         "| Feature | Scenario | Reason |",
         "| --- | --- | --- |",
@@ -540,6 +625,10 @@ def markdown(doc: dict) -> str:
 def main(argv: list[str]) -> int:
     features, version, base, role, authorization, out_json, out_md = argv
     _CREDENTIAL["Authorization"] = authorization
+    # A Bolt session for the scenarios whose setup builds their graph (REQ-2167, amended
+    # 2026-10-27): the job's Bolt endpoint and the TCK session user's token, from the job's env.
+    if os.environ.get("CONFORMANCE_BOLT_URI"):
+        bolt.configure(os.environ["CONFORMANCE_BOLT_URI"], os.environ["CONFORMANCE_SESSION_TOKEN"])
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
     outcomes = []
     for s in scenarios:

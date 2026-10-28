@@ -159,6 +159,19 @@ DECLARED: list[Setting] = [
         min=1,
         unit="rows",
     ),
+    # --- A principal's graph session (REQ-2176) ------------------------------------------------
+    # Live: read at each sweep. A graph session unused this long is ended.
+    Setting(
+        key="temp_tables.graph_session_retention_days",
+        card="limits",
+        type="int",
+        effect="live",
+        req="REQ-2176",  # 7: a principal's graph session lasts a week after its last use
+        env="PROVISA_GRAPH_SESSION_RETENTION_DAYS",
+        default=7,
+        min=1,
+        unit="days",
+    ),
     Setting(
         key="limits.engine_query_timeout",
         card="limits",

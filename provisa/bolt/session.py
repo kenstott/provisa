@@ -350,7 +350,7 @@ class BoltSession:
         identity = await self._authenticate(app_state, scheme, principal, credentials)
         if identity is None:
             return None
-        roles = self._selectable_roles(app_state, identity)
+        roles = await self._selectable_roles(app_state, identity)
         if not roles:
             return None
         self._credential_org = identity.active_org_id
@@ -395,22 +395,25 @@ class BoltSession:
             return None
 
     @staticmethod
-    def _selectable_roles(app_state, identity) -> list[str]:
+    async def _selectable_roles(app_state, identity) -> list[str]:
         """The roles this identity may select, mapped role first (REQ-273, REQ-551).
 
-        The server derives them from the validated identity — the claim-mapped role plus whatever
-        the identity's own assignments carry — and keeps only those that exist as compiled
-        contexts. A role the identity does not hold is not selectable, whatever database the
-        client names.
+        The server derives them from the validated identity — the claim-mapped role plus its
+        assignments, as every transport reads them (provisa.auth.held_assignments) — and keeps
+        only those that exist as compiled contexts. A role the identity does not hold is not
+        selectable, whatever database the client names.
         """
-        from provisa.auth.role_mapping import resolve_assignments, resolve_role
+        from provisa.auth.held_assignments import held_assignments
+        from provisa.auth.role_mapping import resolve_role
 
         default_role = app_state.auth_config.get("default_role")
         if not default_role:
             # No admin default: an identity matching no mapping rule is refused, not escalated.
             raise RuntimeError("bolt auth requires auth.default_role to be configured")
         mapped = resolve_role(identity, app_state.auth_config.get("role_mapping", []), default_role)
-        held = [a.role_id for a in resolve_assignments(identity)]
+        held = [
+            a.role_id for a in await held_assignments(app_state, identity, identity.active_org_id)
+        ]
         ordered = [mapped, *[r for r in held if r != mapped]]
         return [r for r in ordered if r in app_state.contexts]
 
@@ -1809,16 +1812,19 @@ async def _execute_cypher(
         # Try write path first; fall through to read path if it doesn't parse as a write.
         from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
 
+        # Only the parse decides the path: an error the write itself raises is its answer, never
+        # taken for "not a write" and sent on to the read path.
         try:
             parse_cypher_write(cypher)
+        except CypherWriteParseError:
+            pass
+        else:
             return (
                 *await _execute_write_cypher(
                     cypher, parameters, role_id, ctx, include_ops, app_state
                 ),
                 None,
             )
-        except CypherWriteParseError:
-            pass
 
         model_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
         label_map = seam.label_map(model_map, temp)
@@ -1947,5 +1953,6 @@ async def _execute_write_cypher(
         # source see the values, never their names. A relationship's ends and a RETURN are read
         # as every read is (written).
         return await written(write_ast, translator, parameters, _read, _write)
-    except CypherParamError as exc:
+    except (CypherParamError, CypherWriteParseError) as exc:
+        # A write the translator refuses (a label it cannot write, say) is refused in its words.
         raise ValueError(str(exc)) from exc
