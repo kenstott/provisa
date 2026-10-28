@@ -1517,11 +1517,12 @@ def _json_list(value: Any) -> list:
 
 
 async def _load_tracked_functions_and_webhooks(  # REQ-042
-    conn: Any, raw_config: dict | None, tables: list[dict]
+    conn: Any, raw_config: dict | None, tables: list[dict], domains: list[dict]
 ) -> tuple[list[dict], list[dict]]:
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks.
     ``tables`` are the registered tables this build serves: a statement command's contract is
-    derived against them (REQ-2001)."""
+    derived against them (REQ-2001). ``domains`` are the domains the build's schemas are generated
+    over: a command's GraphQL field is prefixed by its domain's alias among them (REQ-471)."""
     from provisa.api.app import state
 
     assert state.model_db is not None, (
@@ -1614,20 +1615,19 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
 
     check_names([*tracked_functions, *tracked_webhooks])
 
-    # The prefixed alias MUST match the GraphQL field name the schema generator emits, which uses
-    # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
+    # The prefixed alias MUST match the GraphQL field name the schema generator emits
+    # (actions_schema), which takes the domain's alias from domain_alias_map over the same domains
+    # (pet-store -> "ps"; orders, whose "o" ops and ontology also compute, -> "orders"). Otherwise
     # _split_action_fields can't find the domain-prefixed field and the command falls through to the
-    # table compiler as an "Unknown root query field" (REQ-1156).
+    # table compiler as an "Unknown mutation field" (REQ-1156, REQ-471).
     from provisa.compiler.naming import apply_convention as _apply_conv
-    from provisa.compiler.naming import domain_gql_alias as _dgql
+    from provisa.compiler.naming import domain_alias_map as _domain_alias_map
+    from provisa.compiler.naming import domain_to_sql_name as _domain_to_sql_name
 
-    _domains_cfg = (raw_config or {}).get("domains", []) or []
-    _alias_stored = {
-        d["id"]: d.get("graphql_alias") for d in _domains_cfg if isinstance(d, dict) and d.get("id")
-    }
+    _aliases = _domain_alias_map(domains)
 
     def _domain_prefix(domain_id: str) -> str:
-        return _dgql(domain_id, _alias_stored.get(domain_id))
+        return _aliases.get(domain_id) or _domain_to_sql_name(domain_id)
 
     _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
     # The GraphQL field name applies the active naming convention to the command name (add_pet ->

@@ -3297,7 +3297,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
-            conn, raw_config, tables
+            conn, raw_config, tables, domains
         )
         # REQ-1677, REQ-2155: child-precedence RLS -- a role's own rule for a table (REQ-1679: or
         # an action) stands, else its parents' rules ORed.
