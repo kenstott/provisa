@@ -89521,7 +89521,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     earlier versions are kept read-only. Buyers and the ODCS export see the current version, and the Contracts
     panel steps back through earlier versions. The parts derived live from the member (physical type, required,
     keys, quality rules from its checks) are not versioned and are shown apart from the versioned fields,
-    visibly marked as live, so a reader never mistakes them for part of a version.'
+    visibly marked as live, so a reader never mistakes them for part of a version. (Amended 2026-10-28,
+    THE DECLARED LOGICAL TYPE IS PROMISED BY DEFAULT:) Each schema property''s logicalType (ODCS: string,
+    integer, number, boolean, date, timestamp, object, array) is declared and versioned with the contract;
+    its physicalType stays live from the member. Every contract has one built-in promise check: it fails
+    when a member column''s live type no longer fits the logical type the current contract version declares
+    for it (a date become a string, a number become text), and passes on a change of width, length or precision
+    within the same logical type, which stays an accepted risk unless a check covers it. A failing type
+    check is handled as any failing promise check, by the data quality steward; nothing is re-versioned
+    by it.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
