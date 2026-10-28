@@ -378,8 +378,8 @@ EMPTY_GRAPH = "[in a session, empty graph]"
 
 #: A refusal of a setup's write that waits on another piece of work, named so.
 _WAITS = (
-    ("has one CREATE clause", "waits on multi-CREATE"),
-    ("MERGE", "waits on write form"),
+    ("has one CREATE clause", "waits on step 2c (multi-CREATE)"),
+    ("MERGE", "waits on step 4a landing (MERGE)"),
     ("DETACH", "waits on write form"),
     ("REMOVE", "waits on write form"),
     ("a SET must say", "waits on write form"),

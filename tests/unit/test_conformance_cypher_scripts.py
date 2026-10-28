@@ -321,7 +321,7 @@ def test_a_setup_waiting_on_a_write_form_is_named_so(scenarios, monkeypatch):
     )
     outcome = tck.run(scenarios[3], "http://x", "org_admin")
     assert outcome.status == "failed"
-    assert outcome.reason.startswith("waits on multi-CREATE: refused (400): setup:")
+    assert outcome.reason.startswith("waits on step 2c (multi-CREATE): refused (400): setup:")
 
 
 @pytest.mark.parametrize(
