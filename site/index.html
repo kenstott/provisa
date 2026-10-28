@@ -176,7 +176,7 @@
 
     <section class="positioning" aria-label="What Provisa is">
       <div class="container">
-        <p class="positioning-line">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. It borrows from Unix, Terraform and Kubernetes: a few composable primitives, declared once, reconciled continuously.</p>
+        <p class="positioning-line">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, <a href="/why/ontology">ontology</a> and governance from one model. Nothing to keep in sync. It borrows from Unix, Terraform and Kubernetes: a few composable primitives, declared once, reconciled continuously.</p>
       </div>
     </section>
 
@@ -267,7 +267,7 @@
           policy service. When one changes, the others are wrong until someone catches it.
           <em>The descriptions drift, and nothing keeps them in step.</em>
         </p>
-        <p class="whatis-name">One model: sources, metrics, ontology and governance.</p>
+        <p class="whatis-name">One model: sources, metrics, <a href="/why/ontology">ontology</a> and governance.</p>
         <p class="whatis-def">
           You describe your data once: sources, tables, relationships, who may see what.
           Everything else is generated from that one description — the APIs, the legal join
@@ -901,6 +901,18 @@
           </details>
 
           <details>
+            <summary>Why does my AI agent give different answers to the same question?</summary>
+            <p>
+              Somewhere in its reasoning, the agent turns your words into a query, and it
+              guesses what the words mean from table and column names. Provisa lets you define
+              the terms your organization uses, bind them to the data they mean and have a
+              steward approve them. An agent can then find data through approved, grounded terms,
+              and its answer cites the term, the route and the data it used.
+            </p>
+            <a class="more" href="/why/ontology">Shared meaning for agents</a>
+          </details>
+
+          <details>
             <summary>Does it work in an airgap?</summary>
             <p>
               The embedded profile ships the entire runnable system, precompiled UI
@@ -976,6 +988,7 @@
         <a href="/why/no-lock-in">No lock-in</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
         <a href="/vs/starburst">vs Starburst</a>
         <a href="/vs/denodo">vs Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
