@@ -90095,7 +90095,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edges and lineage are not drawn in this view. It is the existing graph view laid out with ELK''s layered
     algorithm in fixed lane partitions, so every interaction (clicking through to a node''s page, hover,
     selection, the detail panel) is kept, and its diagram can be copied as Mermaid text. The 3D view stays
-    the free-form explorer.'
+    the free-form explorer. (Amended 2026-10-27, EVERY LANE NODE INFORMS AND LINKS:) 2026-10-28: every node
+    of the lane diagram carries what helps a reader understand and move on, in its hover card and the detail
+    panel, with each name a link to its own page: a term its definition, status and steward; a column its
+    type, its sensitivity or mask, its description and its table''s column; a table its domain, source,
+    freshness or row count where known, and quality status; a product its status, owner and member count;
+    and a ''+N columns'' node the names of the columns it holds.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
