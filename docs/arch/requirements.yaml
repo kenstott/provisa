@@ -89158,7 +89158,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     generated rather than declared, one view for owner and consumer, and two lineage views. It is resolved
     before the product is declared green. (Amended 2026-10-25, ONE CONTRACT PER MEMBER:) An output port
     is one member table, so a product has one contract per member table, as one ODCS contract describes
-    one dataset.'
+    one dataset. (Amended 2026-10-27, A CONTRACT SHOWS EVERY ODCS ELEMENT, COMPACTLY:) 2026-10-28: a declared
+    contract holds, and the product page shows, every element of the ODCS 3.1 standard: its fundamentals
+    (id, name, version, status, domain, data product, tenant, description: purpose, limitations, usage),
+    its schema (each object, and each property''s name, logical and physical type, required, unique, primary
+    key, classification, description and examples), its quality rules, its SLA properties, its support channels,
+    team and roles, its servers, its pricing, its custom properties and tags. The Contracts panel presents
+    them compactly: a schema table''s rows are a single line of text in height, with no extra vertical space.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
