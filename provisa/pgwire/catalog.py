@@ -114,6 +114,46 @@ _SCALAR_NAMES = frozenset(
 )
 
 
+# REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): the catalog functions clients call (psql describe.c,
+# pgAdmin, DBeaver) that the catalog's rewrite answers inside a catalog statement. Called on its
+# own -- a statement reading no table -- one is answered the same way, not sent to the engine.
+_STANDALONE_CATALOG_FUNCTIONS = frozenset(
+    {
+        "pg_encoding_to_char",
+        "pg_get_function_arguments",
+        "pg_get_function_identity_arguments",
+        "pg_get_function_result",
+        "pg_get_function_sqlbody",
+        "pg_get_functiondef",
+        "pg_get_indexdef",
+        "pg_get_partition_constraintdef",
+        "pg_get_partkeydef",
+        "pg_get_ruledef",
+        "pg_get_serial_sequence",
+        "pg_get_statisticsobjdef_columns",
+        "pg_get_statisticsobjdef_expressions",
+        "pg_get_triggerdef",
+        "pg_get_userbyid",
+        "pg_relation_is_publishable",
+        "pg_tablespace_location",
+        "quote_ident",
+        "pg_relation_size",
+        "pg_total_relation_size",
+        "pg_indexes_size",
+    }
+)
+
+
+def _calls_a_catalog_function_alone(tree) -> bool:
+    import sqlglot.expressions as exp
+
+    if any(True for _ in tree.find_all(exp.Table)):
+        return False
+    return any(
+        fn.name.lower() in _STANDALONE_CATALOG_FUNCTIONS for fn in tree.find_all(exp.Anonymous)
+    )
+
+
 @functools.lru_cache(maxsize=4096)
 def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     """Return 'INTERCEPT' or 'PASS_THROUGH'. A function of the statement text alone — asked on
@@ -155,6 +195,8 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         for col in tree.find_all(exp.Column):
             if col.name.lower() in _SCALAR_NAMES:
                 return "INTERCEPT"
+        if _calls_a_catalog_function_alone(tree):
+            return "INTERCEPT"
         for node in tree.walk():
             if type(node).__name__ in ("CurrentUser", "CurrentDatabase", "CurrentSchema"):
                 return "INTERCEPT"
