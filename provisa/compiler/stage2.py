@@ -365,6 +365,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
         # such a read is refused as unregistered.
         gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
+    # And, unqualified, its field name: the domain-prefixed ``sa__orders`` a domain_prefix schema
+    # exposes, which the validator admits as naming the table (sql_validator). Unresolved, it was
+    # read ungoverned under that name wherever the route happened to find one. A semantic name
+    # another table holds stays that table's; a Class is named only under the ontology schema.
+    for meta in ctx.tables.values():
+        if not is_class_table_id(meta.table_id):
+            gov.table_map.setdefault(meta.field_name, meta.table_id)
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")

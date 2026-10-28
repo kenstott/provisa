@@ -628,3 +628,41 @@ def test_a_bare_name_a_class_shares_with_a_table_resolves_to_the_table() -> None
     in_ontology = exp.Table(this=exp.to_identifier("staff"), db=exp.to_identifier("ontology"))
     assert table_id_of(bare, gov.table_map) == staff_id
     assert table_id_of(in_ontology, gov.table_map) == class_table_id(staff_term)
+
+
+def test_a_bare_name_a_class_shares_with_a_table_is_lowered_to_the_table() -> None:
+    # A keyed table is grounded in a Class named for it (REQ-2141): ``orders_live`` and the Class
+    # ``orders_live``. Counted as two tables of that name, the bare ref read as ambiguous and was
+    # left unlowered, so the engine was handed ``orders_live`` and found no such table.
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from provisa.compiler.sql_rewrite import normalize_table_refs
+
+    live_id, live_term = 8, 80
+    live = {
+        "id": live_id,
+        "source_id": "files",
+        "domain_id": "sales",
+        "schema_name": "main",
+        "table_name": "orders_live",
+        "columns": [_col("id", "integer")],
+    }
+    rows, refused = class_tables([live], {live_id: live_term}, {live_term: "orders live"}, [])
+    assert refused == {} and rows[0]["table_name"] == "orders_live"
+    ctx = CompilationContext()
+    ctx.tables = {
+        t["table_name"] + str(t["id"]): TableMeta(
+            table_id=t["id"],
+            field_name=t["table_name"],
+            type_name=t["table_name"].title(),
+            source_id=t["source_id"],
+            catalog_name=t["source_id"],
+            schema_name=t["schema_name"],
+            table_name=t["table_name"],
+            domain_id=t["domain_id"],
+        )
+        for t in [live, *rows]
+    }
+    assert '"main"."orders_live"' in normalize_table_refs("SELECT id FROM orders_live", ctx)
+    assert '"ontology"."orders_live"' in normalize_table_refs(
+        "SELECT id FROM ontology.orders_live", ctx
+    )
