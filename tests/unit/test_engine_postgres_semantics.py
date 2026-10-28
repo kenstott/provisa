@@ -112,3 +112,14 @@ def test_infinity_is_written_as_postgresql_writes_it():
             "-infinity",
             struct.pack("!q", -0x8000000000000000),
         )
+
+
+def test_a_function_named_in_pg_catalog_is_that_function():
+    # psql, pgjdbc and the conformance probe name built-ins as pg_catalog."fn"(...): it is the
+    # function, as PostgreSQL resolves it, not a column of a relation named pg_catalog.
+    assert _on_duckdb("SELECT pg_catalog.abs(-1) AS v") == [(1,)]
+    assert _on_duckdb("SELECT pg_catalog.\"upper\"('a') AS v") == [("A",)]
+    assert _on_duckdb('SELECT pg_catalog."abs"(NULL::bigint) AS v') == [(None,)]
+    # Named as PostgreSQL names it, though DuckDB spells it otherwise.
+    assert _on_duckdb("SELECT pg_catalog.char_length('abc') AS v") == [(3,)]
+    assert _on_duckdb("SELECT pg_catalog.lower(pg_catalog.btrim('  X ')) AS v") == [("x",)]
