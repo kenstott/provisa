@@ -97,9 +97,29 @@ def role_ids(claims: list[str]) -> list[str]:
     return sorted({c.partition(":")[0] for c in claims})
 
 
-def claims_of(identity: Any) -> list[str]:
-    """The roles a principal holds: its role claims and its derived roles."""
-    return sorted({*(identity.roles or []), *(identity.derived_roles or {})})
+#: The principal of an unsecured deployment and of a local MCP client: whoever sends a request.
+ANONYMOUS = "anonymous"
+
+
+def claims_of(user_id: str, roles: Any, derived: Any) -> list[str]:
+    """The roles a principal holds: its role claims and its derived roles. The anonymous
+    principal holds none: an unsecured request names whichever role it acts as, and that is no
+    change of rights -- its session ends only when cleared or past its retention."""
+    if user_id == ANONYMOUS:
+        return []
+    return sorted({*(roles or []), *(derived or ())})
+
+
+def principal(state: Any, identity: Any) -> tuple[str, list[str]]:
+    """``identity``'s graph-session principal and the roles it holds, alike on every client: the
+    derived roles the HTTP middleware bound with it, or, for a transport that authenticates its
+    own caller, those its attributes give it (``auth.derived_roles.principal_of``)."""
+    derived = identity.derived_roles
+    if derived is None:
+        from provisa.auth.derived_roles import principal_of
+
+        derived = principal_of(state, identity)[1]
+    return identity.user_id, claims_of(identity.user_id, identity.roles, derived)
 
 
 def _sorted(items: Any) -> list:

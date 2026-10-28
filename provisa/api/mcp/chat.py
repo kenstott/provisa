@@ -1340,10 +1340,11 @@ async def _run_sql(state: Any, role: str, sql: str, args: dict) -> dict:
     return result
 
 
-async def _render_graph(state: Any, role: str, cypher: str, layout: str) -> dict:
+async def _render_graph(state: Any, role: str, cypher: str, layout: str, *, request: Any) -> dict:
     """render_graph for the chat: the statement checked as a Graph page navigate is, run under
     the role, and drawn as a PNG the chat panel shows with its download and its way to the Graph
-    page. The model gets what was drawn, never the picture."""
+    page. The model gets what was drawn, never the picture. It runs in the graph session of the
+    user behind the chat (REQ-2176), as the Cypher page's own statements do."""
     import asyncio
     import base64
 
@@ -1354,7 +1355,13 @@ async def _render_graph(state: Any, role: str, cypher: str, layout: str) -> dict
         raise ValueError(
             f"Not drawn: {read.problem}. Correct the statement and call render_graph again."
         )
-    ran = await mcp_tools.run_cypher(state, role, cypher)
+    from provisa.api import graph_session
+
+    if request is None:
+        raise ValueError("render_graph draws for the user behind the chat: it has no request")
+    ran = await mcp_tools.run_cypher(
+        state, role, cypher, principal=graph_session.principal(state, request.state.identity)
+    )
     elements = ran["elements"]
     png = await asyncio.to_thread(mcp_tools.render_graph, elements, layout)
     nodes, relationships = len(elements["nodes"]), len(elements["edges"])
@@ -1418,7 +1425,9 @@ async def _execute_tool(
             result["sql_note"] = _unquoted_note(quote_error)
         return result
     if name == "render_graph":
-        return await _render_graph(state, role, args["cypher"], args.get("layout", "force"))
+        return await _render_graph(
+            state, role, args["cypher"], args.get("layout", "force"), request=request
+        )
     if name == "explain_sql":
         return await mcp_tools.explain_sql(state, role, args["sql"])
     # REQ-2114: the admin API the UI uses, read and run as the user behind this chat.
