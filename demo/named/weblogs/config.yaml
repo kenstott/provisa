@@ -341,7 +341,10 @@ views:
 # page shows them as Draft: raw (a log record's own line) and query (which joins the access log's
 # query string and the database log's query id -- two meanings for a curator to split). A log
 # record's key (file, line offset, entry) is its log table's Class, not terms of its own. The abstract terms below the derived ones are the shop's
-# ontology, grounded in the derived terms by their edges.
+# ontology, grounded in the derived terms by their edges: down from a broader term to the narrower
+# terms that are a kind, a part or a valid value of it, and across a synonym, never across RELATED_TO
+# or DERIVED_FROM (REQ-1387). A server error, a slow page and an abandoned interest are each a row a
+# view lists, not a column any table holds, so they stay related to the data, not grounded in it.
 glossary_terms:
 - name: access log
   approve: true
@@ -458,6 +461,9 @@ glossary_terms:
   definition: The database's message for a statement that failed.
   domains:
   - shop
+  edges:
+  - to: database error
+    rel_type: PART_OF
 - name: error severity
   approve: true
   definition: 'How serious a database log record is: LOG for a statement the database ran, ERROR for one
@@ -686,6 +692,9 @@ glossary_terms:
   definition: The SQLSTATE code of a database error, such as 23503 for a broken foreign key.
   domains:
   - shop
+  edges:
+  - to: database error
+    rel_type: PART_OF
 - name: statement
   approve: true
   definition: A SQL statement the shop sent its database.
@@ -802,10 +811,6 @@ glossary_terms:
     rel_type: KIND_OF
   - to: server error
     rel_type: RELATED_TO
-  - to: error
-    rel_type: RELATED_TO
-  - to: state
-    rel_type: RELATED_TO
 - name: page latency
   approve: true
   definition: 'How long a visitor waits for a page: the time nginx took to answer, most of it spent running
@@ -813,9 +818,9 @@ glossary_terms:
   domains:
   - shop
   edges:
-  - to: duration ms
-    rel_type: DERIVED_FROM
   - to: page ms
+    rel_type: SYNONYM_OF
+  - to: duration ms
     rel_type: RELATED_TO
   - to: request time
     rel_type: RELATED_TO

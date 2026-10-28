@@ -192,8 +192,13 @@ relationships:
 - {id: county-to-hazard-risk, alias: RISK_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: hazard_risk, target_column: county_fips}
 - {id: county-to-wildfire-risk, alias: WILDFIRE_RISK_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: wildfire_risk, target_column: county_fips}
 - {id: county-to-storm-damage, alias: STORMS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: storm_damage, target_column: county_fips}
-# The insurer's vocabulary: abstract terms, grounded through their edges in the terms the book's and
-# the risk tables' columns derive (insured value, eal rating, risk rating, line).
+# The insurer's vocabulary: abstract terms. Grounding runs down from a broader term to a narrower one
+# (KIND_OF, PART_OF, VALID_VALUE_OF, read from the narrower term) and across a synonym, never across
+# RELATED_TO (REQ-1387). Total insured value is the policies' insured value (tiv, summed), and a
+# policy's TIV is part of the exposure and the accumulation where it sits; line of business is the
+# policies' line. Probable maximum loss, expected annual loss and catastrophe peril have no column
+# that is one of them -- FEMA's eal and risk ratings rate a county, they are not its loss or its
+# perils -- so they stay related, not grounded.
 glossary_terms:
 - name: total insured value
   approve: true
@@ -202,15 +207,18 @@ glossary_terms:
   - insurance
   edges:
   - to: insured value
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
+  - to: tiv
+    rel_type: SYNONYM_OF
+  - to: exposure
+    rel_type: PART_OF
+  - to: accumulation
+    rel_type: PART_OF
 - name: exposure
   approve: true
   definition: 'What the insurer stands to pay if a hazard strikes: the total insured value it holds in a place.'
   domains:
   - insurance
-  edges:
-  - to: total insured value
-    rel_type: RELATED_TO
 - name: accumulation
   approve: true
   definition: 'Exposure concentrated in one place, so that one event -- a hurricane, an earthquake, a wildfire -- reaches many policies at once.'
@@ -252,4 +260,4 @@ glossary_terms:
   - insurance
   edges:
   - to: line
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF

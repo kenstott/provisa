@@ -11,7 +11,7 @@
 """The weblogs demo's glossary (REQ-1641, REQ-1387): demo/named/weblogs/config.yaml loaded as a
 deployment loads it, into a control plane of the test's own. The terms its columns derive are
 approved and seen by agents (REQ-1387) -- except those left Draft on purpose, and its abstract
-terms (the shop's ontology) are approved and seen, grounded through their edges."""
+terms (the shop's ontology) are approved, and seen where an edge leads them down to data."""
 
 # Requirements: REQ-1641, REQ-1387
 
@@ -49,6 +49,10 @@ ONTOLOGY = {
     "slow page",
     "abandoned interest",
 }
+#: Rows a view lists (the customers served 5xx, the slowest pages, the viewed but not bought), not
+#: a column any table holds, nor a kind, part or value of one: related to the data, not grounded in
+#: it (REQ-1387, DOWN IS FROM BROADER TO NARROWER), so no agent sees them.
+UNGROUNDED = {"server error", "slow page", "abandoned interest"}
 
 
 @pytest.fixture
@@ -128,7 +132,7 @@ async def test_the_ontology_is_abstract_live_and_in_the_shop_domain(loaded):
     terms, live, domains, _edges = loaded
     abstract = {name for name, t in terms.items() if t.is_abstract}
     assert abstract == ONTOLOGY
-    assert all(terms[name].id in live for name in ONTOLOGY)
+    assert {name for name in ONTOLOGY if terms[name].id not in live} == UNGROUNDED
     assert all(domains[terms[name].id] == {"shop"} for name in ONTOLOGY)
 
 
@@ -147,7 +151,10 @@ async def test_the_ontology_is_grounded_in_the_derived_terms(loaded):
         ("region", "PART_OF", "customer journey"),
         ("server error", "KIND_OF", "web request"),
         ("database error", "KIND_OF", "database statement"),
-        ("page latency", "DERIVED_FROM", "duration ms"),
+        ("error", "PART_OF", "database error"),
+        ("state", "PART_OF", "database error"),
+        ("page latency", "SYNONYM_OF", "page ms"),
+        ("page latency", "RELATED_TO", "duration ms"),
         ("slow page", "DERIVED_FROM", "page latency"),
         ("web request", "PART_OF", "shop operations"),
     } <= edges
