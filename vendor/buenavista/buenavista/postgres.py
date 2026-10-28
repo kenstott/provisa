@@ -815,8 +815,12 @@ class BVContext:
         self.session = session
         self.rewriter = rewriter
         self.params = params
-        self.process_id = random.randint(0, 2**32 - 1)
+        # Below 2**31: PostgreSQL's backend pid is an int4 (pg_backend_pid, pg_stat_activity.pid).
+        self.process_id = random.randint(1, 2**31 - 1)
         self.secret_key = random.randint(0, 2**32 - 1)
+        session.process_id = self.process_id
+        # The connection's socket, set when it is registered: what ends it from another thread.
+        self.connection = None
         self.stmts = {}
         self.portals = {}
         self.result_cache = {}
@@ -1028,6 +1032,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         try:
             ctx = self.handle_startup(self.server.conn)  # type: ignore[attr-defined]
             if ctx:
+                ctx.connection = self.request
                 self.server.ctxts[ctx.process_id] = ctx  # type: ignore[attr-defined]
             while ctx:
                 type_code = self.r.read_byte()

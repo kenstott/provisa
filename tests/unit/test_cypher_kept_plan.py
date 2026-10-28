@@ -40,6 +40,15 @@ _CYPHER = "MATCH (o:Orders) WHERE o.amount > $min RETURN o.amount AS amount"
 
 
 @pytest.fixture(autouse=True)
+def _graph_sessions(monkeypatch):
+    """REQ-2176: every Cypher statement reads its principal's graph session; the stand-in state
+    has no control plane to hold one, so each is given an empty one."""
+    from tests.unit.graph_session_double import empty_graph_sessions
+
+    empty_graph_sessions(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
 def _no_rebuild(monkeypatch):
     monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
 

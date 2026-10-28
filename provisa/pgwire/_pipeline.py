@@ -3843,7 +3843,19 @@ def _raw_cache_key(
     cacheable, _ = is_cacheable(sql)
     if not cacheable:
         return None
-    return raw_sql_cache_key(sql, params, role_id, wire_formats=wire_formats, as_of=as_of)
+    from provisa.compiler import temp_tables
+
+    # REQ-615, REQ-2176: a statement read in a session holding temporary tables -- a principal's
+    # graph session included -- is the session's own as its tables stand: keyed by the session and
+    # its generation, so a change to them never serves an earlier answer.
+    return raw_sql_cache_key(
+        sql,
+        params,
+        role_id,
+        wire_formats=wire_formats,
+        as_of=as_of,
+        session=temp_tables.slot_key(),
+    )
 
 
 def _entry_kind(wire_formats: list[int] | None) -> tuple[int, ...] | None:

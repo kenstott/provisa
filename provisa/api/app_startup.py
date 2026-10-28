@@ -208,6 +208,11 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     from provisa.pgwire.temp_keeper import keep as _keep_temp_tables
 
     state._temp_keeper_task = spawn_long_lived(_keep_temp_tables(state), name="temp-tables")
+    # REQ-2176: and sweeps the principals' graph sessions: one past its retention, or whose
+    # principal's roles changed, is ended.
+    from provisa.api.graph_session import keep as _keep_graph_sessions
+
+    state._graph_session_task = spawn_long_lived(_keep_graph_sessions(state), name="graph-sessions")
 
     if state.hot_manager is not None and state.federation_engine.is_connected():
         from provisa.cache.hot_tables import HotTableManager

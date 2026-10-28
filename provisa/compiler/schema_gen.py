@@ -328,6 +328,27 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                     t.type_name = to_type_name(t.field_name)
             else:
                 t.type_name = to_type_name(t.field_name)
+    if not domain_prefix:
+        _qualify_classes_named_as_tables(tables, domain_alias_map or {})
+
+
+def _qualify_classes_named_as_tables(
+    tables: list[_TableInfo], domain_alias_map: dict[str, str]
+) -> None:
+    """REQ-2163: a Class table never takes a model table's name. Where a served table and an
+    ontology Class compute one field name (domains unprefixed), the Class is named as a prefixed
+    schema names it -- its domain's alias, then its own name -- so the bare name, and the graph
+    label made from it, stay the table's; the Class is reached by its qualified label
+    (Ontology:Person). Its SQL relation, its domain's schema and its own name, is unchanged."""
+    from provisa.compiler.ontology_classes import is_class_table_id
+
+    taken = {t.field_name for t in tables if not is_class_table_id(t.table_id)}
+    for t in tables:
+        if not is_class_table_id(t.table_id) or t.field_name not in taken:
+            continue
+        prefix = domain_alias_map.get(t.domain_id) or domain_to_sql_name(t.domain_id)
+        t.field_name = f"{prefix}__{t.field_name}"
+        t.type_name = f"{prefix.upper()}__{to_type_name(t.field_name.split('__', 1)[1])}"
 
 
 #: REQ-1365 (amended 2026-10-27, "THE RESOLVER IS META'S"): the extension marking the Query
