@@ -25,7 +25,7 @@ from provisa.gql import spatial, temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
-from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
+from provisa.gql.translator_helpers import junction_edge_fields, via_column  # REQ-1586
 
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 
@@ -225,6 +225,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             ),
             expression=identity_second,
         )
+        if via is not None and via[1].identity_column is not None:
+            # REQ-2176: an edge of its own row is named by it, two between one pair apart.
+            identity = via_column(via[0], via[1].identity_column)
         # REQ-1586: a junction-backed edge's properties are its junction's columns, and the edge
         # names the table they were read from.
         edge_fields = junction_edge_fields(via)

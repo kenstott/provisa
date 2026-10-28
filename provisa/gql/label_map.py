@@ -133,6 +133,10 @@ class JunctionMapping:  # REQ-1586
     #: Each attribute's registered data type, (property, type), where it is known: what a read of
     #: every relationship (translator_union) reads it as, not its text.
     attribute_types: tuple[tuple[str, str], ...] = ()
+    #: The junction column a row's own identity is, where one row is one edge of its own: a
+    #: session relationship's rel_id (REQ-2176), so two between the same ends are two edges.
+    #: None for a model junction, whose edge is named by its two ends.
+    identity_column: str | None = None
     #: The type column's property name: a row's own type, read where a hop reads every row of the
     #: junction (an untyped hop), whatever its type.
     type_attribute: str | None = None

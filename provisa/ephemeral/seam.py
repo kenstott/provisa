@@ -29,6 +29,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import read
 from provisa.ephemeral.labels import Labelled, write_labels
+from provisa.ephemeral.delete import Deleted, delete
 from provisa.ephemeral.merge import merge
 from provisa.ephemeral.write import Created, Read, Write, create
 
@@ -59,7 +60,7 @@ async def write(
     state: Any,
     run_read: Read,
     run_write: Write,
-) -> Created | Labelled | None:
+) -> Created | Deleted | Labelled | None:
     """Do ``statement`` when the governing rule does not make it wholly the governed write (its
     governed parts through ``run_write``, the surface's own governed write); else None."""
     if session is None:
@@ -67,6 +68,8 @@ async def write(
     made = await create(statement, params, model, session, state, run_read, run_write)
     if made is None:
         made = await merge(statement, params, model, session, state, run_read, run_write)
+    if made is None:
+        made = await delete(statement, params, model, session, state, run_read, run_write)
     if made is not None:
         return made
     return await write_labels(statement, params, model, session, state, run_read)
