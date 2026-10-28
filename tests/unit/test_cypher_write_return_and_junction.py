@@ -110,7 +110,7 @@ class _Surface:
 
     async def write(self, sql: str, bound: list):
         self.write_calls.append((sql, bound))
-        return self.wrote
+        return (*self.wrote, None)
 
 
 def _run(query: str, params: dict, surface: _Surface):
@@ -268,7 +268,7 @@ class _Keys(_Surface):
 
     async def write(self, sql: str, bound: list):
         self.write_calls.append((sql, bound))
-        return self.answers.pop(0)
+        return (*self.answers.pop(0), None)
 
 
 _NEW_PERSON = 'INSERT INTO "conformance"."person" ("name") VALUES ($1) RETURNING "id" AS "_id"'

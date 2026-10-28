@@ -595,11 +595,14 @@ async def _each_statement(
     from provisa.api.error_answer import error_answer
     from provisa.cypher.parser import split_cypher_statements
 
+    from provisa.cypher.counters import counting_apart
+
     results: list[dict[str, Any]] = []
     for statement in split_cypher_statements(body.query):
         one = CypherRequest(query=statement, params=body.params)
         try:
-            answered = await _answer(one, request, x_provisa_stats)
+            with counting_apart():
+                answered = await _answer(one, request, x_provisa_stats)
         except (
             Exception
         ) as exc:  # allow-ble: answered as this statement's error, by the app's own handler for it
@@ -688,16 +691,19 @@ async def _session_write(
     async def run_write(statement: str, values: dict) -> None:
         await run(statement, values)
 
+    from provisa.cypher.counters import counting
+
     try:
-        made = await seam.write(
-            body.query,
-            body.params,
-            _build_label_map(surface.context, role_id, state),
-            temp,
-            state,
-            run_read,
-            run_write,
-        )
+        with counting() as counted:
+            made = await seam.write(
+                body.query,
+                body.params,
+                _build_label_map(surface.context, role_id, state),
+                temp,
+                state,
+                run_read,
+                run_write,
+            )
     except _SessionReadRefused as refused:
         return refused.response
     except CypherParseError as exc:
@@ -711,8 +717,21 @@ async def _session_write(
         assert held is not None, "an ephemeral write is made in the principal's graph session"
         held.wrote = True
     return JSONResponse(
-        content={"type": "cypher", "columns": [], "rows": [], "counters": vars(made)}
+        content={"type": "cypher", "columns": [], "rows": [], **_counters(counted, body.query)}
     )
+
+
+def _counters(counted: Any, statement: str) -> dict[str, Any]:
+    """A write's answer's ``counters``: the Bolt summary's ``stats`` (provisa.cypher.counters),
+    so both surfaces agree. A count that could not be made is no counters, and a warning."""
+    from provisa.core.statement_warnings import warn
+    from provisa.cypher.counters import count_unknown_warning
+
+    if counted.unknown:
+        for reason in counted.unknown:
+            warn(count_unknown_warning(statement, reason))
+        return {}
+    return {"counters": counted.stats()}
 
 
 async def _answer(
@@ -784,7 +803,7 @@ async def _answer(
 
         _wrote: list[QueryResult] = []
 
-        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]]]:
+        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
             # ONE write path: the translated statement goes through the pipeline every other
             # surface's write goes through (Bolt's Cypher writes included) — its admission (the
             # write right and the role's write grant, REQ-2074), its lowering to the source's own
@@ -798,12 +817,16 @@ async def _answer(
                 sdl_joins=False,
             )
             _wrote.append(await _execute_write_plan(plan, state))
-            return _wrote[-1].column_names, [list(row) for row in _wrote[-1].rows]
+            done = _wrote[-1]
+            return done.column_names, [list(row) for row in done.rows], done.rowcount
+
+        from provisa.cypher.counters import counting
 
         try:
             # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
             # admission's new-row check and the source see the values, never their names.
-            await written(_write_ast, _WT(_label_map), body.params, _read, _write)
+            with counting() as counted:
+                await written(_write_ast, _WT(_label_map), body.params, _read, _write)
         except (_CWPE, CypherParamError) as exc:
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         except _ReadRefused:
@@ -815,12 +838,19 @@ async def _answer(
         except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
             return cypher_error(500, "cypher.write_failed", f"Write failed: {exc}", error=str(exc))
         if _write_ast.returns:
-            return _answered[-1]  # the RETURN, read of the node the write created
+            # The RETURN, read of the node the write created, with what the write did.
+            returned = _answered[-1]
+            content = json.loads(bytes(returned.body))
+            content.update(_counters(counted, body.query))
+            headers = {k: v for k, v in returned.headers.items() if k.lower() != "content-length"}
+            return JSONResponse(content=content, status_code=returned.status_code, headers=headers)
         affected = sum(r.rowcount if r.rowcount is not None else len(r.rows) for r in _wrote)
 
         # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
         # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
-        return JSONResponse(content={"affected_rows": affected, "type": "cypher"})
+        return JSONResponse(
+            content={"affected_rows": affected, "type": "cypher", **_counters(counted, body.query)}
+        )
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError

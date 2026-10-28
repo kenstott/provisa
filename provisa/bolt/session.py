@@ -35,7 +35,8 @@ from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
-from provisa.core.statement_warnings import ServerWarning, warn
+from provisa.core.statement_warnings import warn
+from provisa.cypher.counters import count_unknown_warning
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -108,6 +109,7 @@ class _OpenResult:
     redirect: dict | None
     offset: int
     deadline: request_deadline.Deadline | None
+    stats: dict[str, Any]
 
 
 class BoltSession:
@@ -139,6 +141,9 @@ class BoltSession:
         # REQ-1194/REQ-1195: a materialize handle when the last RUN redirected to a sink instead of
         # buffering rows. Surfaced in the trailing PULL SUCCESS metadata — Bolt's side-channel.
         self._result_redirect: dict | None = None
+        # REQ-670, REQ-2176: what the last RUN wrote, as the trailing summary's ``stats`` (only
+        # the counters that are not zero; empty when it changed nothing or a count is unknown).
+        self._result_stats: dict[str, Any] = {}
         # REQ-1905: the request deadline of the RUN in flight — Bolt's own request timeout, ONE
         # for the request: opened when RUN starts executing, held while its records are pulled,
         # ended with the last PULL/DISCARD, a RESET or a failure.
@@ -215,6 +220,7 @@ class BoltSession:
             self._result_redirect,
             self._pull_offset,
             self._deadline,
+            self._result_stats,
         )
         self._deadline = None
         self._qid = None
@@ -238,6 +244,7 @@ class BoltSession:
         self._result_columns = result.columns
         self._result_rows = result.rows
         self._result_redirect = result.redirect
+        self._result_stats = result.stats
         self._pull_offset = result.offset
         self._deadline = result.deadline
         self._qid = qid
@@ -878,6 +885,7 @@ class BoltSession:
         deadline = request_deadline.open_request("bolt")
         from provisa.compiler import temp_tables
         from provisa.core.statement_warnings import collecting
+        from provisa.cypher.counters import counting
 
         # REQ-2176, REQ-615: every statement of the connection belongs to its one temporary-table
         # session.
@@ -890,6 +898,7 @@ class BoltSession:
                 self._principal_scope(_app_state, role_id),
                 request_deadline.bound(deadline),
                 collecting() as run_warnings,
+                counting() as counted,
             ):
                 columns, rows, redirect = await _execute_cypher(
                     cypher,
@@ -902,6 +911,9 @@ class BoltSession:
                 )
                 # The result is ready only now: not handed over once the deadline has passed.
                 deadline.check()
+                # A count the write could not make exactly is no counter at all: said instead.
+                for reason in counted.unknown:
+                    warn(count_unknown_warning(cypher, reason))
         except Exception as exc:
             deadline.stop()
             request_deadline.let_go(exc)  # what the interrupted frames held is released now
@@ -943,6 +955,7 @@ class BoltSession:
         self._result_columns = columns
         self._result_rows = rows
         self._result_redirect = redirect
+        self._result_stats = {} if counted.unknown else counted.stats()
         self._pull_offset = 0
         self._deadline = deadline  # held until the records have been pulled
 
@@ -1062,6 +1075,8 @@ class BoltSession:
             summary["bookmark"] = _bookmark()  # an auto-commit unit of work ends here
         if not has_more and self._result_redirect is not None:
             summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
+        if not has_more and self._result_stats:
+            summary["stats"] = self._result_stats
         self.send_success(summary)
 
     def handle_discard(self, fields: list[Any]) -> None:
@@ -1083,6 +1098,8 @@ class BoltSession:
         summary: dict = {"has_more": has_more}
         if not has_more and auto_commit:
             summary["bookmark"] = _bookmark()
+        if not has_more and self._result_stats:
+            summary["stats"] = self._result_stats
         self.send_success(summary)
 
     def handle_route(self) -> None:
@@ -1420,15 +1437,6 @@ async def _graph_counts(
 def _sum_known(counts: list[int | None]) -> int | None:
     """The sum, or None when any count is unknown."""
     return None if None in counts else sum(c for c in counts if c is not None)
-
-
-def count_unknown_warning(statement: str, reason: str) -> ServerWarning:
-    """What the browser's node/relationship totals say when one count could not be made."""
-    return ServerWarning(
-        code="cypher.count_unknown",
-        params={"statement": statement, "reason": reason},
-        message=f"A count could not be made, so the total is unknown: {statement}: {reason}",
-    )
 
 
 async def _impute_relationships(
@@ -1942,12 +1950,12 @@ async def _execute_write_cypher(
         columns, rows, _ = await _execute_cypher(query, params, role_id, include_ops=include_ops)
         return columns, rows
 
-    async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]]]:
+    async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
         plan = await _govern_and_route_compiled(
             sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
         )
         result = await _execute_plan(plan)
-        return result.column_names, [list(row) for row in result.rows]
+        return result.column_names, [list(row) for row in result.rows], result.rowcount
 
     try:
         # The run's parameters are bound into the statement ($name → $k): the admission and the
