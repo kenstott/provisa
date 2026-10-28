@@ -230,7 +230,7 @@ def test_parse_unknown_raises():
 
 
 # ---------------------------------------------------------------------------
-# parse_cypher_write — relationship writes rejected (REQ-665)
+# parse_cypher_write — relationship writes outside the junction forms rejected (REQ-665)
 # ---------------------------------------------------------------------------
 
 
@@ -244,7 +244,9 @@ def test_parse_unknown_raises():
     ],
 )
 def test_parse_relationship_write_rejected(query):
-    """Relationships are FK-derived, not stored edges — writing one is a hard error."""
+    """A relationship write outside the junction forms (REQ-665, amended 2026-10-28) -- ends
+    that are rows with no property, no type, or a relationship deleted or set -- is refused,
+    naming the relationship."""
     with pytest.raises(CypherWriteParseError, match="relationship"):
         parse_cypher_write(query)
 
