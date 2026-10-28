@@ -37,6 +37,7 @@ const PRODUCT = {
   purpose: "Health records of the pets in care",
   limitations: null,
   usage: "Join on pet_id",
+  createdAt: "2026-10-01T09:00:00+00:00",
 } as unknown as DataProduct;
 
 function fields(p: DataProduct): [string, string][] {
@@ -77,6 +78,8 @@ describe("a data product's read view", () => {
       ["Purpose", "Health records of the pets in care"],
       ["Limitations", "—"],
       ["Usage", "Join on pet_id"],
+      // When it was created, in the reader's language: read-only, it has no form field.
+      ["Created", new Date("2026-10-01T09:00:00+00:00").toLocaleString("en")],
     ]);
   });
 });
