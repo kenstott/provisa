@@ -1094,7 +1094,7 @@ def test_stop_all_servers_closes_every_endpoint(monkeypatch):
         def __init__(self, sid):
             self.sid = sid
 
-        def close(self):
+        def retire(self):  # the registry's stop (REQ-1824)
             closed.append(self.sid)
 
     monkeypatch.setattr(pr, "_ENDPOINTS", {"a": _Replica("a"), "b": _Replica("b")})
@@ -1110,7 +1110,7 @@ def test_stop_endpoint_closes_and_forgets_only_that_source(monkeypatch):  # REQ-
         def __init__(self, sid):
             self.sid = sid
 
-        def close(self):
+        def retire(self):  # the registry's stop (REQ-1824)
             closed.append(self.sid)
 
     from provisa.core.org_scope import source_key

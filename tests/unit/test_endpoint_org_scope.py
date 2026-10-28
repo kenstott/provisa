@@ -27,7 +27,7 @@ pytestmark = pytest.mark.unbound
 class _Replica:
     closed = False
 
-    def close(self) -> None:
+    def retire(self) -> None:  # the registry's stop (REQ-1824)
         self.closed = True
 
 

@@ -39,7 +39,7 @@ class _Server:
     def __init__(self) -> None:
         self.closed = False
 
-    def close(self) -> None:
+    def retire(self) -> None:  # the registry's stop (REQ-1824)
         self.closed = True
 
 

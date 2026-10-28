@@ -1722,17 +1722,22 @@ def test_registering_a_table_of_another_type_leaves_its_server_alone(monkeypatch
 
 def test_a_statement_on_the_source_starts_the_preparation(monkeypatch):
     asked: list[pr.PortPair] = []
+    # Held until the statement has been answered: a preparation that finished at once could be
+    # done before the statement's own check, and the statement then never saw it starting.
+    answered = threading.Event()
+
+    def prepare(ports, password):
+        asked.append(ports)
+        assert answered.wait(5)
+
     replica = _replica_with_server(
-        healthy=True,
-        exit_code=None,
-        catalog_ready=False,
-        prepare=lambda ports, password: asked.append(ports),
-        in_use=False,
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare, in_use=False
     )
     monkeypatch.setitem(pr._ENDPOINTS, source_key("test-askamerica"), replica)
     with pytest.raises(pr.SourceStillStartingError):
         pr.await_serving("test-askamerica", "govdata", 0)
     assert replica._catalog_wanted
+    answered.set()
     pr.await_serving("test-askamerica", "govdata", 5)  # the SQL page's rerun
     assert len(asked) == 1
 
@@ -2254,3 +2259,137 @@ def test_a_replica_build_leaves_any_other_server_to_the_attach(monkeypatch):
         lambda *a, **k: pytest.fail("only a slow-starting server is waited for"),
     )
     pr.serve_for_build(SimpleNamespace(id="sp", type=SourceType.sharepoint))
+
+
+# -- REQ-1824: a deleted source's server is stopped, and no server outlives its deletion -------
+
+
+class _StoppableProc:
+    """A spawned launcher that exits once it is terminated."""
+
+    def __init__(self) -> None:
+        self.terminated = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float) -> None:
+        del timeout
+
+    def exit_code(self) -> int | None:
+        return 0 if self.terminated else None
+
+
+def test_a_server_whose_start_was_in_flight_when_its_source_was_deleted_is_stopped(
+    tmp_path, monkeypatch, _default_scan
+):
+    """Seen in CI: a deleted AskAmerica source's server started after the deletion and idled
+    until the job ended. The deletion took the replica out of the registry while its start was
+    still resolving the bundle; the stop found no server, then the start spawned one that nothing
+    held. The retire waits for no start in flight, and the start stops what it spawned."""
+    bundle = _install_bundle(tmp_path / "bundle")
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    ready_org_folder()  # REQ-1992: the org's folder, as its runtime makes it ready
+    monkeypatch.setattr(aa, "_fetch", lambda key: (200, _ANSWER))
+    resolving, release = threading.Event(), threading.Event()
+    spawned: list[_StoppableProc] = []
+
+    def resolve(spec):
+        resolving.set()
+        assert release.wait(5)
+        return bundle
+
+    def spawn(command, cwd, env=None):
+        spawned.append(_StoppableProc())
+        return spawned[-1]
+
+    replica = pr.ConnectorReplica(
+        _source(),
+        resolver=SimpleNamespace(resolve=resolve),  # type: ignore[arg-type]
+        allocator=pr.PortAllocator(is_free=lambda port: True),
+        spawn=spawn,
+        health_check=lambda host, port: True,
+        port_is_free=lambda port: True,
+        prepare_catalog=lambda ports, password: None,
+    )
+    refused: list[BaseException] = []
+
+    def start() -> None:
+        try:
+            replica.start()
+        except pr.ServerRetired as exc:
+            refused.append(exc)
+
+    starter = threading.Thread(target=start)
+    starter.start()
+    assert resolving.wait(5)
+    began = time.monotonic()
+    replica.retire()
+    assert time.monotonic() - began < 1  # the deletion does not wait for the bundle
+    release.set()
+    starter.join(5)
+    assert [p.terminated for p in spawned] == [True]
+    assert len(refused) == 1 and "test-askamerica" in str(refused[0])
+    with pytest.raises(pr.ServerRetired):
+        replica.start()
+    assert len(spawned) == 1
+
+
+def test_a_caller_holding_a_deleted_sources_replica_starts_no_server(monkeypatch):
+    """An index walk or a save's background start holding the replica when the source is
+    deleted asks it for a server afterwards: none is started, and the refusal is a server error
+    an attach and an index walk report by name."""
+    monkeypatch.setattr(pr, "_ENDPOINTS", {})
+    held_replica = pr._endpoint_replica(_source())
+    pr.stop_endpoint("test-askamerica")
+    assert pr._ENDPOINTS == {}
+    with pytest.raises(pr.ServerRetired) as refused:
+        held_replica.start()
+    assert isinstance(refused.value, pr.server_start_errors())
+
+
+def test_no_server_is_started_for_a_source_while_it_is_being_deleted(monkeypatch):
+    """Between the start of a deletion and its end, an attach pass, an index walk or a
+    discovery call asking for the source's server is refused by name; once deleted, a source
+    made again under the same id is served."""
+    monkeypatch.setattr(pr, "_ENDPOINTS", {})
+    monkeypatch.setattr(pr, "_DELETING", set())
+    with pr.deleting("test-askamerica"):
+        with pytest.raises(pr.SourceBeingDeleted, match="'test-askamerica' is being deleted"):
+            pr.start_endpoint(_source())
+        with pytest.raises(pr.SourceBeingDeleted):
+            pr.ensure_endpoint_for_discovery(_source())
+        assert pr._ENDPOINTS == {}
+        # another source is served meanwhile
+        other = Source(id="docs", type=SourceType.files, path="/d")
+        assert pr._endpoint_replica(other) is pr._ENDPOINTS[source_key("docs")]
+    assert pr._DELETING == set()
+    assert pr._endpoint_replica(_source()) is pr._ENDPOINTS[source_key("test-askamerica")]
+
+
+def test_a_deletion_that_fails_still_lets_the_source_be_served(monkeypatch):
+    monkeypatch.setattr(pr, "_DELETING", set())
+    with pytest.raises(RuntimeError), pr.deleting("test-askamerica"):
+        raise RuntimeError("the delete failed")
+    assert pr._DELETING == set()
+
+
+def test_a_server_that_does_not_stop_is_logged_by_its_sources_name(monkeypatch, caplog):
+    """A stop that fails is not swallowed: the deleted source is named, at error level."""
+    import logging
+
+    from provisa.api.admin.schema_common import _drop_source_on_engine
+
+    def stop(source_id: str) -> None:
+        raise pr.ServerLifecycleError("pgwire server port 25600 still bound 30s after ...")
+
+    monkeypatch.setattr(pr, "stop_endpoint", stop)
+    state = SimpleNamespace(
+        federation_engine=SimpleNamespace(drop_source=lambda sid, catalog_name=None: None),
+        source_catalogs={},
+    )
+    with caplog.at_level(logging.ERROR):
+        _drop_source_on_engine(state, "test-askamerica")
+    [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert "'test-askamerica' was not stopped" in record.getMessage()
+    assert "still bound" in record.getMessage()

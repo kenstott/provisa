@@ -38,7 +38,8 @@ import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle 
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterator
+from contextlib import contextmanager
 from typing import Any, Callable
 
 from provisa.core.held_sizes import held
@@ -210,6 +211,24 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
         super().__init__(f"STARTING: {source_id!r}'s connector {doing} — try again shortly.")
         self.source_id = source_id
         self.preparing_catalog = preparing_catalog
+
+
+class ServerRetired(ServerNotServing):  # REQ-1824
+    """A replica taken out of the registry (its source deleted or edited, its org's servers or
+    every server stopped) is asked for a server: none is started, and one whose start was in
+    flight when it was retired is stopped as it comes up rather than left running unowned."""
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(f"{source_id!r}'s connector server was stopped; it is not started again")
+        self.source_id = source_id
+
+
+class SourceBeingDeleted(ServerNotServing):  # REQ-1824
+    """A server is asked for a source whose deletion is under way: none is started for it."""
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(f"{source_id!r} is being deleted; its connector server is not started")
+        self.source_id = source_id
 
 
 def _source_type(source: Any) -> str:
@@ -1291,6 +1310,11 @@ class ConnectorReplica:  # REQ-954/955/956
         self._catalog_server = 0
         # A start and the first endpoint request can come from different threads; one server.
         self._start_lock = threading.Lock()
+        # ``_server`` and ``_retired``, read and set together. Not ``_start_lock``: that is held
+        # for a whole start (a bundle download included), and a retire never waits on one.
+        self._server_lock = threading.Lock()
+        # Taken out of the registry (:meth:`retire`): it never serves again.
+        self._retired = False
 
     @property
     def spec(self) -> BundleSpec:
@@ -1307,6 +1331,8 @@ class ConnectorReplica:  # REQ-954/955/956
     def _ensure_server_locked(self) -> PgwireServer:
         if self._server is not None:
             return self._server
+        if self._retired:
+            raise ServerRetired(self._source.id)
         bundle_dir = self._resolver.resolve(self._spec)  # REQ-956 (resolve + cache)
         ports = self._allocator.allocate(self._key)  # REQ-955 (unique ports), REQ-1992
         model: dict | None
@@ -1341,7 +1367,15 @@ class ConnectorReplica:  # REQ-954/955/956
             environment={**(environment or {}), **org_jvm_environment(self._key[0])},
         )
         server.start()  # REQ-955 (lifecycle)
-        self._server = server
+        with self._server_lock:
+            retired = self._retired
+            if not retired:
+                self._server = server
+        if retired:
+            # Retired while this start was in flight (its source deleted mid-download): no one
+            # holds this replica any more, so a server left running here would never be stopped.
+            server.stop()
+            raise ServerRetired(self._source.id)
         return server
 
     def start(self) -> None:
@@ -1363,10 +1397,14 @@ class ConnectorReplica:  # REQ-954/955/956
         wait = SERVER_READY_SECONDS if timeout is None else timeout
         deadline = time.monotonic() + wait
         while not server.health():
+            if self._retired:  # stopped under this wait (REQ-1824): its exit is no failure
+                raise ServerRetired(self._source.id)
             code = server.exit_code()
             if code is not None:
                 # A start that failed: forgotten, so a later call starts the server afresh.
-                self._server = None
+                with self._server_lock:
+                    if self._server is server:
+                        self._server = None
                 raise ServerExited(self._source.id, code, server.log_tail())
             if time.monotonic() >= deadline:
                 raise ServerLifecycleError(
@@ -1535,15 +1573,26 @@ class ConnectorReplica:  # REQ-954/955/956
 
     def close(self) -> None:
         """Stop the server (idempotent). The next server's catalog is prepared afresh."""
-        if self._server is not None:
-            self._server.stop()
-            self._server = None
+        with self._server_lock:
+            server, self._server = self._server, None
+        if server is not None:
+            server.stop()
         with self._start_lock:
             # A preparation in flight loses its connection with the server and reports to no one.
             self._catalog_server += 1
             self._catalog_ready = False
             self._catalog_error = None
             self._catalog_thread = None
+
+    def retire(self) -> None:
+        """Stop the server and never start another (REQ-1824): this replica is out of the
+        registry, so a start still in flight -- or asked for later by a caller holding it --
+        stops what it started and raises ``ServerRetired``. Waits for no start in flight."""
+        with self._server_lock:
+            self._retired = True
+            server, self._server = self._server, None
+        if server is not None:
+            server.stop()
 
 
 # -- live endpoint for an engine that ATTACHes the pgwire server (REQ-1690) --------------------
@@ -1558,6 +1607,9 @@ _ENDPOINTS: dict[tuple[str, str], ConnectorReplica] = {}
 _ENDPOINT_USERS: dict[tuple[str, str], set[str]] = {}
 held(__name__, "_ENDPOINTS", _ENDPOINTS)
 held(__name__, "_ENDPOINT_USERS", _ENDPOINT_USERS)
+#: The sources (by org and id) being deleted: no server is started for one (REQ-1824).
+_DELETING: set[tuple[str, str]] = set()
+held(__name__, "_DELETING", _DELETING)
 # One server per source id: an engine attach, a discovery call and a write can each be the first
 # to ask for a source's endpoint, from different threads.
 _ENDPOINTS_LOCK = threading.Lock()
@@ -1608,6 +1660,8 @@ def _endpoint_replica(source: Any) -> ConnectorReplica:
     key = server_key(source)
     org_id = source_key(source.id)[0]
     with _ENDPOINTS_LOCK:
+        if source_key(source.id) in _DELETING:
+            raise SourceBeingDeleted(source.id)
         if key[0] != org_id:
             _ENDPOINT_USERS.setdefault(key, set()).add(org_id)
         replica = _ENDPOINTS.get(key)
@@ -1826,7 +1880,7 @@ def ensure_endpoint_for_discovery(source: Any) -> PortPair:
 def stop_all_servers() -> None:
     """Stop every pgwire server started for a live attach (app shutdown)."""
     for replica in _ENDPOINTS.values():
-        replica.close()
+        replica.retire()
     _ENDPOINTS.clear()
     _ENDPOINT_USERS.clear()
 
@@ -1845,7 +1899,7 @@ def stop_org_servers(org_id: str) -> None:
                 del _ENDPOINT_USERS[key]
         replicas = [_ENDPOINTS.pop(key) for key in mine]
     for replica in replicas:
-        replica.close()
+        replica.retire()
 
 
 def stop_endpoint(source_id: str) -> None:
@@ -1863,7 +1917,26 @@ def stop_endpoint(source_id: str) -> None:
     with _ENDPOINTS_LOCK:
         replica = _ENDPOINTS.pop(source_key(source_id), None)
     if replica is not None:
-        replica.close()
+        # Retired, not closed: a caller still holding it (a start in flight, an index read)
+        # starts no server on it that nothing would ever stop (REQ-1824).
+        replica.retire()
+
+
+@contextmanager
+def deleting(source_id: str) -> Iterator[None]:
+    """While ``source_id`` (in the bound org) is being deleted, no server is started for it
+    (``SourceBeingDeleted``): an index walk, an attach pass or a discovery call that asks for it
+    mid-delete would otherwise start one after its server was stopped (REQ-1824)."""
+    from provisa.core.org_scope import source_key
+
+    key = source_key(source_id)
+    with _ENDPOINTS_LOCK:
+        _DELETING.add(key)
+    try:
+        yield
+    finally:
+        with _ENDPOINTS_LOCK:
+            _DELETING.discard(key)
 
 
 async def load_through_server(source: Any, table: Any) -> list[dict]:
