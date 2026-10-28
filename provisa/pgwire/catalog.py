@@ -49,6 +49,12 @@ _TXN_RE = re.compile(
 
 _SHOW_MIN_PARTS = 2
 
+# REQ-2167: a statement that only sleeps, as PostgreSQL's pg_sleep(seconds) does, answering void.
+_PG_SLEEP_RE = re.compile(
+    r'^\s*SELECT\s+(?:pg_catalog\.)?"?pg_sleep"?\s*\((?P<arg>.*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
+    re.IGNORECASE | re.DOTALL,
+)
+
 _SCALAR_FN_RE = re.compile(
     r"^\s*SELECT\s+(?:pg_catalog\.)?"
     r"(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)"
@@ -191,7 +197,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     stripped = sql.strip()
     if _SET_RE.match(stripped) or _SHOW_RE.match(stripped) or _TXN_RE.match(stripped):
         return "INTERCEPT"
-    if _SCALAR_FN_RE.match(stripped):
+    if _SCALAR_FN_RE.match(stripped) or _PG_SLEEP_RE.match(stripped):
         return "INTERCEPT"
     try:
         import sqlglot.expressions as exp
@@ -372,6 +378,42 @@ def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:
     ]
 
 
+def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
+    """pg_sleep(seconds): sleeps that long and answers void (empty text); strict, so a NULL
+    argument answers NULL without sleeping. A sleep longer than the request has left ends with
+    the request's timeout."""
+    import threading
+
+    import sqlglot
+
+    from provisa.core import engine_memory
+    from provisa.executor.result import QueryResult
+
+    seconds_sql = sqlglot.transpile(
+        f"SELECT CAST(({match['arg']}) AS DOUBLE PRECISION)", read="postgres", write="duckdb"
+    )[0]
+    con = engine_memory.connect()
+    try:
+        ((seconds,),) = con.execute(seconds_sql).fetchall()
+    finally:
+        con.close()
+    if seconds is not None and seconds > 0:
+        # Within the request's own budget (REQ-1905): the sleep is a wait the deadline's cancel
+        # wakes, so a CancelRequest or the request timeout ends it early, as it ends a driver's
+        # statement; the deadline's own error (57014) follows.
+        from provisa.core import request_deadline
+
+        woken = threading.Event()
+        with request_deadline.cancel_on_deadline(woken.set):
+            woken.wait(seconds)
+        request_deadline.check()
+    return QueryResult(
+        rows=[(None if seconds is None else "",)],
+        column_names=[match["alias"] or "pg_sleep"],
+        column_types=["void"],
+    )
+
+
 def answer(sql: str, role_id: str, state):  # REQ-532
     """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
     from provisa.executor.result import QueryResult
@@ -383,6 +425,10 @@ def answer(sql: str, role_id: str, state):  # REQ-532
 
     if _SHOW_RE.match(stripped):
         return _handle_show(stripped)
+
+    sleep = _PG_SLEEP_RE.match(stripped)
+    if sleep:
+        return _handle_pg_sleep(sleep)
 
     if _SCALAR_FN_RE.match(stripped):
         result = _handle_scalar(stripped, role_id, state)

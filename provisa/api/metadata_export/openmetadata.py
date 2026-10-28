@@ -473,16 +473,15 @@ def _for_openmetadata(contract: dict[str, Any]) -> dict[str, Any]:
     """The ODCS contract in the forms OpenMetadata's import reads.
 
     ``team``: OpenMetadata reads a member array (ODCS 3.0's form, which 3.1 keeps deprecated) and
-    unwraps a 3.1 Team object only to its ``members``; Provisa's team names roles, not members, so
-    each role becomes one. ``latency``: OpenMetadata's units are minute, hour and day, so a latency
+    unwraps a 3.1 Team object only to its ``members``, so the members go as that array, each by its
+    address with its role; a team whose roles have no holders has no member to send. ``latency``: OpenMetadata's units are minute, hour and day, so a latency
     in seconds is stated in whole minutes, rounded up: still an upper bound on how far a read trails.
     """
     out = dict(contract)
     if "team" in out:
-        out["team"] = [
-            {"name": prop["value"], "role": prop["property"]}
-            for prop in out["team"]["customProperties"]
-        ]
+        team = out.pop("team")
+        if "members" in team:
+            out["team"] = team["members"]
     if "slaProperties" in out:
         out["slaProperties"] = [_latency_in_minutes(p) for p in out["slaProperties"]]
     return out

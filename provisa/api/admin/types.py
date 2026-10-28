@@ -234,6 +234,8 @@ class DataProductType:  # REQ-1634, REQ-1660
     # REQ-1635: the support contact (email or URL) a catalog listing requires.
     support_contact: str | None = None
     custom_properties: JsonScalar
+    # REQ-2118: when the product was created (ISO 8601), its ODPS productCreatedTs; read-only.
+    created_at: str
     contracts: list[DataContractType] = strawberry.field(default_factory=list)  # REQ-2158
     # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
     status: str = "draft"

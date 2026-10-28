@@ -483,10 +483,27 @@ def data_product_page_url(base_url: str, org_id: str, product_id: str) -> str:
     opens the product named by ``?product=``. A catalog listing carries it as its documentation
     link, so the listing points back at the place the product is edited. A loopback ``base_url``
     (the install default) links to :data:`LISTING_LINK_ORIGIN` instead."""
+    return f"{listing_origin(base_url, org_id)}/data-products?product={quote(product_id, safe='')}"
+
+
+def listing_origin(base_url: str, org_id: str) -> str:
+    """The origin a catalog listing links the org at (REQ-1659): its public origin, or
+    :data:`LISTING_LINK_ORIGIN` for a loopback ``base_url``."""
     # The hosted front door is linked as-is: this deployment's org id names no host there, and
     # the front door routes a signed-in reader to their own org.
-    origin = LISTING_LINK_ORIGIN if _is_loopback(base_url) else public_org_origin(base_url, org_id)
-    return f"{origin}/data-products?product={quote(product_id, safe='')}"
+    return LISTING_LINK_ORIGIN if _is_loopback(base_url) else public_org_origin(base_url, org_id)
+
+
+def data_product_lineage_url(base_url: str, org_id: str, product_id: str) -> str:
+    """The product's lineage endpoint at the org's listing origin: an ODPS management port that
+    observes it (REQ-2118)."""
+    return f"{listing_origin(base_url, org_id)}/data-products/{quote(product_id, safe='')}/lineage"
+
+
+def admin_graphql_url(base_url: str, org_id: str) -> str:
+    """The admin GraphQL endpoint at the org's listing origin: an ODPS management port that
+    controls a product (REQ-2118)."""
+    return f"{listing_origin(base_url, org_id)}/admin/graphql"
 
 
 def compose_invite_message(

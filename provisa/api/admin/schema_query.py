@@ -811,6 +811,7 @@ class Query:  # REQ-021, REQ-042
                 support=r["support"],
                 support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
+                created_at=r["created_at"].isoformat(),
                 contracts=contracts.get(r["id"], []),
                 status=r["status"],
                 status_reason=r["status_reason"],

@@ -390,6 +390,10 @@ tables:
   schema: org_default
   table: data_products
   columns:
+  - name: created_at
+    data_type: timestamp
+    visible_to:
+    - viewer
   - name: custom_properties
     data_type: text
     visible_to:

@@ -57,6 +57,7 @@ export const PRODUCT_FIELDS = [
   "support",
   "support_contact",
   "custom_properties",
+  "created_at",
 ] as const;
 
 type ProductRow = Record<(typeof PRODUCT_FIELDS)[number], unknown>;
@@ -363,6 +364,7 @@ export function asProduct(row: ProductRow): DataProduct {
       typeof custom === "string"
         ? (JSON.parse(custom) as Record<string, unknown>)
         : ((custom ?? {}) as Record<string, unknown>),
+    createdAt: String(row.created_at),
   };
 }
 

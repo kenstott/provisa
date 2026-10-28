@@ -18,6 +18,7 @@
     "limitationsLabel": "限制",
     "limitationsPlaceholder": "已知的約束、注意事項或排除項目",
     "usageLabel": "使用方式",
+    "createdAtLabel": "建立時間",
     "usagePlaceholder": "如何使用此數據產品",
     "versionLabel": "版本",
     "versionPlaceholder": "例如 1.2.0",

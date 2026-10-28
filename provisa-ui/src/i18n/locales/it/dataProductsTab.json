@@ -18,6 +18,7 @@
     "limitationsLabel": "Limitazioni",
     "limitationsPlaceholder": "Vincoli noti, avvertenze o esclusioni",
     "usageLabel": "Utilizzo",
+    "createdAtLabel": "Creato",
     "usagePlaceholder": "Come utilizzare questo prodotto dati",
     "versionLabel": "Versione",
     "versionPlaceholder": "ad es. 1.2.0",
