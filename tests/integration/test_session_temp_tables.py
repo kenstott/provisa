@@ -195,3 +195,57 @@ def test_on_pgwire_the_session_is_the_connection(boot):
     with _pgwire(boot) as third:
         with pytest.raises(Exception, match="'mine' is not a registered table"):
             third.execute("SELECT * FROM mine")
+
+
+def _flight(boot):
+    import adbc_driver_flightsql.dbapi as flightsql
+
+    return flightsql.connect(
+        f"grpc://127.0.0.1:{boot.ports['flight']}",
+        db_kwargs={
+            "adbc.flight.sql.rpc.call_header.x-provisa-role": "org_admin",
+            # The session is the cookie Flight names it by (REQ-2175).
+            "adbc.flight.sql.rpc.with_cookie_middleware": "true",
+        },
+        autocommit=True,
+    )
+
+
+def test_on_flight_sql_the_session_is_its_cookie(boot):
+    """REQ-2175, REQ-615: a temporary ingest lands in the Flight session's own temporary table,
+    which the session's statements read -- its one row with a null value among them, as the ADBC
+    validation suite's test_temporary ingests it -- beside a governed table of the same name read
+    by its schema; GetObjects lists it to that session alone, no other session sees it, and it
+    ends with the session."""
+    import pyarrow as pa
+
+    first_row = pa.table({"id": pa.array([0], pa.int64()), "region": pa.array([None], pa.string())})
+    with _flight(boot) as first, _flight(boot) as second:
+        with first.cursor() as cur:
+            assert cur.adbc_ingest("orders", first_row, mode="create", temporary=True) == 1
+        with first.cursor() as cur:
+            cur.execute("SELECT id, region FROM orders ORDER BY id")
+            assert cur.fetchall() == [(0, None)]
+        with first.cursor() as cur:
+            cur.execute("SELECT id, region FROM sales.orders ORDER BY id")
+            assert cur.fetchall() == [(1, "east"), (2, "west"), (3, "north")]
+        more = pa.table({"id": pa.array([7], pa.int64()), "region": ["mars"]})
+        with first.cursor() as cur:
+            assert cur.adbc_ingest("orders", more, mode="append", temporary=True) == 1
+            cur.execute("SELECT COUNT(*) FROM orders")
+            assert cur.fetchone() == (2,)
+        listed = [
+            (schema["db_schema_name"], table["table_name"])
+            for catalog in first.adbc_get_objects(depth="tables", table_name_filter="orders")
+            .read_all()
+            .to_pylist()
+            for schema in catalog["catalog_db_schemas"]
+            for table in schema["db_schema_tables"]
+        ]
+        assert ("pg_temp", "orders") in listed
+        with second.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM orders")  # the governed table: three rows
+            assert cur.fetchone() == (3,)
+    with _flight(boot) as third, third.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM orders")
+        assert cur.fetchone() == (3,)
