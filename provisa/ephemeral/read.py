@@ -380,9 +380,62 @@ def _once_per_node(sub: exp.Subquery, arms: list[exp.Select]) -> None:
     sub.set("this", once)
 
 
+_CTE_ROW = "_s"
+
+
+def _conjuncts(where: exp.Expression | None) -> list[exp.Expression]:
+    """The conditions a WHERE (or a condition) is the AND of."""
+    if where is None:
+        return []
+    if isinstance(where, exp.Where):
+        return _conjuncts(where.this)
+    if isinstance(where, exp.And):
+        return _conjuncts(where.this) + _conjuncts(where.expression)
+    if isinstance(where, exp.Paren):
+        return _conjuncts(where.this) if isinstance(where.this, exp.And) else [where]
+    return [where]
+
+
+def _only_of(condition: exp.Expression, alias: str) -> bool:
+    """Whether ``condition`` reads nothing but ``alias``'s own columns (no subquery, no
+    parameter-free constant alone, no other row)."""
+    columns = list(condition.find_all(exp.Column))
+    if not columns or condition.find(exp.Subquery, exp.Select) is not None:
+        return False
+    return all(c.table == alias for c in columns)
+
+
+def _pushable(table: exp.Table) -> tuple[exp.Select, list[exp.Expression]] | None:
+    """The select ``table`` is read in, and the top-level WHERE conditions on its alias alone,
+    where they filter its rows before anything is joined to them: ``table`` in the FROM or an
+    inner join of that select. None where they do not (an outer join: its rows are kept)."""
+    alias = table.alias
+    select = table.parent
+    if isinstance(select, exp.From):
+        select = select.parent
+    elif isinstance(select, exp.Join):
+        if (select.args.get("side") or "").upper() in ("LEFT", "RIGHT", "FULL") or select.args.get(
+            "kind"
+        ) not in (None, "INNER", "CROSS"):
+            return None
+        select = select.parent
+    else:
+        return None
+    if not isinstance(select, exp.Select) or not alias:
+        return None
+    mine = [c for c in _conjuncts(select.args.get("where")) if _only_of(c, alias)]
+    return select, mine
+
+
 def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession) -> exp.Expression:
-    """``sql`` (compiled over ``overlaid``) with each session relation replaced by its rows, and
-    each node union reading one read once per node."""
+    """``sql`` (compiled over ``overlaid``) with each session relation read from a CTE of its
+    rows, and each node union reading one read once per node.
+
+    Each node pattern instance reads a CTE of its label's union carrying the top-level WHERE
+    conditions on its variable alone (moved there, so they filter before anything is joined);
+    instances whose CTEs come out the same share one. A relationship type is one CTE. Each is
+    defined once, ahead of the statement's own CTEs (a variable-length path's recursive one
+    reads it too)."""
     for sub in list(sql.find_all(exp.Subquery)):
         arms = _union_arms(sub.this)
         if arms is not None and any(_session_arm(arm) for arm in arms):
@@ -390,14 +443,56 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
     graph = store.graph(session)
     by_name = {_node_relation(key): key for key in _view_keys(graph) if key in overlaid.nodes}
     types = {_rel_relation(t): t for t in graph.types}
+    defined: dict[str, str] = {}  # a CTE's definition (its SQL) -> its name
+    ctes: list[exp.CTE] = []
+
+    def cte(stem: str, body: exp.Expression) -> str:
+        text = body.sql(dialect="postgres")
+        if text not in defined:
+            name = stem if stem not in {c.alias for c in ctes} else f"{stem}__{len(ctes)}"
+            defined[text] = name
+            ctes.append(
+                exp.CTE(this=body, alias=exp.TableAlias(this=exp.to_identifier(name, quoted=True)))
+            )
+        return defined[text]
+
     for table in list(sql.find_all(exp.Table)):
         if table.catalog != SESSION_CATALOG:
             continue
         alias = table.alias or table.name
         if table.name in by_name:
             key = by_name[table.name]
-            rows = _node_rows(key, overlaid.nodes[key], model, session)
+            body: exp.Expression = _node_rows(key, overlaid.nodes[key], model, session)
+            pushed = _pushable(table)
+            if pushed is not None and pushed[1]:
+                select, mine = pushed
+                conditions = [c.copy() for c in mine]
+                for c in conditions:
+                    for column in c.find_all(exp.Column):
+                        column.set("table", exp.to_identifier(_CTE_ROW, quoted=True))
+                body = (
+                    exp.select("*")
+                    .from_(exp.alias_(exp.Subquery(this=body), _CTE_ROW, quoted=True))
+                    .where(exp.and_(*conditions))
+                )
+                _drop_conditions(select, mine)
+            name = cte(f"__session_node__{key}", body)
         else:
-            rows = _rel_rows(types[table.name], session)
-        table.replace(exp.alias_(exp.Subquery(this=rows), alias))
+            rel_type = types[table.name]
+            name = cte(f"__session_rel__{rel_type}", _rel_rows(rel_type, session))
+        table.replace(
+            exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), alias, quoted=True)
+        )
+    if ctes:
+        held = sql.args.get("with_")
+        if held is not None:
+            held.set("expressions", ctes + list(held.expressions))
+        else:
+            sql.set("with_", exp.With(expressions=ctes))
     return sql
+
+
+def _drop_conditions(select: exp.Select, gone: list[exp.Expression]) -> None:
+    """``select``'s WHERE without the conditions ``gone`` (each one of its conjuncts)."""
+    kept = [c for c in _conjuncts(select.args.get("where")) if not any(c is g for g in gone)]
+    select.set("where", exp.Where(this=exp.and_(*kept)) if kept else None)
