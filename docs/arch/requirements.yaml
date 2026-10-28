@@ -89808,7 +89808,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     only a Class colliding with a model table; the bare label and SQL rules are unchanged. (Amended 2026-10-28,
     A MATERIALIZED CLASS VIEW IS INDEXED:) When a Class label''s union view is materialized, it is indexed
     on _source_table together with the member key, so a MATCH on the Class label with a key lookup reads
-    one member''s rows instead of scanning every member table.'
+    one member''s rows instead of scanning every member table. (Amended 2026-10-28, A TERM-BOUND COLUMN''S
+    PROPERTY IS THE TERM''S:) A column bound to a glossary term is published in SPARQL under that term''s
+    property IRI, one IRI shared by every column bound to the term, so a query on it finds every class that
+    has it, as a Cypher property key does. A column bound to no term keeps its per-class property IRI, since
+    two columns of the same name need not mean the same thing. A term''s property IRI is declared with its
+    domains (rdfs:domain), one per class whose column binds it. The SPARQL explorer''s Properties panel
+    shows each term-backed property once, listing its classes, and a click queries it across them; the per-class
+    properties are grouped under their classes.'
   code:
   - provisa/compiler/ontology_classes.py
   - provisa/compiler/supertype.py
