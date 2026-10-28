@@ -1030,10 +1030,20 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
 
     if "pg_catalog" in statement.lower():
         raise ValueError("discovery reads the server's information_schema, never pg_catalog")
+    import asyncpg
+
     ports = await asyncio.to_thread(listening_endpoint, source)
     conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
     try:
         return list(await conn.fetch(statement, timeout=_fetch_timeout()))
+    except asyncpg.QueryCanceledError as exc:
+        # The server cancels a statement it held queued behind the preparation of its catalog
+        # (its first catalog query): while that preparation runs the source is still starting
+        # (``ConnectorReplica.await_catalog``), and the read is asked again once it has started.
+        # A cancel after the catalog is prepared, or after it failed, is the server's answer.
+        if _endpoint_replica(source).catalog_pending():
+            raise SourceStillStartingError(source.id, preparing_catalog=True) from exc
+        raise
     finally:
         await conn.close()
 
@@ -1472,6 +1482,12 @@ class ConnectorReplica:  # REQ-954/955/956
                 return
             self._catalog_error = error
             self._catalog_ready = error is None
+
+    def catalog_pending(self) -> bool:
+        """Whether the server's catalog is still being prepared: neither prepared nor failed.
+        Starts nothing and waits for nothing."""
+        with self._start_lock:
+            return not self._catalog_ready and self._catalog_error is None
 
     def close(self) -> None:
         """Stop the server (idempotent). The next server's catalog is prepared afresh."""
