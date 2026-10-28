@@ -18,6 +18,7 @@
     "limitationsLabel": "Ограничения",
     "limitationsPlaceholder": "Известные ограничения, оговорки или исключения",
     "usageLabel": "Использование",
+    "createdAtLabel": "Создан",
     "usagePlaceholder": "Как использовать этот продукт данных",
     "versionLabel": "Версия",
     "versionPlaceholder": "напр. 1.2.0",

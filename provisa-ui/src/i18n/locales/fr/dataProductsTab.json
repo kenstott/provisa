@@ -18,6 +18,7 @@
     "limitationsLabel": "Limites",
     "limitationsPlaceholder": "Contraintes, réserves ou exclusions connues",
     "usageLabel": "Utilisation",
+    "createdAtLabel": "Créé",
     "usagePlaceholder": "Comment consommer ce produit de données",
     "versionLabel": "Version",
     "versionPlaceholder": "p. ex. 1.2.0",

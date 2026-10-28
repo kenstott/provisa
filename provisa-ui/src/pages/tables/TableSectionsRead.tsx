@@ -101,6 +101,20 @@ export function IdentityRead({ table, source }: { table: RegisteredTable; source
     ...(table.apiEndpoint
       ? [{ label: t("tableEditForm.apiEndpointLabel"), value: <code>{table.apiEndpoint}</code> }]
       : []),
+    // Its source's document could not be read: no endpoint, and why.
+    ...(table.apiEndpointError
+      ? [
+          {
+            label: t("tableEditForm.apiEndpointLabel"),
+            value: (
+              <Text size="sm" c="var(--warning, #d19a00)">
+                ⚠ {table.apiEndpointError}
+              </Text>
+            ),
+            testId: "table-api-endpoint-error",
+          },
+        ]
+      : []),
     ...(source && isFilesSourceType(source.type.toLowerCase())
       ? [
           {

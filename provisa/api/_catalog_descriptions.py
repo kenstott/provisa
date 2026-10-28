@@ -241,6 +241,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "support": "Where to get support for the product",
         "support_contact": "Who to contact for support",
         "custom_properties": "The product's own named properties",
+        "created_at": "When the product was created",
     },
     "table_columns": {
         "id": "Surrogate key for the column registration",

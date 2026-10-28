@@ -18,6 +18,7 @@
     "limitationsLabel": "Limitations",
     "limitationsPlaceholder": "Known constraints, caveats, or exclusions",
     "usageLabel": "Usage",
+    "createdAtLabel": "Created",
     "usagePlaceholder": "How to consume this data product",
     "versionLabel": "Version",
     "versionPlaceholder": "e.g. 1.2.0",

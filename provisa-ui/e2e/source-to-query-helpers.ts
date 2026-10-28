@@ -270,6 +270,8 @@ export interface RegisteredColumnEdits {
   primaryKey?: string[];
   /** An ingest source's per-column JSON paths (Columns > Naming). */
   paths?: Record<string, string>;
+  /** The page size of the paging the table's source proposes (Load and timeliness > Paging). */
+  pageSize?: number;
 }
 
 /**
@@ -390,6 +392,14 @@ export async function submitRegisterAndExpectListed(
           .check();
       }
     }
+  }
+  if (columns.pageSize !== undefined) {
+    await page.getByTestId("table-section-load").click();
+    const paging = page.getByTestId("paging-field");
+    await expect(paging).toBeVisible({ timeout: 30000 });
+    await paging
+      .getByRole("textbox", { name: "Page size", exact: true })
+      .fill(String(columns.pageSize));
   }
   const save = page.getByTestId("table-edit-save");
   await save.click();

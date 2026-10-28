@@ -118,7 +118,7 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
         "active": "BOOLEAN",
         "rating": "REAL",
         "age": "INTEGER",
-        "ip_address": "VARCHAR",
+        "ip_address": "inet",  # REQ-2171: Cassandra inet registers as the inet subtype
     }
     for col_name, expected_type in expected_column_types.items():
         actual_type = col_by_name[col_name]["type"]
@@ -192,16 +192,16 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
     assert CQL_TYPE_TO_IR["set"] == "VARCHAR"
 
     # ------------------------------------------------------------------ #
-    # An unmapped type, or metadata missing a part, raises
+    # An unmapped type registers as text (REQ-2171); metadata missing a part raises
     # ------------------------------------------------------------------ #
-    with pytest.raises(ValueError, match="unmapped CQL type: duration"):
-        discover_schema(
-            {
-                "columns": [{"name": "d", "type": "duration"}],
-                "partition_keys": [],
-                "clustering_keys": [],
-            }
-        )
+    [unmapped] = discover_schema(
+        {
+            "columns": [{"name": "d", "type": "some_unknown_type"}],
+            "partition_keys": [],
+            "clustering_keys": [],
+        }
+    )
+    assert unmapped["type"] == "text"
     for missing in ("columns", "partition_keys", "clustering_keys"):
         incomplete = {k: v for k, v in keyspace_metadata.items() if k != missing}
         with pytest.raises(ValueError, match=f"keyspace metadata missing '{missing}'"):

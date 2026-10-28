@@ -195,6 +195,24 @@ def test_a_member_with_no_contract_is_no_output_port():
     document, contracts = product_documents(snapshot, product)
     assert {p["name"] for p in document["outputPorts"]} == {"orders", "order_totals"}
     assert "wh.public.customers" not in contracts
+    # ... and it is named, never left out silently (REQ-2118).
+    custom = {p["property"]: p["value"] for p in document["customProperties"]}
+    assert custom["membersWithoutContract"] == ["customers"]
+
+
+def test_a_checker_table_is_no_member_without_a_contract():
+    """A checker table belongs to its product with no contract by design (REQ-2157)."""
+    config = governed_config()
+    config.tables[1].contract = None  # customers, standing in for a checker table
+    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    orders, customers = (
+        next(t for t in snapshot.tables if t.name == n) for n in ("orders", "customers")
+    )
+    snapshot.assertions.append(_check(orders, customers, owner="prod"))
+    document = odps_document(snapshot, product)
+    assert "customProperties" not in document
 
 
 def test_a_contract_names_the_product_it_belongs_to():
@@ -250,3 +268,128 @@ def test_a_retired_product_is_retired_with_no_output_ports():
     assert document["status"] == "retired"
     assert contracts == {}
     assert _errors(ODPS, document) == []
+
+
+def _check(observed, results, *, owner: str | None, column: str | None = None):
+    from provisa.api.metadata_export.model import AssetKind, AssetRef, DataQualityAssertion
+
+    parts = observed.ref.parts + ((column,) if column else ())
+    return DataQualityAssertion(
+        asset=AssetRef(kind=AssetKind.COLUMN if column else AssetKind.TABLE, parts=parts),
+        checker="soda",
+        check_type="missing",
+        definition="missing_count(id) = 0",
+        severity="fail",
+        results_table=results.ref,
+        owner_product_id=owner,
+    )
+
+
+def _two_products():
+    """orders is upstream's output port, under its declared contract; prod's view order_totals
+    reads it, beside prod's own customers."""
+    config = governed_config()
+    config.tables[0].product_id = "upstream"
+    config.tables[0].contract = ORDERS_CONTRACT
+    config.data_products = [
+        DataProduct(id="upstream", domain_id="sales", name="Orders"),
+        DataProduct(id="prod", domain_id="sales", name="Customer 360"),
+    ]
+    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    product = next(p for p in snapshot.data_products if p.id == "prod")
+    return snapshot, product
+
+
+def test_an_input_another_product_promises_is_an_input_port_with_the_products_expectations():
+    snapshot, product = _two_products()
+    orders = next(t for t in snapshot.tables if t.name == "orders")
+    customers = next(t for t in snapshot.tables if t.name == "customers")
+    snapshot.assertions += [
+        _check(orders, customers, owner="prod", column="id"),  # prod's expectation of orders
+        _check(orders, customers, owner="upstream"),  # upstream's promise: not prod's
+    ]
+    document = odps_document(snapshot, product)
+
+    assert _errors(ODPS, document) == []
+    assert document["inputPorts"] == [
+        {
+            "name": "orders",
+            "version": "2.0.0",  # versioned by the upstream contract
+            "contractId": contract_id(orders),
+            "customProperties": [
+                {
+                    "property": "expectations",
+                    "value": [
+                        {
+                            "checkType": "missing",
+                            "definition": "missing_count(id) = 0",
+                            "severity": "fail",
+                            "column": "id",
+                            "outcome": "never_run",
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    ports = {port["name"]: port for port in document["outputPorts"]}
+    assert ports["order_totals"]["inputContracts"] == [
+        {"id": contract_id(orders), "version": "2.0.0"}
+    ]
+    assert "inputContracts" not in ports["customers"]
+
+
+def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports():
+    from datetime import UTC, datetime
+
+    from provisa.api.metadata_export.model import ModelTag
+
+    config = governed_config()
+    config.data_products = [
+        DataProduct(
+            id="prod",
+            domain_id="sales",
+            name="Customer 360",
+            owner_role="data_owner",
+            team_role="analyst",
+        )
+    ]
+    snapshot = build_snapshot(
+        config,
+        org_id=ORG_ID,
+        dialect="postgres",
+        contexts={},
+        documentation_base_url="https://app.example.com",
+        owner_emails={"data_owner": ("owner@example.com",), "analyst": ("ana@example.com",)},
+        product_created={"prod": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)},
+    )
+    (product,) = snapshot.data_products
+    orders = next(t for t in snapshot.tables if t.name == "orders")
+    snapshot.model_tags.append(ModelTag(tag_id="finance", is_system=False, asset=orders.ref))
+    document = odps_document(snapshot, product)
+
+    assert _errors(ODPS, document) == []
+    assert document["tenant"] == snapshot.org_id
+    assert document["productCreatedTs"] == "2026-01-02T03:04:05Z"
+    assert document["tags"] == ["finance"]
+    assert document["team"] == {
+        "name": "analyst",
+        "description": "Owner role data_owner; team role analyst",
+        "members": [
+            {"username": "owner@example.com", "role": "owner"},
+            {"username": "ana@example.com", "role": "team"},
+        ],
+    }
+    page = product.documentation_url
+    assert page is not None
+    assert document["authoritativeDefinitions"] == [
+        {"type": "businessDefinition", "url": page, "description": "The data product's page"}
+    ]
+    origin = page.split("/data-products?")[0]
+    assert [(p["name"], p["content"], p["url"]) for p in document["managementPorts"]] == [
+        ("page", "discoverability", page),
+        ("lineage", "observability", f"{origin}/data-products/prod/lineage"),
+        ("admin", "control", f"{origin}/admin/graphql"),
+    ]
+    # None of these rides as a custom property.
+    assert "customProperties" not in document

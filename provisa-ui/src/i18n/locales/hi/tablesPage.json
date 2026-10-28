@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "अंतर्निहित डाइमेंशन — इस टेबल के लिए 'Group By सक्षम करें' चालू है"
     },
     "derived": "व्युत्पन्न",
+    "endpointUnread": "इसके स्रोत का API दस्तावेज़ पढ़ा नहीं जा सका",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

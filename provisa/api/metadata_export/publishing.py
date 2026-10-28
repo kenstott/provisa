@@ -249,6 +249,7 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
     # REQ-1387: the term graph exports with the model; it lives only in the DB, so it
     # hydrates here the way sources do rather than through the config file vocabulary.
+    from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import glossary as glossary_repo
 
     from provisa.auth.role_grants import holder_emails
@@ -257,6 +258,10 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         glossary = await glossary_repo.export_graph(conn)
         # REQ-2118: a product's owners are its owner role's holders, by their addresses.
         owner_emails = await holder_emails(conn)
+        # REQ-2118: when each product was created, its ODPS productCreatedTs.
+        product_created = {
+            row["id"]: row["created_at"] for row in await data_product_repo.list_all(conn)
+        }
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model)
@@ -273,6 +278,7 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         # invitation cannot derive it from the request that created it.
         documentation_base_url=state.config.mail.base_url if state.config else None,
         owner_emails=owner_emails,
+        product_created=product_created,
     )
 
 

@@ -145,7 +145,9 @@ CREATE TABLE IF NOT EXISTS data_products (
     successor_id  TEXT REFERENCES data_products(id) ON DELETE SET NULL,
     support       TEXT,
     support_contact TEXT,
-    custom_properties JSONB NOT NULL DEFAULT '{}'
+    custom_properties JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2118: when the product was created (ODPS productCreatedTs); set on insert only.
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- REQ-1634: added to a table that predates them.

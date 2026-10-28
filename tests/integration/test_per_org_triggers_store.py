@@ -80,6 +80,15 @@ async def two_orgs():
     from provisa.core.config_loader import apply_config, parse_config_dict
     from tests.helpers import register_org, unregister_org
 
+    # The boot below seeds the deployment org's runtime with this module's config: a ``trig_writer``
+    # role granted no table (the orgs' tables are registered per org). That runtime outlives the
+    # app's lifespan, so every later test in the session met a role it could not build (a step's
+    # ``state.contexts = ...`` resolves every held surface and raised RoleServedNothing). The
+    # surfaces it held before are put back at teardown.
+    deployment_rt = state._default_runtime()
+    held_surfaces = deployment_rt.surfaces
+    held_inputs = deployment_rt.role_build_inputs
+
     mp = MonkeyPatch()
     mp.setenv("PROVISA_CONFIG", _CONFIG)
     mp.setenv("PG_HOST", os.environ.get("PG_HOST", "localhost"))
@@ -129,6 +138,8 @@ async def two_orgs():
                     await unregister_org(state.admin_db, org)
     finally:
         mp.undo()
+        deployment_rt.surfaces = held_surfaces
+        deployment_rt.role_build_inputs = held_inputs
 
 
 async def _rows(state, schema: str) -> list[tuple[int, str]]:
@@ -194,13 +205,13 @@ async def test_each_orgs_trigger_writes_only_its_own_orgs_table(two_orgs):
     # Each org's own trigger, and its per-org jobs, keyed by the org: the service-level evaluation
     # (REQ-506), the fakes' daily adequacy checks (REQ-2091), the hourly review of judgments
     # (REQ-2094), the sweep of expired and unused role grants (REQ-2077) and the retirement of
-    # deprecated glossary terms on their planned date (REQ-2144).
+    # deprecated glossary terms and data products on their planned date (REQ-2144, REQ-1634).
     per_org = (
         "sla:evaluate",
         "fake_adequacy",
         "judgments:review",
         "roles:sweep_grants",
-        "glossary_term_retirement",
+        "planned_retirement",
     )
     assert {j.id for j in scheduler.get_jobs()} == {
         job

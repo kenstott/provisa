@@ -18,6 +18,7 @@
     "limitationsLabel": "Einschränkungen",
     "limitationsPlaceholder": "Bekannte Beschränkungen, Vorbehalte oder Ausschlüsse",
     "usageLabel": "Nutzung",
+    "createdAtLabel": "Erstellt",
     "usagePlaceholder": "Wie dieses Datenprodukt genutzt wird",
     "versionLabel": "Version",
     "versionPlaceholder": "z. B. 1.2.0",

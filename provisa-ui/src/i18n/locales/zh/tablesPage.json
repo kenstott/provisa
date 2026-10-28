@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "隐含维度 — 此表已开启“启用分组”"
     },
     "derived": "派生",
+    "endpointUnread": "无法读取其源的 API 文档",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
