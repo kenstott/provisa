@@ -2004,7 +2004,6 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
     """Delete source ``id`` (the deleteSource mutation, its capability already checked); a
     refusal names only what ``reader`` may read (REQ-2152)."""
     from provisa.core.repositories import source as source_repo
-    from provisa.api.app import state
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -2017,6 +2016,20 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
         _companion = await _delete_source(companion_id(id), reader)
         if not _companion.success and _companion.code != "schema.source_not_found":
             return _companion
+    from provisa.federation.pgwire_replica import deleting
+
+    # REQ-1824: from here until the source is gone, no server is started for it -- an index
+    # walk, an attach pass or a discovery call asking mid-delete would start one after its
+    # server was stopped, and nothing would ever stop that one.
+    with deleting(id):
+        return await _delete_source_row(id, reader, pool)
+
+
+async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> MutationResult:
+    """The deletion of source ``id`` once its companion is gone (``_delete_source``)."""
+    from provisa.core.repositories import source as source_repo
+    from provisa.api.app import state
+
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         # REQ-1695: read the reference before the row goes, so the vault entry it names can be
@@ -2047,12 +2060,15 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
         assert _existing is not None  # delete reported a row, so get found one
         # A catalog walk still reading the source ends before its catalog goes: left running,
         # it failed on the source the org no longer has.
+        # REQ-1824: cancelled, not waited for -- a walk inside an adapter read ends only once
+        # the read answers, minutes on a server still starting.
         from provisa.discovery.catalog_cache import stop_indexing
 
-        await stop_indexing(id)
+        stop_indexing(id)
         state.graphql_remote_sources.pop(id, None)
         # REQ-1730: was never called here at all — see _drop_source_on_engine's own comment for
-        # the exact orphaned-catalog accumulation this closes.
+        # the exact orphaned-catalog accumulation this closes. It blocks this request's own
+        # thread (REQ-1882) while a server stops; no other request waits on it.
         _drop_source_on_engine(state, id)
         state.source_catalogs.pop(id, None)
         from provisa.core import source_uploads

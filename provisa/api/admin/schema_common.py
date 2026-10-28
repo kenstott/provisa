@@ -814,13 +814,15 @@ def _drop_source_on_engine(state, source_id: str) -> None:
     # Trino/dynamic-catalog seam, not this one). Confirmed live: a `files` source deleted and
     # recreated under the same id kept serving the FIRST server's model.json, so the "new" source
     # never picked up a changed path or format. No-ops when no server was ever started.
+    # REQ-1824: a stop that fails is logged by the source's name at error level: the server may
+    # still be running.
     from provisa.federation.pgwire_replica import stop_endpoint
 
     try:
         stop_endpoint(source_id)
     except Exception as _pgwire_err:
-        logging.getLogger(__name__).warning(
-            "pgwire endpoint teardown for %r failed: %s", source_id, _pgwire_err
+        logging.getLogger(__name__).error(
+            "pgwire server of deleted source %r was not stopped: %s", source_id, _pgwire_err
         )
 
 

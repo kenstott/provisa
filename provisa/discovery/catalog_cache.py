@@ -426,16 +426,20 @@ def index_task_name(kind: str, source_id: str) -> str:
     return f"catalog-{kind}:{require_current_org()}:{source_id}"
 
 
-async def stop_indexing(source_id: str) -> None:
-    """End every catalog walk of ``source_id`` in the bound org, and return once each has ended.
+def stop_indexing(source_id: str) -> None:
+    """Cancel every catalog walk of ``source_id`` in the bound org; waits for none to end.
 
     A walk reads the source's catalog and its engine catalog name; once the source is deleted
-    neither exists, so the walk is stopped before they are removed, never left to fail on them."""
+    neither exists, so the walk is cancelled before they are removed, never left to fail on them.
+    A queued walk never starts; a running one ends at its next await. That can be minutes away: a
+    background loop runs ``to_thread`` work inline, so a walk inside an adapter read (one that
+    queues behind another read of a server still starting) ends only once the read answers --
+    which a deletion does not wait for (REQ-1824): the walk ends at its first await after the
+    read, and the server it reads is stopped by the deletion."""
     from provisa.core.connection_loop import cancel_background
 
     for kind in ("index", "reindex"):
-        for fut in cancel_background(index_task_name(kind, source_id)):
-            await asyncio.wrap_future(fut)
+        cancel_background(index_task_name(kind, source_id))
 
 
 async def index_source(

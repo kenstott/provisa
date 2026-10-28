@@ -1583,9 +1583,8 @@ async def test_a_per_table_catalog_is_searched_by_its_listing_and_its_registered
 
 async def test_a_deleted_sources_catalog_walk_is_stopped_in_its_own_org_only():
     """A source's catalog walk reads its catalog and its engine catalog name; once the source is
-    deleted neither exists, so stop_indexing ends the walk (index and reindex) of that source in
-    the bound org and returns once it has ended. The same source id in another org is another
-    source: its walk runs on."""
+    deleted neither exists, so stop_indexing cancels the walk (index and reindex) of that source in
+    the bound org. The same source id in another org is another source: its walk runs on."""
     import asyncio
     import threading
 
@@ -1616,11 +1615,14 @@ async def test_a_deleted_sources_catalog_walk_is_stopped_in_its_own_org_only():
     token = set_current_org("org_a")
     try:
         assert cc.index_task_name("index", "weather") == "catalog-index:org_a:weather"
-        spawn_background(_walk("org_a index"), name=cc.index_task_name("index", "weather"))
-        spawn_background(_walk("org_a reindex"), name=cc.index_task_name("reindex", "weather"))
+        mine = [
+            spawn_background(_walk("org_a index"), name=cc.index_task_name("index", "weather")),
+            spawn_background(_walk("org_a reindex"), name=cc.index_task_name("reindex", "weather")),
+        ]
         for _walk_started in range(3):
             assert await asyncio.to_thread(started.acquire, True, 5)
-        await asyncio.wait_for(cc.stop_indexing("weather"), 5)
+        cc.stop_indexing("weather")
+        await asyncio.wait_for(asyncio.gather(*map(asyncio.wrap_future, mine)), 5)
         assert sorted(events) == ["org_a index ended", "org_a reindex ended"]
         release.set()
         await asyncio.wait_for(asyncio.wrap_future(other_org), 5)
@@ -1628,4 +1630,45 @@ async def test_a_deleted_sources_catalog_walk_is_stopped_in_its_own_org_only():
     finally:
         current_org.reset(token)
         release.set()
+        shutdown_background(timeout=5)
+
+
+async def test_stopping_a_walk_inside_an_adapter_read_does_not_wait_for_the_read():
+    """REQ-1824: a walk reads the adapter through ``to_thread``, which a background loop runs
+    inline, so the walk cannot be cancelled until the read answers -- a read queued behind
+    another on a server still starting answered after up to two minutes, and a deletion that
+    waited for it took as long. stop_indexing returns at once; the walk ends at its first await
+    after the read, and goes no further."""
+    import asyncio
+    import threading
+    import time
+
+    from provisa.core.connection_loop import shutdown_background, spawn_background
+    from provisa.core.request_context import current_org, set_current_org
+    from provisa.discovery import catalog_cache as cc
+
+    reading, answer = threading.Event(), threading.Event()
+    events: list[str] = []
+
+    async def _walk() -> None:
+        await asyncio.to_thread(reading.set)
+        await asyncio.to_thread(answer.wait, 10)  # the adapter read, inline on its loop
+        events.append("read answered")
+        await asyncio.sleep(0)
+        events.append("walk went on")
+
+    token = set_current_org("org_a")
+    try:
+        walk = spawn_background(_walk(), name=cc.index_task_name("index", "weather"))
+        assert await asyncio.to_thread(reading.wait, 5)
+        began = time.monotonic()
+        cc.stop_indexing("weather")
+        assert time.monotonic() - began < 1
+        assert not walk.done()  # still inside its read
+        answer.set()
+        await asyncio.wait_for(asyncio.wrap_future(walk), 5)
+        assert "walk went on" not in events
+    finally:
+        current_org.reset(token)
+        answer.set()
         shutdown_background(timeout=5)
