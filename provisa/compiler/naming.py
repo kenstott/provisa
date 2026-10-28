@@ -148,6 +148,15 @@ def junction_field_name(  # REQ-1586
     return rel_field_name(re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_"), cardinality)
 
 
+def ontology_name(term_name: str) -> str | None:  # REQ-2163
+    """The name a term gives its Class table or its Property column in the ontology schema: its
+    words, lower-cased and joined by underscores ("customer account" is ``customer_account``).
+    None when the term's name gives no identifier (no letters, or a digit first), since it can name
+    no table or column."""
+    name = re.sub(r"[^A-Za-z0-9]+", "_", term_name).strip("_").lower()
+    return name if re.fullmatch(r"[a-z][a-z0-9_]*", name) else None
+
+
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase.
 

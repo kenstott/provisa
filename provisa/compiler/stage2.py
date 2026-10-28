@@ -326,6 +326,16 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         if tbl_max is not None:
             gov.table_ceilings[table_id] = int(tbl_max)
 
+    # REQ-2163: a Class table's column is served where one of the columns it is bound to is, so its
+    # visibility is read off its tables' (provisa.compiler.ontology_classes).
+    from provisa.compiler.ontology_classes import served_class_columns
+
+    for tbl in tables:
+        if "class_bindings" in tbl:
+            served = served_class_columns(tbl, gov.visible_columns.__getitem__)
+            gov.visible_columns[tbl["id"]] = (
+                None if len(served) == len(tbl["columns"]) else frozenset(served)
+            )
     gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only

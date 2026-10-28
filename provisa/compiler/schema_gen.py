@@ -53,6 +53,7 @@ from provisa.compiler.naming import (
     to_type_name,
 )
 from provisa.compiler.metric_expand import metric_reference_tables
+from provisa.compiler.ontology_classes import is_class_table_id, served_class_columns
 from provisa.core.modeling_tags import append_modeling_tag
 from provisa.compiler.type_map import JSONScalar, column_type_to_graphql, array_graphql_type
 from provisa.compiler.schema_types import SchemaInput, _TableInfo
@@ -121,12 +122,31 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         if len(refs) == 1:
             metrics_by_table.setdefault(refs[0], []).append(m)
 
+    def _reaches(table: dict) -> bool:
+        # The role reaches the table's domain: one it lists, "*", or the catalog every role may
+        # traverse.
+        return reaches_implicitly(role["domain_access"], table["domain_id"])
+
+    tables_by_id = {t["id"]: t for t in si.tables}
+
+    def _served(table_id: int) -> frozenset[str]:
+        bound = tables_by_id[table_id]
+        reached = _reaches(bound)
+        return frozenset(
+            c["column_name"]
+            for c in bound["columns"]
+            if column_served(role, bound["domain_id"], c, reaches=reached)
+            and not c.get("native_filter_type")
+        )
+
     result: list[_TableInfo] = []
     for table in si.tables:
-        # The role reaches the table's domain: one it lists, "*", or the catalog every role may
-        # traverse. A table outside reach is still served when it publishes a column to the role
+        # REQ-2163: a Class table's column is served where one of the columns it is bound to is,
+        # and the Class is reached by a reader served any of them.
+        class_served = served_class_columns(table, _served) if "class_bindings" in table else None
+        # A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
-        reaches = reaches_implicitly(role["domain_access"], table["domain_id"])
+        reaches = _reaches(table) if class_served is None else bool(class_served)
         if not reaches and not served_across_domains(role, table):
             continue
 
@@ -154,7 +174,11 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         visible_cols = [
             c
             for c in table["columns"]
-            if column_served(role, table["domain_id"], c, reaches=reaches)
+            if (
+                column_served(role, table["domain_id"], c, reaches=reaches)
+                if class_served is None
+                else c["column_name"] in class_served
+            )
             and not c.get("native_filter_type")
             and not (_hide_meta_gov and c["column_name"] in GOVERNANCE_META_COLUMNS)
         ]
@@ -1115,6 +1139,9 @@ def generate_schema(
             not _all_access
             and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
             and t.domain_id not in _accessible_domains
+            # REQ-2163: a Class table, which no relationship reaches, is a root of its readers,
+            # as SQL and Cypher read it, under the read rights of the tables it is the union of.
+            and not is_class_table_id(t.table_id)
         ):
             continue
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).

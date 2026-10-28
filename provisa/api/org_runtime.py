@@ -191,6 +191,12 @@ class OrgRuntime:
     # REQ-2131: the views that apply a column transform: each is read only from its stored table
     # (its view_sql_map entry is that read, already physical), never by expanding its SQL.
     stored_view_reads: set[str] = field(default_factory=set)
+    # REQ-2163: the ontology schema's Class tables by name, each read through a body made for its
+    # reader (compiler.ontology_classes), and each Class that could not be offered, with why.
+    class_tables: dict[str, dict] = field(default_factory=dict)
+    refused_classes: dict[int, str] = field(default_factory=dict)
+    # Each Class table's body for one reader's visibility of its tables, lowered (mv.view_read).
+    class_bodies: dict = field(default_factory=dict)
     table_cache: dict[int, int | None] = field(default_factory=dict)
     # REQ-1266: what the org's build records about its sources and tables, keyed by source ids,
     # table names and table ids that repeat from one org to the next.

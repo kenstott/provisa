@@ -307,7 +307,7 @@ async def list_terms(
             include_deprecated=include_deprecated,
             domains=_view_scope(request, domains),
         )
-        return await counted_as_served(_conn, request, terms)
+        return [_with_class_refusal(t) for t in await counted_as_served(_conn, request, terms)]
 
 
 async def counted_as_served(conn: "Connection", request: Any, terms: list[dict]) -> list[dict]:
@@ -325,6 +325,13 @@ async def counted_as_served(conn: "Connection", request: Any, terms: list[dict])
         {**t, "ref_count": refs.get(t["id"], 0), "table_count": grounded.get(t["id"], 0)}
         for t in terms
     ]
+
+
+def _with_class_refusal(term: dict) -> dict:
+    """REQ-2163: why the last build could not offer the term's Class table, when it could not."""
+    from provisa.api.app import state
+
+    return term | {"class_refused": state.refused_classes.get(term["id"])}
 
 
 @router.get("/terms/{term_id}")
@@ -346,7 +353,7 @@ async def get_term(request: Request, term_id: int) -> dict:
     term["refs"] = [r for r in term["refs"] if reader.column(r["table_id"], r["column_name"])]
     term["ref_count"] = len(term["refs"])
     term["table_count"] = sum(1 for t in grounds if reader.column(t["table_id"], None))
-    return term
+    return _with_class_refusal(term)
 
 
 @router.post("/terms")

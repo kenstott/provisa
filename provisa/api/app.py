@@ -773,6 +773,33 @@ class AppState:
         self._active_runtime().view_sql_map = value
 
     @property
+    def class_tables(self) -> dict[str, dict]:
+        """The ontology schema's Class tables by name (REQ-2163)."""
+        return self._active_runtime().class_tables
+
+    @class_tables.setter
+    def class_tables(self, value: dict[str, dict]) -> None:
+        self._active_runtime().class_tables = value
+
+    @property
+    def refused_classes(self) -> dict[int, str]:
+        """Each Class term the build could not offer as a table, with why (REQ-2163)."""
+        return self._active_runtime().refused_classes
+
+    @refused_classes.setter
+    def refused_classes(self, value: dict[int, str]) -> None:
+        self._active_runtime().refused_classes = value
+
+    @property
+    def class_bodies(self) -> dict:
+        """Each Class table's lowered body per reader's visibility of its tables (REQ-2163)."""
+        return self._active_runtime().class_bodies
+
+    @class_bodies.setter
+    def class_bodies(self, value: dict) -> None:
+        self._active_runtime().class_bodies = value
+
+    @property
     def bitemporal_view_reads(self) -> dict:
         """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a reference
         read at a time (its own as_of / as_recorded, or the session's) is read as of that time
@@ -3174,6 +3201,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         state.federation_engine.reseed_ops(_OPS_VIEWS)
 
         await _register_user_views_in_state(conn, raw_config, tables, draft_tables)
+        # REQ-2163: the ontology schema's Class tables, over the tables this build serves.
+        from provisa.api._ontology_classes import register_class_tables
+
+        await register_class_tables(conn, tables)
 
         # Schema-currency reconcile (REQ-846/932): converge this environment's own landing tables
         # to the registered shape before introspection reads them. Boot and post-mutation registration
