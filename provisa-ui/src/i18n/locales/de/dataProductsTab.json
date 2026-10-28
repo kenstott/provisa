@@ -174,7 +174,6 @@
       "column": "Spalte",
       "type": "Typ",
       "required": "Nie null",
-      "yes": "Ja",
       "versionLabel": "Contract-Version",
       "statusLabel": "Contract-Status",
       "descriptionLabel": "Wofür er dient",
@@ -201,11 +200,20 @@
         "custom": "Benutzerdefinierte Eigenschaften und Tags"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} Eigenschaften",
-        "quality": "{{n}} Regeln",
-        "sla": "{{n}} Service-Levels",
-        "support": "{{channels}} Support-Kanäle · {{roles}} Rollen",
-        "custom": "{{props}} benutzerdefinierte Eigenschaften · {{tags}} Tags"
+        "properties_one": "{{count}} Eigenschaft",
+        "properties_other": "{{count}} Eigenschaften",
+        "rules_one": "{{count}} Regel",
+        "rules_other": "{{count}} Regeln",
+        "serviceLevels_one": "{{count}} Service-Level",
+        "serviceLevels_other": "{{count}} Service-Levels",
+        "supportChannels_one": "{{count}} Support-Kanal",
+        "supportChannels_other": "{{count}} Support-Kanäle",
+        "roles_one": "{{count}} Rolle",
+        "roles_other": "{{count}} Rollen",
+        "customProperties_one": "{{count}} benutzerdefinierte Eigenschaft",
+        "customProperties_other": "{{count}} benutzerdefinierte Eigenschaften",
+        "tags_one": "{{count}} Tag",
+        "tags_other": "{{count}} Tags"
       }
     }
   }

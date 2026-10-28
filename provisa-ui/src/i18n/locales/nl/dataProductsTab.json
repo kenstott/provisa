@@ -174,7 +174,6 @@
       "column": "Kolom",
       "type": "Type",
       "required": "Nooit null",
-      "yes": "Ja",
       "versionLabel": "Contractversie",
       "statusLabel": "Contractstatus",
       "descriptionLabel": "Waarvoor het dient",
@@ -201,11 +200,20 @@
         "custom": "Aangepaste eigenschappen en tags"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} eigenschappen",
-        "quality": "{{n}} regels",
-        "sla": "{{n}} serviceniveaus",
-        "support": "{{channels}} supportkanalen · {{roles}} rollen",
-        "custom": "{{props}} aangepaste eigenschappen · {{tags}} tags"
+        "properties_one": "{{count}} eigenschap",
+        "properties_other": "{{count}} eigenschappen",
+        "rules_one": "{{count}} regel",
+        "rules_other": "{{count}} regels",
+        "serviceLevels_one": "{{count}} serviceniveau",
+        "serviceLevels_other": "{{count}} serviceniveaus",
+        "supportChannels_one": "{{count}} supportkanaal",
+        "supportChannels_other": "{{count}} supportkanalen",
+        "roles_one": "{{count}} rol",
+        "roles_other": "{{count}} rollen",
+        "customProperties_one": "{{count}} aangepaste eigenschap",
+        "customProperties_other": "{{count}} aangepaste eigenschappen",
+        "tags_one": "{{count}} tag",
+        "tags_other": "{{count}} tags"
       }
     }
   }

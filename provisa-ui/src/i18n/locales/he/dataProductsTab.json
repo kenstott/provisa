@@ -174,7 +174,6 @@
       "column": "עמודה",
       "type": "סוג",
       "required": "אף פעם לא null",
-      "yes": "כן",
       "versionLabel": "גרסת החוזה",
       "statusLabel": "סטטוס החוזה",
       "descriptionLabel": "למה הוא משמש",
@@ -201,11 +200,20 @@
         "custom": "מאפיינים מותאמים ותגיות"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} מאפיינים",
-        "quality": "{{n}} כללים",
-        "sla": "{{n}} רמות שירות",
-        "support": "{{channels}} ערוצי תמיכה · {{roles}} תפקידים",
-        "custom": "{{props}} מאפיינים מותאמים · {{tags}} תגיות"
+        "properties_one": "{{count}} מאפיין",
+        "properties_other": "{{count}} מאפיינים",
+        "rules_one": "{{count}} כלל",
+        "rules_other": "{{count}} כללים",
+        "serviceLevels_one": "{{count}} רמת שירות",
+        "serviceLevels_other": "{{count}} רמות שירות",
+        "supportChannels_one": "{{count}} ערוץ תמיכה",
+        "supportChannels_other": "{{count}} ערוצי תמיכה",
+        "roles_one": "{{count}} תפקיד",
+        "roles_other": "{{count}} תפקידים",
+        "customProperties_one": "{{count}} מאפיין מותאם",
+        "customProperties_other": "{{count}} מאפיינים מותאמים",
+        "tags_one": "{{count}} תגית",
+        "tags_other": "{{count}} תגיות"
       }
     }
   }

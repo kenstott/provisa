@@ -174,7 +174,6 @@
       "column": "Coluna",
       "type": "Tipo",
       "required": "Nunca nulo",
-      "yes": "Sim",
       "versionLabel": "Versão do contrato",
       "statusLabel": "Status do contrato",
       "descriptionLabel": "Para que serve",
@@ -201,11 +200,20 @@
         "custom": "Propriedades personalizadas e tags"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} propriedades",
-        "quality": "{{n}} regras",
-        "sla": "{{n}} níveis de serviço",
-        "support": "{{channels}} canais de suporte · {{roles}} papéis",
-        "custom": "{{props}} propriedades personalizadas · {{tags}} tags"
+        "properties_one": "{{count}} propriedade",
+        "properties_other": "{{count}} propriedades",
+        "rules_one": "{{count}} regra",
+        "rules_other": "{{count}} regras",
+        "serviceLevels_one": "{{count}} nível de serviço",
+        "serviceLevels_other": "{{count}} níveis de serviço",
+        "supportChannels_one": "{{count}} canal de suporte",
+        "supportChannels_other": "{{count}} canais de suporte",
+        "roles_one": "{{count}} papel",
+        "roles_other": "{{count}} papéis",
+        "customProperties_one": "{{count}} propriedade personalizada",
+        "customProperties_other": "{{count}} propriedades personalizadas",
+        "tags_one": "{{count}} tag",
+        "tags_other": "{{count}} tags"
       }
     }
   }

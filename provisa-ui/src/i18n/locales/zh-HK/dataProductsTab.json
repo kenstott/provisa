@@ -174,7 +174,6 @@
       "column": "欄",
       "type": "類型",
       "required": "從不為空",
-      "yes": "是",
       "versionLabel": "契約版本",
       "statusLabel": "契約狀態",
       "descriptionLabel": "用途說明",
@@ -201,11 +200,20 @@
         "custom": "自訂屬性和標籤"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} 個屬性",
-        "quality": "{{n}} 條規則",
-        "sla": "{{n}} 個服務水平",
-        "support": "{{channels}} 個支援渠道 · {{roles}} 個角色",
-        "custom": "{{props}} 個自訂屬性 · {{tags}} 個標籤"
+        "properties_one": "{{count}} 個屬性",
+        "properties_other": "{{count}} 個屬性",
+        "rules_one": "{{count}} 條規則",
+        "rules_other": "{{count}} 條規則",
+        "serviceLevels_one": "{{count}} 個服務水平",
+        "serviceLevels_other": "{{count}} 個服務水平",
+        "supportChannels_one": "{{count}} 個支援渠道",
+        "supportChannels_other": "{{count}} 個支援渠道",
+        "roles_one": "{{count}} 個角色",
+        "roles_other": "{{count}} 個角色",
+        "customProperties_one": "{{count}} 個自訂屬性",
+        "customProperties_other": "{{count}} 個自訂屬性",
+        "tags_one": "{{count}} 個標籤",
+        "tags_other": "{{count}} 個標籤"
       }
     }
   }

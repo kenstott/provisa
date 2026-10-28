@@ -174,7 +174,6 @@
       "column": "कॉलम",
       "type": "प्रकार",
       "required": "कभी null नहीं",
-      "yes": "हाँ",
       "versionLabel": "अनुबंध संस्करण",
       "statusLabel": "अनुबंध स्थिति",
       "descriptionLabel": "यह किसलिए है",
@@ -201,11 +200,20 @@
         "custom": "कस्टम गुण और टैग"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} गुण",
-        "quality": "{{n}} नियम",
-        "sla": "{{n}} सेवा स्तर",
-        "support": "{{channels}} सहायता चैनल · {{roles}} भूमिकाएँ",
-        "custom": "{{props}} कस्टम गुण · {{tags}} टैग"
+        "properties_one": "{{count}} गुण",
+        "properties_other": "{{count}} गुण",
+        "rules_one": "{{count}} नियम",
+        "rules_other": "{{count}} नियम",
+        "serviceLevels_one": "{{count}} सेवा स्तर",
+        "serviceLevels_other": "{{count}} सेवा स्तर",
+        "supportChannels_one": "{{count}} सहायता चैनल",
+        "supportChannels_other": "{{count}} सहायता चैनल",
+        "roles_one": "{{count}} भूमिका",
+        "roles_other": "{{count}} भूमिकाएँ",
+        "customProperties_one": "{{count}} कस्टम गुण",
+        "customProperties_other": "{{count}} कस्टम गुण",
+        "tags_one": "{{count}} टैग",
+        "tags_other": "{{count}} टैग"
       }
     }
   }

@@ -15,10 +15,9 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Group, Stack, Table, Text } from "@mantine/core";
+import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
-import { ListCell } from "../../components/list/ListCell";
 
 const CONTRACT_SECTIONS = [
   "fundamentals",
@@ -95,82 +94,87 @@ function Records({ name, items, testId }: { name: string; items?: unknown[]; tes
   );
 }
 
-const yes = (v: boolean | undefined, mark: string) => (v ? mark : "");
-/** The schema table's columns shown whole; the rest are cut to one line. */
-const WHOLE = new Set([
+/** A property's elements as ODCS 3.1 names them, each shown declared or not; any further element
+ * the property carries follows them. */
+const PROPERTY_ELEMENTS = [
   "name",
   "logicalType",
+  "physicalType",
+  "logicalTypeOptions",
   "required",
   "unique",
   "primaryKey",
+  "primaryKeyPosition",
   "classification",
-]);
+  "description",
+  "examples",
+] as const;
 
-/** The schema's properties: one row each, a single line of text tall. */
-function Properties({ properties, testId }: { properties: OdcsProperty[]; testId: string }) {
-  const { t } = useTranslation();
-  const mark = t("dataProductsTab.contract.yes");
-  const heads = [
-    "name",
-    "logicalType",
-    "physicalType",
-    "required",
-    "unique",
-    "primaryKey",
-    "classification",
-    "description",
-    "examples",
-  ];
+/** The schema's properties: a row each, its name and a one-line summary; a row opens to every
+ * element of the property, each on its own wrapping line, so a property is read whole in a card of
+ * any width. */
+function Properties({
+  properties,
+  tableId,
+  testId,
+}: {
+  properties: OdcsProperty[];
+  tableId: number;
+  testId: string;
+}) {
+  const flags = (p: OdcsProperty) =>
+    (["required", "unique", "primaryKey"] as const).filter((k) => p[k] === true);
   return (
-    <Table
-      withTableBorder
-      striped
-      fz="sm"
-      horizontalSpacing="xs"
-      data-testid={testId}
-      className="contract-properties"
-      style={{ lineHeight: "var(--mantine-line-height-sm)" }}
-    >
-      <Table.Thead>
-        <Table.Tr>
-          {heads.map((h) => (
-            <Table.Th key={h} ff="monospace" fz="xs" fw={500}>
-              {h}
-            </Table.Th>
-          ))}
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
+    <Stack gap={2} data-testid={testId}>
+      <Text size="xs" ff="monospace" c="var(--text-muted)">
+        properties
+      </Text>
+      <Collapsibles id={`data-product.contract.${tableId}.properties`}>
         {properties.map((p) => {
-          const cells: [string, string][] = [
-            ["name", p.name],
-            ["logicalType", p.logicalType ?? ""],
-            ["physicalType", p.physicalType ?? ""],
-            ["required", yes(p.required, mark)],
-            ["unique", yes(p.unique, mark)],
-            ["primaryKey", yes(p.primaryKey, mark)],
-            ["classification", p.classification ?? ""],
-            ["description", p.description ?? ""],
-            ["examples", p.examples ? shown(p.examples) : ""],
-          ];
+          const extra = Object.keys(p).filter(
+            (k) => !(PROPERTY_ELEMENTS as readonly string[]).includes(k) && k !== "quality",
+          );
           return (
-            <Table.Tr key={p.name}>
-              {/* Every cell is one line, so the row is one line tall: a name, a type or a flag is
-                  shown whole (the table scrolls in its card), longer text cut with an ellipsis. */}
-              {cells.map(([k, v]) => (
-                <Table.Td
-                  key={k}
-                  ff={k.endsWith("Type") || k === "name" ? "monospace" : undefined}
-                  style={WHOLE.has(k) ? { whiteSpace: "nowrap" } : undefined}
-                >
-                  {WHOLE.has(k) ? v : <ListCell text={v} oneLine />}
-                </Table.Td>
-              ))}
-            </Table.Tr>
+            <CollapsibleItem
+              key={p.name}
+              value={p.name}
+              defaultOpen={false}
+              mountWhenOpen
+              testId={`${testId}-${p.name}`}
+              controlTestId={`${testId}-${p.name}-toggle`}
+              title={
+                <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Text size="sm" ff="monospace" style={{ flexShrink: 0 }}>
+                    {p.name}
+                  </Text>
+                  <Text
+                    size="sm"
+                    c="dimmed"
+                    truncate="end"
+                    style={{ minWidth: 0 }}
+                    data-testid={`${testId}-${p.name}-summary`}
+                  >
+                    {[p.logicalType, p.physicalType, ...flags(p), p.classification]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                </Group>
+              }
+            >
+              <Stack gap={2}>
+                {PROPERTY_ELEMENTS.map((k) => (
+                  <Element key={k} name={k} value={p[k]} />
+                ))}
+                <Records name="quality" items={p.quality} />
+                {extra.map((k) => (
+                  <Element key={k} name={k} value={p[k]} />
+                ))}
+              </Stack>
+            </CollapsibleItem>
           );
         })}
-      </Table.Tbody>
-    </Table>
+      </Collapsibles>
+    </Stack>
   );
 }
 
@@ -195,26 +199,25 @@ export function ContractView({ contract, tableId }: { contract: OdcsContract; ta
   const price = contract.price;
   const custom = contract.customProperties ?? [];
   const tags = contract.tags ?? [];
+  const count = (key: string, n: number) =>
+    t(`dataProductsTab.contract.summary.${key}`, { count: n });
   const summaries: Record<Section, string> = {
     fundamentals: [`v${contract.version}`, status, contract.domain].filter(Boolean).join(" · "),
-    schema: t("dataProductsTab.contract.summary.schema", {
-      object: object?.physicalName ?? object?.name ?? notDeclared,
-      n: properties.length,
-    }),
-    quality: t("dataProductsTab.contract.summary.quality", { n: rules.length }),
-    sla: t("dataProductsTab.contract.summary.sla", { n: sla.length }),
-    support: t("dataProductsTab.contract.summary.support", {
-      channels: contract.support?.length ?? 0,
-      roles: contract.roles?.length ?? 0,
-    }),
+    schema: [
+      object?.physicalName ?? object?.name ?? notDeclared,
+      count("properties", properties.length),
+    ].join(" · "),
+    quality: count("rules", rules.length),
+    sla: count("serviceLevels", sla.length),
+    support: [
+      count("supportChannels", contract.support?.length ?? 0),
+      count("roles", contract.roles?.length ?? 0),
+    ].join(" · "),
     servers: contract.servers?.length
       ? contract.servers.map((s) => String(s.server ?? s.type)).join(", ")
       : notDeclared,
     pricing: price ? record(price) : notDeclared,
-    custom: t("dataProductsTab.contract.summary.custom", {
-      props: custom.length,
-      tags: tags.length,
-    }),
+    custom: [count("customProperties", custom.length), count("tags", tags.length)].join(" · "),
   };
   const bodies: Record<Section, ReactNode> = {
     fundamentals: (
@@ -242,7 +245,11 @@ export function ContractView({ contract, tableId }: { contract: OdcsContract; ta
         <Element name="dataGranularityDescription" value={object?.dataGranularityDescription} />
         <Records name="relationships" items={object?.relationships} />
         <Element name="tags" value={object?.tags} />
-        <Properties properties={properties} testId={`data-contract-columns-${tableId}`} />
+        <Properties
+          properties={properties}
+          tableId={tableId}
+          testId={`data-contract-columns-${tableId}`}
+        />
       </>
     ),
     quality: <Records name="quality" items={rules} />,

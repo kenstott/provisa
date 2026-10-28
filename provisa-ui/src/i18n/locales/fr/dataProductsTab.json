@@ -174,7 +174,6 @@
       "column": "Colonne",
       "type": "Type",
       "required": "Jamais nul",
-      "yes": "Oui",
       "versionLabel": "Version du contrat",
       "statusLabel": "Statut du contrat",
       "descriptionLabel": "À quoi il sert",
@@ -201,11 +200,20 @@
         "custom": "Propriétés personnalisées et tags"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} propriétés",
-        "quality": "{{n}} règles",
-        "sla": "{{n}} niveaux de service",
-        "support": "{{channels}} canaux de support · {{roles}} rôles",
-        "custom": "{{props}} propriétés personnalisées · {{tags}} tags"
+        "properties_one": "{{count}} propriété",
+        "properties_other": "{{count}} propriétés",
+        "rules_one": "{{count}} règle",
+        "rules_other": "{{count}} règles",
+        "serviceLevels_one": "{{count}} niveau de service",
+        "serviceLevels_other": "{{count}} niveaux de service",
+        "supportChannels_one": "{{count}} canal de support",
+        "supportChannels_other": "{{count}} canaux de support",
+        "roles_one": "{{count}} rôle",
+        "roles_other": "{{count}} rôles",
+        "customProperties_one": "{{count}} propriété personnalisée",
+        "customProperties_other": "{{count}} propriétés personnalisées",
+        "tags_one": "{{count}} tag",
+        "tags_other": "{{count}} tags"
       }
     }
   }

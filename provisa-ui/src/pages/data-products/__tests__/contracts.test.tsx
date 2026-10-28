@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
-import { fireEvent, render, screen, within } from "../../../test-utils/render";
+import { fireEvent, render, screen } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { coreContracts, type ProductCore } from "../productCore";
 import { ContractEditor } from "../ContractEditor";
@@ -114,7 +114,17 @@ describe("a product's contracts", () => {
     expect(screen.getByTestId("data-contract-7-schema-summary")).toHaveTextContent(
       "wh.public.daily_revenue · 2 properties",
     );
-    expect(screen.getByTestId("data-contract-7-quality-summary")).toHaveTextContent("1 rules");
+    // Each count is said in the singular or plural it calls for.
+    expect(screen.getByTestId("data-contract-7-quality-summary")).toHaveTextContent(/^1 rule$/);
+    expect(screen.getByTestId("data-contract-7-sla-summary")).toHaveTextContent(
+      /^1 service level$/,
+    );
+    expect(screen.getByTestId("data-contract-7-support-summary")).toHaveTextContent(
+      /^1 support channel · 2 roles$/,
+    );
+    expect(screen.getByTestId("data-contract-7-custom-summary")).toHaveTextContent(
+      /^0 custom properties · 1 tag$/,
+    );
     expect(screen.getByTestId("data-contract-7-servers-summary")).toHaveTextContent("pgwire, rest");
     expect(screen.getByTestId("data-contract-7-pricing-summary")).toHaveTextContent("Not declared");
     // Collapsed until opened: nothing of a section's body is mounted.
@@ -125,14 +135,28 @@ describe("a product's contracts", () => {
   it("open to every element, declared, derived or not declared", async () => {
     panel(ODCS);
     fireEvent.click(screen.getByTestId("data-contract-7-schema-toggle"));
-    const rows = within(await screen.findByTestId("data-contract-columns-7")).getAllByRole("row", {
-      hidden: true, // the panel is still opening: Mantine marks it hidden until its transition ends
-    });
-    expect(rows.map((r) => r.textContent)).toEqual([
-      "namelogicalTypephysicalTyperequireduniqueprimaryKeyclassificationdescriptionexamples",
-      "daydateDATEYesYesYes",
-      "amountnumberNUMERIC(12, 2)restrictedThe day's total",
-    ]);
+    // A row a property: its name and a one-line summary, closed until opened.
+    await screen.findByTestId("data-contract-columns-7");
+    expect(screen.getByTestId("data-contract-columns-7-day-summary")).toHaveTextContent(
+      "date · DATE · required · unique · primaryKey",
+    );
+    expect(screen.getByTestId("data-contract-columns-7-amount-summary")).toHaveTextContent(
+      "number · NUMERIC(12, 2) · restricted",
+    );
+    // Opened, a property shows every element whole, declared or not.
+    fireEvent.click(screen.getByTestId("data-contract-columns-7-amount-toggle"));
+    const amount = await screen.findByTestId("data-contract-columns-7-amount");
+    for (const shown of [
+      "physicalTypeNUMERIC(12, 2)",
+      "classificationrestricted",
+      "descriptionThe day's total",
+      "examplesNot declared",
+      "requiredNot declared",
+      "type: library · metric: nullValues · mustBe: 0",
+      "businessNameTotal revenue",
+    ]) {
+      expect(amount).toHaveTextContent(shown);
+    }
     fireEvent.click(screen.getByTestId("data-contract-7-fundamentals-toggle"));
     const fundamentals = await screen.findByTestId("data-contract-7-fundamentals");
     expect(fundamentals).toHaveTextContent("dataProductRevenue");
@@ -182,12 +206,19 @@ const ODCS: OdcsContract = {
           physicalType: "NUMERIC(12, 2)",
           classification: "restricted",
           description: "The day's total",
+          businessName: "Total revenue",
           quality: [{ type: "library", metric: "nullValues", mustBe: 0 }],
         },
       ],
     },
   ],
   slaProperties: [{ property: "availability", value: 99.9, unit: "%" }],
+  support: [{ channel: "support", url: "mailto:revenue@example.com" }],
+  roles: [
+    { role: "analyst", access: "read" },
+    { role: "finance", access: "write" },
+  ],
+  tags: ["finance"],
   servers: [
     { server: "pgwire", type: "postgres" },
     { server: "rest", type: "api" },

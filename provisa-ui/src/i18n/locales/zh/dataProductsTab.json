@@ -174,7 +174,6 @@
       "column": "列",
       "type": "类型",
       "required": "从不为空",
-      "yes": "是",
       "versionLabel": "契约版本",
       "statusLabel": "契约状态",
       "descriptionLabel": "用途说明",
@@ -201,11 +200,20 @@
         "custom": "自定义属性和标签"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} 个属性",
-        "quality": "{{n}} 条规则",
-        "sla": "{{n}} 个服务级别",
-        "support": "{{channels}} 个支持渠道 · {{roles}} 个角色",
-        "custom": "{{props}} 个自定义属性 · {{tags}} 个标签"
+        "properties_one": "{{count}} 个属性",
+        "properties_other": "{{count}} 个属性",
+        "rules_one": "{{count}} 条规则",
+        "rules_other": "{{count}} 条规则",
+        "serviceLevels_one": "{{count}} 个服务级别",
+        "serviceLevels_other": "{{count}} 个服务级别",
+        "supportChannels_one": "{{count}} 个支持渠道",
+        "supportChannels_other": "{{count}} 个支持渠道",
+        "roles_one": "{{count}} 个角色",
+        "roles_other": "{{count}} 个角色",
+        "customProperties_one": "{{count}} 个自定义属性",
+        "customProperties_other": "{{count}} 个自定义属性",
+        "tags_one": "{{count}} 个标签",
+        "tags_other": "{{count}} 个标签"
       }
     }
   }

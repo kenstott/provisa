@@ -174,7 +174,6 @@
       "column": "Column",
       "type": "Type",
       "required": "Never null",
-      "yes": "Yes",
       "versionLabel": "Contract version",
       "statusLabel": "Contract status",
       "descriptionLabel": "What it is for",
@@ -201,11 +200,20 @@
         "custom": "Custom properties and tags"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} properties",
-        "quality": "{{n}} rules",
-        "sla": "{{n}} service levels",
-        "support": "{{channels}} support channels · {{roles}} roles",
-        "custom": "{{props}} custom properties · {{tags}} tags"
+        "properties_one": "{{count}} property",
+        "properties_other": "{{count}} properties",
+        "rules_one": "{{count}} rule",
+        "rules_other": "{{count}} rules",
+        "serviceLevels_one": "{{count}} service level",
+        "serviceLevels_other": "{{count}} service levels",
+        "supportChannels_one": "{{count}} support channel",
+        "supportChannels_other": "{{count}} support channels",
+        "roles_one": "{{count}} role",
+        "roles_other": "{{count}} roles",
+        "customProperties_one": "{{count}} custom property",
+        "customProperties_other": "{{count}} custom properties",
+        "tags_one": "{{count}} tag",
+        "tags_other": "{{count}} tags"
       }
     }
   }

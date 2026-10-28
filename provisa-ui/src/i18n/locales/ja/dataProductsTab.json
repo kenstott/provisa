@@ -174,7 +174,6 @@
       "column": "列",
       "type": "型",
       "required": "NULL なし",
-      "yes": "はい",
       "versionLabel": "コントラクトのバージョン",
       "statusLabel": "コントラクトのステータス",
       "descriptionLabel": "目的",
@@ -201,11 +200,20 @@
         "custom": "カスタムプロパティとタグ"
       },
       "summary": {
-        "schema": "{{object}} · {{n}} 個のプロパティ",
-        "quality": "{{n}} 件のルール",
-        "sla": "{{n}} 件のサービスレベル",
-        "support": "サポートチャネル {{channels}} 件 · ロール {{roles}} 件",
-        "custom": "カスタムプロパティ {{props}} 件 · タグ {{tags}} 件"
+        "properties_one": "{{count}} 個のプロパティ",
+        "properties_other": "{{count}} 個のプロパティ",
+        "rules_one": "{{count}} 件のルール",
+        "rules_other": "{{count}} 件のルール",
+        "serviceLevels_one": "{{count}} 件のサービスレベル",
+        "serviceLevels_other": "{{count}} 件のサービスレベル",
+        "supportChannels_one": "サポートチャネル {{count}} 件",
+        "supportChannels_other": "サポートチャネル {{count}} 件",
+        "roles_one": "ロール {{count}} 件",
+        "roles_other": "ロール {{count}} 件",
+        "customProperties_one": "カスタムプロパティ {{count}} 件",
+        "customProperties_other": "カスタムプロパティ {{count}} 件",
+        "tags_one": "タグ {{count}} 件",
+        "tags_other": "タグ {{count}} 件"
       }
     }
   }
