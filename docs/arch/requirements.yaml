@@ -87308,7 +87308,16 @@ Then the schema <catalog>.customer_360 holds both tables, its comment and tags c
     tags; and dataProduct as its own field. What Provisa cannot know is declared on the contract (REQ-2158):
     tenant, pricing, examples, business names, critical data elements, data granularity, authoritative definitions
     (a glossary term''s link where one is bound) and default SLA retention and availability. The same document
-    goes to every target that imports ODCS: OpenMetadata, Collibra and DataHub.'
+    goes to every target that imports ODCS: OpenMetadata, Collibra and DataHub. (Amended 2026-10-27, THE
+    ODPS DOCUMENT IS COMPLETE:) 2026-10-28: the product''s ODPS document carries its input ports: each input
+    the product consumes, naming the upstream contract it reads (the producing product''s contract for that
+    output) and the product''s expectations on it (REQ-2157). Each output port names its inputContracts,
+    the input contracts its member reads from, taken from the member''s lineage. A member with no declared
+    contract is reported by name, never left out silently. The document also carries the team''s members
+    and roles in ODPS''s own fields (not as custom properties), the documentation link as an authoritativeDefinition,
+    the product''s tags, tenant and productCreatedTs, and managementPorts for the endpoints that observe
+    and control it. A contract''s quality rules are the member''s promises only, never a check another product
+    owns; expectations appear on input ports, never in the product''s own contracts.'
   use_case: A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
   scenario: "Given a data product customer_360 with two member tables and the Dataplex target configured for the organisation's project
 
