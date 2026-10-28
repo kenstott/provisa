@@ -18,7 +18,7 @@ import { CARD_W, CARD_HEADER_H, COL_ROW_H, columnsTop } from "../../components/c
 import { approvedEdges, buildJoinSql, type ApprovedJoin } from "../../components/canvas/joinGraph";
 import { fetchApprovedJoins } from "../../api/admin";
 import type { CanvasTable, CanvasJoin, CanvasMetric, JoinCanvasProps } from "./types";
-import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
+import type { Metric, ListedTable, Relationship } from "../../types/admin";
 
 // REQ-1322: metric card on the canvas. Distinct accent styling; checkboxes pick
 // the dimensions the semantic query groups by. The UI never generates joins or
@@ -35,7 +35,7 @@ function MetricCanvasCard({
 }: {
   cm: CanvasMetric;
   metric: Metric;
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   existingRels: Relationship[];
   onMove: (x: number, y: number) => void;
   onRemove: () => void;
@@ -183,7 +183,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const tableMap = useMemo(() => {
-    const m: Record<string, RegisteredTable> = {};
+    const m: Record<string, ListedTable> = {};
     for (const t of tables) m[t.tableName] = t;
     return m;
   }, [tables]);

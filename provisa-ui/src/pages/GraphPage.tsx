@@ -204,7 +204,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   const { relationships: graphRels } = useAllRelationships();
   const { upsertRelationship } = useUpsertRelationship();
   // The name a relationship's save takes for each table: its alias, else its table name.
-  const { tables } = useTables();
+  const { tables } = useTables({ columns: false });
   const [nfModal, setNfModal] = useState<{
     label: string;
     filterColumns: { name: string; type: string }[];

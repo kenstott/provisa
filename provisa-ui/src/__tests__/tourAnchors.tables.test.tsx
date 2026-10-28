@@ -196,6 +196,7 @@ vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useTables: () => TABLES,
+  useTableDetails: () => TABLES,
   useSources: () => ({ sources: SOURCES, loading: false, refetch: REFETCH }),
   useDomains: () => DOMAINS,
   useRoles: () => ({ roles: NONE, loading: false, refetch: REFETCH }),

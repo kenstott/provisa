@@ -33,7 +33,7 @@ import {
   useRegisterTable,
   useUpdateTable,
 } from "../hooks/useAdminQueries";
-import type { RegisteredTable } from "../types/admin";
+import type { ListedTable, RegisteredTable } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
@@ -394,7 +394,7 @@ export function SqlPage() {
   );
 
   const domainGroups = useMemo(() => {
-    const groups: Record<string, RegisteredTable[]> = {};
+    const groups: Record<string, ListedTable[]> = {};
     for (const t of tables) {
       if (t.domainId && !isDomainVisible(t.domainId)) continue;
       const d = t.domainId ? domainToSqlName(t.domainId) : "(no domain)";

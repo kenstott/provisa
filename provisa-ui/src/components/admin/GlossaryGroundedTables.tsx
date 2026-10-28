@@ -40,7 +40,7 @@ export function GlossaryGroundedTables({
   onRead?: (tables: GlossaryTermTable[]) => void;
 }) {
   const { t } = useTranslation();
-  const { tables } = useTables();
+  const { tables } = useTables({ inPage: true, columns: false });
   // Kept with the term it was read for: another term's answer is not this one's.
   const [read, setRead] = useState<{ termId: number; tables: GlossaryTermTable[] } | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -15,7 +15,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { TableColumn } from "../../types/admin";
+import type { ListedColumn } from "../../types/admin";
 import { isRequiredParam, parameterName } from "../../components/nativeParams";
 
 export function ParamsSection({
@@ -23,7 +23,7 @@ export function ParamsSection({
   values,
   setValues,
 }: {
-  params: TableColumn[];
+  params: ListedColumn[];
   values: Record<string, string>;
   setValues: Dispatch<SetStateAction<Record<string, string>>>;
 }) {
