@@ -11,7 +11,7 @@
 // REQ-2135: how a SPARQL answer is drawn as asked -- a CONSTRUCT's literals as properties or as
 // nodes, a SELECT whose variables pair into subject and object as a graph.
 
-import { Button, Switch } from "@mantine/core";
+import { Button, Chip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { SparqlDraw } from "./useSparqlDraw";
 
@@ -22,14 +22,15 @@ export function SparqlDrawControls({ draw, onDrawn }: { draw: SparqlDraw; onDraw
   return (
     <>
       {frame.sparqlTriples && (
-        <Switch
+        <Chip
           size="xs"
           className="gf-sparql-toggle"
           checked={draw.literalNodes}
-          onChange={(e) => draw.setLiteralNodes(e.currentTarget.checked)}
-          label={t("graphFrame.sparqlLiteralsAsNodes")}
+          onChange={draw.setLiteralNodes}
           data-testid="graph-frame-literals-as-nodes"
-        />
+        >
+          {t("graphFrame.sparqlLiteralsAsNodes")}
+        </Chip>
       )}
       {frame.sparqlPairing && !draw.drawSelect && (
         <Button
