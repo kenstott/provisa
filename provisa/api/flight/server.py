@@ -1068,16 +1068,23 @@ class ProvisaFlightServer(
         schema = command.schema if command.HasField("schema") else None
         catalog_name = command.catalog if command.HasField("catalog") else None
 
-        def _declared() -> list[str] | None:
+        def _declared() -> tuple[str, list[str]] | None:
+            """The declared table's schema and columns, or None when the model declares none."""
             if not request.get("role"):
                 raise _flight_error("role is required")
             catalog = flightsql_catalog.role_catalog(self._state, str(request["role"]))
             if catalog_name is not None and catalog_name != catalog.database:
                 raise _NotFound(f"no catalog {catalog_name!r}: the connection is served one")
             found = [t for t in catalog.tables if t.name == name and schema in (None, t.schema)]
-            return [c for c, *_ in catalog.columns.get(found[0].toid, [])] if found else None
+            if not found:
+                return None
+            if len(found) > 1:
+                raise _Invalid(f"table {name!r} is in several schemas: name the one to write")
+            (table,) = found
+            return table.schema, [c for c, *_ in catalog.columns.get(table.toid, [])]
 
-        columns = _run_rpc(lambda: self._as_ticket_caller(request, _declared))
+        declared = _run_rpc(lambda: self._as_ticket_caller(request, _declared))
+        columns = None if declared is None else declared[1]
         how = command.table_definition_options
         undefined = "nothing is defined through a query protocol: a table is defined in the model"
         if columns is None:
@@ -1091,7 +1098,10 @@ class ProvisaFlightServer(
         unknown = [c for c in rows.column_names if c not in columns]
         if unknown:
             raise _Invalid(f"{name} has no column {unknown[0]!r}")
-        statements = flightsql.ingest_statements(name, schema, rows)
+        # Named by its schema: a temporary table of the session named as it is would be the one
+        # a bare name reaches (REQ-615).
+        assert declared is not None  # columns is not None
+        statements = flightsql.ingest_statements(name, declared[0], rows)
         return self._run_update(context, statements) if statements else 0
 
     def _ingest_temporary(

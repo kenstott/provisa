@@ -91,11 +91,13 @@ _ROWS = pa.table({"id": pa.array([1, 2, 3], pa.int32()), "note": ["a", None, "it
 
 @pytest.mark.parametrize("mode", ["append", "create_append"])
 def test_rows_ingested_into_a_declared_table_are_written_as_the_caller(served, mode):
+    """Into the model's table, named by its schema: a temporary table of the session named as it
+    is would be the one a bare name reaches (REQ-615)."""
     with _connect(served.uri) as conn, conn.cursor() as cur:
         assert cur.adbc_ingest("orders", _ROWS, mode=mode) == 3
     assert served.ran == [
         (
-            "INSERT INTO \"orders\" (\"id\", \"note\") VALUES (1, 'a'), (2, NULL), (3, 'it''s')",
+            'INSERT INTO "sales"."orders" ("id", "note") VALUES (1, \'a\'), (2, NULL), (3, \'it\'\'s\')',
             "seller",
         )
     ]
