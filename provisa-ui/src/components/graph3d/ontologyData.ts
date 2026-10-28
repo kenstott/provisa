@@ -525,15 +525,14 @@ export function readsProducts(s: QueryScope): boolean {
 
 /** The ontology's one query for ``s``: its terms, each with the edges leaving it under the
  * Ontology layer, and the data products readsProducts says; null when the role cannot read the
- * terms. A part the role cannot read is left out. */
-export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
-  const terms = termsField(m, s);
-  if (terms === null) return null;
+ * terms. A part the role cannot read is left out. Without ``terms`` (the count found none at the
+ * root, so none nests under it) it reads the products alone, and is null when it reads none. */
+export function ontologyQuery(m: MetaReader, s: QueryScope, terms = true): string | null {
+  const termsRead = termsField(m, s);
+  if (termsRead === null) return null;
   const products = readsProducts(s) ? productsField(m, s) : null;
-  return operation(
-    "Ontology",
-    [terms, products].filter((f): f is string => f !== null),
-  );
+  const fields = [terms ? termsRead : null, products].filter((f): f is string => f !== null);
+  return fields.length === 0 ? null : operation("Ontology", fields);
 }
 
 /** Every term the query read, at whatever level of a search's neighbourhood, once: a term read at
@@ -569,7 +568,7 @@ export function termEdges(terms: TermRow[]): TermEdgeRow[] {
 
 /** What the Ontology View's query answers: a part not read is absent. */
 export interface OntologyRows {
-  _terms: TermRow[];
+  _terms?: TermRow[];
   data_products?: ProductRow[];
 }
 

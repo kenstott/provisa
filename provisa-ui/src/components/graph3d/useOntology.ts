@@ -47,9 +47,13 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (query === null || count === null) return null;
   const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
-  const rows = await dataGraphql<OntologyRows>(query, {}, role);
+  // No term at the root, so none nested under it: a product with no terms (a new one) reads
+  // itself alone, not the empty neighbourhood's nested edges -- seconds of server time.
+  const read = counted.length === 0 ? ontologyQuery(m, scope, false) : query;
+  const rows: OntologyRows =
+    read === null ? { _terms: [] } : await dataGraphql<OntologyRows>(read, {}, role);
   // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
-  const terms = flatTerms(rows._terms);
+  const terms = flatTerms(rows._terms ?? []);
   const products = rows.data_products ?? [];
   const data = ontologyGraph(terms, termEdges(terms), products);
   if (!scope.layers.has("lineage")) return { data, query };
