@@ -346,8 +346,14 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     )
     from provisa.compiler.sql_rewrite import semantic_table_name
 
+    from provisa.compiler.ontology_classes import is_class_table_id
+
     for meta in ctx.tables.values():
         for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
+            # REQ-2163: a Class is named only under the ontology schema. A table is grounded in
+            # a Class named for it (REQ-2141), so the bare name stays the table's.
+            if is_class_table_id(meta.table_id) and "." not in said:
+                continue
             gov.table_map[said] = meta.table_id
         # And its catalog-physical name: a view's body is read into a statement lowered to it,
         # and two sources may hold tables of one schema.table (naming.table_id_of).

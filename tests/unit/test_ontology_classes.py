@@ -583,3 +583,48 @@ def test_views_read_finds_a_class_only_where_the_ontology_schema_is_named() -> N
 
     assert views_read("SELECT id FROM sales.four", _CLASS_FOUR) == {}
     assert set(views_read('SELECT * FROM "ontology"."four"', _CLASS_FOUR)) == {"ontology.four"}
+
+
+def test_a_bare_name_a_class_shares_with_a_table_resolves_to_the_table() -> None:
+    # The retail demo's EU view joins staff to outbound_mail along a relationship. staff is
+    # grounded in a Class named staff (REQ-2141); with the Class registered last under the bare
+    # name too, ``staff`` resolved to the Class, and the join was refused as relating nothing.
+    from sqlglot import exp
+
+    from provisa.compiler.naming import table_id_of
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from provisa.compiler.stage2 import build_governance_context
+
+    staff_id, staff_term = 7, 70
+    staff = {
+        "id": staff_id,
+        "source_id": "pg",
+        "domain_id": "sales",
+        "schema_name": "public",
+        "table_name": "staff",
+        "columns": [_col("id", "integer"), _col("name", "text")],
+    }
+    rows, refused = class_tables([staff], {staff_id: staff_term}, {staff_term: "staff"}, [])
+    assert refused == {}
+    tables = [staff, *rows]
+    ctx = CompilationContext()
+    ctx.tables = {
+        t["table_name"] + str(t["id"]): TableMeta(
+            table_id=t["id"],
+            field_name=t["table_name"],
+            type_name=t["table_name"].title(),
+            source_id=t["source_id"],
+            catalog_name=t["source_id"],
+            schema_name=t["schema_name"],
+            table_name=t["table_name"],
+            domain_id=t["domain_id"],
+        )
+        for t in tables
+    }
+    role = {"id": "analyst", "domain_access": ["*"], "capabilities": ["query_development"]}
+    gov = build_governance_context("analyst", RLSContext.empty(), {}, ctx, tables, role)
+    bare = exp.Table(this=exp.to_identifier("staff"))
+    in_ontology = exp.Table(this=exp.to_identifier("staff"), db=exp.to_identifier("ontology"))
+    assert table_id_of(bare, gov.table_map) == staff_id
+    assert table_id_of(in_ontology, gov.table_map) == class_table_id(staff_term)
