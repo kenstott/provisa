@@ -17,7 +17,7 @@ instantiated alone.
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import sqlglot.expressions as exp
 
@@ -126,6 +126,10 @@ class _RelJoinMixin:  # mixin for _Translator
             src_type: str | None = None,
             tgt_type: str | None = None,
             rel_type: str | None = None,
+            alias: str = "_all_rels",
+            undirected: bool = False,
+            src_props_of: str | None = None,
+            tgt_props_of: str | None = None,
         ) -> exp.Expression: ...
 
         def _translate_path_function(
@@ -137,6 +141,19 @@ class _RelJoinMixin:  # mixin for _Translator
         ) -> list[dict]: ...
 
         def _translate_triple(self, clause: _MatchClause, triple: TriplePattern) -> list[dict]: ...
+
+        # translator_every_rel._EveryRelMixin
+        def _every_rel_hop(self, *args: Any, **kwargs: Any) -> exp.Expression | None: ...
+
+        def _is_value_node(self, node: _NodePattern) -> bool: ...
+
+        def _named_type(self, node: _NodePattern) -> NodeMapping | None: ...
+
+        def _start_every_rel_match(self) -> None: ...
+
+        def _start_every_rel_clause(self) -> None: ...
+
+        def _group_every_rel_clause(self, clause: _MatchClause, joins: list[dict]) -> None: ...
 
     def _node_alias(self, node, nm: "NodeMapping", *, as_source: bool) -> str:
         """REQ-1586: the SQL alias for a pattern node, unique within the query.
@@ -292,21 +309,30 @@ class _RelJoinMixin:  # mixin for _Translator
         src_type: "str | None" = None,
         tgt_type: "str | None" = None,
         rel_type: "str | None" = None,
+        direction: str = "right",
     ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Handle an untyped rel pattern: UNION ALL over the relationship types whose endpoints
         are of the node types the pattern labels (``src_type`` / ``tgt_type``), every type where
-        it labels neither; only ``rel_type``'s relationships when it names one."""
-        src_domain = self._domain_nodes.get(src_var) if src_var else None
-        tgt_domain = self._domain_nodes.get(tgt_var) if tgt_var else None
+        it labels neither; only ``rel_type``'s relationships when it names one. Read along the
+        pattern's ``direction``: backward, its last node is each relationship's source;
+        undirected, either end is."""
+        near, far, near_type, far_type = (
+            (tgt_var, src_var, tgt_type, src_type)
+            if direction == "left"
+            else (src_var, tgt_var, src_type, tgt_type)
+        )
+        src_domain = self._domain_nodes.get(near) if near else None
+        tgt_domain = self._domain_nodes.get(far) if far else None
         from_expr = self._build_all_rels_union(
-            src_var,
+            near,
             rel_var,
-            tgt_var,
+            far,
             src_domain,
             tgt_domain,
-            src_type=src_type,
-            tgt_type=tgt_type,
+            src_type=near_type,
+            tgt_type=far_type,
             rel_type=rel_type,
+            undirected=direction == "none",
         )
         if src_var:
             self._domain_nodes.pop(src_var, None)
@@ -648,6 +674,9 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
         held_target: bool = False,
         new_source: bool = False,
+        held_source: bool = False,
+        replaceable: bool = False,
+        clause_index: int = 0,
     ) -> "tuple[exp.Expression | None, list[dict], bool]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Process a single relationship → update joins/from_expr.
 
@@ -655,6 +684,10 @@ class _RelJoinMixin:  # mixin for _Translator
         which it reads as a condition between the two rows, never as a second copy of its table.
         ``new_source``: the relationship's near end is a node the statement does not hold yet,
         though it has a FROM (a later MATCH's pattern, #306): its table is joined first.
+        ``held_source``: the near end is a node an earlier MATCH or an earlier hop holds.
+        ``replaceable``: the FROM is the pattern's first node and nothing else the statement
+        reads, which a read of every relationship replaces. ``clause_index``: the MATCH the
+        pattern is a part of, within which a relationship is matched once (translator_every_rel).
 
         Returns (from_expr, joins, did_continue) where did_continue=True means
         caller should skip to the next rel iteration.
@@ -667,14 +700,53 @@ class _RelJoinMixin:  # mixin for _Translator
         # Variable-length hops take a different path (path_functions) and carry the full list.
         alternation = len(rel.types) > 1 and not rel.variable_length
 
-        if (
-            i == 0
-            and not held_target
-            and not new_source
-            and self._stored_edges_of_unnamed_ends(rel, src_node, tgt_node)
+        # Read as its own union and joined to what the statement holds (translator_every_rel),
+        # not as the statement's one read of every relationship: a hop after the first, one to a
+        # node already held, a self-loop, a relationship variable already bound, the first hop of
+        # a pattern of several.
+        joined_hop = (
+            not replaceable
+            or held_target
+            or len(nodes) > 2
+            or bool(
+                rel.variable
+                and (rel.variable in self._all_rels_rel_vars or rel.variable in self._rel_var_types)
+            )
+        )
+
+        def every_rel_hop(src_nm: "NodeMapping | None", tgt_nm: "NodeMapping | None"):
+            return self._every_rel_hop(
+                rel,
+                src_node,
+                tgt_node,
+                clause,
+                clause_index,
+                from_expr,
+                joins,
+                held_source=held_source,
+                held_target=held_target,
+                replaceable=replaceable,
+                src_nm=src_nm,
+                tgt_nm=tgt_nm,
+            )
+
+        if any(
+            held and self._is_value_node(node)
+            for node, held in ((src_node, held_source), (tgt_node, held_target))
         ):
+            # An end held as a node value of a union, of no one table (a type a relationship
+            # would infer for it is not its table).
+            return (
+                every_rel_hop(self._named_type(src_node), self._named_type(tgt_node)),
+                joins,
+                True,
+            )
+
+        if self._stored_edges_of_unnamed_ends(rel, src_node, tgt_node) and (i == 0 or joined_hop):
             # REQ-2176: stored edges of one type between nodes the pattern names no type of: each
             # edge its own row with its own ends, as a read of every relationship reads them.
+            if joined_hop:
+                return every_rel_hop(None, None), joins, True
             near, far = (tgt_var, src_var) if rel.direction == "left" else (src_var, tgt_var)
             from_expr = self._handle_unlabeled_rel_pattern(
                 near, rel.variable, far, rel_type=rel.types[0].upper()
@@ -692,27 +764,37 @@ class _RelJoinMixin:  # mixin for _Translator
         if from_expr is None and src_nm is not None and not outer_row:
             from_expr = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
 
-        if (held_target or new_source) and (
-            src_nm is None or tgt_nm is None or rel.variable_length
-        ):
+        if (held_target or new_source) and rel.variable_length:
             raise CypherTranslateError(
-                "A relationship from a node a later MATCH starts at, or to a node the statement "
-                "already holds, is read through a relationship of a labelled type between "
-                "labelled nodes"
+                "A variable-length relationship from a node a later MATCH starts at, or to a node "
+                "the statement already holds, is read between labelled nodes"
             )
         if src_nm is None or tgt_nm is None:
-            if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
+            explicit_src = src_nm if src_nm_explicit else None
+            explicit_tgt = tgt_nm if tgt_nm_explicit else None
+            if (
+                tgt_var
+                and tgt_var in self._domain_nodes
+                and rel_mapping is not None
+                and src_nm is not None
+                and not held_target
+                and not new_source
+            ):
                 j = self._build_domain_target_join(tgt_var, rel_mapping, src_var, src_nm, clause)
                 joins.append(j)
-            elif rel_mapping is None:
+            elif joined_hop or new_source:
+                from_expr = every_rel_hop(explicit_src, explicit_tgt)
+            else:
                 # An endpoint's own label holds: (n:Inquiries)-[r]->(m) reads only the
                 # relationships from Inquiries, never every relationship of the model.
                 from_expr = self._handle_unlabeled_rel_pattern(
                     src_var,
                     rel.variable,
                     tgt_var,
-                    src_type=src_nm.type_name if src_nm is not None and src_nm_explicit else None,
-                    tgt_type=tgt_nm.type_name if tgt_nm is not None and tgt_nm_explicit else None,
+                    src_type=explicit_src.type_name if explicit_src is not None else None,
+                    tgt_type=explicit_tgt.type_name if explicit_tgt is not None else None,
+                    rel_type=rel.types[0].upper() if len(rel.types) == 1 else None,
+                    direction=rel.direction,
                 )
             return from_expr, joins, True
 
@@ -951,8 +1033,13 @@ class _RelJoinMixin:  # mixin for _Translator
         rel_mapping: RelationshipMapping | None = None
         tgt_nm: NodeMapping | None = None
         self._held_end_conditions = []
+        clause_index = 0
 
         for clause in match_clauses:
+            if not clause.continues:
+                clause_index += 1
+                self._start_every_rel_match()
+            self._start_every_rel_clause()
             if isinstance(clause.pattern, TriplePattern):
                 if from_expr is None:
                     raise CypherTranslateError(
@@ -1003,10 +1090,13 @@ class _RelJoinMixin:  # mixin for _Translator
             for node in nodes:
                 self._register_node(node)
 
+            # The pattern's first node read as the statement's FROM, all it reads yet: a read of
+            # every relationship from it replaces it.
+            own_first = None
             if from_expr is None and nodes:
                 new_from = self._build_first_node_from(nodes[0])
                 if new_from is not None:
-                    from_expr = new_from
+                    from_expr = own_first = new_from
             elif from_expr is not None and nodes and not rels:
                 j = self._build_standalone_node_join(nodes[0].variable, clause)
                 if j is not None:
@@ -1060,6 +1150,9 @@ class _RelJoinMixin:  # mixin for _Translator
                     joins,
                     held_target=far_var in placed,
                     new_source=new_start and i == 0,
+                    held_source=i > 0 or (bool(nodes[i].variable) and nodes[i].variable in joined),
+                    replaceable=i == 0 and own_first is not None and from_expr is own_first,
+                    clause_index=clause_index,
                 )
                 if far_var:
                     placed.add(far_var)
@@ -1069,6 +1162,8 @@ class _RelJoinMixin:  # mixin for _Translator
                 rel_mapping = self._resolve_early_rel_mapping(rel)
                 tgt_var = nodes[i + 1].variable
                 tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
+
+            self._group_every_rel_clause(clause, joins)
 
             if clause.variable and nodes:
                 _first = nodes[0]

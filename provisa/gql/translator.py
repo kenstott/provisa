@@ -28,6 +28,7 @@ Mapping:
 from __future__ import annotations
 
 import copy
+import dataclasses
 import re
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -76,6 +77,7 @@ from provisa.gql.translator_helpers import (
     _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    edge_properties_column,
 )
 from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
@@ -86,6 +88,7 @@ from provisa.gql.translator_types import (
     GraphVarKind,
     map_key_column,
 )
+from provisa.gql.translator_every_rel import _EveryRelMixin
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
 
@@ -522,6 +525,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     CorrelatedCallMixin,
     GroupByMixin,
     _RelJoinMixin,
+    _EveryRelMixin,
     _UnionMixin,
 ):
     def __init__(
@@ -646,6 +650,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_node_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # A union column -> the subquery, or the WITH, that gives it: a statement may read several
+        # unions of every relationship (translator_every_rel).
+        self._all_rels_var_alias: dict[str, str] = {}
         # The labels each end of a read of every relationship may be, and its relationships
         # (translator_union._build_all_rels_union).
         self._all_rels_ends: dict[str, list[str]] = {}
@@ -1489,6 +1496,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for r in returned
             if r.alias and isinstance(r.expression, MapLiteral)
         }
+        # A variable the RETURN names anew (RETURN r AS rel): a property of the name is the
+        # variable's own.
+        renamed = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and isinstance(r.expression, Variable)
+            and r.expression.name != r.alias
+            and r.alias not in self._var_table
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
             target = item.expression
@@ -1498,6 +1515,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 and target.name in maps.get(target.obj.name, {})
             ):
                 target = maps[target.obj.name][target.name]
+            elif (
+                isinstance(target, Property)
+                and isinstance(target.obj, Variable)
+                and target.obj.name in renamed
+            ):
+                target = dataclasses.replace(target, obj=renamed[target.obj.name])
             inner = self._parse_expr(target)
             if isinstance(inner, exp.Null):
                 # A key null for every row (a property the label has not) orders nothing, and an
@@ -1579,6 +1602,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     exp.alias_(exp.column(c, table=held_in, quoted=True), f"{key}.{c}", quoted=True)
                     for c in self._node_columns(split[key])
                 )
+                continue
+            if bare is not None and self._is_union_value(bare):
+                # A node or an edge a union of every relationship carries is its value column (an
+                # edge's own properties beside it), never a table's row.
+                held_in = (
+                    self._var_table[bare][0]
+                    if bare in self._cte_sources
+                    else self._all_rels_var_alias.get(bare, self._all_rels_alias or "_all_rels")
+                )
+                key = alias or bare
+                exprs.append(exp.alias_(exp.column(bare, table=held_in), key, quoted=True))
+                if bare in self._all_rels_rel_vars:
+                    exprs.append(
+                        exp.alias_(
+                            exp.column(edge_properties_column(bare), table=held_in),
+                            edge_properties_column(key),
+                            quoted=True,
+                        )
+                    )
                 continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
@@ -1688,6 +1730,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 # collect({...}) produces a MAP array — track the alias for UNWIND resolution
                 if _collects_maps(expr) and key:
                     self._map_array_vars.add(key)
+        for item in items:
+            bare = item.expression.name if isinstance(item.expression, Variable) else None
+            if bare is None or not self._is_union_value(bare):
+                continue
+            # Read on from the WITH's rows as the value it carries (translator_every_rel).
+            key = item.alias or bare
+            self._passthrough_vars.add(key)
+            if bare in self._all_rels_rel_vars:
+                self._all_rels_rel_vars.add(key)
+            else:
+                self._all_rels_node_vars.add(key)
+                self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
+            self._all_rels_var_alias[key] = cte_name
         self._var_table = new_var_table
         self._cte_sources = set(new_var_table.keys())
         self._temporal_kinds = kinds
