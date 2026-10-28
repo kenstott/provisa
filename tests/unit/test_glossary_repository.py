@@ -279,6 +279,7 @@ async def test_search_terms_matches_name_and_definition(control_plane):
         customer = await _term(conn, "customer")
         assert customer is not None
         await glossary_repo.set_definition(conn, customer["id"], "The buying organization.")
+        await glossary_repo.approve_term(conn, customer["id"], by=None)
         by_name = await glossary_repo.search_terms(conn, "custom")
         assert [t["name"] for t in by_name] == ["customer"]
         by_definition = await glossary_repo.search_terms(conn, "buying organization")
@@ -293,9 +294,11 @@ async def test_retired_and_deprecated_terms_are_withheld_from_agent_search(contr
         await table_repo.upsert(conn, _tbl("orders", ["cust_id", "order_dt"]))
         customer = await _term(conn, "customer")
         assert customer is not None
-        # Derived and still undefined: a proposal, not vocabulary an agent may ground on.
+        # Derived and still a draft: a proposal, not vocabulary an agent may ground on.
         assert await glossary_repo.search_terms(conn, "custom") == []
         await glossary_repo.set_definition(conn, customer["id"], "The buyer.")
+        assert await glossary_repo.search_terms(conn, "custom") == []  # defined, still a draft
+        await glossary_repo.approve_term(conn, customer["id"], by=None)
         assert [t["name"] for t in await glossary_repo.search_terms(conn, "custom")] == ["customer"]
 
         # REQ-2144: retiring moves its column to the successor; the term is kept as a record.
@@ -322,8 +325,8 @@ async def test_retired_and_deprecated_terms_are_withheld_from_agent_search(contr
 async def test_abstract_term_is_offered_only_while_a_chain_reaches_a_physical_ref(control_plane):
     """An abstract term names data only through its relationships: every chain must terminate
     at a term holding a physical ref, or it answers nothing and the search surface withholds
-    it. Connectivity ignores definitions — the undefined rooted term still grounds it — but
-    out-of-service terms do not conduct."""
+    it. A draft at the data end stands between nothing -- the undefined rooted term still
+    grounds it -- but out-of-service terms do not conduct (REQ-1387)."""
     async with _conn(control_plane) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         rooted = await _term(conn, "order date")
@@ -331,12 +334,27 @@ async def test_abstract_term_is_offered_only_while_a_chain_reaches_a_physical_re
         abstract_id = await glossary_repo.create_abstract_term(
             conn, "business date", definition="A date the business reasons about.", domains=set()
         )
-        # Defined, in service, but wired to nothing: no chain, no data, not offered.
+        await glossary_repo.approve_term(conn, abstract_id, by=None)
+        # Approved, in service, but wired to nothing: no chain, no data, not offered.
         assert await glossary_repo.search_terms(conn, "business date") == []
 
-        await glossary_repo.add_edge(conn, abstract_id, rooted["id"], "KIND_OF")
-        assert [t["name"] for t in await glossary_repo.search_terms(conn, "business date")] == [
-            "business date"
+        # order date is a kind of business date: grounding runs down from the broader term.
+        await glossary_repo.add_edge(conn, rooted["id"], abstract_id, "KIND_OF")
+        [found] = await glossary_repo.search_terms(conn, "business date")
+        assert (found["name"], found["status"], found["grounding"]) == (
+            "business date",
+            "approved",
+            "grounded",
+        )
+        # its path down: the undefined data end is an anonymous hop holding the binding
+        assert found["paths"] == [
+            [
+                {"term_id": abstract_id, "name": "business date", "status": "approved"},
+                {
+                    "hop": glossary_repo.hop_id(rooted["id"]),
+                    "bindings": ["__derived__.s.orders.order_dt"],
+                },
+            ]
         ]
 
         # Retiring the only term on the chain breaks the grounding: a withdrawn term must not

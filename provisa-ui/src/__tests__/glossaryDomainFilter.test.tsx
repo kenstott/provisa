@@ -72,14 +72,14 @@ const ORDER: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   // REQ-1591: one term, two domains — the combined model. Its refs point at a sales table and a
   // pet-store table, and that is a single concept both domains reference, not two terms.
   domains: ["sales", "petstore"],

@@ -137,6 +137,7 @@ relationships:
 - {id: complaint-budget, alias: BUDGETED, cardinality: one-to-many, source_table_id: complaints, source_column: neighborhood, target_table_id: budget, target_column: neighborhood}
 glossary_terms:
 - name: open complaint
+  approve: true
   definition: 'A 311 complaint the city has not yet closed: its status is open and it has no closed time.'
   domains:
   - city

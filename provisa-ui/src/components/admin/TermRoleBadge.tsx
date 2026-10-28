@@ -16,6 +16,7 @@ import { Badge, Group } from "@mantine/core";
 import {
   termRole,
   type GlossaryTermSummary,
+  type TermGrounding,
   type TermRole,
   type TermStatus,
 } from "../../api/glossary";
@@ -25,7 +26,7 @@ import { StatusBadge } from "../lifecycle/StatusBadge";
 
 const COLOUR: Record<TermRole, string> = { class: "grape", property: "blue", concept: "gray" };
 
-/** A term's lifecycle status (REQ-2144); a draft says what keeps it from service. */
+/** A term's status, set by people (REQ-1387, REQ-2144); a draft says what approval changes. */
 export function TermStatusBadge({ status, testId }: { status: TermStatus; testId?: string }) {
   const { t } = useTranslation();
   return (
@@ -35,6 +36,36 @@ export function TermStatusBadge({ status, testId }: { status: TermStatus; testId
       help={status === "draft" ? t("glossaryTab.draftHelp") : undefined}
       testId={testId}
     />
+  );
+}
+
+/** A term's grounding, computed (REQ-1387): 'grounded', or '~grounded' when it reaches data only
+ * through terms not yet approved; no chip when it reaches no data. */
+export function TermGroundingChip({
+  grounding,
+  testId,
+}: {
+  grounding: TermGrounding;
+  testId?: string;
+}) {
+  const { t } = useTranslation();
+  if (grounding === "not_grounded") return null;
+  const pending = grounding === "grounded_pending";
+  const help = pending ? t("glossaryTab.groundingPendingHelp") : t("glossaryTab.groundingGroundedHelp");
+  return (
+    <Tip text={help} named={pending}>
+      <Badge
+        size="xs"
+        variant={pending ? "outline" : "light"}
+        color={pending ? "yellow" : "teal"}
+        tt="none"
+        aria-label={pending ? help : undefined}
+        data-testid={testId}
+        data-grounding={grounding}
+      >
+        {t(`glossaryTab.grounding_${grounding}`)}
+      </Badge>
+    </Tip>
   );
 }
 
@@ -66,14 +97,15 @@ export function TermRoleBadge({
   );
 }
 
-/** A term's badges in the term list: its role, then its standing, then its column count. */
+/** A term's badges in the term list: its role, then its status (an approved term is the ordinary
+ * case, so the list marks the others), its grounding, then its column count. */
 export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
   const { t } = useTranslation();
   return (
     <Group gap={4} wrap="nowrap">
       <TermRoleBadge
         term={term}
-        dangling={termRole(term) === "concept" && !term.grounded}
+        dangling={termRole(term) === "concept" && term.grounding === "not_grounded"}
         testId={`glossary-role-${term.id}`}
       />
       {/* What it needs looked at is in its panel's To review section; the list marks it only. */}
@@ -82,10 +114,10 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
           {t("glossaryTab.toReview")}
         </Badge>
       )}
-      {/* A live term is the ordinary case: the list marks the others. */}
-      {term.status !== "live" && (
+      {term.status !== "approved" && (
         <TermStatusBadge status={term.status} testId={`glossary-status-${term.id}`} />
       )}
+      <TermGroundingChip grounding={term.grounding} testId={`glossary-grounding-${term.id}`} />
       {termRole(term) === "property" && (
         <Badge size="xs" variant="default">
           {term.ref_count}

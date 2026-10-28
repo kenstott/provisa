@@ -31,7 +31,8 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
       ref_count: 0,
       deprecated: false,
       retired: false,
-      live: true,
+      status: "approved",
+      grounding: "grounded",
       domains: [{ domain_id: domain }],
       refs: ["id", "name"].map((column) => ({
         column_key: `${table}:${column}`,

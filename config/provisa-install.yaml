@@ -26,6 +26,7 @@ discovery:
   sample_size: 20
 glossary_terms:
 - name: referral
+  approve: true
   definition: "The act of sending a pet to an outside veterinary practice for care\
     \ beyond in-house capability."
   domains:
@@ -36,19 +37,23 @@ glossary_terms:
   - to: specialty
     rel_type: RELATED_TO
 - name: clinic
+  approve: true
   definition: "The outside veterinary practice a pet is referred to."
   domains:
   - pet-store
 - name: specialty
+  approve: true
   definition: "The area of veterinary care a referral clinic focuses on."
   domains:
   - pet-store
 - name: personnel record
+  approve: true
   definition: "An employee's role and tenure at the shelter, held for staffing and\
     \ HR reporting."
   domains:
   - shelter
 - name: department
+  approve: true
   definition: "The organizational unit an employee is assigned to."
   domains:
   - shelter
@@ -56,6 +61,7 @@ glossary_terms:
   - to: personnel record
     rel_type: PART_OF
 - name: hire date
+  approve: true
   definition: "The date an employee started working at the shelter."
   domains:
   - shelter
@@ -63,6 +69,7 @@ glossary_terms:
   - to: personnel record
     rel_type: PART_OF
 - name: shift coverage
+  approve: true
   definition: "The window and place a shelter staff member is scheduled to work,\
     \ used for weekly coverage and handoff planning."
   domains:
@@ -75,14 +82,17 @@ glossary_terms:
   - to: schedule location
     rel_type: RELATED_TO
 - name: shift start
+  approve: true
   definition: "The time a scheduled shift begins."
   domains:
   - shelter
 - name: shift end
+  approve: true
   definition: "The time a scheduled shift ends."
   domains:
   - shelter
 - name: schedule location
+  approve: true
   definition: "The place a scheduled shift takes place."
   domains:
   - shelter

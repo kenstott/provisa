@@ -81,7 +81,8 @@ def _term(
         definition=definition,
         is_abstract=not refs,
         deprecated=False,
-        status="deprecated" if deprecated else "live",
+        status="deprecated" if deprecated else "approved",
+        grounding="grounded",
         refs=refs,
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )

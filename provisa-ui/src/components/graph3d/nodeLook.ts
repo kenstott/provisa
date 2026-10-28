@@ -84,7 +84,7 @@ export function nodeLook(n: GraphNode): Look {
   return { ...BY_TYPE[n.type], variant: "plain" };
 }
 
-/** The label class a term's status puts on its name; a live term (or any other node) has none. */
+/** The label class a term's status puts on its name; an approved term (or any other node) has none. */
 export function labelClass(status: TermStatus | undefined): string {
   switch (status) {
     case "draft":

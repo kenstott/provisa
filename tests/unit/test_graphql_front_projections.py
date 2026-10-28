@@ -96,11 +96,12 @@ def glossary():
         con.execute(f'CREATE TABLE {_T}"{t["table_name"]}" ({cols})')
     con.execute(
         f"INSERT INTO {_T}_terms (id, name, definition, ref_count, deprecated, retired, "
-        "live, identity_gap, term_domains) VALUES "
-        "(1, 'party', 'a party', 2, false, false, true, false, '|sales|'), "
-        "(2, 'customer', 'who buys', 1, false, false, true, false, '|sales|'), "
-        "(3, 'ledger', 'books', 0, false, false, true, false, '|finance|'), "
-        "(4, 'old party', 'was a party', 0, true, true, false, false, '|sales|')"
+        "status, grounding, identity_gap, term_domains) VALUES "
+        "(1, 'party', 'a party', 2, false, false, 'approved', 'grounded', false, '|sales|'), "
+        "(2, 'customer', 'who buys', 1, false, false, 'approved', 'grounded', false, '|sales|'), "
+        "(3, 'ledger', 'books', 0, false, false, 'approved', 'grounded', false, '|finance|'), "
+        "(4, 'old party', 'was a party', 0, true, true, 'retired', 'not_grounded', false, "
+        "'|sales|')"
     )
     con.execute(
         f"INSERT INTO {_T}_term_edges (id, from_term_id, to_term_id, rel_type) VALUES "

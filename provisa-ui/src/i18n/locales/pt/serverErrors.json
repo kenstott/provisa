@@ -687,8 +687,7 @@
       "retire_on_invalid": "A data de retirada planejada {{retire_on}} não é uma data (use AAAA-MM-DD).",
       "successor_is_self": "Um termo não pode ser seu próprio sucessor.",
       "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um termo em serviço.",
-      "term_not_live": "Apenas um termo ativo pode ser descontinuado; este está {{status}}.",
-      "status_by_action": "O status de um termo muda com Descontinuar, Retirar ou Restaurar, cada um com um motivo.",
+      "status_by_action": "O estado de um termo muda através de Aprovar, Descontinuar, Retirar ou Restaurar.",
       "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
       "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
       "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo.",
@@ -698,8 +697,18 @@
         "class_and_attribute_table": "A tabela {{table}} não tem classe: seu conceito é este termo, que tem colunas que não são chaves ({{columns}}).",
         "tag_wrong_kind": "Este termo tem etiquetas ({{tags}}) que só uma propriedade passa às suas colunas; ele é um {{role}}.",
         "retirement_blocked": "Este termo deveria ser retirado em {{retire_on}}, mas ainda tem dados. Retire-o com um sucessor que os receba.",
-        "no_data": "Este conceito não está ligado a nenhum termo que tenha dados."
-      }
+        "no_data": "Este conceito em rascunho não está ligado a nenhum termo que contenha dados.",
+        "approved_not_grounded": "Este termo está aprovado mas não alcança dados, por isso nenhum agente o vê.",
+        "path_pending": "Ancorado · caminho pendente de aprovação: só alcança dados através de termos ainda não aprovados.",
+        "path_pending_approve": "Ancorado · caminho pendente de aprovação: aprovar {{approve}} ancora-o."
+      },
+      "term_not_approved": "Só um termo aprovado pode ser descontinuado; este está {{status}}.",
+      "term_not_draft": "Só um termo em rascunho pode ser aprovado; este está {{status}}.",
+      "definition_required": "Dê uma definição ao termo antes de o aprovar.",
+      "not_bulk_approvable": "Só rascunhos definidos e ancorados são aprovados em conjunto; não: {{terms}}.",
+      "term_ids_required": "Indique os termos a aprovar.",
+      "impact_action": "Não há pré-visualização para essa ação.",
+      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
     },
     "tag": {
       "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
