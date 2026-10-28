@@ -132,6 +132,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     writeGrants: [],
     uniqueConstraints: (i.uniqueConstraints as RegisteredTable["uniqueConstraints"]) ?? [],
     apiEndpoint: null,
+    apiEndpointError: null,
     viewSql: str(i.viewSql),
     dqContract: str(i.dqContract),
     profilerSourceId: null,

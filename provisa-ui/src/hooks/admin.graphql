@@ -301,6 +301,7 @@ query TablesQuery {
     probeQuery
     probeType
     apiEndpoint
+    apiEndpointError
     viewSql
     dqContract
     profilerSourceId

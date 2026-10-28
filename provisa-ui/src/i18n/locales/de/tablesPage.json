@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "Implizite Dimension — „Group By aktivieren“ ist für diese Tabelle aktiviert"
     },
     "derived": "abgeleitet",
+    "endpointUnread": "Das API-Dokument der Quelle konnte nicht gelesen werden",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

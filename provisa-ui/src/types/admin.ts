@@ -457,6 +457,8 @@ export interface RegisteredTable {
   writeGrants: WriteGrant[] | null;
   uniqueConstraints: UniqueConstraint[]; // REQ-1093
   apiEndpoint: string | null;
+  /** Why the table names no endpoint: its OpenAPI source's document could not be read. */
+  apiEndpointError: string | null;
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
   profilerSourceId?: string | null; // REQ-1934: the Data Profiler source this table is a member of

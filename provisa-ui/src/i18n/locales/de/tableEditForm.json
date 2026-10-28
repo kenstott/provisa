@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Group By aktivieren",
     "enableGroupByDesc": "(Root-Feld _group_by in GraphQL bereitstellen)",
     "apiEndpointLabel": "API-Endpunkt",
+    "apiEndpointUnread": "Das API-Dokument der Quelle konnte nicht gelesen werden",
     "changeSignalLabel": "Änderungssignal",
     "changeSignalHelp": "Wie Provisa von geänderten Zeilen erfährt. ttl = Aktualisierung über den Cache-TTL-Timer; probe = quellnative Frischeabfrage, erneutes Abrufen nur bei Änderung; ttl_probe = Probe nach Ablauf der TTL-Untergrenze; native/debezium/kafka = Push von der Quelle. Erben = dem Standard der Quellebene folgen.",
     "csInherit": "Quelle erben",

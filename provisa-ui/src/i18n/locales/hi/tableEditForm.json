@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Group By सक्षम करें",
     "enableGroupByDesc": "(GraphQL में _group_by रूट फ़ील्ड एक्सपोज़ करें)",
     "apiEndpointLabel": "API एंडपॉइंट",
+    "apiEndpointUnread": "इसके स्रोत का API दस्तावेज़ पढ़ा नहीं जा सका",
     "changeSignalLabel": "परिवर्तन संकेत",
     "changeSignalHelp": "Provisa को पंक्तियों के बदलने का पता कैसे चलता है। ttl = कैश TTL टाइमर पर रिफ़्रेश; probe = स्रोत-नेटिव ताज़गी क्वेरी, केवल परिवर्तन पर पुनः खींचें; ttl_probe = TTL न्यूनतम सीमा बीतने के बाद प्रोब; native/debezium/kafka = स्रोत पुश। इनहेरिट = स्रोत-स्तरीय डिफ़ॉल्ट का पालन करें।",
     "csInherit": "स्रोत से इनहेरिट करें",

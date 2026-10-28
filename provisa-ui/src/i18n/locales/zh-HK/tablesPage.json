@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "隱含維度 — 此表已開啟「啟用分組」"
     },
     "derived": "衍生",
+    "endpointUnread": "無法讀取其來源的 API 文件",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Habilitar Group By",
     "enableGroupByDesc": "(exponer el campo raíz _group_by en GraphQL)",
     "apiEndpointLabel": "Endpoint de API",
+    "apiEndpointUnread": "No se pudo leer el documento de API de su origen",
     "changeSignalLabel": "Señal de cambio",
     "changeSignalHelp": "Cómo Provisa detecta que las filas cambiaron. ttl = actualizar con el temporizador del TTL de caché; probe = consulta de frescura nativa del origen, volver a extraer solo si hay cambio; ttl_probe = sondear cuando transcurre el mínimo del TTL; native/debezium/kafka = envío desde el origen. Heredar = seguir el valor predeterminado a nivel de origen.",
     "csInherit": "Heredar del origen",
