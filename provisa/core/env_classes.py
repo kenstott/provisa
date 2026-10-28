@@ -136,6 +136,7 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # own store schema, so their state describes nothing another environment has.
         "replica_state",
         "session_temp_schemas",  # REQ-1926: the schemas sessions hold temporary tables in
+        "graph_sessions",  # REQ-2176: each principal's ephemeral graph session
         "replica_build_log",  # the builds that ended, of those replicas
         # REQ-1923: where this environment's replicas of a mail source were read to.
         "mail_sync_state",

@@ -65,6 +65,10 @@ class TempSession:
     # What a layer keeps beside its tables for the session, by the layer's name (REQ-2176: the
     # session's ephemeral graph). It ends with the session.
     extensions: dict[str, Any] = field(default_factory=dict)
+    # REQ-2176: a session no connection holds -- a principal's graph session, durable across
+    # connections and workers. Its schema is no keeper's to renew or reap: its own retention
+    # sweep (provisa.api.graph_session) drops it.
+    kept: bool = False
 
 
 _SESSION: ContextVar[TempSession | None] = ContextVar("temp_session", default=None)

@@ -758,6 +758,10 @@
         "label": "Tablas temporales por sesión",
         "help": "El máximo de tablas temporales que una sesión (una conexión pgwire o una solicitud SQL) puede tener a la vez. Una tabla más se rechaza; elimine una primero. 0 no permite ninguna."
       },
+      "graph_session_retention_days": {
+        "label": "Retención de la sesión de grafo",
+        "help": "Cuánto tiempo se conserva la sesión de grafo de una entidad de seguridad (las etiquetas, nodos y relaciones que crearon sus instrucciones Cypher, en cualquier cliente) después de su último uso. También termina cuando la entidad de seguridad la borra o cuando cambian sus roles o los permisos de estos."
+      },
       "max_rows": {
         "label": "Filas por tabla temporal",
         "help": "El máximo de filas que puede contener una tabla temporal. Una tabla temporal es una tabla real en el almacén del motor que un rol sin derecho de escritura puede llenar, por eso está limitada. Una tabla que superaría el límite se rechaza; no se recorta nada."

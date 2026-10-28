@@ -15413,6 +15413,7 @@
   - tests/integration/test_pgwire_integration.py
   - tests/unit/pgwire/test_wire_protocol.py
   - tests/unit/test_pgwire_requirements.py
+  - tests/unit/test_temp_table_cache_per_session.py
   since: 2026-01
   scenario: 'Given a SQL client submitting INSERT, UPDATE, or DELETE over pgwire
 
@@ -90300,6 +90301,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Every client lists its labels and relationship types (db.labels and db.relationshipTypes include them).
     A SQL temporary table keeps PostgreSQL''s per-connection scope (REQ-615); only the graph session is
     the principal''s.'
+  code:
+  - provisa/api/graph_session.py
+  - provisa/api/rest/cypher_session.py
+  - provisa/api/rest/cypher_router.py
+  - provisa/ephemeral/store.py
+  - provisa/compiler/temp_tables.py
+  - provisa/pgwire/temp_exec.py
+  - provisa/pgwire/temp_keeper.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/cache/key.py
+  tests:
+  - tests/unit/test_cypher_page_session.py
+  - tests/integration/test_graph_session_shared.py
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

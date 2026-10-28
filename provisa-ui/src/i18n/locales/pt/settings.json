@@ -758,6 +758,10 @@
         "label": "Tabelas temporárias por sessão",
         "help": "O máximo de tabelas temporárias que uma sessão (uma conexão pgwire ou uma solicitação SQL) pode manter ao mesmo tempo. Uma tabela além disso é recusada; exclua uma primeiro. 0 não permite nenhuma."
       },
+      "graph_session_retention_days": {
+        "label": "Retenção da sessão de grafo",
+        "help": "Por quanto tempo a sessão de grafo de uma entidade de segurança (os rótulos, nós e relacionamentos que suas instruções Cypher criaram, em qualquer cliente) é mantida após o último uso. Ela também termina quando a entidade de segurança a limpa, ou quando suas funções ou as permissões delas mudam."
+      },
       "max_rows": {
         "label": "Linhas por tabela temporária",
         "help": "O máximo de linhas que uma tabela temporária pode conter. Uma tabela temporária é uma tabela real no armazenamento do mecanismo que uma função sem direito de gravação pode preencher, por isso é limitada. Uma tabela que ultrapassaria o limite é recusada; nada é cortado."

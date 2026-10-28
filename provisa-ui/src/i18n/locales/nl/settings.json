@@ -758,6 +758,10 @@
         "label": "Tijdelijke tabellen per sessie",
         "help": "Het maximale aantal tijdelijke tabellen dat één sessie (een pgwire-verbinding of één SQL-verzoek) tegelijk mag hebben. Een tabel daarboven wordt geweigerd; verwijder er eerst een. 0 staat er geen toe."
       },
+      "graph_session_retention_days": {
+        "label": "Bewaartermijn van de grafsessie",
+        "help": "Hoe lang de grafsessie van een principal (de labels, nodes en relaties die zijn Cypher-instructies op elke client hebben gemaakt) na het laatste gebruik wordt bewaard. De sessie eindigt ook wanneer de principal haar wist, of wanneer zijn rollen of hun rechten veranderen."
+      },
       "max_rows": {
         "label": "Rijen per tijdelijke tabel",
         "help": "Het maximale aantal rijen dat een tijdelijke tabel mag bevatten. Een tijdelijke tabel is een echte tabel in de store van de engine die ook een rol zonder schrijfrecht kan vullen, daarom is ze begrensd. Een tabel die de limiet zou overschrijden wordt geweigerd; er wordt niets afgekapt."
