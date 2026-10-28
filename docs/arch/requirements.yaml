@@ -47160,7 +47160,14 @@
     with its path pending approval. On the page the chip reads ''grounded'' or ''~grounded'' (no chip when
     not grounded); ''~grounded'' carries the tooltip and accessible label ''Reaches data, but only through
     terms not yet approved''. Filters and findings use the words ''Grounded'' and ''Grounded · path pending
-    approval''. Exports, APIs and agent surfaces carry the values grounded, grounded_pending and not_grounded.'
+    approval''. Exports, APIs and agent surfaces carry the values grounded, grounded_pending and not_grounded.
+    (Amended 2026-10-27, GROUNDING LOOKS DOWN, STRICTLY BETWEEN:) 2026-10-28: a term''s grounding looks
+    only down its own paths to data, never at the term itself or at anything above it. It is grounded when
+    some path down has no draft term strictly between the term and the term at the data end that holds the
+    binding; grounded with its path pending approval (~grounded) when every path down has a draft term in
+    between; not grounded when no path reaches data. So a draft abstract term being drafted above an approved
+    chain counts against nothing: it shows grounded (its status chip says draft), and the terms below it
+    are unchanged; an auto-derived draft term at the data end does not make the chain above it pending.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
