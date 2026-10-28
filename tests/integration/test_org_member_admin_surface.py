@@ -216,7 +216,8 @@ async def test_a_caller_holding_no_role_the_org_defines_is_answered_none_of_its_
     )
     as_member = await _run("{ domains { id } }", **_ORG_ADMIN_CTX)
     assert as_undefined["domains"] == []
-    assert {d["id"] for d in as_member["domains"]} == {"meta", "ops", "shelter"}
+    # meta, ops and ontology are the system domains schema.sql seeds in every org (REQ-2163).
+    assert {d["id"] for d in as_member["domains"]} == {"meta", "ontology", "ops", "shelter"}
 
 
 async def test_unset_active_org_is_still_refused(org_plane):
@@ -231,4 +232,4 @@ async def test_domains_table_left_untouched_by_the_read(org_plane):
     await _run("{ domains { id } }", **_ORG_ADMIN_CTX)
     async with org_plane.acquire() as conn:
         res = await conn.execute_core(text(f"SELECT count(*) FROM {_SCHEMA}.domains"))
-        assert res.fetchone()[0] == 4
+        assert res.fetchone()[0] == 5
