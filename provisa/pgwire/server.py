@@ -1567,7 +1567,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 elif isinstance(governed, _Plan) and (
                     governed.writes_tables
                     or governed.temp is not None
-                    or not streams_from_terminal(governed)  # REQ-2002: rows embedded after read
+                    # REQ-2002: rows embedded after read. REQ-2131: column transforms are applied as
+                    # the rows stream, by serve_stream_through_cache, which every stream below takes.
+                    or not streams_from_terminal(governed, applies_columns=True)
                 ):
                     # A data write executes once, through the one terminal every surface's write
                     # passes (its after-write step and audit), and answers its count. It never

@@ -18,7 +18,7 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 import re
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 
 from graphql import (
     GraphQLArgument,
@@ -44,7 +44,7 @@ from provisa.compiler.aggregate_gen import (
 )
 from provisa.compiler.naming import (
     active_gql_convention,
-    domain_gql_alias,
+    apply_gql_name,
     domain_to_sql_name,
     generate_name,
     refuse_taken_sql_addresses,
@@ -330,21 +330,41 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                 t.type_name = to_type_name(t.field_name)
 
 
-#: REQ-1365: the root Query field that dereferences a semantic address: a system field, named
-#: like _meta and _domain_ so it does not sit among a role's domain roots.
-RESOLVE_FIELD = "_resolve"
+#: REQ-1365 (amended 2026-10-27, "THE RESOLVER IS META'S"): the extension marking the Query
+#: field that dereferences a semantic address -- the meta domain's ``resolve``, beside the catalog
+#: every role reaches. Every surface finds it by this mark (:func:`resolve_field`), its name being
+#: meta's: ``<meta alias>__resolve`` where domains prefix their fields.
+RESOLVE_EXTENSION = "provisa_resolve"
 
 
-def _add_resolve_field(query_fields: dict) -> None:
-    """Add ``_resolve(uri, as_of, as_recorded)`` to a role's Query type (REQ-1365). It is in every role's
-    schema, so REST and MCP offer it by the REQ-1929 rule. A table or command already named
-    ``_resolve`` is refused by name rather than shadowed."""
-    if RESOLVE_FIELD in query_fields:
+def resolve_field_name(domain_prefix: bool, domain_alias_map: dict[str, str]) -> str:
+    """The resolver's Query field name: ``resolve`` named as a field of the meta domain is."""
+    name = apply_gql_name("resolve")
+    if not domain_prefix:
+        return name
+    alias = domain_alias_map.get(META_DOMAIN_ID) or domain_to_sql_name(META_DOMAIN_ID)
+    return f"{alias}__{name}"
+
+
+def resolve_field(schema: Any) -> str:
+    """The name of ``schema``'s resolver field (:data:`RESOLVE_EXTENSION`)."""
+    for name, field in schema.query_type.fields.items():
+        if (field.extensions or {}).get(RESOLVE_EXTENSION):
+            return name
+    raise LookupError("the schema has no semantic-address resolver field")
+
+
+def _add_resolve_field(query_fields: dict, name: str) -> None:
+    """Add meta's ``resolve(uri, as_of, as_recorded)`` to a role's Query type (REQ-1365), named
+    ``name`` (:func:`resolve_field_name`). It is in every role's schema, as the catalog every role
+    reaches is, so REST and MCP offer it under meta's name by the REQ-1929 rule. A table or command
+    already named for it is refused by name rather than shadowed."""
+    if name in query_fields:
         raise ValueError(
-            f"a table or command is exposed as the GraphQL field {RESOLVE_FIELD!r}, which is "
-            "the semantic-address resolver; give it an alias"
+            f"a table or command is exposed as the GraphQL field {name!r}, which is the meta "
+            "domain's semantic-address resolver; give it an alias"
         )
-    query_fields[RESOLVE_FIELD] = GraphQLField(
+    query_fields[name] = GraphQLField(
         cast(GraphQLScalarType, JSONScalar),
         args={
             "uri": GraphQLArgument(GraphQLNonNull(GraphQLString)),
@@ -356,6 +376,7 @@ def _add_resolve_field(query_fields: dict) -> None:
             "provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>], optionally as of "
             "a point in time, and as recorded at one."
         ),
+        extensions={RESOLVE_EXTENSION: True},
     )
 
 
@@ -482,11 +503,9 @@ def _dedup_tables(tables: list[_TableInfo]) -> list[_TableInfo]:
 
 
 def _build_domain_alias_map(domains: list[dict]) -> dict[str, str]:
-    return {
-        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
-        for d in domains
-        if domain_gql_alias(d["id"], d.get("graphql_alias"))
-    }
+    from provisa.compiler.naming import domain_alias_map
+
+    return domain_alias_map(domains)
 
 
 def _embedding_columns(t: _TableInfo) -> dict[str, str]:  # REQ-421, REQ-430
@@ -1243,7 +1262,9 @@ def generate_schema(
             command = extra[field].extensions["provisa_command"]
             raise CommandFieldTaken(root, field, command, "a table's field")
         fields.update(extra)
-    _add_resolve_field(query_fields)  # REQ-1365
+    _add_resolve_field(  # REQ-1365
+        query_fields, resolve_field_name(si.domain_prefix, domain_alias_map)
+    )
 
     mutation_type: GraphQLObjectType | None = None
     if mutation_fields:

@@ -58,3 +58,45 @@ _root_read_back("JSON_EXTRACT_PATH_TEXT")
 Postgres.Generator.TRANSFORMS[exp.ArrayFilter] = lambda self, e: self.func(
     "FILTER", e.this, e.expression
 )
+
+
+class ContainedByOrEqual(exp.Expression, exp.Binary, exp.Predicate):  # REQ-2171
+    """PostgreSQL's ``a <<= b``: an address within or equal to a network."""
+
+
+class ContainsOrEqual(exp.Expression, exp.Binary, exp.Predicate):  # REQ-2171
+    """PostgreSQL's ``a >>= b``: a network containing or equal to an address."""
+
+
+def _reads_containment(parser: type) -> None:
+    """REQ-2171: ``<<=`` and ``>>=`` read as their own operators (they tokenize as ``<`` ``<=``
+    and ``>`` ``>=``, which sqlglot refused). ``<<`` and ``>>`` read as sqlglot reads them."""
+    from sqlglot.tokens import TokenType
+
+    parse_bitwise = parser._parse_bitwise
+
+    def _parse_bitwise_with_containment(self) -> exp.Expr | None:
+        this = parse_bitwise(self)
+        while True:
+            if self._match_pair(TokenType.LT, TokenType.LTE):
+                this = self.expression(
+                    ContainedByOrEqual(this=this, expression=parse_bitwise(self))
+                )
+            elif self._match_pair(TokenType.GT, TokenType.GTE):
+                this = self.expression(ContainsOrEqual(this=this, expression=parse_bitwise(self)))
+            else:
+                return this
+
+    parser._parse_bitwise = _parse_bitwise_with_containment
+
+
+_reads_containment(Postgres.Parser)
+Postgres.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e, "<<=")
+Postgres.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")
+
+# DuckDB's inet extension has the same two operators, which its statements are read back with.
+from sqlglot.dialects.duckdb import DuckDB  # noqa: E402
+
+_reads_containment(DuckDB.Parser)
+DuckDB.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e, "<<=")
+DuckDB.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")

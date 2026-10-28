@@ -107,8 +107,13 @@ class PgBackend(NativeEngineBackend):
             merged,
             address=address,
             columns=args.columns,
-            # REQ-1965: a natively array/struct/map column is copied as PostgreSQL's own JSON.
-            projection=source_projection(table.columns, "postgres"),
+            # REQ-1965: a natively array/struct/map column is copied as PostgreSQL's own JSON;
+            # REQ-2171: a subtyped one in its own form, and one not landed left out.
+            projection=source_projection(
+                table.columns,
+                "postgres",
+                frozenset(name for name, _subtype, _reader in args.not_landed),
+            ),
             where=landing_where(table, lambda: "postgres"),  # REQ-2062
         )
 

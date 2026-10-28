@@ -34,6 +34,7 @@ vi.mock("../graphScene", () => ({
         "setSelected",
         "focus",
         "setFlat",
+        "setArcs",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);
@@ -387,6 +388,15 @@ describe("the Glossary page's Ontology View", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
     await waitFor(() => expect(drawn().edges.map((e) => e.label)).toEqual(["KIND_OF"]));
+  });
+
+  it("opens Taxonomy layered, with its lateral edges as arcs, and Force on the reader's choice", async () => {
+    render(<GlossaryOntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
+    await waitFor(() => expect(made.scenes[0].setArcs).toHaveBeenLastCalledWith(true));
+    fireEvent.click(screen.getByRole("radio", { name: "Force" }));
+    await waitFor(() => expect(made.scenes[0].setArcs).toHaveBeenLastCalledWith(false));
   });
 
   it("expands to 95% of the viewport with a scene of its own", async () => {

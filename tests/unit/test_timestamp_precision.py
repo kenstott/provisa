@@ -76,3 +76,35 @@ def test_a_read_of_a_sized_timestamp_column_is_held_to_its_unit():
         [("at", RegisteredType("timestamp(3)")), ("seen", RegisteredType("timestamptz(0)"))],
     )
     assert targets == [pa.timestamp("ms"), pa.timestamp("s", tz="UTC")]
+
+
+@pytest.mark.parametrize(
+    ("registered", "arrow"),
+    [
+        ("time(0)", pa.time32("s")),
+        ("time(3)", pa.time32("ms")),
+        ("time(6)", pa.time64("us")),
+        ("time", pa.time64("us")),  # no precision declared: six digits
+    ],
+)
+def test_a_time_is_the_unit_its_precision_needs(registered, arrow):
+    """REQ-1961 (amended 2026-10-27): a TIME(p) column is listed and read at its precision's unit,
+    as a timestamp is."""
+    assert _physical_type_to_arrow(registered) == arrow
+    assert to_ir(registered) == "time"
+
+
+def test_registration_keeps_a_postgresql_times_precision():
+    typing = _pg_column_typing(
+        "postgresql", "time without time zone", "time", "time(3) without time zone", "b"
+    )
+    assert typing == ColumnTyping("time(3)")
+    plain = _pg_column_typing(
+        "postgresql", "time without time zone", "time", "time without time zone", "b"
+    )
+    assert plain == ColumnTyping("time")
+
+
+def test_a_read_of_a_sized_time_column_is_held_to_its_unit():
+    targets = read_targets(["at"], [("at", RegisteredType("time(0)"))])
+    assert targets == [pa.time32("s")]

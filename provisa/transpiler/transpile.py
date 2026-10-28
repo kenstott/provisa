@@ -97,11 +97,22 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
-    if not any(name in sql.upper() for name in ("JSON_SIZE", "JSON_ORDER_KEY", "RANGE_STEP")):
+    if not any(
+        name in sql.upper() for name in ("JSON_SIZE", "JSON_ORDER_KEY", "RANGE_STEP", "JSON_KEYS")
+    ):
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _sized(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.JSONKeys) or (
+            isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_KEYS"
+        ):
+            # A JSON object's keys (keys() of a map the client gives, expr_visitor).
+            value = node.this if isinstance(node, exp.JSONKeys) else node.expressions[0]
+            as_map = exp.Cast(
+                this=value.copy(), to=exp.DataType.build("MAP(VARCHAR, JSON)", dialect="trino")
+            )
+            return exp.Anonymous(this="MAP_KEYS", expressions=[as_map])
         if isinstance(node, exp.Anonymous) and node.name.upper() == "RANGE_STEP":
             (step,) = node.expressions
             return _range_step(step, "fail")
@@ -933,6 +944,15 @@ def transpile(
     if target_dialect == "postgres" and "ARRAY[]" in pg_sql.upper():
         lowered = postgres_empty_arrays(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    from provisa.transpiler.native_subtype import MARKER as _SUBTYPE_MARKER, resolve_subtypes
+
+    if _SUBTYPE_MARKER in pg_sql.lower():
+        # REQ-2171: each sort, filter, join or operator on a subtyped column, in this dialect's
+        # native type, an emulation, or refused by name.
+        lowered = resolve_subtypes(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            target_dialect,
         )
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
         lowered = _OWN_TRY_CASTS[target_dialect](

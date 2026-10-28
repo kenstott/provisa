@@ -363,6 +363,25 @@ def _rename(tree: exp.Expr, tables: Mapping[str, str]) -> None:
         table.set("alias", exp.TableAlias(this=exp.to_identifier(alias)))
 
 
+def own_params(sql: str, params: list) -> tuple[str, list]:
+    """``sql`` -- one read of a staged statement -- with only the statement's parameters
+    (``params``, bound ``$1``..``$n``) it uses, renumbered ``$1``..``$k`` in their order, and their
+    values: a source's driver is given exactly the parameters its statement names."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    named = [
+        p
+        for p in tree.find_all(exp.Parameter)
+        if isinstance(p.this, exp.Literal) and not p.this.is_string
+    ]
+    used = sorted({int(p.this.this) for p in named})
+    if not used:
+        return sql, []
+    number = {n: i + 1 for i, n in enumerate(used)}
+    for p in named:
+        p.set("this", exp.Literal.number(number[int(p.this.this)]))
+    return tree.sql(dialect="postgres"), [params[n - 1] for n in used]
+
+
 def _holding(tree: exp.Expr, by_name: Mapping[str, str]) -> dict[str, list[exp.Anonymous]]:
     """Each CTE of the statement ``tree`` holding a column transform as an item of its select list,
     with those calls."""
@@ -457,3 +476,87 @@ def stage(
     outer.set("with_", exp.With(expressions=left) if left else None)
     _rename(outer, tables)
     return Staged(tuple(stages), outer.sql(dialect="postgres"))
+
+
+# -- a stage's columns, typed from the model ------------------------------------------------------
+
+
+def _declared(
+    item: exp.Expr,
+    relations: list[exp.Expr],
+    ctes: Mapping[str, exp.Select],
+    table_types: Callable[[str], Mapping[str, str] | None],
+) -> str | None:
+    """The type the model declares for the select-list ``item`` of a stage, read from
+    ``relations``: a column's, from the registered table, landed stage, CTE or subquery it reads;
+    a CAST's, its own. None where the model declares none."""
+    expression = item.this if isinstance(item, exp.Alias) else item
+    if isinstance(expression, exp.Cast):
+        return expression.to.sql(dialect="postgres")
+    if not isinstance(expression, exp.Column):
+        return None
+    reads = (
+        [r for r in relations if _named(r) == expression.table] if expression.table else relations
+    )
+    if len(reads) != 1:
+        return None
+    relation = reads[0]
+    if isinstance(relation, exp.Subquery) and isinstance(relation.this, exp.Select):
+        return _select_type(relation.this, expression.name, ctes, table_types)
+    if not isinstance(relation, exp.Table):
+        return None
+    if not relation.db and relation.name in ctes:
+        return _select_type(ctes[relation.name], expression.name, ctes, table_types)
+    ref = f"{relation.db}.{relation.name}" if relation.db else relation.name
+    return (table_types(ref) or {}).get(expression.name)
+
+
+def _select_type(
+    select: exp.Select,
+    column: str,
+    ctes: Mapping[str, exp.Select],
+    table_types: Callable[[str], Mapping[str, str] | None],
+) -> str | None:
+    for item in select.expressions:
+        if item.alias_or_name == column:
+            return _declared(item, _relations(select), ctes, table_types)
+    return None
+
+
+def stage_columns(
+    sql: str,
+    table_types: Callable[[str], Mapping[str, str] | None],
+    transforms: Mapping[str, dict],
+) -> list[tuple[str, str]]:
+    """Each column a stage's read ``sql`` gives, with the type the model declares for it
+    (REQ-2131): a transform's outputs as it declares them, an input column as the table it reads
+    declares it (``table_types``: by ``schema.table`` or a landed stage's name, its columns'
+    types), a CAST as its type. A stage is landed as these, so an empty one is an empty table of
+    them. A column the model types no way is refused by name."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert isinstance(tree, exp.Select)
+    by_name = {name.lower(): name for name in transforms}
+    with_ = tree.args.get("with_")
+    ctes = {
+        c.alias: c.this
+        for c in (with_.expressions if with_ is not None else [])
+        if isinstance(c.this, exp.Select)
+    }
+    relations = _relations(tree)
+    columns: list[tuple[str, str]] = []
+    for item in tree.expressions:
+        if isinstance(item, exp.Anonymous) and item.name.lower() in by_name:
+            command = transforms[by_name[item.name.lower()]]
+            columns += [(c["name"], c["type"]) for c in command["output_columns"]]
+            continue
+        declared = (
+            None if isinstance(item, exp.Star) else _declared(item, relations, ctes, table_types)
+        )
+        if declared is None:
+            raise ValueError(
+                f"column {item.alias_or_name or item.sql(dialect='postgres')!r} of a common table "
+                "expression holding a column transform has no type the model declares: name a "
+                "column of its table, or CAST it to its type"
+            )
+        columns.append((item.alias_or_name, declared))
+    return columns

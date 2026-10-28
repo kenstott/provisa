@@ -612,7 +612,12 @@ async def register_table(
                     model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
                     if carried(input.write_grants):
                         model = model.model_copy(update={"write_grants": _carried_grants})
-                    table_id = await table_repo.upsert(_conn, model)
+                    from provisa.api.admin._declared_keys import registration_keys
+
+                    # REQ-2170: the keys its source declares are recorded with the input's.
+                    table_id = await table_repo.upsert(
+                        _conn, model, declared=await registration_keys(model)
+                    )
                 except glossary_repo.TermIsClass as _class:
                     # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
                     # the tables the caller reads are named.

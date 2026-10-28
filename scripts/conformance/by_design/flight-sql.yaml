@@ -99,14 +99,15 @@
   reason: "Values were not provided for the following prepared statement parameter"
   case: "TestStatement::test_parameter_execute\\["
 
-- group: Timestamps beyond microseconds
+- group: Times and timestamps beyond microseconds
   requirement: REQ-1961
   decision: >-
-    A timestamp column is read at the precision its source declares. PostgreSQL holds at most six digits: it declares a TIMESTAMP(7) to (9) column
-    TIMESTAMP(6), so the column holds microseconds and is read as microseconds, where the suite
-    expects nanoseconds.
-  reason: "timestamp\\[ns.*timestamp\\[us"
-  case: "\\[provisa:flightsql:(type/select/timestamp[789](tz)?|ingest/timestamp(tz)?_ns)\\]"
+    A time or timestamp column is read at the precision its source declares. PostgreSQL holds at
+    most six digits: it declares a TIME(7) to (9) or TIMESTAMP(7) to (9) column with six, and a
+    nanosecond value ingested lands as microseconds, so the column holds microseconds and is read
+    as microseconds, where the suite expects nanoseconds.
+  reason: "(timestamp|time64)\\[ns.*(timestamp|time64)\\[us"
+  case: "\\[provisa:flightsql:(type/select/timestamp[789](tz)?|ingest/(timestamp(tz)?|time)_ns)\\]"
 
 - group: One catalog per connection
   requirement: REQ-588

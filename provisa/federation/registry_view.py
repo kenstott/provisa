@@ -250,6 +250,8 @@ def _build_registered_tables(registered: list[dict]) -> list[Any]:
                         element_type=c["element_type"],
                         native_type=c["native_type"],
                         native_platform=c["native_platform"],
+                        # REQ-2171: the form a subtyped column lands in.
+                        subtype=c["subtype"],
                     )
                     for c in rt["columns"]
                 ],

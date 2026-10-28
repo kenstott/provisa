@@ -517,11 +517,12 @@ def build_mcp_server(state: Any):
         return tools.list_commands(state, _role(role))
 
     @_tool
-    async def _resolve(
+    async def meta_resolve(
         uri: str, as_of: str | None = None, as_recorded: str | None = None, role: str | None = None
     ) -> dict:
         """Dereference a semantic address (provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>]) to the governed value it names, optionally as of a point in time and as recorded at one. Physical addresses are refused."""
-        # REQ-1365: the one resolve function; the tool is named like the GraphQL field.
+        # REQ-1365: the one resolve function; the tool is the meta domain's resolve, named as
+        # the GraphQL field is: meta's.
         from provisa.api.data.resolve import resolve as resolve_address
         from provisa.core.request_context import require_current_org
 

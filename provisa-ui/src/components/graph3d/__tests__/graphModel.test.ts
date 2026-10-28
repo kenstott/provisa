@@ -98,7 +98,7 @@ describe("the data product graph's layers", () => {
 });
 
 describe("a graph laid out flat (REQ-2174, 2D)", () => {
-  it.each(["force", "tree"] as const)("puts every node of a %s layout in one plane", (layout) => {
+  it.each(["force", "layered"] as const)("puts every node of a %s layout in one plane", (layout) => {
     const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
     const at = layoutGraph(g, layout, 1, true);
     expect(at.size).toBe(g.nodes.length);

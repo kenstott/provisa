@@ -36,7 +36,10 @@ import {
   availableLayers,
   edgesOf,
   filterChoices,
+  chosenLayout,
   layoutGraph,
+  openingLayout,
+  savedLayout,
   visibleGraph,
   type GraphData,
   type GraphFilters,
@@ -53,6 +56,7 @@ import {
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { DimensionToggle } from "./DimensionToggle";
+import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
 import { nodeHref } from "./nodeHref";
@@ -145,6 +149,8 @@ export function GraphExplorer({
     grid: true as boolean,
     // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
     flat: false as boolean,
+    // REQ-2174: auto opens in the layout the drawn edges call for; else the reader's Force or Layered.
+    layout: "auto" as string,
     // null: every domain, every edge type (or the preset's own), so a new one is drawn too.
     domains: null as string[] | null,
     edgeTypes: null as string[] | null,
@@ -320,7 +326,8 @@ export function GraphExplorer({
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
   }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
-  const layout = presetOf(preset).layout;
+  const layout = chosenLayout(shown, savedLayout(saved.layout as string));
+  const layeredPossible = useMemo(() => openingLayout(shown).layeredPossible, [shown]);
   const at = useMemo(
     () => layoutGraph(shown, layout, attraction, flat),
     [shown, layout, attraction, flat],
@@ -339,6 +346,7 @@ export function GraphExplorer({
     save("preset", p);
     save("layers", [...presetOf(p).layers]);
     save("edgeTypes", null);
+    save("layout", "auto");
     setFrame((f) => f + 1);
   };
   const toggleLayer = (l: LayerId, on: boolean) =>
@@ -358,6 +366,7 @@ export function GraphExplorer({
     at,
     frame,
     flat,
+    layout,
     selected,
     setSelected: select,
     hover,
@@ -379,6 +388,12 @@ export function GraphExplorer({
           data-testid={`${testId}-preset`}
         />
         <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
+        <LayoutToggle
+          layout={layout}
+          layeredPossible={layeredPossible}
+          onChange={(l) => save("layout", l)}
+          testId={testId}
+        />
         {/* A 2D graph never turns. */}
         {!flat && (
           <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>

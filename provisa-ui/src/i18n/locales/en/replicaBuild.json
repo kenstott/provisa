@@ -52,6 +52,7 @@
       "mailboxes_failed": "Mailboxes whose read failed part way: {{total}}. What was read of them is kept and their read continues at the next refresh. They are: {{accounts}}",
       "place_not_kept": "This copy is complete, but where its read reached could not be kept, so the next check for changes will ask for the read again: {{reason}}",
       "indexes_not_planned": "This copy is complete and readable, but its indexes could not be planned, so it is read without them until it is built again: {{reason}}",
+      "column_not_landed": "Column {{column}} ({{subtype}}) is not in this copy: {{reader}} has no way to read it as a {{subtype}}, so it is left out, and a read of it is refused.",
       "andMore": "{{ids}} and {{more}} more",
       "other": "The last build noted: {{code}}"
     },

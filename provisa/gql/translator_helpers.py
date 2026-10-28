@@ -675,6 +675,10 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         return node
     name = node.name.upper()
     args: list[exp.Expression] = node.args.get("expressions") or []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if name in ("HEAD", "LAST", "TAIL", "ISEMPTY", "SIZE"):
+        # Its arguments first, as the transform does not descend into the node it is handed back
+        # (size([y IN collect(x) ...]) collects).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
 
     if name == "HEAD" and args:
         return exp.Anonymous(this="element_at", expressions=[args[0], exp.Literal.number(1)])
@@ -780,8 +784,14 @@ def _json_valued(
         e = e.this
     if isinstance(e, exp.Column) and e.name in json_columns:
         return "value"
-    if isinstance(e, exp.Cast) and e.to.is_type("json") and isinstance(e.this, exp.Literal):
-        return "value"  # a deep literal written as its JSON (expr_visitor._deep_written)
+    if isinstance(e, exp.Anonymous) and e.name.upper() == "JSON_EXTRACT":
+        return "value"  # a key of a JSON-encoded map (expr_visitor._lower_Property)
+    if (
+        isinstance(e, exp.Cast)
+        and e.to.is_type("json")
+        and isinstance(e.this, (exp.Literal, exp.Paren))
+    ):
+        return "value"  # a deep literal as its JSON (expr_visitor._deep_written)
     if isinstance(e, (exp.Max, exp.Min)):
         return "value" if _json_valued(e.this, json_columns) == "value" else None
     if isinstance(e, exp.Anonymous) and e.name.upper() in ("MAX_BY", "MIN_BY") and e.expressions:

@@ -116,6 +116,26 @@ def test_a_literal_nested_40_deep_answers_in_time(literal, value):
     assert assemble_rows([{"l": raw[0][0]}], graph_vars) == [{"l": value}]
 
 
+def test_a_literal_nested_40_deep_with_computed_items_answers_in_time():
+    # Its JSON text built from flat pieces, each computed item's JSON joined in: no nesting of
+    # the literal's depth reaches the SQL's parse.
+    import time
+
+    from provisa.gql.assembler import assemble_rows
+
+    query = "WITH 7 AS x, null AS z RETURN " + "[" * 40 + "x, 'a', z, {k: x}" + "]" * 40 + " AS l"
+    started = time.perf_counter()
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    sql = sqlglot.transpile(sql_ast.sql(dialect="postgres"), read="postgres", write="duckdb")[0]
+    raw = duckdb.sql(sql).fetchall()
+    assert time.perf_counter() - started < 10.0
+    (row,) = assemble_rows([{"l": raw[0][0]}], graph_vars)
+    inner = row["l"]
+    for _ in range(39):
+        (inner,) = inner
+    assert inner == [7, "a", None, {"k": 7}]
+
+
 def test_a_time_value_is_written_in_the_answer_as_iso_8601():
     import datetime
 

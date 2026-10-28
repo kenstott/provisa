@@ -310,6 +310,14 @@ export function replicaNoteLines(build: ReplicaBuild | undefined, t: Translate):
     if (code === "replication.indexes_not_planned") {
       return t("replicaBuild.note.indexes_not_planned", { reason: String(params.reason ?? "") });
     }
+    // REQ-2171: a subtyped column left out of the copy, which a read of it is refused for.
+    if (code === "replication.column_not_landed") {
+      return t("replicaBuild.note.column_not_landed", {
+        column: String(params.column ?? ""),
+        subtype: String(params.subtype ?? ""),
+        reader: String(params.reader ?? ""),
+      });
+    }
     return t("replicaBuild.note.other", { code });
   });
 }

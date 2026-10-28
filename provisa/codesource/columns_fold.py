@@ -118,6 +118,17 @@ def fold(
         command = transforms[name]
         admit(command, name)
         if output is None or not any(item is call for item in output.expressions):
+            if (
+                isinstance(call.parent, exp.Select)
+                and isinstance(call.parent.parent, exp.CTE)
+                and any(item is call for item in call.parent.expressions)
+            ):
+                # A SELECT's CTE holding one is staged (columns_stage); this statement is not one.
+                raise _refused(
+                    name,
+                    "a common table expression holding it is run as a staged step only in a "
+                    "SELECT, not in an INSERT ... SELECT: write it in the SELECT's own select list",
+                )
             if isinstance(call.parent, exp.Alias):
                 raise _refused(
                     name,

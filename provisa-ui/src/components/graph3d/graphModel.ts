@@ -16,6 +16,9 @@
 import type { TermRole } from "../../api/glossary";
 import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
+import { layeredFit, layeredLayout } from "./layeredLayout";
+
+export { edgeClass, layeredFit } from "./layeredLayout";
 
 export type NodeType =
   | "product"
@@ -63,8 +66,8 @@ export type LayerId =
   // The tables of the columns drawn, with the relationships between them (with Columns).
   | "ownerTables";
 
-/** Force, or a top-down tree (REQ-2130's Taxonomy). */
-export type LayoutKind = "force" | "tree";
+/** Force, or layers where edges have direction (REQ-2174; REQ-2130's Taxonomy). */
+export type LayoutKind = "force" | "layered";
 
 /** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides draft). */
 export type { TermStatus } from "../../api/glossary";
@@ -159,18 +162,17 @@ export type PresetId = "all" | "ontology" | "products" | "taxonomy";
 
 export interface Preset {
   layers: LayerId[];
-  layout: LayoutKind;
   /** The term edge types it draws; every type when absent. */
   edgeTypes?: string[];
 }
 
 export const PRESETS = {
   // Every layer but relationships to tables outside the product.
-  all: { layers: LAYER_ORDER.filter((l) => l !== "outside"), layout: "force" },
+  all: { layers: LAYER_ORDER.filter((l) => l !== "outside") },
   // Terms, their edges, the columns bound to them and the products that own those columns.
-  ontology: { layers: ["ontology", "products"], layout: "force" },
+  ontology: { layers: ["ontology", "products"] },
   // Every product, grouped by domain, joined by data_product_edges.
-  products: { layers: ["products"], layout: "force" },
+  products: { layers: ["products"] },
 } satisfies Partial<Record<PresetId, Preset>>;
 
 export const PRESET_ORDER: PresetId[] = ["all", "ontology", "products"];
@@ -236,9 +238,9 @@ export const GLOSSARY_SCOPE: GraphScope = {
   layerOrder: ["ontology", "domains", "data", "columns", "ownerTables"],
   presets: {
     // Every edge type, in a force layout, with the columns each term is.
-    ontology: { layers: ["ontology", "domains", "columns"], layout: "force" },
+    ontology: { layers: ["ontology", "domains", "columns"] },
     // The is-a and part-of hierarchy alone, as a tree from the top down.
-    taxonomy: { layers: ["ontology"], layout: "tree", edgeTypes: ["KIND_OF", "PART_OF"] },
+    taxonomy: { layers: ["ontology"], edgeTypes: ["KIND_OF", "PART_OF"] },
   },
   presetOrder: ["ontology", "taxonomy"],
   hiddenStatuses: ["retired"],
@@ -526,88 +528,16 @@ const PULL: Record<EdgeKind, number> = {
   column_lineage: 0.4,
 };
 
-const TREE_GAP = 3;
-/** Wider across than down: a level's names sit side by side. */
-const TREE_SPREAD = 5;
-
-/** The term edges that set a tree's levels: ``a`` is a kind or a part of ``b``. */
-const HIERARCHY = new Set(["KIND_OF", "PART_OF"]);
-
-/** REQ-2130: a top-down tree over the term edges -- the general above the specific, the whole
- * above the part. Only KIND_OF and PART_OF set the levels: a term sits a level below the deepest
- * term it is a kind or part of, under the first of those; a term in no such edge is a root, the
- * roots side by side. A node joined to a term by any other edge (a column the term IS) hangs a
- * level below that term, under it; any other node is a root too. */
-function treeLayout(g: GraphData): Map<string, [number, number, number]> {
-  const terms = new Set(g.nodes.filter((n) => n.type === "term").map((n) => n.id));
-  const up = new Map<string, string[]>();
-  for (const e of g.edges)
-    if (e.kind === "term_edge" && HIERARCHY.has(e.label ?? "") && e.a !== e.b)
-      up.set(e.a, [...(up.get(e.a) ?? []), e.b].sort());
-  const depth = new Map<string, number>();
-  const visiting = new Set<string>();
-  // The longest path up to a root; an edge closing a cycle counts for nothing.
-  const depthOf = (id: string): number => {
-    const known = depth.get(id);
-    if (known !== undefined) return known;
-    visiting.add(id);
-    let d = 0;
-    for (const p of up.get(id) ?? []) if (!visiting.has(p)) d = Math.max(d, depthOf(p) + 1);
-    visiting.delete(id);
-    depth.set(id, d);
-    return d;
-  };
-  const parent = new Map<string, string>();
-  for (const id of [...terms].sort()) {
-    const d = depthOf(id);
-    const under = (up.get(id) ?? []).find((p) => depthOf(p) === d - 1);
-    if (under !== undefined) parent.set(id, under);
-  }
-  for (const e of [...g.edges].sort((x, y) => x.id.localeCompare(y.id))) {
-    const [term, other] = terms.has(e.a) ? [e.a, e.b] : [e.b, e.a];
-    if (!terms.has(term) || terms.has(other) || parent.has(other)) continue;
-    parent.set(other, term);
-    depth.set(other, depthOf(term) + 1);
-  }
-  const children = new Map<string, string[]>();
-  for (const [child, p] of parent) children.set(p, [...(children.get(p) ?? []), child]);
-  const x = new Map<string, number>();
-  let next = 0;
-  // Leaves side by side; a node centred over its children.
-  const place = (id: string): number => {
-    const kids = (children.get(id) ?? []).sort();
-    const under = kids.map(place);
-    const at = under.length === 0 ? next++ : (under[0] + under[under.length - 1]) / 2;
-    x.set(id, at);
-    return at;
-  };
-  const ids = g.nodes.map((n) => n.id).sort();
-  for (const id of ids) if (!parent.has(id)) place(id);
-  const deepest = Math.max(0, ...ids.map((id) => depth.get(id) ?? 0));
-  // Centred, so the camera's view of the whole tree is centred too.
-  const mid = (next - 1) / 2;
-  return new Map(
-    ids.map((id) => [
-      id,
-      [
-        ((x.get(id) as number) - mid) * TREE_SPREAD,
-        (deepest / 2 - (depth.get(id) ?? 0)) * TREE_GAP,
-        0,
-      ],
-    ]),
-  );
-}
-
 /** Each drawn node's place. */
 export function layoutGraph(
   g: GraphData,
   layout: LayoutKind,
-  /** How close a force layout draws the nodes (1 the usual spacing); a tree is fixed. */
+  /** How close a force layout draws the nodes (1 the usual spacing); a layered one is fixed. */
   attraction = 1,
-  /** Every node in the z = 0 plane: the graph's 2D view (REQ-2174). A tree is flat already. */
+  /** Every node in the z = 0 plane: the graph's 2D view (REQ-2174). A layered layout is flat already. */
   flat = false,
 ): Map<string, [number, number, number]> {
-  if (layout === "tree") return treeLayout(g);
+  if (layout === "layered") return layeredLayout(g);
   const ids = g.nodes.map((n) => n.id);
   const radius = Math.max(6, Math.cbrt(ids.length) * 3);
   return forceLayout(
@@ -643,4 +573,24 @@ export function panelGraph(data: GraphData, product: string): GraphData {
     nodes: g.nodes.filter((n) => kept.has(n.id)),
     edges: edges.filter((e) => kept.has(e.a) && kept.has(e.b)),
   };
+}
+
+/** REQ-2174: the layout a view opens in, and whether the reader may pick Layered. */
+export function openingLayout(g: GraphData): { layout: LayoutKind; layeredPossible: boolean } {
+  const fit = layeredFit(g);
+  return { layout: fit.layered ? "layered" : "force", layeredPossible: fit.possible };
+}
+
+/** The layout drawn: the reader's choice where there is one, else the opening layout. Layered is
+ * impossible where a cycle closes (the control disables it), so it is never drawn there. */
+export function chosenLayout(g: GraphData, saved: LayoutKind | null): LayoutKind {
+  const open = openingLayout(g);
+  if (saved === null) return open.layout;
+  return saved === "layered" && !open.layeredPossible ? "force" : saved;
+}
+
+/** A remembered layout setting: "force" or "layered" is the reader's choice, "auto" (the default)
+ * is none. */
+export function savedLayout(v: string): LayoutKind | null {
+  return v === "force" || v === "layered" ? v : null;
 }

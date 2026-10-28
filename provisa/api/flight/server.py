@@ -2093,7 +2093,15 @@ class ProvisaFlightServer(
         )  # REQ-1176: verify at the last moment, before the engine executes
         if plan.materialize is not None:
             return self._delivered_stream(plan)
-        if not streams_from_terminal(plan):
+        # REQ-2131: column transforms are applied as the rows stream on the ENGINE stream
+        # (_engine_arrow_through_cache) and the DIRECT stream (serve_stream_through_cache) below.
+        direct_stream = (
+            plan.route == Route.DIRECT
+            and self._state.source_pools.has(plan.source_id)
+            and self._state.source_pools.supports_stream(plan.source_id)
+        )
+        applies = plan.route == Route.ENGINE or direct_stream
+        if not streams_from_terminal(plan, applies_columns=applies):
             # REQ-2002: the rows are embedded once read, in the pipeline terminal (its audit too).
             from provisa.pgwire._pipeline import _execute_plan
 
@@ -2177,8 +2185,14 @@ class ProvisaFlightServer(
                         )
                         # REQ-1961: each column is read as its registered type, from the
                         # governed statement's result shape (kept with the statement).
+                        # REQ-2131: a column transform's answered batches are passed on as
+                        # each is answered, not gathered into larger record batches.
+                        from provisa.codesource.columns import BATCH
+
                         arrow_schema, batch_gen = arrow_batches_from_rows(
-                            stream, shape=self._result_shape_of(plan)
+                            stream,
+                            shape=self._result_shape_of(plan),
+                            **({"batch_rows": BATCH} if plan.columns is not None else {}),
                         )
                     except BaseException:
                         _release_slot()
@@ -2233,6 +2247,26 @@ class ProvisaFlightServer(
         finally:
             release()
 
+    def _transformed_arrow(self, plan, arrow_schema, batch_gen):  # REQ-2131
+        """The engine's Arrow stream of a plan's column transform inputs, as the stream of its
+        answer: its rows through :func:`provisa.codesource.columns_fold.apply`, streamed, then
+        Arrow again, typed by the statement's result shape."""
+        from provisa.codesource.columns import BATCH
+        from provisa.codesource.columns_fold import apply as apply_columns
+        from provisa.executor.result import StreamingQueryResult
+        from provisa.federation.runtime_support import arrow_batches_from_rows
+
+        def rows():
+            for batch in batch_gen:
+                yield list(zip(*(column.to_pylist() for column in batch.columns), strict=True))
+
+        read = StreamingQueryResult(rows(), list(arrow_schema.names))
+        answered = self._run_on_loop(apply_columns(read, plan.columns.calls, self._state))
+        # Each answered batch is its own record batch: passed on as it is answered.
+        return arrow_batches_from_rows(
+            answered, batch_rows=BATCH, shape=self._result_shape_of(plan)
+        )
+
     def _engine_arrow_through_cache(self, plan, params: list):
         """The ENGINE route's Arrow terminal through the raw-SQL response cache (REQ-1897):
         ``(cached_table, None, None)`` on a HIT, else ``(None, schema, batches)`` teed into the
@@ -2273,12 +2307,18 @@ class ProvisaFlightServer(
             arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
                 plan.physical_sql, params
             )
-            # REQ-1961: registered columns are read as the model declares them.
-            from provisa.federation.runtime_support import declared_arrow_stream
+            if plan.columns is not None:
+                # REQ-2131: the engine reads the calls' input columns; each batch of 1000 rows goes
+                # through the source's workers as it arrives, and the answered rows stream on as
+                # Arrow typed as the statement's result (its outputs where the inputs were).
+                arrow_schema, batch_gen = self._transformed_arrow(plan, arrow_schema, batch_gen)
+            else:
+                # REQ-1961: registered columns are read as the model declares them.
+                from provisa.federation.runtime_support import declared_arrow_stream
 
-            arrow_schema, batch_gen = declared_arrow_stream(
-                arrow_schema, batch_gen, self._result_shape_of(plan)
-            )
+                arrow_schema, batch_gen = declared_arrow_stream(
+                    arrow_schema, batch_gen, self._result_shape_of(plan)
+                )
         except RuntimeError as exc:
             permits.release()
             release()

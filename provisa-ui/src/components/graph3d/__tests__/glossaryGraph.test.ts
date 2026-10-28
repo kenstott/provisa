@@ -184,7 +184,7 @@ describe("the Ontology View's presets", () => {
     const tax = preset("taxonomy");
     const g = view(tax.layers, { ...defaults, edgeTypes: tax.edgeTypes ?? [] });
     expect(g.edges.map((e) => e.label).sort()).toEqual(["KIND_OF", "PART_OF"]);
-    const at = layoutGraph(g, tax.layout);
+    const at = layoutGraph(g, "layered");
     const y = (id: string) => (at.get(id) as number[])[1];
     // Party above Customer, Customer above its part.
     expect(y("term:2")).toBeGreaterThan(y("term:1"));

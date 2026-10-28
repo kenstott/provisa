@@ -4095,6 +4095,19 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.transpiler.native_subtype import (
+        SubtypeOperationRefused as _SubtypeOperationRefused,
+    )
+
+    @app.exception_handler(_SubtypeOperationRefused)
+    async def _subtype_refused_handler(_req: _Request, exc: _SubtypeOperationRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        """REQ-2171: an operation on a subtyped column the routed dialect can neither run with the
+        subtype's own semantics nor emulate. Refused by name, never answered over its text form."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.sandbox_limits import SandboxDiskFull as _SandboxDiskFull
     from provisa.federation.duckdb_runtime import WriteConflict as _WriteConflict
 

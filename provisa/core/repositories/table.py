@@ -44,6 +44,7 @@ from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
+    from provisa.discovery.declared_keys import DeclaredKeys
     from provisa.core.database import Connection
 
 
@@ -303,7 +304,7 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table
+    conn: "Connection", table: Table, *, declared: "DeclaredKeys | None" = None
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
 
@@ -315,7 +316,13 @@ async def upsert(
     (:class:`ViewLoopRefused`) — it cannot be evaluated, and it is the one way objects could come
     to block each other's deletion in a circle. A registration that would drop a column other
     objects refer to is refused (:class:`ColumnDropRefused`). This is the write path the admin
-    mutations and the config loader share, so both refuse them."""
+    mutations and the config loader share, so both refuse them.
+
+    REQ-2170: ``declared`` is what the table's source declares of its keys, as this registration
+    read it; a column is a primary or alternate key when the source declares it one, when the
+    registration's input does, or (an alternate key) when a relationship is keyed on it. None:
+    this registration read no declaration (no driver for the source here), and the input's marks
+    are the table's."""
     model_change.name("upsert", "table", table.table_name)  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
@@ -323,7 +330,7 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table)
+        return await _upsert(conn, table, declared)
 
 
 async def naming_rules(conn: "Connection") -> list[dict]:
@@ -435,7 +442,7 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
     )
 
 
-async def _upsert(conn: "Connection", table: Table) -> int | None:
+async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | None") -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     await _require_free_sql_address(conn, table, domain_id)
     await _require_label_not_a_domain(conn, table)
@@ -811,11 +818,14 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 native_filter_type=getattr(col, "native_filter_type", None),
                 native_filter_required=getattr(col, "native_filter_required", None),
                 required_by_steward=getattr(col, "required_by_steward", False),  # REQ-1986
-                is_primary_key=getattr(col, "is_primary_key", False),
+                is_primary_key=getattr(col, "is_primary_key", False)
+                # REQ-2170: the key its source declares
+                or (declared is not None and col.name in declared.primary_key),
                 is_foreign_key=getattr(col, "is_foreign_key", False)
                 or _derived_keys.get(col.name, (False, False))[0],
                 is_alternate_key=getattr(col, "is_alternate_key", False)
-                or _derived_keys.get(col.name, (False, False))[1],
+                or _derived_keys.get(col.name, (False, False))[1]
+                or (declared is not None and col.name in declared.alternate_columns),
                 object_fields=object_fields,
                 # REQ-1959: stored only when it is a scope; the last gate on every write path.
                 scope=require_column_scope(col.name, getattr(col, "scope", SCOPE_DOMAIN)),

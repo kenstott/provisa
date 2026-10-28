@@ -20,7 +20,6 @@ from app.py are safe because this module is never loaded at app.py module-initia
 # Requirements: REQ-012, REQ-016, REQ-057, REQ-510, REQ-695, REQ-837
 
 from __future__ import annotations
-from provisa.compiler.sql_literals import sql_literal
 
 import logging
 import re
@@ -1095,11 +1094,15 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
 
 
 async def _resolve_pk_from_sources() -> None:
-    """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
+    """Second pass -- record the keys each source declares (REQ-2170): its primary key and its
+    unique (alternate) keys, read from its own catalog (``discovery.declared_keys``), for every
+    registered table of a source kind that declares them. A table registered while its source had
+    no driver here (a configuration applied before the pools were built) gets them now. This pass
+    is no registration: it records what the source declares and clears nothing."""
+    from provisa.discovery.declared_keys import READERS, declared_keys
+
     assert state.model_db is not None
     _startup_log = logging.getLogger("uvicorn.error")
-    _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
-    _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
     async with state.model_db.acquire() as _pk_conn:
         _pk_rows = [
             dict(_r._mapping)
@@ -1112,14 +1115,13 @@ async def _resolve_pk_from_sources() -> None:
                         _registered_tables_t.c.schema_name,
                         _registered_tables_t.c.table_name,
                         _sources_t.c.type.label("source_type"),
-                        _sources_t.c.path.label("source_path"),
                     )
                     .select_from(
                         _registered_tables_t.join(
                             _sources_t, _sources_t.c.id == _registered_tables_t.c.source_id
                         )
                     )
-                    .where(_sources_t.c.type.in_(list(_PK_SOURCE_TYPES)))
+                    .where(_sources_t.c.type.in_(list(READERS)))
                 )
             ).fetchall()
         ]
@@ -1134,65 +1136,48 @@ async def _resolve_pk_from_sources() -> None:
                 # ``_terms_ontology``), its key recorded when it is seeded, from the table it
                 # restates (_register_admin_view): there is no relation of its name to reflect.
                 continue
-            _pk_dialect = {
-                "mysql": "mysql",
-                "mariadb": "mysql",
-                "singlestore": "mysql",
-                "sqlserver": "tsql",
-            }.get(_pk_t["source_type"], "postgres")
-            _sch = sql_literal(_pk_t["schema_name"], _pk_dialect)
-            _tbl = sql_literal(_pk_t["table_name"], _pk_dialect)
-            _pk_sql = (
-                "SELECT kcu.column_name "
-                "FROM information_schema.table_constraints tc "
-                "JOIN information_schema.key_column_usage kcu "
-                "  ON tc.constraint_name = kcu.constraint_name "
-                "  AND tc.table_schema = kcu.table_schema "
-                "WHERE tc.constraint_type = 'PRIMARY KEY' "
-                f"  AND tc.table_schema = {_sch} AND tc.table_name = {_tbl}"
-            )
+            primary: list[str]
+            alternate: frozenset[str] = frozenset()
             try:
                 if _pk_t["source_id"] == "provisa-admin":
                     # Control-plane self-catalog: its tables live in the CP connection, so reflect
                     # there portably (the abstraction ignores the schema on schema-less backends).
-                    _pk_cols = [
+                    primary = [
                         c["column_name"]
                         for c in await _pk_conn.reflect_columns(
                             _pk_t["table_name"], schema=_pk_t["schema_name"]
                         )
                         if c["is_primary_key"]
                     ]
-                elif _pk_t["source_type"] == "sqlite":
-                    # REQ-1651: a SQLite file has no information_schema and is not in the CP
-                    # connection, and the engine's schema rebuild never wrote its keys either -- so
-                    # every file-backed table (the demo's pets among them) landed without a
-                    # PRIMARY KEY. PRAGMA table_info is the file's own constraint declaration.
-                    from provisa.core.secrets import resolve_secrets
-                    from provisa.federation.connector_sqlite import primary_key_columns
-
-                    _pk_cols = primary_key_columns(
-                        resolve_secrets(_pk_t["source_path"] or ""), _pk_t["table_name"]
-                    )
-                elif state.source_pools.has(_pk_t["source_id"]):
-                    _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
-                    _pk_cols = [_row[0] for _row in _pk_res.rows]
                 else:
-                    continue
+                    declared = await declared_keys(
+                        state.source_pools,
+                        _pk_t["source_type"],
+                        _pk_t["source_id"],
+                        _pk_t["schema_name"],
+                        _pk_t["table_name"],
+                    )
+                    if declared is None:
+                        continue  # no driver for the source here: nothing is read
+                    primary, alternate = list(declared.primary_key), declared.alternate_columns
             except Exception:
+                # One source that cannot be read now does not stop the others' keys being read
+                # (startup_resilience); it is named, and read again at the next start.
                 _startup_log.warning(
-                    "PK resolve failed for %s.%s.%s",
+                    "declared keys of %s.%s.%s could not be read",
                     _pk_t["source_id"],
                     _pk_t["schema_name"],
                     _pk_t["table_name"],
                     exc_info=True,
                 )
                 continue
-            if _pk_cols:
-                await _pk_conn.execute_core(
-                    update(_table_columns_t)
-                    .where(
-                        _table_columns_t.c.table_id == _pk_t["id"],
-                        _table_columns_t.c.column_name.in_(_pk_cols),
+            for _mark, _columns in (("is_primary_key", primary), ("is_alternate_key", alternate)):
+                if _columns:
+                    await _pk_conn.execute_core(
+                        update(_table_columns_t)
+                        .where(
+                            _table_columns_t.c.table_id == _pk_t["id"],
+                            _table_columns_t.c.column_name.in_(list(_columns)),
+                        )
+                        .values({_mark: True})
                     )
-                    .values(is_primary_key=True)
-                )

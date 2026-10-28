@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Protocol, cast
 
 import sqlglot.expressions as exp
@@ -132,10 +133,6 @@ class ExprContext(Protocol):
         """A ``$param`` reference — the positional placeholder it binds to."""
         ...
 
-    def parameter_value(self, name: str) -> object:
-        """The value the client gives ``$name``."""
-        ...
-
     def temporal_kind(self, expr: CypherExpr) -> str | None:
         """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
@@ -154,6 +151,16 @@ class ExprContext(Protocol):
 
     def is_json_value(self, expr: CypherExpr) -> bool:
         """Whether ``expr`` is an item of a list of values of several types: its JSON."""
+        ...
+
+    def is_null(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
+        ...
+
+    def given_value(self, expr: CypherExpr) -> tuple[bool, object]:
+        """(True, the value) of a parameter the client gives, or of a variable a WITH binds to
+        one; (False, None) of anything else. Only its type may shape the SQL: a translation is
+        kept for every request giving its parameters values of the same types (cypher_plan)."""
         ...
 
     def resolve_term(self, node: Term) -> exp.Expression:
@@ -258,6 +265,10 @@ def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expressi
         ],
         default=exp.Div(this=left, expression=right),
     )
+
+
+def _non_negative_literal(node: CypherExpr) -> bool:
+    return isinstance(node, Literal) and node.kind == "number" and cast(float, node.value) >= 0
 
 
 #: A value not written wholly in the statement (_written_value).
@@ -434,15 +445,54 @@ def _literal_depth(node: CypherExpr) -> int:
     return 0
 
 
-def _deep_written(node: ListLiteral | MapLiteral) -> exp.Expression | None:
-    """A list or map literal nested deeper than _DEEPEST_NESTED, written wholly in the statement,
-    as one JSON literal (the answer decodes it, GraphVarKind.JSON_VALUE); None for any other."""
+def _deep_written(
+    node: ListLiteral | MapLiteral, lower: Callable[[CypherExpr], exp.Expression]
+) -> exp.Expression | None:
+    """A list or map literal nested deeper than _DEEPEST_NESTED as its JSON (the answer decodes
+    it, GraphVarKind.JSON_VALUE): one JSON literal where the statement writes it wholly, else its
+    JSON text built from flat pieces -- the written structure as text, each computed item's JSON
+    joined in -- so the SQL holds no nesting of the literal's depth. None for a shallower one."""
     if _literal_depth(node) <= _DEEPEST_NESTED:
         return None
     value = _written_value(node)
-    if value is _UNKNOWN:
-        return None
-    return exp.Cast(this=exp.Literal.string(json.dumps(value)), to=exp.DataType.build("JSON"))
+    if value is not _UNKNOWN:
+        return exp.Cast(this=exp.Literal.string(json.dumps(value)), to=exp.DataType.build("JSON"))
+    pieces: list[str | exp.Expression] = []
+
+    def text(part: str) -> None:
+        if pieces and isinstance(pieces[-1], str):
+            pieces[-1] += part
+        else:
+            pieces.append(part)
+
+    def write(item: CypherExpr) -> None:
+        if isinstance(item, ListLiteral):
+            text("[")
+            for n, inner in enumerate(item.items):
+                text(", " if n else "")
+                write(inner)
+            text("]")
+        elif isinstance(item, MapLiteral):
+            text("{")
+            for n, (key, inner) in enumerate(item.entries):
+                text((", " if n else "") + json.dumps(key) + ": ")
+                write(inner)
+            text("}")
+        elif (written := _written_value(item)) is not _UNKNOWN:
+            text(json.dumps(written))
+        else:
+            # A computed item's JSON text; null where it is null (a null joined in is no text).
+            item_json = exp.Cast(
+                this=_anon("to_json", lower(item)), to=exp.DataType.build("VARCHAR")
+            )
+            pieces.append(exp.Coalesce(this=item_json, expressions=[exp.Literal.string("null")]))
+
+    write(node)
+    parts = [exp.Literal.string(p) if isinstance(p, str) else p for p in pieces]
+    joined = parts[0]
+    for part in parts[1:]:
+        joined = exp.DPipe(this=joined, expression=part)
+    return exp.Cast(this=exp.Paren(this=joined), to=exp.DataType.build("JSON"))
 
 
 def _reversed_list(items: exp.Expression) -> exp.Expression:
@@ -512,6 +562,12 @@ class ExprLowering:
         #: values ([[1, 2], ['a']]): each item is its JSON.
         self._json_vars: set[str] = set()
 
+    def _given_type(self, node: CypherExpr) -> type | None:
+        """The type of the value the client gives ``node`` (a parameter, or a variable bound to
+        one), else None. Its type, never the value: that is all a kept translation may vary by."""
+        found, value = self._ctx.given_value(node)
+        return type(value) if found else None
+
     def _over(self, var: str, source: exp.Expression, body: CypherExpr) -> exp.Expression:
         """``body`` lowered with ``var`` bound to each item of ``source``."""
         if _json_valued(source) != "list":
@@ -548,6 +604,13 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if not isinstance(node.obj, (MapLiteral, Variable)):
+            held = self.lower(node.obj)
+            if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
+                # A map read from a list of several types is its JSON: its key, read as JSON
+                # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
+                path = "$." + json.dumps(node.name)
+                return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
         if isinstance(node.obj, MapLiteral):
             # A map literal's key is its entry's own value; a key it has not is null (#287).
             for key, value in node.obj.entries:
@@ -761,6 +824,14 @@ class ExprLowering:
             return exp.Paren(
                 this=exp.NEQ(this=exp.Paren(this=left), expression=exp.Paren(this=right))
             )
+        if op == "IN" and self._given_type(node.right) is type(None):
+            return exp.Null()  # x IN null is null (openCypher)
+        if op == "IN" and self._given_type(node.left) and self._given_type(node.right) is list:
+            # A value the client gives in a list it gives: three-valued, as Cypher's IN (null
+            # where an item or the value is null and none matches), never an engine's contains.
+            return _anon(
+                "any_match", right, _lam("_in", exp.EQ(this=exp.column("_in"), expression=left))
+            )
         if op == "IN":
             return self._lower_in(left, node.right, right)
         if op in ("STARTS WITH", "ENDS WITH", "CONTAINS") and {
@@ -858,6 +929,42 @@ class ExprLowering:
             return self._wall(node, None)
         return self.lower(node)
 
+    def _from_epoch(self, clock: str, args: list[CypherExpr]) -> exp.Expression:
+        """datetime.fromepoch(seconds, nanoseconds) and datetime.fromepochmillis(milliseconds):
+        the instant that long after 1970-01-01T00:00Z, to the microsecond (REQ-2173)."""
+        if any(isinstance(a, Literal) and a.kind == "null" for a in args):
+            return exp.Null()
+        double = exp.DataType.build("DOUBLE")
+        if clock == "fromepochmillis":
+            if len(args) != 1:
+                raise CypherTranslateError("datetime.fromepochmillis() takes the milliseconds")
+            seconds = exp.Div(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Literal.number(1000),
+            )
+        else:
+            if len(args) != 2:
+                raise CypherTranslateError(
+                    "datetime.fromepoch() takes the seconds and the nanoseconds"
+                )
+            micros = exp.Cast(
+                this=exp.Anonymous(
+                    this="TRUNC",
+                    expressions=[
+                        exp.Div(
+                            this=exp.Cast(this=self.lower(args[1]), to=double),
+                            expression=exp.Literal.number(1000),
+                        )
+                    ],
+                ),
+                to=double,
+            )
+            seconds = exp.Add(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Div(this=micros, expression=exp.Literal.number(1_000_000)),
+            )
+        return _anon("TO_TIMESTAMP", seconds)
+
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
@@ -898,11 +1005,10 @@ class ExprLowering:
             given = node.args[0]
             if isinstance(given, MapLiteral):
                 return exp.Array(expressions=[exp.Literal.string(k) for k, _ in given.entries])
-            if isinstance(given, Parameter):
-                value = self._ctx.parameter_value(given.name)
-                if isinstance(value, dict):
-                    # The map the client gives: its keys, as it gives them.
-                    return exp.Array(expressions=[exp.Literal.string(str(k)) for k in value])
+            if self._given_type(given) is dict:
+                # The map the client gives: its keys, read from it by the engine -- never written
+                # into the SQL, which is kept for every request giving a map (cypher_plan).
+                return _anon("JSON_KEYS", _anon("TO_JSON", self.lower(given)))
         if (
             node.name.lower() == "reverse"
             and len(node.args) == 1
@@ -934,6 +1040,8 @@ class ExprLowering:
             zones = [self._ctx.temporal_zone(a) for a in node.args]
             return temporal.duration_function(node.name, node.args, kinds, self.lower, zones)
         kind, _, clock = node.name.lower().partition(".")
+        if kind == temporal.DATETIME and clock in ("fromepoch", "fromepochmillis"):
+            return self._from_epoch(clock, node.args)
         if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
             # REQ-2173: the current value, as the engine's clock reads it.
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
@@ -999,7 +1107,7 @@ class ExprLowering:
     # -- structures -------------------------------------------------------- #
 
     def _lower_ListLiteral(self, node: ListLiteral) -> exp.Expression:
-        deep = _deep_written(node)
+        deep = _deep_written(node, self.lower)
         if deep is not None:
             return deep
         elements = [
@@ -1021,7 +1129,7 @@ class ExprLowering:
         )
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
-        deep = _deep_written(node)
+        deep = _deep_written(node, self.lower)
         if deep is not None:
             return deep
         # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value
@@ -1033,7 +1141,7 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
-        if any(isinstance(n, Literal) and n.kind == "null" for n in (node.obj, node.index)):
+        if self._ctx.is_null(node.obj) or self._ctx.is_null(node.index):
             return exp.Null()  # null[k] and m[null] are null (openCypher)
         if (
             isinstance(node.obj, (MapLiteral, Variable))
@@ -1042,17 +1150,53 @@ class ExprLowering:
         ):
             # m['k'] is m.k: the key's value as it is, not its JSON.
             return self.lower(Property(obj=node.obj, name=str(node.index.value)))
+        key = node.index
+        if isinstance(key, FunctionCall) and key.name.lower() == "tostring" and len(key.args) == 1:
+            key = key.args[0]
+        if self._given_type(node.obj) is dict and self._given_type(key) is str:
+            # A map the client gives read by a key the client gives: read by the engine from the
+            # map's JSON (the answer decodes it), the key a value, never written into the SQL.
+            path = exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string('$."'), expression=self.lower(key)),
+                expression=exp.Literal.string('"'),
+            )
+            read = _anon("JSON_EXTRACT", _anon("TO_JSON", self.lower(node.obj)), path)
+            return exp.Paren(this=read)
+        if self._ctx.is_text(node.obj):
+            # openCypher's TypeError (InvalidArgumentType): a string has no elements to index.
+            raise CypherTranslateError(
+                "A string cannot be indexed like a list; use substring(s, i, 1) for a character"
+            )
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
         idx = self.lower(node.index)
         if isinstance(node.index, Literal) and node.index.kind == "number":
             idx = exp.Literal.number(int(cast("int | float", node.index.value)) + 1)
+        elif not (isinstance(node.index, Unary) and node.index.op == "-") and (
+            self._ctx.is_list(node.obj) or self._value_kind(node.index) == "number"
+        ):
+            # A computed index into a list: from the start shifted to the engine's 1-based one,
+            # from the end (negative) as it is.
+            idx = exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.GTE(this=idx.copy(), expression=exp.Literal.number(0)),
+                        true=exp.Add(this=idx.copy(), expression=exp.Literal.number(1)),
+                    )
+                ],
+                default=idx,
+            )
         return _anon("element_at", base, idx)
 
     def _lower_Slice(self, node: Slice) -> exp.Expression:
         # Cypher's list[a..b] is 0-based with b excluded; the engine's slice(list, start, length)
         # starts at 1: start a + 1, length b - a.
         base = self.lower(node.obj)
+        if any(
+            bound is not None and not _non_negative_literal(bound)
+            for bound in (node.start, node.stop)
+        ):
+            return self._slice_from_either_end(base, node)
         first = self.lower(node.start) if node.start is not None else exp.Literal.number(0)
         if node.start is None:
             start = exp.Literal.number(1)
@@ -1065,6 +1209,41 @@ class ExprLowering:
             length = stop if node.start is None else exp.Sub(this=stop, expression=first.copy())
             return _anon("slice", base, start, length)
         return _anon("slice", base, start, _anon("cardinality", base))
+
+    def _slice_from_either_end(self, base: exp.Expression, node: Slice) -> exp.Expression:
+        """list[a..b] with a bound that may be negative: a negative one counts from the end
+        (list[-3..-1] is the third- and second-last items), each is held to the list, and a slice
+        that ends before it starts is empty (openCypher)."""
+        size = _anon("cardinality", base.copy())
+        zero = exp.Literal.number(0)
+
+        def held(bound: CypherExpr | None, default: exp.Expression) -> exp.Expression:
+            if bound is None:
+                return default
+            value = self.lower(bound)
+            from_end = exp.Add(this=size.copy(), expression=value.copy())
+            placed = exp.Case(
+                ifs=[exp.If(this=exp.LT(this=value.copy(), expression=zero.copy()), true=from_end)],
+                default=value,
+            )
+            return exp.Greatest(
+                this=zero.copy(), expressions=[exp.Least(this=placed, expressions=[size.copy()])]
+            )
+
+        first = held(node.start, zero.copy())
+        last = held(node.stop, size.copy())
+        length = exp.Greatest(
+            this=zero.copy(), expressions=[exp.Sub(this=last, expression=first.copy())]
+        )
+        start = exp.Add(this=first, expression=exp.Literal.number(1))
+        sliced = _anon("slice", base, start, length)
+        bounds = [self.lower(b) for b in (node.start, node.stop) if b is not None]
+        # A null bound slices to null (an engine's GREATEST skips a null).
+        missing = [exp.Is(this=b, expression=exp.Null()) for b in bounds]
+        either = missing[0]
+        for more in missing[1:]:
+            either = exp.Or(this=either, expression=more)
+        return exp.Case(ifs=[exp.If(this=either, true=exp.Null())], default=sliced)
 
     # -- comprehensions / quantifiers / reduce (engine list functions) ----- #
 

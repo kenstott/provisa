@@ -468,10 +468,8 @@ def test_the_engine_streams_of_flight_and_airport_are_read_as_declared():
     from provisa.api.airport import query
     from provisa.api.flight import server
 
-    assert (
-        "declared_arrow_stream(\n                arrow_schema, batch_gen, self._result_shape_of(plan)"
-        in inspect.getsource(server)
-    )
+    flat = " ".join(inspect.getsource(server).split())  # whatever the call's line breaks
+    assert "declared_arrow_stream( arrow_schema, batch_gen, self._result_shape_of(plan)" in flat
     assert inspect.getsource(query).count("= _declared_engine_stream(state, plan)") == 2
 
 
@@ -598,10 +596,11 @@ def test_flights_direct_stream_is_typed_by_the_plans_result_shape():
 
     from provisa.api.flight import server
 
-    source = inspect.getsource(server)
+    source = " ".join(inspect.getsource(server).split())  # whatever the calls' line breaks
     assert "return None if kept is None else kept.now()" in source  # no loop crossing
     assert "stream, shape=self._result_shape_of(plan)" in source  # the direct stream
-    assert source.count("shape=self._result_shape_of(plan)") == 3  # and both buffered reads
+    # and both buffered reads, and the engine stream's column transform answer (REQ-2131)
+    assert source.count("shape=self._result_shape_of(plan)") == 4
 
 
 # --- the catalog lists what a read returns -----------------------------------------------------------
