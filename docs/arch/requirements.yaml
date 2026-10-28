@@ -89374,12 +89374,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     against it.] a view over the member holding a fixed set of rows the owner chose once (not a live limit
     that can be paged past), with masks on the columns the owner masks, [END SUPERSEDED BLOCK] granted to
     the standard Viewer role so that every role reads it under its own role, with no role to switch into.
-    The Contracts panel shows each member''s sample rows beside its schema, and the sample can be queried
-    like any table. Reading beyond the sample is what a product request (REQ-2180) asks for. (Amended 2026-10-28,
+    [SUPERSEDED by REQ-2158 amendment A SAMPLE DATA PANEL, A TAB PER CONTRACT, 2026-10-28 -- the sample
+    has its own panel. Kept here for history; do not implement against it.] The Contracts panel shows each
+    member''s sample rows beside its schema, and the sample can be queried like any table. [END SUPERSEDED
+    BLOCK] Reading beyond the sample is what a product request (REQ-2180) asks for. (Amended 2026-10-28,
     A SAMPLE IS WHATEVER THE OWNER SUPPLIES:) A member''s sample is any table or view the product owner
     supplies for it: selected real rows (fixed, masked), faked rows (REQ-1494), synthetic data, or rows
     uploaded or registered from anywhere. Provisa asks only that it is granted to the Viewer role and named
-    as that member''s sample; how it was made is the owner''s choice.'
+    as that member''s sample; how it was made is the owner''s choice. (Amended 2026-10-28, A SAMPLE DATA
+    PANEL, A TAB PER CONTRACT:) A contract names its sample by one field, the sample view''s name; nothing
+    else is declared. The product page has an expanding Sample Data panel, presented like the lineage panel,
+    with one tab per contract showing that contract''s sample view rows. The sample can be queried like
+    any table.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
