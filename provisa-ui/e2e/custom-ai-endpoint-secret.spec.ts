@@ -49,7 +49,10 @@ test.describe("custom AI endpoint via a Secrets-vault key, verified through /exp
 
     // -- 2. Configure a custom endpoint whose api_key_env is a ${secret:...} reference, not a --
     // -- bare env var name, and point the mcp_chat role at it. ----------------------------------
-    await page.goto("/admin/ai-models");
+    // Moved between pages through the app's own navigation, as a visitor does, not page.goto: each
+    // full load fetches the whole dev-server module graph again, 13-17 s apiece on the lane (run
+    // 40692080291), and four of them spent most of this test's budget before its chat turn began.
+    await page.getByTestId("admin-rail").locator('a[href="/admin/ai-models"]').click();
     await expect(page.getByTestId("ai-models-add-endpoint")).toBeVisible({ timeout: 30000 });
     // A prior run (or manual testing) may have left other endpoints configured — the new row's
     // index is whatever comes after however many already exist, never assumed to be 0.
@@ -97,7 +100,9 @@ test.describe("custom AI endpoint via a Secrets-vault key, verified through /exp
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible({ timeout: 15000 });
 
     // -- 3. Type into /explore's chat surface and get a real turn, with a real tool call. -------
-    await page.goto("/explore");
+    // The Explore group opens on its entry page; its subnav then leads to /explore.
+    await page.getByTestId("nav-group-explore").click();
+    await page.locator('.subnav a[href="/explore"]').click();
     const inputWrapper = page.getByTestId("mcp-chat-input");
     await expect(inputWrapper).toBeVisible({ timeout: 30000 });
     const editor = inputWrapper.locator(".cs-message-input__content-editor");
