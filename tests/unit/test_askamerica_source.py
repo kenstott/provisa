@@ -1798,17 +1798,28 @@ def test_registering_a_table_of_another_type_leaves_its_server_alone(monkeypatch
 
 
 def test_a_statement_on_the_source_starts_the_preparation(monkeypatch):
+    import threading
+
     asked: list[pr.PortPair] = []
+    answered = threading.Event()
+
+    def prepare(ports, password):
+        # Held until the first statement has been answered "still starting": a preparation that
+        # finished first (a loaded machine) would leave nothing to be starting.
+        answered.wait(30)
+        asked.append(ports)
+
     replica = _replica_with_server(
         healthy=True,
         exit_code=None,
         catalog_ready=False,
-        prepare=lambda ports, password: asked.append(ports),
+        prepare=prepare,
         in_use=False,
     )
     monkeypatch.setitem(pr._ENDPOINTS, source_key("test-askamerica"), replica)
     with pytest.raises(pr.SourceStillStartingError):
         pr.await_serving("test-askamerica", "govdata", 0)
+    answered.set()
     assert replica._catalog_wanted
     pr.await_serving("test-askamerica", "govdata", 5)  # the SQL page's rerun
     assert len(asked) == 1
