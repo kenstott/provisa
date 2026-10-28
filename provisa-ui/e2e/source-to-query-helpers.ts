@@ -515,6 +515,19 @@ export async function typeSql(page: Page, sql: string) {
   await expect(editor).toHaveText(sql.replace(/\s+/g, " ").trim(), { useInnerText: true });
 }
 
+/** The handler's Retry-After for `data.source_starting`, in ms. */
+const SOURCE_STARTING_RETRY_AFTER_MS = 10_000;
+
+/** The `data.source_starting` detail of a /data/sql answer whose statement met a source still
+ * preparing its catalog; undefined for any other answer. */
+function sourceStarting(body: string): string | undefined {
+  const parsed = JSON.parse(body) as {
+    results?: { error?: { body?: { code?: string; detail?: string } } }[];
+  };
+  const err = parsed.results?.find((r) => r.error?.body?.code === "data.source_starting");
+  return err?.error?.body?.detail;
+}
+
 /** Run the SQL on the SQL page and return the rendered result rows as arrays of cell text. */
 export async function runSqlOnPage(
   page: Page,
@@ -532,12 +545,28 @@ export async function runSqlOnPage(
     else await page.keyboard.press("Escape");
   }
   await typeSql(page, sql);
-  const runResp = page.waitForResponse(
-    (r) => r.url().includes("/data/sql") && r.request().method() === "POST",
-  );
-  await page.getByTestId("sql-run").click();
-  const resp = await runResp;
-  expect(resp.ok(), await resp.text()).toBeTruthy();
+  // A statement on a source whose own server is still preparing its catalog is answered
+  // `data.source_starting` (503, REQ-1824) and the page says to try again in a moment: it is run
+  // again, as a user would, until the source answers. Run 40693926851: the first statement on a
+  // govdata source landed while its connector was still answering the engine's first catalog
+  // query, and a single run left the page on that message with no grid to wait for.
+  const deadline = Date.now() + SOURCE_SERVING_BUDGET_MS;
+  for (;;) {
+    const runResp = page.waitForResponse(
+      (r) => r.url().endsWith("/data/sql") && r.request().method() === "POST",
+    );
+    await page.getByTestId("sql-run").click();
+    const resp = await runResp;
+    const text = await resp.text();
+    expect(resp.ok(), text).toBeTruthy();
+    const starting = sourceStarting(text);
+    if (starting === undefined) break;
+    if (Date.now() >= deadline) {
+      throw new Error(`still starting after ${SOURCE_SERVING_BUDGET_MS} ms: ${starting}`);
+    }
+    // The handler's own Retry-After (provisa/api/app.py _source_starting_handler).
+    await page.waitForTimeout(SOURCE_STARTING_RETRY_AFTER_MS);
+  }
   // The first query on a materialize-only source lands it first; allow for that. A statement that
   // matched nothing is answered too, with no grid: a caller polling for rows asks again.
   const grid = page.getByTestId("download-csv-btn");
