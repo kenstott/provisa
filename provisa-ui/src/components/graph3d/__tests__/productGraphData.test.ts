@@ -61,7 +61,7 @@ function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
           m__dataProducts: list("M__DataProducts"),
           m__registeredTables: list("M__RegisteredTables"),
           m__tableColumns: list("M__TableColumns"),
-          ...(opts.ranks ? { ont__termEdges: list("ONT__TermEdges") } : {}),
+          ...(opts.ranks ? { on_termEdges: list("ON_TermEdges") } : {}),
         }),
         type("M__DataProducts", {
           id: scalar,
@@ -117,7 +117,7 @@ function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
       [rootKey("meta", "registered_tables"), "m__registeredTables"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
       ...(opts.ranks
-        ? ([[rootKey("ontology", "_term_edges"), "ont__termEdges"]] as [string, string][])
+        ? ([[rootKey("ontology", "_term_edges"), "on_termEdges"]] as [string, string][])
         : []),
     ]),
   };
@@ -527,7 +527,7 @@ describe("the product graph's term hierarchy (REQ-2174)", () => {
     const q = squash(productsQuery(reader({ tags: true, ranks: true }), "c360"));
     expect(q.startsWith("query DataProductGraph {")).toBe(true);
     expect(q).toContain(
-      '_term_edges: ont__termEdges(where: { relType: { in: ["KIND_OF","PART_OF","VALID_VALUE_OF"] } })',
+      '_term_edges: on_termEdges(where: { relType: { in: ["KIND_OF","PART_OF","VALID_VALUE_OF"] } })',
     );
     expect(q).toContain("source_term: sourceTerm { id: id name: name }");
     expect(q).toContain("target_term: targetTerm { id: id name: name }");
