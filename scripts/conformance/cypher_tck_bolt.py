@@ -47,8 +47,8 @@ def configured() -> bool:
 
 
 def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
-    """The setup's statements and then the query, on one connection: (200, the answer's columns
-    and rows) or (400, the refusal's words)."""
+    """The setup's statements and then the query, on one connection: (200, the answer's columns,
+    rows and the query's summary counters as Bolt sends them) or (400, the refusal's words)."""
     from neo4j import GraphDatabase, bearer_auth
     from neo4j.exceptions import Neo4jError
 
@@ -66,11 +66,14 @@ def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
                 result = session.run(query, params)
                 columns = list(result.keys())
                 rows = [[value(v) for v in record.values()] for record in result]
+                # Bolt sends a summary's "stats" only when the statement changed something, and
+                # only its non-zero counters: an absent map is every counter at zero.
+                stats = dict(result.consume().metadata.get("stats", {}))
             except Neo4jError as exc:
                 return 400, {"detail": exc.message}
     finally:
         driver.close()
-    return 200, {"columns": columns, "rows": rows}
+    return 200, {"columns": columns, "rows": rows, "stats": stats}
 
 
 # --- values as the driver reads them ----------------------------------------------------------

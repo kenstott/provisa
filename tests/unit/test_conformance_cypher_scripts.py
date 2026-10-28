@@ -372,3 +372,89 @@ def test_a_temporal_value_from_bolt_is_written_as_opencypher_writes_it():
     )
     assert bolt.value(time.Duration(months=14, days=3, seconds=3700)) == "P1Y2M3DT1H1M40S"
     assert bolt.value(time.Duration()) == "PT0S"
+
+
+_SIDE_EFFECTS_FEATURE = '''
+Feature: Remove3 - Removing a label
+
+  Scenario: [1] Remove a label
+    Given an empty graph
+    And having executed:
+      """
+      CREATE (:L1:L2)
+      """
+    When executing query:
+      """
+      MATCH (n) REMOVE n:L2 RETURN n
+      """
+    Then the result should be, in any order:
+      | n     |
+      | (:L1) |
+    And the side effects should be:
+      | -labels | 1 |
+'''
+
+
+@pytest.fixture
+def side_effect_scenario(tmp_path):
+    path = tmp_path / "remove3.feature"
+    path.write_text(_SIDE_EFFECTS_FEATURE)
+    (scenario,) = tck.parse_feature(path)
+    return scenario
+
+
+def test_the_setup_is_only_the_steps_before_the_query(side_effect_scenario, monkeypatch):
+    # The post-query `And the side effects should be` step starts with "the ", the mark of a named
+    # graph; it is not setup, so the scenario's `having executed` runs in a Bolt session.
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    assert [s.text for s in tck._setup_steps(side_effect_scenario)] == [
+        "an empty graph",
+        "having executed",
+    ]
+    assert tck._session_scenario(side_effect_scenario) == tck.IN_A_SESSION
+
+
+@pytest.mark.parametrize(
+    ("stats", "status", "reason"),
+    [
+        ({"labels-removed": 1}, "passed", tck.IN_A_SESSION),
+        (
+            {"labels-removed": 1, "nodes-created": 1},
+            "failed",
+            f"side effects differ: +nodes 1, expected 0 {tck.IN_A_SESSION}",
+        ),
+        ({}, "failed", f"side effects differ: -labels 0, expected 1 {tck.IN_A_SESSION}"),
+    ],
+)
+def test_a_session_scenario_s_side_effects_are_its_summary_counters(
+    side_effect_scenario, monkeypatch, stats, status, reason
+):
+    sent = []
+
+    def session(setups, query, params):
+        sent.append((list(setups), query))
+        rows = [[("node", frozenset({"L1"}), {})]]
+        return 200, {"columns": ["n"], "rows": rows, "stats": stats}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", session)
+    outcome = tck.run(side_effect_scenario, "http://x", "org_admin")
+    assert sent == [(["CREATE (:L1:L2)"], "MATCH (n) REMOVE n:L2 RETURN n")]
+    assert (outcome.status, outcome.reason) == (status, reason)
+
+
+def test_side_effects_are_compared_exactly():
+    assert tck.side_effects({}, {}) is None
+    assert (
+        tck.side_effects({"+nodes": 2, "+properties": 1}, {"nodes-created": 2, "properties-set": 1})
+        is None
+    )
+    assert tck.side_effects({"+nodes": 2}, {"nodes-created": 1}) == "+nodes 1, expected 2"
+    assert tck.side_effects({}, {"relationships-deleted": 3}) == "-relationships 3, expected 0"
+
+
+def test_a_side_effect_the_summary_has_no_counter_for_is_a_failure_naming_it():
+    assert tck.side_effects({"-properties": 1}, {"properties-set": 1}) == (
+        "+properties 1, expected 0; -properties expected 1, the summary has no counter for it"
+    )
+    assert tck.side_effects({"-properties": 0}, {}) is None
