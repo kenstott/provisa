@@ -80,6 +80,15 @@ async def two_orgs():
     from provisa.core.config_loader import apply_config, parse_config_dict
     from tests.helpers import register_org, unregister_org
 
+    # The boot below seeds the deployment org's runtime with this module's config: a ``trig_writer``
+    # role granted no table (the orgs' tables are registered per org). That runtime outlives the
+    # app's lifespan, so every later test in the session met a role it could not build (a step's
+    # ``state.contexts = ...`` resolves every held surface and raised RoleServedNothing). The
+    # surfaces it held before are put back at teardown.
+    deployment_rt = state._default_runtime()
+    held_surfaces = deployment_rt.surfaces
+    held_inputs = deployment_rt.role_build_inputs
+
     mp = MonkeyPatch()
     mp.setenv("PROVISA_CONFIG", _CONFIG)
     mp.setenv("PG_HOST", os.environ.get("PG_HOST", "localhost"))
@@ -129,6 +138,8 @@ async def two_orgs():
                     await unregister_org(state.admin_db, org)
     finally:
         mp.undo()
+        deployment_rt.surfaces = held_surfaces
+        deployment_rt.role_build_inputs = held_inputs
 
 
 async def _rows(state, schema: str) -> list[tuple[int, str]]:
