@@ -226,7 +226,7 @@ def test_parse_update_where_captured():
 
 def test_parse_unknown_raises():
     with pytest.raises(CypherWriteParseError):
-        parse_cypher_write("MERGE (n:Person {id: 1})")
+        parse_cypher_write("MATCH (n:Person) REMOVE n.id")
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,11 @@ Supports five write patterns:
   relationship's junction row deleted, then each node's row; DETACH first deletes every junction
   row the node is an end of, and refuses a node a foreign-key relationship relates (REQ-2176,
   REQ-665)  →  ``DELETE FROM junction WHERE ...``, then ``DELETE FROM table WHERE ...``
+- ``[MATCH ...] MERGE (a:A {props}) MERGE (b:B {props}) MERGE (a)-[:T]->(b) [ON CREATE SET ...]
+  [ON MATCH SET ...]``, model nodes and registered junction relationships (REQ-2176): each MERGE
+  in turn a read of its pattern, then the INSERTs of what it does not match (each new row's key
+  returned) or the UPDATEs its ON MATCH SET makes; a relationship a foreign key derives is
+  refused by name before anything is written
 
 :func:`written` runs a write in that order over the surface's own read and write.
 
@@ -80,7 +85,7 @@ class MatchedNode:
 class WriteAST:
     """Minimal AST for a Cypher write statement."""
 
-    kind: str  # "create" | "delete" | "update" | "relate" | "graph" | "erase"
+    kind: str  # "create" | "delete" | "update" | "relate" | "graph" | "erase" | "merge"
     label: str  # Cypher label, e.g. "Person"
     variable: str  # node variable, e.g. "n"
     props: dict[str, Any] = field(default_factory=dict)  # CREATE props
@@ -102,6 +107,10 @@ class WriteAST:
     reads: str = ""
     deleted: list[str] = field(default_factory=list)
     detach: bool = False
+    # "merge": the MERGE clauses, in order (``reads`` holds the leading MATCHes as written), and
+    # the label of each variable the leading MATCHes bind that a MERGE reaches back to.
+    merges: list["MergePart"] = field(default_factory=list)
+    matched_labels: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -123,6 +132,19 @@ class CreatedLink:
     props: dict[str, Any]
     start: int
     end: int
+
+
+@dataclass
+class MergePart:
+    """One MERGE clause of a ``merge`` write: each node occurrence of its pattern (``label`` ""
+    for one reaching back to a variable bound before it), each relationship between two of them
+    (ends indexes into ``nodes``), and its ON CREATE SET and ON MATCH SET items, each
+    (variable, property, value)."""
+
+    nodes: list[CreatedNode]
+    links: list[CreatedLink]
+    on_create: list[tuple[str, str, Any]] = field(default_factory=list)
+    on_match: list[tuple[str, str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +326,9 @@ WRITE_FORMS = (
     "MATCH (a:Label {key: value}) MATCH (b:Label {key: value}) CREATE (a)-[:TYPE {key: value}]->(b); "
     "CREATE (a:Label {key: value}) CREATE (b:Label {key: value}) "
     "CREATE (a)-[:TYPE {key: value}]->(b) [RETURN ...]; "
-    "MATCH ... [DETACH] DELETE n, r"
+    "MATCH ... [DETACH] DELETE n, r; "
+    "[MATCH ...] MERGE (a:Label {key: value}) [MERGE (b:Label {key: value})] "
+    "[MERGE (a)-[:TYPE]->(b)] [ON CREATE SET a.key = value] [ON MATCH SET a.key = value]"
 )
 
 
@@ -468,6 +492,152 @@ def _parse_erase(query: str) -> WriteAST | None:
     )
 
 
+def _merge_literal(text: str) -> Any:
+    """A MERGE's inline property value as written: a literal or a parameter, refused otherwise --
+    a MERGE matches on values the statement states."""
+    text = text.strip()
+    if (
+        _PARAM_REF_RE.fullmatch(text)
+        or re.fullmatch(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"", text)
+        or text.upper() in ("TRUE", "FALSE", "NULL")
+        or re.fullmatch(r"-?\d+(?:\.\d+)?", text)
+    ):
+        return _parse_literal(text)
+    raise CypherWriteParseError(
+        f"a MERGE of model data matches on a literal or a parameter: {text!r} is neither"
+    )
+
+
+def _merge_sets(items: list[Any], when: str) -> list[tuple[str, str, Any]]:
+    """ON CREATE / ON MATCH SET items as (variable, property, value): each a property set to a
+    literal or a parameter. A label SET on a model row is the graph session's, refused here."""
+    from provisa.gql.expr_ast import Literal, Parameter
+
+    out = []
+    for item in items:
+        if item.property is None:
+            raise CypherWriteParseError(
+                f"ON {when} SET of a MERGE of model data sets a property, v.key = value"
+            )
+        if isinstance(item.value, Parameter):
+            out.append((item.variable, item.property, CypherParam(item.value.name)))
+        elif isinstance(item.value, Literal):
+            out.append((item.variable, item.property, item.value.value))
+        else:
+            raise CypherWriteParseError(
+                f"ON {when} SET of a MERGE of model data sets {item.variable}.{item.property} to "
+                "a literal or a parameter"
+            )
+    return out
+
+
+def _parse_merge(query: str) -> WriteAST:
+    """A statement of leading MATCHes and MERGE clauses of model nodes and registered junction
+    relationships (REQ-2176), read through the graph IR: each MERGE's pattern, each node a
+    labelled node with a property map or a variable bound before it, and its ON CREATE SET and
+    ON MATCH SET items."""
+    from provisa.cypher.expr_parser import CypherExprParseError
+    from provisa.cypher.parser import CypherParseError, parse_cypher_statement
+    from provisa.gql.ir import MatchStep, MergeClause
+
+    try:
+        ir = parse_cypher_statement(query)
+    except (CypherParseError, CypherExprParseError) as exc:
+        raise CypherWriteParseError(str(exc)) from exc
+    steps = ir.pipeline
+    first = next((i for i, s in enumerate(steps) if isinstance(s, MergeClause)), None)
+    if first is None:
+        raise CypherWriteParseError(f"MERGE is a clause of its own: {WRITE_FORMS}")
+    lead, merges = steps[:first], steps[first:]
+    if (
+        not all(isinstance(s, MatchStep) for s in lead)
+        or not all(isinstance(s, MergeClause) for s in merges)
+        or ir.return_clause is not None
+    ):
+        raise CypherWriteParseError(
+            "a MERGE of model data is leading MATCHes, then MERGE clauses, and ends its "
+            f"statement: {WRITE_FORMS}"
+        )
+    matched_labels: dict[str, str] = {}
+    bound: set[str] = set()
+    for step in lead:
+        assert isinstance(step, MatchStep)
+        for match in step.matches:
+            for node in getattr(match.pattern, "nodes", []):
+                if node.variable:
+                    bound.add(node.variable)
+                    if node.labels:
+                        matched_labels[node.variable] = ":".join(node.labels)
+            for rel in getattr(match.pattern, "rels", []):
+                if rel.variable:
+                    bound.add(rel.variable)
+    parts: list[MergePart] = []
+    for at, clause in enumerate(merges):
+        assert isinstance(clause, MergeClause)
+        nodes: list[CreatedNode] = []
+        links: list[CreatedLink] = []
+        for i, node in enumerate(clause.pattern.nodes):
+            var = node.variable or f"{_KEY_PARAM}m{at}_{i}"
+            props = {k: _merge_literal(v) for k, v in node.property_text.items()}
+            if var in bound:
+                if node.labels or props:
+                    raise CypherWriteParseError(
+                        f"Variable `{var}` already declared: a MERGE reaches back to it by its "
+                        "variable alone"
+                    )
+                nodes.append(CreatedNode(var, "", {}))
+                continue
+            if any(n.variable == var for n in nodes):
+                nodes.append(CreatedNode(var, "", {}))
+                continue
+            if not node.labels:
+                raise CypherWriteParseError(
+                    f"each node a MERGE of model data makes is a labelled node: ({var}) is not "
+                    "one, nor a variable bound before it"
+                )
+            nodes.append(CreatedNode(var, ":".join(node.labels), props))
+        for j, rel in enumerate(clause.pattern.rels):
+            if len(rel.types) != 1 or rel.variable_length:
+                raise CypherWriteParseError(
+                    "a relationship MERGE names one type and one hop: (a)-[:TYPE]->(b)"
+                )
+            if rel.direction not in ("right", "left"):
+                raise CypherWriteParseError(
+                    "a relationship MERGE of model data names its direction: (a)-[:TYPE]->(b)"
+                )
+            start, end = (j, j + 1) if rel.direction == "right" else (j + 1, j)
+            props = {k: _merge_literal(v) for k, v in rel.property_text.items()}
+            var = rel.variable or f"{_KEY_PARAM}r{at}_{j}"
+            if var in bound:
+                raise CypherWriteParseError(f"Variable `{var}` already declared")
+            links.append(CreatedLink(var, rel.types[0], props, start, end))
+        part = MergePart(
+            nodes,
+            links,
+            _merge_sets(clause.on_create, "CREATE"),
+            _merge_sets(clause.on_match, "MATCH"),
+        )
+        named = {n.variable for n in nodes} | {link.variable for link in links}
+        for var, _prop, _val in part.on_create + part.on_match:
+            if var not in named:
+                raise CypherWriteParseError(
+                    f"ON CREATE / ON MATCH SET names {var}, which its MERGE does not"
+                )
+        parts.append(part)
+        bound |= named
+    head = parts[0].nodes[0]
+    opening = merges[0]
+    assert isinstance(opening, MergeClause)
+    return WriteAST(
+        kind="merge",
+        label=head.label,
+        variable=head.variable,
+        reads=query[: opening.start].strip(),
+        merges=parts,
+        matched_labels=matched_labels,
+    )
+
+
 def parse_cypher_write(query: str) -> WriteAST:
     """Parse a Cypher write statement into a WriteAST.
 
@@ -490,18 +660,20 @@ def parse_cypher_write(query: str) -> WriteAST:
     refuse_cypher_definition(query)
 
     # REQ-2176: a governed write has one exact target, one model table or one registered
-    # junction. A MERGE is a MATCH, then a CREATE under that rule, and REMOVE takes a session
-    # label off a node; the governed writer takes neither, so each is refused here by name.
-    for _kw in ("MERGE", "REMOVE"):
-        if re.search(rf"\b{_kw}\b", query, re.IGNORECASE):
-            raise CypherWriteParseError(
-                f"Cypher write pattern {_kw.upper()!r} is not a governed write: a governed write "
-                "has one exact target, one model table or one registered junction. A MERGE of a "
-                "node is a MATCH, then a CREATE of one model row, and REMOVE takes a label off a "
-                "node in the graph session; a MERGE of a relationship, or a REMOVE of a model "
-                f"row's property, is not written. A Cypher write takes one of these forms: "
-                f"{WRITE_FORMS}"
-            )
+    # junction. REMOVE takes a session label off a node; the governed writer does not take it,
+    # so it is refused here by name.
+    if re.search(r"\bREMOVE\b", query, re.IGNORECASE):
+        raise CypherWriteParseError(
+            "Cypher write pattern 'REMOVE' is not a governed write: a governed write has one "
+            "exact target, one model table or one registered junction. REMOVE takes a label off "
+            "a node in the graph session; a REMOVE of a model row's property is not written. A "
+            f"Cypher write takes one of these forms: {WRITE_FORMS}"
+        )
+
+    # REQ-2176 (amended 2026-10-28): a MERGE of model nodes and registered junction
+    # relationships is a governed write, read through the graph IR.
+    if re.search(r"\bMERGE\b", query, re.IGNORECASE):
+        return _parse_merge(query)
 
     # REQ-2176: a DETACH DELETE, or a DELETE outside the one-node form below (a relationship's,
     # several variables'), is read through the graph IR. The one-node regex is not tried on a
@@ -761,6 +933,10 @@ class WriteTranslator:
             raise CypherWriteParseError(
                 "a DELETE of what its MATCH binds is written from a read of it: erase_read, "
                 "then erase"
+            )
+        if ast.kind == "merge":
+            raise CypherWriteParseError(
+                "a MERGE is written from a read of each of its patterns: written runs it"
             )
         raise CypherWriteParseError(f"Unknown WriteAST kind: {ast.kind!r}")
 
@@ -1218,6 +1394,11 @@ async def written(
     own, each answering (columns, rows) through the one pipeline."""
     if ast.kind == "graph":
         return await _written_graph(ast, translator, provided, read, write)
+    if ast.kind == "merge":
+        from provisa.cypher.merge_writer import written_merge
+
+        await written_merge(ast, translator, provided, read, write)
+        return [], []
     if ast.kind == "erase":
         # REQ-2176: what the DELETE names is read as every read is, under the role's governance;
         # each DELETE is then admitted as any write (write grant, row rules).

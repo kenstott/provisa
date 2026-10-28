@@ -200,16 +200,17 @@ def test_a_delete_outside_its_form_is_refused_by_name(query):
         parse_cypher_write(query)
 
 
-@pytest.mark.parametrize("keyword", ["MERGE", "REMOVE"])
-def test_merge_and_remove_are_refused_in_the_current_rule(keyword):
-    query = {
-        "MERGE": "MERGE (a:Person {name: 'Ann'})-[:KNOWS]->(b:Person {name: 'Bo'})",
-        "REMOVE": "MATCH (a:Person) REMOVE a.name",
-    }[keyword]
-    with pytest.raises(CypherWriteParseError, match=f"Cypher write pattern '{keyword}'") as err:
-        parse_cypher_write(query)
+def test_remove_is_refused_in_the_current_rule():
+    with pytest.raises(CypherWriteParseError, match="Cypher write pattern 'REMOVE'") as err:
+        parse_cypher_write("MATCH (a:Person) REMOVE a.name")
     assert "one exact target" in str(err.value)
     assert "REQ-" not in str(err.value)
+
+
+def test_a_merge_of_model_data_is_a_governed_write():
+    # REQ-2176 (amended 2026-10-28): tests/unit/test_cypher_governed_merge.py runs it.
+    ast = parse_cypher_write("MERGE (a:Person {name: 'Ann'})-[:KNOWS]->(b:Person {name: 'Bo'})")
+    assert ast.kind == "merge"
 
 
 def _gov(*operations: str) -> GovernanceContext:
