@@ -58,7 +58,7 @@ class CreateOf:
     trailing: str | None
 
 
-_TRAILING = {
+TRAILING = {
     "CreateClause": "CREATE",
     "SetClause": "SET",
     "RemoveClause": "REMOVE",
@@ -90,7 +90,7 @@ def create_of(statement: str) -> CreateOf | None:
     assert isinstance(create, CreateClause)
     after = ast.pipeline[at + 1 :]
     trailing = (
-        _TRAILING[type(after[0]).__name__]
+        TRAILING[type(after[0]).__name__]
         if after
         else "RETURN"
         if ast.return_clause is not None
@@ -99,7 +99,7 @@ def create_of(statement: str) -> CreateOf | None:
     return CreateOf(
         statement[: create.start].strip(),
         _pattern(create),
-        _bound(ast.pipeline[:at]),
+        bound_by(ast.pipeline[:at]),
         trailing,
     )
 
@@ -107,8 +107,13 @@ def create_of(statement: str) -> CreateOf | None:
 def _pattern(create: Any) -> CreatePattern:
     """A CREATE clause's patterns: each node occurrence in order, each relationship between the
     two it joins, each property's value as written."""
+    return paths_pattern(create.patterns)
+
+
+def paths_pattern(paths: list[Any]) -> CreatePattern:
+    """Write patterns (the IR's PathPattern) as the ephemeral layer reads them."""
     out = CreatePattern()
-    for path in create.patterns:
+    for path in paths:
         base = len(out.nodes)
         for node in path.nodes:
             out.nodes.append(
@@ -129,7 +134,7 @@ def _pattern(create: Any) -> CreatePattern:
     return out
 
 
-def _bound(steps: list[Any]) -> set[str]:
+def bound_by(steps: list[Any]) -> set[str]:
     """The variables a write's leading clauses (MATCH, UNWIND, WITH) bind."""
     from provisa.gql.ir import MatchStep, UnwindClause, WithClause
 

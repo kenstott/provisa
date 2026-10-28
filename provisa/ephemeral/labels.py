@@ -111,6 +111,20 @@ async def write_labels(
         if removed:
             await store.remove_labels(state, session, removed)
         return Labelled(0, len(removed))
+    return Labelled(await add_labels(state, session, given, held), 0)
+
+
+async def add_labels(
+    state: Any,
+    session: TempSession,
+    given: list[tuple[str, str, str | None]],
+    held: set[tuple[str, str]] | None = None,
+) -> int:
+    """Give each (node id, label, model type name or None for an ephemeral node) its label: a
+    node_labels row, or a tag on a model node. A label already carried, or a model node's own,
+    is not added again. ``held``: node_labels as it is, when the caller has read it."""
+    if held is None:
+        held = await store.held_labels(state, session)
     writes = store.Writes()
     seen: set[tuple[str, str]] = set()
     for node_id, key, model in given:
@@ -123,4 +137,4 @@ async def write_labels(
             writes.tags.append(store.Tag(node_id, model, key))
     if seen:
         await store.write(state, session, writes)
-    return Labelled(len(seen), 0)
+    return len(seen)
