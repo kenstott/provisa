@@ -90199,7 +90199,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
     the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
     lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
-    selected. The separate term graph and product graph implementations are replaced by these presets.'
+    selected. The separate term graph and product graph implementations are replaced by these presets. (Amended
+    2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
+    1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
+    page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
+    with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
+    one graph has optional layers for a product''s commands, its quality checks, links to other products
+    and product lineage, off by default in snippets and available in the full view.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
