@@ -136,6 +136,63 @@ def _anon(name: str, *args: exp.Expression) -> exp.Anonymous:
     return exp.Anonymous(this=name, expressions=list(args))
 
 
+def graph_identity(t: "_Translator", var: str) -> exp.Expression | None:
+    """The graph identity (node_identity's text) of the node ``var`` in ``t``'s rows: a column of
+    a read of every relationship, a node union's ``__id``, or its one table's key; None where
+    ``t`` holds no such node."""
+    from provisa.gql.select_builder import node_identity
+
+    if var in t._all_rels_node_vars and t._all_rels_alias:
+        return _anon(
+            "JSON_EXTRACT_SCALAR", _col(var, t._all_rels_alias), exp.Literal.string("$.id")
+        )
+    if var in t._domain_nodes:
+        return _col("__id", var)
+    alias, nm = t._var_table.get(var, (None, None))
+    return node_identity(alias, nm) if nm is not None and alias else None
+
+
+def _rename_variables(node: object, names: dict[str, str]) -> None:
+    """Each node variable of ``node`` (an IR tree) that ``names`` holds named its new name, in its
+    patterns and its expressions alike."""
+    from dataclasses import fields, is_dataclass
+
+    from provisa.gql.expr_ast import MapProjection, Variable
+    from provisa.gql.ir import NodePattern
+
+    if not names:
+        return
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            _rename_variables(item, names)
+        return
+    if isinstance(node, dict):
+        for item in node.values():
+            _rename_variables(item, names)
+        return
+    if not is_dataclass(node) or isinstance(node, type):
+        return
+    if isinstance(node, NodePattern) and node.variable in names:
+        node.variable = names[node.variable]
+    elif isinstance(node, Variable) and node.name in names:
+        node.name = names[node.name]
+    elif isinstance(node, MapProjection) and node.var in names:
+        node.var = names[node.var]
+    for f in fields(node):
+        _rename_variables(getattr(node, f.name), names)
+
+
+def _union_leaves(sql: exp.Expression) -> list[exp.Select]:
+    """The selects a statement's rows are the union of (itself, when it is one select)."""
+    if isinstance(sql, exp.Union):
+        return _union_leaves(sql.this) + _union_leaves(sql.expression)
+    if isinstance(sql, exp.Subquery):
+        return _union_leaves(sql.this)
+    if not isinstance(sql, exp.Select):
+        raise CypherTranslateError("An inner statement's rows are a select or a union of selects")
+    return [sql]
+
+
 def _col(name: str, table: str) -> exp.Column:
     """A qualified column with a quoted name and an UNQUOTED table alias — matching the text path's
     ``alias."col"`` shape (the alias is a generated identifier, so quoting it only adds churn)."""
@@ -896,15 +953,33 @@ class TranslatorExprContext:
         back; returns the inner SELECT as an AST."""
         from provisa.gql.translator import _Translator
 
+        outer = self._t
         inner_ast = copy.deepcopy(body)
-        inner_tr = _Translator(inner_ast, self._t._lm, self._t._params)
-        inner_tr._var_table.update(self._t._var_table)
+        # An outer node drawn from several tables (no label, a domain, a read of every
+        # relationship) is no one table's row the inner statement can go on from: the inner
+        # statement matches it under a name of its own, tied to the outer row by its identity.
+        drawn = {
+            v: f"__outer_{v}"
+            for v, (_, nm) in outer._var_table.items()
+            if nm is None and v not in outer._cte_sources and graph_identity(outer, v) is not None
+        }
+        _rename_variables(inner_ast, drawn)
+        inner_tr = _Translator(inner_ast, outer._lm, outer._params)
+        inner_tr._var_table.update({v: b for v, b in outer._var_table.items() if v not in drawn})
         # A node a WITH carries is held in that WITH's rows, under its name there.
-        inner_tr._cte_sources = set(self._t._cte_sources)
+        inner_tr._cte_sources = set(outer._cte_sources)
         # The outer statement's nodes are its row, which the inner statement goes on from (#160),
         # a WITH's carried nodes included.
-        inner_tr._lateral_bound = {v for v, (_, nm) in self._t._var_table.items() if nm is not None}
+        inner_tr._lateral_bound = {v for v, (_, nm) in outer._var_table.items() if nm is not None}
         inner_select, inner_params, _ = inner_tr.translate()
+        same = [
+            exp.EQ(this=inner_id, expression=graph_identity(outer, v))
+            for v, w in drawn.items()
+            if (inner_id := graph_identity(inner_tr, w)) is not None
+        ]
+        if same:
+            for arm in _union_leaves(inner_select):
+                arm.where(exp.and_(*same), copy=False)
 
         for p in inner_params:
             if p not in self._t._param_seen:

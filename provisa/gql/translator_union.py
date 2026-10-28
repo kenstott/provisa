@@ -160,9 +160,11 @@ class _UnionMixin:  # mixin for _Translator
         Pass None or "__all__" to leave that side unconstrained. src_type / tgt_type constrain it
         to the rels whose source / target is that node type (an endpoint labeled with a table).
         """
-        src_col = src_var or "n"
-        rel_col = rel_var or "r"
-        tgt_col = tgt_var or "m"
+        # An anonymous end's column is named as no variable is, so an outer statement's variable
+        # an inner statement reads (its ``n``) is never this union's column.
+        src_col = src_var or "__src"
+        rel_col = rel_var or "__rel"
+        tgt_col = tgt_var or "__tgt"
         alias = "_all_rels"
         self._all_rels_alias = alias
         self._all_rels_src_col = src_col

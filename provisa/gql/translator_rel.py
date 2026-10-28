@@ -428,6 +428,15 @@ class _RelJoinMixin:  # mixin for _Translator
         src_nm_explicit = src_nm is not None
         tgt_nm_explicit = tgt_nm is not None
 
+        # An end's own label holds whether or not the pattern names it: (:A)-[r]->(:B) reads
+        # only the relationships from an A to a B.
+        if src_nm is None and src_node.labels:
+            type_label, _ = self._resolve_node_type(src_node.labels)
+            src_nm = self._lm.nodes.get(type_label) if type_label else None
+            if src_nm and src_var:
+                self._var_table[src_var] = (src_var, src_nm)
+            src_nm_explicit = src_nm is not None
+
         if tgt_nm is None and tgt_node.labels:
             type_label, _ = self._resolve_node_type(tgt_node.labels)
             tgt_nm = self._lm.nodes.get(type_label) if type_label else None
