@@ -666,6 +666,67 @@ async def test_discovery_answers_while_the_adapters_catalog_is_still_being_prepa
     }
 
 
+def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
+    """A listening server that cancels the read it held queued, as the adapter answers a
+    statement it held behind its catalog's preparation (SQLSTATE 57014)."""
+    import asyncpg
+
+    statements: list[str] = []
+
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            return pr.PortPair(5440, "127.0.0.1", 5540)
+
+        def catalog_pending(self):
+            return catalog_pending
+
+    class _Cancelling:
+        async def fetch(self, sql, *args, timeout=None):
+            statements.append(sql)
+            raise asyncpg.QueryCanceledError("canceling statement because the client disconnected")
+
+        async def close(self):
+            statements.append("closed")
+
+    async def _connect(host, port, password):
+        return _Cancelling()
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    return statements
+
+
+@pytest.mark.asyncio
+async def test_a_read_cancelled_while_the_catalog_is_prepared_is_still_starting(monkeypatch):
+    """The read is asked again once the source has started: STARTING, not a failed list."""
+    statements = _cancelling_server(monkeypatch, catalog_pending=True)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        await pr.adapter_tables(_source(), "sec")
+    assert raised.value.preparing_catalog
+    assert statements[-1] == "closed"
+
+
+@pytest.mark.asyncio
+async def test_a_read_cancelled_once_the_catalog_is_prepared_is_the_servers_answer(monkeypatch):
+    import asyncpg
+
+    statements = _cancelling_server(monkeypatch, catalog_pending=False)
+    with pytest.raises(asyncpg.QueryCanceledError, match="client disconnected"):
+        await pr.adapter_tables(_source(), "sec")
+    assert statements[-1] == "closed"
+
+
+def test_a_catalog_is_pending_until_it_is_prepared_or_has_failed():
+    replica = pr.ConnectorReplica.__new__(pr.ConnectorReplica)
+    replica._start_lock = threading.Lock()
+    replica._catalog_ready, replica._catalog_error = False, None
+    assert replica.catalog_pending()
+    replica._catalog_ready = True
+    assert not replica.catalog_pending()
+    replica._catalog_ready, replica._catalog_error = False, RuntimeError("bad model")
+    assert not replica.catalog_pending()
+
+
 @pytest.mark.asyncio
 async def test_discovery_of_a_server_that_does_not_listen_yet_is_starting(monkeypatch):
     class _Replica:
