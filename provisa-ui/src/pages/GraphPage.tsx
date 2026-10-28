@@ -40,11 +40,8 @@ import {
   type GraphLanguage,
 } from "../components/graph/graph-persistence";
 import {
-  addPattern,
-  compactIri,
-  freshVariable,
+  pickedQuery,
   sparqlStatement,
-  withPrefixes,
   SPARQL_ACCEPT,
   type SparqlVocabulary,
 } from "../components/graph/sparql";
@@ -860,26 +857,11 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
 
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
 
-  // REQ-2135: a SPARQL pill adds to the query in the bar. Its patterns share one subject, ?s: a
-  // class types it, a property or a relationship hangs a fresh object off it; a concept is read for
-  // what is said of it; a prefix or a domain is declared.
+  // REQ-2135: a SPARQL pill adds to the query in the bar (pickedQuery).
   const handleVocabularyPick = useCallback(
     (pick: VocabularyPick) => {
       if (!vocabulary) return;
-      const p = vocabulary.prefixes;
-      const q = graphState.currentQuery;
-      let next: string;
-      if (pick.kind === "prefix") next = withPrefixes(q, [pick.prefix], p);
-      else {
-        const term = compactIri(pick.iri, p);
-        const pattern =
-          pick.kind === "class"
-            ? `?s a ${term} .`
-            : pick.kind === "concept"
-              ? `${term} ${freshVariable(q, "p")} ${freshVariable(q, "o")} .`
-              : `?s ${term} ${freshVariable(q, "o")} .`;
-        next = addPattern(q, pattern, [term], p);
-      }
+      const next = pickedQuery(graphState.currentQuery, pick, vocabulary);
       graphState.currentQuery = next;
       saveGraphState(graphState);
       setHistoryQuery(next);
@@ -1016,6 +998,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
               vocabulary={vocabulary}
               error={vocabularyError}
               onPick={handleVocabularyPick}
+              colorOverrides={colorOverrides}
+              checkedDomains={checkedDomains}
             />
           ) : undefined
         }

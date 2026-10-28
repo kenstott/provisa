@@ -77,6 +77,96 @@ export function freshVariable(query: string, base: string): string {
   for (let i = 2; ; i++) if (!used.has(`${base}${i}`)) return `?${base}${i}`;
 }
 
+/** What a vocabulary pill asks of the query. */
+export type VocabularyPick =
+  | { kind: "class" | "predicate" | "edge" | "concept"; iri: string }
+  | { kind: "prefix"; prefix: string };
+
+/** ``query`` with what ``pick`` adds (REQ-2135). A class types ?s, a property hangs a fresh object
+ * off it, a relationship adds both its ends typed by its domain and range (relationshipPattern), a
+ * concept is read for what is said of it, and a prefix is declared. */
+export function pickedQuery(
+  query: string,
+  pick: VocabularyPick,
+  vocabulary: SparqlVocabulary,
+): string {
+  const p = vocabulary.prefixes;
+  if (pick.kind === "prefix") return withPrefixes(query, [pick.prefix], p);
+  if (pick.kind === "edge") {
+    const rel = relationshipPattern(query, pick.iri, vocabulary);
+    return addPattern(query, rel.pattern, rel.terms, p);
+  }
+  const term = compactIri(pick.iri, p);
+  const pattern =
+    pick.kind === "class"
+      ? `?s a ${term} .`
+      : pick.kind === "concept"
+        ? `${term} ${freshVariable(query, "p")} ${freshVariable(query, "o")} .`
+        : `?s ${term} ${freshVariable(query, "o")} .`;
+  return addPattern(query, pattern, [term], p);
+}
+
+/** The variables ``query`` types, each with the classes it is typed as (``?s a pet-store:pets``). */
+function typedVariables(query: string): Map<string, Set<string>> {
+  const held = new Map<string, Set<string>>();
+  for (const m of query.matchAll(/[?$](\w+)\s+(?:a|rdf:type)\s+(<[^>]*>|[^\s.;,{}]+)/g))
+    held.set(m[1], new Set([...(held.get(m[1]) ?? []), m[2]]));
+  return held;
+}
+
+/**
+ * The pattern a relationship pill adds (REQ-2135): both ends of the relationship, each typed by the
+ * class the vocabulary gives the edge's source (domain) and target (range) label. Where a variable
+ * of the query already holds the source class it is the subject (``?s rel ?o . ?o a range``); where
+ * one holds the target class it becomes the object (``?x rel ?s . ?x a domain``); else a fresh pair
+ * is added (``?a a domain . ?a rel ?b . ?b a range``). ``terms`` are what the pattern names, for
+ * its PREFIX lines.
+ */
+export function relationshipPattern(
+  query: string,
+  iri: string,
+  vocabulary: SparqlVocabulary,
+): { pattern: string; terms: string[] } {
+  const p = vocabulary.prefixes;
+  const edges = vocabulary.edges.filter((e) => e.iri === iri);
+  if (edges.length === 0) throw new Error(`the vocabulary has no relationship ${iri}`);
+  const classOf = (label: string): string => {
+    const c = vocabulary.classes.find((x) => x.kind === "table" && x.labels.includes(label));
+    if (!c) throw new Error(`the vocabulary has no class for the label ${label}`);
+    return c.iri;
+  };
+  const ends = edges.map((e) => ({ source: classOf(e.source), target: classOf(e.target) }));
+  const rel = compactIri(iri, p);
+  const held = typedVariables(query);
+  const holder = (cls: string): string | undefined =>
+    [...held].find(([, types]) => types.has(compactIri(cls, p)) || types.has(`<${cls}>`))?.[0];
+  for (const e of ends) {
+    const subject = holder(e.source);
+    if (subject !== undefined) {
+      const o = freshVariable(query, "o");
+      const range = compactIri(e.target, p);
+      return { pattern: `?${subject} ${rel} ${o} . ${o} a ${range} .`, terms: [rel, range] };
+    }
+  }
+  for (const e of ends) {
+    const object = holder(e.target);
+    if (object !== undefined) {
+      const x = freshVariable(query, "x");
+      const domain = compactIri(e.source, p);
+      return { pattern: `${x} ${rel} ?${object} . ${x} a ${domain} .`, terms: [rel, domain] };
+    }
+  }
+  const [e] = ends;
+  const a = freshVariable(query, "s");
+  const b = freshVariable(`${query} ${a}`, "o");
+  const domain = compactIri(e.source, p);
+  const range = compactIri(e.target, p);
+  return {
+    pattern: `${a} a ${domain} . ${a} ${rel} ${b} . ${b} a ${range} .`,
+    terms: [domain, rel, range],
+  };
+}
+
 /** ``query`` with its PREFIX lines for ``prefixes`` (those it has not declared), first. */
 export function withPrefixes(
   query: string,

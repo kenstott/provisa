@@ -20,12 +20,12 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { Tip } from "../Tip";
+import { labelColor } from "./graph-model";
 import { compactIri, domainPrefixes, termName, type SparqlVocabulary } from "./sparql";
 
-/** What a pill asks of the query. */
-export type VocabularyPick =
-  | { kind: "class" | "predicate" | "edge" | "concept"; iri: string }
-  | { kind: "prefix"; prefix: string };
+import type { VocabularyPick } from "./sparql";
+
+export type { VocabularyPick };
 
 function Pill({
   text,
@@ -33,17 +33,29 @@ function Pill({
   onClick,
   testId,
   muted,
+  color,
+  badge,
 }: {
   text: string;
   tip: string;
   onClick: () => void;
   testId: string;
   muted?: string;
+  /** The pill's colour: a label's, as the Cypher sidebar colours it. */
+  color?: string;
+  /** Drawn as a relationship type is in the Cypher sidebar. */
+  badge?: boolean;
 }) {
   return (
     <div className="graph-label-item">
       <Tip text={tip}>
-        <button type="button" className="graph-label-pill" onClick={onClick} data-testid={testId}>
+        <button
+          type="button"
+          className={badge ? "graph-rel-badge" : "graph-label-pill"}
+          style={color ? { background: color } : undefined}
+          onClick={onClick}
+          data-testid={testId}
+        >
           {text}
           {muted && (
             <span style={{ opacity: 0.7, fontSize: "0.7em", marginInlineStart: "0.25em" }}>
@@ -60,11 +72,17 @@ export function SparqlVocabularyPanel({
   vocabulary,
   error,
   onPick,
+  colorOverrides,
+  checkedDomains,
 }: {
   /** null while it is read. */
   vocabulary: SparqlVocabulary | null;
   error: string | null;
   onPick: (pick: VocabularyPick) => void;
+  /** The page's per-label colours, shared with the Cypher page: one class, one colour. */
+  colorOverrides: Record<string, string>;
+  /** The navbar's domain selection; none checked is every domain, as the Cypher sidebar reads it. */
+  checkedDomains: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const [domain, setDomain] = useState<string | null>(null);
@@ -72,7 +90,12 @@ export function SparqlVocabularyPanel({
     if (vocabulary === null) return null;
     const p = vocabulary.prefixes;
     const ns = domain === null ? null : p[domain];
-    const inDomain = (iri: string) => ns === null || iri.startsWith(ns);
+    // The selected domains' namespaces: only their vocabulary is listed.
+    const allowed =
+      checkedDomains.size === 0 ? null : [...checkedDomains].flatMap((d) => (d in p ? [p[d]] : []));
+    const inDomain = (iri: string) =>
+      (ns === null || iri.startsWith(ns)) &&
+      (allowed === null || allowed.some((a) => iri.startsWith(a)));
     const c = (iri: string) => compactIri(iri, p);
     // An edge is between two labels; it is in a domain where either label's table class is.
     const labelInDomain = (label: string) =>
@@ -116,7 +139,7 @@ export function SparqlVocabularyPanel({
       ).map((e) => ({ ...e, shown: c(e.iri) })),
       concepts: byName(vocabulary.concepts, (x) => x.name).map((x) => ({ ...x, shown: c(x.iri) })),
     };
-  }, [vocabulary, domain]);
+  }, [vocabulary, domain, checkedDomains]);
 
   if (error) return <div className="graph-schema-empty">{error}</div>;
   if (vocabulary === null || shown === null)
@@ -135,23 +158,26 @@ export function SparqlVocabularyPanel({
         {section(
           "domains",
           t("sparqlVocabulary.domains"),
-          domainPrefixes(vocabulary).map(([prefix, ns]) => (
-            <Pill
-              key={prefix}
-              text={prefix}
-              tip={
-                domain === prefix
-                  ? t("sparqlVocabulary.domainPicked", { namespace: ns })
-                  : t("sparqlVocabulary.domainTip", { namespace: ns })
-              }
-              muted={domain === prefix ? "✓" : undefined}
-              onClick={() => {
-                setDomain(domain === prefix ? null : prefix);
-                onPick({ kind: "prefix", prefix });
-              }}
-              testId={`sparql-domain-${prefix}`}
-            />
-          )),
+          domainPrefixes(vocabulary)
+            .filter(([prefix]) => checkedDomains.size === 0 || checkedDomains.has(prefix))
+            .map(([prefix, ns]) => (
+              <Pill
+                key={prefix}
+                text={prefix}
+                color={colorOverrides[prefix] ?? labelColor(prefix)}
+                tip={
+                  domain === prefix
+                    ? t("sparqlVocabulary.domainPicked", { namespace: ns })
+                    : t("sparqlVocabulary.domainTip", { namespace: ns })
+                }
+                muted={domain === prefix ? "✓" : undefined}
+                onClick={() => {
+                  setDomain(domain === prefix ? null : prefix);
+                  onPick({ kind: "prefix", prefix });
+                }}
+                testId={`sparql-domain-${prefix}`}
+              />
+            )),
         )}
         {section(
           "classes",
@@ -162,6 +188,7 @@ export function SparqlVocabularyPanel({
                 <Pill
                   key={x.iri}
                   text={x.shown}
+                  color={colorOverrides[x.shown] ?? labelColor(x.shown)}
                   muted={x.parents.length > 0 ? `⊂ ${x.parents.join(", ")}` : undefined}
                   tip={[
                     x.iri,
@@ -203,6 +230,7 @@ export function SparqlVocabularyPanel({
                 <Pill
                   key={e.iri}
                   text={e.shown}
+                  badge
                   tip={`${e.iri} · ${e.source} → ${e.target}`}
                   onClick={() => onPick({ kind: "edge", iri: e.iri })}
                   testId={`sparql-edge-${e.shown}`}
