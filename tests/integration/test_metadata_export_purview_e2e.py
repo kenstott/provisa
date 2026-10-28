@@ -33,6 +33,7 @@ import pytest
 from provisa.api.metadata_export.purview import API_VERSION
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
+    GLOSSARY_TERM,
     PRODUCT_FIELDS,
     publish,
     published_server,
@@ -203,6 +204,22 @@ def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict
     return product, assets, guids
 
 
+async def _deprecate(client: httpx.AsyncClient, name: str) -> dict:
+    """Deprecate the org's term ``name`` as a curator does, then publish to the same target; what
+    that second publish reports."""
+    terms = await client.get("/admin/glossary/terms")
+    assert terms.status_code == 200, terms.text
+    (term_id,) = [t["id"] for t in terms.json() if t["name"] == name]
+    marked = await client.post(
+        f"/admin/glossary/terms/{term_id}/deprecate", json={"reason": "Superseded by party."}
+    )
+    assert marked.status_code == 200, marked.text
+    republished = await client.post("/admin/metadata-export/publish")
+    assert republished.status_code == 200, republished.text
+    (outcome,) = republished.json()["targets"]
+    return outcome
+
+
 @pytest.fixture(scope="module")
 async def published():
     creds = _credentials()
@@ -225,9 +242,13 @@ async def published():
                 "timeout_seconds": 120,
             },
         )
+        # A curator deprecates a published term; the next publish moves the live Unified Catalog
+        # term from PUBLISHED to EXPIRED (the run after puts it back, as the model holds it live).
+        deprecated = await _deprecate(client, GLOSSARY_TERM)
     term, term_assets = _term(creds, CLASS_TERM)
+    expired, _ = _term(creds, GLOSSARY_TERM)
     found, assets, guids = _read_back(creds, name)
-    yield result, found, assets, guids, oid, term, term_assets
+    yield result, found, assets, guids, oid, term, term_assets, deprecated, expired
 
 
 async def test_the_publish_reports_the_product_and_its_assets(published):
@@ -265,3 +286,13 @@ async def test_the_class_term_is_in_its_domain_and_related_to_its_tables_asset(p
     related = term_assets[0]
     assert related["relationshipType"] == "Related", term_assets
     assert related["entityId"] in {a["entityId"] for a in assets}, (term_assets, assets)
+
+
+async def test_a_deprecated_term_goes_from_published_to_expired(published):
+    """REQ-2144/REQ-1387: a deprecated term is EXPIRED in the Unified Catalog. The term was
+    PUBLISHED by the run's first publish, so the second moves a live term between the two."""
+    deprecated, expired = published[7], published[8]
+    assert deprecated["ok"], refused(deprecated)
+    assert expired is not None
+    # The service stores a status title-cased, as it reads PUBLISHED back as Published.
+    assert expired["status"] == "Expired"
