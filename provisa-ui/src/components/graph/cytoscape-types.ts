@@ -33,6 +33,7 @@ export interface CyElement {
   removeStyle(names: string): CyElement;
   addClass(cls: string): CyElement;
   removeClass(cls: string): CyElement;
+  width(): number;
   position(): { x: number; y: number };
   position(dimension: string): number;
   position(pos: { x: number; y: number }): CyElement;
