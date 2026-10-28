@@ -168,6 +168,35 @@ def refusal(role_id: str, use: WindowUse) -> str:
     )
 
 
+def allowance(role_id: str, budget: Budget, uses: Iterable[WindowUse], price: Any) -> int | None:
+    """The most output tokens one call may still use: the smaller of the role's per-call cap and
+    the room left in each of its windows -- a USD limit in tokens at the model's output price
+    (``price``, a polly_usage.Price; None for an unpriced model, which a role with a USD limit
+    never calls). None: no limit holds the call's output (each is in USD, and the model's output
+    is free). Refused naming the limit when it leaves room for no token at all."""
+    left = [(budget.call_cap.amount, budget.call_cap, "per call")] if budget.call_cap else []
+    left += [(u.limit.amount - u.used, u.limit, f"for the {u.window}") for u in uses]
+    tokens = [
+        (
+            int(amount if limit.unit == "tokens" else amount * 1_000_000 / price.output),
+            limit,
+            amount,
+            where,
+        )
+        for amount, limit, where in left
+        if limit.unit == "tokens" or price.output
+    ]
+    if not tokens:
+        return None
+    most, limit, amount, where = min(tokens, key=lambda t: t[0])
+    if most < 1:
+        raise BudgetRefused(
+            f"role {role_id!r} has {limit.said(amount)} left of its LLM budget {where}: room "
+            "for no output token of this model"
+        )
+    return most
+
+
 def over_cap(role_id: str, budget: Budget | None, spend: Spend) -> str | None:
     """Why ``spend``, what one call has used so far, passes the role's per-call cap; None if not."""
     if budget is None or budget.call_cap is None:
@@ -215,6 +244,8 @@ class Admitted:
 
     role_id: str
     budget: Budget | None
+    #: Its windows as they stood when the call was admitted.
+    uses: tuple[WindowUse, ...] = ()
 
 
 async def admit(
@@ -230,7 +261,7 @@ async def admit(
     room, naming the window whose oldest spend leaves soonest. ``priced``: the call's model has a
     price; a role with a USD limit uses only such models."""
     now = now or datetime.now(UTC)
-    best: tuple[float, str, Budget] | None = None
+    best: tuple[float, str, Budget, list[WindowUse]] | None = None
     blocked: list[tuple[datetime, str]] = []
     unpriced: list[str] = []
     for role_id in acting:
@@ -253,9 +284,9 @@ async def admit(
             continue
         room = min((u.room for u in uses), default=1.0)
         if best is None or room > best[0]:
-            best = (room, role_id, budget)
+            best = (room, role_id, budget, uses)
     if best is not None:
-        return Admitted(best[1], best[2])
+        return Admitted(best[1], best[2], tuple(best[3]))
     if blocked:
         raise BudgetRefused(min(blocked)[1])
     raise BudgetRefused(
@@ -330,6 +361,21 @@ class Guard:
             self._roles,
             self._acting,
             priced=model in polly_usage.prices(),
+        )
+
+    def allowance(self, model: str) -> int | None:
+        """The most output tokens the call may use (:func:`allowance`); None when the role it was
+        admitted as sets no budget, or none of its limits holds this model's output."""
+        from provisa.api.mcp import polly_usage
+
+        assert self.admitted is not None, "a call is admitted before it uses anything"
+        if self.admitted.budget is None:
+            return None
+        return allowance(
+            self.admitted.role_id,
+            self.admitted.budget,
+            self.admitted.uses,
+            polly_usage.prices().get(model),
         )
 
     def over_cap(self, usage: Any, model: str) -> str | None:
