@@ -32,11 +32,12 @@ Methods operate on _Translator state via self; mixed into _Translator, never ins
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
 from provisa.gql.select_builder import node_identity
+from provisa.gql.translator_union import key_names
 from provisa.gql.translator_types import CypherTranslateError
 
 if TYPE_CHECKING:
@@ -81,6 +82,9 @@ class _EveryRelMixin:  # mixin for _Translator
         _all_rels_node_vars: set[str]
         _rel_var_types: dict[str, str]
         _held_end_conditions: list[exp.Expression]
+        _all_rels_src_col: str | None
+        _all_rels_rel_col: str | None
+        _all_rels_tgt_col: str | None
 
         def _build_all_rels_union(
             self,
@@ -97,6 +101,9 @@ class _EveryRelMixin:  # mixin for _Translator
             undirected: bool = False,
             src_props_of: str | None = None,
             tgt_props_of: str | None = None,
+            loop: bool = False,
+            src_keys: bool = False,
+            tgt_keys: bool = False,
         ) -> exp.Expression: ...
 
         def _node_alias(self, node, nm: NodeMapping, *, as_source: bool) -> str: ...
@@ -138,10 +145,67 @@ class _EveryRelMixin:  # mixin for _Translator
         return var in self._all_rels_node_vars and self._var_table.get(var, (None, None))[1] is None
 
     def _is_value_node(self, node: "NodePattern") -> bool:
-        """Whether ``node`` is held as the node value a union carries, of no one table."""
+        """Whether ``node`` is held as the node value a union carries, of no one table, here or
+        by the statement this one is embedded in."""
         if node.variable is None:
             return id(node) in getattr(self, "_every_rel_anon", {})
-        return node.variable in self._all_rels_node_vars
+        return node.variable in self._all_rels_node_vars or node.variable in getattr(
+            self, "_outer_identities", {}
+        )
+
+    def _path_identity(self, path_var: str) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The identity of a path read from unions of every relationship: its nodes' identities
+        and its edges', in order (null where it matched none). None for any other path."""
+        hops = self._every_rel_paths.get(path_var) if hasattr(self, "_every_rel_paths") else None
+        alias = getattr(self, "_all_rels_alias", None)
+        ends = getattr(self, "_path_vars", {}).get(path_var, ("", "", False))
+        if not hops and alias and not (ends[0] and ends[1]):
+            # The statement's one read of every relationship (translator_union).
+            cols = (self._all_rels_src_col, self._all_rels_rel_col, self._all_rels_tgt_col)
+            if None in cols:
+                return None
+            hops = [cast("tuple[str, str, str]", cols)]
+        if not hops:
+            return None
+        aliases = {**getattr(self, "_all_rels_var_alias", {})}
+
+        def member(col: str, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[
+                    exp.column(col, table=aliases.get(col, alias)),
+                    exp.Literal.string(f"$.{name}"),
+                ],
+            )
+
+        parts = [member(hops[0][0], "id")]
+        for _, edge, last in hops:
+            parts += [member(edge, "id"), member(edge, "type"), member(last, "id")]
+        identity = parts[0]
+        for part in parts[1:]:
+            identity = exp.DPipe(
+                this=exp.DPipe(this=identity, expression=exp.Literal.string("|")), expression=part
+            )
+        return identity
+
+    def _outer_value_identities(self) -> "dict[str, exp.Expression]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The identity of each node this statement holds as a value of no one table -- a row of a
+        union of node types, or a node a union of every relationship carries -- for a statement
+        embedded in it (EXISTS, a pattern predicate) to compare its own nodes with."""
+        identities = dict(getattr(self, "_outer_identities", {}))
+        aliases = getattr(self, "_all_rels_var_alias", {})
+        for var, (alias, nm) in self._var_table.items():
+            if nm is not None:
+                continue
+            if var in self._all_rels_node_vars:
+                table = alias if var in getattr(self, "_cte_sources", set()) else aliases.get(var)
+                identities[var] = exp.Anonymous(
+                    this="JSON_EXTRACT_SCALAR",
+                    expressions=[exp.column(var, table=table), exp.Literal.string("$.id")],
+                )
+            elif var in self._domain_nodes:
+                identities[var] = exp.column("__id", table=alias)
+        return identities
 
     def _named_type(self, node: "NodePattern") -> "NodeMapping | None":
         """The one table ``node`` is of, where the statement or its labels name one."""
@@ -154,6 +218,25 @@ class _EveryRelMixin:  # mixin for _Translator
             return self._lm.nodes.get(type_label) if type_label else None
         return None
 
+    def _held_row(
+        self, node: "NodePattern", nm: "NodeMapping | None", *, as_source: bool
+    ) -> "tuple[str, NodeMapping] | None":
+        """The alias and the table of a node the statement holds as a row of one table, which a
+        hop joins on that table's key; None for a node held as a value."""
+        var = node.variable
+        if nm is None or (var is not None and var in getattr(self, "_outer_identities", {})):
+            return None
+        if var is None:
+            if id(node) in self._every_rel_anon:
+                return None
+            return self._node_alias(node, nm, as_source=as_source), nm
+        if var in self._all_rels_node_vars or var in self._domain_nodes:
+            return None
+        held = self._var_table.get(var)
+        if held is None or held[1] is None or var in getattr(self, "_cte_sources", set()):
+            return None
+        return held[0], held[1]
+
     def _held_identity(
         self,
         node: "NodePattern",
@@ -164,6 +247,9 @@ class _EveryRelMixin:  # mixin for _Translator
         """The identity of a node the statement already holds, and whether an earlier hop of
         the clause being read is what holds it."""
         var = node.variable
+        outer = getattr(self, "_outer_identities", {})
+        if var is not None and var in outer:
+            return outer[var].copy(), False
         if var is None:
             col = self._every_rel_anon.get(id(node))
             if col is not None:
@@ -215,14 +301,13 @@ class _EveryRelMixin:  # mixin for _Translator
         alias = f"_all_rels_{self._every_rel_count}"
         # The union's source end is the pattern's first node, or its last where it reads backward.
         backward = rel.direction == "left"
-        # A self-loop's last node is its first: held only where the first is, a condition
-        # between the hop's two ends where it is not.
+        # A self-loop's last node is its first: one row on both ends of the edge (the union's
+        # own condition), held where the first is.
         loop = tgt_node.variable is not None and tgt_node.variable == src_node.variable
-        ends = [
-            (src_node, held_source, src_nm, True),
-            (tgt_node, held_target and not (loop and not held_source), tgt_nm, False),
-        ]
-        if backward:
+        ends = [(src_node, held_source, src_nm, True), (tgt_node, held_target, tgt_nm, False)]
+        if loop:
+            ends = [(src_node, held_source, src_nm, True), (tgt_node, False, src_nm, False)]
+        elif backward:
             ends.reverse()
         inner: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         outer: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -231,15 +316,30 @@ class _EveryRelMixin:  # mixin for _Translator
         types: list[str | None] = []
         domains: list[str | None] = []
         new_vars: list[str] = []
+        keyed: list[bool] = []
         for side, (node, held, nm, as_source) in zip(("s", "t"), ends, strict=True):
             var = node.variable
+            keyed.append(False)
             if held or (loop and side == "t") or var is None:
                 col = f"_{alias}_{side}"
                 props_of.append(var)
-                if loop and side == "t" and not held:
-                    inner.append(
-                        exp.EQ(this=_value_of(col, "id"), expression=_value_of(cols[0], "id"))
-                    )
+                held_row = self._held_row(node, nm, as_source=as_source) if held else None
+                if held_row is not None:
+                    # A node of one table the statement holds: joined on that table's key, as a
+                    # second read of its row (REQ-603), never on a value built from it.
+                    held_alias, held_nm = held_row
+                    keyed[-1] = True
+                    keys = [
+                        exp.EQ(
+                            this=exp.column(f"{col}__key{i}"),
+                            expression=exp.column(k, table=held_alias, quoted=True),
+                        )
+                        for i, k in enumerate(key_names(held_nm))
+                    ]
+                    joined: exp.Expression = keys[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    for key in keys[1:]:
+                        joined = exp.And(this=joined, expression=key)
+                    outer.append(joined)
                 elif held:
                     identity, of_clause = self._held_identity(node, nm, as_source=as_source)
                     cond = exp.EQ(this=_value_of(col, "id"), expression=identity)
@@ -288,6 +388,9 @@ class _EveryRelMixin:  # mixin for _Translator
             undirected=rel.direction == "none",
             src_props_of=props_of[0],
             tgt_props_of=props_of[1],
+            loop=loop,
+            src_keys=keyed[0],
+            tgt_keys=keyed[1],
         )
         for var in new_vars:
             self._domain_nodes.pop(var, None)

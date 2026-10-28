@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
+from provisa.compiler.sql_types import key_list
 from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
     _const_literal,
@@ -93,6 +94,56 @@ def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.Data
     return None
 
 
+def key_names(nm: "NodeMapping") -> list[str]:
+    """The columns of ``nm``'s key, in key order (select_builder.node_key_text)."""
+    return list(nm.key_columns) if len(nm.key_columns) > 1 else [nm.id_column]
+
+
+def _key_column(alias: str, column: str) -> exp.Column:
+    return exp.Column(
+        this=exp.Identifier(this=column, quoted=True), table=exp.Identifier(this=alias)
+    )
+
+
+def _one_row_edge(
+    rm: "RelationshipMapping", sa: str, ta: str, nm: "NodeMapping", via_alias: str | None
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether an edge of ``rm``, a relationship from ``nm``'s table to itself read from ``sa`` to
+    ``ta``, relates a row to itself: read from one row's own columns where the relationship joins
+    on the table's key -- the junction's two keys, or the row's reference and its own key -- so
+    no second read of the table is compared with the first (REQ-603); else the two reads' keys."""
+    keys = tuple(key_names(nm))
+    src_cols, tgt_cols = key_list(rm.join_source_column), key_list(rm.join_target_column)
+    computed = rm.source_expr is not None or rm.target_expr is not None
+    pairs: list[tuple[exp.Expression, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if rm.via is not None and via_alias is not None and src_cols == tgt_cols == keys:
+        pairs = [
+            (via_column(via_alias, s), via_column(via_alias, t))
+            for s, t in zip(rm.via.source_columns, rm.via.target_columns, strict=True)
+        ]
+    elif rm.via is None and not computed and rm.source_constant is None and tgt_cols == keys:
+        pairs = [(_key_column(sa, s), _key_column(sa, t)) for s, t in zip(src_cols, tgt_cols)]
+    elif rm.via is None and not computed and rm.source_constant is None and src_cols == keys:
+        pairs = [(_key_column(ta, t), _key_column(ta, s)) for s, t in zip(src_cols, tgt_cols)]
+    if not pairs or len(pairs) != len(keys):
+        return _same_row(sa, ta, nm)
+    same = exp.EQ(this=pairs[0][0], expression=pairs[0][1])
+    for left, right in pairs[1:]:
+        same = exp.And(this=same, expression=exp.EQ(this=left, expression=right))
+    return same
+
+
+def _same_row(left: str, right: str, nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``left`` and ``right``, two reads of ``nm``'s table, are one row: its whole key."""
+    keys = [
+        exp.EQ(this=_key_column(left, k), expression=_key_column(right, k)) for k in key_names(nm)
+    ]
+    same = keys[0]
+    for key in keys[1:]:
+        same = exp.And(this=same, expression=key)
+    return same
+
+
 def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """``nm``'s row as the node JSON value a domain union's arm carries (NODE_COLUMN)."""
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -155,6 +206,9 @@ class _UnionMixin:  # mixin for _Translator
         undirected: bool = False,
         src_props_of: str | None = None,
         tgt_props_of: str | None = None,
+        loop: bool = False,
+        src_keys: bool = False,
+        tgt_keys: bool = False,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns
         (only ``rel_type``'s when it names one).
@@ -168,7 +222,9 @@ class _UnionMixin:  # mixin for _Translator
         own (translator_every_rel). ``undirected``: each relationship read from either end, a
         self-loop once. ``src_props_of`` / ``tgt_props_of``: the variable whose referenced
         properties an end carries, where its column is not named by it (an end the statement
-        already holds).
+        already holds). ``loop``: only each relationship from a row to itself (a self-loop),
+        that row's key on both ends. ``src_keys`` / ``tgt_keys``: each key column of an end's row
+        beside it, ``<column>__key<i>``, for a node the statement already holds to be joined on.
         """
         src_col = src_var or "n"
         rel_col = rel_var or "r"
@@ -213,7 +269,10 @@ class _UnionMixin:  # mixin for _Translator
             # too, or this union would emit a direct FROM the role is V001-blocked on.
             if src_nm.traversal_only or tgt_nm.traversal_only:
                 continue
-            for reverse in (False, True) if undirected else (False,):
+            if loop and rm.source_label != rm.target_label:
+                continue  # a relationship between two tables relates no row to itself
+            # A self-loop read from either end is one match: read forward.
+            for reverse in (False, True) if undirected and not loop else (False,):
                 # The end the pattern reads first, and the one it reads last: read backward, the
                 # relationship's target comes first.
                 near, far = (
@@ -417,15 +476,28 @@ class _UnionMixin:  # mixin for _Translator
                         ),
                         join_type="INNER",
                     )
-                if reverse and rm.source_label == rm.target_label:
+                if loop:
+                    # The relationship's two ends are one row.
+                    branch = branch.where(_one_row_edge(rm, sa, ta, src_nm, via_alias))
+                elif reverse and rm.source_label == rm.target_label:
                     # A self-loop read from either end is one match, read forward.
-                    branch = branch.where(
-                        exp.Not(
-                            this=exp.EQ(
-                                this=src_compound_id.copy(), expression=tgt_compound_id.copy()
-                            )
+                    one_row = _one_row_edge(rm, sa, ta, src_nm, via_alias)
+                    branch = branch.where(exp.Not(this=exp.paren(one_row)))
+                near_alias, near_nm, far_alias, far_nm = (
+                    (ta, tgt_nm, sa, src_nm) if reverse else (sa, src_nm, ta, tgt_nm)
+                )
+                for wanted, col, a, nm in (
+                    (src_keys, src_col, near_alias, near_nm),
+                    (tgt_keys, tgt_col, far_alias, far_nm),
+                ):
+                    if wanted:
+                        branch = branch.select(
+                            *(
+                                exp.alias_(_key_column(a, k), f"{col}__key{i}")
+                                for i, k in enumerate(key_names(nm))
+                            ),
+                            append=True,
                         )
-                    )
                 branches.append(branch)
                 self._all_rels_ends[src_col].append(near)
                 self._all_rels_ends[tgt_col].append(far)

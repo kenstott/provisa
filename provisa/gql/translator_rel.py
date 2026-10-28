@@ -130,6 +130,9 @@ class _RelJoinMixin:  # mixin for _Translator
             undirected: bool = False,
             src_props_of: str | None = None,
             tgt_props_of: str | None = None,
+            loop: bool = False,
+            src_keys: bool = False,
+            tgt_keys: bool = False,
         ) -> exp.Expression: ...
 
         def _translate_path_function(
@@ -776,7 +779,6 @@ class _RelJoinMixin:  # mixin for _Translator
                 tgt_var
                 and tgt_var in self._domain_nodes
                 and rel_mapping is not None
-                and src_nm is not None
                 and not held_target
                 and not new_source
             ):
@@ -784,7 +786,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 joins.append(j)
             elif joined_hop or new_source:
                 from_expr = every_rel_hop(explicit_src, explicit_tgt)
-            else:
+            elif rel_mapping is None:
                 # An endpoint's own label holds: (n:Inquiries)-[r]->(m) reads only the
                 # relationships from Inquiries, never every relationship of the model.
                 from_expr = self._handle_unlabeled_rel_pattern(
@@ -793,7 +795,6 @@ class _RelJoinMixin:  # mixin for _Translator
                     tgt_var,
                     src_type=explicit_src.type_name if explicit_src is not None else None,
                     tgt_type=explicit_tgt.type_name if explicit_tgt is not None else None,
-                    rel_type=rel.types[0].upper() if len(rel.types) == 1 else None,
                     direction=rel.direction,
                 )
             return from_expr, joins, True
@@ -1151,7 +1152,7 @@ class _RelJoinMixin:  # mixin for _Translator
                     held_target=far_var in placed,
                     new_source=new_start and i == 0,
                     held_source=i > 0 or (bool(nodes[i].variable) and nodes[i].variable in joined),
-                    replaceable=i == 0 and own_first is not None and from_expr is own_first,
+                    replaceable=i == 0 and (from_expr is None or from_expr is own_first),
                     clause_index=clause_index,
                 )
                 if far_var:

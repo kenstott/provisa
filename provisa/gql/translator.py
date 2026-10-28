@@ -517,6 +517,29 @@ def _steps_where(
     return WhereClause(joined), optional
 
 
+def _statement_exprs(ast: CypherAST) -> list[CypherExpr]:
+    """The expressions of ``ast``'s WHEREs, WITHs and RETURN, and of each statement embedded in
+    one of them, in the order written."""
+    from provisa.gql.expr_ast import SubqueryExpr, walk
+
+    exprs: list[CypherExpr] = []
+    for step in ast.pipeline:
+        if isinstance(step, MatchStep) and step.where:
+            exprs.append(step.where.expression)
+        elif isinstance(step, WithClause):
+            exprs.extend(i.expression for i in step.items)
+            if step.where:
+                exprs.append(step.where.expression)
+    if ast.return_clause:
+        exprs.extend(i.expression for i in ast.return_clause.items)
+    embedded = [
+        node.body for expr in exprs for node in walk(expr) if isinstance(node, SubqueryExpr)
+    ]
+    for body in embedded:
+        exprs.extend(_statement_exprs(body))
+    return exprs
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
@@ -653,6 +676,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A union column -> the subquery, or the WITH, that gives it: a statement may read several
         # unions of every relationship (translator_every_rel).
         self._all_rels_var_alias: dict[str, str] = {}
+        # The identity of each node the statement this one is embedded in holds as a value of no
+        # one table, which this one's patterns compare their nodes with (translator_every_rel).
+        self._outer_identities: dict[str, exp.Expression] = {}
         # The labels each end of a read of every relationship may be, and its relationships
         # (translator_union._build_all_rels_union).
         self._all_rels_ends: dict[str, list[str]] = {}
@@ -1832,18 +1858,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         raise unknown_label(labels[0], self._lm)
 
     def _referenced_var_props(self, var: str) -> list[str]:
-        """The property names referenced as ``var.prop`` in the statement, in order."""
-        exprs: list[CypherExpr] = []
-        for step in self._ast.pipeline:
-            if isinstance(step, MatchStep) and step.where:
-                exprs.append(step.where.expression)
-            elif isinstance(step, WithClause):
-                exprs.extend(i.expression for i in step.items)
-                if step.where:
-                    exprs.append(step.where.expression)
-        if self._ast.return_clause:
-            exprs.extend(i.expression for i in self._ast.return_clause.items)
-        return _properties_of(var, exprs)
+        """The property names referenced as ``var.prop`` in the statement, in order: in a
+        statement embedded in it (EXISTS { ... }) too, which reads them from this one's row."""
+        return _properties_of(var, _statement_exprs(self._ast))
 
     def _node_as_one_value(self, var: str) -> bool:
         """Whether ``var`` is a domain node the statement returns bare and reads no property of:

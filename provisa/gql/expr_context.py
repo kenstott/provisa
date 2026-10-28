@@ -784,6 +784,10 @@ class TranslatorExprContext:
             return kind, [node_key(src_alias, src_nm), node_key(tgt_alias, tgt_nm)]
         if name in t._rel_var_types:
             return None
+        if name in t._path_vars:
+            # A path read from unions of every relationship: its nodes and edges, in order.
+            path = t._path_identity(name)
+            return None if path is None else (("path",), [path])
         alias, nm = t._var_table.get(name, (name, None))
         if nm is None:
             return None
@@ -936,6 +940,8 @@ class TranslatorExprContext:
         # The outer statement's nodes are its row, which the inner statement goes on from (#160),
         # a WITH's carried nodes included.
         inner_tr._lateral_bound = {v for v, (_, nm) in self._t._var_table.items() if nm is not None}
+        # The outer nodes of no one table are compared by their identity (translator_every_rel).
+        inner_tr._outer_identities = self._t._outer_value_identities()
         inner_select, inner_params, _ = inner_tr.translate()
 
         for p in inner_params:
