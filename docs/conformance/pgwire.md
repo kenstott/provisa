@@ -24,6 +24,21 @@ Extension functions (`pg_trgm`, `pg_vector`, PostGIS, etc.) are not available un
 
 A `geometry` or `geography` column is reported with its PostGIS type name and is sent in text format only, as WKT. PostGIS's binary format (EWKB) is not sent; a client that asks for the column in binary format gets an error naming it.
 
+### Catalog functions
+
+Provisa intercepts the scalar catalog functions tools call to introspect schemas and format type names. Each one is answered from the role's governed model view:
+
+| Function | Behavior |
+|---|---|
+| `format_type(typid, typmod)` | Returns the type name tools display in schema panels. Subtypes report by their subtype name (`inet`, `macaddr`, `money`), not the base type. |
+| `col_description(relid, colnum)` | Returns the column's description from the model. Columns with no description return `NULL`. |
+| `pg_get_constraintdef(oid)` | Returns a text rendering of the constraint — `PRIMARY KEY (col)`, `FOREIGN KEY (col) REFERENCES other(col)`, or `UNIQUE (col)` — derived from the model's declared keys and joins. |
+| `pg_get_expr(expr, relid)` | Always returns `NULL`. |
+| `current_schema()` | Returns `'public'`. |
+| `obj_description(oid, catalog)` | Returns the description of the named catalog object (table or schema) from the model, or `NULL`. |
+
+Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
+
 ### Server version
 
 `server_version_num` reports `140000` and `version()` reports PostgreSQL 14. Clients choose their catalog queries by this number, and the catalog queries Provisa answers are the ones PostgreSQL 14 clients send.
