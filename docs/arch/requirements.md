@@ -26691,3 +26691,17 @@ The data product page has a buyer view, shown when the role the user acts as can
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2182 · UI {#REQ-2182}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A feature demo, an internal data marketplace: an organisation offers its data products to its own people with the existing primitives and no marketplace mode. Its business question: "How do our people find data they may use, and get access without a ticket queue?" Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each step on its real row; the solution as predesigned queries over fitting transports; recap; then "Where next?"). A person holding only Data buyer ([REQ-2155](#REQ-2155)) browses the products and opens one in the buyer view ([REQ-2181](#REQ-2181)). They see its contracts, and its Sample Data: the member read as Data buyer, with masks and a fixed-subset row rule, and its profile ([REQ-2158](#REQ-2158)). The sections available with access are collapsed with counts. They file a role request with a reason, then a product request under that role ([REQ-2180](#REQ-2180)). An admin approves the role and the owner approves the product. The person then queries the full members as the new role, and runs the same query over SQL as Data buyer to show that the sample rule holds on every connection. The tour's own steps make the requests and approvals, so a visitor watches each state change in the Your request strip.
+
+**Use case:** A visitor opens the data marketplace demo and sees how Provisa answers: How do our people find data they may use, and get access without a ticket queue?
+
+**Code:** —
+
+**Tests:** —
