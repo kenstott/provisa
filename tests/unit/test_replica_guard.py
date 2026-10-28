@@ -201,11 +201,20 @@ async def _replicate(runtime, rows: list[dict]) -> None:
     )
 
 
-async def test_duckdb_reads_a_table_live_at_its_name_and_its_replica_at_its_address(tmp_path):
+async def test_duckdb_reads_a_table_live_at_its_name_and_its_replica_at_its_address(
+    tmp_path, monkeypatch
+):
     """The replica holds one row and the source five, so each read says which one answered. The
     two never share a name: replicating a table changes nothing at its live name, and removing
     the live attach changes nothing at the replica's address."""
     import duckdb
+
+    from provisa.core import secrets_providers
+
+    # The attach asks whether the deployment holds many organizations, which the API layer says
+    # at its import (provisa.api.app). This test drives the runtime without it: a deployment of
+    # one, the test's bound org its own.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
