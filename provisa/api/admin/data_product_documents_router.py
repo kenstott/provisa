@@ -50,7 +50,8 @@ async def _documents(request: Request, product_id: str, *, export: bool = True):
     from provisa.api.metadata_export.odps import product_documents
     from provisa.api.metadata_export.publishing import org_snapshot
 
-    snapshot = await org_snapshot(org_id)
+    # Built for this product: only what its documents carry is read (REQ-2158).
+    snapshot = await org_snapshot(org_id, product_id=product_id)
     product = next((p for p in snapshot.data_products if p.id == product_id), None)
     if product is None:
         # A product with no exported member builds nothing (DataProductAsset), so it has no
