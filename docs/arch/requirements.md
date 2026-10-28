@@ -2898,7 +2898,7 @@ Cypher clauses map to SQL as follows: `MATCH` → `JOIN`; `OPTIONAL MATCH` → `
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Path queries — `shortestPath(...)`, `allShortestPaths(...)`, and variable-length relationship patterns `[*1..n]` — translate to Trino recursive CTEs (`WITH RECURSIVE`) against the adjacency relation defined in the label mapping. Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected.
+Path queries — `shortestPath(...)`, `allShortestPaths(...)`, and variable-length relationship patterns `[*1..n]` — translate to Trino recursive CTEs (`WITH RECURSIVE`) against the adjacency relation defined in the label mapping. Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected. (Amended 2026-10-28, A SHORTEST PATH NAMES ITS ENDPOINTS' LABELS:) shortestPath and allShortestPaths require a labelled source node and a labelled target node, in the model graph and in a graph session alike: a label is what places an endpoint, and a path search from an unlabelled node would start from every table and walk every relationship. A shortest-path pattern with an unlabelled endpoint is refused by name, and the conformance cases that use one are skipped by design under this decision.
 
 **Use case:** Path queries and variable-length traversals translate to recursive CTEs for graph algorithms over relational data.
 
