@@ -180,6 +180,9 @@
   background: transparent;
   border-style: dashed;
 }
+.graph-session-clear {
+  margin-top: 0.5rem;
+}
 .graph-session-count {
   opacity: 0.7;
   font-size: 0.7em;
