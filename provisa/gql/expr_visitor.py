@@ -133,10 +133,6 @@ class ExprContext(Protocol):
         """A ``$param`` reference — the positional placeholder it binds to."""
         ...
 
-    def parameter_value(self, name: str) -> object:
-        """The value the client gives ``$name``."""
-        ...
-
     def temporal_kind(self, expr: CypherExpr) -> str | None:
         """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
         ...
@@ -159,6 +155,12 @@ class ExprContext(Protocol):
 
     def is_null(self, expr: CypherExpr) -> bool:
         """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
+        ...
+
+    def given_value(self, expr: CypherExpr) -> tuple[bool, object]:
+        """(True, the value) of a parameter the client gives, or of a variable a WITH binds to
+        one; (False, None) of anything else. Only its type may shape the SQL: a translation is
+        kept for every request giving its parameters values of the same types (cypher_plan)."""
         ...
 
     def resolve_term(self, node: Term) -> exp.Expression:
@@ -560,6 +562,12 @@ class ExprLowering:
         #: values ([[1, 2], ['a']]): each item is its JSON.
         self._json_vars: set[str] = set()
 
+    def _given_type(self, node: CypherExpr) -> type | None:
+        """The type of the value the client gives ``node`` (a parameter, or a variable bound to
+        one), else None. Its type, never the value: that is all a kept translation may vary by."""
+        found, value = self._ctx.given_value(node)
+        return type(value) if found else None
+
     def _over(self, var: str, source: exp.Expression, body: CypherExpr) -> exp.Expression:
         """``body`` lowered with ``var`` bound to each item of ``source``."""
         if _json_valued(source) != "list":
@@ -816,6 +824,14 @@ class ExprLowering:
             return exp.Paren(
                 this=exp.NEQ(this=exp.Paren(this=left), expression=exp.Paren(this=right))
             )
+        if op == "IN" and self._given_type(node.right) is type(None):
+            return exp.Null()  # x IN null is null (openCypher)
+        if op == "IN" and self._given_type(node.left) and self._given_type(node.right) is list:
+            # A value the client gives in a list it gives: three-valued, as Cypher's IN (null
+            # where an item or the value is null and none matches), never an engine's contains.
+            return _anon(
+                "any_match", right, _lam("_in", exp.EQ(this=exp.column("_in"), expression=left))
+            )
         if op == "IN":
             return self._lower_in(left, node.right, right)
         if op in ("STARTS WITH", "ENDS WITH", "CONTAINS") and {
@@ -989,11 +1005,10 @@ class ExprLowering:
             given = node.args[0]
             if isinstance(given, MapLiteral):
                 return exp.Array(expressions=[exp.Literal.string(k) for k, _ in given.entries])
-            if isinstance(given, Parameter):
-                value = self._ctx.parameter_value(given.name)
-                if isinstance(value, dict):
-                    # The map the client gives: its keys, as it gives them.
-                    return exp.Array(expressions=[exp.Literal.string(str(k)) for k in value])
+            if self._given_type(given) is dict:
+                # The map the client gives: its keys, read from it by the engine -- never written
+                # into the SQL, which is kept for every request giving a map (cypher_plan).
+                return _anon("JSON_KEYS", _anon("TO_JSON", self.lower(given)))
         if (
             node.name.lower() == "reverse"
             and len(node.args) == 1
@@ -1135,6 +1150,18 @@ class ExprLowering:
         ):
             # m['k'] is m.k: the key's value as it is, not its JSON.
             return self.lower(Property(obj=node.obj, name=str(node.index.value)))
+        key = node.index
+        if isinstance(key, FunctionCall) and key.name.lower() == "tostring" and len(key.args) == 1:
+            key = key.args[0]
+        if self._given_type(node.obj) is dict and self._given_type(key) is str:
+            # A map the client gives read by a key the client gives: read by the engine from the
+            # map's JSON (the answer decodes it), the key a value, never written into the SQL.
+            path = exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string('$."'), expression=self.lower(key)),
+                expression=exp.Literal.string('"'),
+            )
+            read = _anon("JSON_EXTRACT", _anon("TO_JSON", self.lower(node.obj)), path)
+            return exp.Paren(this=read)
         if self._ctx.is_text(node.obj):
             # openCypher's TypeError (InvalidArgumentType): a string has no elements to index.
             raise CypherTranslateError(

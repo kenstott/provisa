@@ -369,6 +369,9 @@ class TranslatorExprContext:
             return True
         if isinstance(expr, Variable):
             return expr.name in self._t._list_vars
+        if isinstance(expr, Parameter):
+            # The value the client gives it, a list.
+            return expr.name in self._t._params and isinstance(self._t._params[expr.name], list)
         if isinstance(expr, FunctionCall):
             name = expr.name.lower()
             if name == "reverse":
@@ -382,6 +385,16 @@ class TranslatorExprContext:
                 branches.append(expr.default)
             return all(self.is_list(b) for b in branches)
         return False
+
+    def given_value(self, expr: CypherExpr) -> tuple[bool, object]:
+        name = None
+        if isinstance(expr, Parameter):
+            name = expr.name
+        elif isinstance(expr, Variable):
+            name = self._t._param_vars.get(expr.name)
+        if name is None or name not in self._t._params:
+            return False, None
+        return True, self._t._params[name]
 
     def is_null(self, expr: CypherExpr) -> bool:
         from provisa.gql.expr_ast import Literal
@@ -445,11 +458,6 @@ class TranslatorExprContext:
             return None
         registered = self.property_type(exp.column(node.obj.name), node.name)
         return temporal.kind_of_type(registered) if registered else None
-
-    def parameter_value(self, name: str) -> object:
-        if name not in self._t._params:
-            raise CypherTranslateError(f"The parameter ${name} was not supplied")
-        return self._t._params[name]
 
     def resolve_parameter(self, name: str) -> exp.Expression:
         from provisa.gql import spatial, temporal
