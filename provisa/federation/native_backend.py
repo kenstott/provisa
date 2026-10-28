@@ -730,6 +730,13 @@ class NativeEngineBackend(EngineBackend):
         landed: list[LandedTable] = []
         addresses: dict[str, tuple[str, str]] = {}
         views: dict[str, tuple[str, str]] = {}
+        # A store that lists its tables' columns at once (an embedded DuckDB file) is read once, by
+        # the first table's reconcile: a replica whose columns already match is kept as it stands,
+        # and only a missing or drifted one is reconciled -- one open of the store per rebuild, not
+        # one write per table. A read that fails is that table's failure, as a reconcile's is, and
+        # the next table reads again.
+        held: dict[tuple[str, str], list[str]] = {}
+        held_read = False
         for src, schema_name, table_name, columns, pk_columns, _filter in await landing_worklist(
             self.engine, state
         ):
@@ -737,12 +744,19 @@ class NativeEngineBackend(EngineBackend):
                 state, source_id=src.id, schema_name=schema_name, table_name=table_name
             )
             try:
-                outcome = await runtime.reconcile_replica(
-                    schema=address.schema,
-                    table=address.table,
-                    columns=columns,
-                    pk_columns=pk_columns,
-                )
+                if not held_read:
+                    if hasattr(runtime, "replica_column_lists"):
+                        held = runtime.replica_column_lists()
+                    held_read = True
+                if held.get((address.schema, address.table)) == [name for name, _ in columns]:
+                    outcome = "kept"
+                else:
+                    outcome = await runtime.reconcile_replica(
+                        schema=address.schema,
+                        table=address.table,
+                        columns=columns,
+                        pk_columns=pk_columns,
+                    )
                 view = None
                 if hasattr(runtime, "publish_replica_view"):
                     # A store whose catalog export shares a view of each replica (Snowflake). It

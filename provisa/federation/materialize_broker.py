@@ -233,6 +233,11 @@ class _SyncedStore:
         store file opened and closed for this one operation (``_with_store``)."""
         return _with_store(self._db_path, fn, read_only=read_only, canary=canary, unseen=unseen)
 
+    def _written(self) -> bool:
+        """Whether the store exists to be read: its file is created by the first write into it,
+        and a read-only open of a file that is not there fails."""
+        return self._db_path == _MEMORY_PATH or os.path.exists(self._db_path)
+
     def reconcile(self, schema: str, table: str, columns: list[tuple[str, str]]) -> str:
         from provisa.federation.store_connection import reconcile_duckdb_native
 
@@ -629,6 +634,26 @@ class _SyncedStore:
         """The store table's column names in ordinal order, or ``None`` when it does not exist."""
         return self._run(lambda con: _table_columns(con, schema, table))
 
+    def column_lists(self) -> dict[tuple[str, str], list[str]]:
+        """Every store table's column names in ordinal order, by (schema, table), read in one
+        read-only open: a replica reconcile keeps a table whose columns already match without
+        opening the store for a write (which would advance its generation) once per table. A store
+        whose file has not been written yet holds no tables."""
+        if not self._written():
+            return {}
+        rows = self._run(
+            lambda con: con.execute(
+                "SELECT schema_name, table_name, column_name FROM duckdb_columns() "
+                "WHERE database_name = ? ORDER BY schema_name, table_name, column_index",
+                [_MAT_STORE_ALIAS],
+            ).fetchall(),
+            read_only=True,
+        )
+        held: dict[tuple[str, str], list[str]] = {}
+        for schema, table, column in rows:
+            held.setdefault((schema, table), []).append(column)
+        return held
+
     def tables(self, schema: str) -> list[str]:
         """The tables the store holds in ``schema``; none when the store has no such schema yet
         (a schema is created by the first write into it)."""
@@ -716,6 +741,9 @@ class EngineAttachedStore(_SyncedStore):
         # The engine's ``DuckDBRuntime._listing``: the store's catalog listings run on the engine
         # connection, which an unreachable source's attach would otherwise fail (#256).
         self._listing = listing
+
+    def _written(self) -> bool:
+        return True  # a database the engine holds attached exists
 
     def _run(
         self, fn: Any, *, read_only: bool = False, canary: bool = False, unseen: bool = False

@@ -1103,6 +1103,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._see_store_writes()
         return written
 
+    def replica_column_lists(self) -> dict[tuple[str, str], list[str]]:
+        """The column names of every table the store holds, by (schema, table), read at once: a
+        replica that already has its columns is kept without a reconcile of its own. A server
+        store is reconciled table by table through ``store_writer``, so none are listed for it."""
+        self.ensure_materialize_attached()
+        if not self._store_is_duckdb():
+            return {}
+        return self._store_broker.column_lists()
+
     async def land_table(
         self,
         *,

@@ -4280,22 +4280,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()
-        # REQ-1742: graphql_remote_router.py's/grpc_remote_router.py's own one-shot registration
-        # flows call reconcile_landed_tables() right after _rebuild_schemas() — the pass that
-        # actually creates a replicated table's replica in the store (REQ-846/932). update_table
-        # (this mutation) never did, so a replica that didn't converge for any reason at
-        # registration time (e.g. a transient failure, or state not yet fully committed) had no
-        # other path to ever catch up — every later grant/edit through this mutation left it
-        # permanently stuck. Idempotent (a matching replica is kept), so calling it
-        # unconditionally here is safe for every table type.
-        try:
-            from provisa.api.app import state as _state
-
-            await _state.federation_engine.reconcile_landed_tables()
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Landed-table reconcile failed after update_table", exc_info=True
-            )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
         if input.view_sql and input.materialize and not model.draft:
             from provisa.api.admin.schema_common import activate_view_mv
