@@ -1033,6 +1033,11 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
     import asyncpg
 
     ports = await asyncio.to_thread(listening_endpoint, source)
+    if _endpoint_replica(source).catalog_preparing():
+        # The server holds every statement behind its first catalog query while that runs, so
+        # a read sent now would wait out the preparation: answered "still starting" at once
+        # (REQ-1824), and asked again by its caller.
+        raise SourceStillStartingError(source.id, preparing_catalog=True)
     conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
     try:
         return list(await conn.fetch(statement, timeout=_fetch_timeout()))
@@ -1488,6 +1493,16 @@ class ConnectorReplica:  # REQ-954/955/956
         Starts nothing and waits for nothing."""
         with self._start_lock:
             return not self._catalog_ready and self._catalog_error is None
+
+    def catalog_preparing(self) -> bool:
+        """Whether the server's first catalog query has been sent and is not yet answered.
+        Starts nothing and waits for nothing."""
+        with self._start_lock:
+            return (
+                self._catalog_thread is not None
+                and not self._catalog_ready
+                and self._catalog_error is None
+            )
 
     def close(self) -> None:
         """Stop the server (idempotent). The next server's catalog is prepared afresh."""
