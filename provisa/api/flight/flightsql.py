@@ -286,6 +286,23 @@ def temporary_columns(schema: pa.Schema) -> list[tuple[str, str]]:
 INGEST_BATCH_ROWS = 500
 
 
+def _as_instants(rows: pa.Table) -> pa.Table:
+    """``rows`` with each timestamp column as the instants PostgreSQL holds: a zoned value in UTC
+    (the same instant; in its own zone a value near the range's ends falls outside the years a
+    value can be read in), and a nanosecond one at the microsecond, truncated."""
+    import pyarrow.compute as pc
+
+    columns = []
+    for field, column in zip(rows.schema, rows.columns, strict=True):
+        kind = field.type
+        if pa.types.is_timestamp(kind) and (kind.tz is not None or kind.unit == "ns"):
+            unit = "us" if kind.unit == "ns" else kind.unit
+            target = pa.timestamp(unit, tz="UTC" if kind.tz is not None else None)
+            column = pc.cast(column, target, safe=False)
+        columns.append(column)
+    return pa.table(columns, names=rows.column_names)
+
+
 def ingest_statements(table: str, schema: str | None, rows: pa.Table) -> list[str]:
     """``rows`` as INSERT ... VALUES statements into ``table`` (in ``schema`` when it is named),
     :data:`INGEST_BATCH_ROWS` rows each, every value its SQL literal."""
@@ -294,6 +311,7 @@ def ingest_statements(table: str, schema: str | None, rows: pa.Table) -> list[st
     def quoted(identifier: str) -> str:
         return '"' + identifier.replace('"', '""') + '"'
 
+    rows = _as_instants(rows)
     target = quoted(table) if schema is None else f"{quoted(schema)}.{quoted(table)}"
     columns = ", ".join(quoted(c) for c in rows.column_names)
     statements = []
@@ -333,12 +351,37 @@ def serialized_schema(schema: pa.Schema | None) -> bytes:
     return b"" if schema is None else schema.serialize().to_pybytes()
 
 
-def prepared_result(handle: bytes, schema: pa.Schema | None) -> bytes:
-    """CreatePreparedStatement's answer: the handle, and the statement's schema when it is
-    known."""
+#: A placeholder's type oid (provisa.pgwire.parameters) as the Arrow type of its parameter.
+_PARAMETER_ARROW = {
+    25: pa.utf8(),
+    23: pa.int32(),
+    20: pa.int64(),
+    16: pa.bool_(),
+    701: pa.float64(),
+}
+
+
+def parameter_schema(query: str) -> pa.Schema:
+    """``query``'s parameters: one per ``$N`` placeholder, named for it and typed as pgwire's
+    ParameterDescription types it."""
+    from provisa.pgwire.parameters import placeholder_oids
+
+    return pa.schema(
+        [
+            pa.field(f"${i}", _PARAMETER_ARROW[oid])
+            for i, oid in enumerate(placeholder_oids(query), 1)
+        ]
+    )
+
+
+def prepared_result(handle: bytes, query: str, schema: pa.Schema | None) -> bytes:
+    """CreatePreparedStatement's answer: the handle, the statement's schema when it is known, and
+    its parameters' (:func:`parameter_schema`)."""
     return pack(
         pb.ActionCreatePreparedStatementResult(
-            prepared_statement_handle=handle, dataset_schema=serialized_schema(schema)
+            prepared_statement_handle=handle,
+            dataset_schema=serialized_schema(schema),
+            parameter_schema=parameter_schema(query).serialize().to_pybytes(),
         )
     )
 

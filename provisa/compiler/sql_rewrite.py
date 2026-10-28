@@ -260,6 +260,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
                         meta.table_name,
                     )
 
+    from provisa.compiler import temp_tables
+
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
     quoted_aliases: set[str] = set()
@@ -282,6 +284,10 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
                 # (e.g. hand-authored view_sql already written as "catalog"."schema"."table")
                 # rather than silently dropping it.
                 catalog_q, schema_q, table_q = catalog, db, name
+        elif name in temp_tables.names():
+            # REQ-615: the session's own temporary table keeps its own name, ahead of a model
+            # table of the same name; temp_address names it at its store address.
+            return node
         else:
             # Unqualified — try unique match
             matches = by_name.get(name.lower(), [])

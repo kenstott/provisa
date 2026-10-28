@@ -143,7 +143,32 @@ def test_a_temporary_table_is_created_once_and_may_be_replaced(served):
         with pytest.raises(adbc_driver_manager.Error, match="already exists"):
             cur.adbc_ingest("scratch", _ROWS, mode="create", temporary=True)
         cur.adbc_ingest("scratch", _ROWS.slice(0, 1), mode="replace", temporary=True)
-        with pytest.raises(adbc_driver_manager.Error, match="no temporary table 'other'"):
+        with pytest.raises(
+            adbc_driver_manager.Error, match="temporary table 'other' does not exist"
+        ):
             cur.adbc_ingest("other", _ROWS, mode="append", temporary=True)
     ((_, rows),) = served.landed.values()
     assert rows == [(1, "a")]
+
+
+def test_a_stream_drained_after_its_call_returns_stays_in_the_session():
+    """pyarrow pulls a lazy stream after the RPC has returned, so the session's temporary tables
+    are bound again around each batch it pulls -- as the request's deadline is."""
+    from provisa.api.flight.server import _pulled_in_temp_session
+
+    session = temp_tables.TempSession()
+    seen: list[object] = []
+
+    def _batches():
+        for i in range(2):
+            seen.append(temp_tables.current())
+            yield i
+
+    token = temp_tables.bind(session)
+    try:
+        stream = _pulled_in_temp_session(_batches())
+    finally:
+        temp_tables.unbind(token)
+    assert list(stream) == [0, 1]
+    assert seen == [session, session]
+    assert temp_tables.current() is None  # bound only for the pull

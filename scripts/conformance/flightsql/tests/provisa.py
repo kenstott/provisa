@@ -41,6 +41,8 @@ class ProvisaQuirks(model.DriverQuirks):
         statement_bind_test_mode="select",
         statement_execute_schema=True,
         statement_prepare=True,
+        # A prepared statement's parameters, typed as pgwire's ParameterDescription types them.
+        statement_get_parameter_schema=True,
         # An update is answered its affected count. The statement tests' CREATE TABLE is replaced
         # by emptying the seeded table (query_override), which affects none.
         # Transaction control is acknowledged and holds no transaction (REQ-883).

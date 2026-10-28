@@ -299,6 +299,38 @@ def _logs_unexpected(rpc: Callable[..., Any]) -> Callable[..., Any]:  # REQ-2167
     return _call
 
 
+def _pulled_in_temp_session(batches: Any) -> Any:  # REQ-615
+    """``batches``, pulled in the caller's Flight session: pyarrow pulls a lazy stream after the
+    RPC has returned, so the session's temporary tables are bound again around each batch, as
+    the request's deadline is (provisa.api.flight.deadline). Outside a session, ``batches``."""
+    from provisa.compiler import temp_tables
+
+    session = temp_tables.current()
+    if session is None:
+        return batches
+    return _pull_in(session, iter(batches))
+
+
+def _pull_in(session: Any, batches: Any) -> Any:
+    from provisa.compiler import temp_tables
+
+    try:
+        while True:
+            # Bound only for the pull: the RPC's thread serves the next call in another session.
+            token = temp_tables.bind(session)
+            try:
+                batch = next(batches)
+            except StopIteration:
+                return
+            finally:
+                temp_tables.unbind(token)
+            yield batch
+    finally:
+        close = getattr(batches, "close", None)
+        if close is not None:
+            close()
+
+
 async def _in_temp_session(session: Any, coro: Any) -> Any:  # REQ-615
     """Await ``coro`` with ``session`` the temporary-table session its statements belong to."""
     from provisa.compiler import temp_tables
@@ -1051,7 +1083,7 @@ class ProvisaFlightServer(
         if columns is None:
             if how.if_not_exist == options.TABLE_NOT_EXIST_OPTION_CREATE:
                 raise NotImplementedError(f"creating table {name!r}: {undefined}")
-            raise _NotFound(f"no table {name!r}")
+            raise _NotFound(f"table {name!r} does not exist")
         if how.if_exists == options.TABLE_EXISTS_OPTION_REPLACE:
             raise NotImplementedError(f"replacing table {name!r}: {undefined}")
         if how.if_exists != options.TABLE_EXISTS_OPTION_APPEND:
@@ -1094,7 +1126,7 @@ class ProvisaFlightServer(
             try:
                 held = session.temp.tables.get(name)
                 if held is None and how.if_not_exist != options.TABLE_NOT_EXIST_OPTION_CREATE:
-                    raise _NotFound(f"no temporary table {name!r}")
+                    raise _NotFound(f"temporary table {name!r} does not exist")
                 if held is not None and how.if_exists == options.TABLE_EXISTS_OPTION_FAIL:
                     raise _Invalid(f"temporary table {name!r} already exists")
                 if held is None or how.if_exists == options.TABLE_EXISTS_OPTION_REPLACE:
@@ -1132,7 +1164,8 @@ class ProvisaFlightServer(
         request = flightsql.unpack(body)
         if isinstance(request, flightsql.pb.ActionCreatePreparedStatementRequest):
             schema = self._described_schema(context, request.query)
-            result = flightsql.prepared_result(flightsql.prepared_handle(request.query), schema)
+            handle = flightsql.prepared_handle(request.query)
+            result = flightsql.prepared_result(handle, request.query, schema)
             return [flight.Result(result)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(request, flightsql.pb.ActionClosePreparedStatementRequest):
             flightsql.read_prepared_handle(request.prepared_statement_handle)
@@ -2008,7 +2041,7 @@ class ProvisaFlightServer(
         # REQ-1905: the batches are pulled after do_get returns; they stay under its deadline.
         from provisa.api.flight.deadline import stream_within_deadline
 
-        counted = _metered_batches(stream_within_deadline(batch_gen))
+        counted = _metered_batches(stream_within_deadline(_pulled_in_temp_session(batch_gen)))
 
         def _gen():
             first = True
@@ -2409,7 +2442,11 @@ class ProvisaFlightServer(
             # REQ-1905: pulled after do_get returns; the stream stays under its deadline.
             from provisa.api.flight.deadline import stream_within_deadline
 
-            return generator_stream(arrow_schema, stream_within_deadline(batch_gen), plan.warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return generator_stream(
+                arrow_schema,
+                stream_within_deadline(_pulled_in_temp_session(batch_gen)),
+                plan.warnings,
+            )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except Exception:
             self._finalize_audit(plan, 500)
             raise
