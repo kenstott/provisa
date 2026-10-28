@@ -137,7 +137,10 @@ def test_each_table_is_indexed_on_its_key_when_it_lands(monkeypatch):
     asyncio.run(_series(s))
     indexed = {
         r[0]: r[1]
-        for r in s.duck.execute("SELECT table_name, expressions FROM duckdb_indexes()").fetchall()
+        for r in s.duck.execute(
+            # Each table's key index; the lookup indexes beside some (REQ-2176) are not unique.
+            "SELECT table_name, expressions FROM duckdb_indexes() WHERE is_unique"
+        ).fetchall()
     }
     assert set(indexed) == set(s.session.tables)
     assert indexed[store.NODE_LABELS].replace('"', "").replace("'", "") == "[node_id, label]"

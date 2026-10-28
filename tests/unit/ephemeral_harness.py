@@ -121,6 +121,12 @@ class _Rows:
         cols = ", ".join(f'"{c}"' for c in key_columns)
         self.duck.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS "key_{table}" ON "{table}" ({cols})')
 
+    async def lookup_index(self, schema, table, columns):
+        self.calls.append(f"lookup {table} {','.join(columns)}")
+        cols = ", ".join(f'"{c}"' for c in columns)
+        name = f"on_{table}_{'_'.join(columns)}"
+        self.duck.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON "{table}" ({cols})')
+
 
 class Session:
     """One session: its DuckDB, its model and its temporary tables. ``in_place``: the store

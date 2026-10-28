@@ -106,6 +106,14 @@ def view_keys(g: "Graph") -> set[str]:
     return keys
 
 
+def _count(counts: dict, key: Any, by: int) -> None:
+    left = counts.get(key, 0) + by
+    if left:
+        counts[key] = left
+    else:
+        counts.pop(key, None)
+
+
 def resolve(session: TempSession) -> None:
     """Each label's Resolved, as the session's graph and tables now hold it."""
     g = graph(session)
@@ -147,6 +155,15 @@ class Graph:
     # Each label with session matches -> its session side, resolved at write time (Resolved): what
     # the read overlay reads, computing nothing per statement.
     resolved: dict[str, "Resolved"] = field(default_factory=dict)
+    # Counts kept at write time (REQ-2176), which a traversal starts from the more selective end
+    # by: the nodes carrying each label ("" for none; a tag counts its model node), the
+    # relationships of each type, and of each (type, source label, target label) as written.
+    label_counts: dict[str, int] = field(default_factory=dict)
+    type_counts: dict[str, int] = field(default_factory=dict)
+    pair_counts: dict[tuple[str, str, str], int] = field(default_factory=dict)
+    # A session relationship's id -> (its type, its ends' labels as written), which its removal
+    # takes off the counts.
+    rel_ends: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = field(default_factory=dict)
     last_id: int = 0
 
     def new_id(self, prefix: str = "e") -> str:
@@ -231,6 +248,14 @@ _KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
+#: The columns a read looks a table's rows up by beyond its key (REQ-2176): a relationship by
+#: either end or its type, a node's labels by the label. An anchor table is looked up by its key.
+_LOOKUPS: dict[str, tuple[tuple[str, ...], ...]] = {
+    RELS: (("from_id",), ("to_id",), ("type",)),
+    NODE_LABELS: (("label", NODE_ID),),
+}
+
+
 def key_of(table: str, columns: Sequence[tuple[str, str]]) -> tuple[str, ...]:
     """The session table's key, as its index is made on it: a fixed table's own (``_KEYS``), else
     its first column -- of its ``columns`` (name, type)."""
@@ -255,6 +280,8 @@ async def _reland(
     await temp_exec.reland(state, session, table, columns, all_rows)
     if writer is not None:
         await temp_exec.index(session, table, key_of(table, keys), writer)
+        for looked_up in _LOOKUPS.get(table, ()):
+            await temp_exec.lookup_index(session, table, looked_up, writer)
 
 
 async def _add(
@@ -339,14 +366,19 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
     for node in writes.nodes:
         for label in node.labels or ("",):
             g.label_anchors.setdefault(label, set()).add(node.anchor)
+            _count(g.label_counts, label, 1)
         g.node_keys[node.node_id] = node.labels or ("",)
         g.node_anchors[node.node_id] = node.anchor
     for tag in writes.tags:
         g.tag_types.setdefault(tag.label, set()).add(tag.type_name)
+        _count(g.label_counts, tag.label, 1)
     for given in writes.labels:
         g.label_anchors.setdefault(given.label, set()).add(g.node_anchors[given.node_id])
         held = tuple(k for k in g.node_keys[given.node_id] if k)
+        if not held:
+            _count(g.label_counts, "", -1)  # an unlabeled node is one no longer
         g.node_keys[given.node_id] = (*held, given.label)
+        _count(g.label_counts, given.label, 1)
     if writes.nodes and NODE_LABELS not in session.tables:
         # Every read reads node_labels: it stands from the session's first node on, whatever the
         # node's labels -- empty when it carries none.
@@ -399,6 +431,12 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
         g.rel_pairs.update(
             (r.rel_type, s, t) for r in writes.rels for s in r.from_labels for t in r.to_labels
         )
+        for r in writes.rels:
+            _count(g.type_counts, r.rel_type, 1)
+            for s in r.from_labels:
+                for t in r.to_labels:
+                    _count(g.pair_counts, (r.rel_type, s, t), 1)
+            g.rel_ends[r.rel_id] = (r.rel_type, r.from_labels, r.to_labels)
     resolve(session)
 
 
@@ -419,12 +457,14 @@ async def remove_labels(state: Any, session: TempSession, removed: set[tuple[str
     g = graph(session)
     await _remove(state, session, NODE_LABELS, (NODE_ID, "label"), sorted(removed))
     for node_id, label in removed:
+        _count(g.label_counts, label, -1)
         if node_id not in g.node_keys:
             continue  # a tag on a model node
         left = tuple(k for k in g.node_keys[node_id] if k != label)
         g.node_keys[node_id] = left or ("",)
         if not left:
             g.label_anchors.setdefault("", set()).add(g.node_anchors[node_id])
+            _count(g.label_counts, "", 1)
     resolve(session)
 
 
@@ -450,6 +490,8 @@ async def delete_nodes(state: Any, session: TempSession, node_ids: list[str]) ->
     await _remove(state, session, NODES, (NODE_ID,), keys)
     await _remove(state, session, NODE_LABELS, (NODE_ID,), keys)
     for node_id in node_ids:
+        for label in g.node_keys[node_id]:
+            _count(g.label_counts, label, -1)
         del g.node_keys[node_id]
         del g.node_anchors[node_id]
     # A label keeps only the anchors that still hold a node carrying it.
@@ -472,3 +514,10 @@ async def delete_rels(state: Any, session: TempSession, rel_ids: list[str]) -> N
     for rel_type, keys in by_type.items():
         await _remove(state, session, rel_table(rel_type), (REL_ID,), keys)
     await _remove(state, session, RELS, (REL_ID,), [(rel_id,) for rel_id in rel_ids])
+    g = graph(session)
+    for rel_id in rel_ids:
+        rel_type, from_labels, to_labels = g.rel_ends.pop(rel_id)
+        _count(g.type_counts, rel_type, -1)
+        for s in from_labels:
+            for t in to_labels:
+                _count(g.pair_counts, (rel_type, s, t), -1)
