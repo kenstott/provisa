@@ -18,9 +18,10 @@ surface's own governed read over the session's overlay, then:
 - a session relationship is removed: its identity is its own row (rel_id), so a parallel one is
   never touched;
 - a model node is the governed path's: a plain DELETE is the governed delete of its row, its
-  session tags going with it; one with session relationships is refused, and a DETACH DELETE of
-  one, or a DELETE of a model relationship, is the governed path's whole statement, which refuses
-  it until the governed writer detaches (step 3).
+  session tags going with it, and one with session relationships is refused; a DETACH DELETE of
+  one is the governed DETACH DELETE of its row (its junction rows detached, a foreign-key
+  relationship refused by name), its session tags and relationships going with it;
+- a DELETE of a model relationship is the governed path's whole statement.
 
 Every refusal is decided before any write, so a refused statement writes nothing; the governed
 deletes then run, and the session's parts are removed last. The two paths are not one
@@ -143,8 +144,6 @@ async def delete(
                 session_nodes.add(node_id)
             else:
                 model_nodes[node_id] = (label_map.nodes[read_by[0]], _node_properties(value))
-    if model_nodes and d.detach:
-        return None  # the governed path's: it refuses DETACH until the governed writer takes it
     touching = await _relationships_of(state, session, session_nodes | set(model_nodes))
     if not d.detach:
         held = sorted(n for n, rels in touching.items() if rels - session_rels)
@@ -158,12 +157,24 @@ async def delete(
         for node_id, label in await store.held_labels(state, session)
         if node_id in model_nodes
     }
+    if d.detach:
+        from provisa.cypher.write_translator import CypherWriteParseError, WriteTranslator
+
+        translator = WriteTranslator(label_map)
+        for nm, _props in model_nodes.values():
+            try:
+                translator.detached(nm)
+            except CypherWriteParseError as exc:
+                raise CypherParseError(str(exc)) from exc
     # Every refusal is decided: the governed deletes first, then the session's parts.
     for identity, (nm, props) in sorted(model_nodes.items()):
         key = nm.property_of(nm.id_column)
         if _model_identity(nm, props) != identity:
             raise CypherParseError(f"A deleted {nm.label} is read with its key, {key}")
-        await governed_write(f"MATCH (n:{nm.label} {{{key}: $key}}) DELETE n", {"key": props[key]})
+        await governed_write(
+            f"MATCH (n:{nm.label} {{{key}: $key}}) {'DETACH ' if d.detach else ''}DELETE n",
+            {"key": props[key]},
+        )
     detached = {rel for rels in touching.values() for rel in rels}
     rels = sorted(session_rels | detached)
     await store.delete_rels(state, session, rels)
