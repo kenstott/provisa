@@ -754,6 +754,34 @@ def _reads_apart(lead: list[Any], written: str) -> list[tuple[str, frozenset[str
     return reads
 
 
+def _remove_refusal(query: str) -> str:
+    """Why a REMOVE is not a governed write: a property's REMOVE has no write form; a label's
+    is the graph session's, in a statement of its own."""
+    from provisa.cypher.parser import CypherParseError, parse_cypher_statement
+    from provisa.gql.ir import RemoveClause
+
+    try:
+        ast = parse_cypher_statement(query)
+    except CypherParseError as exc:
+        raise CypherWriteParseError(str(exc)) from exc
+    removes = [w for w in ast.writes if isinstance(w, RemoveClause)]
+    lead = (
+        "Cypher write pattern 'REMOVE' is not a governed write: a governed write has one exact "
+        "target, one model table or one registered junction."
+    )
+    if any(item.property is not None for w in removes for item in w.items):
+        return (
+            f"{lead} A REMOVE of a property is not written: a model node's property is written "
+            f"by SET, of a column its table declares. A Cypher write takes one of these forms: "
+            f"{WRITE_FORMS}"
+        )
+    return (
+        f"{lead} REMOVE n:L takes a label off a node in the graph session, in a statement of "
+        f"its own: [MATCH ...] REMOVE n:L, with nothing after it. A Cypher write takes one of "
+        f"these forms: {WRITE_FORMS}"
+    )
+
+
 def parse_cypher_write(query: str) -> WriteAST:
     """Parse a Cypher write statement into a WriteAST.
 
@@ -775,16 +803,13 @@ def parse_cypher_write(query: str) -> WriteAST:
     # pipeline's own words, before any write pattern is tried.
     refuse_cypher_definition(query)
 
-    # REQ-2176: a governed write has one exact target, one model table or one registered
-    # junction. REMOVE takes a session label off a node; the governed writer does not take it,
-    # so it is refused here by name.
+    # REQ-2176: "SET n:L and REMOVE n:L write node_labels rows on ephemeral or model nodes; a
+    # node never moves table." A label REMOVE is the graph session's (provisa.ephemeral.labels),
+    # never the governed writer's; the requirement gives a REMOVE of a property no meaning
+    # ("SET of a property is a governed write on a model node (declared columns only)"), so it is
+    # refused here by name.
     if re.search(r"\bREMOVE\b", query, re.IGNORECASE):
-        raise CypherWriteParseError(
-            "Cypher write pattern 'REMOVE' is not a governed write: a governed write has one "
-            "exact target, one model table or one registered junction. REMOVE takes a label off "
-            "a node in the graph session; a REMOVE of a model row's property is not written. A "
-            f"Cypher write takes one of these forms: {WRITE_FORMS}"
-        )
+        raise CypherWriteParseError(_remove_refusal(query))
 
     # REQ-2176 (amended 2026-10-28): a MERGE of model nodes and registered junction
     # relationships is a governed write, read through the graph IR.
