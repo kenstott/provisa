@@ -33,7 +33,8 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 | `format_type(typid, typmod)` | Returns the type name tools display in schema panels. Subtypes report by their subtype name (`inet`, `macaddr`, `money`), not the base type. |
 | `col_description(relid, colnum)` | Returns the column's description from the model. Columns with no description return `NULL`. |
 | `pg_get_constraintdef(oid)` | Returns a text rendering of the constraint — `PRIMARY KEY (col)`, `FOREIGN KEY (col) REFERENCES other(col)`, or `UNIQUE (col)` — derived from the model's declared keys and joins. |
-| `pg_get_expr(expr, relid)` | Always returns `NULL`. |
+| `pg_get_expr(expr, relid)` | Returns the default expression of a column read from `pg_attrdef.adbin`, such as `now()`, `current_setting('app.user')` or `'new'::character varying`. A default is the value your role's insert grant presets on the column. A column with no preset, and any other expression column, returns `NULL`. |
+| `has_table_privilege([user,] table, privilege)` | Answers for your role. `SELECT` is held on every table you are served. `INSERT`, `UPDATE` and `DELETE` are held where your role has the `write` right and a write grant for that operation on a table whose source takes it. A list such as `'INSERT, UPDATE'` is true when any item is held. `REFERENCES`, `TRIGGER`, `TRUNCATE` and any `WITH GRANT OPTION` are false. The table is an oid or a name, and the user must be your own role. A table that does not exist, or another user, returns `NULL`. |
 | `current_schema()` | Returns `'public'`. |
 | `obj_description(oid, catalog)` | Returns the description of the named catalog object (table or schema) from the model, or `NULL`. |
 
