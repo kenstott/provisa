@@ -154,3 +154,28 @@ def test_a_node_tagged_with_another_tables_label_keeps_apart_from_its_rows(monke
     assert _values(s.run("MATCH (n:Person) RETURN n.name")) == [("Ann",), ("Bo",), ("Rex",)]
     s.run("MATCH (n:Person) WHERE n.name = 'Rex' REMOVE n:Person")
     assert _values(s.run("MATCH (n:Person) RETURN n.name")) == [("Ann",), ("Bo",)]
+
+
+def test_session_relationships_with_an_unlabeled_end_read_with_no_model_relationships(monkeypatch):
+    # The model has no relationship types; the session's are read on their own, an unlabeled end
+    # by the session's relation of unlabeled nodes (REQ-2176).
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X {k: 1})-[:R {w: 1}]->(), ()-[:R {w: 2}]->(:X {k: 2})")
+    assert _values(s.run("MATCH ()-[r:R]->() RETURN r.w")) == [(1,), (2,)]
+    assert len(s.run("MATCH ()-[r]->() RETURN r")) == 2
+
+
+def test_several_create_clauses_are_one_create_of_their_patterns_in_order(monkeypatch):
+    # The openCypher TCK's setups: CREATE clauses one after another, a later one reaching back
+    # to an earlier one's nodes (REQ-2176).
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("CREATE (a:A {k: 1}) CREATE (b:B {k: 2}) CREATE (a)-[:R {w: 3}]->(b)")
+    rows = s.run("MATCH (a:A)-[r:R]->(b:B) RETURN a.k, r.w, b.k")
+    assert _values(rows) == [(1, 3, 2)]
+
+
+def test_several_create_clauses_after_leading_clauses(monkeypatch):
+    s = Session(monkeypatch, _PEOPLE)
+    s.run("MATCH (p:Person) WHERE p.name = 'Ann' CREATE (t:Tag {n: 1}) CREATE (p)-[:HAS]->(t)")
+    rows = s.run("MATCH (p:Person)-[:HAS]->(t:Tag) RETURN p.name, t.n")
+    assert _values(rows) == [("Ann", 1)]

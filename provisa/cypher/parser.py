@@ -671,7 +671,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 patterns.append(self._parse_write_pattern())
             return CreateClause(patterns=patterns, start=start)
         if kw == "MERGE":
-            merge = MergeClause(pattern=self._parse_write_pattern())
+            merge = MergeClause(pattern=self._parse_write_pattern(), start=start)
             while self._match_keyword("ON"):
                 self._advance()
                 on_create = self._opt_keyword("CREATE")
@@ -691,7 +691,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         while (_c := self._peek()) and _c.type == "COMMA":
             self._advance()
             deleted.append(self._write_expression())
-        return DeleteClause(expressions=deleted, detach=detach)
+        return DeleteClause(expressions=deleted, detach=detach, start=start)
 
     def _parse_write_pattern(self) -> PathPattern:
         self._write_pattern = True

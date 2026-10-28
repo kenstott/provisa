@@ -158,6 +158,30 @@ async def create(
                 params,
             )
     answer = await read(f"{prefix} RETURN {', '.join(_items(p, kind, bound))}".strip(), params)
+    made, _ = await write_rows(p, kind, answer, label_map, session, state, governed_write)
+    return made
+
+
+#: Each node a pattern's row wrote or reached back to, by its index among the pattern's nodes:
+#: its graph identity and the labels it is read by.
+RowIds = dict[int, tuple[str, tuple[str, ...]]]
+
+
+async def write_rows(
+    p: CreatePattern,
+    kind: CreateKind,
+    rows: list[dict[str, Any]],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    governed_write: Write,
+    identify: frozenset[int] = frozenset(),
+) -> tuple[Created, list[RowIds]]:
+    """Make ``p``'s nodes and relationships once per row (``rows``: what the leading clauses read,
+    as _items names it): each governed row through the governed write, the session's parts in the
+    session; a governed relationship is the caller's. Each row's node identities are given back,
+    a governed row's only when a session relationship ends on it or ``identify`` names it."""
+    graph = store.graph(session)
     made = {p.nodes[c.index].variable: c.index for c in kind.created}
     created_at = {c.index for c in kind.created}
     # The governed rows a session relationship ends on: only theirs need a graph identity.
@@ -166,11 +190,12 @@ async def create(
         for rel, governed in zip(p.rels, kind.rels_governed, strict=True)
         if not governed
         for end in (rel.source, rel.target)
-    }
+    } | identify
     writes = Writes()
     rows_written = 0
-    for row in answer:
-        ids: dict[int, tuple[str, tuple[str, ...]]] = {}
+    every: list[RowIds] = []
+    for row in rows:
+        ids: RowIds = {}
         for c in kind.created:
             props = {k: row[f"_n{c.index}_{k}"] for k, _ in p.nodes[c.index].properties}
             if c.governed:
@@ -205,12 +230,14 @@ async def create(
                     graph.new_id("r"), rel.rel_type, source, target, props, from_labels, to_labels
                 )
             )
+        every.append(ids)
     for c in kind.created:
         if c.anchor is not None:
             graph.anchors.setdefault(c.anchor, store.anchor_table(c.anchor))
     await store.write(state, session, writes)
-    return Created(
+    created = Created(
         len(writes.nodes) + rows_written,
         len(writes.rels),
         sum(len(n.labels) for n in writes.nodes) + rows_written,
     )
+    return created, every
