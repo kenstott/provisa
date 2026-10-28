@@ -18,6 +18,7 @@
     "limitationsLabel": "सीमाएँ",
     "limitationsPlaceholder": "ज्ञात प्रतिबंध, चेतावनियाँ या अपवाद",
     "usageLabel": "उपयोग",
+    "createdAtLabel": "बनाया गया",
     "usagePlaceholder": "इस डेटा प्रोडक्ट का उपभोग कैसे करें",
     "versionLabel": "वर्शन",
     "versionPlaceholder": "जैसे 1.2.0",

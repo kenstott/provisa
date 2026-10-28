@@ -156,6 +156,14 @@ class DataProductAsset:  # REQ-1634
     # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
     # that names owners by address (Dataplex), never a role-to-principal setting.
     owner_emails: tuple[str, ...] = ()
+    # REQ-2118: the team role's holders' email addresses, as owner_emails is the owner role's.
+    team_emails: tuple[str, ...] = ()
+    # REQ-2118: when the product was created (ISO 8601, UTC); None where the caller read none.
+    created_at: str | None = None
+    # REQ-2118: the endpoints that observe and control the product, at the org's listing origin:
+    # its lineage and the admin GraphQL API; None without a documentation base URL.
+    lineage_url: str | None = None
+    admin_api_url: str | None = None
 
     def odps_fields(self) -> dict[str, str]:
         """The product's ODPS fields that are set, by their ODPS names, for a target's own
@@ -399,6 +407,11 @@ class DataQualityAssertion:  # REQ-1443
     outcome: DataQualityOutcome = field(
         default_factory=lambda: DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
     )
+    # REQ-2157: the product owning the check -- the one its checker table names; None for a
+    # checker table naming none. Whose check it is follows from this, never from which product
+    # the observed table belongs to: a product's check on its member is its promise, on its
+    # input its expectation, and another product's check there is neither.
+    owner_product_id: str | None = None
 
 
 @dataclass

@@ -50,6 +50,7 @@ PRODUCT_FIELDS = [
     "support",
     "support_contact",
     "custom_properties",
+    "created_at",
 ]
 
 _VIEWS = (
