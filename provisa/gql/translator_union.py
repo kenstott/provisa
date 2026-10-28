@@ -60,13 +60,18 @@ def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType
     if not registered or None in registered:
         return None
     if len(set(registered)) == 1:
-        return exp.DataType.build(str(registered[0]), dialect="postgres")
+        return exp.DataType.build(_spelled(str(registered[0])), dialect="postgres")
     kinds = {to_ir(str(t)) for t in registered}
     if kinds <= _INTEGERS:
         return exp.DataType.build("BIGINT")
     if kinds <= _NUMBERS:
         return exp.DataType.build("DOUBLE")
     return None
+
+
+def _spelled(kind: str) -> str:
+    """A registered type as SQL spells it: a session's ``list<elem>`` an array of ``elem``."""
+    return f"{_spelled(kind[5:-1])}[]" if kind.startswith("list<") else kind
 
 
 def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.DataType | None:
@@ -84,7 +89,7 @@ def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.Data
     if not registered or None in registered:
         return None
     if len(set(registered)) == 1:
-        return exp.DataType.build(str(registered[0]), dialect="postgres")
+        return exp.DataType.build(_spelled(str(registered[0])), dialect="postgres")
     kinds = {to_ir(str(t)) for t in registered}
     if kinds <= _INTEGERS:
         return exp.DataType.build("BIGINT")
@@ -135,10 +140,13 @@ class _UnionMixin:  # mixin for _Translator
         _lm: CypherLabelMap
         _all_rels_ends: dict[str, list[str]]
         _all_rels_mappings: list[RelationshipMapping]
+        _union_columns: dict[str, list[str]]
 
         def _collect_var_props(self, var: str) -> list[str]: ...
 
         def _node_as_one_value(self, var: str) -> bool: ...
+
+        def _referenced_var_props(self, var: str) -> list[str]: ...
 
     def _build_all_rels_union(
         self,
@@ -401,9 +409,10 @@ class _UnionMixin:  # mixin for _Translator
     def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all types in a domain."""
         type_labels = union_labels(self._lm, domain_name)
-        # A node returned bare is one JSON value per arm, of that type's own properties (NODE_COLUMN).
+        # A node returned bare is one JSON value per arm, of that type's own properties (NODE_COLUMN),
+        # beside the properties the statement reads of it (a WHERE, a WITH, an ORDER BY).
         as_one_value = self._node_as_one_value(var)
-        props = [] if as_one_value else self._collect_var_props(var)
+        props = self._referenced_var_props(var) if as_one_value else self._collect_var_props(var)
 
         held_as = {
             p: union_type(p, type_labels, self._lm) or exp.DataType.build("VARCHAR") for p in props
@@ -426,7 +435,8 @@ class _UnionMixin:  # mixin for _Translator
             # Metadata-based prune: skip branches where no required property exists.
             # Those branches can only contribute NULL rows, which a WHERE filter would discard.
             # This prevents full-table scans across all entity types on the engine.
-            if props and not any(nm.properties.get(p) for p in props):
+            # A node returned bare is every node's, whichever properties it has.
+            if props and not as_one_value and not any(nm.properties.get(p) for p in props):
                 continue
             select_items: list[exp.Expr] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
@@ -471,8 +481,10 @@ class _UnionMixin:  # mixin for _Translator
                 *([exp.alias_(exp.null(), alias=NODE_COLUMN)] if as_one_value else []),
             ] + [exp.alias_(exp.null(), alias=exp.Identifier(this=p, quoted=True)) for p in props]
             zero_row = exp.select(*zero_items).where(exp.false())
+            self._union_columns[var] = zero_row.named_selects
             return exp.alias_(exp.Subquery(this=zero_row), alias=var)  # pyright: ignore[reportReturnType]
 
+        self._union_columns[var] = branches[0].named_selects
         union: exp.Expression = branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for branch in branches[1:]:
             union = exp.Union(this=union, expression=branch, distinct=False)

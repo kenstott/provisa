@@ -64,7 +64,7 @@ from provisa.gql.expr_ast import (
 )
 from provisa.gql import spatial, temporal
 from provisa.gql.translator_helpers import _and_all, _json_valued
-from provisa.gql.translator_types import CypherTranslateError
+from provisa.gql.translator_types import UNION_NODE, CypherTranslateError
 
 #: A regex's leading inline flags, which PostgreSQL takes only at the regex's start.
 _REGEX_FLAGS = re.compile(r"^\(\?[a-zA-Z]+\)")
@@ -196,6 +196,11 @@ class ExprContext(Protocol):
         """A bound node or relationship variable's identity (#305): what kind of element it is (a
         node's table, a relationship's type and ends' tables) and its keys, in one order for
         every element of that kind; None for any other name."""
+        ...
+
+    def resolve_node_graph_identity(self, name: str) -> exp.Expression | None:
+        """A node variable's graph identity, "Label|key", for a comparison with a node of a union
+        of labels; None for any other name."""
         ...
 
     def resolve_graph_absent(self, name: str) -> exp.Expression | None:
@@ -876,6 +881,14 @@ class ExprLowering:
                 "compared by = and <> only"
             )
         (left_kind, left_keys), (right_kind, right_keys) = left, right
+        if UNION_NODE in (left_kind, right_kind) and left_kind[0] == right_kind[0] == "node":
+            # A node of a union of labels and another node: the same where their graph
+            # identities are.
+            left_id = self._ctx.resolve_node_graph_identity(node.left.name)
+            right_id = self._ctx.resolve_node_graph_identity(node.right.name)
+            assert left_id is not None and right_id is not None  # both nodes, resolved above
+            left_kind = right_kind = UNION_NODE
+            left_keys, right_keys = [left_id], [right_id]
         if left_kind == right_kind:
             same = _and_all(
                 [exp.EQ(this=a, expression=b) for a, b in zip(left_keys, right_keys, strict=True)]

@@ -144,6 +144,9 @@ def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright:
 
 #: meta key: the NodeMapping of the variable a ``table.*`` selects (graph_rewriter reads it)
 NODE_OF_STAR = "provisa_node"
+#: meta key: set on a ``table.*`` that selects a node of a union of labels' rows, whose node value
+#: is the table's NODE_COLUMN (graph_rewriter reads it)
+UNION_NODE_OF_STAR = "provisa_union_node"
 
 
 class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
@@ -159,6 +162,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _rel_var_endpoints: dict
     _rel_var_via: dict  # REQ-1586: rel variable → (junction alias, JunctionMapping)
     _domain_nodes: dict[str, str]
+    _union_columns: dict[str, list[str]]
     _varlen_rel_vars: dict  # varlen rel variable → outer path variable
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -550,14 +554,18 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 tbl_col.meta[NODE_OF_STAR] = var_info[1]
                 return exp.alias_(tbl_col, alias or expr_text)
             return tbl_col
-        if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
+        if expr_text in getattr(self, "_union_columns", {}):
             self._graph_vars[alias or expr_text] = graph_var_kind_node
+            table_alias = var_info[0]
             tbl_col = exp.Column(
                 this=exp.Star(),
-                table=exp.Identifier(this=expr_text),
+                table=exp.Identifier(this=table_alias),
             )
-            if alias:
-                return exp.alias_(tbl_col, alias)
+            # Its union's columns are a row of its own alias, or of the WITH's CTE carrying them;
+            # its value is the NODE_COLUMN there (graph_rewriter).
+            tbl_col.meta[UNION_NODE_OF_STAR] = True
+            if alias or table_alias != expr_text:
+                return exp.alias_(tbl_col, alias or expr_text)
             return tbl_col
         return None
 

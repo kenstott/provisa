@@ -109,6 +109,10 @@ class CypherCrossSourceError(CypherTranslateError):
 #: label and its own type's properties (each as text, as a property column is).
 NODE_COLUMN = "__node"
 
+#: The identity kind of a node of a union of labels' rows (ExprContext.resolve_graph_identity):
+#: compared with another node by its graph identity, whatever table each is read from.
+UNION_NODE = ("node", "__union__")
+
 
 def map_key_column(alias: str, place: int) -> str:
     """The column a WITH carries a map literal's key in: by the key's place in the map (#287)."""
