@@ -30,6 +30,8 @@
     "downloadJpg": "JPG",
     "downloadSvg": "SVG",
     "viewGraph": "グラフ",
+    "sparqlLiteralsAsNodes": "リテラルをノードとして表示",
+    "sparqlDrawAsGraph": "グラフとして描画",
     "viewTable": "テーブル",
     "viewJson": "JSON",
     "viewGraphStats": "グラフ統計",
