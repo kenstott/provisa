@@ -90100,7 +90100,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     panel, with each name a link to its own page: a term its definition, status and steward; a column its
     type, its sensitivity or mask, its description and its table''s column; a table its domain, source,
     freshness or row count where known, and quality status; a product its status, owner and member count;
-    and a ''+N columns'' node the names of the columns it holds.'
+    and a ''+N columns'' node the names of the columns it holds. (Amended 2026-10-27, 2D SHOWS ONLY 2D CONTROLS:)
+    2026-10-28: in 2D the lane diagram is the only layout, so the layout toggle is not shown, and no control
+    that applies only to the 3D view appears; those controls show only when 3D is selected.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
