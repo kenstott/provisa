@@ -10998,9 +10998,12 @@
   feature: cypher-and-graph-analytics-writes
   priority: MUST
   type: constraint
-  description: DETACH DELETE (cascading delete across derived relationships) is not supported. Attempting
-    DETACH DELETE is a hard error at parse or translation time. Clients must explicitly DELETE each table
-    in the correct dependency order.
+  description: '[SUPERSEDED by REQ-2176, 2026-10-28 -- DETACH DELETE of a model node is governed: each junction
+    row it is an end of and its own row are deleted through governed writes, and a foreign-key relationship
+    is refused by name. Kept here for history; do not implement against it.] DETACH DELETE (cascading delete
+    across derived relationships) is not supported. Attempting DETACH DELETE is a hard error at parse or
+    translation time. Clients must explicitly DELETE each table in the correct dependency order. [END SUPERSEDED
+    BLOCK]'
   use_case: Explicit cascade prevention avoids accidental data deletion across unintended table relationships.
   code:
   - provisa/cypher/write_translator.py
@@ -24544,11 +24547,14 @@
   feature: neo4j-compatibility-bolt
   priority: MUST
   type: structural
-  description: Bolt auth model establishes principal = user, database = role. A user holds a set of roles;
+  description: 'Bolt auth model establishes principal = user, database = role. A user holds a set of roles;
     SHOW DATABASES lists one database per (view × role) pair. Database names follow the pattern `provisa_<role>`
-    (business domains only) and `provisa_ops_<role>` (includes system/meta/ops domains). The Bolt Browser's
-    database dropdown / `:use` command selects the active role and view. Home database defaults to the
-    user's first role.
+    (business domains only) and `provisa_ops_<role>` (includes system/meta/ops domains). The Bolt Browser''s
+    database dropdown / `:use` command selects the active role and view. Home database defaults to the user''s
+    first role. (Amended 2026-10-28, NEO4J NAMES THE HOME DATABASE:) The database name neo4j names the home
+    database, the business database of the user''s default role, as provisa does. Neo4j drivers, Neo4j Browser
+    and Bloom ask for neo4j by default, so they connect unchanged. It is a named alias, not a fallback:
+    any other name outside the forms REQ-808 lists is still DatabaseNotFound.'
   use_case: Bolt Browser users can switch contexts by role and view (ops vs business) without reauthenticating.
     The database abstraction maps cleanly to role-based domain visibility.
   code:
@@ -47193,7 +47199,13 @@
     metadata plus routes through terms, under the agent-visibility rules above (an ungrounded term is never
     a route), and returns the relations the role may read, each with its route and trust. The agent-visibility
     rules above govern data discovery; term discovery follows this amendment. Both are offered on MCP and
-    the API as separate operations (search_terms, find_data).'
+    the API as separate operations (search_terms, find_data). (Amended 2026-10-27, DOWN IS FROM BROADER
+    TO NARROWER:) 2026-10-28: ''down'' follows each edge type''s direction: from a broader term to the terms
+    that are a kind of it, a part of it or a valid value of it, and from a term to its bindings. Synonym
+    edges conduct both ways, as the two words mean the same thing. Related-to, derived-from, replaces, translation-of
+    and antonym-of edges do not conduct grounding. So a term is never grounded in a sibling''s data by going
+    up to a shared parent and back down. The metadata export publishes an approved term a curator later
+    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -80710,7 +80722,22 @@
   feature: catalog-and-discovery-data-products
   priority: SHOULD
   type: behavioral
-  description: 'A data product shows the profiles of its tables without anyone wiring them to it. Where a table a product contains is a member of a data profiler and that profiler''s result tables are registered, the product''s Data Quality panel lists those published profile results beside its checks, under a heading of their own: a profile is a measurement and a check is a verdict, and a product with a profile and no check does not read as checked. Only registered profile results appear, and they are read as the viewer reads any governed table -- their visibility, masks and row rules decide what each viewer sees -- so the panel adds no way to see a profile that registration has not opened. Registering a profiler''s result tables is done where any source''s tables are registered; the product panel adds no second place for it. Publishing a product sends its published profile results to a catalog that takes table and column profiles, as it sends its data-quality results.'
+  description: 'A data product shows the profiles of its tables without anyone wiring them to it. Where
+    a table a product contains is a member of a data profiler and that profiler''s result tables are registered,
+    the product''s Data Quality panel lists those published profile results beside its checks, under a heading
+    of their own: a profile is a measurement and a check is a verdict, and a product with a profile and
+    no check does not read as checked. Only registered profile results appear, and they are read as the
+    viewer reads any governed table -- their visibility, masks and row rules decide what each viewer sees
+    -- so the panel adds no way to see a profile that registration has not opened. Registering a profiler''s
+    result tables is done where any source''s tables are registered; the product panel adds no second place
+    for it. Publishing a product sends its published profile results to a catalog that takes table and column
+    profiles, as it sends its data-quality results. (Amended 2026-10-28, THE SAMPLE DATA PANEL SHOWS VALUE-FREE
+    PROFILE RESULTS:) The one exception to reading profile results only as the viewer reads the result tables
+    is a product''s Sample Data panel (REQ-2158): there every role that sees the product sees the value-free
+    results of each contract column, and value-bearing results only for columns served unmasked to Viewer
+    or through a named profile view. (Amended 2026-10-28, DATA BUYER, NOT VIEWER:) In the Sample Data panel
+    exception, Viewer means Data buyer (REQ-2155, REQ-2158). (Amended 2026-10-28, DATA BUYER, NOT VIEWER:)
+    In the Sample Data panel exception, Viewer means Data buyer (REQ-2155, REQ-2158).'
   use_case: A consumer opening the Orders product sees when its tables were last profiled and what the runs measured,
     because the steward registered the profiler's results once, not because someone attached them to each product.
   related_reqs:
@@ -89138,7 +89165,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the same as domain, and a grant to the standard Viewer role (REQ-2155) is how a column is granted to
     every role. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model''s
     requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than
-    a role''s grants. It is resolved before the product is declared green.'
+    a role''s grants. It is resolved before the product is declared green. (Amended 2026-10-28, LISTED IS
+    NOT A PRODUCT''S CONTRACT:) listed stays a column scope of its own, for discovery by analysts outside
+    any product. A data product''s contract (REQ-2158) advertises the product''s members independently of
+    their columns'' scope, and changes no column''s scope.'
   scenario: 'Given finance.invoice_ledger with customer_id listed, amount domain and currency public
 
     When a sales role with no reach into finance opens the catalog
@@ -89190,57 +89220,73 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     that organisations extend with their own roles. A standard role carries capabilities only, never grants;
     what any role reads or writes comes from grants (REQ-2152). A role may inherit from several parents,
     and its capabilities are the deduplicated union of its own and every ancestor''s; least privilege is
-    applied when roles are assigned, not when they are composed. The initial set: Viewer, the base (reads
-    the catalog, the glossary and data products); Analyst (Viewer, plus querying and query development);
-    Developer (Analyst, plus views, environments and write); Data product owner (Viewer, plus editing the
-    data products it owns); Data steward (Viewer, plus glossary editing and relationships); Data quality
-    steward (Data steward, plus managing checks, expectations and promises); Data quality reader (Viewer,
-    plus reading check definitions and results); Source admin (Viewer, plus source and table registration);
-    Security admin (Viewer, plus access configuration, column grants, masking and user management); Org
-    admin (all of the above, plus org settings and observability). Data quality gets its own read and read/write
-    capabilities, so managing checks no longer needs table registration, and editing a data product can
-    be limited to the products a role owns. The existing seeded roles (data_steward, REQ-1944, and the system
-    roles) are expressed in this set. (Amended 2026-10-25, LOCKED; SANDBOX COMPOSED:) Standard roles are
-    locked: Provisa maintains them and an organisation cannot edit them; it extends them with its own child
-    roles, so a capability Provisa adds to a standard role reaches every role built on it. The sandbox role
-    a ''Try it Out'' visitor holds (REQ-1597) is composed from standard roles by union like any role, not
-    as org_admin minus a denylist. (Amended 2026-10-25, DESIGN ANSWERS:) Environment management and user
-    management belong to Org admin alone: Developer switches environments and Security admin governs grants,
-    masks and sensitive data but manages no users, so the sandbox role is a pure union of Developer, Data
-    product owner, Data quality steward, Source admin and Security admin. Data steward keeps REQ-1944''s
-    meaning, a domain''s meaning and access: it inherits Security admin and adds glossary editing, relationships
-    and data product editing within its reach, so it can delegate read. Data quality steward inherits Viewer
-    and adds the data quality capabilities. A standard Modeler role is Developer plus the relationship-guard
-    bypass. Parents are a list. Capabilities, domain access, residency and grants are unions over the ancestors.
-    A row rule resolves as follows: a role''s own rule for a table stands; otherwise the rules found anywhere
-    among its ancestors are ORed, and a parent with no rule contributes nothing, so adding a parent never
-    lifts a row rule; a role with no rule anywhere among its ancestors is unrestricted, as before. Write-grant
-    row conditions resolve the same way. A property (rate limit, row limit, session variables) is the role''s
-    own, else the first ancestor''s that sets it, depth-first in declared parent order. (Amended 2026-10-25,
-    STANDARD ROLES REACH NO DOMAIN:) [SUPERSEDED by REQ-2155, 2026-10-25 -- reach is not inherited; every
-    role, standard roles included, states its own. Kept here for history; do not implement against it.]
-    A standard role carries no domain reach: domain reach is a union over ancestors, so a standard role
-    reaching a domain would hand it to every role built on it. An organisation''s own child roles carry
-    the reach (a Finance steward is a child of Data steward reaching finance). [END SUPERSEDED BLOCK] (Amended
-    2026-10-25, REACH IS THE ROLE''S OWN; ORG OPERATOR:) Every role states its own domain reach, ALL or
-    a list of domains, and reach is not inherited: a role inherits its parents'' capabilities, and its own
-    reach says where they apply. Standard roles, Org admin and Sandbox reach ALL; a domain-specific role
-    (a Finance steward, child of Data steward) states its own list. Giving a role reach follows REQ-1531:
-    the caller must reach every domain it adds, so a security admin for a domain gives reach to that domain
-    only. A standard Org operator role holds org settings, observability and the approval of views and relationships;
-    Org admin and Sandbox inherit it. Sandbox is the union of Developer, Data product owner, Data quality
-    steward, Source admin, Security admin, Data steward and Org operator. Data steward''s parents are Security
-    admin and Analyst, and it adds glossary editing, relationships, data product editing and full results.
-    Environment data stays Org admin''s alone (REQ-1942). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This
-    corrects a defect in the access model''s requirements, not a feature: the earlier rules let a capability
-    or a default reveal or reach more than a role''s grants. It is resolved before the product is declared
-    green. (Amended 2026-10-25, SANDBOX DOES NOT INHERIT DEVELOPER:) The sandbox role does not inherit Developer,
-    because Developer carries the right to manage environments it owns and a sandbox visitor never manages
-    environments (REQ-2053). Sandbox inherits Analyst, Data product owner, Data quality steward, Source
-    admin, Security admin, Data steward and Org operator, and holds creating views, creating relationships,
-    full results, write and environment switching as its own capabilities. Reading an environment''s synthetic-data
-    report, profile runs and relationships is admitted to the owner of that environment who can switch into
-    it; creating or deleting an environment stays with managing environments (own or any).'
+    applied when roles are assigned, not when they are composed. The initial set: [SUPERSEDED by REQ-2155
+    amendment DATA BUYER, 2026-10-28 -- Viewer no longer reads data products. Kept here for history; do
+    not implement against it.] [SUPERSEDED by REQ-2155 amendment DATA BUYER, 2026-10-28 -- Viewer no longer
+    reads data products. Kept here for history; do not implement against it.] Viewer, the base (reads the
+    catalog, the glossary and data products); [END SUPERSEDED BLOCK] [END SUPERSEDED BLOCK] Analyst (Viewer,
+    plus querying and query development); Developer (Analyst, plus views, environments and write); Data
+    product owner (Viewer, plus editing the data products it owns); Data steward (Viewer, plus glossary
+    editing and relationships); Data quality steward (Data steward, plus managing checks, expectations and
+    promises); Data quality reader (Viewer, plus reading check definitions and results); Source admin (Viewer,
+    plus source and table registration); Security admin (Viewer, plus access configuration, column grants,
+    masking and user management); Org admin (all of the above, plus org settings and observability). Data
+    quality gets its own read and read/write capabilities, so managing checks no longer needs table registration,
+    and editing a data product can be limited to the products a role owns. The existing seeded roles (data_steward,
+    REQ-1944, and the system roles) are expressed in this set. (Amended 2026-10-25, LOCKED; SANDBOX COMPOSED:)
+    Standard roles are locked: Provisa maintains them and an organisation cannot edit them; it extends them
+    with its own child roles, so a capability Provisa adds to a standard role reaches every role built on
+    it. The sandbox role a ''Try it Out'' visitor holds (REQ-1597) is composed from standard roles by union
+    like any role, not as org_admin minus a denylist. (Amended 2026-10-25, DESIGN ANSWERS:) Environment
+    management and user management belong to Org admin alone: Developer switches environments and Security
+    admin governs grants, masks and sensitive data but manages no users, so the sandbox role is a pure union
+    of Developer, Data product owner, Data quality steward, Source admin and Security admin. Data steward
+    keeps REQ-1944''s meaning, a domain''s meaning and access: it inherits Security admin and adds glossary
+    editing, relationships and data product editing within its reach, so it can delegate read. Data quality
+    steward inherits Viewer and adds the data quality capabilities. A standard Modeler role is Developer
+    plus the relationship-guard bypass. Parents are a list. Capabilities, domain access, residency and grants
+    are unions over the ancestors. A row rule resolves as follows: a role''s own rule for a table stands;
+    otherwise the rules found anywhere among its ancestors are ORed, and a parent with no rule contributes
+    nothing, so adding a parent never lifts a row rule; a role with no rule anywhere among its ancestors
+    is unrestricted, as before. Write-grant row conditions resolve the same way. A property (rate limit,
+    row limit, session variables) is the role''s own, else the first ancestor''s that sets it, depth-first
+    in declared parent order. (Amended 2026-10-25, STANDARD ROLES REACH NO DOMAIN:) [SUPERSEDED by REQ-2155,
+    2026-10-25 -- reach is not inherited; every role, standard roles included, states its own. Kept here
+    for history; do not implement against it.] A standard role carries no domain reach: domain reach is
+    a union over ancestors, so a standard role reaching a domain would hand it to every role built on it.
+    An organisation''s own child roles carry the reach (a Finance steward is a child of Data steward reaching
+    finance). [END SUPERSEDED BLOCK] (Amended 2026-10-25, REACH IS THE ROLE''S OWN; ORG OPERATOR:) Every
+    role states its own domain reach, ALL or a list of domains, and reach is not inherited: a role inherits
+    its parents'' capabilities, and its own reach says where they apply. Standard roles, Org admin and Sandbox
+    reach ALL; a domain-specific role (a Finance steward, child of Data steward) states its own list. Giving
+    a role reach follows REQ-1531: the caller must reach every domain it adds, so a security admin for a
+    domain gives reach to that domain only. A standard Org operator role holds org settings, observability
+    and the approval of views and relationships; Org admin and Sandbox inherit it. Sandbox is the union
+    of Developer, Data product owner, Data quality steward, Source admin, Security admin, Data steward and
+    Org operator. Data steward''s parents are Security admin and Analyst, and it adds glossary editing,
+    relationships, data product editing and full results. Environment data stays Org admin''s alone (REQ-1942).
+    (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements,
+    not a feature: the earlier rules let a capability or a default reveal or reach more than a role''s grants.
+    It is resolved before the product is declared green. (Amended 2026-10-25, SANDBOX DOES NOT INHERIT DEVELOPER:)
+    The sandbox role does not inherit Developer, because Developer carries the right to manage environments
+    it owns and a sandbox visitor never manages environments (REQ-2053). Sandbox inherits Analyst, Data
+    product owner, Data quality steward, Source admin, Security admin, Data steward and Org operator, and
+    holds creating views, creating relationships, full results, write and environment switching as its own
+    capabilities. Reading an environment''s synthetic-data report, profile runs and relationships is admitted
+    to the owner of that environment who can switch into it; creating or deleting an environment stays with
+    managing environments (own or any). (Amended 2026-10-28, DATA BUYER:) Viewer, the base, reads the catalog
+    and the glossary. A standard Data buyer role is Viewer plus reading data products and requesting them
+    (REQ-2180). Data product owner, Data steward and Org admin hold reading data products as their own capability,
+    not by inheriting Data buyer, so the sample rules targeted at Data buyer (REQ-2158) never reach them.
+    The data products page, data_products_meta and every other surface that lists products show them only
+    to a role holding that capability. (Amended 2026-10-28, DATA BUYER:) Viewer, the base, reads the catalog
+    and the glossary. A standard Data buyer role is Viewer plus reading data products and requesting them
+    (REQ-2180). Data product owner, Data steward and Org admin hold reading data products as their own capability,
+    not by inheriting Data buyer, so the sample rules targeted at Data buyer (REQ-2158) never reach them.
+    The data products page, data_products_meta and every other surface that lists products show them only
+    to a role holding that capability. Inheriting Viewer gives Data buyer no data: a standard role carries
+    capabilities, never grants, so over any connection a user acting as Data buyer reads only what Data
+    buyer is granted, masked and row-ruled as on the page (REQ-1959).'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -89345,7 +89391,74 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     settable only through the API or a file. (Amended 2026-10-27, A CONTRACT''S SECTIONS ARE EXPANDING ROWS:)
     2026-10-28: each contract presents its ODCS sections as expanding rows (Fundamentals, Schema, Quality,
     SLA, Support and team, Servers, Pricing, Custom properties and tags), collapsed to a one-line summary
-    until opened; the same rows, in the same order, hold the editing of each section in the product''s form.'
+    until opened; the same rows, in the same order, hold the editing of each section in the product''s form.
+    (Amended 2026-10-28, A CONTRACT''S SCHEMA IS ITS MEMBER''S:) A contract''s schema is its member table''s
+    columns; a contract has no column selection of its own (no "promised columns"). A product that offers
+    a subset of a table makes a view of that subset its member, and the view''s columns are the contract''s
+    schema. (Amended 2026-10-28, A CONTRACT ADVERTISES THE PRODUCT:) A product''s contracts are read-only
+    metadata that advertise it: every role that can see the product sees each contract''s elements, its
+    schema included, whether or not it can read the member''s data. A contract carries no data and grants
+    nothing; reading a member still needs a grant. The product panel''s data quality section keeps REQ-2157''s
+    rule for check results. (Amended 2026-10-28, A PRODUCT''S SAMPLE IS A VIEW EVERY ROLE READS:) Each member
+    of a product may have a sample: [SUPERSEDED by REQ-2158 amendment A SAMPLE IS WHATEVER THE OWNER SUPPLIES,
+    2026-10-28 -- the sample need not be drawn from the member. Kept here for history; do not implement
+    against it.] a view over the member holding a fixed set of rows the owner chose once (not a live limit
+    that can be paged past), with masks on the columns the owner masks, [END SUPERSEDED BLOCK] granted to
+    the standard Viewer role so that every role reads it under its own role, with no role to switch into.
+    [SUPERSEDED by REQ-2158 amendment A SAMPLE DATA PANEL, A TAB PER CONTRACT, 2026-10-28 -- the sample
+    has its own panel. Kept here for history; do not implement against it.] The Contracts panel shows each
+    member''s sample rows beside its schema, and the sample can be queried like any table. [END SUPERSEDED
+    BLOCK] Reading beyond the sample is what a product request (REQ-2180) asks for. (Amended 2026-10-28,
+    A SAMPLE IS WHATEVER THE OWNER SUPPLIES:) [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER
+    AS DATA BUYER READS IT, 2026-10-28 -- the sample is no separate table or view. Kept here for history;
+    do not implement against it.] [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA BUYER
+    READS IT, 2026-10-28 -- the sample is no separate table or view. Kept here for history; do not implement
+    against it.] A member''s sample is any table or view the product owner supplies for it: selected real
+    rows (fixed, masked), faked rows (REQ-1494), synthetic data, or rows uploaded or registered from anywhere.
+    Provisa asks only that it is granted to the Viewer role and named as that member''s sample; how it was
+    made is the owner''s choice. [END SUPERSEDED BLOCK] [END SUPERSEDED BLOCK] (Amended 2026-10-28, A SAMPLE
+    DATA PANEL, A TAB PER CONTRACT:) [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA
+    BUYER READS IT, 2026-10-28 -- a contract has no sample field. Kept here for history; do not implement
+    against it.] [SUPERSEDED by REQ-2158 amendment THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT, 2026-10-28
+    -- a contract has no sample field. Kept here for history; do not implement against it.] A contract names
+    its sample by one field, the sample view''s name; nothing else is declared. [END SUPERSEDED BLOCK] [END
+    SUPERSEDED BLOCK] The product page has an expanding Sample Data panel, presented like the lineage panel,
+    with one tab per contract showing that contract''s sample view rows. The sample can be queried like
+    any table. (Amended 2026-10-28, A CONTRACT''S PROFILE IN THE SAMPLE DATA PANEL:) Each contract''s Sample
+    Data tab also shows its member''s latest profile, split by what a result kind holds. Value-free results
+    describe a column''s structure and never its values, so they are shown for every column of the contract
+    to every role that sees the product: the run (when, sample method, row counts, freshness), each column''s
+    shape (data type, family, null share, distinct ratio, length range), plausible type, classifications
+    (how many sampled values passed a test, so a buyer learns that a column holds national ids), fanout,
+    correlations, dependencies, and constraint and duplicate rows that hold no values. Value-bearing results
+    hold values of the column (quantiles, histogram, top values, shapes, fits, fit quality, joint counts,
+    min, max and the moments, and value-bearing drift, constraint and duplicate rows); they are shown for
+    a column only when that column is served unmasked to the Viewer role, which is how the owner opts a
+    column in. The Terrain view draws ridges only for those columns, as it already omits restricted ones
+    (REQ-2123). A contract may also name a profile view, a view over the member''s profile results granted
+    to Viewer (for example bucketing top values or rounding min and max); when named, the tab shows the
+    profile from that view instead. The split is the profiler''s own (provisa/profiler/governance.py). (Amended
+    2026-10-28, THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT:) A member''s sample is the member itself
+    as the Data buyer role (REQ-2155) reads it: the owner grants its columns to Data buyer, gives each column''s
+    mask list an entry for Data buyer (fake, truncate, regex, constant, or none), and gives Data buyer a
+    row rule selecting a fixed subset (for example a hash of the key modulo 100 equal to 0), which paging
+    cannot get past. The Sample Data tab of each contract queries its member as Data buyer. Wherever this
+    requirement''s sample and profile rules name the Viewer role, they mean Data buyer: value-bearing profile
+    results are shown for a column served unmasked to Data buyer, and a profile view is granted to Data
+    buyer. A Derive sample action on a contract proposes the Data buyer masks (from the profiler''s classifications)
+    and row rule for the owner to edit and save; the docs give guidance (columns that identify someone in
+    combination, small tables, keys that must fake consistently for samples to join) and Provisa adds no
+    checks. (Amended 2026-10-28, THE SAMPLE IS THE MEMBER AS DATA BUYER READS IT:) A member''s sample is
+    the member itself as the Data buyer role (REQ-2155) reads it: the owner grants its columns to Data buyer,
+    gives each column''s mask list an entry for Data buyer (fake, truncate, regex, constant, or none), and
+    gives Data buyer a row rule selecting a fixed subset (for example a hash of the key modulo 100 equal
+    to 0), which paging cannot get past. The Sample Data tab of each contract queries its member as Data
+    buyer. Wherever this requirement''s sample and profile rules name the Viewer role, they mean Data buyer:
+    value-bearing profile results are shown for a column served unmasked to Data buyer, and a profile view
+    is granted to Data buyer. A Derive sample action on a contract proposes the Data buyer masks (from the
+    profiler''s classifications) and row rule for the owner to edit and save; the docs give guidance (columns
+    that identify someone in combination, small tables, keys that must fake consistently for samples to
+    join) and Provisa adds no checks.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -90190,7 +90303,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
     the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
     lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
-    selected. The separate term graph and product graph implementations are replaced by these presets.'
+    selected. The separate term graph and product graph implementations are replaced by these presets. (Amended
+    2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
+    1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
+    page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
+    with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
+    one graph has optional layers for a product''s commands, its quality checks, links to other products
+    and product lineage, off by default in snippets and available in the full view.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -90516,7 +90635,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     after last use lapses (a deployment setting, default 7 days), or when the principal''s rights change.
     Every client lists its labels and relationship types (db.labels and db.relationshipTypes include them).
     A SQL temporary table keeps PostgreSQL''s per-connection scope (REQ-615); only the graph session is
-    the principal''s.'
+    the principal''s. (Amended 2026-10-27, GOVERNED MERGE ON MODEL DATA:) 2026-10-28, maintainer decision:
+    MERGE of a model node or of a registered junction relationship is a governed write: it matches on the
+    given properties (a node on its label''s key or the stated properties, a relationship on its two ends
+    and its type) and creates only when nothing matches, each part through the governed write path (write
+    grants, row rules); ON CREATE SET and ON MATCH SET apply to the part they name. MERGE of a foreign-key
+    relationship is refused by name. MERGE of session objects is unchanged.'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
@@ -90631,6 +90755,96 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-1387
   - REQ-2177
+  stakeholders:
+  - data-steward
+- id: REQ-2179
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'The glossary''s Generate with AI menu gains From a document: a steward provides a document
+    (PDF, Word, Markdown, HTML) and the glossary proposes the concepts it defines and uses (business concepts,
+    roles, organization types, policies, processes, regulations), never named individuals (a particular
+    person, company or policy edition). Within the document, mentions of one concept are resolved into one
+    candidate term, its variants (case, plural, articles, abbreviations, references such as "as defined
+    in Section 2") proposed as synonyms; one word used with two meanings in different sections becomes two
+    candidates, each scoped by its passages. An explicit definition ("X means ...", a definitions section)
+    is the primary definition; other explanations are kept as supporting passages; with no explicit definition
+    a synthesized one is proposed, marked synthesized and listing every passage it drew from; explanations
+    that cannot both be true are shown side by side, never blended. Every proposal keeps its source passages
+    (document, section or page, quoted text). Candidates are then matched against the glossary''s terms
+    and synonyms and proposed as merges or synonyms rather than duplicates, and handed to the existing Generate
+    Relationships action. Everything lands as draft in a review queue the steward works through (accept,
+    edit, merge, reject, bulk accept), run by Polly under the org''s AI settings and the role''s LLM budget
+    (REQ-1174). The existing Generate Definitions and Generate Relationships actions likewise produce drafts.
+    (Amended 2026-10-27, FIND TERMS IN A DOCUMENT, BY FILE OR URL:) 2026-10-28: the menu item is ''Find
+    terms in a document''. The document is given as a file or as an http(s) URL, since many policies and
+    regulations are published as web pages; a URL is fetched once and its content treated as the document,
+    its source passages citing the URL. A later step, not part of this requirement, may follow links from
+    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960).'
+  scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
+    and "CX" elsewhere
+    When a steward runs From a document
+    Then one draft term Client is proposed with the definitions-section text as its definition, "customer" and "CX" as
+    proposed synonyms, each with its source passage
+    And if the glossary already holds Customer, a merge into it is proposed instead of a duplicate'
+  related_reqs:
+  - REQ-1387
+  - REQ-1174
+  stakeholders:
+  - data-steward
+
+- id: REQ-2180
+  value: 'Requesting a data product is how a consumer asks for access to it.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: MUST
+  type: behavioral
+  description: 'A data product organises an access request. A role that can see a product but cannot read
+    its members requests the product; the request names the requesting role and the product and goes to
+    the product''s owner role. The owner role approves or declines it. Approval grants the requesting role
+    read on the product''s member tables, through the same grants a steward writes by hand (REQ-2154); declining
+    grants nothing. Requests and their outcomes are listed for the owner role and the requester, and the
+    grants an approval wrote are visible as ordinary grants. (Amended 2026-10-28, THE REQUEST NAMES ONE
+    OF THE REQUESTER''S ROLES:) A user browses and requests as Data buyer (REQ-2155), and the request names
+    one of the user''s own roles, not Data buyer. Approval grants that role read on the member tables. That
+    role does not inherit Data buyer, so the sample masks and row rule targeted at Data buyer do not reach
+    it: acting as it, the user reads the members under its own grants, masks and row rules. (Amended 2026-10-28,
+    THE REQUEST NAMES ONE OF THE REQUESTER''S ROLES:) A user browses and requests as Data buyer (REQ-2155),
+    and the request names one of the user''s own roles, not Data buyer. Approval grants that role read on
+    the member tables. That role does not inherit Data buyer, so the sample masks and row rule targeted
+    at Data buyer do not reach it: acting as it, the user reads the members under its own grants, masks
+    and row rules. (Amended 2026-10-28, AN ACCESS REQUEST NAMES A ROLE THAT EXISTS; A ROLE REQUEST COMES
+    FIRST:) A product request is one kind of access request: an access request names a role the requester
+    already holds and asks for read on a set of tables, and a product request''s tables are the product''s
+    members, approved by the product''s owner role. A requester with no suitable role (one holding only
+    Data buyer) first files a role request: a proposed role name, sent to a security admin or org admin,
+    whose approval creates the role and assigns it to the requester and grants nothing. A product request
+    may be drafted attached to a pending role request, but it is sent to the owner only once that role exists;
+    if the role request is declined, the draft ends. Each approver writes only what its own role may write:
+    the owner never creates roles. Later requests name the same role, so a buyer''s purchases accumulate
+    under it. A marketplace is then: give a person Data buyer, they request a role and then a product, and
+    once both are approved they query as that role. (Amended 2026-10-28, THE OWNER JUDGES THE ROLE''S BREADTH:)
+    An access request shows its approver the named role''s breadth: the users holding it (count and list)
+    and any rule that assigns it. Declining always carries a reason. One standard reason, the role is too
+    broad, declines and hands the requester a prefilled role request with this access request attached as
+    its draft, so the narrower path is one step. Other reasons are free text. Provisa does not judge breadth
+    itself; the approver does.'
+  scenario: 'Given a role that sees product P but holds no grant on its member tables
+    When it requests P and P''s owner role approves
+    Then the role holds read grants on each member table of P and can query them
+    And had the owner declined, the role would hold no new grant'
+  related_reqs:
+  - REQ-2158
+  - REQ-2153
+  - REQ-2154
+  - REQ-1634
   stakeholders:
   - data-steward
 

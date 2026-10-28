@@ -26,6 +26,7 @@ it is a member of, REQ-2157), has none.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from provisa.core.models import FIRST_CONTRACT_VERSION, ContractColumn, DataContract
@@ -46,7 +47,14 @@ def draft(column_types: dict[str, str]) -> DataContract:
     return DataContract(
         version=FIRST_CONTRACT_VERSION,
         columns=[ContractColumn(name=name, type=t) for name, t in column_types.items()],
+        created_at=datetime.now(timezone.utc),
     )
+
+
+def created_as(previous: DataContract, contract: DataContract) -> DataContract:
+    """``contract`` replacing ``previous``, created when ``previous`` was (REQ-2118): a new version
+    is the same contract, so its contractCreatedTs is never reset by a save."""
+    return contract.model_copy(update={"created_at": previous.created_at})
 
 
 def as_stored(cid: str, contract: DataContract) -> DataContract:
@@ -128,8 +136,12 @@ def for_save(
     )
     if declared is not None:
         declared = as_stored(cid, declared)
-    contract = declared or previous or draft(column_types)
     if previous is not None and declared is not None:
         require_new_version(cid, previous, declared)
+        declared = created_as(previous, declared)
+    elif declared is not None and declared.created_at is None:
+        # A contract declared for a new member is created by this save.
+        declared = declared.model_copy(update={"created_at": datetime.now(timezone.utc)})
+    contract = declared or previous or draft(column_types)
     require_provided(cid, contract, column_types)
     return contract

@@ -28,7 +28,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
-from provisa.api.metadata_export.governance import build_governance_tags
+from provisa.api.metadata_export.governance import build_governance_tags, table_readers
 from provisa.api.metadata_export.model import (
     ColumnAsset,
     DataProductAsset,
@@ -44,6 +44,7 @@ from provisa.api.metadata_export.model import (
     ModelTag,
     OwnerRef,
     RelationshipEdge,
+    ServingEndpoints,
     SourceAsset,
     TableAsset,
 )
@@ -65,7 +66,7 @@ from provisa.api.metadata_export.refs import (
 )
 from provisa.core.derived_tags import derived_tags_for_table
 from provisa.core.glossary import term_grounding
-from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
+from provisa.core.models import SYSTEM_TAG_IDS, SYSTEM_TAGS, ProvisaConfig, Table, TagAssignment
 from provisa.dq.contract import (
     CHECKERS,
     check_definition,
@@ -129,7 +130,15 @@ def _column_asset(table: Table, column, org_id: str | None) -> ColumnAsset:
         description=column.description or "",
         aliases=(column.alias,) if column.alias else (),
         semantic_uri=column_uri(org_id, table, column.name, column.alias),
+        subtype=column.subtype,  # REQ-2171
     )
+
+
+def _unique_keys(table: Table) -> tuple[tuple[str, ...], ...]:  # REQ-1093, REQ-2118
+    """The table's declared UNIQUE constraints, then each alternate key column on its own."""
+    keys = [tuple(u.columns) for u in table.unique_constraints]
+    keys += [(c.name,) for c in table.columns if c.is_alternate_key and (c.name,) not in keys]
+    return tuple(keys)
 
 
 def _table_assets(
@@ -138,8 +147,10 @@ def _table_assets(
     technical_columns: frozenset[tuple[tuple[str, ...], str]],
     product_ids: dict[tuple[str, ...], str | None],
     source_ttls: Mapping[str, int | None] | None = None,
+    readers: Mapping[tuple[str, ...], tuple[str, ...]] | None = None,
 ) -> list[TableAsset]:
     source_ttls = source_ttls or {}
+    readers = readers or {}
     return [
         TableAsset(
             ref=table_ref(table),
@@ -166,6 +177,9 @@ def _table_assets(
             ),
             is_view=table.view_sql is not None,
             contract=table.contract,  # REQ-2158
+            unique_keys=_unique_keys(table),
+            readers=readers.get(table_ref(table).parts, ()),
+            writers=tuple(sorted({grant.role for grant in table.write_grants})),
         )
         for table in tables
     ]
@@ -717,6 +731,7 @@ def build_snapshot(
     documentation_base_url: str | None = None,
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
+    endpoints: ServingEndpoints | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -734,6 +749,7 @@ def build_snapshot(
     ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
     caller: a data product's owners are its owner role's holders, its team its team role's.
     ``product_created`` is when each product was created, by product id, read by the caller.
+    ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -778,6 +794,7 @@ def build_snapshot(
         technical_columns,
         product_ids,
         {source.id: source.cache_ttl for source in config.sources},
+        table_readers(config),
     )
     relationships = [
         edge
@@ -836,4 +853,8 @@ def build_snapshot(
         glossary_edges=glossary_edges,
         glossary_axioms=_glossary_axioms(glossary, glossary_terms),
         assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}, contexts),
+        sensitive_tags=frozenset(
+            tag.id for tag in (*SYSTEM_TAGS, *config.tags) if tag.sensitive
+        ),  # REQ-1943
+        endpoints=endpoints,
     )

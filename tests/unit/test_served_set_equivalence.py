@@ -49,6 +49,17 @@ from provisa.compiler.stage2 import build_governance_context
 from provisa.security.rights import compute_meta_row_scope
 from provisa.security.visibility import visible_tables
 
+
+def _field(t: dict) -> str:
+    """A table's root field name, as the schema build names an ops table (REQ-2163: op_)."""
+    from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, system_schema_names
+
+    name = f"t{t['id']}"
+    if t["domain_id"] in SYSTEM_SCHEMA_GQL_PREFIX:
+        return system_schema_names(t["domain_id"], name)[0]
+    return name
+
+
 _IMPLICIT = {"meta"}
 
 
@@ -262,8 +273,8 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
     ctx.tables = {
         f"t{t['id']}": TableMeta(
             table_id=t["id"],
-            field_name=f"t{t['id']}",
-            type_name=f"T{t['id']}",
+            field_name=_field(t),
+            type_name=_field(t).capitalize(),
             source_id=t["source_id"],
             catalog_name="c",
             schema_name=t["schema_name"],

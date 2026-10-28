@@ -19,8 +19,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence  # noqa: F401
 
 from provisa.compiler.naming import (
+    bare_field_name,
     junction_field_name,
     rel_field_name as _rel_field_name,
+    unprefixed_field_name,
     source_to_catalog,
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
@@ -222,7 +224,9 @@ def _join_field_name(  # REQ-194, REQ-1586
             via_table_name=via_info.table_name,
             cypher_alias=rel.get("alias"),
         )
-    return _rel_field_name(tgt_info.field_name, rel["cardinality"])
+    return _rel_field_name(
+        unprefixed_field_name(tgt_info.field_name, tgt_info.domain_id), rel["cardinality"]
+    )
 
 
 def _build_junction_meta(  # REQ-1586
@@ -516,7 +520,7 @@ def _register_ops_synthetic_joins(
             table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
             domain_id=ops_t.domain_id,
         )
-        _base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
+        _base = bare_field_name(ops_t.field_name, ops_t.domain_id)
         join_field = f"_{_base}"
         if meta_rt:
             ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(

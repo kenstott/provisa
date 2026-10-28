@@ -147,36 +147,57 @@ def _rls_tags(
     return tags
 
 
-def build_governance_tags(
-    config: ProvisaConfig, org_id: str | None
-) -> list[GovernanceTag]:  # REQ-1071
-    """Every enforcement fact in the config, as catalog tags."""
+def _role_definitions(config: ProvisaConfig):
+    """``(definitions, chains, all_roles)``: the org's roles -- the standard roles (REQ-2155),
+    which a config may not declare, and the config's own -- each one's chain through the standard
+    roles too (a grant or mask entry reaching a role through a standard ancestor is that role's,
+    REQ-1677), and every role that reaches a domain (a role reaching none, a control-plane role,
+    is no data audience, REQ-1327)."""
     from provisa.core.db import STANDARD_ROLES, standard_role_dicts
     from provisa.security.inheritance import role_chains
-    from provisa.security.rights import served_roles
 
-    # The org's roles: the standard roles (REQ-2155), which a config may not declare, and the
-    # config's own. The tags name every one that reaches a domain -- a role reaching none (a
-    # control-plane role) is no data audience (REQ-1327).
     standard = {
         r["id"]: {**r, "domain_access": list(STANDARD_ROLES[r["id"]].domain_access)}
         for r in standard_role_dicts()
     }
     definitions = {**standard, **{role.id: role.model_dump() for role in config.roles}}
     all_roles = tuple(sorted(r for r, d in definitions.items() if d["domain_access"]))
-    # Every role's chain through the standard roles too: a grant or mask entry reaching a role
-    # through a standard ancestor is that role's (REQ-1677).
-    chains = role_chains(definitions.values())
+    return definitions, role_chains(definitions.values()), all_roles
+
+
+def _served(definitions, chains, table, column) -> frozenset[str]:
+    from provisa.security.rights import served_roles
+
+    return served_roles(
+        definitions,
+        chains,
+        table.domain_id,
+        {"visible_to": column.visible_to, "scope": column.scope},
+    )
+
+
+def table_readers(config: ProvisaConfig) -> dict[tuple[str, ...], tuple[str, ...]]:  # REQ-2118
+    """Each table's readers: every data role served at least one of its columns."""
+    definitions, chains, all_roles = _role_definitions(config)
+    readers: dict[tuple[str, ...], tuple[str, ...]] = {}
+    for table in config.tables:
+        served: set[str] = set()
+        for column in table.columns:
+            served |= _served(definitions, chains, table, column)
+        readers[table_ref(table).parts] = tuple(r for r in all_roles if r in served)
+    return readers
+
+
+def build_governance_tags(
+    config: ProvisaConfig, org_id: str | None
+) -> list[GovernanceTag]:  # REQ-1071
+    """Every enforcement fact in the config, as catalog tags."""
+    definitions, chains, all_roles = _role_definitions(config)
     index = TableIndex(config.tables)
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
-            served = served_roles(
-                definitions,
-                chains,
-                table.domain_id,
-                {"visible_to": column.visible_to, "scope": column.scope},
-            )
+            served = _served(definitions, chains, table, column)
             # A mask applies only to a role the column is served to: one not served it reads
             # nothing through the mask, and is named by the visibility tag instead.
             readers = tuple(r for r in all_roles if r in served)

@@ -502,7 +502,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
         "product_id": getattr(table, "product_id", None),  # REQ-1634
-        "contract": contract.model_dump() if contract is not None else None,  # REQ-2158
+        "contract": contract.model_dump(mode="json") if contract is not None else None,  # REQ-2158
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
         "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963

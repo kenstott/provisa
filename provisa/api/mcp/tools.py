@@ -301,7 +301,7 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
     `schema`/`table` are the same semantic names describe_table/list_tables use."""
     require_role(role, state)
     from provisa.api.admin._graphql_field_name import resolve_graphql_field_name
-    from provisa.compiler.naming import apply_gql_name, to_type_name
+    from provisa.compiler.naming import apply_gql_name, table_type_name
     from provisa.grpc.proto_gen import _to_proto_type_name
 
     ctx = state.contexts[role]
@@ -319,7 +319,7 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
     # GraphQL schema compiles — proto_gen.py builds it as `Query` + the GQL type name (PascalCase
     # of table_field) re-cased to proto3 convention (PS__Pets -> PsPets), never independently
     # named. Reusing that exact transform here means this is a real name, not a guess.
-    grpc_type_name = _to_proto_type_name(to_type_name(table_field))
+    grpc_type_name = _to_proto_type_name(table_type_name(table_field, meta.domain_id))
     described = await describe_table(state, role, schema, table)
     return {
         "table_field": table_field,

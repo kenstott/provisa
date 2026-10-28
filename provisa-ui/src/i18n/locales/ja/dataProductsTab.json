@@ -174,7 +174,6 @@
       "column": "列",
       "type": "型",
       "required": "NULL なし",
-      "yes": "はい",
       "versionLabel": "コントラクトのバージョン",
       "statusLabel": "コントラクトのステータス",
       "descriptionLabel": "目的",
@@ -186,7 +185,36 @@
       "slaValue": "値",
       "slaUnit": "単位",
       "slaRemove": "サービスレベルを削除",
-      "slaAdd": "サービスレベルを追加"
+      "slaAdd": "サービスレベルを追加",
+      "notDeclared": "未宣言",
+      "loadError": "契約を読み込めませんでした: {{error}}",
+      "notExported": "{{member}} にはエクスポートされた契約がありません",
+      "section": {
+        "fundamentals": "基本情報",
+        "schema": "スキーマ",
+        "quality": "品質",
+        "sla": "SLA",
+        "support": "サポートとチーム",
+        "servers": "サーバー",
+        "pricing": "価格",
+        "custom": "カスタムプロパティとタグ"
+      },
+      "summary": {
+        "properties_one": "{{count}} 個のプロパティ",
+        "properties_other": "{{count}} 個のプロパティ",
+        "rules_one": "{{count}} 件のルール",
+        "rules_other": "{{count}} 件のルール",
+        "serviceLevels_one": "{{count}} 件のサービスレベル",
+        "serviceLevels_other": "{{count}} 件のサービスレベル",
+        "supportChannels_one": "サポートチャネル {{count}} 件",
+        "supportChannels_other": "サポートチャネル {{count}} 件",
+        "roles_one": "ロール {{count}} 件",
+        "roles_other": "ロール {{count}} 件",
+        "customProperties_one": "カスタムプロパティ {{count}} 件",
+        "customProperties_other": "カスタムプロパティ {{count}} 件",
+        "tags_one": "タグ {{count}} 件",
+        "tags_other": "タグ {{count}} 件"
+      }
     }
   }
 }

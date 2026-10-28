@@ -61,7 +61,7 @@ from provisa.events import queue
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from provisa.api.metadata_export.model import TableAsset
+    from provisa.api.metadata_export.model import ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from provisa.api.metadata_export.model import MetadataSnapshot
@@ -265,6 +265,7 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model)
+    base_url = state.config.mail.base_url if state.config else None
     return build_snapshot(
         model,
         org_id=org_id,
@@ -276,9 +277,34 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         # REQ-1659: the listing's documentation link points back at the product's page, at
         # the org's public origin -- the one mail.base_url names, for the same reason an
         # invitation cannot derive it from the request that created it.
-        documentation_base_url=state.config.mail.base_url if state.config else None,
+        documentation_base_url=base_url,
         owner_emails=owner_emails,
         product_created=product_created,
+        endpoints=serving_endpoints(state, org_id, base_url),
+    )
+
+
+def serving_endpoints(
+    state: Any, org_id: str, base_url: str | None
+) -> "ServingEndpoints | None":  # REQ-2118
+    """Where a consumer reads the org's products: its pgwire and Flight SQL listeners at the
+    server's hostname (a port of 0 is a listener not started), and its GraphQL and REST
+    endpoints under the deployment's base URL. None without a base URL: the deployment names no
+    origin a consumer reaches it at."""
+    from provisa.api.metadata_export.model import ServingEndpoints
+    from provisa.api.org_resolve import DEFAULT_DATABASE
+    from provisa.core import settings_registry
+
+    if not base_url:
+        return None
+    pgwire = settings_registry.value("server.pgwire_port")
+    return ServingEndpoints(
+        hostname=settings_registry.value("server.hostname"),
+        # The database a pgwire client names (catalog_populate.served_database_name).
+        database=org_id if getattr(state, "multitenancy", False) else DEFAULT_DATABASE,
+        http_origin=base_url.rstrip("/"),
+        pgwire_port=pgwire or None,
+        flight_port=settings_registry.value("server.flight_port"),
     )
 
 

@@ -242,7 +242,7 @@ def test_sql_reaches_axioms_and_graphql_and_cypher_do_not():
 
     si = _schema_input()
     fields = set(generate_schema(si).query_type.fields)
-    assert "ont__terms" in fields and not any("axioms" in f.lower() for f in fields)
+    assert "on_terms" in fields and not any("axioms" in f.lower() for f in fields)
     ctx = build_context(si)
     # SQL reads it: the compilation context has it.
     assert any(m.table_name == "_axioms" for m in ctx.tables.values())
