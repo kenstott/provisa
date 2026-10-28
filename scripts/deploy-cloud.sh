@@ -326,23 +326,23 @@ DELETE FROM public.user_profiles WHERE user_id IS NOT NULL;
 DELETE FROM public.orgs WHERE id <> current_setting('provisa.boot_org');
 DO $$
 DECLARE
-  s text;
   boot text := current_setting('provisa.boot_org');
 BEGIN
   -- The bootstrap org's schema stays: startup re-seeds its registry row unconditionally
   -- (provisa/core/schema_admin.py:236-255), so dropping it only makes it reappear empty.
   -- Its tenant-plane role assignments do go, or the wiped accounts keep their grants.
   EXECUTE format('DELETE FROM %I.user_role_assignments WHERE user_id IS NOT NULL', 'org_' || boot);
-  FOR s IN
-    SELECT nspname::text FROM pg_namespace
-     WHERE nspname LIKE 'org\_%'
-       AND nspname <> 'org_' || boot
-       AND nspname <> 'org_' || boot || '_mv_cache'
-  LOOP
-    EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', s);
-  END LOOP;
 END $$;
 COMMIT;
+-- One schema per statement, each its own transaction (psql autocommit + \gexec), as the sandbox
+-- reset does: a sandbox template's schema holds hundreds of views, and dropping every org's schema
+-- in one transaction runs out of locks (max_locks_per_transaction). The orgs rows are already gone,
+-- so a failure part way leaves only schemas a rerun drops.
+SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
+  FROM pg_namespace
+ WHERE nspname LIKE 'org\_%'
+   AND nspname <> 'org_' || current_setting('provisa.boot_org')
+   AND nspname <> 'org_' || current_setting('provisa.boot_org') || '_mv_cache' \gexec
 SQL
   run_sql "$STAGE/reset.sql" reset
 }
