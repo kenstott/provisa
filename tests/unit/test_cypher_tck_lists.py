@@ -275,3 +275,16 @@ def test_a_collect_inside_size_or_head_collects():
     assert _rows(
         "UNWIND [1, 2] AS x RETURN size([y IN collect(x) WHERE y <> null]) AS c, head(collect(x)) AS h"
     ) == [(0, 1)]
+
+
+def test_a_collect_after_a_with_order_by_collects_in_that_order():
+    # WithOrderBy1 [45]: the ORDER BY carried into the ARRAY_AGG, as an engine reading the rows
+    # in parallel keeps no order of its own.
+    query = "UNWIND [3, 1, 2] AS v WITH v ORDER BY v DESC WITH collect(v) AS l RETURN l"
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    assert "ORDER BY" in sql_ast.sql(dialect="postgres").split("ARRAY_AGG(", 1)[1].split(")", 1)[0]
+    con = duckdb.connect()
+    con.execute("SET threads = 8")
+    assert con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall() == [
+        ([3, 2, 1],)
+    ]
