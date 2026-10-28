@@ -1388,18 +1388,26 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             "CALL",
             "UNION",
         }
+        # openCypher's sort directions, the long forms with the short.
+        directions = {"ASC": "ASC", "ASCENDING": "ASC", "DESC": "DESC", "DESCENDING": "DESC"}
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
-            while (
-                (t := self._peek())
-                and t.type != "COMMA"
-                and self._peek_val() not in (_stop_kws | {"ASC", "DESC"})
-            ):
+            depth = 0
+            while t := self._peek():
+                if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
+                    depth += 1
+                elif t.type in ("RBRACKET", "RPAREN", "RBRACE"):
+                    depth -= 1
+                elif depth == 0 and (
+                    t.type == "COMMA" or self._peek_val() in (_stop_kws | set(directions))
+                ):
+                    # A comma or keyword inside a map, list or call is the item's own.
+                    break
                 expr_parts.append(self._advance().value)
             expr = " ".join(expr_parts)
             direction = "ASC"
-            if self._match_keyword("ASC", "DESC"):
-                direction = self._advance().value.upper()
+            if self._peek() and self._peek_val() in directions:
+                direction = directions[self._advance().value.upper()]
             items.append(OrderItem(expression=parse_expression(expr), direction=direction))
             if (_tob := self._peek()) and _tob.type == "COMMA":
                 self._advance()
