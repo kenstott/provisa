@@ -114,6 +114,7 @@
     "unlinkedTables": "In Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: {{tables}}",
     "status_draft": "Entwurf",
     "openAsQueryNoSparql": "Diese Abfrage hat keine SPARQL-Form.",
-    "openAsQuerySparqlRoots": "Jede Wurzel dieser Abfrage ist eine eigene SPARQL-Abfrage: Öffnen Sie das GraphQL, um sie einzeln zu lesen."
+    "openAsQuerySparqlRoots": "Jede Wurzel dieser Abfrage ist eine eigene SPARQL-Abfrage: Öffnen Sie das GraphQL, um sie einzeln zu lesen.",
+    "status_approved": "Freigegeben"
   }
 }

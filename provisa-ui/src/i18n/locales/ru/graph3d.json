@@ -114,6 +114,7 @@
     "unlinkedTables": "Привязан к таблицам, ещё не связанным как одна сущность: {{tables}}",
     "status_draft": "Черновик",
     "openAsQueryNoSparql": "У этого запроса нет формы SPARQL.",
-    "openAsQuerySparqlRoots": "Каждый корень этого запроса — отдельный запрос SPARQL: откройте GraphQL, чтобы прочитать их по одному."
+    "openAsQuerySparqlRoots": "Каждый корень этого запроса — отдельный запрос SPARQL: откройте GraphQL, чтобы прочитать их по одному.",
+    "status_approved": "Утверждён"
   }
 }

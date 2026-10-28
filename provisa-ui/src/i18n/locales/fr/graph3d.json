@@ -114,6 +114,7 @@
     "unlinkedTables": "Ancré dans des tables pas encore liées comme la même entité : {{tables}}",
     "status_draft": "Brouillon",
     "openAsQueryNoSparql": "Cette requête n'a pas de forme SPARQL.",
-    "openAsQuerySparqlRoots": "Chaque racine de cette requête est sa propre requête SPARQL : ouvrez le GraphQL pour les lire une à une."
+    "openAsQuerySparqlRoots": "Chaque racine de cette requête est sa propre requête SPARQL : ouvrez le GraphQL pour les lire une à une.",
+    "status_approved": "Approuvé"
   }
 }

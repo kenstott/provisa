@@ -114,6 +114,7 @@
     "unlinkedTables": "Verankerd in tabellen die nog niet als dezelfde entiteit zijn gekoppeld: {{tables}}",
     "status_draft": "Ontwerp",
     "openAsQueryNoSparql": "Deze query heeft geen SPARQL-vorm.",
-    "openAsQuerySparqlRoots": "Elke root van deze query is een eigen SPARQL-query: open de GraphQL om ze een voor een te lezen."
+    "openAsQuerySparqlRoots": "Elke root van deze query is een eigen SPARQL-query: open de GraphQL om ze een voor een te lezen.",
+    "status_approved": "Goedgekeurd"
   }
 }

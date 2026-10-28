@@ -687,7 +687,7 @@
       "retire_on_invalid": "计划的停用日期 {{retire_on}} 不是日期（请使用 YYYY-MM-DD）。",
       "successor_is_self": "术语不能成为自己的继任者。",
       "successor_retired": "继任者“{{successor}}”已停用。请选择一个仍在使用的术语。",
-      "status_by_action": "术语的状态通过“弃用”“停用”或“恢复”更改，每项都需要原因。",
+      "status_by_action": "术语的状态通过“批准”“弃用”“停用”或“恢复”来改变。",
       "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
       "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
       "no_retirement_history": "模型的历史中没有该术语的停用记录。",
@@ -697,8 +697,18 @@
         "class_and_attribute_table": "表 {{table}} 没有类：它的概念是该术语，而该术语拥有不是键的列（{{columns}}）。",
         "tag_wrong_kind": "该术语带有只有属性才会传给其列的标签（{{tags}}）；它是 {{role}}。",
         "retirement_blocked": "该术语原定于 {{retire_on}} 停用，但仍有数据。请指定接收数据的继任者后再停用。",
-        "no_data": "该概念未连接到任何拥有数据的术语。"
-      }
+        "no_data": "此草稿概念未连接到任何持有数据的术语。",
+        "approved_not_grounded": "此术语已批准，但未到达任何数据，因此没有智能体能看到它。",
+        "path_pending": "已锚定 · 路径待批准：它只经过尚未批准的术语到达数据。",
+        "path_pending_approve": "已锚定 · 路径待批准：批准 {{approve}} 后它即锚定。"
+      },
+      "term_not_approved": "只有已批准的术语才能弃用；此术语为 {{status}}。",
+      "term_not_draft": "只有草稿术语才能批准；此术语为 {{status}}。",
+      "definition_required": "批准前请先为术语添加定义。",
+      "not_bulk_approvable": "只有已定义且已锚定的草稿术语才能一起批准；以下不符合：{{terms}}。",
+      "term_ids_required": "请指定要批准的术语。",
+      "impact_action": "该操作没有预览。",
+      "impact_table_required": "绑定指定一张表或其中的一列。"
     },
     "tag": {
       "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",

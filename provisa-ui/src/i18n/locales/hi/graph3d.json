@@ -114,6 +114,7 @@
     "unlinkedTables": "उन तालिकाओं में आधारित जो अभी एक ही एंटिटी के रूप में लिंक नहीं हैं: {{tables}}",
     "status_draft": "ड्राफ़्ट",
     "openAsQueryNoSparql": "इस क्वेरी का कोई SPARQL रूप नहीं है।",
-    "openAsQuerySparqlRoots": "इस क्वेरी का हर रूट अपनी अलग SPARQL क्वेरी है: उन्हें एक-एक करके पढ़ने के लिए GraphQL खोलें।"
+    "openAsQuerySparqlRoots": "इस क्वेरी का हर रूट अपनी अलग SPARQL क्वेरी है: उन्हें एक-एक करके पढ़ने के लिए GraphQL खोलें।",
+    "status_approved": "स्वीकृत"
   }
 }

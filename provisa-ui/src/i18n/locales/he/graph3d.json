@@ -114,6 +114,7 @@
     "unlinkedTables": "מעוגן בטבלאות שעדיין לא קושרו כאותה ישות: {{tables}}",
     "status_draft": "טיוטה",
     "openAsQueryNoSparql": "לשאילתה הזו אין צורת SPARQL.",
-    "openAsQuerySparqlRoots": "כל שורש של השאילתה הזו הוא שאילתת SPARQL משלו: פתחו את ה-GraphQL כדי לקרוא אותן אחת אחת."
+    "openAsQuerySparqlRoots": "כל שורש של השאילתה הזו הוא שאילתת SPARQL משלו: פתחו את ה-GraphQL כדי לקרוא אותן אחת אחת.",
+    "status_approved": "מאושר"
   }
 }

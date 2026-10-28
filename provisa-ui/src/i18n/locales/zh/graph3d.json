@@ -114,6 +114,7 @@
     "unlinkedTables": "锚定在尚未关联为同一实体的表上：{{tables}}",
     "status_draft": "草稿",
     "openAsQueryNoSparql": "此查询没有 SPARQL 形式。",
-    "openAsQuerySparqlRoots": "此查询的每个根都是一个单独的 SPARQL 查询：请打开 GraphQL 逐个读取。"
+    "openAsQuerySparqlRoots": "此查询的每个根都是一个单独的 SPARQL 查询：请打开 GraphQL 逐个读取。",
+    "status_approved": "已批准"
   }
 }

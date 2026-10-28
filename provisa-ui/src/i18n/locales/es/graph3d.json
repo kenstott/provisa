@@ -114,6 +114,7 @@
     "unlinkedTables": "Anclado en tablas aún no vinculadas como la misma entidad: {{tables}}",
     "status_draft": "Borrador",
     "openAsQueryNoSparql": "Esta consulta no tiene forma SPARQL.",
-    "openAsQuerySparqlRoots": "Cada raíz de esta consulta es su propia consulta SPARQL: abra el GraphQL para leerlas una por una."
+    "openAsQuerySparqlRoots": "Cada raíz de esta consulta es su propia consulta SPARQL: abra el GraphQL para leerlas una por una.",
+    "status_approved": "Aprobado"
   }
 }

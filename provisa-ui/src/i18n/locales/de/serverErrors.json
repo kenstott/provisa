@@ -687,7 +687,7 @@
       "retire_on_invalid": "Das geplante Ausmusterungsdatum {{retire_on}} ist kein Datum (verwenden Sie JJJJ-MM-TT).",
       "successor_is_self": "Ein Begriff kann nicht sein eigener Nachfolger sein.",
       "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie einen Begriff, der in Gebrauch ist.",
-      "status_by_action": "Der Status eines Begriffs ändert sich über Veralten, Ausmustern oder Wiederherstellen, jeweils mit einem Grund.",
+      "status_by_action": "Der Status eines Begriffs ändert sich über Freigeben, Als veraltet markieren, Außer Dienst stellen oder Wiederherstellen.",
       "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
       "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
       "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs.",
@@ -697,8 +697,18 @@
         "class_and_attribute_table": "Die Tabelle {{table}} hat keine Klasse: Ihr Konzept ist dieser Begriff, der Spalten hat, die keine Schlüssel sind ({{columns}}).",
         "tag_wrong_kind": "Dieser Begriff trägt Tags ({{tags}}), die nur eine Eigenschaft an ihre Spalten weitergibt; er ist eine {{role}}.",
         "retirement_blocked": "Dieser Begriff sollte am {{retire_on}} ausgemustert werden, hat aber noch Daten. Mustern Sie ihn mit einem Nachfolger aus, der sie übernimmt.",
-        "no_data": "Dieses Konzept ist mit keinem Begriff verbunden, der Daten hat."
-      }
+        "no_data": "Dieses Entwurfskonzept ist mit keinem Begriff verbunden, der Daten enthält.",
+        "approved_not_grounded": "Dieser Begriff ist freigegeben, erreicht aber keine Daten, daher sieht ihn kein Agent.",
+        "path_pending": "Verankert · Pfad wartet auf Freigabe: Er erreicht Daten nur über noch nicht freigegebene Begriffe.",
+        "path_pending_approve": "Verankert · Pfad wartet auf Freigabe: Die Freigabe von {{approve}} verankert ihn."
+      },
+      "term_not_approved": "Nur ein freigegebener Begriff kann als veraltet markiert werden; dieser ist {{status}}.",
+      "term_not_draft": "Nur ein Entwurf kann freigegeben werden; dieser ist {{status}}.",
+      "definition_required": "Geben Sie dem Begriff eine Definition, bevor Sie ihn freigeben.",
+      "not_bulk_approvable": "Nur definierte, verankerte Entwürfe werden gemeinsam freigegeben; nicht: {{terms}}.",
+      "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
+      "impact_action": "Für diese Aktion gibt es keine Vorschau.",
+      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
     },
     "tag": {
       "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",

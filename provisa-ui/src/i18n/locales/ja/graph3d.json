@@ -114,6 +114,7 @@
     "unlinkedTables": "同一エンティティとしてまだリンクされていないテーブルに基づいています: {{tables}}",
     "status_draft": "下書き",
     "openAsQueryNoSparql": "このクエリには SPARQL 形式がありません。",
-    "openAsQuerySparqlRoots": "このクエリの各ルートはそれぞれ別の SPARQL クエリです。1 つずつ読むには GraphQL を開いてください。"
+    "openAsQuerySparqlRoots": "このクエリの各ルートはそれぞれ別の SPARQL クエリです。1 つずつ読むには GraphQL を開いてください。",
+    "status_approved": "承認済み"
   }
 }
