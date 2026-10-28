@@ -42,4 +42,8 @@
     what the engines and their drivers hold; its nanosecond property is its microseconds times
     1000."
   # Each example sends a value with nanoseconds (4123 ns, 4 ns) and asserts it comes back whole.
+  # Only that difference is this group's: the answer must be the value sent with its digits below
+  # the microsecond as zeros, so any other difference -- an offset on a local time, say -- stays a
+  # failure.
+  reason: "assert '(?P<a>[^']*?)000(?P<z>[^']*)' == '(?P=a)\\d{3}(?P=z)'|assert '(?P<d>P[^']*T\\d+)S' == '(?P=d)\\.\\d{9}S'"
   case: "test_temporal_types_example::test_(datetime|time|local_datetime|local_time|duration_example)$"
