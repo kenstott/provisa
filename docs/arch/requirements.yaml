@@ -89164,7 +89164,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     its schema (each object, and each property''s name, logical and physical type, required, unique, primary
     key, classification, description and examples), its quality rules, its SLA properties, its support channels,
     team and roles, its servers, its pricing, its custom properties and tags. The Contracts panel presents
-    them compactly: a schema table''s rows are a single line of text in height, with no extra vertical space.'
+    them compactly: a schema table''s rows are a single line of text in height, with no extra vertical space.
+    (Amended 2026-10-27, EVERY CONTRACT ELEMENT IS EDITED IN THE PRODUCT:) 2026-10-28: every ODCS element
+    a contract holds is edited in the data product''s own form, beside where the Contracts panel shows it;
+    elements Provisa derives (a property''s physical type, required and key from the member table, quality
+    rules from its checks) are shown there as derived and edited where they are declared. No element is
+    settable only through the API or a file.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
