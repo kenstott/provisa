@@ -33,7 +33,7 @@ from graphql import (
 )
 
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
-from provisa.compiler.naming import apply_gql_name, to_type_name
+from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, apply_gql_name, to_type_name
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
     column_type_to_graphql,
@@ -129,7 +129,10 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             gql_type = nested_type
         elif object_fields and meta.data_type in ("json", "jsonb"):
             _type_prefix = ""
-            if "__" in table.type_name:
+            if table.domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+                # REQ-2163: a system schema's object types carry its prefix as its table types do.
+                _type_prefix = SYSTEM_SCHEMA_GQL_PREFIX[table.domain_id].upper() + "_"
+            elif "__" in table.type_name:
                 _type_prefix = table.type_name.split("__", 1)[0] + "__"
             gql_type: GraphQLOutputType = _build_object_type(
                 col_name, object_fields, override, _obj_registry, _type_prefix
