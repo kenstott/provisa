@@ -88750,7 +88750,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     as of the model-store commit before its retirement, read from the environment''s repository. (Amended
     2026-10-27, STATUS AND GROUNDING ARE SHOWN APART:) 2026-10-28: the page shows a term''s human-set status
     (draft, approved, deprecated, retired) and its computed grounding (not grounded, grounded draft, grounded
-    final) as separate chips, each filterable (REQ-1387, STATUS IS HUMAN, GROUNDING IS COMPUTED).'
+    final) as separate chips, each filterable (REQ-1387, STATUS IS HUMAN, GROUNDING IS COMPUTED). (Amended
+    2026-10-27, A STEWARD SEES THE IMPACT OF EACH ACTION:) 2026-10-28: before a steward approves, retires
+    or binds a term, the page previews what it changes: how many terms become grounded, pending or not grounded,
+    and how many relations agents gain or lose a path to (e.g. ''Approving Region makes 3 terms grounded
+    and gives agents a path to 2 more tables''). A stewardship summary shows the terms agents can see, the
+    ~grounded terms each waiting on one approval, and the approved terms that reach no data.'
   use_case: >-
     A curator withdraws a term on a schedule and in one act, with its data carried to the term that
     replaces it and a record of why, while consumers see one status everywhere.
