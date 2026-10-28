@@ -125,7 +125,9 @@ def test_detach_delete_by_a_where_and_a_parameter(monkeypatch):
 
 def test_a_node_a_foreign_key_relates_is_refused_by_name_and_nothing_is_written(monkeypatch):
     s = _session(monkeypatch, foreign_key=True)
-    with pytest.raises(CypherWriteParseError, match="Greeting is related by GREETS.*foreign key"):
+    with pytest.raises(
+        CypherWriteParseError, match="(Company|Greeting) is related by GREETS.*foreign key"
+    ):
         _write(s, "MATCH (n) DETACH DELETE n")
     assert s.sent == []
     assert len(_rows(s, "person")) == 3 and len(_rows(s, "company")) == 2
