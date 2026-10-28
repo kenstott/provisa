@@ -45,6 +45,6 @@ Both agents read `.claude/refs/prose-quality.md` before acting. The PostToolUse 
 
 After confirming a bug (reproduced or root-caused): use the `github-issue` skill (`.claude/skills/github-issue/SKILL.md`) to deduplicate and file. Never create an issue for an unverified bug.
 
-## Swarm Mode & Teammate Spawning
+## Swarm Mode: one job, one agent
 
 @.claude/refs/swarm-mode.md
