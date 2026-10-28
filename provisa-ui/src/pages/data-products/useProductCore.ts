@@ -13,9 +13,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { metaReader } from "../../components/graph3d/useProductGraph";
 import type { DataProduct } from "../../types/admin";
-import type { MetaReader } from "../../api/metaGraph";
+import { metaReader, type MetaReader } from "../../api/metaGraph";
 import { loadProductCore, loadProducts, type ProductCore } from "./productCore";
 
 interface Read<T> {

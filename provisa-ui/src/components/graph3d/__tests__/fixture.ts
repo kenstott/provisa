@@ -10,7 +10,8 @@
 
 // REQ-2128: a data product's graph, as the meta domain gives it, for the graph's tests.
 
-import type { GraphData } from "../graphModel";
+import type { GraphData, GraphScope, LayerDef, LayerId, Preset } from "../graphModel";
+import { NEIGHBOURHOOD } from "../neighbourhood";
 
 // A product with member tables, a command, a checker, a profile run, a tag, glossary terms bound to
 // member columns, a relationship inside and one outside, and upstream lineage.
@@ -97,4 +98,56 @@ const INFO: Record<string, Partial<GraphData["nodes"][number]>> = {
 export const FACTS: GraphData = {
   nodes: DATA.nodes.map((n) => ({ ...n, ...INFO[n.id] })),
   edges: DATA.edges,
+};
+
+// The engine (graphModel's visibleGraph) under a scope that uses every part of it: each kind of
+// node and edge its own layer, columns folding into their tables. The ontology's scope
+// (ONTOLOGY_SCOPE) is one such scope; this one exercises what that one leaves off.
+const ENGINE_LAYERS = {
+  products: { nodes: ["product", "domain"], edges: ["in_domain", "product_link"] },
+  tables: { nodes: ["table"], edges: ["member", "has_column"] },
+  commands: { nodes: ["command"], edges: ["command"] },
+  quality: { nodes: ["checker", "profile"], edges: ["checks", "profiled"] },
+  tags: { nodes: ["tag"], edges: ["tagged"] },
+  ontology: { nodes: ["term"], edges: ["term_edge", "term_binding"] },
+  relationships: { nodes: [], edges: ["relationship"] },
+  outside: { nodes: [], edges: ["relationship_outside"] },
+  lineage: { nodes: [], edges: ["lineage", "column_lineage"] },
+} satisfies Partial<Record<LayerId, LayerDef>>;
+
+const ENGINE_LAYER_ORDER: LayerId[] = [
+  "products",
+  "tables",
+  "commands",
+  "quality",
+  "tags",
+  "ontology",
+  "relationships",
+  "outside",
+  "lineage",
+];
+
+/** Named layer sets over the engine scope. */
+export const ENGINE_PRESETS = {
+  // Every layer but relationships to tables outside the product.
+  all: { layers: ENGINE_LAYER_ORDER.filter((l) => l !== "outside") },
+  // Terms, their edges, the columns bound to them and the products that own those columns.
+  ontology: { layers: ["ontology", "products"] },
+  // Every product, grouped by domain, joined by data_product_edges.
+  products: { layers: ["products"] },
+} satisfies Record<string, Preset>;
+
+export const ENGINE_SCOPE: GraphScope = {
+  layers: ENGINE_LAYERS,
+  layerOrder: ENGINE_LAYER_ORDER,
+  presets: { ontology: ENGINE_PRESETS.ontology },
+  presetOrder: ["ontology"],
+  hiddenStatuses: [],
+  orphans: false,
+  foldColumns: true,
+  typedKinds: ["term_edge"],
+  betweenDrawn: [],
+  implicitLayers: [],
+  menus: true,
+  neighbourhood: NEIGHBOURHOOD,
 };

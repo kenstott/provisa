@@ -47,7 +47,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
 }));
 
 import { GraphExplorer } from "../../../../components/graph3d/GraphExplorer";
-import { GLOSSARY_SCOPE } from "../../../../components/graph3d/graphModel";
+import { ONTOLOGY_SCOPE } from "../../../../components/graph3d/graphModel";
 
 const extent = (at: Map<string, [number, number, number]>) =>
   Math.max(...[...at.values()].map(([x, y, z]) => Math.hypot(x, y, z)));
@@ -90,8 +90,9 @@ describe("the graph's Attraction slider", () => {
     const view = render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -117,8 +118,9 @@ describe("the graph's Attraction slider", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -134,8 +136,9 @@ describe("the graph's Attraction slider", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -153,8 +156,9 @@ describe("the graph's Attraction slider", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="taxonomy"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -167,8 +171,9 @@ describe("the graph's Attraction slider", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"

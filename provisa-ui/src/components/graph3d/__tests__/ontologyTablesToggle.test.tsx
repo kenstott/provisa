@@ -43,8 +43,8 @@ vi.mock("../graphScene", () => ({
 }));
 
 import { GraphExplorer } from "../GraphExplorer";
-import { GLOSSARY_SCOPE } from "../graphModel";
-import { glossaryGraph, type TermRow } from "../glossaryGraphData";
+import { ONTOLOGY_SCOPE } from "../graphModel";
+import { ontologyGraph, type TermRow } from "../ontologyData";
 import { setStored } from "../../../lib/browserStorage";
 
 const ref = (table: number, column: string) => ({
@@ -77,7 +77,7 @@ const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow
   domains: [{ domain_id: "sales" }],
   refs,
 });
-const data: GraphData = glossaryGraph(
+const data: GraphData = ontologyGraph(
   [term(1, "Customer", [ref(10, "email")]), term(2, "Order", [ref(11, "id")])],
   [{ id: 1, from_term_id: 2, to_term_id: 1, rel_type: "PART_OF" }],
 );
@@ -107,8 +107,9 @@ describe("the Ontology View's Tables layer", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
@@ -134,8 +135,9 @@ describe("the Ontology View's Tables layer", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
@@ -154,8 +156,9 @@ describe("the Ontology View's Tables layer", () => {
     const view = () => (
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
@@ -176,8 +179,9 @@ describe("the Ontology View's Tables layer", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"

@@ -284,3 +284,20 @@ export function rootQuery(
   const field = rootField(m, view, sel, where);
   return field === null ? null : operation(name, [field]);
 }
+
+// One read of each role's schema for the page's life: it changes only with the model.
+const readers = new Map<string, Promise<MetaReader>>();
+
+/** ``role``'s meta reader: its GraphQL schema and its root fields, read once. */
+export function metaReader(role: string): Promise<MetaReader> {
+  let r = readers.get(role);
+  if (!r) {
+    r = Promise.all([
+      dataGraphql<Introspection>(INTROSPECTION_QUERY, {}, role),
+      rootFields(role),
+    ]).then(([raw, roots]) => ({ schema: new RoleSchema(raw), roots }));
+    r.catch(() => readers.delete(role));
+    readers.set(role, r);
+  }
+  return r;
+}

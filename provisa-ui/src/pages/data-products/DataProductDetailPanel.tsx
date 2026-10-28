@@ -40,7 +40,8 @@ import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
-import { GraphPanel } from "../../components/graph3d/GraphPanel";
+import { OntologySnippet } from "../../components/graph3d/OntologyGraph";
+import { productPreset } from "../../components/graph3d/ontologyPresets";
 import { ContractView } from "./ContractView";
 import { ClampedDetail } from "./ClampedDetail";
 import { useProductLifecycle } from "./ProductLifecycle";
@@ -48,7 +49,6 @@ import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProdu
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
   coreContracts,
-  coreGraph,
   modelName,
   type CoreEdge,
   type CoreTable,
@@ -336,8 +336,6 @@ export function DataProductDetailPanel({
   const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
   const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
   const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
-  // The graph card is drawn from this read, as every other card is.
-  const graph = coreGraph(core);
   // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
   // the indirect relationship rows are the product graph's, not the panel's.
   const related = core.edges?.filter((e) => e.kind === "related");
@@ -956,7 +954,12 @@ export function DataProductDetailPanel({
           testId={`data-product-card-graph-${p.id}`}
           label={t("graph3d.panelTitle")}
         >
-          <GraphPanel productId={p.id} productName={product.name} graph={graph} />
+          {/* REQ-2174: the ontology, focused on the product. */}
+          <OntologySnippet
+            preset={productPreset(p.id)}
+            name={product.name}
+            testId="graph-panel"
+          />
         </DetailCard>
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws

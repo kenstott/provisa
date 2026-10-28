@@ -42,7 +42,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
 }));
 
 import { GraphExplorer } from "../../../../components/graph3d/GraphExplorer";
-import { GLOSSARY_SCOPE } from "../../../../components/graph3d/graphModel";
+import { ONTOLOGY_SCOPE } from "../../../../components/graph3d/graphModel";
 
 const g: GraphData = {
   nodes: [
@@ -61,8 +61,9 @@ describe("a 3D network graph's Grid checkbox", () => {
     const view = render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -79,8 +80,9 @@ describe("a 3D network graph's Grid checkbox", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -95,8 +97,9 @@ describe("a 3D network graph's Grid checkbox", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
@@ -106,8 +109,9 @@ describe("a 3D network graph's Grid checkbox", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: "another" }}
         exportName="test"
         testId="y"

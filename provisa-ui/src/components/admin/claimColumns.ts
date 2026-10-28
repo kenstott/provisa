@@ -12,8 +12,7 @@
 // moving the column's ref to itself. Read from the meta domain as the acting roles, the way the
 // Ontology View reads the glossary.
 
-import { dataGraphql, rootQuery } from "../../api/metaGraph";
-import { metaReader } from "../graph3d/useProductGraph";
+import { dataGraphql, metaReader, rootQuery } from "../../api/metaGraph";
 
 /** The term a column is now: its name, and whether it is still a draft (not live). */
 export interface ColumnTerm {

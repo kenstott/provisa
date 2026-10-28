@@ -44,17 +44,11 @@ vi.mock("../graphScene", () => ({
 }));
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 const reads = vi.hoisted(() => ({ roles: [] as string[] }));
-vi.mock("../useProductGraph", () => ({
-  metaReader: async (role: string) => {
-    reads.roles.push(role);
-    return { schema: null, roots: new Map() };
-  },
-}));
 // The view's one query (REQ-2136) stands for its scope here; the server below answers it as the
 // query's where would (ontologyQuery.test.ts holds the query text itself).
 const asked = vi.hoisted(() => ({ scopes: [] as Record<string, unknown>[] }));
-vi.mock("../glossaryGraphData", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../glossaryGraphData")>()),
+vi.mock("../ontologyData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyData")>()),
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   // The count read before it (REQ-2143): the same scope, answered with the terms' ids.
@@ -109,6 +103,10 @@ const standing = (t: Term) =>
   t.retired ? "retired" : t.deprecated ? "deprecated" : t.live ? "live" : "draft";
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async (role: string) => {
+    reads.roles.push(role);
+    return { schema: null, roots: new Map() };
+  },
   dataGraphql: async (query: string) => {
     const s = JSON.parse(query) as {
       layers: string[];
@@ -155,9 +153,9 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   },
 }));
 
-import { GlossaryOntologyView, OntologyToggle } from "../GlossaryOntologyView";
+import { OntologyToggle, OntologyView } from "../OntologyGraph";
 import { GraphExplorer } from "../GraphExplorer";
-import { GLOSSARY_SCOPE } from "../graphModel";
+import { ONTOLOGY_SCOPE } from "../graphModel";
 
 const drawn = () => made.scenes[made.scenes.length - 1].setData.mock.calls.at(-1)?.[0] as GraphData;
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
@@ -168,7 +166,7 @@ function Page() {
   return (
     <>
       <OntologyToggle open={open} onChange={setOpen} />
-      {open && <GlossaryOntologyView search="" />}
+      {open && <OntologyView search="" />}
     </>
   );
 }
@@ -205,7 +203,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("runs its layers, domains, edge types and statuses in its query, not after it", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // Every layer and no filter, for the controls' choices; then the defaults: retired hidden.
     expect(asked.scopes[0]).toEqual({
@@ -249,7 +247,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("shows draft and deprecated terms and hides retired ones, until asked", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(ids(made.scenes[0].setData.mock.calls[0][0])).toEqual([
       "c:10:email",
@@ -273,7 +271,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("first draws the whole graph: every edge type and every domain chosen", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes.length).toBeGreaterThan(0));
     await waitFor(() => expect(drawn()).toBeDefined());
     // Both of the graph's edge types (KIND_OF, REPLACES) and both of its domains (sales, finance).
@@ -283,7 +281,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("hides the terms left with no edge when Unconnected is unticked, and shows them again", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(await ticked("terms", "unconnected")).toBe(true);
     expect(ids(drawn())).toContain("term:5");
@@ -295,7 +293,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("draws the columns a term IS, and takes them away with Columns", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const isEdges = () =>
       drawn()
@@ -314,7 +312,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("does not count a term joined only by IS as unconnected while Columns is on", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     await choose("terms", "unconnected");
     await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
@@ -324,7 +322,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("focuses on what the page's search matches, any of its items, with their neighbourhoods", async () => {
-    const { rerender } = render(<GlossaryOntologyView search="shift clinic" />);
+    const { rerender } = render(<OntologyView search="shift clinic" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // Both shift terms and the clinic, each with what it reaches; nothing else.
     await waitFor(() =>
@@ -337,7 +335,7 @@ describe("the Glossary page's Ontology View", () => {
     );
     expect(screen.queryByTestId("ontology-filter-focus")).toBeNull();
     // A quoted phrase is one item beside a bare word.
-    rerender(<GlossaryOntologyView search={'"shift coverage" clinic'} />);
+    rerender(<OntologyView search={'"shift coverage" clinic'} />);
     await waitFor(() =>
       expect(ids(drawn()).filter((id) => id.startsWith("term:"))).toEqual([
         "term:10",
@@ -346,7 +344,7 @@ describe("the Glossary page's Ontology View", () => {
       ]),
     );
     // An empty search is the whole graph.
-    rerender(<GlossaryOntologyView search="" />);
+    rerender(<OntologyView search="" />);
     await waitFor(() => expect(ids(drawn())).toContain("term:1"));
   });
 
@@ -361,8 +359,9 @@ describe("the Glossary page's Ontology View", () => {
     const { unmount } = render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         focus="term:1"
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
@@ -374,8 +373,9 @@ describe("the Glossary page's Ontology View", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         focus="term:2"
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
@@ -386,14 +386,14 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("the Taxonomy preset redraws the KIND_OF and PART_OF edges alone", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
     await waitFor(() => expect(drawn().edges.map((e) => e.label)).toEqual(["KIND_OF"]));
   });
 
   it("opens Taxonomy layered, with its lateral edges as arcs, and Force on the reader's choice", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
     await waitFor(() => expect(made.scenes[0].setArcs).toHaveBeenLastCalledWith(true));
@@ -402,7 +402,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("expands to 95% of the viewport with a scene of its own", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("ontology-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));

@@ -18,8 +18,6 @@ import { render, screen, fireEvent } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
@@ -46,12 +44,14 @@ const filter = {
 };
 vi.mock("../context/DomainFilterContext", () => ({ useDomainFilter: () => filter }));
 
-// The 3D view itself is not under test: it stands in with the search it is handed.
-vi.mock("../components/graph3d/GlossaryOntologyView", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../components/graph3d/GlossaryOntologyView")>()),
-  GlossaryOntologyView: ({ search }: { search: string }) => (
+// The graph itself is not under test: the Ontology View stands in with the search it is handed,
+// and jsdom draws no canvas for the term page's snippet (snippets.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologyView: ({ search }: { search: string }) => (
     <div data-testid="ontology-view" data-search={search} />
   ),
+  OntologySnippet: () => null,
 }));
 
 import { fetchGlossaryTerm, listGlossaryTerms } from "../api/glossary";

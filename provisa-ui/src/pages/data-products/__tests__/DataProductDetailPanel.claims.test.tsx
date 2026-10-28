@@ -22,8 +22,8 @@ import type { CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
 
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
 }));
 
 const P = {

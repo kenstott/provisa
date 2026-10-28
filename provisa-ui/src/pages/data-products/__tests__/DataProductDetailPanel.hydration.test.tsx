@@ -24,8 +24,8 @@ import type { ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => <div data-testid="graph-panel" />,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => <div data-testid="graph-panel" />,
 }));
 
 /** Each panel input, by where it comes from. */
@@ -59,8 +59,9 @@ const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
     "the admin API's resolveOwners: the people who hold the owner and team roles (the decided exception)",
   "./DqRulesModal": "lists the rules it is given",
-  "../../components/graph3d/GraphPanel":
-    "the meta domain, in a read of its own (useProductGraph): the graph card",
+  "../../components/graph3d/OntologyGraph":
+    "the ontology, in a read of its own (useOntology): the graph card, focused on the product",
+  "../../components/graph3d/ontologyPresets": "names the product's focus: it reads nothing",
   "../../components/lineage/LineageDag": "draws the lineage it is given (the decided exception)",
 };
 

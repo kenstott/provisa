@@ -8,15 +8,19 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2130: the glossary's Ontology View data, read from the ontology schema (REQ-2163) as the
-// signed-in user -- ontology._terms (its standing columns), the domains each term is in, its refs to columns
-// with those columns' tables and the relationships declared from them, and the edges leaving it
-// (ontology._term_edges, read with the term); and the data products with their datasets, the datasets' columns and
-// the terms those columns are -- turned into the graph's nodes and edges.
+// REQ-2174 (amended 2026-10-28, ONE ONTOLOGY GRAPH; EVERY OTHER GRAPH IS A SNIPPET OF IT): the
+// one graph's data, read from the ontology schema (REQ-2163) as the signed-in user --
+// ontology._terms (its standing columns), the domains each term is in, its refs to columns with
+// those columns' tables (and the products holding them) and the relationships declared from them,
+// and the edges leaving it (ontology._term_edges, read with the term); and the data products with
+// their datasets, the datasets' columns and the terms those columns are -- turned into the graph's
+// nodes and edges. A focus (a term or a product) and a depth narrow the read to a snippet.
 
 import { termRole } from "../../api/glossary";
-import { NEIGHBOURHOOD } from "./neighbourhood";
+import { NODE_BUDGET } from "./neighbourhood";
 import {
+  dataGraphql,
+  metaReader,
   operation,
   rootField,
   rowsOf,
@@ -24,22 +28,113 @@ import {
   type Selection,
   type Where,
 } from "../../api/metaGraph";
+import type { MaskEntry } from "../../lib/masks";
 import type {
   GraphData,
   GraphEdge,
   GraphNode,
   LayerId,
+  NodeInfo,
   QueryScope,
   TermStatus,
 } from "./graphModel";
-import {
-  COLUMN_FACTS,
-  PRODUCT_FACTS,
-  TABLE_FACTS,
-  columnFacts,
-  facts,
-  tableFacts,
-} from "./productGraphData";
+
+/** A product's node id. */
+export const productNode = (id: string) => `p:${id}`;
+
+/** A term's node id. */
+export const termNode = (id: number) => `term:${id}`;
+
+/** REQ-2174 (EVERY LANE NODE INFORMS AND LINKS): a term as a node's facts need it -- its name,
+ * definition, status and stewards (its experts). */
+export const TERM_FACTS: Selection = {
+  fields: ["id", "name", "definition", "status"],
+  rels: { experts: { alias: "experts", sel: { fields: ["user_id", "kind"] } } },
+};
+
+/** A column's facts: its type, description and masks (its sensitivity is read beside them). */
+export const COLUMN_FACTS = ["data_type", "description", "masks"];
+
+/** A table's facts: its source and description, and its checkers' latest scans (its quality). */
+export const TABLE_FACTS: Selection = {
+  fields: ["source_id", "description"],
+  rels: {
+    checked_by: { alias: "checkedBy", sel: { fields: ["latest_outcome", "latest_run_at"] } },
+  },
+};
+
+/** A product's facts: its status and owner (its members are counted from the graph). */
+export const PRODUCT_FACTS = ["status", "owner_role"];
+
+/** A column's or a table's tags, which the graph's tag filter judges. */
+const TAGS: NonNullable<Selection["rels"]> = {
+  tags: { alias: "tags", sel: { fields: ["tag_id"] } },
+};
+
+/** A column's facts as COLUMN_FACTS reads them. */
+interface ColumnFacts {
+  data_type?: string | null;
+  description?: string | null;
+  // table_columns.masks: the ordered mask list (REQ-2059), as JSON.
+  masks?: unknown;
+}
+
+/** A table's facts as TABLE_FACTS reads them. */
+interface TableFacts {
+  source_id?: string | null;
+  description?: string | null;
+  checked_by?: { latest_outcome: "pass" | "fail" | null; latest_run_at: string | null }[] | null;
+}
+
+interface Tagged {
+  tags?: { tag_id: string }[] | null;
+}
+
+/** ``info`` on a node, its facts not read left out; nothing when none was read. */
+export function facts(info: NodeInfo): { info?: NodeInfo } {
+  const kept = Object.fromEntries(
+    Object.entries(info).filter(([, v]) => v !== undefined && v !== null && v !== ""),
+  ) as NodeInfo;
+  return Object.keys(kept).length === 0 ? {} : { info: kept };
+}
+
+/** A column's facts, as COLUMN_FACTS reads them. */
+export function columnFacts(c: ColumnFacts): NodeInfo {
+  // A JSON column comes back as its text or as its value, as the role's schema types it
+  // (asProduct reads custom_properties the same way).
+  const masks = (typeof c.masks === "string" ? JSON.parse(c.masks) : c.masks) as
+    | MaskEntry[]
+    | null
+    | undefined;
+  return {
+    dataType: c.data_type ?? undefined,
+    description: c.description ?? undefined,
+    masked: masks == null ? undefined : masks.some((m) => m.mask !== null),
+  };
+}
+
+/** A table's facts, as TABLE_FACTS reads them: its quality is its checkers' worst latest scan. */
+export function tableFacts(t: TableFacts): NodeInfo {
+  const runs = t.checked_by ?? [];
+  const outcomes = runs.map((r) => r.latest_outcome);
+  const at = runs.map((r) => r.latest_run_at).filter((x): x is string => x !== null);
+  return {
+    source: t.source_id ?? undefined,
+    description: t.description ?? undefined,
+    quality:
+      runs.length === 0
+        ? undefined
+        : outcomes.includes("fail")
+          ? "fail"
+          : outcomes.includes("pass")
+            ? "pass"
+            : "none",
+    checkedAt: at.length === 0 ? undefined : at.sort().at(-1),
+  };
+}
+
+/** The tags read on a row; absent when the role cannot read them. */
+const tagIds = (row: Tagged) => rowsOf(row.tags)?.map((t) => t.tag_id);
 
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
@@ -160,7 +255,7 @@ const TERM_FIELDS = [
  * last level is read with its edges' ends alone, so an edge between two of them is drawn and
  * nothing past them is. With no search every term is read at level 0, its edges' ends by id. */
 function termSelection(s: QueryScope, level: number): Selection {
-  const depth = s.search.length > 0 ? NEIGHBOURHOOD.depth : 0;
+  const depth = s.search.length > 0 || s.focus !== null ? s.depth : 0;
   const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
@@ -221,7 +316,10 @@ function termSelection(s: QueryScope, level: number): Selection {
               alias: "column",
               sel: {
                 fields: COLUMN_FACTS,
-                rels: { sensitivity: { alias: "sensitivity", sel: { fields: ["tags"] } } },
+                rels: {
+                  sensitivity: { alias: "sensitivity", sel: { fields: ["tags"] } },
+                  ...TAGS,
+                },
               },
             },
             table: {
@@ -230,13 +328,15 @@ function termSelection(s: QueryScope, level: number): Selection {
                 fields: ["id", ...TABLE_FACTS.fields],
                 rels: {
                   ...TABLE_FACTS.rels,
+                  ...TAGS,
                   // With Data off, a column's product is read for its look alone: no product
-                  // node -- but for the 2D lane diagram, whose product lane names it (REQ-2174).
+                  // node -- but for the 2D lane diagram, whose product lane names it, and for a
+                  // snippet, which draws the products its terms reach (REQ-2174).
                   product: {
                     alias: "product",
                     sel: {
                       fields:
-                        s.layers.has("data") || s.lanes
+                        s.layers.has("data") || s.lanes || s.focus !== null
                           ? ["id", "name", "domain_id", ...PRODUCT_FACTS]
                           : ["id"],
                     },
@@ -255,13 +355,31 @@ function termSelection(s: QueryScope, level: number): Selection {
   return { fields: TERM_FIELDS, rels };
 }
 
-/** The terms ``s`` reads at the root: those its filters keep, and under a search those it matches. */
+/** The product a focus names, or null for a term's focus or none. */
+function focusProduct(s: QueryScope): string | null {
+  return s.focus !== null && s.focus.startsWith("p:") ? s.focus.slice(2) : null;
+}
+
+/** The terms a focus starts from: the term itself, or a product's -- those its tables' columns
+ * are, and those its tables are (a class). */
+function focusWhere(focus: string): Where {
+  if (focus.startsWith("term:")) return { id: { eq: Number(focus.slice("term:".length)) } };
+  if (focus.startsWith("p:")) {
+    const product = { product_id: { eq: focus.slice(2) } };
+    return { _or: [{ refs: { registered_table: product } }, { tables: product }] };
+  }
+  throw new Error(`a graph's focus is a term or a product, not ${focus}`);
+}
+
+/** The terms ``s`` reads at the root: those its filters keep, under a search those it matches,
+ * and under a focus those it starts from. */
 function rootWhere(s: QueryScope): Where | undefined {
   const kept = termKept(s);
   return all([
     ...(kept ? [kept] : []),
     ...(s.orphans ? [] : [related(s)]),
     ...(s.search.length > 0 ? [searchWhere(s.search)] : []),
+    ...(s.focus !== null ? [focusWhere(s.focus)] : []),
   ]);
 }
 
@@ -323,11 +441,15 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
             fields: ["id", "domain_id", "table_name", ...TABLE_FACTS.fields],
             rels: {
               ...TABLE_FACTS.rels,
+              ...TAGS,
               table_columns: {
                 to: "table_columns",
                 sel: {
                   fields: ["column_name", "column_key", ...COLUMN_FACTS],
-                  rels: { glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } } },
+                  rels: {
+                    glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } },
+                    ...TAGS,
+                  },
                 },
               },
               ...relationships(s),
@@ -337,17 +459,25 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
         },
       },
     },
-    inDomains(s.domains),
+    // Under a product's focus, that product alone.
+    all([
+      ...(focusProduct(s) !== null ? [{ id: { eq: focusProduct(s) } }] : []),
+      ...(s.domains.length > 0 ? [{ domain_id: { in: s.domains } }] : []),
+    ]),
   );
 }
 
-/** The Ontology View's one query for ``s``: its terms, each with the edges leaving it under the
- * Ontology layer, and the data products under Data; null when the role cannot read the terms. A part the
- * role cannot read is left out. */
+/** The ontology's one query for ``s``: its terms, each with the edges leaving it under the
+ * Ontology layer, and the data products -- every one under Data, the one a product's snippet is
+ * focused on, none for a term's (its columns' tables name theirs); null when the role cannot read
+ * the terms. A part the role cannot read is left out. */
 export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
   const terms = termsField(m, s);
   if (terms === null) return null;
-  const products = s.layers.has("data") ? productsField(m, s) : null;
+  const products =
+    focusProduct(s) !== null || (s.focus === null && s.layers.has("data"))
+      ? productsField(m, s)
+      : null;
   return operation(
     "Ontology",
     [terms, products].filter((f): f is string => f !== null),
@@ -420,9 +550,10 @@ export interface TermRow {
         table_id: number;
         table_name: string;
         domain_id: string;
-        column?: (ColumnFactsRow & { sensitivity?: { tags: string }[] | null }) | null;
+        column?: (ColumnFacts & Tagged & { sensitivity?: { tags: string }[] | null }) | null;
         table?:
-          | (TableFactsRow & {
+          | (TableFacts &
+              Tagged & {
               id: number;
               product?: {
                 id: string;
@@ -437,10 +568,6 @@ export interface TermRow {
       }[]
     | null;
 }
-
-/** A column's facts (COLUMN_FACTS) and a table's (TABLE_FACTS), as productGraphData reads them. */
-type ColumnFactsRow = Parameters<typeof columnFacts>[0];
-type TableFactsRow = Parameters<typeof tableFacts>[0];
 
 interface RelationshipRow {
   id: string;
@@ -457,12 +584,14 @@ export interface ProductRow {
   owner_role?: string | null;
   // One-to-many: null when there are none (see rowsOf).
   member_tables?:
-    | (TableFactsRow & {
+    | (TableFacts &
+        Tagged & {
         id: number;
         domain_id: string;
         table_name: string;
         table_columns?:
-          | (ColumnFactsRow & {
+          | (ColumnFacts &
+              Tagged & {
               column_name: string;
               column_key: string;
               glossary_ref?: { term_id: number }[] | null;
@@ -497,7 +626,7 @@ export function standing(t: TermRow): TermStatus {
  * - a table is drawn only through a column drawn (Tables, with Columns) or as a product's dataset
  *   (Data); the relationships declared between the tables drawn are Tables' (ownerTables).
  */
-export function glossaryGraph(
+export function ontologyGraph(
   terms: TermRow[],
   edges: TermEdgeRow[],
   products: ProductRow[] = [],
@@ -537,7 +666,7 @@ export function glossaryGraph(
     domain: string,
     name: string,
     dataset: boolean,
-    row: TableFactsRow | null | undefined,
+    row: (TableFacts & Tagged) | null | undefined,
   ) =>
     node({
       id: `t:${id}`,
@@ -546,7 +675,7 @@ export function glossaryGraph(
       domains: [domain],
       stored: true,
       layers: dataset ? ["data"] : [],
-      ...(row ? facts(tableFacts(row)) : {}),
+      ...(row ? { tags: tagIds(row), ...facts(tableFacts(row)) } : {}),
     });
   // A product is in its domain, as on the data product graph: drawn beside the domain's terms
   // even when none of its tables' columns is drawn.
@@ -634,6 +763,7 @@ export function glossaryGraph(
         domains: [r.domain_id],
         inProduct: p != null,
         layers: held,
+        ...(r.column ? { tags: tagIds(r.column) } : {}),
         // A fact, not a filter: the glossary's query is not narrowed by sensitivity.
         ...(r.column
           ? facts({
@@ -672,6 +802,7 @@ export function glossaryGraph(
           domains: [m.domain_id],
           inProduct: true,
           layers: bound.length > 0 ? ["data", "columns"] : ["data"],
+          tags: tagIds(c),
           ...facts(columnFacts(c)),
         });
         // Tables joins only the columns drawn by Columns: a column no term is stays Data's.
@@ -696,4 +827,25 @@ export function glossaryGraph(
     if (nodes.has(a) && nodes.has(b)) edge(a, b, "term_edge", e.rel_type);
   }
   return { nodes: [...nodes.values()], edges: [...out.values()] };
+}
+
+/** What a read of the ontology came to: the graph and the query that read it, or -- past the
+ * budget -- how many terms it would have read, with each term's domains. */
+export type Loaded =
+  | { data: GraphData; query: string; over?: undefined }
+  | { over: number; rows: CountRow[]; query: string };
+
+/** The ontology as ``scope`` reads it, in one query (REQ-2136): its terms counted first, and read
+ * only within the budget (REQ-2143); null when the role cannot read the glossary. */
+export async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
+  const m = await metaReader(role);
+  const query = ontologyQuery(m, scope);
+  const count = ontologyCountQuery(m, scope);
+  if (query === null || count === null) return null;
+  const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
+  if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
+  const rows = await dataGraphql<OntologyRows>(query, {}, role);
+  // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
+  const terms = flatTerms(rows._terms);
+  return { data: ontologyGraph(terms, termEdges(terms), rows.data_products), query };
 }

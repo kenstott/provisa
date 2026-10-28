@@ -34,9 +34,9 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
-  GraphPanel: () => null,
+  OntologySnippet: () => null,
 }));
 // The caller acts as vet_lead, which inherits care_owner: it owns pet_health, not workforce_ops.
 vi.mock("../../context/AuthContext", () => ({

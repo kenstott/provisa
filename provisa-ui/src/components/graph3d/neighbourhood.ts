@@ -10,7 +10,7 @@
 
 // REQ-2143: what a focus draws, and how much a graph draws at all, stated once. The Ontology View's
 // focus (its page's search, or a node picked) is the matches and what lies within `depth` hops of
-// them; reach() draws that, and the query the view reads and exports (glossaryGraphData) asks the
+// them; reach() draws that, and the query the view reads and exports (ontologyData) asks the
 // server for exactly that. A graph that would draw more than NODE_BUDGET nodes is not drawn: its
 // count is said instead, and with no search the domains are drawn with their counts.
 

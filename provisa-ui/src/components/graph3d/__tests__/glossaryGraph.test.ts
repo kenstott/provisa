@@ -14,14 +14,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  GLOSSARY_SCOPE,
+  ONTOLOGY_SCOPE,
   layoutGraph,
   visibleGraph,
   type GraphData,
   type GraphFilters,
   type LayerId,
 } from "../graphModel";
-import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
+import { ontologyGraph, type TermEdgeRow, type TermRow } from "../ontologyData";
 import { NO_FILTERS } from "../graphModel";
 
 const NO_FILTERS_ONTOLOGY: GraphFilters = { ...NO_FILTERS };
@@ -70,7 +70,7 @@ const EDGES: TermEdgeRow[] = [
   { id: 3, from_term_id: 3, to_term_id: 1, rel_type: "PART_OF" },
 ];
 
-const G: GraphData = glossaryGraph(TERMS, EDGES);
+const G: GraphData = ontologyGraph(TERMS, EDGES);
 const node = (g: GraphData, id: string) => g.nodes.find((n) => n.id === id);
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const defaults: GraphFilters = {
@@ -79,15 +79,15 @@ const defaults: GraphFilters = {
   sensitivities: [],
   focus: [],
   edgeTypes: [],
-  hiddenStatuses: GLOSSARY_SCOPE.hiddenStatuses,
+  hiddenStatuses: ONTOLOGY_SCOPE.hiddenStatuses,
 };
 const preset = (p: "ontology" | "taxonomy") => {
-  const found = GLOSSARY_SCOPE.presets[p];
+  const found = ONTOLOGY_SCOPE.presets[p];
   if (!found) throw new Error(p);
   return found;
 };
 const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
-  visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
+  visibleGraph(G, new Set(layers), filters, new Set(), ONTOLOGY_SCOPE);
 
 describe("the Ontology View's terms", () => {
   it("marks a class whose tables are not all declared one entity, naming its tables", () => {
@@ -95,7 +95,7 @@ describe("the Ontology View's terms", () => {
       { id: 10, table_name: "customers", domain_id: "sales" },
       { id: 11, table_name: "contacts", domain_id: "crm" },
     ];
-    const g = glossaryGraph(
+    const g = ontologyGraph(
       [
         term(1, "Customer", { tables, identity_gap: true }),
         term(2, "Order", { tables: tables.slice(0, 1), identity_gap: false }),
@@ -118,14 +118,14 @@ describe("the Ontology View's terms", () => {
   });
 
   it("draws a term the server answered no domains and no references for (null lists)", () => {
-    const g = glossaryGraph([term(7, "Lone", { domains: null, refs: null })], []);
+    const g = ontologyGraph([term(7, "Lone", { domains: null, refs: null })], []);
     expect(node(g, "term:7")?.label).toBe("Lone");
   });
 
   it("gives each term its role -- class, property or concept -- and marks columns a product holds", () => {
     expect(node(G, "term:2")?.role).toBe("concept");
     expect(node(G, "term:1")?.role).toBe("property");
-    const grounded = glossaryGraph(
+    const grounded = ontologyGraph(
       [term(9, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
       [],
     );
@@ -207,12 +207,12 @@ describe("the Ontology View's presets", () => {
   });
 
   it("draws a class term's tables with the ontology: the term IS the table, a cylinder", () => {
-    const grounded = glossaryGraph(
+    const grounded = ontologyGraph(
       [term(7, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
       [],
     );
     const on = (layers: LayerId[]) =>
-      visibleGraph(grounded, new Set(layers), NO_FILTERS_ONTOLOGY, new Set(), GLOSSARY_SCOPE);
+      visibleGraph(grounded, new Set(layers), NO_FILTERS_ONTOLOGY, new Set(), ONTOLOGY_SCOPE);
     const g = on(["ontology"]);
     expect(g.nodes.find((n) => n.id === "t:20")).toMatchObject({
       type: "table",
@@ -239,11 +239,11 @@ describe("a draft named for a column, with Domains alone drawn", () => {
       domains: [{ domain_id: "shelter" }],
     });
     const g = visibleGraph(
-      glossaryGraph([draft], []),
+      ontologyGraph([draft], []),
       new Set(["ontology", "domains"]),
       NO_FILTERS_ONTOLOGY,
       new Set(),
-      GLOSSARY_SCOPE,
+      ONTOLOGY_SCOPE,
     );
     expect(g.nodes.map((n) => n.id).sort()).toEqual(["d:shelter", "term:7"]);
     expect(g.edges.map((e) => [e.kind, e.a, e.b])).toEqual([["in_domain", "term:7", "d:shelter"]]);

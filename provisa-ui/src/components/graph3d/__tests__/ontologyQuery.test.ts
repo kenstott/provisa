@@ -25,7 +25,7 @@ import {
   ontologyQuery,
   termEdges,
   type TermRow,
-} from "../glossaryGraphData";
+} from "../ontologyData";
 import type { LayerId, QueryScope } from "../graphModel";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
@@ -131,6 +131,8 @@ const scope = (layers: LayerId[], over: Partial<QueryScope> = {}): QueryScope =>
   search: [],
   tags: [],
   sensitivities: [],
+  focus: null,
+  depth: 2,
   ...over,
 });
 const squash = (q: string | null) => (q ?? "").replace(/\s+/g, " ");

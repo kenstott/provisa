@@ -52,7 +52,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
 }));
 
 import { GraphExplorer } from "../../../../components/graph3d/GraphExplorer";
-import { GLOSSARY_SCOPE } from "../../../../components/graph3d/graphModel";
+import { ONTOLOGY_SCOPE } from "../../../../components/graph3d/graphModel";
 
 const TERRAIN: GraphKey = { kind: "profile-terrain", subject: 7 };
 const DEFAULTS = { log: false as boolean, mode: "peak", excluded: [] as string[] };
@@ -135,8 +135,9 @@ describe("the Ontology View's remembered settings", () => {
   const explorer = () => (
     <GraphExplorer
       data={g}
-      scope={GLOSSARY_SCOPE}
+      scope={ONTOLOGY_SCOPE}
       preset="ontology"
+      depth={2}
       settingsKey={{ kind: "ontology", subject: null }}
       exportName="ontology"
       testId="x"

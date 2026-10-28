@@ -33,9 +33,9 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
-  GraphPanel: () => null,
+  OntologySnippet: () => null,
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({

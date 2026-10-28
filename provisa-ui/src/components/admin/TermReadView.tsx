@@ -13,7 +13,6 @@
 // from its columns and tables, the columns it names, the tables it is grounded in, its
 // relationships and its experts.
 
-import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import {
@@ -22,7 +21,6 @@ import {
   removeGlossaryEdge,
   retypeGlossaryEdge,
   type GlossaryTermDetail,
-  type GlossaryTermTable,
 } from "../../api/glossary";
 import { DetailFields } from "../detail/DetailFields";
 import { ListRow } from "../list/ListTable";
@@ -31,7 +29,8 @@ import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
 import { GlossaryRelationships } from "./GlossaryRelationships";
 import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { RetiredTermRecord } from "./RetiredTermRecord";
-import { TermDag } from "./TermDag";
+import { OntologySnippet } from "../graph3d/OntologyGraph";
+import { termPreset } from "../graph3d/ontologyPresets";
 
 type Option = { value: string; label: string };
 
@@ -50,17 +49,6 @@ export function TermReadView({
 }) {
   const { t } = useTranslation();
   const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
-  // REQ-2150: the graph draws the grounded tables the section below reads (no request of its own),
-  // kept with the term they were read for.
-  const [read, setRead] = useState<{ termId: number; tables: GlossaryTermTable[] } | null>(null);
-  const onTablesRead = useCallback(
-    (tables: GlossaryTermTable[]) => setRead({ termId: term.id, tables }),
-    [term.id],
-  );
-  const graphRelLabel = useCallback(
-    (relType: string) => relLabel(relTypeOptions, relType),
-    [relLabel, relTypeOptions],
-  );
   return (
     <Stack gap="md" pb="md">
       <DetailFields
@@ -124,11 +112,13 @@ export function TermReadView({
       )}
 
       <Title order={5}>{t("glossaryTab.termGraphTitle")}</Title>
-      <TermDag
-        term={term}
-        tables={read?.termId === term.id ? read.tables : null}
-        relLabel={graphRelLabel}
-        navigateToTerm={navigateToTerm}
+      {/* REQ-2174: the ontology, focused on the term: its ancestors and descendants, and the
+          columns, tables and products it reaches. */}
+      <OntologySnippet
+        key={term.id}
+        preset={termPreset(term.id)}
+        name={term.name}
+        testId="glossary-term-dag"
       />
 
       <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
@@ -183,7 +173,6 @@ export function TermReadView({
         termId={term.id}
         canEdit={false}
         onChanged={() => undefined}
-        onRead={onTablesRead}
       />
 
       <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>

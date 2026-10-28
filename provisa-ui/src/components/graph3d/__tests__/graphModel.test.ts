@@ -8,36 +8,33 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2128: the data product graph's layers, presets, filters and layouts.
+// REQ-2128: the graph engine's layers, filters and layouts; REQ-2174: the one ontology's presets.
 
 import { describe, expect, it } from "vitest";
 import {
   NO_FILTERS,
-  PRESETS,
-  PRESET_ORDER,
-  PRODUCT_SCOPE,
+  ONTOLOGY_SCOPE,
   availableLayers,
   layoutGraph,
-  panelGraph,
   visibleGraph,
   type GraphData,
   type LayerId,
 } from "../graphModel";
-import { DATA } from "./fixture";
+import { DATA, ENGINE_PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const kinds = (g: GraphData) => [...new Set(g.edges.map((e) => e.kind))].sort();
-const preset = (p: keyof typeof PRESETS) => new Set<LayerId>(PRESETS[p].layers);
+const preset = (p: keyof typeof ENGINE_PRESETS) => new Set<LayerId>(ENGINE_PRESETS[p].layers);
 
-describe("the data product graph's layers", () => {
+describe("the engine's layers", () => {
   it("offers only the layers the data has something in", () => {
     const noLineage = { ...DATA, edges: DATA.edges.filter((e) => e.kind !== "lineage") };
-    expect(availableLayers(DATA, PRODUCT_SCOPE).has("lineage")).toBe(true);
-    expect(availableLayers(noLineage, PRODUCT_SCOPE).has("lineage")).toBe(false);
+    expect(availableLayers(DATA, ENGINE_SCOPE).has("lineage")).toBe(true);
+    expect(availableLayers(noLineage, ENGINE_SCOPE).has("lineage")).toBe(false);
   });
 
   it("All draws every part of the product but its relationships to outside tables", () => {
-    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     expect(kinds(g)).not.toContain("relationship_outside");
     expect(ids(g)).not.toContain("t:invoices");
     expect(kinds(g)).toEqual(
@@ -46,7 +43,7 @@ describe("the data product graph's layers", () => {
   });
 
   it("folds a table's columns into it until it is expanded", () => {
-    const folded = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const folded = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     expect(ids(folded)).not.toContain("c:customers.email");
     // The term's binding lands on the table the column is folded into.
     expect(folded.edges.find((e) => e.kind === "term_binding")).toMatchObject({
@@ -58,34 +55,34 @@ describe("the data product graph's layers", () => {
       preset("all"),
       NO_FILTERS,
       new Set(["t:customers"]),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(ids(open)).toContain("c:customers.email");
     expect(open.edges.find((e) => e.kind === "term_binding")?.b).toBe("c:customers.email");
   });
 
   it("removing the tags layer removes only the tags and their edges", () => {
-    const on = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const on = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     const layers = preset("all");
     layers.delete("tags");
-    const off = visibleGraph(DATA, layers, NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const off = visibleGraph(DATA, layers, NO_FILTERS, new Set(), ENGINE_SCOPE);
     expect(ids(on).filter((id) => !ids(off).includes(id))).toEqual(["g:gold"]);
     expect(on.edges.length - off.edges.length).toBe(2);
     expect(kinds(off)).not.toContain("tagged");
   });
 
-  it("offers All, Ontology and Products, with no Lineage preset", () => {
-    expect(PRESET_ORDER).toEqual(["all", "ontology", "products"]);
+  it("the one ontology offers its Ontology and Taxonomy presets alone", () => {
+    expect(ONTOLOGY_SCOPE.presetOrder).toEqual(["ontology", "taxonomy"]);
   });
 
   it("Products draws products by domain and the links between them", () => {
-    const g = visibleGraph(DATA, preset("products"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const g = visibleGraph(DATA, preset("products"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     expect(ids(g)).toEqual(["d:finance", "d:sales", "p:billing", "p:c360"]);
     expect(g.edges.find((e) => e.kind === "product_link")?.paths).toBe(2);
   });
 
   it("Ontology draws terms, their edges, the bound columns and the products owning them", () => {
-    const g = visibleGraph(DATA, preset("ontology"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const g = visibleGraph(DATA, preset("ontology"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     expect(ids(g)).toEqual(
       expect.arrayContaining(["term:customer", "term:party", "c:customers.email", "p:c360"]),
     );
@@ -99,7 +96,7 @@ describe("the data product graph's layers", () => {
 
 describe("a graph laid out flat (REQ-2174, 2D)", () => {
   it.each(["force", "layered"] as const)("puts every node of a %s layout in one plane", (layout) => {
-    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     const at = layoutGraph(g, layout, 1, true);
     expect(at.size).toBe(g.nodes.length);
     for (const [, p] of at) expect(p[2]).toBe(0);
@@ -109,14 +106,14 @@ describe("a graph laid out flat (REQ-2174, 2D)", () => {
   });
 
   it("spreads a flat force layout as wide as the 3D one", () => {
-    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     const reach = (at: Map<string, [number, number, number]>) =>
       Math.max(...[...at.values()].map((p) => Math.hypot(...p)));
     expect(reach(layoutGraph(g, "force", 1, true))).toBeCloseTo(reach(layoutGraph(g, "force")), 6);
   });
 });
 
-describe("the data product graph's filters", () => {
+describe("the engine's filters", () => {
   const all = new Set<LayerId>(["products", "tables", "commands", "quality", "tags", "ontology"]);
 
   it("a domain filter applies to every layer", () => {
@@ -125,7 +122,7 @@ describe("the data product graph's filters", () => {
       all,
       { ...NO_FILTERS, domains: ["finance"] },
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(ids(g)).toEqual(["d:finance", "p:billing"]);
   });
@@ -136,7 +133,7 @@ describe("the data product graph's filters", () => {
       all,
       { ...NO_FILTERS, sensitivities: ["pii"] },
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(ids(g)).toContain("t:customers");
     expect(ids(g)).not.toContain("t:orders");
@@ -144,7 +141,7 @@ describe("the data product graph's filters", () => {
   });
 
   it("a tag filter keeps the tag and what carries it", () => {
-    const g = visibleGraph(DATA, all, { ...NO_FILTERS, tags: ["gold"] }, new Set(), PRODUCT_SCOPE);
+    const g = visibleGraph(DATA, all, { ...NO_FILTERS, tags: ["gold"] }, new Set(), ENGINE_SCOPE);
     expect(ids(g)).toEqual(expect.arrayContaining(["g:gold", "p:c360", "t:customers"]));
     expect(ids(g)).not.toContain("t:orders");
   });
@@ -155,22 +152,9 @@ describe("the data product graph's filters", () => {
       preset("all"),
       { ...NO_FILTERS, focus: ["p:billing"] },
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(ids(g)).toEqual(["d:finance", "p:billing", "p:c360"]);
-  });
-});
-
-describe("the detail panel's graph", () => {
-  it("is the product, its member tables, its commands and the terms bound to its columns", () => {
-    // A checker is a member of the product as well; the panel leaves it to the quality layer.
-    const withChecker: GraphData = {
-      nodes: DATA.nodes,
-      edges: [...DATA.edges, { id: "m-dq", a: "p:c360", b: "k:orders_dq", kind: "member" }],
-    };
-    const g = panelGraph(withChecker, "p:c360");
-    expect(ids(g)).toEqual(["f:refresh", "p:c360", "t:customers", "t:orders", "term:customer"]);
-    expect(kinds(g)).toEqual(["command", "member", "term_binding"]);
   });
 });
 
@@ -184,7 +168,7 @@ describe("column lineage (REQ-2129)", () => {
   };
 
   it("draws a column's upstream columns once its table is expanded, and not before", () => {
-    const folded = visibleGraph(withColumns, preset("all"), NO_FILTERS, new Set(), PRODUCT_SCOPE);
+    const folded = visibleGraph(withColumns, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
     expect(kinds(folded)).not.toContain("column_lineage");
     expect(ids(folded)).not.toContain("c:9:amount");
     const open = visibleGraph(
@@ -192,7 +176,7 @@ describe("column lineage (REQ-2129)", () => {
       preset("all"),
       NO_FILTERS,
       new Set(["t:orders"]),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(open.edges.find((e) => e.kind === "column_lineage")).toMatchObject({
       a: "c:9:amount",

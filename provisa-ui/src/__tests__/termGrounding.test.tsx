@@ -35,8 +35,11 @@ const TABLES = [
     domain_id: "sales",
   },
 ];
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (snippets.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listTermTables: async (termId: number) =>
@@ -75,11 +78,9 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({ ...auth, actingRoles: "analyst" }),
 }));
 // The table's class term as the meta domain answers it: from the grounding above.
-vi.mock("../components/graph3d/useProductGraph", () => ({
-  metaReader: async () => ({ schema: null, roots: new Map() }),
-}));
 vi.mock("../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/metaGraph")>()),
+  metaReader: async () => ({ schema: null, roots: new Map() }),
   rootQuery: (_m: unknown, _n: string, _v: string, _s: unknown, where: { id: { eq: number } }) =>
     JSON.stringify(where.id.eq),
   dataGraphql: async (query: string) => {

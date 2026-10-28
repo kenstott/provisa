@@ -23,8 +23,8 @@ import type { DataProduct } from "../../../types/admin";
 import type { DataContractInput } from "../../../hooks/useDataProductMutations";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
 }));
 
 const PRODUCT = {

@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  GLOSSARY_SCOPE,
+  ONTOLOGY_SCOPE,
   visibleGraph,
   type GraphData,
   type GraphFilters,
@@ -24,11 +24,11 @@ import {
 } from "../graphModel";
 import { nodeLook } from "../nodeLook";
 import {
-  glossaryGraph,
+  ontologyGraph,
   type ProductRow,
   type TermEdgeRow,
   type TermRow,
-} from "../glossaryGraphData";
+} from "../ontologyData";
 
 const rel = (id: string, target: number, cypherType: string) => ({
   id,
@@ -109,7 +109,7 @@ const UNOWNED: ProductRow = {
   ],
 };
 
-const G: GraphData = glossaryGraph(TERMS, EDGES, [...PRODUCTS, UNOWNED]);
+const G: GraphData = ontologyGraph(TERMS, EDGES, [...PRODUCTS, UNOWNED]);
 const all: GraphFilters = {
   domains: [],
   tags: [],
@@ -119,7 +119,7 @@ const all: GraphFilters = {
   hiddenStatuses: [],
 };
 const view = (layers: LayerId[], filters: GraphFilters = all) =>
-  visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
+  visibleGraph(G, new Set(layers), filters, new Set(), ONTOLOGY_SCOPE);
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const has = (g: GraphData, kind: string, a: string, b: string) =>
   g.edges.some((e) => e.kind === kind && e.a === a && e.b === b);
@@ -203,11 +203,11 @@ describe("a search focus with Tables", () => {
       tables: [{ id: 10, domain_id: "sales", table_name: "t10" }],
     };
     const g = visibleGraph(
-      glossaryGraph([...TERMS, account], EDGES, PRODUCTS),
+      ontologyGraph([...TERMS, account], EDGES, PRODUCTS),
       new Set<LayerId>(["ontology", "columns", "ownerTables"]),
       { ...all, focus: ["term:4"] },
       new Set(),
-      GLOSSARY_SCOPE,
+      ONTOLOGY_SCOPE,
     );
     expect(ids(g)).toEqual(["t:10", "term:4"]);
     expect(has(g, "term_binding", "term:4", "t:10")).toBe(true);

@@ -19,8 +19,7 @@ import { Anchor, Group, Select, Text } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useCapability } from "../../hooks/useCapability";
-import { dataGraphql, rootQuery } from "../../api/metaGraph";
-import { metaReader } from "../../components/graph3d/useProductGraph";
+import { dataGraphql, metaReader, rootQuery } from "../../api/metaGraph";
 import {
   groundTermTable,
   listGlossaryTerms,
