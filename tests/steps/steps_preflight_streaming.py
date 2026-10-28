@@ -34,6 +34,9 @@ scenarios("../features/REQ-1165-preflight-streaming.feature")
 
 
 class _Ctx(SimpleNamespace):
+    # The view the check runs for, as NodeContext names it (a hook's errors name it).
+    node = "preflight_view"
+
     def ok(self):
         return CONTINUE
 
