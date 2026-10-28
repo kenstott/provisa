@@ -90792,7 +90792,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by name: a model node''s property is a governed column, written only by SET of a declared column. A
     label written by SET n:L or removed by REMOVE n:L may be followed in the same statement by reads (WITH,
     RETURN), which see the write. An ontology Class label (REQ-2163) is never written or removed on a model
-    node by SET or REMOVE: a node''s Class comes from its table''s binding, and both are refused by name.'
+    node by SET or REMOVE: a node''s Class comes from its table''s binding, and both are refused by name.
+    (Amended 2026-10-28, CYPHER INDEX STATEMENTS ARE SESSION INDEXES:) CREATE INDEX [name] FOR (n:L) ON
+    (n.p, ...) builds an index on the graph session''s own anchor table for label L in the scratch store,
+    and CREATE INDEX [name] FOR ()-[r:T]-() ON (r.p, ...) on the session''s property table for relationship
+    type T. A session index lives as long as the graph session and goes when it is cleared or reaped. A
+    CREATE INDEX on a model label (a governed table, not in the scratch store) is refused by name. SHOW
+    INDEXES lists the session''s indexes and the built-in ones on its tables (each table''s key, rels on
+    from_id, to_id and type, node_labels on label and node_id), the built-in ones marked so; DROP INDEX
+    name drops a session index and refuses a built-in one. No right beyond the session''s own is needed.'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
@@ -91144,10 +91152,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     ranked by how often path queries and joins use them (the audit log and the ops domain''s join_hotspots),
     each with the owner''s opt-in. Provisa never creates an index on a source''s own tables. (Amended 2026-10-28,
     PROVISA''S OWN INDEX, OR NEO4J''S KINDS:) The edge index may be Provisa''s own adjacency structure rather
-    than a plain indexed table, whichever walks a path fastest on the store that holds it. Cypher''s index
-    statements may be honoured the same way: a CREATE INDEX for a label''s or a relationship type''s property,
-    and SHOW INDEXES, act on Provisa-owned materializations of those nodes and relationships, never on a
-    source''s tables, so a Neo4j user''s own index habits carry over.'
+    than a plain indexed table, whichever walks a path fastest on the store that holds it. [SUPERSEDED by
+    REQ-2176 amendment CYPHER INDEX STATEMENTS ARE SESSION INDEXES, 2026-10-28 -- Cypher index statements
+    act on the graph session. Kept here for history; do not implement against it.] Cypher''s index statements
+    may be honoured the same way: a CREATE INDEX for a label''s or a relationship type''s property, and
+    SHOW INDEXES, act on Provisa-owned materializations of those nodes and relationships, never on a source''s
+    tables, so a Neo4j user''s own index habits carry over. [END SUPERSEDED BLOCK] (Amended 2026-10-28,
+    PERSISTENT INDEXES COME FROM THE MODEL:) Persistent indexes on model data come from the model only (REQ-2015
+    and this edge index), never from a Cypher statement; Cypher''s index statements are session indexes
+    (REQ-2176).'
   scenario: 'Given a relationship with an edge index and a [*1..4] pattern over it
     When the pattern is compiled
     Then its recursive steps read the edge index, indexed in both directions, and the endpoint tables are joined once
