@@ -110,22 +110,25 @@ def _support(product: "DataProductAsset") -> list[dict[str, Any]]:
 
 
 def _team(product: "DataProductAsset") -> dict[str, Any] | None:
-    """The product's team as its roles: Provisa names roles, not the people holding them."""
-    roles = [
-        (role, purpose)
-        for role, purpose in (
-            (product.owner.id if product.owner is not None else None, "owner"),
-            (product.team_role, "team"),
-        )
-        if role
-    ]
-    if not roles:
+    """The product's team in ODPS's own fields: named for its team role (else its owner role),
+    each member a holder of one of the two roles by address, with that role as its role."""
+    owner_role = product.owner.id if product.owner is not None else None
+    if not (owner_role or product.team_role):
         return None
+    members = [
+        {"username": email, "role": role}
+        for role, emails in (("owner", product.owner_emails), ("team", product.team_emails))
+        for email in emails
+    ]
+    named = "; ".join(
+        f"{purpose} role {role}"
+        for purpose, role in (("owner", owner_role), ("team", product.team_role))
+        if role
+    )
     return {
-        "name": product.team_role or roles[0][0],
-        "customProperties": [
-            {"property": f"{purpose}Role", "value": role} for role, purpose in roles
-        ],
+        "name": product.team_role or owner_role,
+        "description": named[0].upper() + named[1:],
+        **({"members": members} if members else {}),
     }
 
 
@@ -141,11 +144,153 @@ def _description(product: "DataProductAsset") -> dict[str, str]:
     }
 
 
-def _custom_properties(product: "DataProductAsset") -> list[dict[str, Any]]:
-    props = [{"property": k, "value": v} for k, v in sorted(product.custom_properties.items())]
-    if product.documentation_url:
-        props.append({"property": "documentation", "value": product.documentation_url})
+def _custom_properties(
+    product: "DataProductAsset", without_contract: list[str], inputs_without_contract: list[str]
+) -> list[dict[str, Any]]:
+    props: list[dict[str, Any]] = [
+        {"property": k, "value": v} for k, v in sorted(product.custom_properties.items())
+    ]
+    # A member, or an input, with no declared contract is named, never left out silently: it
+    # is no port, since ODPS versions a port by its contract.
+    if without_contract:
+        props.append({"property": "membersWithoutContract", "value": without_contract})
+    if inputs_without_contract:
+        props.append({"property": "inputsWithoutContract", "value": inputs_without_contract})
     return props
+
+
+def _authoritative_definitions(product: "DataProductAsset") -> list[dict[str, str]]:
+    """The product's page, where it is documented and edited (REQ-1659)."""
+    if not product.documentation_url:
+        return []
+    return [
+        {
+            "type": "businessDefinition",
+            "url": product.documentation_url,
+            "description": "The data product's page",
+        }
+    ]
+
+
+def _management_ports(product: "DataProductAsset") -> list[dict[str, str]]:
+    """The endpoints that observe and control the product: its page, its lineage and the admin
+    GraphQL API that edits it."""
+    ports = (
+        ("page", "discoverability", product.documentation_url, "The data product's page"),
+        ("lineage", "observability", product.lineage_url, "The data product's lineage"),
+        ("admin", "control", product.admin_api_url, "The admin GraphQL API that manages it"),
+    )
+    return [
+        {"name": name, "content": content, "type": "rest", "url": url, "description": text}
+        for name, content, url, text in ports
+        if url
+    ]
+
+
+def _tags(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list[str]:
+    """The model tags on the product's member tables, each once."""
+    members = {member.parts for member in product.members}
+    return sorted(
+        {
+            tag.tag_id
+            for tag in snapshot.model_tags
+            if tag.asset is not None and tag.asset.parts in members
+        }
+    )
+
+
+def _checker_tables(snapshot: "MetadataSnapshot") -> set[tuple[str, ...]]:
+    """The tables a check's outcomes land in: a member by product, never an output of it."""
+    return {assertion.results_table.parts for assertion in snapshot.assertions}
+
+
+def _upstream(snapshot: "MetadataSnapshot") -> dict[tuple[str, ...], set[tuple[str, ...]]]:
+    """Each table's direct upstream tables, from the snapshot's column lineage."""
+    upstream: dict[tuple[str, ...], set[tuple[str, ...]]] = {}
+    for edge in snapshot.lineage:
+        down, up = edge.downstream.parts[:3], edge.upstream.parts[:3]
+        if down != up:
+            upstream.setdefault(down, set()).add(up)
+    return upstream
+
+
+def _inputs(
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", start: set[tuple[str, ...]]
+) -> list["TableAsset"]:
+    """The nearest inputs of ``start`` (member tables): upstream through views and the
+    product's own members to the first table that is neither -- another product's member, or a
+    table read from a source. A member is never an input of its own product."""
+    by_parts = {table.ref.parts: table for table in snapshot.tables}
+    members = {member.parts for member in product.members}
+    upstream = _upstream(snapshot)
+    found: dict[tuple[str, ...], "TableAsset"] = {}
+    seen: set[tuple[str, ...]] = set()
+    pending = list(start)
+    while pending:
+        for parts in upstream.get(pending.pop(), ()):
+            if parts in seen:
+                continue
+            seen.add(parts)
+            table = by_parts[parts]
+            if parts in members or (table.is_view and table.contract is None):
+                pending.append(parts)
+            else:
+                found[parts] = table
+    return [found[parts] for parts in sorted(found)]
+
+
+def _expectations(
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
+) -> list[dict[str, Any]]:
+    """The product's own checks on an input (REQ-2157): its expectations of it."""
+    return [
+        {
+            "checkType": assertion.check_type,
+            "definition": assertion.definition,
+            "severity": assertion.severity,
+            **({"column": assertion.asset.parts[3]} if len(assertion.asset.parts) > 3 else {}),
+            "outcome": assertion.outcome.status,
+        }
+        for assertion in snapshot.assertions
+        if assertion.owner_product_id == product.id and assertion.asset.parts[:3] == table.ref.parts
+    ]
+
+
+def _input_port(
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
+) -> dict[str, Any]:
+    """An input another product promises: its contract, and the product's expectations of it."""
+    assert table.contract is not None  # an input port names the contract it reads
+    expected = _expectations(snapshot, product, table)
+    return {
+        "name": table.name,
+        "version": table.contract.version,
+        "contractId": contract_id(table),
+        **(
+            {"customProperties": [{"property": "expectations", "value": expected}]}
+            if expected
+            else {}
+        ),
+    }
+
+
+def _output_port(
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
+) -> dict[str, Any]:
+    assert table.contract is not None  # an output port is its member's declared contract
+    reads = [
+        {"id": contract_id(upstream), "version": upstream.contract.version}
+        for upstream in _inputs(snapshot, product, {table.ref.parts})
+        if upstream.contract is not None
+    ]
+    return {
+        "name": table.name,
+        "version": table.contract.version,
+        "type": "view" if table.is_view else "table",
+        "contractId": contract_id(table),
+        **({"description": table.description} if table.description else {}),
+        **({"inputContracts": reads} if reads else {}),
+    }
 
 
 def _members(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list["TableAsset"]:
@@ -160,36 +305,50 @@ def _ports(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list["T
 
 
 def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> dict[str, Any]:
-    """The product's ODPS 1.0 document: its fields, and an output port per member naming the
-    member's ODCS contract."""
-    version = product.version or UNVERSIONED
+    """The product's ODPS 1.0 document (REQ-2118): its fields; an input port per input another
+    product promises, naming that contract and the product's expectations of it; an output port
+    per member naming the member's ODCS contract and the input contracts it reads; and the
+    endpoints that observe and control it."""
+    members = _members(snapshot, product)
+    checkers = _checker_tables(snapshot)
+    inputs = _inputs(snapshot, product, {table.ref.parts for table in members})
     document: dict[str, Any] = {
         "apiVersion": ODPS_API_VERSION,
         "kind": "DataProduct",
         "id": product.semantic_uri,
         "name": product.name,
-        "version": version,
+        "version": product.version or UNVERSIONED,
         "status": product_status(product),
         "domain": product.domain_id,
+        "tenant": snapshot.org_id,
+        "inputPorts": [
+            _input_port(snapshot, product, table) for table in inputs if table.contract is not None
+        ],
         "outputPorts": [
-            {
-                "name": table.name,
-                "version": table.contract.version,
-                "type": "view" if table.is_view else "table",
-                "contractId": contract_id(table),
-                **({"description": table.description} if table.description else {}),
-            }
-            for table in _ports(snapshot, product)
-            if table.contract is not None
+            _output_port(snapshot, product, table) for table in _ports(snapshot, product)
         ],
     }
+    if product.created_at:
+        document["productCreatedTs"] = product.created_at
     if description := _description(product):
         document["description"] = description
+    if definitions := _authoritative_definitions(product):
+        document["authoritativeDefinitions"] = definitions
+    if tags := _tags(snapshot, product):
+        document["tags"] = tags
     if support := _support(product):
         document["support"] = support
     if team := _team(product):
         document["team"] = team
-    if custom := _custom_properties(product):
+    if management := _management_ports(product):
+        document["managementPorts"] = management
+    without_contract = [
+        table.name
+        for table in members
+        if table.contract is None and table.ref.parts not in checkers
+    ]
+    inputs_without = [table.name for table in inputs if table.contract is None]
+    if custom := _custom_properties(product, without_contract, inputs_without):
         document["customProperties"] = custom
     return document
 
