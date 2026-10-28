@@ -582,7 +582,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
                version, status, status_reason, retire_on, successor_id, support,
                support_contact, custom_properties,
-               -- REQ-2118: when the product was created; last, so the view is replaced in place.
+               -- when the product was created; last, so the view is replaced in place.
                created_at
         FROM data_products
     """,
