@@ -46,7 +46,8 @@ vi.mock("cytoscape", () => {
       },
       nodes: () => none,
       elements: () => ({ ...none, filter: () => none }),
-      getElementById: () => none,
+      // Every node at the origin: the second pass's order is ELK's to keep, not the test's.
+      getElementById: () => ({ ...none, position: () => 0 }),
       add: vi.fn(),
       fit: vi.fn(),
       resize: vi.fn(),

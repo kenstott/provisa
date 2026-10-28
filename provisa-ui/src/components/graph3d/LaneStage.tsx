@@ -215,7 +215,8 @@ export function LaneStage({
         { selector: ".faded", style: { opacity: 0.2 } },
       ],
       minZoom: 0.1,
-      maxZoom: 2.5,
+      // Names are legible at zoom 1; a small diagram is enlarged only a little to fit.
+      maxZoom: 1.6,
       boxSelectionEnabled: false,
       autoungrabify: true,
     } as unknown as Parameters<typeof cytoscape>[0]) as CyCore;
@@ -249,36 +250,120 @@ export function LaneStage({
     // Each lane is an ELK partition, placed strictly left to right; inside the term lane its
     // rank edges set the levels top-down.
     const partition = (l: Lane) => String(LANES.indexOf(l));
-    const layout = cy.layout({
-      name: "elk",
-      fit: true,
-      padding: FIT_PAD,
-      nodeLayoutOptions: (n: cytoscape.NodeSingular) => {
-        if (n.id() === TERM_LANE)
-          return {
-            "elk.partitioning.partition": partition("term"),
-            "elk.algorithm": "layered",
-            "elk.direction": "DOWN",
-            "elk.aspectRatio": "0.4",
-            "elk.layered.spacing.nodeNodeBetweenLayers": "36",
-            "elk.spacing.nodeNode": "14",
-          };
-        if (n.data("lane") === "term") return {};
-        return { "elk.partitioning.partition": partition(n.data("lane") as Lane) };
-      },
-      elk: {
-        algorithm: "layered",
-        "elk.direction": "RIGHT",
-        "elk.partitioning.activate": "true",
-        // One graph, so every lane lines up across all of it.
-        "elk.separateConnectedComponents": "false",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "90",
-        "elk.spacing.nodeNode": "10",
-        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-      },
-    } as CyLayoutOptions);
+    const elkLayout = (ordered: boolean) =>
+      cy.layout({
+        name: "elk",
+        fit: true,
+        padding: FIT_PAD,
+        nodeLayoutOptions: (n: cytoscape.NodeSingular) => {
+          if (n.id() === TERM_LANE)
+            return {
+              "elk.partitioning.partition": partition("term"),
+              "elk.algorithm": "layered",
+              "elk.direction": "DOWN",
+              "elk.aspectRatio": "0.4",
+              "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+              "elk.spacing.nodeNode": "14",
+            };
+          if (n.data("lane") === "term") return {};
+          return { "elk.partitioning.partition": partition(n.data("lane") as Lane) };
+        },
+        elk: {
+          algorithm: "layered",
+          "elk.direction": "RIGHT",
+          "elk.partitioning.activate": "true",
+          // One graph, so every lane lines up across all of it.
+          "elk.separateConnectedComponents": "false",
+          // A card is narrow: its lanes sit closer.
+          "elk.layered.spacing.nodeNodeBetweenLayers": bare ? "40" : "90",
+          "elk.spacing.nodeNode": "10",
+          "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+          // The second pass keeps each lane in the order the first pass's terms ask for.
+          ...(ordered ? { "elk.layered.crossingMinimization.strategy": "INTERACTIVE" } : {}),
+        },
+      } as CyLayoutOptions);
+
+    // The term lane is laid out on its own (top-down), so the outer lanes cannot see the lines
+    // from it. A second pass orders them by it: each table at the mean height of the terms its
+    // columns are bound to, its columns together beside it in their terms' order (its "+N
+    // columns" last), each product at the mean of its tables.
+    const reorder = () => {
+      const y = (id: string) => cy.getElementById(id).position("y");
+      const laneOf = (id: string) => diagram.lane.get(id);
+      const avg = (xs: number[]) => xs.reduce((sum, v) => sum + v, 0) / xs.length;
+      const terms = new Map<string, number[]>();
+      const tableOf = new Map<string, string>();
+      const tablesOf = new Map<string, string[]>();
+      for (const k of diagram.links) {
+        if (laneOf(k.from) === "term" && laneOf(k.to) !== "term")
+          terms.set(k.to, [...(terms.get(k.to) ?? []), y(k.from)]);
+        if (laneOf(k.to) === "table" && laneOf(k.from) !== "term") tableOf.set(k.from, k.to);
+        if (laneOf(k.to) === "product") tablesOf.set(k.to, [...(tablesOf.get(k.to) ?? []), k.from]);
+      }
+      const own = (id: string) => {
+        const ys = terms.get(id);
+        return ys ? avg(ys) : y(id);
+      };
+      const inLane = (l: Lane) => g.nodes.filter((n) => laneOf(n.id) === l).map((n) => n.id);
+      const tableKey = new Map<string, number>();
+      for (const t of inLane("table")) {
+        const ys = [...tableOf].filter(([c, at]) => at === t && terms.has(c)).map(([c]) => own(c));
+        ys.push(...(terms.get(t) ?? []));
+        tableKey.set(t, ys.length === 0 ? y(t) : avg(ys));
+      }
+      const more = new Set(diagram.more.map((m) => m.id));
+      const key = (id: string): [number, number] => {
+        const t = tableOf.get(id);
+        const inner = more.has(id) ? Infinity : own(id);
+        return t ? [tableKey.get(t) as number, inner] : [inner, 0];
+      };
+      const columns = [...inLane("column"), ...more].sort((p, q) => {
+        const [a1, a2] = key(p);
+        const [b1, b2] = key(q);
+        return a1 - b1 || a2 - b2;
+      });
+      const tables = inLane("table").sort(
+        (p, q) => (tableKey.get(p) as number) - (tableKey.get(q) as number),
+      );
+      const place = new Map<string, number>();
+      columns.forEach((id, i) => place.set(id, i));
+      tables.forEach((id, i) => place.set(id, (i * columns.length) / Math.max(1, tables.length)));
+      for (const p of inLane("product")) {
+        const ts = tablesOf.get(p) ?? [];
+        place.set(p, ts.length === 0 ? y(p) : avg(ts.map((t) => place.get(t) as number)));
+      }
+      // Only the order within each lane counts (ELK's interactive crossing minimisation).
+      for (const [id, at] of place) {
+        const n = cy.getElementById(id);
+        n.position({ x: n.position("x"), y: at * NODE_H * 2 });
+      }
+    };
+
     // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
-    layout.one("layoutstop", () => {
+    // ELK answers after this view may have moved on (a new diagram): a cytoscape torn down while
+    // it lays out is detached at once and destroyed when the layout ends.
+    let running = true;
+    let gone = false;
+    const first = elkLayout(false);
+    first.one("layoutstop", () => {
+      if (gone) {
+        running = false;
+        cy.destroy();
+        return;
+      }
+      reorder();
+      const second = elkLayout(true);
+      second.one("layoutstop", () => {
+        running = false;
+        if (gone) {
+          cy.destroy();
+          return;
+        }
+        labelLanes();
+      });
+      second.run();
+    });
+    const labelLanes = () => {
       const placed = cy.nodes('[kind = "node"], [kind = "more"]');
       if (placed.empty()) return;
       const top = placed.boundingBox({}).y1 - 26;
@@ -293,8 +378,8 @@ export function LaneStage({
         });
       }
       cy.fit(undefined, FIT_PAD);
-    });
-    layout.run();
+    };
+    first.run();
 
     const observer = new ResizeObserver(() => {
       cy.resize();
@@ -303,10 +388,14 @@ export function LaneStage({
     observer.observe(box);
     return () => {
       observer.disconnect();
-      cy.destroy();
       cyRef.current = null;
+      if (!running) cy.destroy();
+      else {
+        gone = true;
+        (cy as unknown as { unmount: () => void }).unmount();
+      }
     };
-  }, [diagram, scheme, t, laneTitle]);
+  }, [diagram, scheme, t, laneTitle, bare]);
 
   // What is picked or hovered is lit, with its lines; the rest fades while something is hovered.
   useEffect(() => {
