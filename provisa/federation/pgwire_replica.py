@@ -1281,6 +1281,11 @@ class ConnectorReplica:  # REQ-954/955/956
         self._catalog_ready = False
         self._catalog_error: BaseException | None = None
         self._catalog_thread: threading.Thread | None = None
+        # REQ-540: a server whose source is started when saved (``STARTED_WHEN_SAVED``) holds
+        # every statement while its catalog is prepared, which takes minutes, so the preparation
+        # waits for the source's first use by the engine (:meth:`use_catalog`). Any other type's
+        # catalog is prepared on the first request that needs it.
+        self._catalog_wanted = _source_type(source) not in STARTED_WHEN_SAVED
         # Which server the preparation in flight belongs to: one outlived by its server (the
         # server was stopped under it) reports to no one.
         self._catalog_server = 0
@@ -1420,6 +1425,8 @@ class ConnectorReplica:  # REQ-954/955/956
         server = self._server
         if server is None:
             return
+        # A statement reads the source: its first use by the engine (REQ-540).
+        self.use_catalog()
         if server.health():
             self.await_catalog(server.ports, 0)
             return
@@ -1428,9 +1435,37 @@ class ConnectorReplica:  # REQ-954/955/956
             raise ServerExited(self._source.id, code, server.log_tail())
         raise SourceStillStartingError(self._source.id)
 
+    def use_catalog(self) -> None:
+        """The source is in use by the engine: its first registered table, or a statement on it
+        (REQ-540). From now on its catalog is prepared, and the preparation is sent at once if the
+        server listens. Waits for nothing."""
+        with self._start_lock:
+            self._catalog_wanted = True
+            server = self._server
+        if server is not None and server.health():
+            with self._start_lock:
+                self._start_catalog_locked(server.ports)
+
+    def _start_catalog_locked(self, ports: PortPair) -> None:
+        """Send the catalog query from a thread of its own, unless it is prepared, failed, in
+        flight, or not yet wanted (:meth:`use_catalog`). Caller holds ``_start_lock``."""
+        if self._catalog_ready or not self._catalog_wanted:
+            return
+        if self._catalog_error is None and self._catalog_thread is None:
+            thread = threading.Thread(
+                target=self._prepare_catalog_once,
+                args=(ports, self._catalog_server),
+                daemon=True,
+                name=f"pgwire-catalog:{self._source.id}",
+            )
+            self._catalog_thread = thread
+            thread.start()
+
     def await_catalog(self, ports: PortPair, timeout: float) -> None:
         """Return once the listening server's catalog is prepared; until then raise
-        ``SourceStillStartingError``, having waited at most ``timeout`` seconds.
+        ``SourceStillStartingError``, having waited at most ``timeout`` seconds. A source not yet
+        in use by the engine (:meth:`use_catalog`) has no preparation sent: it is answered still
+        starting at once.
 
         A server's FIRST catalog query can take far longer than any later one (a server whose
         catalog was not prebuilt for its model builds it then). An engine's attach issues that
@@ -1448,15 +1483,9 @@ class ConnectorReplica:  # REQ-954/955/956
             with self._start_lock:
                 if self._catalog_ready:
                     return
-                if self._catalog_error is None and self._catalog_thread is None:
-                    thread = threading.Thread(
-                        target=self._prepare_catalog_once,
-                        args=(ports, self._catalog_server),
-                        daemon=True,
-                        name=f"pgwire-catalog:{self._source.id}",
-                    )
-                    self._catalog_thread = thread
-                    thread.start()
+                if not self._catalog_wanted:
+                    raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+                self._start_catalog_locked(ports)
                 thread = self._catalog_thread
             left = deadline - time.monotonic()
             if thread is not None and left > 0:
@@ -1633,7 +1662,18 @@ def serve_for_build(source: Any) -> None:
     started and waited for by the attach itself."""
     if _source_type(source) not in STARTED_WHEN_SAVED:
         return
+    _endpoint_replica(source).use_catalog()  # a build of a registered table uses the source
     ensure_endpoint(source, timeout=LAND_FETCH_SECONDS)
+
+
+def use_catalog_of(source: Any) -> None:
+    """A table of ``source`` was registered: its first use by the engine, so a server started
+    when saved (``STARTED_WHEN_SAVED``) has its catalog prepared from now on (REQ-540). Until
+    then the server serves its information_schema with no statement held behind that
+    preparation. Waits for nothing; any other type is left to its first attach."""
+    if _source_type(source) not in STARTED_WHEN_SAVED:
+        return
+    _endpoint_replica(source).use_catalog()
 
 
 #: How long a statement waits for a source's server that is still starting, in all: below the
@@ -1734,7 +1774,9 @@ def ensure_endpoint(source: Any, *, timeout: float | None = None) -> PortPair:
     minutes to start (``STARTED_WHEN_SAVED``) is not waited for by an attach: it was started
     when its source was saved, and until it listens AND its catalog is prepared
     (``ConnectorReplica.await_catalog``) the attach is answered ``SourceStillStartingError`` at
-    once rather than holding its caller — and the engine's attach pass — for the wait."""
+    once rather than holding its caller — and the engine's attach pass — for the wait. Its
+    catalog is not prepared for an attach until the source is in use (``use_catalog_of``,
+    ``ConnectorReplica.require_serving``, :func:`serve_for_build`)."""
     replica = _endpoint_replica(source)
     if _source_type(source) not in STARTED_WHEN_SAVED:
         # A server that starts in seconds is waited for -- and its catalog within the same bound.
