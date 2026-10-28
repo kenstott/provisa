@@ -175,3 +175,25 @@ def test_a_class_taking_a_definition_tables_name_is_refused(name):
     assert list(refused) == [ORDER]
     assert "names the field the ontology table" in refused[ORDER]
     assert [r["id"] for r in rows] == [class_table_id(CUSTOMER)]
+
+
+@pytest.mark.parametrize("single_domain", [False, True])
+@pytest.mark.parametrize("domain_prefix", [False, True])
+def test_the_bare_label_person_is_the_model_table_not_the_ontology_class(
+    domain_prefix, single_domain, monkeypatch
+):
+    from provisa.compiler.context import build_context
+    from provisa.core import domain_policy
+    from provisa.gql.label_map import CypherLabelMap
+
+    monkeypatch.setattr(domain_policy, "single_domain", lambda: single_domain)
+    tables = [("ontology", "person", None, None), ("sales", "person", None, None)]
+    schema = _schema_input(domain_prefix, tables)
+    # the ontology table is a Class table: its id is negative (ontology_classes.class_table_id)
+    schema.tables[0]["id"] = -1
+    schema.column_types[-1] = schema.column_types.pop(1)
+    ctx = build_context(schema)
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    model = next(m for m in ctx.tables.values() if m.domain_id == "sales")
+    (type_name,) = lm.nodes_by_table["Person"]
+    assert lm.nodes[type_name].table_id == model.table_id
