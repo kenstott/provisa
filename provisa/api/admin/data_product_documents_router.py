@@ -15,7 +15,8 @@ ODCS contract of each member it names. They are built from the same snapshot the
 publishes (``publishing.org_snapshot``), so a catalog that pulls reads what one that is pushed to
 was told. Reading them asks what reading a data product asks (``data_product_read``), and they are
 part of the metadata export, so the org's tier must include it (REQ-1073; nothing gates it on a
-self-hosted install, REQ-1066).
+self-hosted install, REQ-1066). The product's own Contracts panel reads the same contracts as JSON,
+asking only what reading the product asks (REQ-2158).
 """
 
 # Requirements: REQ-2118, REQ-1073
@@ -36,13 +37,16 @@ router = APIRouter()
 _YAML = "application/yaml"
 
 
-async def _documents(request: Request, product_id: str):
+async def _documents(request: Request, product_id: str, *, export: bool = True):
+    """The product's documents. ``export`` is a catalog's pull, part of the metadata export; the
+    product's own page reads the same contracts without it (REQ-2158), as it reads the product."""
     require_capability_request(request, "data_product_read")
     org_id = require_active_org_id(request)
-    try:
-        await require_feature(org_id, Feature.METADATA_EXPORT)
-    except (EntitlementError, KeyError) as exc:
-        raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
+    if export:
+        try:
+            await require_feature(org_id, Feature.METADATA_EXPORT)
+        except (EntitlementError, KeyError) as exc:
+            raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
     from provisa.api.metadata_export.odps import product_documents
     from provisa.api.metadata_export.publishing import org_snapshot
 
@@ -68,6 +72,15 @@ async def data_product_odps(product_id: str, request: Request) -> Response:  # R
     """The product's ODPS 1.0 document."""
     document, _ = await _documents(request, product_id)
     return _yaml(document)
+
+
+@router.get("/data-products/{product_id}/contracts.json")
+async def data_product_contracts(product_id: str, request: Request) -> dict:  # REQ-2158
+    """Every output port's ODCS 3.1 contract, by its member's address, as the product's
+    Contracts panel shows them: each element declared or derived, the one document a catalog
+    pulls."""
+    _, contracts = await _documents(request, product_id, export=False)
+    return contracts
 
 
 @router.get("/data-products/{product_id}/contracts/{member}.yaml")

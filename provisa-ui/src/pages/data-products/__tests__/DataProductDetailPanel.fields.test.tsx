@@ -51,6 +51,8 @@ function fields(p: DataProduct): [string, string][] {
       canDelete={false}
       owner
       lineageLoading={false}
+      odcs={null}
+      odcsError=""
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}

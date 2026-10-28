@@ -40,6 +40,16 @@ from provisa.security.rights import (
 from provisa.security.visibility import visible_tables
 from tests.role_state import RoleState
 
+
+def _field(t: dict) -> str:
+    """A table's root field name as the schema build names it (REQ-2163: ops's carry op_)."""
+    from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, system_schema_names
+
+    if t["domain_id"] in SYSTEM_SCHEMA_GQL_PREFIX:
+        return system_schema_names(t["domain_id"], t["table_name"])[0]
+    return t["table_name"]
+
+
 HR, SALES, OPS = "hr", "sales", "ops"
 
 
@@ -296,8 +306,8 @@ def _sql_context(role: dict, *, row_rule: str | None = None, mask=None):
     ctx.tables = {
         t["table_name"]: TableMeta(
             table_id=t["id"],
-            field_name=t["table_name"],
-            type_name=t["table_name"].capitalize(),
+            field_name=_field(t),
+            type_name=_field(t).capitalize(),
             source_id="pg",
             catalog_name="pg",
             schema_name="public",

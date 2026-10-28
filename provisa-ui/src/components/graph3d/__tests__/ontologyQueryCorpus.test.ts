@@ -210,7 +210,7 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     const m = reader();
     const [, base] = snippetScopes()[0];
     const term = ontologyQuery(m, { ...base, focus: "term:7", depth: 2 }) as string;
-    expect(term).toMatch(/ont__terms\(where: \{[^\n]*id: \{ eq: 7 \}/);
+    expect(term).toMatch(/on_terms\(where: \{[^\n]*id: \{ eq: 7 \}/);
     expect(term).toContain("edgesIn");
     const product = ontologyQuery(m, { ...base, focus: "p:1", depth: 2 }) as string;
     expect(product).toContain('productId: { eq: "1" }');
@@ -224,6 +224,6 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
   it("each read the system catalog's real root fields", () => {
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
-    for (const q of queries) expect(q).toMatch(/ont__terms|m__dataProducts/);
+    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts/);
   });
 });

@@ -296,7 +296,7 @@ def _resolve_aggregation_plan(
     import sqlglot
     from sqlglot import exp
 
-    from provisa.compiler.naming import domain_to_sql_name, rel_field_name
+    from provisa.compiler.naming import domain_to_sql_name, rel_field_name, unprefixed_field_name
     from provisa.grpc.query_ir import AGG_FUNCS
 
     try:
@@ -407,7 +407,9 @@ def _resolve_aggregation_plan(
             )
             if dim_meta is None:
                 continue
-            rel_field = rel_field_name(dim_meta.field_name, "many-to-one")
+            rel_field = rel_field_name(
+                unprefixed_field_name(dim_meta.field_name, dim_meta.domain_id), "many-to-one"
+            )
             for dim_col in dim_cols:
                 dim_paths.append(f"{rel_field}.{dim_col}")
                 dim_paths_api.append(f"{physical_rel_name(rel_field)}.{dim_col}")

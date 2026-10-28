@@ -69,13 +69,13 @@ def answer(request, meta):  # noqa: F811
         tree = sqlglot.parse_one(make_semantic_sql(root.sql, ctx), read="postgres")
         sql = tree.transform(lambda n: _bound(n, root.params)).sql(dialect="postgres")
         rows = con.execute(sql).fetchall()
-        return serialize_rows(rows, root.columns, "terms")["data"]["terms"]
+        return serialize_rows(rows, root.columns, "on_terms")["data"]["on_terms"]
 
     return _on_postgres
 
 
 def _ledger(body: str) -> str:
-    return f'{{ terms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
+    return f'{{ on_terms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
 
 
 def test_a_to_many_below_a_to_one_keeps_every_row(answer):
@@ -130,23 +130,23 @@ def test_sibling_to_many_fields_are_each_their_own_list(answer):
     "query, path",
     [
         # A JSON value at the root.
-        ('{ terms(where: { name: { eq: "old" } }) { id edgesOut { id } } }', ()),
+        ('{ on_terms(where: { name: { eq: "old" } }) { id edgesOut { id } } }', ()),
         # A lateral join: the field takes a where.
         (
-            '{ terms(where: { name: { eq: "old" } }) { id '
+            '{ on_terms(where: { name: { eq: "old" } }) { id '
             'edgesOut(where: { relType: { eq: "KIND_OF" } }) { id } } }',
             (),
         ),
         # A JSON value under a lateral join: customer -RELATED_TO-> old has no edges.
         (
-            '{ terms(where: { name: { eq: "customer" } }) { id '
+            '{ on_terms(where: { name: { eq: "customer" } }) { id '
             'edgesOut(where: { relType: { eq: "RELATED_TO" } }) { id targetTerm { id '
             "edgesOut { id } } } } }",
             ("edgesOut", 0, "targetTerm"),
         ),
         # A JSON value inside a JSON value: party -KIND_OF-> old has no edges.
         (
-            '{ terms(where: { name: { eq: "party" } }) { id '
+            '{ on_terms(where: { name: { eq: "party" } }) { id '
             "edgesOut { id targetTerm { id edgesOut { id } } } } }",
             ("edgesOut", 0, "targetTerm"),
         ),
@@ -163,7 +163,7 @@ def test_on_trino_the_empty_default_is_an_empty_list_and_the_subquery_is_still_j
     from provisa.transpiler.transpile import transpile_to_trino
 
     _schema, ctx, _con = meta
-    root = _compiled(meta, "{ terms { id edgesOut { id } } }")
+    root = _compiled(meta, "{ on_terms { id edgesOut { id } } }")
     trino = transpile_to_trino(make_semantic_sql(root.sql, ctx))
     # The correlated JSON subquery is still rewritten to a joined aggregate for Trino...
     assert "_grel_" in trino and "LEFT JOIN" in trino

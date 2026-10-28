@@ -107,6 +107,8 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       canDelete={false}
       owner
       lineageLoading={false}
+      odcs={null}
+      odcsError=""
       lineageError=""
       lineageGraph={{
         nodes: [],

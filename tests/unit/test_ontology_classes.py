@@ -361,7 +361,7 @@ def test_the_class_is_a_graphql_type_with_the_columns_its_reader_is_served(built
             for name, t in schema.type_map.items()
             if isinstance(t, GraphQLObjectType) and "customerName" in t.fields
         ]
-        assert [t.name for t in found] == ["Customer"]
+        assert [t.name for t in found] == ["ON_Customer"]
         return set(found[0].fields)
 
     assert {"customerName", "emailAddress", "loyaltyTier", "sourceTable"} <= fields("analyst")
@@ -612,7 +612,9 @@ def test_a_bare_name_a_class_shares_with_a_table_resolves_to_the_table() -> None
     ctx.tables = {
         t["table_name"] + str(t["id"]): TableMeta(
             table_id=t["id"],
-            field_name=t["table_name"],
+            field_name=(
+                f"on_{t['table_name']}" if t["domain_id"] == "ontology" else t["table_name"]
+            ),
             type_name=t["table_name"].title(),
             source_id=t["source_id"],
             catalog_name=t["source_id"],

@@ -42,8 +42,8 @@ function reader(): MetaReader {
         type("Query", {
           m__dataProducts: list("DP"),
           m__tableColumns: list("TC"),
-          ont__termEdges: list("TE"),
-          ont__terms: list("GT"),
+          on_termEdges: list("TE"),
+          on_terms: list("GT"),
         }),
         type("DP", {
           id: s,
@@ -75,8 +75,8 @@ function reader(): MetaReader {
     roots: new Map([
       [rootKey("meta", "data_products"), "m__dataProducts"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
-      [rootKey("ontology", "_term_edges"), "ont__termEdges"],
-      [rootKey("ontology", "_terms"), "ont__terms"],
+      [rootKey("ontology", "_term_edges"), "on_termEdges"],
+      [rootKey("ontology", "_terms"), "on_terms"],
     ]),
   };
 }

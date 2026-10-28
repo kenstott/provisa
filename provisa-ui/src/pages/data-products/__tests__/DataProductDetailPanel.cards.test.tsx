@@ -65,6 +65,8 @@ function panel() {
       canDelete={false}
       owner
       lineageLoading={false}
+      odcs={null}
+      odcsError=""
       lineageError=""
       lineageGraph={LINEAGE}
       onEdit={vi.fn()}
