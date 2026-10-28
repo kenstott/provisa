@@ -61,8 +61,10 @@ _USE_MARKED_EVERY = timedelta(hours=1)
 
 
 def session_id(user_id: str) -> str:
-    """The principal's graph session id: its store schema is the same on every statement."""
-    return "p" + hashlib.sha256(user_id.encode()).hexdigest()[:15]
+    """The principal's graph session id: its store schema is the same on every statement. Hex,
+    as every session's id is: a session's store schema is known by it
+    (``replica_address.temp_schema``, whose writes the replica guard admits by that form)."""
+    return hashlib.sha256(user_id.encode()).hexdigest()[:16]
 
 
 @dataclass
@@ -107,16 +109,18 @@ def _sorted(items: Any) -> list:
 
 
 def _role_grants(state: Any, role_id: str) -> dict[str, Any]:
-    """Everything ``role_id`` is granted in this build, its inherited grants expanded."""
+    """Everything ``role_id`` is granted in this build, its inherited grants expanded: the
+    columns it is served by the one rule (``security.visibility.visible_tables``)."""
+    from provisa.security.visibility import visible_tables
+
     inputs = state.role_build_inputs
     tables = inputs["tables"]
+    role = state.roles.get(role_id)
+    served = [] if role is None else visible_tables(tables, role)
     return {
-        "role": state.roles.get(role_id),
+        "role": role,
         "columns": _sorted(
-            [t["id"], c["column_name"]]
-            for t in tables
-            for c in t.get("columns") or []
-            if role_id in (c.get("visible_to") or [])
+            [t["id"], c["column_name"]] for t in served for c in t.get("columns") or []
         ),
         "writes": _sorted(
             g for t in tables for g in t.get("write_grants") or [] if g.get("role") == role_id
