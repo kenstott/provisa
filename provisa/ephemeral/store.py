@@ -32,6 +32,7 @@ table again whole, its columns grown and widened (:mod:`.types`).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -174,8 +175,10 @@ _KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _key_of(table: str, keys: tuple[tuple[str, str], ...]) -> tuple[str, ...]:
-    return _KEYS.get(table, tuple(k for k, _ in keys))
+def key_of(table: str, columns: Sequence[tuple[str, str]]) -> tuple[str, ...]:
+    """The session table's key, as its index is made on it: a fixed table's own (``_KEYS``), else
+    its first column -- of its ``columns`` (name, type)."""
+    return _KEYS.get(table, (columns[0][0],))
 
 
 async def _reland(
@@ -195,7 +198,7 @@ async def _reland(
     columns, all_rows = types.relanded(held, keys, held_rows, rows, _engine(state))
     await temp_exec.reland(state, session, table, columns, all_rows)
     if writer is not None:
-        await temp_exec.index(session, table, _key_of(table, keys), writer)
+        await temp_exec.index(session, table, key_of(table, keys), writer)
 
 
 async def _add(
