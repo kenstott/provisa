@@ -19,7 +19,7 @@ group: data-science
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release whose relationships feed a Qdrant search (REQ-2099), which link_echoes
 # reads as a statement rather than host code (REQ-2134).
-requires_provisa: 0.1.0a495
+requires_provisa: 0.1.0a496
 extras:
 - vector
 # The demo's video: its tagline names what the demo shows Provisa being.

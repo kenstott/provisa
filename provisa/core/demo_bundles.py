@@ -88,8 +88,10 @@ class NeedsNewerProvisa(BundleError):
 
 
 #: The demo format this Provisa reads: bumped whenever a demo's files gain something a reader
-#: requires. 2: tour.yaml names its ``landing`` (REQ-2010, the tour's "Where next?").
-DEMO_FORMAT = 2
+#: requires. 2: tour.yaml names its ``landing`` (REQ-2010, the tour's "Where next?"). 3: code
+#: exports take ``inputs`` (REQ-2100) and roles name ``parents`` (REQ-2155); a demo using either
+#: also sets requires_provisa to the release carrying it, which is what an older Provisa refuses by.
+DEMO_FORMAT = 3
 
 
 @dataclass(frozen=True)
