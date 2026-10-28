@@ -49,7 +49,9 @@ _FK_REGEX = re.compile(r"FOREIGN KEY \((.*?)\) REFERENCES (?:(.*?)\.)?(.*?)\((.*
 
 
 def _tm(table_id: int, name: str):
-    return SimpleNamespace(table_id=table_id, type_name=name, field_name=name, display_name="")
+    return SimpleNamespace(
+        table_id=table_id, type_name=name, field_name=name, display_name="", domain_id="shop"
+    )
 
 
 @pytest.fixture
