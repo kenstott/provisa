@@ -156,6 +156,13 @@ def overlay(model: Any, session: TempSession) -> Any:
     out.nodes_by_table = nodes_by_table
     out.relationships = relationships
     out.aliases = aliases
+    # The session's counts, which a read starts a path from its more selective end by: a label
+    # the model also has counts model rows the session cannot, so only the session's own count.
+    from provisa.gql.label_map import Selectivity
+
+    out.selectivity = Selectivity(
+        {k: n for k, n in graph.label_counts.items() if k and k not in model.nodes}
+    )
     out._nodes_ci = {k.lower(): k for k in nodes}
     out._nodes_by_table_ci = {k.lower(): k for k in nodes_by_table}
     return out
