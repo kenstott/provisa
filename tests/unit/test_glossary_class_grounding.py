@@ -336,7 +336,7 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
 
 
 @pytest.mark.asyncio
-async def test_a_term_grounded_only_in_a_table_is_grounded_and_live_once_defined(
+async def test_a_term_grounded_only_in_a_table_is_grounded_and_conducts_to_its_neighbour(
     control_plane, monkeypatch
 ):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
@@ -349,8 +349,9 @@ async def test_a_term_grounded_only_in_a_table_is_grounded_and_live_once_defined
             grounded = await glossary_repo.grounded_ids(conn)
             # Grounded through the table, and conducted over the edge to its neighbour.
             assert {ids["party"], ids["ledger"]} <= grounded
-            live = await glossary_repo.live_ids(conn)
-            assert ids["ledger"] in live and ids["party"] not in live  # party has no definition
+            grounding = await glossary_repo.grounding(conn)
+            # party is the data end, so its draft status stands between nothing (REQ-1387)
+            assert grounding[ids["ledger"]] == grounding[ids["party"]] == "grounded"
             # retired, party's table goes to its successor and party conducts no more (REQ-2144)
             client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
             await glossary_repo.retire_term(
@@ -400,12 +401,12 @@ async def test_the_meta_terms_view_counts_a_table_as_grounding(control_plane, mo
             for name in ("_domains", "_terms"):
                 await conn.execute(ONTOLOGY_TABLE_VIEWS[name])
             rows = await conn.fetch(
-                "SELECT name, is_rooted, grounded, live FROM _terms_ontology"
+                "SELECT name, is_rooted, grounding, status FROM _terms_ontology"
                 " WHERE name IN ('party', 'ledger') ORDER BY name"
             )
             assert [tuple(r) for r in rows] == [
-                ("ledger", False, False, False),
-                ("party", True, True, True),
+                ("ledger", False, "not_grounded", "draft"),
+                ("party", True, "grounded", "draft"),
             ]
 
 
@@ -558,6 +559,8 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "status_reason": None,
                 "retire_on": None,
                 "retired": False,
+                "approved": True,
+                "export_excluded": False,
             },
             {
                 "id": 2,
@@ -569,6 +572,8 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "status_reason": None,
                 "retire_on": None,
                 "retired": False,
+                "approved": True,
+                "export_excluded": False,
             },
         ],
         "refs": [],
@@ -666,7 +671,7 @@ async def test_a_config_states_a_tables_class_term_and_the_store_exports_it(cfg_
         await apply_config(_config(class_term="sale"), conn)
         assert await _class_term_of_orders(conn) == "sale"
         [sale] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "sale"]
-        assert sale["live"]
+        assert sale["grounding"] == "grounded"
 
 
 @pytest.mark.asyncio

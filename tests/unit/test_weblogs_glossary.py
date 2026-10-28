@@ -10,8 +10,8 @@
 
 """The weblogs demo's glossary (REQ-1641, REQ-1387): demo/named/weblogs/config.yaml loaded as a
 deployment loads it, into a control plane of the test's own. The terms its columns derive are
-approved -- live: in service, defined and grounded -- except four left Proposed on purpose, and
-its abstract terms (the shop's ontology) are live, grounded through their edges."""
+approved and seen by agents (REQ-1387) -- except those left Draft on purpose, and its abstract
+terms (the shop's ontology) are approved and seen, grounded through their edges."""
 
 # Requirements: REQ-1641, REQ-1387
 
@@ -82,7 +82,13 @@ async def loaded(monkeypatch, tmp_path, control_plane):
             t["name"]: SimpleNamespace(id=t["id"], name=t["name"], is_abstract=t["is_abstract"])
             for t in await glossary_repo.list_terms(conn)
         }
-        live = await glossary_repo.live_ids(conn)
+        # REQ-1387: approved by the config, and seen by an agent (on a path to data).
+        statuses = await glossary_repo.term_statuses(conn)
+        live = {
+            tid
+            for tid in (await glossary_repo.agent_visible(conn)).named
+            if statuses[tid] == "approved"
+        }
         domains = await glossary_repo.term_domains(conn)
         names = {t.id: n for n, t in terms.items()}
         edges = {

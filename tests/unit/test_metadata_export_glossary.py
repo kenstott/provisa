@@ -51,6 +51,9 @@ def _glossary() -> dict:
                 "is_abstract": False,
                 "deprecated": False,
                 "deprecation_asserted": False,
+                "approved": True,
+                "retired": False,
+                "export_excluded": False,
                 "status_reason": None,
                 "retire_on": None,
             },
@@ -61,6 +64,9 @@ def _glossary() -> dict:
                 "is_abstract": False,
                 "deprecated": False,
                 "deprecation_asserted": False,
+                "approved": True,
+                "retired": False,
+                "export_excluded": False,
                 "status_reason": None,
                 "retire_on": None,
             },
@@ -71,6 +77,9 @@ def _glossary() -> dict:
                 "is_abstract": True,
                 "deprecated": False,
                 "deprecation_asserted": False,
+                "approved": True,
+                "retired": False,
+                "export_excluded": False,
                 "status_reason": None,
                 "retire_on": None,
             },
@@ -140,36 +149,70 @@ def test_export_excluded_term_is_withheld_with_its_edges():
 def test_retired_term_is_withheld_and_stops_grounding_its_dependents():
     """The soft delete reaches the vendor snapshot too, and unlike export_excluded it also
     stops conducting: party reached a column only through customer, so withdrawing customer
-    leaves party naming no data and it goes with it."""
+    leaves party naming no data. Party is approved, so it publishes with that grounding
+    (REQ-1387)."""
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
     glossary["terms"][0]["retired"] = True  # customer taken out of service
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
-    assert snapshot.glossary_terms == []
+    assert [(t.name, t.grounding) for t in snapshot.glossary_terms] == [("party", "not_grounded")]
     assert snapshot.glossary_edges == []
 
 
-def test_undefined_and_ungrounded_terms_never_reach_a_vendor():
-    """A term with no definition is a proposal and an abstract term wired to nothing names no
-    data; a catalog would bind assets to either, so neither publishes."""
+def test_draft_terms_never_reach_a_vendor_and_approved_ones_carry_their_grounding():
+    """REQ-1387: the export publishes approved terms with their grounding. A draft is a
+    proposal a catalog would bind assets to, so it never publishes; it still conducts, so a
+    term above it reaches data through it."""
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
-    glossary["terms"][0]["definition"] = None  # customer is still just a column name
+    glossary["terms"][0]["approved"] = False  # customer is still a draft
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
-    # customer drops as undefined, but it still conducts: grounding is structural, so party's
-    # chain reaches a real column through it either way.
-    assert {t.name for t in snapshot.glossary_terms} == {"party"}
+    # customer is the data end, so nothing stands between party and data.
+    assert [(t.name, t.grounding) for t in snapshot.glossary_terms] == [("party", "grounded")]
 
     glossary = _glossary()
     glossary["edges"] = []  # party wired to nothing physical
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
-    assert {t.name for t in snapshot.glossary_terms} == {"customer"}
+    assert {(t.name, t.grounding, t.status) for t in snapshot.glossary_terms} == {
+        ("customer", "grounded", "approved"),
+        ("party", "not_grounded", "approved"),
+    }
+
+
+def test_a_term_reaching_data_only_through_a_draft_is_exported_pending():
+    """REQ-1387: grounded_pending when every path down has a draft term strictly between."""
+    config = _config([_table("orders", columns=["cust_id"])])
+    glossary = _glossary()
+    glossary["terms"].append(
+        {
+            "id": 5,
+            "name": "counterparty",
+            "definition": "A party on the other side of a deal.",
+            "is_abstract": True,
+            "deprecated": False,
+            "deprecation_asserted": False,
+            "approved": True,
+            "retired": False,
+            "export_excluded": False,
+            "status_reason": None,
+            "retire_on": None,
+        }
+    )
+    glossary["terms"][2]["approved"] = False  # party, between counterparty and customer
+    glossary["edges"].append({"from_term_id": 5, "to_term_id": 3, "rel_type": "KIND_OF"})
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert {t.name: t.grounding for t in snapshot.glossary_terms} == {
+        "customer": "grounded",
+        "counterparty": "grounded_pending",
+    }
 
 
 def test_snapshot_without_glossary_is_empty_not_absent():
@@ -190,6 +233,9 @@ def _class_glossary() -> dict:
             "is_abstract": False,
             "deprecated": False,
             "deprecation_asserted": False,
+            "approved": True,
+            "retired": False,
+            "export_excluded": False,
             "status_reason": None,
             "retire_on": None,
         }
@@ -241,10 +287,11 @@ def test_each_term_carries_its_role():
 
 
 def test_a_class_proposal_no_one_has_defined_is_not_exported_or_assigned():
-    """REQ-2141: sync proposes a draft Class for a keyed table; until a curator defines it the
+    """REQ-2141: sync proposes a draft Class for a keyed table; until a steward approves it the
     term is a proposal, not vocabulary, so it neither publishes nor is assigned to the table."""
     glossary = _class_glossary()
     glossary["terms"][3]["definition"] = None
+    glossary["terms"][3]["approved"] = False
     glossary["table_refs"][0]["proposed"] = True
     snapshot = build_snapshot(
         _config([_table("orders", columns=["cust_id"])]),

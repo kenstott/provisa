@@ -283,6 +283,7 @@ scheduled_triggers:
   role: org_admin
 glossary_terms:
 - name: provisioning
+  approve: true
   definition: 'Getting a dataset to the teams that use it: telling them it is ready and letting each read its own governed view of it, without copies or extraction jobs.'
   domains:
   - provisioning
@@ -290,10 +291,12 @@ glossary_terms:
   - to: dataset
     rel_type: RELATED_TO
 - name: version time
+  approve: true
   definition: 'The moment a dataset is read as of: every row as it stood then, so a refresh landing during a pull cannot mix two versions.'
   domains:
   - provisioning
 - name: load window
+  approve: true
   definition: 'The hours a dataset may be read by users and clients; outside them a read is refused, saying when the window next opens. The warehouse''s own refreshes run at any time.'
   domains:
   - provisioning
@@ -301,6 +304,7 @@ glossary_terms:
   - to: provisioning
     rel_type: RELATED_TO
 - name: margin
+  approve: true
   definition: 'Revenue less what the goods cost: what finance reads in full and data science sees masked.'
   domains:
   - provisioning

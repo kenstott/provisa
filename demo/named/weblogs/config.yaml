@@ -336,24 +336,27 @@ views:
   - {name: p95_ms, data_type: decimal, description: 'Their 95th percentile duration (approximate on Trino)', visible_to: [data_steward, shop_analyst]}
   - {name: max_ms, data_type: double, description: The longest, visible_to: [data_steward, shop_analyst]}
 # The glossary (REQ-1641, REQ-1387). Every column derives a term from its business name; one
-# declared here by that name gets its definition, and a defined, grounded term is live (approved,
-# core.glossary.live_term_ids). Two derived terms are left undefined on purpose, so the Ontology
+# declared here by that name gets its definition, and approve marks it approved (a steward's
+# choice, REQ-1387). Two derived terms are left undefined on purpose, so the Ontology
 # page shows them as Draft: raw (a log record's own line) and query (which joins the access log's
 # query string and the database log's query id -- two meanings for a curator to split). A log
 # record's key (file, line offset, entry) is its log table's Class, not terms of its own. The abstract terms below the derived ones are the shop's
 # ontology, grounded in the derived terms by their edges.
 glossary_terms:
 - name: access log
+  approve: true
   definition: A request nginx served, one line of its access log, known by the file it was read from
     and where in it the line starts.
   domains:
   - shop
 - name: db log
+  approve: true
   definition: A record PostgreSQL wrote to its log, known by the file it was read from and where in it
     the record starts.
   domains:
   - shop
 - name: access log status
+  approve: true
   definition: The HTTP status code nginx returned for a request, as its access log records it.
   domains:
   - shop
@@ -361,40 +364,49 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: access log time
+  approve: true
   definition: When nginx served a request, as its access log records it.
   domains:
   - shop
 - name: application name
+  approve: true
   definition: The application name the shop's database connection reported. The shop names each request's
     connection by the request's id, so it ties a database log record to its request.
   domains:
   - shop
 - name: average ms
+  approve: true
   definition: The average duration, in milliseconds, of the statements in a group.
   domains:
   - shop
 - name: backend type
+  approve: true
   definition: The kind of database server process that wrote a log record, such as a client backend serving
     a connection.
   domains:
   - shop
 - name: bytes
+  approve: true
   definition: The size, in bytes, of the response body nginx sent.
   domains:
   - shop
 - name: city
+  approve: true
   definition: The city a customer lives in.
   domains:
   - shop
 - name: client
+  approve: true
   definition: The network address a request came from.
   domains:
   - shop
 - name: context
+  approve: true
   definition: Where inside a database function or procedure an error was raised.
   domains:
   - shop
 - name: customer
+  approve: true
   definition: A person with an account at the shop, who browses, searches and places orders.
   domains:
   - shop
@@ -402,32 +414,39 @@ glossary_terms:
   - to: customer journey
     rel_type: RELATED_TO
 - name: customer email
+  approve: true
   definition: The email address a customer signed up with.
   domains:
   - shop
 - name: customer name
+  approve: true
   definition: 'A customer''s name as the shop shows it: a first name and a last initial, such as Ada B.,
     unique to the customer.'
   domains:
   - shop
 - name: db log message
+  approve: true
   definition: 'The text of a database log record: for a statement, its duration and its SQL; for an error,
     what went wrong.'
   domains:
   - shop
 - name: db log timestamp
+  approve: true
   definition: When the database wrote a log record.
   domains:
   - shop
 - name: dbname
+  approve: true
   definition: The database a log record's session was connected to.
   domains:
   - shop
 - name: detail
+  approve: true
   definition: The database's further explanation of an error, such as the key value that broke a constraint.
   domains:
   - shop
 - name: duration ms
+  approve: true
   definition: How long, in milliseconds, the database took to run one statement.
   domains:
   - shop
@@ -435,10 +454,12 @@ glossary_terms:
   - to: database statement
     rel_type: PART_OF
 - name: error
+  approve: true
   definition: The database's message for a statement that failed.
   domains:
   - shop
 - name: error severity
+  approve: true
   definition: 'How serious a database log record is: LOG for a statement the database ran, ERROR for one
     that failed.'
   domains:
@@ -447,42 +468,52 @@ glossary_terms:
   - to: database statement
     rel_type: PART_OF
 - name: extra
+  approve: true
   definition: Any field of a log record that none of its table's columns holds.
   domains:
   - shop
 - name: file name
+  approve: true
   definition: The path of the log file a record was read from.
   domains:
   - shop
 - name: hint
+  approve: true
   definition: The database's suggestion for fixing an error, when it gives one.
   domains:
   - shop
 - name: joined on
+  approve: true
   definition: The date a customer signed up.
   domains:
   - shop
 - name: landed at
+  approve: true
   definition: When a log record was read into Provisa.
   domains:
   - shop
 - name: last error at
+  approve: true
   definition: When a customer was last served a server error.
   domains:
   - shop
 - name: line number
+  approve: true
   definition: The position of a log record among those its database session wrote.
   domains:
   - shop
 - name: logged at
+  approve: true
   definition: When the database logged a statement.
   domains:
   - shop
 - name: max ms
+  approve: true
   definition: The longest duration, in milliseconds, of the statements in a group.
   domains:
   - shop
 - name: method
+  approve: true
   definition: The HTTP method of a request, such as GET or POST.
   domains:
   - shop
@@ -490,6 +521,7 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: order
+  approve: true
   definition: A purchase a customer placed at the shop.
   domains:
   - shop
@@ -497,30 +529,37 @@ glossary_terms:
   - to: customer journey
     rel_type: PART_OF
 - name: order item
+  approve: true
   definition: 'One line of an order: a product, and how many of it.'
   domains:
   - shop
 - name: order item quantity
+  approve: true
   definition: How many units of a product an order line is for.
   domains:
   - shop
 - name: order status
+  approve: true
   definition: 'Where an order stands: placed, paid, shipped, delivered or cancelled.'
   domains:
   - shop
 - name: orders
+  approve: true
   definition: How many orders a customer has placed.
   domains:
   - shop
 - name: p95 ms
+  approve: true
   definition: The duration, in milliseconds, that 95 percent of the statements in a group finish within.
   domains:
   - shop
 - name: page ms
+  approve: true
   definition: How long, in milliseconds, the shop took to answer a page request, as nginx measured it.
   domains:
   - shop
 - name: page status
+  approve: true
   definition: The HTTP status code a page request was answered with.
   domains:
   - shop
@@ -528,10 +567,12 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: parse error
+  approve: true
   definition: Why a log record, or a value in it, could not be read; empty when it was read.
   domains:
   - shop
 - name: path
+  approve: true
   definition: The URL path a request asked for, such as /products/12.
   domains:
   - shop
@@ -539,40 +580,49 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: pid
+  approve: true
   definition: The process id of the database server process that wrote a log record.
   domains:
   - shop
 - name: placed at
+  approve: true
   definition: When an order was placed.
   domains:
   - shop
 - name: product
+  approve: true
   definition: An item the shop sells.
   domains:
   - shop
 - name: product category
+  approve: true
   definition: The group a product is sold under, such as kitchen or outdoor.
   domains:
   - shop
 - name: product description
+  approve: true
   definition: The shop's description of a product.
   domains:
   - shop
 - name: product name
+  approve: true
   definition: 'The name a product is sold under: a style and a thing, such as Trail Pack, unique to the
     product.'
   domains:
   - shop
 - name: product price
+  approve: true
   definition: A product's current price, in US dollars.
   domains:
   - shop
 - name: ps
+  approve: true
   definition: The command a database session was running when it wrote a log record, such as SELECT or
     INSERT.
   domains:
   - shop
 - name: region
+  approve: true
   definition: 'The sales region a customer belongs to: North, South, East or West.'
   domains:
   - shop
@@ -580,10 +630,12 @@ glossary_terms:
   - to: customer journey
     rel_type: PART_OF
 - name: remote host
+  approve: true
   definition: 'The address of the client a database session served: here, the shop''s application server.'
   domains:
   - shop
 - name: request
+  approve: true
   definition: One HTTP request nginx served, known by the id nginx gave it. The shop's database statements
     carry the same id.
   domains:
@@ -592,6 +644,7 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: request time
+  approve: true
   definition: How long, in seconds, nginx took to answer a request.
   domains:
   - shop
@@ -599,34 +652,42 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: requested at
+  approve: true
   definition: When a request that failed in the database was served.
   domains:
   - shop
 - name: server errors
+  approve: true
   definition: How many server errors (HTTP 5xx) a customer was served.
   domains:
   - shop
 - name: session
+  approve: true
   definition: The database session, one connection's lifetime, that a log record belongs to.
   domains:
   - shop
 - name: session start
+  approve: true
   definition: When a database session began.
   domains:
   - shop
 - name: slowest sql ms
+  approve: true
   definition: How long, in milliseconds, the slowest statement of a request ran.
   domains:
   - shop
 - name: sql ms
+  approve: true
   definition: How long, in milliseconds, all the statements of a request ran in total.
   domains:
   - shop
 - name: state
+  approve: true
   definition: The SQLSTATE code of a database error, such as 23503 for a broken foreign key.
   domains:
   - shop
 - name: statement
+  approve: true
   definition: A SQL statement the shop sent its database.
   domains:
   - shop
@@ -634,14 +695,17 @@ glossary_terms:
   - to: database statement
     rel_type: PART_OF
 - name: statements
+  approve: true
   definition: How many SQL statements a request, or a table, accounted for.
   domains:
   - shop
 - name: stock
+  approve: true
   definition: How many units of a product the shop has on hand.
   domains:
   - shop
 - name: table name
+  approve: true
   definition: The table a SQL statement read from or wrote to.
   domains:
   - shop
@@ -649,18 +713,22 @@ glossary_terms:
   - to: database statement
     rel_type: PART_OF
 - name: txid
+  approve: true
   definition: The id of the database transaction a log record belongs to, when one was assigned.
   domains:
   - shop
 - name: unit price
+  approve: true
   definition: The price of one unit of a product when it was ordered.
   domains:
   - shop
 - name: user
+  approve: true
   definition: The database role a session connected as.
   domains:
   - shop
 - name: user agent
+  approve: true
   definition: The browser or app a request came from, as its User-Agent header names it.
   domains:
   - shop
@@ -668,6 +736,7 @@ glossary_terms:
   - to: web request
     rel_type: PART_OF
 - name: views
+  approve: true
   definition: How many times a product's page was viewed.
   domains:
   - shop
@@ -675,15 +744,18 @@ glossary_terms:
   - to: customer journey
     rel_type: PART_OF
 - name: vxid
+  approve: true
   definition: The virtual transaction id the database gave a statement's transaction.
   domains:
   - shop
 - name: shop operations
+  approve: true
   definition: 'Everything the web shop does in a day: the requests it serves, the SQL it runs to serve
     them, and what its customers do.'
   domains:
   - shop
 - name: web request
+  approve: true
   definition: A request a visitor's browser or app sends the shop, and the answer nginx gives it.
   domains:
   - shop
@@ -691,6 +763,7 @@ glossary_terms:
   - to: shop operations
     rel_type: PART_OF
 - name: database statement
+  approve: true
   definition: A SQL statement the shop runs against its database to serve a web request, with how long
     it took and whether it failed.
   domains:
@@ -701,6 +774,7 @@ glossary_terms:
   - to: web request
     rel_type: RELATED_TO
 - name: customer journey
+  approve: true
   definition: 'The path a customer takes through the shop: the products they look at and the orders they
     place.'
   domains:
@@ -709,6 +783,7 @@ glossary_terms:
   - to: shop operations
     rel_type: PART_OF
 - name: server error
+  approve: true
   definition: A web request the shop failed to answer, with an HTTP status of 500 or above.
   domains:
   - shop
@@ -718,6 +793,7 @@ glossary_terms:
   - to: server errors
     rel_type: RELATED_TO
 - name: database error
+  approve: true
   definition: A database statement that failed, with the SQLSTATE and message the database gave.
   domains:
   - shop
@@ -731,6 +807,7 @@ glossary_terms:
   - to: state
     rel_type: RELATED_TO
 - name: page latency
+  approve: true
   definition: 'How long a visitor waits for a page: the time nginx took to answer, most of it spent running
     the page''s SQL.'
   domains:
@@ -743,6 +820,7 @@ glossary_terms:
   - to: request time
     rel_type: RELATED_TO
 - name: slow page
+  approve: true
   definition: A page whose latency is high enough for a visitor to notice; the slowest pages view ranks
     them.
   domains:
@@ -753,6 +831,7 @@ glossary_terms:
   - to: page latency
     rel_type: DERIVED_FROM
 - name: abandoned interest
+  approve: true
   definition: A product a customer looked at and never ordered; the viewed but not bought view lists them.
   domains:
   - shop

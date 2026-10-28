@@ -655,10 +655,15 @@ def _glossary_assets(
         [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
         set(refs_by_term) | classes,
     )
+    published_roots = set(refs_by_term) | classes
     terms = []
     for term in glossary.get("terms", []):
         approved = term["approved"] and not term["retired"] and not term["deprecated"]
         if not approved or term["export_excluded"]:
+            continue
+        # The data_product filter: a term bound to data, none of which publishes, goes with it.
+        held = term["id"] in owns_columns or term["id"] in grounds_tables
+        if held and term["id"] not in published_roots:
             continue
         refs = refs_by_term.get(term["id"], [])
         terms.append(

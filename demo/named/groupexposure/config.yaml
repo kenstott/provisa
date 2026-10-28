@@ -232,10 +232,12 @@ relationships:
 - {id: company-to-group, alias: IN_GROUP, cardinality: one-to-many, source_table_id: owner_company, source_column: lei, target_table_id: owner_group, target_column: lei}
 glossary_terms:
 - name: large exposure
+  approve: true
   definition: 'What a bank lends to one client or group of connected clients that comes to 10% or more of its Tier 1 capital. Under EU CRR Article 395 no large exposure may pass 25% of Tier 1.'
   domains:
   - groupexposure
 - name: group of connected clients
+  approve: true
   definition: 'Clients that are one risk because one controls the others, or because one failing would bring the others down: a parent and its subsidiaries are counted together against the large-exposure limit.'
   domains:
   - groupexposure
@@ -243,6 +245,7 @@ glossary_terms:
   - to: large exposure
     rel_type: RELATED_TO
 - name: Tier 1 capital
+  approve: true
   definition: "A bank's core capital -- its shares and retained earnings -- and the base its large-exposure limit is measured against."
   domains:
   - groupexposure
@@ -250,10 +253,12 @@ glossary_terms:
   - to: large exposure
     rel_type: RELATED_TO
 - name: Legal Entity Identifier
+  approve: true
   definition: 'The 20-character code (ISO 17442) that names one legal entity in financial reporting worldwide; the bank records each borrower''s owner by it, and Wikidata records it as P1278.'
   domains:
   - groupexposure
 - name: parent organization
+  approve: true
   definition: "The company that owns or controls another (Wikidata's P749); followed upward, it leads to the group at the top."
   domains:
   - groupexposure

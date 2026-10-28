@@ -10,8 +10,9 @@
 
 """The insurance demo's glossary (REQ-2037, REQ-1641): demo/named/insurance/config.yaml loaded as a
 deployment loads it, into a control plane of the test's own. The insurer's vocabulary -- total
-insured value, exposure, accumulation, probable maximum loss, expected annual loss -- is live: in
-service, defined and grounded, through its edges, in the terms its tables' columns derive."""
+insured value, exposure, accumulation, probable maximum loss, expected annual loss -- is approved
+and seen by agents (REQ-1387), grounded through its edges in the terms its tables' columns
+derive."""
 
 # Requirements: REQ-2037, REQ-1641
 
@@ -76,7 +77,13 @@ async def loaded(monkeypatch, tmp_path, control_plane):
             t["name"]: SimpleNamespace(id=t["id"], name=t["name"], is_abstract=t["is_abstract"])
             for t in await glossary_repo.list_terms(conn)
         }
-        live = await glossary_repo.live_ids(conn)
+        # REQ-1387: approved by the config, and seen by an agent (on a path to data).
+        statuses = await glossary_repo.term_statuses(conn)
+        live = {
+            tid
+            for tid in (await glossary_repo.agent_visible(conn)).named
+            if statuses[tid] == "approved"
+        }
         domains = await glossary_repo.term_domains(conn)
         names = {t.id: n for n, t in terms.items()}
         edges = {
