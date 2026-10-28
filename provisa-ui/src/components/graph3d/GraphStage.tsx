@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
-import { edgesOf, type GraphData, type NodeType } from "./graphModel";
+import { edgesOf, type GraphData, type LayoutKind, type NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
 import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
 import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
@@ -27,6 +27,8 @@ export interface StageState {
   frame: number;
   /** REQ-2174: drawn in 2D -- laid out flat, through a face-on orthographic camera. */
   flat: boolean;
+  /** REQ-2174: laid out in layers, where lateral edges are drawn as arcs over the rest. */
+  layout: LayoutKind;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: GraphHover | null;
@@ -91,6 +93,7 @@ export function GraphStage({
           theme,
         );
         sc.setFlat(latest.current.flat);
+        sc.setArcs(latest.current.layout === "layered");
         sc.setGrid(latest.current.grid);
         sc.setData(latest.current.graph, latest.current.at, true);
         return sc;
@@ -101,17 +104,24 @@ export function GraphStage({
     at: Map<string, [number, number, number]>;
     frame: number;
     flat: boolean;
+    layout: LayoutKind;
   } | null>(null);
   useEffect(() => {
     if (!scene) return;
     const was = drawn.current;
-    drawn.current = { graph: s.graph, at: s.at, frame: s.frame, flat: s.flat };
+    drawn.current = { graph: s.graph, at: s.at, frame: s.frame, flat: s.flat, layout: s.layout };
     // A new graph, or the same graph laid out anew (the attraction moved), is drawn again.
     if (was === null || (was.graph === s.graph && was.at === s.at)) return;
     // Into or out of 2D the layout changes too, and the camera is reset to the new one.
     scene.setFlat(s.flat);
-    scene.setData(s.graph, s.at, was.frame !== s.frame || was.flat !== s.flat);
-  }, [scene, s.graph, s.at, s.frame, s.flat]);
+    scene.setArcs(s.layout === "layered");
+    // A new layout kind (Force to Layered) is fitted afresh too: it faces another way.
+    scene.setData(
+      s.graph,
+      s.at,
+      was.frame !== s.frame || was.flat !== s.flat || was.layout !== s.layout,
+    );
+  }, [scene, s.graph, s.at, s.frame, s.flat, s.layout]);
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);

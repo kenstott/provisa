@@ -43,6 +43,7 @@ vi.mock("../graphScene", () => ({
         "setSelected",
         "focus",
         "setFlat",
+        "setArcs",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);

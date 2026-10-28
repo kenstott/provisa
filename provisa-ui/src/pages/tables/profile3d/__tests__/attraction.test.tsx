@@ -37,6 +37,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
         "setSelected",
         "focus",
         "setFlat",
+        "setArcs",
       ])
         calls[m] = vi.fn();
       Object.assign(this, calls);
@@ -78,7 +79,11 @@ describe("the graph's Attraction slider", () => {
       { id: "term:2", type: "term", label: "Party" },
       { id: "term:3", type: "term", label: "Order" },
     ],
-    edges: [{ id: "e", a: "term:1", b: "term:2", kind: "term_edge", label: "KIND_OF" }],
+    // A rank and a flow mixed: the view opens in force; Taxonomy keeps the rank alone, layered.
+    edges: [
+      { id: "e", a: "term:1", b: "term:2", kind: "term_edge", label: "KIND_OF" },
+      { id: "f", a: "term:3", b: "term:1", kind: "term_edge", label: "DERIVED_FROM" },
+    ],
   };
 
   it("tightens the layout where the camera is, and keeps its setting across reloads", async () => {
