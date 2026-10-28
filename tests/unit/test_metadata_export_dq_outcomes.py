@@ -77,3 +77,70 @@ def test_a_scan_time_that_is_not_a_timestamp_raises():
     epoch-millis fields the adapters publish cannot be computed from one."""
     with pytest.raises(TypeError, match="scan_time"):
         index_outcomes([_row(scan_time="2026-08-12T03:00:00+00:00")])
+
+
+def _checker_config():
+    from provisa.core.models import Column, DataProduct, Domain, ProvisaConfig, Source, SourceType
+    from provisa.core.models import Table
+
+    def results(name: str, product_id: str | None) -> Table:
+        return Table(
+            source_id="dq",
+            domain_id="sales",
+            schema_name="quality",
+            table_name=name,
+            product_id=product_id,
+            dq_contract="dataset: provisa/sales/orders\nchecks:\n  - row_count: {}\n",
+            columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
+        )
+
+    return ProvisaConfig(
+        sources=[Source(id="dq", type=SourceType.soda, description="quality")],
+        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        data_products=[
+            DataProduct(id="orders", domain_id="sales", name="Orders"),
+            DataProduct(id="billing", domain_id="sales", name="Billing"),
+        ],
+        tables=[
+            results("orders_scans", "orders"),
+            results("billing_scans", "billing"),
+            results("loose_scans", None),
+        ],
+        roles=[],
+    )
+
+
+def _read_with(monkeypatch, **scope) -> list[str]:
+    """The results tables ``read_latest_outcomes`` queries, each a governed query, in order."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
+
+    queried: list[str] = []
+
+    async def govern(sql, role):
+        queried.append(sql.split(" FROM ")[1].split(" ")[0])
+        return sql
+
+    async def execute(plan):
+        return SimpleNamespace(column_names=[], rows=[])
+
+    monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route", govern)
+    monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", execute)
+    asyncio.run(read_latest_outcomes(_checker_config(), **scope))
+    return queried
+
+
+def test_every_checker_table_is_read_for_a_publish(monkeypatch):
+    assert _read_with(monkeypatch) == [
+        "quality.orders_scans",
+        "quality.billing_scans",
+        "quality.loose_scans",
+    ]
+
+
+def test_one_products_documents_read_only_the_checker_tables_it_owns(monkeypatch):
+    # REQ-2157, REQ-2158: a product's documents carry only its own checks.
+    assert _read_with(monkeypatch, product_id="orders") == ["quality.orders_scans"]
+    assert _read_with(monkeypatch, product_id="nothing_checked") == []

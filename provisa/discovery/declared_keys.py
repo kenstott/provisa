@@ -87,15 +87,15 @@ ORDER BY tc.constraint_name, kcu.ordinal_position
 # position ({paired}: PostgreSQL's position_in_unique_constraint; SQL Server, which has none,
 # lists a foreign key's columns in the order of the key it references).
 _INFO_SCHEMA_FOREIGN = """
-SELECT kcu.column_name, ref.table_name, ref.column_name
+SELECT kcu.column_name, pk.table_name, pk.column_name
 FROM information_schema.referential_constraints AS rc
 JOIN information_schema.key_column_usage AS kcu
   ON kcu.constraint_name = rc.constraint_name
  AND kcu.constraint_schema = rc.constraint_schema
-JOIN information_schema.key_column_usage AS ref
-  ON ref.constraint_name = rc.unique_constraint_name
- AND ref.constraint_schema = rc.unique_constraint_schema
- AND ref.ordinal_position = kcu.{paired}
+JOIN information_schema.key_column_usage AS pk
+  ON pk.constraint_name = rc.unique_constraint_name
+ AND pk.constraint_schema = rc.unique_constraint_schema
+ AND pk.ordinal_position = kcu.{paired}
 WHERE kcu.table_schema = {schema} AND kcu.table_name = {table}
 ORDER BY kcu.constraint_name, kcu.ordinal_position
 """

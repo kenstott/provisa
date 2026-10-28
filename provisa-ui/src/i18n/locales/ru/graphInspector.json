@@ -22,7 +22,7 @@
     "properties": "Свойства",
     "copyValue": "Копировать значение",
     "resizePanel": "Изменить размер панели инспектора",
-    "junctionTable": "через {{table}}",
+    "junctionTable": "свойства из {{table}}",
     "openTable": "Открыть таблицу",
     "openRelationship": "Открыть связь"
   }

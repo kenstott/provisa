@@ -528,8 +528,8 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorUntypedColumns", { columns: untyped.join(", ") }));
       return;
     }
-    // The short step declares no paging: it is not shown there, so nothing of it is sent; it is
-    // set on the editor's Load and timeliness tab.
+    // The short step does not show paging; the paging the source proposes is carried to the
+    // editor's Load and timeliness tab, where it is accepted or edited (REQ-318).
     if (
       !short &&
       pagingKind !== null &&
@@ -571,7 +571,7 @@ export function RegisterTableForm({
           .map((u) => ({ name: u.name.trim(), columns: u.columns })),
       },
       // REQ-318: the short step declares no paging; the longer one sends what it declared.
-      pagination: !short && pagingKind !== null ? declaredPaging(pagination) : null,
+      pagination: pagingKind !== null ? declaredPaging(pagination) : null,
       pagingKind,
       pagingCeilingRows,
       rowRules: isProfiler ? profilerRowRules : [],

@@ -32,7 +32,9 @@ def org(monkeypatch):
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     asked: list[str] = []
 
-    async def snapshot_of(org_id):
+    async def snapshot_of(org_id, *, product_id):
+        # REQ-2158: the snapshot is built for the one product asked for.
+        asked.append(f"snapshot:{product_id}")
         return snapshot
 
     async def not_entitled(org_id, feature):
@@ -49,7 +51,7 @@ def test_the_panel_reads_every_contract_without_the_export(org):
     contracts = asyncio.run(router.data_product_contracts("prod", object()))
     assert set(contracts) == {"wh.public.orders", "wh.public.customers", "wh.public.order_totals"}
     assert contracts["wh.public.orders"]["kind"] == "DataContract"
-    assert org == ["data_product_read"]
+    assert org == ["data_product_read", "snapshot:prod"]
 
 
 def test_a_catalogs_pull_is_the_metadata_exports(org):

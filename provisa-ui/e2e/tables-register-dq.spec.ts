@@ -18,6 +18,7 @@
 // carrying the checker it runs under.
 
 import { test, expect, type Page } from "./coverage";
+import { saveRegistration } from "./source-to-query-helpers";
 
 async function openAddForm(page: Page) {
   await page.goto("/tables");
@@ -95,7 +96,7 @@ for (const c of CHECKERS) {
     await page.getByTestId("register-table-dq-scan-interval").fill("3600");
     await page.getByTestId("register-table-submit").click();
     // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-    await page.getByTestId("table-edit-save").click();
+    await saveRegistration(page);
 
     // The registered row lands in the list carrying the checker it runs under, registered under
     // its result relation's name, <name>_<source>_dq.

@@ -13,7 +13,7 @@
 // rendered raw key names. Each locale's catalog must resolve every one of them under onboardOrg.
 
 import { describe, expect, it } from "vitest";
-import { resources } from "../index";
+import { loadCatalog, supportedLngs } from "../index";
 
 const AUTO_JOIN_CARD_KEYS = [
   "autoJoinChoiceTitle",
@@ -23,9 +23,9 @@ const AUTO_JOIN_CARD_KEYS = [
 ];
 
 describe("auto-join choice card strings", () => {
-  for (const [lng, { translation }] of Object.entries(resources)) {
-    it(`${lng}: every key resolves under onboardOrg, none stray at the top level`, () => {
-      const catalog = translation as Record<string, unknown>;
+  for (const lng of supportedLngs) {
+    it(`${lng}: every key resolves under onboardOrg, none stray at the top level`, async () => {
+      const catalog = await loadCatalog(lng);
       const onboardOrg = catalog.onboardOrg as Record<string, unknown>;
       for (const key of AUTO_JOIN_CARD_KEYS) {
         expect(typeof onboardOrg[key], `${lng} onboardOrg.${key}`).toBe("string");

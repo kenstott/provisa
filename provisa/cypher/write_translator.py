@@ -111,6 +111,9 @@ class WriteAST:
     # the label of each variable the leading MATCHes bind that a MERGE reaches back to.
     merges: list["MergePart"] = field(default_factory=list)
     matched_labels: dict[str, str] = field(default_factory=dict)
+    # "merge": the leading MATCHes as reads of their own, one per set of patterns related to one
+    # another, each with the variables it binds (:func:`_reads_apart`).
+    apart: list[tuple[str, frozenset[str]]] = field(default_factory=list)
 
 
 @dataclass
@@ -628,14 +631,127 @@ def _parse_merge(query: str) -> WriteAST:
     head = parts[0].nodes[0]
     opening = merges[0]
     assert isinstance(opening, MergeClause)
+    reads = query[: opening.start].strip()
     return WriteAST(
         kind="merge",
         label=head.label,
         variable=head.variable,
-        reads=query[: opening.start].strip(),
+        reads=reads,
         merges=parts,
         matched_labels=matched_labels,
+        apart=_reads_apart(lead, reads) if lead else [],
     )
+
+
+def _clause_variables(clause: Any) -> set[str]:
+    """The variables a MATCH clause binds: its path's, each node's and each relationship's."""
+    pattern = getattr(clause.pattern, "pattern", clause.pattern)
+    named = [clause.variable, *(n.variable for n in pattern.nodes)]
+    named += [r.variable for r in pattern.rels]
+    return {v for v in named if v}
+
+
+def _conjuncts(expression: Any) -> list[Any]:
+    """``expression``'s top-level AND operands, parentheses around an AND opened."""
+    from provisa.gql.expr_ast import Binary, Paren
+
+    if isinstance(expression, Paren) and isinstance(expression.inner, Binary):
+        return _conjuncts(expression.inner)
+    if isinstance(expression, Binary) and expression.op.upper() == "AND":
+        return _conjuncts(expression.left) + _conjuncts(expression.right)
+    return [expression]
+
+
+def _reads_apart(lead: list[Any], written: str) -> list[tuple[str, frozenset[str]]]:
+    """The leading MATCHes of a MERGE as reads of their own (REQ-2176, as REQ-665's relationship
+    CREATE reads its ends, :meth:`WriteTranslator.matched_reads`): the patterns no shared variable
+    or WHERE condition relates are every combination of their rows, which the writer takes from
+    each one's own read, so no read combines unrelated tables (REQ-603). Each read is given with
+    the variables it binds; one read of them all is the MATCHes as written.
+
+    A condition is read with the patterns of its variables; one naming no variable, one with a
+    subquery, one naming a variable its own clause's patterns do not reach, keeps that clause's
+    patterns in one read, as written."""
+    from dataclasses import replace
+
+    from provisa.cypher.printer import CypherPrintRefused, _pattern, expression
+    from provisa.gql.expr_ast import SubqueryExpr, Variable, walk
+    from provisa.gql.ir import PathPattern
+
+    clauses = [(s, m) for s, step in enumerate(lead) for m in step.matches]
+    parent = list(range(len(clauses)))
+
+    def top(i: int) -> int:
+        while parent[i] != i:
+            i = parent[i]
+        return i
+
+    def join(members: set[int]) -> None:
+        roots = sorted({top(i) for i in members})
+        for r in roots[1:]:
+            parent[r] = roots[0]
+
+    owner: dict[str, int] = {}
+    for i, (_, clause) in enumerate(clauses):
+        for var in _clause_variables(clause):
+            join({i, owner.setdefault(var, i)})
+    conditions: list[tuple[int, int, Any]] = []  # (step, clause it reads with, condition)
+    for s, step in enumerate(lead):
+        if step.where is None:
+            continue
+        here = {i for i, (t, _) in enumerate(clauses) if t == s}
+        for condition in _conjuncts(step.where.expression):
+            nodes = list(walk(condition))
+            names = {e.name for e in nodes if isinstance(e, Variable)}
+            members = {owner[n] for n in names if n in owner}
+            if (
+                not names
+                or names - owner.keys()
+                or any(isinstance(e, SubqueryExpr) for e in nodes)
+                or not {top(m) for m in members} <= {top(i) for i in here}
+            ):
+                members |= here
+            join(members)
+            conditions.append((s, next(iter(members)), condition))
+    roots = list(dict.fromkeys(top(i) for i in range(len(clauses))))
+    if len(roots) == 1:
+        return [(written, frozenset(owner))]
+    reads = []
+    for root in roots:
+        lines: list[str] = []
+        for s in range(len(lead)):
+            for i, (t, clause) in enumerate(clauses):
+                if t != s or top(i) != root:
+                    continue
+                pattern = getattr(clause.pattern, "pattern", clause.pattern)
+                if (
+                    clause.variable
+                    or pattern is not clause.pattern
+                    or any(n.label_alternation for n in pattern.nodes)
+                ):
+                    raise CypherWriteParseError(
+                        "a MERGE's MATCH of patterns unrelated to one another reads each apart: "
+                        "a path variable, a path function or a label alternation among them has "
+                        "no read of its own"
+                    )
+                bare = PathPattern(
+                    nodes=[replace(n, properties={}, property_text={}) for n in pattern.nodes],
+                    rels=[replace(r, properties={}, property_text={}) for r in pattern.rels],
+                )
+                try:
+                    text = _pattern(bare)
+                except CypherPrintRefused as exc:
+                    raise CypherWriteParseError(
+                        "a MERGE's MATCH of patterns unrelated to one another reads each apart, "
+                        f"and this one has no read of its own: {exc}"
+                    ) from exc
+                lines.append(f"{'OPTIONAL MATCH' if clause.optional else 'MATCH'} {text}")
+            held = [c for t, i, c in conditions if t == s and top(i) == root]
+            if held:
+                lines.append("WHERE " + " AND ".join(f"({expression(c)})" for c in held))
+        variables = frozenset(v for v, i in owner.items() if top(i) == root)
+        reads.append((" ".join(lines), variables))
+    return reads
 
 
 def parse_cypher_write(query: str) -> WriteAST:

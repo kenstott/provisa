@@ -146,7 +146,8 @@ interface DataProductDetailPanelProps {
   products: DataProduct[];
   members: string[];
   findings: ProductFinding[];
-  onStatusChanged: (message: string) => void;
+  /** ``membersMoved``: the change moved the product's members (a retirement). */
+  onStatusChanged: (message: string, membersMoved: boolean) => void;
   onStatusFailed: (message: string) => void;
   openProduct: (id: string) => void;
   statusActions: DataProductStatus;
