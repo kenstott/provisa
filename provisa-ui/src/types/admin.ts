@@ -118,6 +118,8 @@ export interface DataProduct {
   /** The support contact (email or URL) a catalog listing requires. */
   supportContact?: string | null;
   customProperties: Record<string, unknown>;
+  /** When the product was created (ISO 8601), its ODPS productCreatedTs; set on insert. */
+  createdAt: string;
 }
 
 // REQ-2158: a column an output port promises, of the type it is stored as.
@@ -457,6 +459,8 @@ export interface RegisteredTable {
   writeGrants: WriteGrant[] | null;
   uniqueConstraints: UniqueConstraint[]; // REQ-1093
   apiEndpoint: string | null;
+  /** Why the table names no endpoint: its OpenAPI source's document could not be read. */
+  apiEndpointError: string | null;
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
   profilerSourceId?: string | null; // REQ-1934: the Data Profiler source this table is a member of

@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Abilita Group By",
     "enableGroupByDesc": "(espone il campo radice _group_by in GraphQL)",
     "apiEndpointLabel": "Endpoint API",
+    "apiEndpointUnread": "Impossibile leggere il documento API della sua origine",
     "changeSignalLabel": "Segnale di modifica",
     "changeSignalHelp": "Come Provisa rileva le righe modificate. ttl = aggiorna in base al timer del TTL della cache; probe = query di freschezza nativa dell'origine, riscarica solo in caso di modifica; ttl_probe = probe dopo il trascorrere del TTL minimo; native/debezium/kafka = push dall'origine. Eredita = segue l'impostazione predefinita a livello di origine.",
     "csInherit": "Eredita dall'origine",

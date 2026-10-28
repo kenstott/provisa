@@ -432,6 +432,13 @@ async def index(session: TempSession, name: str, key_columns: tuple[str, ...], w
     await writer.index(_schema(session), name, key_columns)
 
 
+async def lookup_index(
+    session: TempSession, name: str, columns: tuple[str, ...], writer: Any
+) -> None:
+    """Index the session's table ``name`` on ``columns`` a read looks its rows up by."""
+    await writer.lookup_index(_schema(session), name, columns)
+
+
 def _next_serial(table: TempTable, column: str) -> int | None:
     """The value an INSERT omitting ``column`` gives it: a SERIAL's next, else NULL."""
     if column not in table.serials:

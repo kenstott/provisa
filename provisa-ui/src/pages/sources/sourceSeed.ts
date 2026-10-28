@@ -26,6 +26,7 @@ import { GOOGLE_WORKSPACE, gwFieldsFromMapping } from "./googleWorkspace";
 import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
+import { excelHintsFromMapping, withExcelHints } from "./excelHints";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
 import { WIKIPEDIA, wikipediaFieldsFromHints } from "./wikipedia";
@@ -197,6 +198,10 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === QDRANT) {
     authFields = qdrantFieldsFromHints(hintsJson); // REQ-1983
+  }
+  if (s.type === "files") {
+    // How the Excel reader finds the tables of its workbooks (mapping.excel_hints).
+    authFields = withExcelHints(authFields, excelHintsFromMapping(s.mappingJson));
   }
   if (CODE_SOURCE_TYPES.has(s.type) && s.mappingJson) {
     authFields = codeFieldsFromMapping(s.mappingJson); // REQ-1984, REQ-1993

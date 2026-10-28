@@ -210,6 +210,9 @@ data_products = Table(  # REQ-1634
     Column("support", Text),
     Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
     Column("custom_properties", JSON, nullable=False, default=dict, server_default="{}"),
+    # REQ-2118: when the product was created, its ODPS productCreatedTs; set on insert, never
+    # written by a save.
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 naming_rules = Table(

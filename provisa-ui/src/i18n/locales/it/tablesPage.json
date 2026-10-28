@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "Dimensione implicita — «Abilita Group By» è attivo per questa tabella"
     },
     "derived": "derivata",
+    "endpointUnread": "Impossibile leggere il documento API della sua origine",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

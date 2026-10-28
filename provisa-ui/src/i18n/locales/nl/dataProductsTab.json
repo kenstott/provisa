@@ -18,6 +18,7 @@
     "limitationsLabel": "Beperkingen",
     "limitationsPlaceholder": "Bekende beperkingen, kanttekeningen of uitsluitingen",
     "usageLabel": "Gebruik",
+    "createdAtLabel": "Aangemaakt",
     "usagePlaceholder": "Hoe dit dataproduct te gebruiken",
     "versionLabel": "Versie",
     "versionPlaceholder": "bijv. 1.2.0",

@@ -211,6 +211,7 @@ query DataProductsQuery {
     support
     supportContact
     customProperties
+    createdAt
   }
 }
 
@@ -301,6 +302,7 @@ query TablesQuery {
     probeQuery
     probeType
     apiEndpoint
+    apiEndpointError
     viewSql
     dqContract
     profilerSourceId

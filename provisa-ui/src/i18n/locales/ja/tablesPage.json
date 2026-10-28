@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "暗黙のディメンション — このテーブルで「Group Byを有効化」がオンです"
     },
     "derived": "派生",
+    "endpointUnread": "ソースの API ドキュメントを読み取れませんでした",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

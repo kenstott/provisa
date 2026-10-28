@@ -220,14 +220,20 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
         '<testsuites><testsuite name="pytest">'
         '<testcase classname="tests.integration.examples" name="test_ok"/>'
         '<testcase classname="tests.integration.examples.test_temporal_types_example" '
-        'name="test_time"><failure message="assert Time(7, 47, 0, 4000) == Time(7, 47, 0, 4123)">'
+        'name="test_time"><failure message="AssertionError: assert '
+        "'07:47:00.000004000-04:00' == '07:47:00.000004123-04:00'\">"
+        "t</failure></testcase>"
+        # Another difference than the digits below the microsecond is no part of the group.
+        '<testcase classname="tests.integration.examples.test_temporal_types_example" '
+        'name="test_local_time"><failure message="AssertionError: assert '
+        "'07:47:00.000004000+00:00' == '07:47:00.000004123'\">"
         "t</failure></testcase>"
         '<testcase classname="tests.integration.examples" name="test_bookmark">'
         '<failure message="assert Bookmarks">t</failure></testcase>'
         "</testsuite></testsuites>"
     )
     doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "tests/integration")
-    assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (2, 1, 1, 1)
+    assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (3, 1, 2, 1)
     assert doc["by_design"] == [
         {
             "group": "Digits below the microsecond",
@@ -238,9 +244,9 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
             "count": 1,
         }
     ]
-    assert [f["scenario"] for f in doc["failures"]] == ["test_bookmark"]
+    assert [f["scenario"] for f in doc["failures"]] == ["test_local_time", "test_bookmark"]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == "50.0% (1 of 2); 1 cases not runnable by design"
+    assert rate == "33.3% (1 of 3); 1 cases not runnable by design"
     assert "| Digits below the microsecond | 1 |" in cases
     assert "REQ-" not in cases  # the requirement is the artifact's; a published page names none
 

@@ -1595,6 +1595,13 @@
     {
      "fields": [
       {
+       "name": "createdAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
+      {
        "name": "customProperties",
        "type": {
         "kind": "SCALAR",

@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table"
     },
     "derived": "derived",
+    "endpointUnread": "Its source's API document could not be read",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

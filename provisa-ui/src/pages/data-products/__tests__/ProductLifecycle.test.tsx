@@ -30,6 +30,7 @@ const product = (id: string, over: Partial<DataProduct> = {}): DataProduct => ({
   usage: "",
   status: "live",
   customProperties: {},
+  createdAt: "2026-10-01T09:00:00+00:00",
   ...over,
 });
 

@@ -144,6 +144,7 @@
     "enableGroupByLabel": "启用分组",
     "enableGroupByDesc": "（在 GraphQL 中公开 _group_by 根字段）",
     "apiEndpointLabel": "API 终结点",
+    "apiEndpointUnread": "无法读取其源的 API 文档",
     "changeSignalLabel": "变更信号",
     "changeSignalHelp": "Provisa 感知行变更的方式。ttl = 按缓存 TTL 计时器刷新；probe = 源原生新鲜度查询，仅在变更时重新拉取；ttl_probe = TTL 下限到期后再探测；native/debezium/kafka = 数据源推送。继承 = 遵循数据源级默认值。",
     "csInherit": "继承数据源",

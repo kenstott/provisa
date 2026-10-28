@@ -284,6 +284,13 @@ def _files_operand(source: Any) -> dict:
     crawl = crawl_operand(source.id, mapping)
     if crawl is not None:
         operand["crawl"] = crawl
+    # How the adapter's Excel reader finds the tables of the source's workbooks, where its
+    # mapping says (mapping.excel_hints).
+    from provisa.file_source.excel_hints import excel_hints_operand
+
+    excel_hints = excel_hints_operand(source.id, mapping)
+    if excel_hints is not None:
+        operand["excelHints"] = excel_hints
     storage_type = mapping.get("storage_type")
     if storage_type:
         operand["storageType"] = storage_type
