@@ -8,22 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The patterns of a Cypher write the ephemeral layer reads (REQ-2176): a CREATE's (or a
-MERGE's) node and relationship patterns, ``(a:A {k: v})-[:T {k: v}]->(b)``, each property's value
-kept as the expression it is written as, and the statement split at its writing clause.
-
-The governed compiler's own parser reads only what a read is; this reads what it leaves."""
+"""The patterns of a Cypher write the ephemeral layer reads (REQ-2176), from the graph IR
+(REQ-2135): a CREATE's node and relationship patterns, ``(a:A {k: v})-[:T {k: v}]->(b)``, each
+property's value kept as the expression it is written as, and the statement's leading clauses."""
 
 # Requirements: REQ-2176
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from provisa.cypher.parser import CypherParseError
-
-_IDENT = r"(?:`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)"
 
 
 @dataclass
@@ -50,181 +46,100 @@ class CreatePattern:
     rels: list[RelSpec] = field(default_factory=list)
 
 
-def _unquote(name: str) -> str:
-    return name[1:-1] if name.startswith("`") else name
+@dataclass(frozen=True)
+class CreateOf:
+    """A statement's CREATE, as the ephemeral layer reads it from the graph IR: the text of its
+    leading clauses, its patterns, the variables those clauses bind (which it reaches back to
+    rather than creates), and the clause following it, if any (RETURN, SET, ...)."""
+
+    prefix: str
+    pattern: CreatePattern
+    bound: set[str]
+    trailing: str | None
 
 
-def _scan(text: str) -> list[tuple[int, str]]:
-    """Each character of ``text`` outside a string or backquoted name, with its depth of nesting
-    in (), [] and {} before it: (depth, char), the others as (-1, char)."""
-    out: list[tuple[int, str]] = []
-    depth = 0
-    quote: str | None = None
-    for i, ch in enumerate(text):
-        if quote is not None:
-            out.append((-1, ch))
-            if ch == quote and text[i - 1] != "\\":
-                quote = None
-            continue
-        if ch in "'\"`":
-            quote = ch
-            out.append((-1, ch))
-            continue
-        if ch in ")]}":
-            depth -= 1
-        out.append((depth, ch))
-        if ch in "([{":
-            depth += 1
-    return out
+_TRAILING = {
+    "CreateClause": "CREATE",
+    "SetClause": "SET",
+    "RemoveClause": "REMOVE",
+    "DeleteClause": "DELETE",
+    "MergeClause": "MERGE",
+    "WithClause": "WITH",
+    "MatchStep": "MATCH",
+    "UnwindClause": "UNWIND",
+    "ProcedureCall": "CALL",
+}
 
 
-def split_top(text: str, sep: str = ",") -> list[str]:
-    """``text`` split at each ``sep`` outside brackets and strings."""
-    parts: list[str] = []
-    start = 0
-    for i, (depth, ch) in enumerate(_scan(text)):
-        if ch == sep and depth == 0:
-            parts.append(text[start:i])
-            start = i + 1
-    parts.append(text[start:])
-    return [p.strip() for p in parts]
+def create_of(statement: str) -> CreateOf | None:
+    """The statement's CREATE read from the graph IR (parse_cypher_statement), or None when it
+    creates nothing. A statement of two CREATE clauses is refused by name."""
+    from provisa.cypher.parser import parse_cypher_statement, writes_in
+    from provisa.gql.ir import CreateClause
 
-
-def create_clause(statement: str) -> tuple[str, str, str | None] | None:
-    """(the statement before its CREATE, its patterns, the clause following them if any), or
-    None when it creates no pattern (no CREATE, or a definition: CREATE INDEX and the like). A
-    clause after the patterns is the governed write's (CREATE ... RETURN) and refused for an
-    ephemeral one by the caller, which knows which it is."""
-    scanned = _scan(statement)
-    plain = "".join(ch if depth == 0 else " " for depth, ch in scanned)
-    found = [
-        m
-        for m in re.finditer(r"\bCREATE\b", plain, re.IGNORECASE)
-        if statement[m.end() :].lstrip().startswith("(")
-    ]
-    if not found:
+    if not writes_in(statement):
         return None
-    if len(found) > 1:
+    ast = parse_cypher_statement(statement)
+    creates = [i for i, step in enumerate(ast.pipeline) if isinstance(step, CreateClause)]
+    if not creates:
+        return None
+    if len(creates) > 1:
         raise CypherParseError("A statement creating ephemeral objects has one CREATE clause")
-    at = found[0]
-    after = plain[at.end() :]
-    trailing = re.search(r"\b(RETURN|WITH|SET|DELETE|REMOVE|MERGE|MATCH|UNWIND)\b", after, re.I)
-    end = at.end() + trailing.start() if trailing is not None else len(statement)
-    return (
-        statement[: at.start()].strip(),
-        statement[at.end() : end].strip(),
-        trailing.group(1).upper() if trailing is not None else None,
+    at = creates[0]
+    create = ast.pipeline[at]
+    assert isinstance(create, CreateClause)
+    after = ast.pipeline[at + 1 :]
+    trailing = (
+        _TRAILING[type(after[0]).__name__]
+        if after
+        else "RETURN"
+        if ast.return_clause is not None
+        else None
+    )
+    return CreateOf(
+        statement[: create.start].strip(),
+        _pattern(create),
+        _bound(ast.pipeline[:at]),
+        trailing,
     )
 
 
-def _map_entries(text: str) -> list[tuple[str, str]]:
-    inner = text.strip()[1:-1].strip()
-    if not inner:
-        return []
-    entries = []
-    for part in split_top(inner):
-        key, sep, value = part.partition(":")
-        if not sep or not re.fullmatch(_IDENT, key.strip()):
-            raise CypherParseError(f"Cannot read the property {part!r}")
-        entries.append((_unquote(key.strip()), value.strip()))
-    return entries
-
-
-_NODE = re.compile(rf"\(\s*({_IDENT})?\s*((?::\s*{_IDENT}\s*)*)(\{{.*\}})?\s*\)\Z", re.S)
-_REL = re.compile(rf"\[\s*({_IDENT})?\s*:\s*({_IDENT})\s*(\{{.*\}})?\s*\]\Z", re.S)
-
-
-def _element(text: str, at: int) -> tuple[str, int]:
-    """The bracketed element of ``text`` starting at ``at`` and the index after it."""
-    scanned = _scan(text)
-    base = scanned[at][0]
-    for i in range(at + 1, len(text)):
-        depth, ch = scanned[i]
-        if depth == base and ch in ")]":
-            return text[at : i + 1], i + 1
-    raise CypherParseError(f"Unclosed pattern element: {text[at:]!r}")
-
-
-def _node(text: str) -> NodeSpec:
-    m = _NODE.match(text)
-    if m is None:
-        raise CypherParseError(f"Cannot read the node pattern {text!r}")
-    labels = [_unquote(x.strip()) for x in re.findall(_IDENT, m.group(2) or "")]
-    props = _map_entries(m.group(3)) if m.group(3) else []
-    return NodeSpec(_unquote(m.group(1)) if m.group(1) else None, labels, props)
-
-
-def parse_patterns(text: str) -> CreatePattern:
-    """A CREATE's comma-separated patterns: ``(a:A {k: v})-[:T {k: v}]->(b)``, ..."""
+def _pattern(create: Any) -> CreatePattern:
+    """A CREATE clause's patterns: each node occurrence in order, each relationship between the
+    two it joins, each property's value as written."""
     out = CreatePattern()
-    for part in split_top(text):
-        i = 0
-        prev: int | None = None
-        pending: tuple[str, str] | None = None  # (relationship element, direction)
-        while i < len(part):
-            ch = part[i]
-            if ch.isspace():
-                i += 1
-                continue
-            if ch == "(":
-                element, i = _element(part, i)
-                out.nodes.append(_node(element))
-                here = len(out.nodes) - 1
-                if pending is not None:
-                    assert prev is not None
-                    rel_text, direction = pending
-                    m = _REL.match(rel_text)
-                    if m is None:
-                        raise CypherParseError(
-                            f"A created relationship has exactly one type: {rel_text!r}"
-                        )
-                    source, target = (prev, here) if direction == "right" else (here, prev)
-                    out.rels.append(
-                        RelSpec(
-                            _unquote(m.group(1)) if m.group(1) else None,
-                            _unquote(m.group(2)),
-                            _map_entries(m.group(3)) if m.group(3) else [],
-                            source,
-                            target,
-                        )
-                    )
-                    pending = None
-                prev = here
-                continue
-            if part.startswith("<-[", i) or part.startswith("-[", i):
-                left = part.startswith("<", i)
-                element, i = _element(part, part.index("[", i))
-                if part.startswith("->", i):
-                    if left:
-                        raise CypherParseError("A created relationship has one direction")
-                    pending, i = (element, "right"), i + 2
-                elif part.startswith("-", i) and left:
-                    pending, i = (element, "left"), i + 1
-                else:
-                    raise CypherParseError("A created relationship has a direction")
-                continue
-            raise CypherParseError(f"Cannot read the pattern {part!r} at {part[i:]!r}")
+    for path in create.patterns:
+        base = len(out.nodes)
+        for node in path.nodes:
+            out.nodes.append(
+                NodeSpec(node.variable, list(node.labels), list(node.property_text.items()))
+            )
+        for i, rel in enumerate(path.rels):
+            if len(rel.types) != 1:
+                raise CypherParseError(
+                    f"A created relationship has exactly one type: {', '.join(rel.types) or 'none'}"
+                )
+            if rel.direction not in ("right", "left"):
+                raise CypherParseError("A created relationship has a direction")
+            left, right = base + i, base + i + 1
+            source, target = (left, right) if rel.direction == "right" else (right, left)
+            out.rels.append(
+                RelSpec(rel.variable, rel.types[0], list(rel.property_text.items()), source, target)
+            )
     return out
 
 
-def bound(prefix: str) -> set[str]:
+def _bound(steps: list[Any]) -> set[str]:
     """The variables a write's leading clauses (MATCH, UNWIND, WITH) bind."""
-    if not prefix:
-        return set()
-    from provisa.cypher.parser import parse_cypher
-    from provisa.gql.ir import UnwindClause, WithClause
+    from provisa.gql.ir import MatchStep, UnwindClause, WithClause
 
-    ast = parse_cypher(prefix + " RETURN 1")
     out: set[str] = set()
-    for m in ast.match_clauses:
-        for n in getattr(m.pattern, "nodes", []):
-            if n.variable:
-                out.add(n.variable)
-        for r in getattr(m.pattern, "rels", []):
-            if r.variable:
-                out.add(r.variable)
-    for step in ast.pipeline:
-        if isinstance(step, UnwindClause):
+    for step in steps:
+        if isinstance(step, MatchStep):
+            for m in step.matches:
+                out.update(n.variable for n in getattr(m.pattern, "nodes", []) if n.variable)
+                out.update(r.variable for r in getattr(m.pattern, "rels", []) if r.variable)
+        elif isinstance(step, UnwindClause):
             out.add(step.variable)
         elif isinstance(step, WithClause):
             out.update(item.alias or item.name for item in step.items)
