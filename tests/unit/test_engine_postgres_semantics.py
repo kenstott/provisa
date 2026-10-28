@@ -92,6 +92,17 @@ def test_an_infinite_date_or_timestamp_is_read_as_infinite():
     assert row[5] == datetime.datetime(2026, 10, 27, 9, 30)
 
 
+def test_a_uuid_beside_a_date_is_read_as_the_uuid_it_is():
+    """A result read through Arrow for its date (as an infinite one must be) reads a UUID as the
+    uuid.UUID DuckDB's own rows give, not Arrow's text of it."""
+    import uuid
+
+    value = "5b927589-4fa7-49a1-9880-ef2d58461b1d"
+    [row] = _on_duckdb(f"SELECT CAST('{value}' AS UUID), DATE '2026-01-02', CAST(NULL AS UUID)")
+    assert row == (uuid.UUID(value), datetime.date(2026, 1, 2), None)
+    assert _on_duckdb(f"SELECT CAST('{value}' AS UUID)") == [(uuid.UUID(value),)]
+
+
 def test_infinity_is_written_as_postgresql_writes_it():
     from buenavista.postgres import BVTYPE_TO_PGTYPE
     from buenavista.core import BVType

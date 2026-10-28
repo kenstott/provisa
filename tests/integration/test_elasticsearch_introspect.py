@@ -126,12 +126,11 @@ class TestDiscoverSchema:
         cols = discover_schema(mapping)
         assert cols[0]["type"] == "VARCHAR"
 
-    def test_genuinely_unknown_type_raises(self):
-        # The ES type map is exhaustive over real ES field types, so only a
-        # genuinely novel/invalid type string reaches the guard — which fails loud.
+    def test_genuinely_unknown_type_registers_as_text(self):
+        # REQ-2171: a field type naming none of the IR's registers as text, in the source's own
+        # text form, so discovery never fails on a novel type.
         mapping = {"custom": {"type": "some_unknown_type"}}
-        with pytest.raises(ValueError, match="unmapped ES type"):
-            discover_schema(mapping)
+        assert discover_schema(mapping)[0]["type"] == "text"
 
     def test_real_es_types_all_mapped(self):
         # Every real ES field data type must resolve without raising (complete map).
@@ -158,9 +157,9 @@ class TestESTypeMappings:
             ("scaled_float", "DOUBLE"),
             ("boolean", "BOOLEAN"),
             ("date", "timestamptz"),  # REQ-2050: an instant, carried as UTC with its zone
-            ("ip", "VARCHAR"),
+            ("ip", "inet"),  # REQ-2171: the inet subtype
             ("binary", "bytea"),  # IR is postgres-dialect (no VARBINARY)
-            ("geo_point", "VARCHAR"),
+            ("geo_point", "geography"),  # REQ-2171: geodetic, PostGIS geography
         ],
     )
     def test_type_mapping(self, es_type, expected_ir):
