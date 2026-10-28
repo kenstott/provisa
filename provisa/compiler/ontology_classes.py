@@ -24,7 +24,9 @@ a branch for each table it is served a column of, with each column it is not ser
 null. That body is then governed as any view's is, so each table's masks and row rules apply.
 
 A Class that cannot be offered -- its name, or one of its Properties', gives no identifier, or two
-of its Properties give one -- is refused by itself, naming why; every other Class is served.
+of its Properties give one, or it takes a definition table's GraphQL name (``_terms`` is
+``on_terms``, as a Class "terms" would be) -- is refused by itself, naming why; every other Class
+is served.
 """
 
 # Requirements: REQ-2163
@@ -40,6 +42,18 @@ from provisa.compiler.supertype import common_supertype
 #: The column naming the table an instance comes from. Underscored, as system fields are, so no
 #: Property's column takes it.
 SOURCE_TABLE_COLUMN = "_source_table"
+
+#: The ontology schema's definition tables, in the order their views are created: _domains
+#: first, since the others read each term's domains from it.
+DEFINITION_TABLES: tuple[str, ...] = (
+    "_terms",
+    "_term_refs",
+    "_term_edges",
+    "_domains",
+    "_experts",
+    "_axioms",
+    "_closure",
+)
 
 #: Served columns of a table by id: None when every column is served.
 Served = Callable[[int], "frozenset[str] | None"]
@@ -200,6 +214,10 @@ def _class_table(
     name = ontology_name(terms[term_id])
     if name is None:
         return f"Class {terms[term_id]!r} gives no table name", None
+    if f"_{name}" in DEFINITION_TABLES:
+        # REQ-2163: a field name drops the underscore, so it would be the definition table's
+        # root field (on_terms) and type in the SDL.
+        return f"Class {terms[term_id]!r} names the field the ontology table _{name} takes", None
     properties: dict[str, int] = {}
     per_table: list[tuple[dict, dict[str, list[tuple[str, str]]]]] = []
     for table in sorted(grounded, key=lambda t: t["id"]):

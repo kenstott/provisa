@@ -155,3 +155,23 @@ def test_a_name_without_its_system_prefix_is_no_system_tables():
     assert unprefixed_field_name("on_hold", "sales") == "on_hold"
     with pytest.raises(ValueError, match="lacks its prefix op_"):
         unprefixed_field_name("queries", "ops")
+
+
+@pytest.mark.parametrize("name", ["Terms", "term refs", "Domains", "experts"])
+def test_a_class_taking_a_definition_tables_name_is_refused(name):
+    """A Class named as a definition table is without its underscore would take that table's root
+    field and type (on_terms, ON_Terms): it is refused by itself, and the other Classes served."""
+    from provisa.compiler.ontology_classes import class_table_id, class_tables
+    from tests.unit.test_ontology_classes import (
+        CUSTOMER,
+        ORDER,
+        _GROUNDINGS,
+        _REFS,
+        _TERMS,
+        _tables,
+    )
+
+    rows, refused = class_tables(_tables(), _GROUNDINGS, {**_TERMS, ORDER: name}, _REFS)
+    assert list(refused) == [ORDER]
+    assert "names the field the ontology table" in refused[ORDER]
+    assert [r["id"] for r in rows] == [class_table_id(CUSTOMER)]
