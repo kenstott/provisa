@@ -35,8 +35,9 @@ import type {
   ColumnDependentsResult,
   UserSummary,
 } from "../types/admin";
-import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
+import type { CompileResult, TableMetadata } from "../api/admin";
 import { useStartingPoll } from "./discoveryStartingPoll";
+export { useAvailableColumnsMetadataLazy } from "./useAvailableColumnsMetadataLazy";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import {
   RolesQuery as ROLES_QUERY,
@@ -69,7 +70,6 @@ import {
   KaggleDatasets,
   StageKaggleDataset,
   RefreshKaggleSource,
-  AvailableColumnsMetadata,
   AvailableFunctions,
   ColumnDependents,
   GenerateColumnDescription,
@@ -959,20 +959,6 @@ export function useStageKaggleDataset() {
     },
     loading,
   };
-}
-
-export function useAvailableColumnsMetadataLazy() {
-  const [run] = useLazyQuery<{ availableColumnsMetadata: ColumnMetadata[] }>(
-    AvailableColumnsMetadata,
-    { fetchPolicy: "cache-first" },
-  );
-  return useCallback(
-    async (sourceId: string, schemaName: string, tableName: string): Promise<ColumnMetadata[]> => {
-      const { data } = await run({ variables: { sourceId, schemaName, tableName } });
-      return data?.availableColumnsMetadata ?? [];
-    },
-    [run],
-  );
 }
 
 export function useAvailableFunctionsLazy() {
