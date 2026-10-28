@@ -10,7 +10,7 @@
 
 /**
  * REQ-1362: every page chunk is warmed once the page the visitor opened has arrived and the browser
- * is idle -- never ahead of it. Started at mount, the warm-up queued every chunk (Monaco and
+ * is idle -- never ahead of it -- and one chunk per idle period, never ahead of what the page reads. Started at mount, the warm-up queued every chunk (Monaco and
  * GraphiQL included) ahead of the opened page's own imports, which then painted late.
  *
  * Each test loads pageChunks afresh: whether a route's page has arrived is the module's own state.
@@ -105,6 +105,31 @@ describe("the page chunk warm-up", () => {
     await chunks.warmupSettled();
     expect(loads).not.toHaveBeenCalled();
     loads.mockRestore();
+  });
+
+  it("loads one chunk per idle period, so a page's own reads go first", async () => {
+    // Each idle callback is held until the test runs it: the browser stays busy until then.
+    const pending: (() => void)[] = [];
+    const schedule = vi.fn((cb: () => void) => {
+      pending.push(cb);
+      return pending.length;
+    });
+    Object.assign(window, { requestIdleCallback: schedule, cancelIdleCallback: vi.fn() });
+    const chunks: Chunks = await import("../pageChunks");
+
+    const stop = chunks.prefetchPageChunksOnIdle();
+    await openRoute(chunks, []);
+    await waitFor(() => expect(schedule).toHaveBeenCalledTimes(1));
+    // The first idle period starts the warm-up and its first chunk; the next chunk asks for the
+    // next idle period, and waits for it.
+    pending[0]();
+    await waitFor(() => expect(schedule).toHaveBeenCalledTimes(2), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(schedule).toHaveBeenCalledTimes(2);
+    // Stopped while it waits: it settles, starting nothing more.
+    stop();
+    await chunks.warmupSettled();
+    expect(schedule).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to a timeout where requestIdleCallback is missing", async () => {
