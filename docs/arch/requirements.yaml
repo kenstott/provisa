@@ -47196,7 +47196,13 @@
     metadata plus routes through terms, under the agent-visibility rules above (an ungrounded term is never
     a route), and returns the relations the role may read, each with its route and trust. The agent-visibility
     rules above govern data discovery; term discovery follows this amendment. Both are offered on MCP and
-    the API as separate operations (search_terms, find_data).'
+    the API as separate operations (search_terms, find_data). (Amended 2026-10-27, DOWN IS FROM BROADER
+    TO NARROWER:) 2026-10-28: ''down'' follows each edge type''s direction: from a broader term to the terms
+    that are a kind of it, a part of it or a valid value of it, and from a term to its bindings. Synonym
+    edges conduct both ways, as the two words mean the same thing. Related-to, derived-from, replaces, translation-of
+    and antonym-of edges do not conduct grounding. So a term is never grounded in a sibling''s data by going
+    up to a shared parent and back down. The metadata export publishes an approved term a curator later
+    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
