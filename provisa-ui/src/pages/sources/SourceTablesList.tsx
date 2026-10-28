@@ -11,17 +11,11 @@
 import { Anchor, Badge, Table, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { ListedTable } from "../../types/admin";
+import type { TableRow } from "../../types/admin";
 
 /** The tables registered from a source, each linked to its own panel on the Tables page; a
  *  draft is marked as one. "—" when none is registered. */
-export function SourceTablesList({
-  sourceId,
-  tables,
-}: {
-  sourceId: string;
-  tables: ListedTable[];
-}) {
+export function SourceTablesList({ sourceId, tables }: { sourceId: string; tables: TableRow[] }) {
   const { t } = useTranslation();
   const own = tables.filter((tb) => tb.sourceId === sourceId);
   if (own.length === 0) {

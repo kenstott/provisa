@@ -80,7 +80,7 @@ export function SecurityRlsPage() {
     checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   const { roles, loading: rolesLoading } = useRoles();
   const { rlsRules: rules, loading: rulesLoading, refetch: refetchRules } = useRLSRules();
-  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables({ columns: false });
   const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
   const { upsertRlsRule } = useUpsertRlsRule();
   const { deleteRlsRule } = useDeleteRlsRule();

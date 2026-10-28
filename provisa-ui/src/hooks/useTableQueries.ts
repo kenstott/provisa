@@ -10,7 +10,8 @@
 
 import { useCallback } from "react";
 import { useApolloClient, useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
-import type { ListedTable, MutationResult, RegisteredTable } from "../types/admin";
+import type { ErrorLike } from "@apollo/client";
+import type { ListedTable, MutationResult, RegisteredTable, TableRow } from "../types/admin";
 import {
   DeleteTable,
   RegisterEntity,
@@ -18,6 +19,7 @@ import {
   RegisterTable,
   UpdateTable,
   TableListQuery as TABLE_LIST_QUERY,
+  TableRowsQuery as TABLE_ROWS_QUERY,
   TablesQuery as TABLES_QUERY,
 } from "./admin.graphql";
 import { firstLoad } from "./firstLoad";
@@ -25,16 +27,30 @@ import { firstLoad } from "./firstLoad";
 const NO_TABLES: RegisteredTable[] = [];
 const NO_LISTED_TABLES: ListedTable[] = [];
 
-/** The registered tables as the pages that pick, name or count them read them (TableListQuery).
+interface TablesRead<T> {
+  tables: T[];
+  loading: boolean;
+  error: ErrorLike | undefined;
+  refetch: () => Promise<unknown>;
+}
+
+/** The registered tables as the pages that pick, name or count them read them: with their columns
+ * (TableListQuery), or, `columns: false`, without them (TableRowsQuery) for a page that shows none.
  *
  * `inPage`: the caller renders inside a page that reads the tables itself. It reads that page's
  * cache and sends no request of its own: the page's mount revalidates the list, and a table
  * mutation or a schema-version bump refetches it while it is shown. Without it, every tab and
  * sub-form mounting under the page re-read the whole catalog. */
-export function useTables({ inPage = false }: { inPage?: boolean } = {}) {
-  const { data, loading, error, refetch } = useQuery<{ tables: ListedTable[] }>(TABLE_LIST_QUERY, {
-    fetchPolicy: inPage ? "cache-first" : "cache-and-network",
-  });
+export function useTables(opts: { inPage?: boolean; columns: false }): TablesRead<TableRow>;
+export function useTables(opts?: { inPage?: boolean; columns?: true }): TablesRead<ListedTable>;
+export function useTables({
+  inPage = false,
+  columns = true,
+}: { inPage?: boolean; columns?: boolean } = {}): TablesRead<TableRow> {
+  const { data, loading, error, refetch } = useQuery<{ tables: TableRow[] }>(
+    columns ? TABLE_LIST_QUERY : TABLE_ROWS_QUERY,
+    { fetchPolicy: inPage ? "cache-first" : "cache-and-network" },
+  );
   return {
     tables: data?.tables ?? NO_LISTED_TABLES,
     loading: firstLoad(loading, data),
@@ -56,7 +72,7 @@ export function useTableDetails() {
   };
 }
 
-const TABLE_QUERY_NAMES = ["TablesQuery", "TableListQuery"];
+const TABLE_QUERY_NAMES = ["TablesQuery", "TableListQuery", "TableRowsQuery"];
 
 /** The table queries a view is showing, for a table write's refetchQueries: the write refetches
  * those and no other. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every

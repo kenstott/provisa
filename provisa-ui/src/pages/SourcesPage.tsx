@@ -144,7 +144,7 @@ export function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
   // The tables registered from each source, for its panel's Tables section.
-  const { tables: registeredTables } = useTables();
+  const { tables: registeredTables } = useTables({ columns: false });
   // The section of the source's panel in view, the same in its read view and its edit form, and
   // the form's sections that have fields for the source's kind (reported by the form as drawn).
   const [section, setSection] = useState<SourceSection>("connection");

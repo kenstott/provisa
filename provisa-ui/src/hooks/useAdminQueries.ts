@@ -46,6 +46,7 @@ import {
   ListedNamesQuery as LISTED_NAMES_QUERY,
   TablesQuery as TABLES_QUERY,
   TableListQuery as TABLE_LIST_QUERY,
+  TableRowsQuery as TABLE_ROWS_QUERY,
   Calendars as CALENDARS_QUERY,
   HoldOnFailingChecksSource as HOLD_ON_FAILING_CHECKS_SOURCE_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
@@ -124,9 +125,10 @@ export {
  * — the runner then sits in waitForElement, showing nothing, for as long as those queries take.
  *
  * These are every query mounted by a page the tour navigates to: /relationships reads
- * relationships, all relationships, the table list and domains; /security/roles and /security/rls
- * read roles, RLS rules, the table list and domains; /sources and /views read sources, the table
- * list and domains, /tables the tables' full rows; /admin reads all of them. Running them fills the Apollo cache the page hooks then read
+ * relationships, all relationships, the tables with their columns and domains; /security/roles and
+ * /security/rls read roles, RLS rules, the tables without their columns and domains; /sources reads
+ * sources, the tables without their columns and domains, /tables and /views the tables' full rows;
+ * /admin reads all of them. Running them fills the Apollo cache the page hooks then read
  * from, so each page paints on arrival and revalidates behind the visible content.
  *
  * A rejection is swallowed per query for the same reason the chunk prefetch swallows its own: an
@@ -139,6 +141,7 @@ export function useTourPrefetch(): () => Promise<void> {
   const [loadDomains] = useLazyQuery(DOMAINS_QUERY, opts);
   const [loadTables] = useLazyQuery(TABLES_QUERY, opts);
   const [loadTableList] = useLazyQuery(TABLE_LIST_QUERY, opts);
+  const [loadTableRows] = useLazyQuery(TABLE_ROWS_QUERY, opts);
   const [loadRelationships] = useLazyQuery(RELATIONSHIPS_QUERY, opts);
   const [loadAllRelationships] = useLazyQuery(ALL_RELATIONSHIPS_QUERY, opts);
   const [loadRlsRules] = useLazyQuery(RLS_RULES_QUERY, opts);
@@ -151,6 +154,7 @@ export function useTourPrefetch(): () => Promise<void> {
           loadDomains,
           loadTables,
           loadTableList,
+          loadTableRows,
           loadRelationships,
           loadAllRelationships,
           loadRlsRules,
@@ -162,6 +166,7 @@ export function useTourPrefetch(): () => Promise<void> {
       loadDomains,
       loadTables,
       loadTableList,
+      loadTableRows,
       loadRelationships,
       loadAllRelationships,
       loadRlsRules,
