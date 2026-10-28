@@ -26659,3 +26659,13 @@ A term can be linked to the commands that carry it out, as it is bound to the ta
 **Code:** —
 
 **Tests:** —
+
+### REQ-2179 · Business Glossary & Ontology {#REQ-2179}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The glossary's Generate with AI menu gains From a document: a steward provides a document (PDF, Word, Markdown, HTML) and the glossary proposes the concepts it defines and uses (business concepts, roles, organization types, policies, processes, regulations), never named individuals (a particular person, company or policy edition). Within the document, mentions of one concept are resolved into one candidate term, its variants (case, plural, articles, abbreviations, references such as "as defined in Section 2") proposed as synonyms; one word used with two meanings in different sections becomes two candidates, each scoped by its passages. An explicit definition ("X means ...", a definitions section) is the primary definition; other explanations are kept as supporting passages; with no explicit definition a synthesized one is proposed, marked synthesized and listing every passage it drew from; explanations that cannot both be true are shown side by side, never blended. Every proposal keeps its source passages (document, section or page, quoted text). Candidates are then matched against the glossary's terms and synonyms and proposed as merges or synonyms rather than duplicates, and handed to the existing Generate Relationships action. Everything lands as draft in a review queue the steward works through (accept, edit, merge, reject, bulk accept), run by Polly under the org's AI settings and the role's LLM budget ([REQ-1174](#REQ-1174)). The existing Generate Definitions and Generate Relationships actions likewise produce drafts.
+
+**Code:** —
+
+**Tests:** —
