@@ -1225,19 +1225,19 @@ class TestEveryCallIsCapped:
         assert "max_tokens" not in call
 
     def test_each_provider_takes_the_cap_by_its_own_name(self):
-        assert chat_mod._output_cap("anthropic", custom_endpoint=True) == {
+        assert chat_mod.output_cap("anthropic", custom_endpoint=True) == {
             "max_tokens": chat_mod._MAX_TOKENS
         }
-        assert chat_mod._output_cap("ollama", custom_endpoint=False) == {
+        assert chat_mod.output_cap("ollama", custom_endpoint=False) == {
             "options": {"num_predict": chat_mod._MAX_TOKENS}
         }
-        assert chat_mod._output_cap("mistral", custom_endpoint=False) == {
+        assert chat_mod.output_cap("mistral", custom_endpoint=False) == {
             "max_tokens": chat_mod._MAX_TOKENS
         }
 
     def test_a_provider_that_drops_the_cap_is_refused(self):
         with pytest.raises(ValueError, match="cannot cap a Google model"):
-            chat_mod._output_cap("google", custom_endpoint=False)
+            chat_mod.output_cap("google", custom_endpoint=False)
 
     @pytest.mark.asyncio
     async def test_an_anthropic_call_is_capped_the_same(self, monkeypatch):

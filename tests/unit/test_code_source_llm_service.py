@@ -320,7 +320,7 @@ def test_a_call_within_its_roles_budget_is_counted_against_it(service, budgeted)
     assert hour.used == 128  # 120 in, 8 out
 
 
-def test_a_call_past_its_roles_per_call_cap_is_refused_and_still_counted(service, budgeted):
+def test_a_call_is_held_to_its_roles_allowance_and_answered(service, budgeted):
     import asyncio
     from datetime import UTC, datetime
 
@@ -329,9 +329,25 @@ def test_a_call_past_its_roles_per_call_cap_is_refused_and_still_counted(service
     roles, model_db = budgeted
     roles["analyst"]["rate_limit"] = {"llm_call_cap": {"amount": 100, "unit": "tokens"}}
     status, answered = _chat(_role_token(), "provisa:sql_generation")
-    assert status == 429
-    assert answered["error"]["message"] == (
-        "role 'analyst' caps one LLM call at 100 tokens; this one used 128 tokens"
-    )
+    # The model itself stops at the cap; what it answers is returned, and counted.
+    assert status == 200 and answered["choices"][0]["message"]["content"] == "churn is 4%"
+    assert service["sent"]["params"]["max_tokens"] == 100
     held = Budget(None, {"hour": Limit(10**6, "tokens")})
     assert asyncio.run(usage(model_db, "analyst", held, datetime.now(UTC)))[0].used == 128
+
+
+def test_a_requests_own_output_limit_is_lowered_to_the_allowance_never_raised(service, budgeted):
+    roles, _model_db = budgeted
+    roles["analyst"]["rate_limit"] = {
+        "llm_call_cap": {"amount": 500, "unit": "tokens"},
+        "llm_windows": {"hour": {"amount": 300, "unit": "tokens"}},
+    }
+    assert _chat(_role_token(), "provisa:sql_generation", max_tokens=4000)[0] == 200
+    assert service["sent"]["params"]["max_tokens"] == 300  # the hour's room, below the cap
+    assert _chat(_role_token(), "provisa:sql_generation", max_tokens=50)[0] == 200
+    assert service["sent"]["params"]["max_tokens"] == 50
+
+
+def test_a_call_of_a_role_with_no_budget_keeps_its_own_output_limit(service, budgeted):
+    assert _chat(_role_token(), "provisa:sql_generation", max_tokens=4000)[0] == 200
+    assert service["sent"]["params"] == {"max_tokens": 4000}

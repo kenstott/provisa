@@ -144,14 +144,42 @@ async def _admit_budget(budget: Any, model: str) -> None:
 
 
 async def _debit_budget(budget: Any, model: str, usage: Any) -> None:
-    """What the call used counted against its role (REQ-1174); a call past the role's per-call cap
-    is refused, its answer withheld, naming the cap."""
+    """What the call used counted against its role (REQ-1174). The answer is returned whatever it
+    used: a chat call's output was held to the role's allowance (:func:`_held_output`)."""
+    if budget is not None:
+        await budget.debit(usage, model)
+
+
+def _held_output(
+    params: dict, budget: Any, model: str, provider_key: str, custom_endpoint: bool
+) -> dict:
+    """The call's parameters with its output limit the role's remaining allowance (REQ-1174: the
+    smaller of its per-call cap and each window's room), so the model itself stops there; a
+    limit the request sets is kept where it is smaller. Unchanged when no limit holds the call."""
+    from provisa.api.mcp.chat import output_cap
+    from provisa.security.llm_budget import BudgetRefused
+
     if budget is None:
-        return
-    over = budget.over_cap(usage, model)
-    await budget.debit(usage, model)
-    if over is not None:
-        raise ServiceRefused(429, over)
+        return params
+    try:
+        allowed = budget.allowance(model)
+    except BudgetRefused as exc:
+        raise ServiceRefused(429, str(exc)) from None
+    if allowed is None:
+        return params
+    asked = [params[k] for k in _OUTPUT_LIMITS if params.get(k) is not None]
+    rest = {k: v for k, v in params.items() if k not in _OUTPUT_LIMITS}
+    try:
+        cap = output_cap(provider_key, custom_endpoint, min([allowed, *asked]))
+    except ValueError as exc:
+        raise ServiceRefused(400, str(exc)) from None
+    if "options" in cap:
+        cap = {"options": {**(rest.get("options") or {}), **cap["options"]}}
+    return {**rest, **cap}
+
+
+#: The OpenAI wire's two names for a call's output limit.
+_OUTPUT_LIMITS = ("max_tokens", "max_completion_tokens")
 
 
 async def _model_db(org_id: str) -> "Database":
@@ -339,6 +367,10 @@ async def _chat(
     await _admit_budget(budget, model)
     provider, provider_key = await _provider(cfg, model_db, vendor)
     params = {k: v for k, v in request.items() if k not in ("model", "messages", "stream")}
+    custom = any(
+        ep["id"] == vendor for ep in cfg.get("ai_endpoints") or [] if ep.get("enabled", True)
+    )
+    params = _held_output(params, budget, model, provider_key, custom)
     try:
         resp = await asyncio.to_thread(
             provider.chat_completions_create,
