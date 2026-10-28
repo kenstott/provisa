@@ -34,6 +34,7 @@ from provisa.gql.expr_ast import (
     Literal,
     MapLiteral,
     MapProjection,
+    Parameter,
     Property,
     SubqueryExpr,
     Unary,
@@ -97,6 +98,8 @@ def _operand(e: CypherExpr, parent: int, *, strict: bool = False) -> str:
 def expression(e: CypherExpr) -> str:
     if isinstance(e, Variable):
         return _name(e.name)
+    if isinstance(e, Parameter):
+        return f"${e.name}"
     if isinstance(e, Property) and isinstance(e.obj, Variable):
         return f"{_name(e.obj.name)}.{_name(e.name)}"
     if isinstance(e, Literal):
