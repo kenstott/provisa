@@ -474,13 +474,23 @@ def _dict_rows(result: QueryResult) -> list[dict]:
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
+def _answered_columns(result: QueryResult) -> list[str]:
+    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
+    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135)."""
+    from provisa.gql.translator_types import CUT_COLUMN
+
+    return [c for c in result.column_names if c != CUT_COLUMN]
+
+
 def _serialize_rows(
     rows: list[dict],
     graph_vars: dict,
     assemble_rows: Any,
     to_serializable: Any,
+    columns_of_none: list[str],
 ) -> tuple[list[str], list] | Response:
-    """Assemble and serialize rows. Returns (columns, serializable_rows) or error Response."""
+    """Assemble and serialize rows. Returns (columns, serializable_rows) or error Response;
+    ``columns_of_none`` names the columns where there are no rows."""
     try:
         assembled = assemble_rows(rows, graph_vars)
     except Exception as exc:
@@ -489,7 +499,7 @@ def _serialize_rows(
         )
 
     try:
-        columns = list(rows[0].keys()) if rows else []
+        columns = list(rows[0].keys()) if rows else columns_of_none
         serializable_rows = [to_serializable(r) for r in assembled]
     except Exception as exc:
         log.exception("Cypher serialization failed")
@@ -883,7 +893,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize
-    _ser_result = _serialize_rows(rows, graph_vars, assemble_rows, to_serializable)
+    _ser_result = _serialize_rows(
+        rows, graph_vars, assemble_rows, to_serializable, _answered_columns(_executed)
+    )
     if isinstance(_ser_result, Response):
         return _ser_result
     columns, serializable_rows = _ser_result

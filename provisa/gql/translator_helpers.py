@@ -675,6 +675,10 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         return node
     name = node.name.upper()
     args: list[exp.Expression] = node.args.get("expressions") or []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if name in ("HEAD", "LAST", "TAIL", "ISEMPTY", "SIZE"):
+        # Its arguments first, as the transform does not descend into the node it is handed back
+        # (size([y IN collect(x) ...]) collects).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
 
     if name == "HEAD" and args:
         return exp.Anonymous(this="element_at", expressions=[args[0], exp.Literal.number(1)])
