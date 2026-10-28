@@ -89793,7 +89793,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     GraphQL SDL, every root field and type the auto-generated ontology schema gives carries the prefix on_,
     and every one the ops schema gives carries op_, whether or not the deployment prefixes domains, so neither
     ever shares a name with a model table''s field or type. This replaces the 2026-10-28 rule that renamed
-    only a Class colliding with a model table; the bare label and SQL rules are unchanged.'
+    only a Class colliding with a model table; the bare label and SQL rules are unchanged. (Amended 2026-10-28,
+    A MATERIALIZED CLASS VIEW IS INDEXED:) When a Class label''s union view is materialized, it is indexed
+    on _source_table together with the member key, so a MATCH on the Class label with a key lookup reads
+    one member''s rows instead of scanning every member table.'
   code:
   - provisa/compiler/ontology_classes.py
   - provisa/compiler/supertype.py
@@ -91125,20 +91128,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   value: 'Multi-hop graph traversals walk a narrow indexed edge table instead of re-joining wide tables at every hop.'
   status: proposed
   target: 2026-Q4
-  group: 3. Source Registration & Data Modeling
-  category: Graph & Cypher
-  feature: cypher-graph-queries
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: cypher-and-graph-analytics-translation
   priority: SHOULD
   type: behavioral
-  description: 'A relationship may be given an edge index, opted in by its owner: a materialization of the relationship
-    as a narrow table of (from_key, to_key) pairs, a junction relationship collapsed into one edge per junction row,
-    stored on the engine or store that holds materializations and indexed in both directions. It is refreshed with the
-    relationship''s endpoints'' freshness, like any materialization, and governed as the relationship is: a role reads
-    an edge only where it may read both ends. Variable-length patterns and shortestPath on that relationship (REQ-751,
-    REQ-348) compile their recursive steps against the edge index instead of joining the endpoint tables at every
-    hop, the endpoints joined once for the properties a statement returns. Provisa suggests candidates and does not
-    create them unasked: relationships ranked by how often path queries and joins use them (the audit log and the ops
-    domain''s join_hotspots), each with the owner''s opt-in. Provisa never creates an index on a source''s own tables.'
+  description: 'A relationship may be given an edge index, opted in by its owner: a materialization of the
+    relationship as a narrow table of (from_key, to_key) pairs, a junction relationship collapsed into one
+    edge per junction row, stored on the engine or store that holds materializations and indexed in both
+    directions. It is refreshed with the relationship''s endpoints'' freshness, like any materialization,
+    and governed as the relationship is: a role reads an edge only where it may read both ends. Variable-length
+    patterns and shortestPath on that relationship (REQ-751, REQ-348) compile their recursive steps against
+    the edge index instead of joining the endpoint tables at every hop, the endpoints joined once for the
+    properties a statement returns. Provisa suggests candidates and does not create them unasked: relationships
+    ranked by how often path queries and joins use them (the audit log and the ops domain''s join_hotspots),
+    each with the owner''s opt-in. Provisa never creates an index on a source''s own tables. (Amended 2026-10-28,
+    PROVISA''S OWN INDEX, OR NEO4J''S KINDS:) The edge index may be Provisa''s own adjacency structure rather
+    than a plain indexed table, whichever walks a path fastest on the store that holds it. Cypher''s index
+    statements may be honoured the same way: a CREATE INDEX for a label''s or a relationship type''s property,
+    and SHOW INDEXES, act on Provisa-owned materializations of those nodes and relationships, never on a
+    source''s tables, so a Neo4j user''s own index habits carry over.'
   scenario: 'Given a relationship with an edge index and a [*1..4] pattern over it
     When the pattern is compiled
     Then its recursive steps read the edge index, indexed in both directions, and the endpoint tables are joined once
