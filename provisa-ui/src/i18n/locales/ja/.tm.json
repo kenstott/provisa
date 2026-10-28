@@ -4992,7 +4992,6 @@
   "ja/serverErrors.json::serverErrors.data.replica_building": "The copy of {{replica}} is still being built. The build continues; open the preview again once it has finished.",
   "ja/serverErrors.json::serverErrors.data.request_interrupted": "{{error}}",
   "ja/serverErrors.json::serverErrors.data.role_mismatch": "The request names role '{{body_role}}' but runs as role '{{acting_role}}'. The role is carried by the X-Provisa-Role header (or the signed-in identity); remove the other role or make it match.",
-  "ja/serverErrors.json::serverErrors.data.role_served_nothing": "Role '{{role_id}}' is served no tables: no column of any table is granted to it",
   "ja/serverErrors.json::serverErrors.data.row_level_filter_not_pushable": "Table '{{table}}' is replicated row by row and its source ({{source_type}}) cannot apply this filter itself: {{reason}}. Filter on its key instead.",
   "ja/serverErrors.json::serverErrors.data.row_level_filter_required": "Table '{{table}}' is replicated row by row because it is large, so it is not read whole: add a filter on its columns, or join it on its key to a relation that is filtered.",
   "ja/serverErrors.json::serverErrors.data.schema_cache_not_ready": "Schema build cache not ready",

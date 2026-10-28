@@ -126,8 +126,9 @@ class TestREQ525PerRoleProtoGeneration:
         # The table is "orders" -> type name should be "Orders"
         assert "message Orders" in proto
 
-    def test_no_visible_tables_raises(self):
-        # REQ-525: A role with no visible tables cannot generate a proto (no empty proto allowed).
+    def test_no_visible_tables_generates_a_proto_with_no_table(self):
+        # REQ-525: the proto reflects only the tables visible to the role. REQ-2154 (amended): a
+        # role served no table is not refused as such: its proto has no table's message or RPC.
         tables = [
             {
                 "id": 1,
@@ -151,8 +152,9 @@ class TestREQ525PerRoleProtoGeneration:
             domains=[{"id": "sales", "description": "Sales"}],
             source_types={"test-pg": "postgresql"},
         )
-        with pytest.raises(ValueError, match="No tables visible"):
-            generate_proto(si)
+        proto = generate_proto(si)
+        assert "message Orders" not in proto and "QueryOrders" not in proto
+        assert "message Query {\n}" in proto and "service ProvisaService {" in proto
 
 
 class TestREQ538ProtoTypeMappings:
