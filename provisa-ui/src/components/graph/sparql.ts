@@ -421,10 +421,12 @@ export function triplesGraph(
 /** The class each variable of ``query`` is typed as (``?s a pet-store:pets``), as the query names
  * it; the tail of its IRI where the query writes it in full. */
 function queryClasses(query: string): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const m of query.matchAll(/[?$](\w+)\s+(?:a|rdf:type)\s+(<[^>]*>|[^\s.;,{}]+)/g))
-    if (!out.has(m[1])) out.set(m[1], m[2].startsWith("<") ? iriTail(m[2].slice(1, -1)) : m[2]);
-  return out;
+  return new Map(
+    [...typedVariables(query)].map(([variable, classes]) => {
+      const [first] = classes;
+      return [variable, first.startsWith("<") ? iriTail(first.slice(1, -1)) : first];
+    }),
+  );
 }
 
 /** How a SELECT's variables pair into an edge: its subject and object columns, and the column a
