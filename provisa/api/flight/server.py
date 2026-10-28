@@ -1075,7 +1075,7 @@ class ProvisaFlightServer(
             if catalog_name is not None and catalog_name != catalog.database:
                 raise _NotFound(f"no catalog {catalog_name!r}: the connection is served one")
             found = [t for t in catalog.tables if t.name == name and schema in (None, t.schema)]
-            return [c for c, _ in catalog.columns.get(found[0].toid, [])] if found else None
+            return [c for c, *_ in catalog.columns.get(found[0].toid, [])] if found else None
 
         columns = _run_rpc(lambda: self._as_ticket_caller(request, _declared))
         how = command.table_definition_options
