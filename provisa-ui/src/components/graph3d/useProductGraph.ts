@@ -18,6 +18,7 @@ import {
   RoleSchema,
   dataGraphql,
   rootFields,
+  rowsOf,
   type Introspection,
   type MetaReader,
 } from "../../api/metaGraph";
@@ -29,7 +30,7 @@ import {
   productGraphQuery,
   withProductLineage,
   type ProductFilters,
-  type ProductRow,
+  type ProductGraphRows,
 } from "./productGraphData";
 
 // One read of each role's schema for the page's life: it changes only with the model.
@@ -58,11 +59,12 @@ export async function loadProductGraph(
 ): Promise<{ data: GraphData; query: string } | null> {
   const query = productGraphQuery(await metaReader(role), product, f);
   if (query === null) return null;
-  const [{ data_products: products }, lineage] = await Promise.all([
-    dataGraphql<{ data_products: ProductRow[] }>(query, {}, role),
+  const [{ data_products: products, _term_edges: ranks }, lineage] = await Promise.all([
+    dataGraphql<ProductGraphRows>(query, {}, role),
     product === null ? null : fetchProductLineage(product),
   ]);
-  const data = productGraph(products);
+  // The rank edges are absent when the role cannot read them: no hierarchy is drawn.
+  const data = productGraph(products, rowsOf(ranks) ?? []);
   const tables = products.flatMap((p) => p.member_tables ?? []);
   return {
     data: lineage && product ? withProductLineage(data, product, lineage, tables) : data,

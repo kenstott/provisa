@@ -19,6 +19,7 @@ import { NEIGHBOURHOOD } from "./neighbourhood";
 import {
   operation,
   rootField,
+  rowsOf,
   type MetaReader,
   type Selection,
   type Where,
@@ -31,6 +32,14 @@ import type {
   QueryScope,
   TermStatus,
 } from "./graphModel";
+import {
+  COLUMN_FACTS,
+  PRODUCT_FACTS,
+  TABLE_FACTS,
+  columnFacts,
+  facts,
+  tableFacts,
+} from "./productGraphData";
 
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
@@ -207,15 +216,30 @@ function termSelection(s: QueryScope, level: number): Selection {
         sel: {
           fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
           rels: {
+            // REQ-2174: the column's and its table's facts, for the hover card and detail panel.
+            column: {
+              alias: "column",
+              sel: {
+                fields: COLUMN_FACTS,
+                rels: { sensitivity: { alias: "sensitivity", sel: { fields: ["tags"] } } },
+              },
+            },
             table: {
               to: "registered_tables",
               sel: {
-                fields: ["id"],
+                fields: ["id", ...TABLE_FACTS.fields],
                 rels: {
-                  // With Data off, a column's product is read for its look alone: no product node.
+                  ...TABLE_FACTS.rels,
+                  // With Data off, a column's product is read for its look alone: no product
+                  // node -- but for the 2D lane diagram, whose product lane names it (REQ-2174).
                   product: {
                     alias: "product",
-                    sel: { fields: s.layers.has("data") ? ["id", "name", "domain_id"] : ["id"] },
+                    sel: {
+                      fields:
+                        s.layers.has("data") || s.lanes
+                          ? ["id", "name", "domain_id", ...PRODUCT_FACTS]
+                          : ["id"],
+                    },
                   },
                   ...relationships(s),
                 },
@@ -226,6 +250,8 @@ function termSelection(s: QueryScope, level: number): Selection {
         where: inDomains(s.domains),
       };
   }
+  // REQ-2174: its experts, its stewards on the graph's hover card and detail panel.
+  rels.experts = { alias: "experts", sel: { fields: ["user_id", "kind"] } };
   return { fields: TERM_FIELDS, rels };
 }
 
@@ -289,17 +315,18 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
     m,
     "data_products",
     {
-      fields: ["id", "name", "domain_id"],
+      fields: ["id", "name", "domain_id", ...PRODUCT_FACTS],
       rels: {
         member_tables: {
           alias: "memberTables",
           sel: {
-            fields: ["id", "domain_id", "table_name"],
+            fields: ["id", "domain_id", "table_name", ...TABLE_FACTS.fields],
             rels: {
+              ...TABLE_FACTS.rels,
               table_columns: {
                 to: "table_columns",
                 sel: {
-                  fields: ["column_name", "column_key"],
+                  fields: ["column_name", "column_key", ...COLUMN_FACTS],
                   rels: { glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } } },
                 },
               },
@@ -378,6 +405,8 @@ export interface TermRow {
   identity_gap?: boolean;
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
+  // Its experts (its stewards); null when it has none.
+  experts?: { user_id: string; kind: string }[] | null;
   // Under Ontology: the edges leaving the term (null when none; see rowsOf).
   // Under a search, the term an edge reaches is read in full to the neighbourhood's depth.
   edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
@@ -391,14 +420,27 @@ export interface TermRow {
         table_id: number;
         table_name: string;
         domain_id: string;
-        table?: {
-          id: number;
-          product?: { id: string; name?: string; domain_id?: string } | null;
-          source_relationships?: RelationshipRow[] | null;
-        } | null;
+        column?: (ColumnFactsRow & { sensitivity?: { tags: string }[] | null }) | null;
+        table?:
+          | (TableFactsRow & {
+              id: number;
+              product?: {
+                id: string;
+                name?: string;
+                domain_id?: string;
+                status?: string | null;
+                owner_role?: string | null;
+              } | null;
+              source_relationships?: RelationshipRow[] | null;
+            })
+          | null;
       }[]
     | null;
 }
+
+/** A column's facts (COLUMN_FACTS) and a table's (TABLE_FACTS), as productGraphData reads them. */
+type ColumnFactsRow = Parameters<typeof columnFacts>[0];
+type TableFactsRow = Parameters<typeof tableFacts>[0];
 
 interface RelationshipRow {
   id: string;
@@ -411,21 +453,23 @@ export interface ProductRow {
   id: string;
   name: string;
   domain_id: string;
+  status?: string | null;
+  owner_role?: string | null;
   // One-to-many: null when there are none (see rowsOf).
   member_tables?:
-    | {
+    | (TableFactsRow & {
         id: number;
         domain_id: string;
         table_name: string;
         table_columns?:
-          | {
+          | (ColumnFactsRow & {
               column_name: string;
               column_key: string;
               glossary_ref?: { term_id: number }[] | null;
-            }[]
+            })[]
           | null;
         source_relationships?: RelationshipRow[] | null;
-      }[]
+      })[]
     | null;
 }
 
@@ -471,6 +515,8 @@ export function glossaryGraph(
     else {
       widen(seen, n.layers);
       if (n.inProduct) seen.inProduct = true;
+      // Met first where its facts were not read (a class term's table): they are read here.
+      if (n.info && !seen.info) seen.info = n.info;
     }
   };
   const edge = (
@@ -486,7 +532,13 @@ export function glossaryGraph(
       out.set(id, { id, a, b, kind, ...(label ? { label } : {}), ...(layers ? { layers } : {}) });
     else widen(seen, layers);
   };
-  const table = (id: number, domain: string, name: string, dataset: boolean) =>
+  const table = (
+    id: number,
+    domain: string,
+    name: string,
+    dataset: boolean,
+    row: TableFactsRow | null | undefined,
+  ) =>
     node({
       id: `t:${id}`,
       type: "table",
@@ -494,11 +546,23 @@ export function glossaryGraph(
       domains: [domain],
       stored: true,
       layers: dataset ? ["data"] : [],
+      ...(row ? facts(tableFacts(row)) : {}),
     });
   // A product is in its domain, as on the data product graph: drawn beside the domain's terms
   // even when none of its tables' columns is drawn.
-  const product = (id: string, name: string, domain: string) => {
-    node({ id: `p:${id}`, type: "product", label: name, domains: [domain] });
+  const product = (
+    id: string,
+    name: string,
+    domain: string,
+    row: { status?: string | null; owner_role?: string | null },
+  ) => {
+    node({
+      id: `p:${id}`,
+      type: "product",
+      label: name,
+      domains: [domain],
+      ...facts({ status: row.status ?? undefined, owner: row.owner_role ?? undefined }),
+    });
     if (nodes.has(`d:${domain}`)) edge(`p:${id}`, `d:${domain}`, "in_domain");
   };
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
@@ -530,6 +594,12 @@ export function glossaryGraph(
         : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
+      // REQ-2174: its experts are its stewards (its status is its standing, above).
+      ...facts({
+        stewards: rowsOf(t.experts)
+          ?.filter((x) => x.kind === "expert")
+          .map((x) => x.user_id),
+      }),
     });
     // An enterprise-wide term is joined to every domain, so it settles among them, at the centre.
     for (const d of domains.includes(ENTERPRISE_DOMAIN) ? named : domains)
@@ -553,7 +623,9 @@ export function glossaryGraph(
       const p = r.table?.product;
       // A column whose table a data product holds is the Data layer's too.
       const held: LayerId[] = p ? ["columns", "data"] : ["columns"];
-      table(r.table_id, r.domain_id, r.table_name, p != null);
+      table(r.table_id, r.domain_id, r.table_name, p != null, r.table);
+      // Its sensitivity: its row in sensitive_coverage when sensitive; absent when not read.
+      const sensitivity = r.column ? rowsOf(r.column.sensitivity) : undefined;
       node({
         id: cid,
         type: "column",
@@ -562,6 +634,13 @@ export function glossaryGraph(
         domains: [r.domain_id],
         inProduct: p != null,
         layers: held,
+        // A fact, not a filter: the glossary's query is not narrowed by sensitivity.
+        ...(r.column
+          ? facts({
+              ...columnFacts(r.column),
+              sensitive: sensitivity?.flatMap((x) => x.tags.split(", ")),
+            })
+          : {}),
       });
       edge(tid, cid, "has_column", undefined, p ? ["data", "ownerTables"] : ["ownerTables"]);
       // glossary.py's physical refs: the term IS this column.
@@ -569,17 +648,17 @@ export function glossaryGraph(
       // A product read for its column's look alone (Data off) has neither name nor domain and is
       // no node; under Data both are read.
       if (p?.name !== undefined && p.domain_id !== undefined) {
-        product(p.id, p.name, p.domain_id);
+        product(p.id, p.name, p.domain_id, p);
         edge(`p:${p.id}`, tid, "member");
       }
       relationships(r.table_id, r.table?.source_relationships);
     }
   }
   for (const p of products) {
-    product(p.id, p.name, p.domain_id);
+    product(p.id, p.name, p.domain_id, p);
     for (const m of p.member_tables ?? []) {
       const tid = `t:${m.id}`;
-      table(m.id, m.domain_id, m.table_name, true);
+      table(m.id, m.domain_id, m.table_name, true, m);
       edge(`p:${p.id}`, tid, "member");
       for (const c of m.table_columns ?? []) {
         const cid = `c:${c.column_key}`;
@@ -593,6 +672,7 @@ export function glossaryGraph(
           domains: [m.domain_id],
           inProduct: true,
           layers: bound.length > 0 ? ["data", "columns"] : ["data"],
+          ...facts(columnFacts(c)),
         });
         // Tables joins only the columns drawn by Columns: a column no term is stays Data's.
         edge(

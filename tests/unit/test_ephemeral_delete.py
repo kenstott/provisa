@@ -13,10 +13,10 @@
 A session node is removed from the session, DETACH removing the relationships it has; DELETE
 of one that still has relationships is refused, as Neo4j refuses it. A session relationship is
 its own row: DELETE r removes the one matched, never a parallel one. A model node's row is the
-governed path's: a plain DELETE of one is the governed delete, its session tags going with it;
-one with session relationships, or a DETACH DELETE of one (the governed path does not detach
-until the governed writer takes it), is refused whole, and nothing is written. Every refusal is
-decided before any write."""
+governed path's: a plain DELETE of one is the governed delete, its session tags going with it,
+and one with session relationships is refused whole, nothing written; a DETACH DELETE of one is
+the governed DETACH DELETE of its row, its session tags and relationships going with it. Every
+refusal is decided before any write."""
 
 # Requirements: REQ-2176
 
@@ -92,15 +92,18 @@ def test_a_model_node_with_session_relationships_is_refused_whole(monkeypatch):
     assert len(s.run("MATCH (:Person)-[o:OWNS]->(:Robot) RETURN o")) == 1
 
 
-def test_detach_delete_of_a_model_node_is_refused_whole_and_writes_nothing(monkeypatch):
+def test_detach_delete_of_a_model_node_takes_its_session_tags_and_relationships(monkeypatch):
+    # REQ-2176: DETACH DELETE of a model node is governed when every part has an exact target;
+    # Person has no relationship in the model, so its row is the one, and its session tags and
+    # relationships go with it.
     s = Session(monkeypatch, _PEOPLE)
     s.run("MATCH (p:Person) WHERE p.name = 'Ann' SET p:Vip")
     s.run("MATCH (p:Person) WHERE p.name = 'Ann' CREATE (p)-[:OWNS]->(:Robot {m: 'R2'})")
-    with pytest.raises(CypherParseError, match="DETACH"):
-        s.run("MATCH (p:Person) WHERE p.name = 'Ann' DETACH DELETE p")
-    assert _people(s) == [(1, "Ann"), (2, "Bo")]
-    assert _values(s.run("MATCH (n:Vip) RETURN n.name")) == [("Ann",)]
-    assert len(s.run("MATCH (:Person)-[o:OWNS]->(:Robot) RETURN o")) == 1
+    s.run("MATCH (p:Person) WHERE p.name = 'Ann' DETACH DELETE p")
+    assert _people(s) == [(2, "Bo")]
+    assert s.run("MATCH (n:Vip) RETURN n.name") == []
+    assert s.run("MATCH (:Person)-[o:OWNS]->(:Robot) RETURN o") == []
+    assert _values(s.run("MATCH (r:Robot) RETURN r.m")) == [("R2",)]
 
 
 def test_a_refusal_writes_nothing_of_the_statement(monkeypatch):

@@ -22,7 +22,7 @@ import duckdb
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.write_translator import WriteTranslator, bind_write_params, parse_cypher_write
+from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write, written
 from provisa.ephemeral import seam
 from provisa.gql.assembler import assemble_rows, to_serializable
 from provisa.gql.graph_rewriter import apply_graph_rewrites
@@ -158,6 +158,8 @@ class Session:
             nodes=nodes, relationships=rels, aliases=aliases, nodes_by_table={k: [k] for k in nodes}
         )
         self.session = TempSession()
+        #: Each SQL statement the governed write path sent, in order.
+        self.sent: list[str] = []
         self.state = SimpleNamespace(
             federation_engine=SimpleNamespace(engine=SimpleNamespace(name="duckdb"))
         )
@@ -212,11 +214,23 @@ class Session:
         return [to_serializable(r, keep_values=True) for r in rows]
 
     async def write(self, statement: str, params: dict[str, Any]) -> None:
-        """The governed write path, as a surface runs it: translated and sent to the source."""
-        sql, values = bind_write_params(
-            WriteTranslator(self.model).translate(parse_cypher_write(statement)), params
+        """The governed write path, as a surface runs it (written): its reads through the read
+        path, each translated write sent to the source."""
+
+        async def read(query: str, values: dict[str, Any]) -> tuple[list[str], list[list[Any]]]:
+            rows = await self.read(query, values)
+            columns = list(rows[0]) if rows else []
+            return columns, [[r[c] for c in columns] for r in rows]
+
+        async def send(sql: str, bound: list[Any]) -> tuple[list[str], list[list[Any]]]:
+            self.sent.append(sql)
+            result = self.duck.execute(sql.replace('"memory".', ""), bound)
+            columns = [d[0] for d in result.description or []]
+            return columns, [list(r) for r in result.fetchall()] if columns else []
+
+        await written(
+            parse_cypher_write(statement), WriteTranslator(self.model), params, read, send
         )
-        self.duck.execute(sql.replace('"memory".', ""), values)
 
     def run(self, statement: str, **params: Any) -> Any:
         made = asyncio.run(

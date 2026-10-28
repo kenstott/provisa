@@ -23,7 +23,9 @@ import {
   NO_PRODUCT_FILTERS,
   productGraph,
   productGraphQuery,
+  rankChains,
   toGraphData,
+  type TermEdgeRow,
   withProductLineage,
   type ProductFilters,
   type ProductRow,
@@ -50,7 +52,7 @@ const type = (name: string, fields: Record<string, GraphqlType>) => ({
 });
 
 /** A role's schema as the compiler names it: domain alias "m", camelCase columns. */
-function reader(opts: { tags: boolean }): MetaReader {
+function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
   const raw: Introspection = {
     __schema: {
       queryType: { name: "Query" },
@@ -59,6 +61,7 @@ function reader(opts: { tags: boolean }): MetaReader {
           m__dataProducts: list("M__DataProducts"),
           m__registeredTables: list("M__RegisteredTables"),
           m__tableColumns: list("M__TableColumns"),
+          ...(opts.ranks ? { ont__termEdges: list("ONT__TermEdges") } : {}),
         }),
         type("M__DataProducts", {
           id: scalar,
@@ -113,6 +116,9 @@ function reader(opts: { tags: boolean }): MetaReader {
       [rootKey("meta", "data_products"), "m__dataProducts"],
       [rootKey("meta", "registered_tables"), "m__registeredTables"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
+      ...(opts.ranks
+        ? ([[rootKey("ontology", "_term_edges"), "ont__termEdges"]] as [string, string][])
+        : []),
     ]),
   };
 }
@@ -242,8 +248,8 @@ describe("the product graph's data", () => {
           from_term_id: 7,
           to_term_id: 8,
           rel_type: "KIND_OF",
-          from_term: "Customer",
-          to_term: "Party",
+          source_term: { id: 7, name: "Customer" },
+          target_term: { id: 8, name: "Party" },
         },
       ],
       [{ column_key: "1:email", table_id: 1, tags: "pii, contact" }],
@@ -513,5 +519,151 @@ describe("column lineage (REQ-2129, REQ-2156)", () => {
   it("is read from no meta view: a member column carries no upstream edge here", () => {
     const g = toGraphData(ROWS, null, null);
     expect(g.edges.some((e) => e.kind === "column_lineage")).toBe(false);
+  });
+});
+
+describe("the product graph's term hierarchy (REQ-2174)", () => {
+  it("reads the rank edges beside the products, with the terms they join, in the one query", () => {
+    const q = squash(productsQuery(reader({ tags: true, ranks: true }), "c360"));
+    expect(q.startsWith("query DataProductGraph {")).toBe(true);
+    expect(q).toContain(
+      '_term_edges: ont__termEdges(where: { relType: { in: ["KIND_OF","PART_OF","VALID_VALUE_OF"] } })',
+    );
+    expect(q).toContain("source_term: sourceTerm { id: id name: name }");
+    expect(q).toContain("target_term: targetTerm { id: id name: name }");
+  });
+
+  it("narrows the rank edges to the edge types kept, and reads none when none is a rank type", () => {
+    const m = reader({ tags: true, ranks: true });
+    const kept = squash(productsQuery(m, null, { ...NO_PRODUCT_FILTERS, edgeTypes: ["PART_OF"] }));
+    expect(kept).toContain('relType: { in: ["PART_OF"] }');
+    const none = squash(
+      productsQuery(m, null, { ...NO_PRODUCT_FILTERS, edgeTypes: ["RELATED_TO"] }),
+    );
+    expect(none).not.toContain("_term_edges");
+  });
+
+  const edge = (id: number, from: number, to: number, rel: string): TermEdgeRow => ({
+    id,
+    from_term_id: from,
+    to_term_id: to,
+    rel_type: rel,
+    source_term: { id: from, name: `t${from}` },
+    target_term: { id: to, name: `t${to}` },
+  });
+
+  it("keeps the edges on a chain up from a bound term, and no other", () => {
+    // Term 7 is bound (ROWS); 7 -> 8 -> 10 is its chain; 11 -> 12 is no chain of the product's.
+    const edges = [edge(1, 7, 8, "KIND_OF"), edge(2, 8, 10, "PART_OF"), edge(3, 11, 12, "KIND_OF")];
+    expect(
+      rankChains(ROWS, edges)
+        .map((e) => e.id)
+        .sort(),
+    ).toEqual([1, 2]);
+    const g = productGraph(ROWS, edges);
+    expect(g.nodes.filter((n) => n.type === "term").map((n) => n.id).sort()).toEqual([
+      "term:10",
+      "term:7",
+      "term:8",
+    ]);
+  });
+
+  it("keeps two edges of different types between the same two terms", () => {
+    const g = toGraphData(ROWS, [edge(1, 7, 8, "RELATED_TO"), edge(2, 7, 8, "KIND_OF")], null);
+    expect(
+      g.edges
+        .filter((e) => e.kind === "term_edge")
+        .map((e) => e.label)
+        .sort(),
+    ).toEqual(["KIND_OF", "RELATED_TO"]);
+  });
+
+  it("draws no edge to a term the role cannot read", () => {
+    const g = toGraphData(ROWS, [{ ...edge(1, 7, 8, "KIND_OF"), target_term: null }], null);
+    expect(g.edges.some((e) => e.kind === "term_edge")).toBe(false);
+  });
+});
+
+describe("each node's facts (REQ-2174)", () => {
+  const rows: ProductRow[] = [
+    {
+      id: "c360",
+      name: "customer_360",
+      domain_id: "sales",
+      status: "live",
+      owner_role: "sales_steward",
+      member_tables: [
+        {
+          id: 1,
+          domain_id: "sales",
+          table_name: "customers",
+          source_id: "sales_pg",
+          description: "Every customer.",
+          checked_by: [
+            { latest_outcome: "pass", latest_run_at: "2026-10-26T10:00:00Z" },
+            { latest_outcome: "fail", latest_run_at: "2026-10-27T10:00:00Z" },
+          ],
+          dq_contract: null,
+          product_id: "c360",
+          table_columns: [
+            {
+              column_name: "email",
+              column_key: "1:email",
+              data_type: "varchar",
+              description: "Where we write.",
+              masks: '[{"to": ["analyst"], "mask": {"type": "constant", "value": null}}]',
+              glossary_ref: [
+                {
+                  term_id: 7,
+                  term: {
+                    id: 7,
+                    name: "Customer",
+                    definition: "Someone who buys.",
+                    status: "live",
+                    experts: [
+                      { user_id: "ada", kind: "expert" },
+                      { user_id: "bob", kind: "author" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        { id: 2, domain_id: "sales", table_name: "orders", dq_contract: null, checked_by: null },
+      ],
+    },
+  ];
+  const g = toGraphData(rows, null, null);
+  const byId = new Map(g.nodes.map((n) => [n.id, n]));
+
+  it("gives a term its definition, status and stewards (its experts)", () => {
+    expect(byId.get("term:7")).toMatchObject({
+      definition: "Someone who buys.",
+      info: { status: "live", stewards: ["ada"] },
+    });
+  });
+
+  it("gives a column its type, description and whether it is masked", () => {
+    expect(byId.get("c:1:email")?.info).toEqual({
+      dataType: "varchar",
+      description: "Where we write.",
+      masked: true,
+    });
+  });
+
+  it("gives a table its source, description and its checkers' worst latest outcome", () => {
+    expect(byId.get("t:1")?.info).toEqual({
+      source: "sales_pg",
+      description: "Every customer.",
+      quality: "fail",
+      checkedAt: "2026-10-27T10:00:00Z",
+    });
+    // No checker scans it: no quality is said.
+    expect(byId.get("t:2")?.info).toBeUndefined();
+  });
+
+  it("gives a product its status and owner", () => {
+    expect(byId.get("p:c360")?.info).toEqual({ status: "live", owner: "sales_steward" });
   });
 });
