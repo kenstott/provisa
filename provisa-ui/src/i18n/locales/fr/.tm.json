@@ -2156,7 +2156,7 @@
   "fr/graphInspector.json::graphInspector.graphStats": "Graph stats",
   "fr/graphInspector.json::graphInspector.hidePanel": "Hide panel",
   "fr/graphInspector.json::graphInspector.hint": "Click a node or edge to inspect its properties.",
-  "fr/graphInspector.json::graphInspector.junctionTable": "props: {{table}}",
+  "fr/graphInspector.json::graphInspector.junctionTable": "properties from {{table}}",
   "fr/graphInspector.json::graphInspector.nodeLabels": "Node labels",
   "fr/graphInspector.json::graphInspector.nodeProperties": "Node properties",
   "fr/graphInspector.json::graphInspector.openRelationship": "Open its relationship",

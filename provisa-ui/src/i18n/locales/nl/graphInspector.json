@@ -22,7 +22,7 @@
     "properties": "Eigenschappen",
     "copyValue": "Waarde kopiëren",
     "resizePanel": "Formaat van inspectiepaneel wijzigen",
-    "junctionTable": "eig.: {{table}}",
+    "junctionTable": "eigenschappen uit {{table}}",
     "openTable": "Tabel openen",
     "openRelationship": "Relatie openen"
   }
