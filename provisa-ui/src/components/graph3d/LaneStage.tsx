@@ -1,0 +1,397 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 9c4f1a62-7e3b-4d85-a2c0-6b8e3f1d7a49
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// REQ-2174 (amended 2026-10-28): the graph's 2D view, the lane diagram (laneDiagram.ts) drawn by
+// cytoscape and laid out by ELK's layered algorithm in fixed lane partitions, left to right; the
+// term lane is one compound laid out top-down. A click picks a node (the detail panel), a hover
+// shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text.
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Button, useComputedColorScheme } from "@mantine/core";
+import { Check, Copy } from "lucide-react";
+import cytoscape, { type EventObject } from "cytoscape";
+import elkRaw from "cytoscape-elk";
+import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
+import type { GraphHover } from "./graphScene";
+import { GraphLegend } from "./GraphStage";
+import { hoverBody } from "./hoverBody";
+import { LANES, laneMermaid, type Lane, type LaneDiagram } from "./laneDiagram";
+import { nodeLook } from "./nodeLook";
+
+type CyExt = Parameters<typeof cytoscape.use>[0];
+const elk = (elkRaw as { default?: CyExt }).default ?? (elkRaw as CyExt);
+// cytoscape.use throws when an extension is registered twice (TermDag and LineageDag register
+// the same ELK layout): a registered "elk" layout is the one wanted, so it is used as is.
+const registered = (cytoscape as unknown as (type: string, name: string) => unknown)(
+  "layout",
+  "elk",
+);
+if (!registered) cytoscape.use(elk);
+
+type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
+
+const FIT_PAD = 24;
+const NODE_H = 26;
+const TERM_LANE = "lane:term";
+// A node is as wide as its name: ELK lays it out by this size, before cytoscape draws any text.
+const nodeWidth = (label: string) => Math.max(56, Math.ceil(label.length * 6.6) + 22);
+
+const SHAPE: Record<Lane, string> = {
+  term: "round-rectangle",
+  column: "rectangle",
+  table: "barrel",
+  product: "round-hexagon",
+};
+
+/** A --p3d-* token's value on ``el`` (profile3d.css sets one per colour scheme). */
+const token = (el: HTMLElement, name: string) =>
+  getComputedStyle(el).getPropertyValue(`--p3d-${name}`).trim();
+
+export function LaneStage({
+  diagram,
+  selected,
+  setSelected,
+  hover,
+  setHover,
+  onMore,
+  command,
+  testId,
+  bare = false,
+}: {
+  diagram: LaneDiagram;
+  selected: string | null;
+  setSelected: (id: string) => void;
+  hover: GraphHover | null;
+  setHover: (h: GraphHover | null) => void;
+  /** A "+N columns" node was clicked: its table's columns are drawn one by one. */
+  onMore: (table: string) => void;
+  command: CameraCommand | null;
+  testId: string;
+  /** A glance only (a card): no copy control or hint. */
+  bare?: boolean;
+}) {
+  const { t } = useTranslation();
+  const scheme = useComputedColorScheme("dark");
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const cyRef = useRef<CyCore | null>(null);
+  const [tip, setTip] = useState<{ h: GraphHover; x: number; y: number } | null>(null);
+  const [copied, setCopied] = useState(false);
+  // The cytoscape effect binds these once per diagram; the ref holds the latest callbacks.
+  const latest = useRef({ setSelected, setHover, onMore });
+  useEffect(() => {
+    latest.current = { setSelected, setHover, onMore };
+  });
+  const laneTitle = useCallback((l: Lane) => t(`graph3d.lane_${l}`), [t]);
+
+  useEffect(() => {
+    const box = boxRef.current as HTMLDivElement;
+    const wrap = wrapRef.current as HTMLDivElement;
+    // Text and lines in the stage's own text colour, as its legend and hint are drawn.
+    const ink = getComputedStyle(wrap).color;
+    const line = token(wrap, "grid");
+    const hl = token(wrap, "hl");
+    const g = diagram.graph;
+    const hasTerms = g.nodes.some((n) => diagram.lane.get(n.id) === "term");
+    const cy = cytoscape({
+      container: box,
+      elements: [
+        ...(hasTerms
+          ? [{ group: "nodes" as const, data: { id: TERM_LANE, kind: "laneBox" } }]
+          : []),
+        ...g.nodes.map((n) => {
+          const lane = diagram.lane.get(n.id) as Lane;
+          return {
+            group: "nodes" as const,
+            data: {
+              id: n.id,
+              label: n.label,
+              lane,
+              kind: "node",
+              status: n.status ?? "live",
+              shape: SHAPE[lane],
+              fill: token(wrap, nodeLook(n).colour),
+              w: nodeWidth(n.label),
+              ...(lane === "term" ? { parent: TERM_LANE } : {}),
+            },
+          };
+        }),
+        ...diagram.more.map((m) => {
+          const label = t("graph3d.moreColumns", { count: m.count });
+          return {
+            group: "nodes" as const,
+            data: {
+              id: m.id,
+              label,
+              lane: "column",
+              kind: "more",
+              table: m.table,
+              w: nodeWidth(label),
+            },
+          };
+        }),
+        ...diagram.links.map((k) => ({
+          group: "edges" as const,
+          data: { id: k.id, source: k.from, target: k.to },
+        })),
+      ],
+      layout: { name: "preset" },
+      style: [
+        {
+          selector: 'node[kind = "node"], node[kind = "more"]',
+          style: {
+            label: "data(label)",
+            "font-size": "11px",
+            "text-valign": "center",
+            "text-halign": "center",
+            width: "data(w)",
+            height: NODE_H,
+            shape: "data(shape)",
+            "background-color": "data(fill)",
+            color: "#1a1b1e",
+            "border-width": 1,
+            "border-color": ink,
+            cursor: "pointer",
+          },
+        },
+        {
+          selector: 'node[kind = "more"]',
+          style: {
+            shape: "rectangle",
+            "background-opacity": 0,
+            "border-style": "dashed",
+            color: ink,
+          },
+        },
+        { selector: 'node[status = "draft"]', style: { "font-style": "italic" } },
+        { selector: 'node[status = "deprecated"]', style: { opacity: 0.55 } },
+        { selector: 'node[status = "retired"]', style: { opacity: 0.35 } },
+        {
+          selector: 'node[kind = "laneBox"]',
+          style: {
+            "background-opacity": 0,
+            "border-width": 0,
+            padding: "8px",
+            events: "no",
+          },
+        },
+        {
+          selector: 'node[kind = "header"]',
+          style: {
+            label: "data(label)",
+            "font-size": "12px",
+            "font-weight": "bold",
+            color: ink,
+            "background-opacity": 0,
+            "border-width": 0,
+            width: 1,
+            height: 1,
+            "text-valign": "center",
+            events: "no",
+          },
+        },
+        {
+          selector: "edge",
+          style: {
+            width: 1.2,
+            "line-color": line,
+            "target-arrow-color": line,
+            "target-arrow-shape": "triangle",
+            "arrow-scale": 0.8,
+            "curve-style": "bezier",
+          },
+        },
+        { selector: ".picked", style: { "border-width": 3, "border-color": hl } },
+        { selector: "edge.lit", style: { "line-color": hl, "target-arrow-color": hl, width: 2.2 } },
+        { selector: ".faded", style: { opacity: 0.2 } },
+      ],
+      minZoom: 0.1,
+      maxZoom: 2.5,
+      boxSelectionEnabled: false,
+      autoungrabify: true,
+    } as unknown as Parameters<typeof cytoscape>[0]) as CyCore;
+    cyRef.current = cy;
+
+    cy.on("tap", 'node[kind = "node"]', (evt: EventObject) =>
+      latest.current.setSelected(evt.target.id()),
+    );
+    cy.on("tap", 'node[kind = "more"]', (evt: EventObject) =>
+      latest.current.onMore(evt.target.data("table") as string),
+    );
+    const enter = (h: GraphHover) => (evt: EventObject) => {
+      // A pointer event always carries where it happened on the canvas.
+      const at = evt.renderedPosition as cytoscape.Position;
+      setTip({ h, x: at.x, y: at.y });
+      latest.current.setHover(h);
+    };
+    cy.on("mouseover", 'node[kind = "node"]', (evt: EventObject) =>
+      enter({ kind: "node", id: evt.target.id() })(evt),
+    );
+    cy.on("mouseover", "edge", (evt: EventObject) => {
+      // A "+N columns" node's line is no edge of the graph: it has no card.
+      if (g.edges.some((e) => e.id === evt.target.id()))
+        enter({ kind: "edge", id: evt.target.id() })(evt);
+    });
+    cy.on("mouseout", 'node[kind = "node"], edge', () => {
+      setTip(null);
+      latest.current.setHover(null);
+    });
+
+    // Each lane is an ELK partition, placed strictly left to right; inside the term lane its
+    // rank edges set the levels top-down.
+    const partition = (l: Lane) => String(LANES.indexOf(l));
+    const layout = cy.layout({
+      name: "elk",
+      fit: true,
+      padding: FIT_PAD,
+      nodeLayoutOptions: (n: cytoscape.NodeSingular) => {
+        if (n.id() === TERM_LANE)
+          return {
+            "elk.partitioning.partition": partition("term"),
+            "elk.algorithm": "layered",
+            "elk.direction": "DOWN",
+            "elk.aspectRatio": "0.4",
+            "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+            "elk.spacing.nodeNode": "14",
+          };
+        if (n.data("lane") === "term") return {};
+        return { "elk.partitioning.partition": partition(n.data("lane") as Lane) };
+      },
+      elk: {
+        algorithm: "layered",
+        "elk.direction": "RIGHT",
+        "elk.partitioning.activate": "true",
+        // One graph, so every lane lines up across all of it.
+        "elk.separateConnectedComponents": "false",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+        "elk.spacing.nodeNode": "10",
+        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      },
+    } as CyLayoutOptions);
+    // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
+    layout.one("layoutstop", () => {
+      const placed = cy.nodes('[kind = "node"], [kind = "more"]');
+      if (placed.empty()) return;
+      const top = placed.boundingBox({}).y1 - 26;
+      for (const l of LANES) {
+        const inLane = placed.filter((n) => n.data("lane") === l);
+        if (inLane.empty()) continue;
+        const bb = inLane.boundingBox({});
+        cy.add({
+          group: "nodes",
+          data: { id: `header:${l}`, kind: "header", label: laneTitle(l) },
+          position: { x: (bb.x1 + bb.x2) / 2, y: top },
+        });
+      }
+      cy.fit(undefined, FIT_PAD);
+    });
+    layout.run();
+
+    const observer = new ResizeObserver(() => {
+      cy.resize();
+      cy.fit(undefined, FIT_PAD);
+    });
+    observer.observe(box);
+    return () => {
+      observer.disconnect();
+      cy.destroy();
+      cyRef.current = null;
+    };
+  }, [diagram, scheme, t, laneTitle]);
+
+  // What is picked or hovered is lit, with its lines; the rest fades while something is hovered.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const lit = new Set<string>();
+    const near = new Set<string>();
+    if (hover) {
+      for (const k of diagram.links)
+        if (hover.kind === "node" ? k.from === hover.id || k.to === hover.id : k.id === hover.id) {
+          lit.add(k.id);
+          near.add(k.id).add(k.from).add(k.to);
+        }
+      near.add(hover.id);
+    }
+    cy.batch(() =>
+      cy.elements().forEach((ele) => {
+        const id = ele.id();
+        const drawn = ele.data("kind") !== "laneBox" && ele.data("kind") !== "header";
+        ele.removeClass("picked").removeClass("lit").removeClass("faded");
+        if (id === selected) ele.addClass("picked");
+        if (lit.has(id)) ele.addClass("lit");
+        if (hover && drawn && !near.has(id)) ele.addClass("faded");
+      }),
+    );
+  }, [diagram, scheme, selected, hover]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || command == null) return;
+    if (command.kind === "reset" || command.target == null) cy.fit(undefined, FIT_PAD);
+    else {
+      const at = cy.getElementById(command.target);
+      if (at.empty()) return;
+      cy.zoom(Math.max(cy.zoom(), 1.2));
+      cy.center(cy.elements().filter((e) => e.id() === command.target));
+    }
+  }, [command]);
+
+  const copy = () => {
+    const text = laneMermaid(diagram, laneTitle, (count) => t("graph3d.moreColumns", { count }));
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  const body = tip ? hoverBody(diagram.graph, tip.h, t) : null;
+  return (
+    <div
+      className="p3d-stage g3d-lanes"
+      ref={wrapRef}
+      data-testid={testId}
+      data-ready
+      data-scheme={scheme}
+    >
+      <div className="g3d-lanes-canvas" ref={boxRef} aria-label={t("graph3d.lanesLabel")} />
+      {tip && body && (
+        <div
+          className="p3d-tip"
+          style={{ transform: `translate(${tip.x + 14}px, ${tip.y + 14}px)` }}
+          data-testid={`${testId}-tip`}
+        >
+          {body}
+        </div>
+      )}
+      {!bare && (
+        <>
+          <div className="p3d-export">
+            <Button
+              size="compact-xs"
+              variant="default"
+              leftSection={copied ? <Check size={12} /> : <Copy size={12} />}
+              onClick={copy}
+              data-testid={`${testId}-mermaid`}
+            >
+              {copied ? t("graph3d.mermaidCopied") : t("graph3d.copyMermaid")}
+            </Button>
+          </div>
+          <div className="p3d-hint">{t("profile3d.hintFlat")}</div>
+        </>
+      )}
+      <div className="p3d-legend">
+        <GraphLegend graph={diagram.graph} />
+      </div>
+    </div>
+  );
+}

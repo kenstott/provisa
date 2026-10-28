@@ -23,6 +23,8 @@ import { useGraphSettings, type GraphKey } from "../../pages/tables/profile3d/gr
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { GraphStage, type StageState } from "./GraphStage";
+import { LaneStage } from "./LaneStage";
+import { laneDiagram } from "./laneDiagram";
 import {
   PRODUCT_SCOPE,
   chosenLayout,
@@ -92,6 +94,7 @@ export function GraphModal({
 
 function PanelStage({
   graph,
+  data,
   product,
   productName,
   covered,
@@ -99,6 +102,8 @@ function PanelStage({
   saved,
 }: {
   graph: GraphData;
+  /** The product's whole graph, which holds the columns folded into ``graph``'s tables. */
+  data: GraphData;
   product: string;
   productName: string;
   /** Its expanded view is open over it: it holds still, drawing nothing it would not show. */
@@ -109,13 +114,36 @@ function PanelStage({
   saved: LayoutKind | null;
 }) {
   const layout = chosenLayout(graph, saved);
-  const at = useMemo(() => layoutGraph(graph, layout, 1, flat), [graph, layout, flat]);
+  const at = useMemo(
+    () => (flat ? new Map<string, [number, number, number]>() : layoutGraph(graph, layout)),
+    [graph, layout, flat],
+  );
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
+  // REQ-2174: in 2D the card is the lane diagram; a "+N columns" node expands in place.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const lanes = useMemo(
+    () => (flat ? laneDiagram(graph, data, expanded) : null),
+    [flat, graph, data, expanded],
+  );
   // The card is a glance: it turns and draws no grid, whatever a viewer's saved graph defaults
   // say; a drag stops the turning, as it does anywhere. Its settings live in its expanded view.
   const [rotate, setRotate] = useState(true);
   const grid = false;
+  if (lanes)
+    return (
+      <LaneStage
+        diagram={lanes}
+        selected={picked}
+        setSelected={setSelected}
+        hover={hover}
+        setHover={setHover}
+        onMore={(table) => setExpanded((prev) => new Set([...prev, table]))}
+        command={null}
+        testId="graph-panel-lanes"
+        bare
+      />
+    );
   const s: StageState = {
     graph,
     at,
@@ -185,18 +213,22 @@ export function GraphPanel({
           onChange={(on) => saveView("flat", on)}
           testId="graph-panel"
         />
-        <LayoutToggle
-          layout={chosenLayout(graph, savedLayout(view.layout))}
-          layeredPossible={openingLayout(graph).layeredPossible}
-          onChange={(l) => saveView("layout", l)}
-          testId="graph-panel"
-        />
+        {/* A 2D graph is a lane diagram, with one layout. */}
+        {!view.flat && (
+          <LayoutToggle
+            layout={chosenLayout(graph, savedLayout(view.layout))}
+            layeredPossible={openingLayout(graph).layeredPossible}
+            onChange={(l) => saveView("layout", l)}
+            testId="graph-panel"
+          />
+        )}
         <ExpandButton onClick={() => setOpen(true)} testId="graph-panel-expand" />
       </Group>
       <div className="p3d g3d-panel-view">
         {seen && (
           <PanelStage
             graph={graph}
+            data={core}
             product={product}
             productName={productName}
             covered={open}

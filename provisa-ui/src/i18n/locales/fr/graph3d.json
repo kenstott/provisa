@@ -115,6 +115,15 @@
     "unlinkedTables": "Ancré dans des tables pas encore liées comme la même entité : {{tables}}",
     "status_draft": "Brouillon",
     "openAsQueryNoSparql": "Cette requête n'a pas de forme SPARQL.",
-    "openAsQuerySparqlRoots": "Chaque racine de cette requête est sa propre requête SPARQL : ouvrez le GraphQL pour les lire une à une."
+    "openAsQuerySparqlRoots": "Chaque racine de cette requête est sa propre requête SPARQL : ouvrez le GraphQL pour les lire une à une.",
+    "lane_term": "Termes",
+    "lane_column": "Colonnes",
+    "lane_table": "Tables",
+    "lane_product": "Produits",
+    "moreColumns_one": "+{{count}} colonne",
+    "moreColumns_other": "+{{count}} colonnes",
+    "copyMermaid": "Copier en Mermaid",
+    "mermaidCopied": "Copié",
+    "lanesLabel": "Diagramme en couloirs : termes, colonnes qu'ils lient, leurs tables et produits"
   }
 }

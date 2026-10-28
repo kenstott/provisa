@@ -8439,5 +8439,14 @@
   "ru/writeGrants.json::writeGrants.saved": "Grants saved.",
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "ru/writeGrants.json::writeGrants.source_session": "A session variable"
+  "ru/writeGrants.json::writeGrants.source_session": "A session variable",
+  "ru/graph3d.json::graph3d.lane_term": "Terms",
+  "ru/graph3d.json::graph3d.lane_column": "Columns",
+  "ru/graph3d.json::graph3d.lane_table": "Tables",
+  "ru/graph3d.json::graph3d.lane_product": "Products",
+  "ru/graph3d.json::graph3d.moreColumns_one": "+{{count}} column",
+  "ru/graph3d.json::graph3d.moreColumns_other": "+{{count}} columns",
+  "ru/graph3d.json::graph3d.copyMermaid": "Copy as Mermaid",
+  "ru/graph3d.json::graph3d.mermaidCopied": "Copied",
+  "ru/graph3d.json::graph3d.lanesLabel": "Lane diagram: terms, the columns they bind, their tables and products"
 }

@@ -115,6 +115,15 @@
     "unlinkedTables": "In Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: {{tables}}",
     "status_draft": "Entwurf",
     "openAsQueryNoSparql": "Diese Abfrage hat keine SPARQL-Form.",
-    "openAsQuerySparqlRoots": "Jede Wurzel dieser Abfrage ist eine eigene SPARQL-Abfrage: Öffnen Sie das GraphQL, um sie einzeln zu lesen."
+    "openAsQuerySparqlRoots": "Jede Wurzel dieser Abfrage ist eine eigene SPARQL-Abfrage: Öffnen Sie das GraphQL, um sie einzeln zu lesen.",
+    "lane_term": "Begriffe",
+    "lane_column": "Spalten",
+    "lane_table": "Tabellen",
+    "lane_product": "Produkte",
+    "moreColumns_one": "+{{count}} Spalte",
+    "moreColumns_other": "+{{count}} Spalten",
+    "copyMermaid": "Als Mermaid kopieren",
+    "mermaidCopied": "Kopiert",
+    "lanesLabel": "Bahnendiagramm: Begriffe, die Spalten, an die sie gebunden sind, deren Tabellen und Produkte"
   }
 }

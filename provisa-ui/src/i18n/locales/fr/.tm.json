@@ -8439,5 +8439,14 @@
   "registerTableForm.json::registerTableForm.dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
-  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds."
+  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
+  "fr/graph3d.json::graph3d.lane_term": "Terms",
+  "fr/graph3d.json::graph3d.lane_column": "Columns",
+  "fr/graph3d.json::graph3d.lane_table": "Tables",
+  "fr/graph3d.json::graph3d.lane_product": "Products",
+  "fr/graph3d.json::graph3d.moreColumns_one": "+{{count}} column",
+  "fr/graph3d.json::graph3d.moreColumns_other": "+{{count}} columns",
+  "fr/graph3d.json::graph3d.copyMermaid": "Copy as Mermaid",
+  "fr/graph3d.json::graph3d.mermaidCopied": "Copied",
+  "fr/graph3d.json::graph3d.lanesLabel": "Lane diagram: terms, the columns they bind, their tables and products"
 }

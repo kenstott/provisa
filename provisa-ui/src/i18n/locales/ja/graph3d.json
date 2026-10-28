@@ -115,6 +115,15 @@
     "unlinkedTables": "同一エンティティとしてまだリンクされていないテーブルに基づいています: {{tables}}",
     "status_draft": "下書き",
     "openAsQueryNoSparql": "このクエリには SPARQL 形式がありません。",
-    "openAsQuerySparqlRoots": "このクエリの各ルートはそれぞれ別の SPARQL クエリです。1 つずつ読むには GraphQL を開いてください。"
+    "openAsQuerySparqlRoots": "このクエリの各ルートはそれぞれ別の SPARQL クエリです。1 つずつ読むには GraphQL を開いてください。",
+    "lane_term": "用語",
+    "lane_column": "列",
+    "lane_table": "テーブル",
+    "lane_product": "プロダクト",
+    "moreColumns_one": "+{{count}} 列",
+    "moreColumns_other": "+{{count}} 列",
+    "copyMermaid": "Mermaid としてコピー",
+    "mermaidCopied": "コピーしました",
+    "lanesLabel": "レーン図: 用語、用語が紐づく列、そのテーブルとプロダクト"
   }
 }

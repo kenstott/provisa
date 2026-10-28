@@ -8440,5 +8440,14 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/graph3d.json::graph3d.lane_term": "Terms",
+  "zh-HK/graph3d.json::graph3d.lane_column": "Columns",
+  "zh-HK/graph3d.json::graph3d.lane_table": "Tables",
+  "zh-HK/graph3d.json::graph3d.lane_product": "Products",
+  "zh-HK/graph3d.json::graph3d.moreColumns_one": "+{{count}} column",
+  "zh-HK/graph3d.json::graph3d.moreColumns_other": "+{{count}} columns",
+  "zh-HK/graph3d.json::graph3d.copyMermaid": "Copy as Mermaid",
+  "zh-HK/graph3d.json::graph3d.mermaidCopied": "Copied",
+  "zh-HK/graph3d.json::graph3d.lanesLabel": "Lane diagram: terms, the columns they bind, their tables and products"
 }

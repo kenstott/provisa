@@ -55,6 +55,8 @@ import {
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
+import { LaneStage } from "./LaneStage";
+import { laneDiagram } from "./laneDiagram";
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
@@ -233,6 +235,12 @@ export function GraphExplorer({
   const setGrid = (on: boolean) => save("grid", on);
   const setFlat = (on: boolean) => save("flat", on);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   const [frame, setFrame] = useState(0);
   const [picked, setSelected] = useState<string | null>(initialFocus);
   const [hover, setHover] = useState<GraphHover | null>(null);
@@ -328,8 +336,15 @@ export function GraphExplorer({
   }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
   const layout = chosenLayout(shown, savedLayout(saved.layout as string));
   const layeredPossible = useMemo(() => openingLayout(shown).layeredPossible, [shown]);
+  // REQ-2174: in 2D the graph is a lane diagram (laneDiagram.ts), laid out by ELK as it is drawn.
+  const lanes = useMemo(
+    () => (flat ? laneDiagram(shown, data, expanded) : null),
+    [flat, shown, data, expanded],
+  );
+  const drawn = lanes?.graph ?? shown;
   const at = useMemo(
-    () => layoutGraph(shown, layout, attraction, flat),
+    () =>
+      flat ? new Map<string, [number, number, number]>() : layoutGraph(shown, layout, attraction),
     [shown, layout, attraction, flat],
   );
   const focusable = useMemo(
@@ -352,7 +367,7 @@ export function GraphExplorer({
   const toggleLayer = (l: LayerId, on: boolean) =>
     save("layers", on ? [...layers, l] : [...layers].filter((x) => x !== l));
 
-  const selected = shown.nodes.some((n) => n.id === picked) ? picked : null;
+  const selected = drawn.nodes.some((n) => n.id === picked) ? picked : null;
   // In the overview a domain picked is the domain the graph is narrowed to.
   const select = (id: string | null) => {
     if (query?.overview && id !== null && id.startsWith("d:")) {
@@ -388,19 +403,21 @@ export function GraphExplorer({
           data-testid={`${testId}-preset`}
         />
         <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
-        <LayoutToggle
-          layout={layout}
-          layeredPossible={layeredPossible}
-          onChange={(l) => save("layout", l)}
-          testId={testId}
-        />
-        {/* A 2D graph never turns. */}
+        {/* A 2D graph is a lane diagram: it has one layout, no floor, and never turns. */}
         {!flat && (
-          <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
-            {t("profile3d.rotate")}
-          </Chip>
+          <>
+            <LayoutToggle
+              layout={layout}
+              layeredPossible={layeredPossible}
+              onChange={(l) => save("layout", l)}
+              testId={testId}
+            />
+            <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
+              {t("profile3d.rotate")}
+            </Chip>
+            <GridToggle value={grid} onChange={setGrid} testId={testId} />
+          </>
         )}
-        <GridToggle value={grid} onChange={setGrid} testId={testId} />
         <Button
           size="xs"
           variant="default"
@@ -409,7 +426,7 @@ export function GraphExplorer({
         >
           {t("profile3d.resetView")}
         </Button>
-        {layout === "force" && (
+        {!flat && layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
         <ResetSettingsButton onReset={resetSettings} testId={testId} />
@@ -572,12 +589,23 @@ export function GraphExplorer({
               {query.notice}
             </Text>
           </div>
-        ) : shown.nodes.length === 0 ? (
+        ) : drawn.nodes.length === 0 ? (
           <div className="p3d-stage g3d-empty" data-testid={`${testId}-empty`}>
             <Text size="sm" c="dimmed">
               {t("graph3d.empty")}
             </Text>
           </div>
+        ) : lanes ? (
+          <LaneStage
+            diagram={lanes}
+            selected={selected}
+            setSelected={select}
+            hover={hover}
+            setHover={setHover}
+            onMore={toggleExpanded}
+            command={command}
+            testId={`${testId}-lanes`}
+          />
         ) : (
           <GraphStage
             s={s}
@@ -587,19 +615,14 @@ export function GraphExplorer({
           />
         )}
         <GraphDetail
-          graph={shown}
+          graph={drawn}
           data={data}
           selected={selected}
           setHover={setHover}
           expanded={expanded}
-          folds={scope.foldColumns}
-          toggleExpanded={(id) =>
-            setExpanded((prev) => {
-              const next = new Set(prev);
-              if (!next.delete(id)) next.add(id);
-              return next;
-            })
-          }
+          // In 2D a table's unbound columns fold into one node, whatever the scope.
+          folds={scope.foldColumns || flat}
+          toggleExpanded={toggleExpanded}
           onFocus={(id) => {
             setRotate(false);
             move("focus", id);

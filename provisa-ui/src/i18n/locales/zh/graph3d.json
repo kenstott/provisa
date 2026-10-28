@@ -115,6 +115,15 @@
     "unlinkedTables": "锚定在尚未关联为同一实体的表上：{{tables}}",
     "status_draft": "草稿",
     "openAsQueryNoSparql": "此查询没有 SPARQL 形式。",
-    "openAsQuerySparqlRoots": "此查询的每个根都是一个单独的 SPARQL 查询：请打开 GraphQL 逐个读取。"
+    "openAsQuerySparqlRoots": "此查询的每个根都是一个单独的 SPARQL 查询：请打开 GraphQL 逐个读取。",
+    "lane_term": "术语",
+    "lane_column": "列",
+    "lane_table": "表",
+    "lane_product": "产品",
+    "moreColumns_one": "+{{count}} 列",
+    "moreColumns_other": "+{{count}} 列",
+    "copyMermaid": "复制为 Mermaid",
+    "mermaidCopied": "已复制",
+    "lanesLabel": "泳道图：术语、术语绑定的列、所属的表和产品"
   }
 }
