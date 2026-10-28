@@ -145,6 +145,8 @@
     "quality_none": "Aún no ejecutada",
     "factOwner": "Propietario",
     "factMembers": "Tablas miembro",
-    "factColumns": "Columnas"
+    "factColumns": "Columnas",
+    "depth": "Profundidad",
+    "lateral": "Aristas laterales"
   }
 }

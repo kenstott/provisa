@@ -955,11 +955,7 @@ export function DataProductDetailPanel({
           label={t("graph3d.panelTitle")}
         >
           {/* REQ-2174: the ontology, focused on the product. */}
-          <OntologySnippet
-            preset={productPreset(p.id)}
-            name={product.name}
-            testId="graph-panel"
-          />
+          <OntologySnippet preset={productPreset(p.id)} name={product.name} testId="graph-panel" />
         </DetailCard>
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws

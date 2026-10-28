@@ -8505,5 +8505,7 @@
   "zh-HK/graph3d.json::graph3d.quality_none": "Not run yet",
   "zh-HK/graph3d.json::graph3d.factOwner": "Owner",
   "zh-HK/graph3d.json::graph3d.factMembers": "Member tables",
-  "zh-HK/graph3d.json::graph3d.factColumns": "Columns"
+  "zh-HK/graph3d.json::graph3d.factColumns": "Columns",
+  "zh-HK/graph3d.json::graph3d.depth": "Depth",
+  "zh-HK/graph3d.json::graph3d.lateral": "Lateral edges"
 }

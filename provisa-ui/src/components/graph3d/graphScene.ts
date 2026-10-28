@@ -553,7 +553,11 @@ export class GraphScene extends BaseScene<GraphHover> {
       if (this.arcs && edgeClass(e) === "lateral") {
         // A quadratic arc bulging sideways in the layout's plane, clear of the straight rods.
         const side = new THREE.Vector3(-unit.y, unit.x, 0);
-        const ctrl = a.clone().add(b).multiplyScalar(0.5).add(side.multiplyScalar(len * 0.3));
+        const ctrl = a
+          .clone()
+          .add(b)
+          .multiplyScalar(0.5)
+          .add(side.multiplyScalar(len * 0.3));
         const curve = new THREE.QuadraticBezierCurve3(a.clone(), ctrl, b.clone());
         arrive = b.clone().sub(ctrl).normalize();
         const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, thick, 6, false), mat);

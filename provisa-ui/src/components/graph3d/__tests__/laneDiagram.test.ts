@@ -128,7 +128,9 @@ describe("the lane diagram's edges", () => {
 describe("a table's unbound columns", () => {
   it("are one +N columns node until the table is expanded", () => {
     const d = laneDiagram(shownBy(DATA, "all"), DATA, new Set());
-    expect(d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) }))).toEqual([
+    expect(
+      d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) })),
+    ).toEqual([
       { id: moreId("t:orders"), table: "t:orders", count: 1, columns: ["c:orders.total"] },
     ]);
     expect(d.graph.nodes.some((n) => n.id === "c:orders.total")).toBe(false);
@@ -154,7 +156,9 @@ describe("a table's unbound columns", () => {
       edges: DATA.edges,
     };
     const d = laneDiagram(shownBy(data, "all"), data, new Set());
-    expect(d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) }))).toEqual([
+    expect(
+      d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) })),
+    ).toEqual([
       {
         id: moreId("t:orders"),
         table: "t:orders",

@@ -39,4 +39,3 @@ export const productPreset = (product: string): SnippetPreset => ({
   focus: productNode(product),
   depth: NEIGHBOURHOOD.depth,
 });
-

@@ -8504,5 +8504,7 @@
   "de/graph3d.json::graph3d.quality_none": "Not run yet",
   "de/graph3d.json::graph3d.factOwner": "Owner",
   "de/graph3d.json::graph3d.factMembers": "Member tables",
-  "de/graph3d.json::graph3d.factColumns": "Columns"
+  "de/graph3d.json::graph3d.factColumns": "Columns",
+  "de/graph3d.json::graph3d.depth": "Depth",
+  "de/graph3d.json::graph3d.lateral": "Lateral edges"
 }

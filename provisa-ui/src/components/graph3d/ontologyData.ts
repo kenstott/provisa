@@ -17,10 +17,7 @@
 // nodes and edges. A focus (a term or a product) and a depth narrow the read to a snippet.
 
 import { termRole } from "../../api/glossary";
-import { NODE_BUDGET } from "./neighbourhood";
 import {
-  dataGraphql,
-  metaReader,
   operation,
   rootField,
   rowsOf,
@@ -554,16 +551,16 @@ export interface TermRow {
         table?:
           | (TableFacts &
               Tagged & {
-              id: number;
-              product?: {
-                id: string;
-                name?: string;
-                domain_id?: string;
-                status?: string | null;
-                owner_role?: string | null;
-              } | null;
-              source_relationships?: RelationshipRow[] | null;
-            })
+                id: number;
+                product?: {
+                  id: string;
+                  name?: string;
+                  domain_id?: string;
+                  status?: string | null;
+                  owner_role?: string | null;
+                } | null;
+                source_relationships?: RelationshipRow[] | null;
+              })
           | null;
       }[]
     | null;
@@ -586,19 +583,19 @@ export interface ProductRow {
   member_tables?:
     | (TableFacts &
         Tagged & {
-        id: number;
-        domain_id: string;
-        table_name: string;
-        table_columns?:
-          | (ColumnFacts &
-              Tagged & {
-              column_name: string;
-              column_key: string;
-              glossary_ref?: { term_id: number }[] | null;
-            })[]
-          | null;
-        source_relationships?: RelationshipRow[] | null;
-      })[]
+          id: number;
+          domain_id: string;
+          table_name: string;
+          table_columns?:
+            | (ColumnFacts &
+                Tagged & {
+                  column_name: string;
+                  column_key: string;
+                  glossary_ref?: { term_id: number }[] | null;
+                })[]
+            | null;
+          source_relationships?: RelationshipRow[] | null;
+        })[]
     | null;
 }
 
@@ -827,25 +824,4 @@ export function ontologyGraph(
     if (nodes.has(a) && nodes.has(b)) edge(a, b, "term_edge", e.rel_type);
   }
   return { nodes: [...nodes.values()], edges: [...out.values()] };
-}
-
-/** What a read of the ontology came to: the graph and the query that read it, or -- past the
- * budget -- how many terms it would have read, with each term's domains. */
-export type Loaded =
-  | { data: GraphData; query: string; over?: undefined }
-  | { over: number; rows: CountRow[]; query: string };
-
-/** The ontology as ``scope`` reads it, in one query (REQ-2136): its terms counted first, and read
- * only within the budget (REQ-2143); null when the role cannot read the glossary. */
-export async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
-  const m = await metaReader(role);
-  const query = ontologyQuery(m, scope);
-  const count = ontologyCountQuery(m, scope);
-  if (query === null || count === null) return null;
-  const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
-  if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
-  const rows = await dataGraphql<OntologyRows>(query, {}, role);
-  // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
-  const terms = flatTerms(rows._terms);
-  return { data: ontologyGraph(terms, termEdges(terms), rows.data_products), query };
 }

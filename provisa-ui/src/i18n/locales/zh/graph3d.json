@@ -145,6 +145,8 @@
     "quality_none": "尚未运行",
     "factOwner": "所有者",
     "factMembers": "成员表",
-    "factColumns": "列"
+    "factColumns": "列",
+    "depth": "深度",
+    "lateral": "横向边"
   }
 }

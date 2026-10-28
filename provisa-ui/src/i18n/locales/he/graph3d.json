@@ -145,6 +145,8 @@
     "quality_none": "טרם הורץ",
     "factOwner": "בעלים",
     "factMembers": "טבלאות חברות",
-    "factColumns": "עמודות"
+    "factColumns": "עמודות",
+    "depth": "עומק",
+    "lateral": "קשתות רוחביות"
   }
 }

@@ -145,6 +145,8 @@
     "quality_none": "未実行",
     "factOwner": "オーナー",
     "factMembers": "メンバーテーブル",
-    "factColumns": "列"
+    "factColumns": "列",
+    "depth": "深さ",
+    "lateral": "横方向のエッジ"
   }
 }

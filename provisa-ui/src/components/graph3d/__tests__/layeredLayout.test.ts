@@ -87,11 +87,7 @@ describe("layered placement", () => {
   it("ignores an edge that closes a cycle", () => {
     const g = graph(
       ["a", "b", "c"],
-      [
-        edge("a", "b", "lineage"),
-        edge("b", "c", "lineage"),
-        edge("c", "a", "lineage"),
-      ],
+      [edge("a", "b", "lineage"), edge("b", "c", "lineage"), edge("c", "a", "lineage")],
     );
     const { levels } = layerLevels(g);
     expect(levels).toEqual([["a"], ["b"], ["c"]]);

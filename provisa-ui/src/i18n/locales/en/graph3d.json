@@ -145,6 +145,8 @@
     "quality_none": "Not run yet",
     "factOwner": "Owner",
     "factMembers": "Member tables",
-    "factColumns": "Columns"
+    "factColumns": "Columns",
+    "depth": "Depth",
+    "lateral": "Lateral edges"
   }
 }

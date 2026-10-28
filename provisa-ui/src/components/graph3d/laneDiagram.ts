@@ -166,12 +166,7 @@ export function laneDiagram(
   for (const e of members) add({ a: e.a, b: e.b, kind: "member" }, e.b, e.a);
 
   // In lane order, left to right.
-  const nodes = [
-    ...terms,
-    ...columns,
-    ...tables.map(node),
-    ...products,
-  ];
+  const nodes = [...terms, ...columns, ...tables.map(node), ...products];
   return { graph: { nodes, edges }, lane, more, links, data };
 }
 

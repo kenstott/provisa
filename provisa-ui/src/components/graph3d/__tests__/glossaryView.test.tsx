@@ -215,6 +215,9 @@ describe("the Glossary page's Ontology View", () => {
       tags: [],
       sensitivities: [],
       search: [],
+      // The whole ontology: no focus.
+      focus: null,
+      depth: 2,
     });
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toEqual({
@@ -228,6 +231,8 @@ describe("the Glossary page's Ontology View", () => {
         search: [],
         // Drawn in 3D: no lane diagram's products to name.
         lanes: false,
+        focus: null,
+        depth: 2,
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.

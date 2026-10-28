@@ -23,12 +23,7 @@ import {
   type LayerId,
 } from "../graphModel";
 import { nodeLook } from "../nodeLook";
-import {
-  ontologyGraph,
-  type ProductRow,
-  type TermEdgeRow,
-  type TermRow,
-} from "../ontologyData";
+import { ontologyGraph, type ProductRow, type TermEdgeRow, type TermRow } from "../ontologyData";
 
 const rel = (id: string, target: number, cypherType: string) => ({
   id,

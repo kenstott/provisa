@@ -16,8 +16,40 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 import { ONTOLOGY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
-import { loadOntology, overviewGraph, type Loaded } from "./ontologyData";
+import { dataGraphql, metaReader } from "../../api/metaGraph";
+import {
+  flatTerms,
+  ontologyCountQuery,
+  ontologyGraph,
+  ontologyQuery,
+  overviewGraph,
+  termEdges,
+  type CountRow,
+  type OntologyRows,
+} from "./ontologyData";
+import { NODE_BUDGET } from "./neighbourhood";
 import type { OntologyPreset } from "./ontologyPresets";
+
+/** What a read of the ontology came to: the graph and the query that read it, or -- past the
+ * budget -- how many terms it would have read, with each term's domains. */
+export type Loaded =
+  | { data: GraphData; query: string; over?: undefined }
+  | { over: number; rows: CountRow[]; query: string };
+
+/** The ontology as ``scope`` reads it, in one query (REQ-2136): its terms counted first, and read
+ * only within the budget (REQ-2143); null when the role cannot read the glossary. */
+export async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
+  const m = await metaReader(role);
+  const query = ontologyQuery(m, scope);
+  const count = ontologyCountQuery(m, scope);
+  if (query === null || count === null) return null;
+  const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
+  if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
+  const rows = await dataGraphql<OntologyRows>(query, {}, role);
+  // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
+  const terms = flatTerms(rows._terms);
+  return { data: ontologyGraph(terms, termEdges(terms), rows.data_products), query };
+}
 
 // Before the first scoped read: nothing drawn yet.
 const EMPTY: GraphData = { nodes: [], edges: [] };
@@ -141,4 +173,3 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   });
   return { read, drawn, query };
 }
-

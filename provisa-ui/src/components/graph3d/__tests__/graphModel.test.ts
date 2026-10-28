@@ -95,15 +95,18 @@ describe("the engine's layers", () => {
 });
 
 describe("a graph laid out flat (REQ-2174, 2D)", () => {
-  it.each(["force", "layered"] as const)("puts every node of a %s layout in one plane", (layout) => {
-    const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
-    const at = layoutGraph(g, layout, 1, true);
-    expect(at.size).toBe(g.nodes.length);
-    for (const [, p] of at) expect(p[2]).toBe(0);
-    // No two nodes on one spot.
-    const spots = new Set([...at.values()].map((p) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`));
-    expect(spots.size).toBe(at.size);
-  });
+  it.each(["force", "layered"] as const)(
+    "puts every node of a %s layout in one plane",
+    (layout) => {
+      const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);
+      const at = layoutGraph(g, layout, 1, true);
+      expect(at.size).toBe(g.nodes.length);
+      for (const [, p] of at) expect(p[2]).toBe(0);
+      // No two nodes on one spot.
+      const spots = new Set([...at.values()].map((p) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`));
+      expect(spots.size).toBe(at.size);
+    },
+  );
 
   it("spreads a flat force layout as wide as the 3D one", () => {
     const g = visibleGraph(DATA, preset("all"), NO_FILTERS, new Set(), ENGINE_SCOPE);

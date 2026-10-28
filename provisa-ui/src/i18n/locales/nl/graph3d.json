@@ -145,6 +145,8 @@
     "quality_none": "Nog niet uitgevoerd",
     "factOwner": "Eigenaar",
     "factMembers": "Lidtabellen",
-    "factColumns": "Kolommen"
+    "factColumns": "Kolommen",
+    "depth": "Diepte",
+    "lateral": "Laterale randen"
   }
 }

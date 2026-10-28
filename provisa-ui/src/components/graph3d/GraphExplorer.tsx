@@ -321,8 +321,9 @@ export function GraphExplorer({
   ]);
   useEffect(() => {
     if (!onScope) return;
-    const [l, domains, types, statuses, kept, tags, sensitivities, items, lanes, hops] =
-      JSON.parse(scopeKey) as [
+    const [l, domains, types, statuses, kept, tags, sensitivities, items, lanes, hops] = JSON.parse(
+      scopeKey,
+    ) as [
       LayerId[],
       string[],
       string[],
@@ -381,7 +382,10 @@ export function GraphExplorer({
     // Lateral term edges are drawn on asking; they never place a node.
     const g = lateral
       ? all
-      : { ...all, edges: all.edges.filter((e) => e.kind !== "term_edge" || edgeClass(e) !== "lateral") };
+      : {
+          ...all,
+          edges: all.edges.filter((e) => e.kind !== "term_edge" || edgeClass(e) !== "lateral"),
+        };
     // Under a query its Orphans is its own too.
     if (orphans || query) return g;
     // An orphan has no term relationship drawn, and no column it IS while Columns is on; its

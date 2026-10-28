@@ -70,7 +70,9 @@ function directedEdges(g: GraphData): { cls: EdgeClass; from: string; to: string
   for (const e of g.edges) {
     const { cls, aFirst } = edgeInfo(e);
     if (cls === "lateral" || e.a === e.b) continue;
-    out.push(aFirst ? { cls, from: e.a, to: e.b, id: e.id } : { cls, from: e.b, to: e.a, id: e.id });
+    out.push(
+      aFirst ? { cls, from: e.a, to: e.b, id: e.id } : { cls, from: e.b, to: e.a, id: e.id },
+    );
   }
   return out.sort((x, y) => x.id.localeCompare(y.id));
 }
@@ -174,7 +176,10 @@ export function layerLevels(g: GraphData): Levels {
     for (const row of order) row.forEach((id, i) => place.set(id, (i + 0.5) / row.length));
     const keyed = order[l].map((id, i) => {
       const nb = side.get(id) ?? [];
-      const key = nb.length === 0 ? place.get(id) as number : nb.reduce((s, n) => s + (place.get(n) as number), 0) / nb.length;
+      const key =
+        nb.length === 0
+          ? (place.get(id) as number)
+          : nb.reduce((s, n) => s + (place.get(n) as number), 0) / nb.length;
       return { id, key, i };
     });
     keyed.sort((x, y) => x.key - y.key || x.i - y.i);
@@ -234,7 +239,9 @@ export function layeredLayout(g: GraphData): Map<string, [number, number, number
     for (let l = 1; l < levels.length; l++)
       settle(levels[l], (id) => {
         const p = parents.get(id);
-        return p ? p.reduce((s, n) => s + (x.get(n) as number), 0) / p.length : (x.get(id) as number);
+        return p
+          ? p.reduce((s, n) => s + (x.get(n) as number), 0) / p.length
+          : (x.get(id) as number);
       });
     for (let l = levels.length - 2; l >= 0; l--)
       settle(levels[l], (id) => {

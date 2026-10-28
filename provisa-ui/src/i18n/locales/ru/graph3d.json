@@ -145,6 +145,8 @@
     "quality_none": "Ещё не запускалась",
     "factOwner": "Владелец",
     "factMembers": "Таблицы-участники",
-    "factColumns": "Столбцы"
+    "factColumns": "Столбцы",
+    "depth": "Глубина",
+    "lateral": "Боковые рёбра"
   }
 }

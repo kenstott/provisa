@@ -113,7 +113,8 @@ export function NodeFacts({
       ]);
     description();
   } else if (node.type === "product") {
-    if (info.status) rows.push([t("graph3d.factStatus"), t(`dataProductsTab.status_${info.status}`)]);
+    if (info.status)
+      rows.push([t("graph3d.factStatus"), t(`dataProductsTab.status_${info.status}`)]);
     if (info.owner) rows.push([t("graph3d.factOwner"), info.owner]);
     domains();
     const members = data.edges.filter(
