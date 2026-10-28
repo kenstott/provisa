@@ -144,9 +144,9 @@ describe("a CONSTRUCT's triples", () => {
     // Order 1 is typed; order 2 has no type triple, so it is drawn by its namespace's prefix.
     // Captioned by its first string literal, else by the tail of its IRI; a class by its name.
     expect(resources.map((n) => [n.properties.name, n.label]).sort()).toEqual([
+      ["orders", "sales"],
       ["orders/2", "Resource"],
       ['said "hi"', "sales:orders"],
-      ["sales:orders", "sales"],
     ]);
     // The same literal under two subjects is two nodes.
     expect(literals.map((n) => n.properties.name).sort()).toEqual(["12.50", "12.50", 'said "hi"']);
@@ -453,9 +453,13 @@ describe("a drawn resource's caption", () => {
     expect(iriTail("https://x.example")).toBe("https://x.example");
   });
 
-  it("names a class by its compacted name, untruncated", () => {
+  it("names a class by its local name, its compacted name kept for the hover", () => {
     const nt = `${a} <${P.rdf}type> <${BASE}/vocab/sales/orders> .`;
-    expect(cap(nt).sort()).toEqual(["pets/3", "sales:orders"]);
+    expect(cap(nt).sort()).toEqual(["orders", "pets/3"]);
+    const cls = [...triplesGraph(parseNTriples(nt, P)).nodes.values()].find(
+      (n) => n.properties.name === "orders",
+    );
+    expect(cls?.properties.class).toBe("sales:orders");
   });
 
   it("labels a drawn SELECT's nodes by the class the query types them as", async () => {

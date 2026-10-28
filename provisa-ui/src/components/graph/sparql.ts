@@ -291,6 +291,13 @@ export function iriTail(iri: string): string {
   return segments.length === 0 ? iri : segments.slice(-2).join("/");
 }
 
+/** An IRI's local name: what follows its last ``/``, ``#`` or ``:``. */
+const iriLocal = (iri: string): string =>
+  iri
+    .split(/[/#:]/)
+    .filter((x) => x !== "")
+    .pop() ?? iri;
+
 /** A resource or class named for the drawing: its compacted name where the vocabulary has a prefix
  * for it, else the tail of its IRI; a blank node by its label. */
 const resourceName = (c: RdfCell): string =>
@@ -341,6 +348,11 @@ export function triplesGraph(
       typeOf.set(s.value, resourceName(o));
   for (const [iri, label] of typed) if (!typeOf.has(iri)) typeOf.set(iri, label);
   const literals = triples.filter((t) => t.o.rdfTerm === "literal");
+  // A class (an rdf:type object) is captioned in its circle by its local name (pets), its compacted
+  // name (pet-store:pets) kept as a property for the hover and the inspector.
+  const classValues = new Set(
+    triples.filter((t) => t.p.value === RDF_TYPE && t.o.rdfTerm === "iri").map((t) => t.o.value),
+  );
   // Keyed as GraphCanvas keys a node (`${label}:${id}`), which draws an edge only between two
   // nodes it finds so; a resource is found again by its term.
   const nodes = new Map<string, GNode>();
@@ -362,7 +374,9 @@ export function triplesGraph(
         id: next++,
         label,
         tableLabel: label,
-        properties: { name: captionOf(c, literals), iri: c.value },
+        properties: classValues.has(c.value)
+          ? { name: iriLocal(c.value), class: resourceName(c), iri: c.value }
+          : { name: captionOf(c, literals), iri: c.value },
       };
       resources.set(key, add(n));
     }
