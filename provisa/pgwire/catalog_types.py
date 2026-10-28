@@ -50,6 +50,10 @@ _SAME_WIRE_FORM = frozenset(
         "pg_dependencies",
         "pg_mcv_list",
         "pg_statistic[]",
+        # A record-returning catalog function answers a NULL record, and pg_sleep the void value
+        # (empty text): no composite value is ever sent.
+        "record",
+        "void",
     }
 )
 
@@ -59,9 +63,12 @@ CATALOG_TYPE_OIDS: dict[str, int] = {
 
 _PSEUDO_TYPES = frozenset(entry[-1] for entry in TYPES.values() if entry[3] == "p")
 
-# A function returning a pseudo-type (record, void, anyelement, ...) is left to its expression.
+# A function returning a polymorphic pseudo-type (anyelement, anyarray, ...) is left to its
+# expression; one returning record or void is that type.
 _FUNCTION_TYPES = {
-    name: returns for name, returns in FUNCTION_RETURNS.items() if returns not in _PSEUDO_TYPES
+    name: returns
+    for name, returns in FUNCTION_RETURNS.items()
+    if returns not in _PSEUDO_TYPES or returns in ("record", "void")
 }
 
 
