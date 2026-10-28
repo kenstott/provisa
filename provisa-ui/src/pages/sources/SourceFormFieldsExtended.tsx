@@ -48,6 +48,7 @@ import { CODE_SOURCE_TYPES } from "./codeSource";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
+import { ExcelHintsFields } from "./ExcelHintsFields";
 import { QdrantFields } from "./QdrantFields";
 import { QDRANT } from "./qdrant";
 import { WikipediaFields } from "./WikipediaFields";
@@ -887,6 +888,7 @@ export function SourceFormFieldsExtended({
                   )}
                 </>
               )}
+              <ExcelHintsFields fields={authFields} setFields={setAuthFields} />
             </>
           );
         })()}

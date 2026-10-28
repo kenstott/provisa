@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Group Byを有効化",
     "enableGroupByDesc": "（GraphQLで_group_byルートフィールドを公開）",
     "apiEndpointLabel": "APIエンドポイント",
+    "apiEndpointUnread": "ソースの API ドキュメントを読み取れませんでした",
     "changeSignalLabel": "変更シグナル",
     "changeSignalHelp": "Provisaが行の変更を検知する方法です。ttl = キャッシュTTLタイマーで更新。probe = ソースネイティブの鮮度クエリで、変更時のみ再取得。ttl_probe = TTLの下限経過後にプローブ。native/debezium/kafka = ソースからのプッシュ。継承 = ソースレベルのデフォルトに従います。",
     "csInherit": "ソースを継承",

@@ -106,3 +106,28 @@ def test_the_key_is_indexed_so_no_two_rows_share_it(store, request):
     asyncio.run(_exercise(rows))
     with pytest.raises(Exception, match=r"(?i)duplicate|unique|constraint"):
         asyncio.run(rows.insert(SCHEMA, TABLE, COLUMNS, _batch([("e:1", 9)])))
+
+
+@pytest.mark.parametrize(
+    ("store", "listing"),
+    [
+        (
+            "duckdb_store",
+            f"SELECT index_name FROM duckdb_indexes() WHERE table_name = '{TABLE}'",
+        ),
+        (
+            "postgres_store",
+            f"SELECT indexname FROM pg_indexes WHERE schemaname = '{SCHEMA}' "
+            f"AND tablename = '{TABLE}'",
+        ),
+    ],
+)
+def test_a_lookup_index_is_made_beside_the_key(store, listing, request):
+    # REQ-2176: a session graph's rows are looked up by a relationship's ends and a node's label.
+    rows, read = request.getfixturevalue(store)
+    asyncio.run(_exercise(rows))
+    asyncio.run(rows.lookup_index(SCHEMA, TABLE, ("age",)))
+    asyncio.run(rows.lookup_index(SCHEMA, TABLE, ("age",)))  # made once, however often asked
+    names = [name for (name,) in read(listing)]
+    assert len([n for n in names if n.startswith("on__")]) == 1
+    asyncio.run(rows.insert(SCHEMA, TABLE, COLUMNS, _batch([("e:9", 1)])))  # rows may share it

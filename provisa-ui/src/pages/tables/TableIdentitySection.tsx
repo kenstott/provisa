@@ -113,6 +113,19 @@ export function TableIdentitySection({
       </FormField>
       <TableRegionField table={editingTable} isView={isView} onChange={setEditingTable} />
 
+      {/* Its source's document could not be read: no endpoint, and why. */}
+      {editingTable.apiEndpointError && (
+        <FormField size="long">
+          <TextInput
+            label={t("tableEditForm.apiEndpointLabel")}
+            readOnly
+            value={t("tableEditForm.apiEndpointUnread")}
+            error={editingTable.apiEndpointError}
+            data-testid="table-api-endpoint-error"
+            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+          />
+        </FormField>
+      )}
       {editingTable.apiEndpoint && (
         <FormField size="long">
           <TextInput

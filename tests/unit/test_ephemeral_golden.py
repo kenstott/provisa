@@ -51,6 +51,7 @@ def _holding_unnamed_labels() -> TempSession:
     session.tables[anchor] = TempTable(anchor, [("node_id", "text"), ("k", "bigint")])
     rels = store.rel_table("ZZ_LINK")
     session.tables[rels] = TempTable(rels, [("rel_id", "text")])
+    store.resolve(session)  # the lookup tables a write keeps, kept here by hand as the rest is
     return session
 
 
