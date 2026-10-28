@@ -84,7 +84,13 @@ def _state(dbs, harness: Session | None = None) -> SimpleNamespace:
         tenant_db=state_db,
         roles={"analyst": {"id": "analyst", "domain_access": ["sales"]}},
         role_build_inputs={
-            "tables": [{"id": 1, "columns": [{"column_name": "name", "visible_to": ["analyst"]}]}],
+            "tables": [
+                {
+                    "id": 1,
+                    "domain_id": "sales",
+                    "columns": [{"column_name": "name", "visible_to": ["analyst"]}],
+                }
+            ],
             "rls_rules": [],
             "metrics": [],
         },
@@ -304,6 +310,7 @@ async def test_a_change_of_a_roles_grants_ends_it_at_the_next_build(dbs, monkeyp
         "tables": [
             {
                 "id": 1,
+                "domain_id": "sales",
                 "columns": [
                     {"column_name": "name", "visible_to": ["analyst"]},
                     {"column_name": "salary", "visible_to": ["analyst"]},
@@ -491,3 +498,11 @@ async def test_a_cached_answer_is_keyed_by_the_sessions_generation():
     assert len({unbound, first, second}) == 3
     # A statement read in no session keeps the key it had.
     assert _raw_cache_key("SELECT 1", [], "analyst", None) == unbound
+
+
+async def test_its_store_schema_is_one_the_replica_guard_admits_a_landing_into():
+    from provisa.federation.replica_address import is_replicas_schema, temp_schema
+
+    schema = temp_schema("default", None, graph_session.session_id("ada"))
+    assert is_replicas_schema(schema), schema
+    assert graph_session.session_id("ada") != graph_session.session_id("bo")

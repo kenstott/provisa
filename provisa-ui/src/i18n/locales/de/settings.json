@@ -758,6 +758,10 @@
         "label": "Temporäre Tabellen pro Sitzung",
         "help": "Die Höchstzahl temporärer Tabellen, die eine Sitzung (eine pgwire-Verbindung oder eine SQL-Anfrage) gleichzeitig halten darf. Eine weitere Tabelle wird abgelehnt; zuerst eine löschen. 0 erlaubt keine."
       },
+      "graph_session_retention_days": {
+        "label": "Aufbewahrung der Graph-Sitzung",
+        "help": "Wie lange die Graph-Sitzung eines Prinzipals (die Labels, Knoten und Beziehungen, die seine Cypher-Anweisungen auf jedem Client erstellt haben) nach ihrer letzten Nutzung aufbewahrt wird. Sie endet außerdem, wenn der Prinzipal sie leert oder wenn sich seine Rollen oder deren Berechtigungen ändern."
+      },
       "max_rows": {
         "label": "Zeilen pro temporärer Tabelle",
         "help": "Die Höchstzahl an Zeilen, die eine temporäre Tabelle halten darf. Eine temporäre Tabelle ist eine echte Tabelle im Store der Engine, die auch eine Rolle ohne Schreibrecht füllen kann; deshalb ist sie begrenzt. Eine Tabelle, die das Limit überschreiten würde, wird abgelehnt; es wird nichts gekürzt."

@@ -69,7 +69,7 @@ export function applyNodeSize(
   } else {
     sz = inCluster ? base / 2 : base;
   }
-  node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
+  node.style({ width: sz, height: sz });
 }
 
 // The nodes the user placed, where they are, as fcose's fixedNodeConstraint: fcose moves a locked

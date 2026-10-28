@@ -1806,23 +1806,26 @@ _STEPS_SPENT = {
 }
 
 
-def _output_cap(provider_key: str, custom_endpoint: bool) -> dict[str, Any]:
-    """_MAX_TOKENS as the aisuite provider's own call takes it. OpenAI's own API takes
+def output_cap(
+    provider_key: str, custom_endpoint: bool, limit: int = _MAX_TOKENS
+) -> dict[str, Any]:
+    """An output limit (``limit``, _MAX_TOKENS for Polly's own calls) as the aisuite provider's
+    own call takes it. OpenAI's own API takes
     ``max_completion_tokens`` (its reasoning models refuse ``max_tokens``); an OpenAI-wire
     endpoint (OpenRouter, LiteLLM, vLLM) and Anthropic take ``max_tokens``; Ollama's own API takes
     ``options.num_predict``. aisuite's Google provider passes no generation limit on to Google
     (it builds its GenerationConfig from the temperature alone), so a cap for it is refused by
     name rather than sent to be dropped."""
     if provider_key == "openai" and not custom_endpoint:
-        return {"max_completion_tokens": _MAX_TOKENS}
+        return {"max_completion_tokens": limit}
     if provider_key == "ollama":
-        return {"options": {"num_predict": _MAX_TOKENS}}
+        return {"options": {"num_predict": limit}}
     if provider_key == "google":
         raise ValueError(
-            "Polly cannot cap a Google model's output through aisuite's Google provider; "
+            "Provisa cannot cap a Google model's output through aisuite's Google provider; "
             "reach the model through an OpenAI-wire endpoint (e.g. OpenRouter) instead"
         )
-    return {"max_tokens": _MAX_TOKENS}
+    return {"max_tokens": limit}
 
 
 def _cached_tools() -> list[Any]:
@@ -2249,7 +2252,7 @@ async def _run_chat_aisuite(
         yield {"type": "done"}
         return
     provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
-    cap = _output_cap(provider_key, custom_endpoint=bool(provider_configs))
+    cap = output_cap(provider_key, custom_endpoint=bool(provider_configs))
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
     system_text = _system_prompt(current_route)
     # REQ-2012: an Anthropic model behind an OpenAI-wire gateway (OpenRouter) caches only where a

@@ -25,7 +25,7 @@ import {
   clusterIds,
   type ClusterLevel,
 } from "./graph-clusters";
-import { buildGraphStylesheet } from "./graph-stylesheet";
+import { buildGraphStylesheet, nodeCaption } from "./graph-stylesheet";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -38,7 +38,7 @@ import cytoscape from "cytoscape";
 import "./canvas/cytoscape-extensions";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
 import { applyHighlight } from "./canvas/highlight";
-import { computeLabelSizeRanges, applyNodeSize, resolveNodeLabel } from "./canvas/canvas-helpers";
+import { computeLabelSizeRanges, applyNodeSize } from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
 import { CanvasControls } from "./canvas/CanvasControls";
 import { NodeRingMenuOverlay } from "./canvas/NodeRingMenuOverlay";
@@ -190,7 +190,6 @@ export function GraphCanvas({
     clusterLevelRef,
     sizeByPropertyRef,
     colorOverridesRef,
-    labelPropertyRef,
     sizeMultiplierRef,
     sizeOverridesRef,
     computeHullsRef,
@@ -520,9 +519,19 @@ export function GraphCanvas({
     });
     cy.on("mouseover", "node", (evt) => {
       evt.target.addClass("hovered");
+      // The full caption, where the circle's own was scaled down or cut short.
+      const el = cy.container();
+      if (el)
+        el.title = nodeCaption(
+          evt.target.data("_node") as GNode | undefined,
+          evt.target.data("label"),
+          labelPropertyRef.current,
+        );
     });
     cy.on("mouseout", "node", (evt) => {
       evt.target.removeClass("hovered");
+      const el = cy.container();
+      if (el) el.title = "";
     });
     cy.on("mouseover", "edge", (evt) => {
       evt.target.addClass("hovered");
@@ -776,11 +785,8 @@ export function GraphCanvas({
     if (!cy) return;
     cy.batch(() => {
       cy.nodes().forEach((node) => {
-        const n = node.data("_node") as GNode | undefined;
-        if (!n) return;
-        const prop = labelPropertyRef.current[n.label];
-        const txt = prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n);
-        node.style("label", txt);
+        // Back to the stylesheet's caption, which reads the label property and places the text.
+        node.removeStyle("label");
       });
     });
   }, [labelProperty]);

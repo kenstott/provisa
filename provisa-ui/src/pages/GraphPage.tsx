@@ -57,6 +57,7 @@ import type {
   GraphCounts,
 } from "../components/graph/graph-schema-types";
 import { Sidebar } from "../components/graph/GraphSidebar";
+import { SessionPills } from "../components/graph/SessionPills";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
@@ -160,6 +161,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     240,
   );
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  // How many statements said they changed the graph session (REQ-2176).
+  const [sessionChanges, setSessionChanges] = useState(0);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
     settingKey(language, "colorOverrides"),
     {},
@@ -475,7 +478,12 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           });
           return;
         }
-        const { results } = (await res.json()) as { results: CypherAnswer[] };
+        const { results, session_changed } = (await res.json()) as {
+          results: CypherAnswer[];
+          session_changed?: boolean;
+        };
+        // A statement that changed the user's graph session: its pills are read again.
+        if (session_changed) setSessionChanges((n) => n + 1);
         const statements = results.map((r) => frameStatement(r, maxNodes, clusterMapRef.current));
         setFrames((f) => {
           const next = f.map((fr) =>
@@ -992,6 +1000,16 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         countsError={countsError}
         maxNodes={maxNodes}
         onMaxNodesChange={setMaxNodes}
+        session={
+          sparql ? undefined : (
+            <SessionPills
+              roleHeader={roleHeaderValue}
+              changed={sessionChanges}
+              onLabelClick={handleLabelClick}
+              onRelClick={handleRelClick}
+            />
+          )
+        }
         vocabulary={
           sparql ? (
             <SparqlVocabularyPanel

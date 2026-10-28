@@ -15,12 +15,7 @@ import { swapToLayoutMetaEdges } from "../graph-clusters";
 import type { ClusterLevel } from "../graph-clusters";
 import type { CyInstance, CyLayoutOptions } from "../cytoscape-types";
 import { LAYOUT_OPTIONS, type LayoutMode } from "./canvas-types";
-import {
-  anchoredPositions,
-  computeLabelSizeRanges,
-  applyNodeSize,
-  resolveNodeLabel,
-} from "./canvas-helpers";
+import { anchoredPositions, computeLabelSizeRanges, applyNodeSize } from "./canvas-helpers";
 import { getStored } from "../../../lib/browserStorage";
 
 interface GraphLayoutRefs {
@@ -36,7 +31,6 @@ interface GraphLayoutRefs {
   clusterLevelRef: MutableRefObject<ClusterLevel>;
   sizeByPropertyRef: MutableRefObject<Record<string, string>>;
   colorOverridesRef: MutableRefObject<Record<string, string>>;
-  labelPropertyRef: MutableRefObject<Record<string, string>>;
   sizeMultiplierRef: MutableRefObject<Record<string, number>>;
   sizeOverridesRef: MutableRefObject<Record<string, number>>;
   computeHullsRef: MutableRefObject<() => void>;
@@ -55,7 +49,6 @@ export function useGraphLayout({
   clusterLevelRef,
   sizeByPropertyRef,
   colorOverridesRef,
-  labelPropertyRef,
   sizeMultiplierRef,
   sizeOverridesRef,
   computeHullsRef,
@@ -157,13 +150,7 @@ export function useGraphLayout({
                 sizeMultiplierRef.current,
                 labelSizeRange,
               );
-              if (n) {
-                const prop = labelPropertyRef.current[n.label];
-                node.style(
-                  "label",
-                  prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n),
-                );
-              }
+              node.removeStyle("label");
               if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
               else node.removeClass("pinned");
             });
@@ -212,7 +199,6 @@ export function useGraphLayout({
       clusterLevelRef,
       sizeByPropertyRef,
       colorOverridesRef,
-      labelPropertyRef,
       sizeMultiplierRef,
       sizeOverridesRef,
     ],
@@ -300,13 +286,7 @@ export function useGraphLayout({
                   sizeMultiplierRef.current,
                   labelSizeRange,
                 );
-                if (n) {
-                  const prop = labelPropertyRef.current[n.label];
-                  node.style(
-                    "label",
-                    prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n),
-                  );
-                }
+                node.removeStyle("label");
                 if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
                 else node.removeClass("pinned");
               });
@@ -375,7 +355,6 @@ export function useGraphLayout({
       clusterLevelRef,
       sizeByPropertyRef,
       colorOverridesRef,
-      labelPropertyRef,
       sizeMultiplierRef,
       sizeOverridesRef,
       computeHullsRef,

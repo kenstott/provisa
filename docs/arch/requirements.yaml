@@ -89342,7 +89342,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a SPARQL query may join the ontology''s axioms to instance data, e.g. ?x a ?c . ?c rdfs:subClassOf*
     :Party answers every instance of Party and of its subclasses, and rdfs:subPropertyOf chains likewise,
     computed in SQL and governed as any read: a role that cannot read a subclass''s table gets none of its
-    instances.'
+    instances. (Amended 2026-10-27, A CLASS TABLE NEVER TAKES A MODEL TABLE''S BARE LABEL:) 2026-10-28:
+    an ontology Class table is reached in the graph only by its qualified label (Ontology:Person); it never
+    takes the bare label of a model table, so a bare label (Person) stays the model table on every surface
+    (Bolt, the Cypher page, MCP, SPARQL), its instances are counted once, and writes to it route to that
+    table. (Amended 2026-10-27, THE ONTOLOGY AND OPS SCHEMAS ARE PREFIXED IN THE SDL:) 2026-10-28: in the
+    GraphQL SDL, every root field and type the auto-generated ontology schema gives carries the prefix on_,
+    and every one the ops schema gives carries op_, whether or not the deployment prefixes domains, so neither
+    ever shares a name with a model table''s field or type. This replaces the 2026-10-28 rule that renamed
+    only a Class colliding with a model table; the bare label and SQL rules are unchanged.'
   code:
   - provisa/compiler/ontology_classes.py
   - provisa/compiler/supertype.py
@@ -90307,9 +90315,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa/pgwire/temp_keeper.py
   - provisa/pgwire/_pipeline.py
   - provisa/cache/key.py
+  - provisa-ui/src/components/graph/SessionPills.tsx
   tests:
   - tests/unit/test_cypher_page_session.py
   - tests/integration/test_graph_session_shared.py
+  - provisa-ui/src/components/graph/__tests__/SessionPills.test.tsx
+  - provisa-ui/src/__tests__/GraphPageSession.test.tsx
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

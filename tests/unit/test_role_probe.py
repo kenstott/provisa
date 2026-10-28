@@ -151,8 +151,12 @@ def test_the_shared_authorizer_records_the_event_and_says_nothing(monkeypatch):
     def _refuse(*_a, **_k):
         raise RoleNotHeld("admin", {"analyst"})
 
+    async def _held(*_a):
+        return []  # the identity's assignments, as every transport reads them
+
     monkeypatch.setattr(role_probe, "record", _record)
     monkeypatch.setattr(role_probe, "suspended", _not_suspended)
+    monkeypatch.setattr("provisa.auth.held_assignments.held_assignments", _held)
     monkeypatch.setattr(bearer, "authorize_role", _refuse)
     identity = SimpleNamespace(user_id="ada", credential="pat", credential_id="h1")
     import asyncio

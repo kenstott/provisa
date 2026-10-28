@@ -452,6 +452,14 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 ):
                     nm.traversal_only = True
 
+        # REQ-2163: an ontology Class never takes a model table's bare label: where a table and a
+        # Class share one, it is the table's, and the Class is reached by its qualified label
+        # (Ontology:Person) on every graph surface.
+        for listed in nodes_by_table.values():
+            tables_of = [t for t in listed if not is_class_table_id(nodes[t].table_id)]
+            if tables_of:
+                listed[:] = tables_of
+
         # REQ-2163: a table SQL alone serves is no label of the graph (security.rights).
         from provisa.security.rights import SQL_ONLY_TABLES
 

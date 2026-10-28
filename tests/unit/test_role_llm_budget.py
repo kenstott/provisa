@@ -30,6 +30,7 @@ from provisa.security.llm_budget import (
     Spend,
     WindowUse,
     admit,
+    allowance,
     budget_of,
     debit,
     over_cap,
@@ -101,6 +102,34 @@ def test_the_per_call_cap_is_held_against_the_calls_own_use():
         "role 'analyst' caps one LLM call at $0.5000; this one used $0.7500"
     )
     assert over_cap("analyst", None, Spend(tokens=10**9)) is None
+
+
+def test_a_calls_allowance_is_the_least_of_its_cap_and_each_windows_room():
+    from provisa.api.mcp.polly_usage import Price
+
+    hour = WindowUse("hour", Limit(5000, "tokens"), 4200, NOW)
+    day = WindowUse("day", Limit(1.0, "usd"), 0.4, NOW)
+    budget = Budget(Limit(2000, "tokens"), {"hour": hour.limit, "day": day.limit})
+    # $15 per million output tokens: the day's $0.60 left is 40,000 of them.
+    price = Price(input=3.0, output=15.0, cache_read=0.3, cache_write=3.75)
+    assert allowance("analyst", budget, [hour, day], price) == 800  # the hour's room
+    assert allowance("analyst", Budget(Limit(2000, "tokens")), [], None) == 2000  # the cap
+    assert allowance("analyst", Budget(None, {"day": day.limit}), [day], price) == 40000
+    free = Price(input=0.0, output=0.0, cache_read=0.0, cache_write=0.0)
+    assert allowance("analyst", Budget(None, {"day": day.limit}), [day], free) is None
+
+
+def test_a_call_with_room_for_no_output_token_is_refused_naming_the_limit():
+    from provisa.api.mcp.polly_usage import Price
+
+    day = WindowUse("day", Limit(1.0, "usd"), 0.99999, NOW)
+    price = Price(input=3.0, output=15.0, cache_read=0.3, cache_write=3.75)
+    with pytest.raises(BudgetRefused) as refused:
+        allowance("analyst", Budget(None, {"day": day.limit}), [day], price)
+    assert str(refused.value) == (
+        "role 'analyst' has $0.0000 left of its LLM budget for the day: room for no output token "
+        "of this model"
+    )
 
 
 def test_a_refusal_names_the_window_and_when_its_oldest_spend_leaves_it():

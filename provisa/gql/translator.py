@@ -210,6 +210,45 @@ def _null_bound_matches(ast: CypherAST) -> CypherAST:
     return out
 
 
+def _projected_order(with_clause: WithClause) -> list[tuple[str, bool]] | None:
+    """A WITH's ORDER BY as (column, descending) of what it projects -- ORDER BY value where it
+    carries value -- or None where it orders by anything else, or not at all."""
+    if not with_clause.order_by:
+        return None
+    names = {
+        i.alias or (i.expression.name if isinstance(i.expression, Variable) else None)
+        for i in with_clause.items
+    }
+    order: list[tuple[str, bool]] = []
+    for item in with_clause.order_by:
+        if not (isinstance(item.expression, Variable) and item.expression.name in names):
+            return None
+        order.append((item.expression.name, item.direction == "DESC"))
+    return order
+
+
+def _order_collects(
+    select_exprs: list[exp.Expr], carried: str, order: list[tuple[str, bool]] | None
+) -> None:
+    """Each collect() a stage takes of the rows a WITH ... ORDER BY carries, in that order: the
+    ORDER BY into the ARRAY_AGG, as an engine reading the rows in parallel keeps no order
+    (openCypher: collect() keeps the order of the rows it reads)."""
+    if not order:
+        return
+    for expr in select_exprs:
+        for agg in list(expr.find_all(exp.Anonymous)):
+            if agg.name.upper() != "ARRAY_AGG" or len(agg.expressions) != 1:
+                continue
+            (value,) = agg.expressions
+            if isinstance(value, (exp.Distinct, exp.Order)):
+                continue  # a distinct list orders by its values alone
+            keys = [
+                exp.Ordered(this=exp.column(name, table=carried, quoted=True), desc=desc)
+                for name, desc in order
+            ]
+            agg.set("expressions", [exp.Order(this=value, expressions=keys)])
+
+
 def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:
     """Whether ``expr`` is a list of values of several types: a list literal of them, or a
     variable bound to one."""
@@ -552,6 +591,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._null_vars: set[str] = set()
         # A variable a WITH binds to a parameter (WITH $expr AS expr) -> the parameter's name.
         self._param_vars: dict[str, str] = {}
+        # A WITH stage's CTE -> its ORDER BY, where that orders by columns the stage projects:
+        # a collect() over its rows collects in that order (_order_collects).
+        self._stage_orders: dict[str, list[tuple[str, bool]] | None] = {}
         # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
         self._param_kinds: dict[str, str] = {}
         self._param_zones: dict[str, str] = {}
@@ -659,6 +701,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             from_clause, joins = self._expose_split_nodes(from_clause, joins)
 
         select_exprs = self._build_with_select_items(with_clause.items)
+        if carried is not None and not all_matches:
+            _order_collects(select_exprs, carried, self._stage_orders.get(carried))
         where_expr = self._build_where(stage_where)
         for step_vars, owned in optional_wheres:
             if owned is not None:
@@ -714,6 +758,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 stage_query = wrapper.where(with_where_expr)
 
         cte_name = f"_w{n}"
+        self._stage_orders[cte_name] = _projected_order(with_clause)
         return cte_name, stage_query
 
     def _split_node_joins(self) -> list[dict]:
@@ -1675,6 +1720,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             # known, which would otherwise widen the read to the whole domain.
             raise unknown_label(unknown[0], self._lm)
 
+        # A domain names its own table: a full type name of another domain's table is no match
+        # for Domain:Table (REQ-2163: Ontology:Person is the Class, Person the model table).
+        if full_type and domain_hits and full_type[0] not in self._lm.domains[domain_hits[0]]:
+            full_type = []
+            table_hits = table_hits or [label for label in labels if label not in self._lm.domains]
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
             if len(full_type) > 1:
@@ -1686,7 +1736,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # Domain + table (any order): intersect to get unique type_name
         if domain_hits and table_hits:
             domain_set = set(self._lm.domains[domain_hits[0]])
-            table_set = set(self._lm.nodes_by_table[table_hits[0]])
+            # Every type of the table label, a Class's among them, which keeps no bare label where
+            # a model table has it (label_map, REQ-2163).
+            table_set = set(self._lm.nodes_by_table.get(table_hits[0], ())) | {
+                t for t, nm in self._lm.nodes.items() if nm.table_label == table_hits[0]
+            }
             candidates = domain_set & table_set
             if len(candidates) == 1:
                 return candidates.pop(), domain_hits[0]
