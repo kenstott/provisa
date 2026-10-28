@@ -1744,6 +1744,18 @@ CREATE TABLE IF NOT EXISTS code_source_llm_usage (
 );
 
 
+-- REQ-1174 (amended 2026-10-27): what each role's LLM calls used, per-minute buckets kept an hour,
+-- per-hour a week, per-day 31 days. Mirrors schema_org.role_llm_usage.
+CREATE TABLE IF NOT EXISTS role_llm_usage (
+    role_id TEXT NOT NULL,
+    grain   TEXT NOT NULL,                       -- minute | hour | day
+    bucket  TIMESTAMPTZ NOT NULL,                -- the bucket's start, UTC
+    tokens  BIGINT NOT NULL DEFAULT 0,
+    usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
+    PRIMARY KEY (role_id, grain, bucket)
+);
+
+
 -- REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
 -- archive kept on the node that built it), and why it failed. Mirrors schema_org.code_source_builds.
 CREATE TABLE IF NOT EXISTS code_source_builds (

@@ -19,6 +19,8 @@ from provisa.api.admin.types import (
     RelationshipParameterType,
     RelationshipType,
     RLSRuleType,
+    LlmLimitType,
+    LlmWindowsType,
     RoleRateLimitType,
     RoleType,
     SessionVarType,
@@ -180,10 +182,15 @@ def _role_from_row(row, *, detail: bool, effective: list[str]) -> RoleType:
     rl = row.get("rate_limit")
     rate_limit = None
     if isinstance(rl, dict):
+        windows = rl.get("llm_windows") or {}
         rate_limit = RoleRateLimitType(
             requests_per_second=rl.get("requests_per_second"),
             max_query_complexity=rl.get("max_query_complexity"),
             max_query_time_ms=rl.get("max_query_time_ms"),
+            llm_call_cap=_llm_limit(rl.get("llm_call_cap")),
+            llm_windows=LlmWindowsType(**{w: _llm_limit(windows.get(w)) for w in _WINDOWS})
+            if windows
+            else None,
         )
     return RoleType(
         id=row["id"],
@@ -340,3 +347,10 @@ def _view_metrics_type_from_row(raw):  # REQ-1318
         dimensions=list(raw["dimensions"]),
         filters=list(raw.get("filters") or []),
     )
+
+
+_WINDOWS = ("hour", "day", "week", "month")
+
+
+def _llm_limit(raw: dict | None) -> LlmLimitType | None:  # REQ-1174
+    return None if not raw else LlmLimitType(amount=raw["amount"], unit=raw["unit"])

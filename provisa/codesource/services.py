@@ -267,7 +267,7 @@ def _dispatch(
         return service_ops.metric(grant, method, body, span)
     with connection_loop() as cl:
         if service == "llm":
-            return cl.run(llm_service.answer(grant, method, sub, body, span))
+            return cl.run(llm_service.answer(grant, method, sub, body, span, role))
         if service == "cache":
             return cl.run(service_ops.cache(grant, method, sub, body, span))
         if service == "vectors":

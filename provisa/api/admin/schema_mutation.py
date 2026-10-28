@@ -754,6 +754,13 @@ async def _save_role(
             requests_per_second=rl.requests_per_second,
             max_query_complexity=rl.max_query_complexity,
             max_query_time_ms=rl.max_query_time_ms,
+            # REQ-1174: the role's LLM budget, validated as the model is (amount > 0, a unit).
+            llm_call_cap=_llm_limit(rl.llm_call_cap),
+            llm_windows={
+                w: limit
+                for w in ("hour", "day", "week", "month")
+                if (limit := _llm_limit(getattr(rl.llm_windows, w, None))) is not None
+            },
         )
         if rl is not None
         else None
@@ -6623,3 +6630,10 @@ async def _upsert_action_rls_rule(
         code="schema.rls_rule_saved_action",
         params={"action": name, "role": input.role_id},
     )
+
+
+def _llm_limit(given: Any) -> Any:  # REQ-1174
+    """An LLM limit input as the role model holds it; None when not given."""
+    from provisa.core.models import LlmLimit
+
+    return None if given is None else LlmLimit(amount=given.amount, unit=given.unit)

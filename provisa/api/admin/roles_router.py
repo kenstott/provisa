@@ -387,6 +387,46 @@ async def effective_rights(role_id: str, request: Request):  # REQ-2161
     return {**view, "data": await _data_access(request, role_id, view["parents"])}
 
 
+@router.get("/{role_id}/llm-usage")
+async def llm_usage(role_id: str, request: Request):  # REQ-1174
+    """Each LLM budget window the role sets: its limit and unit, what is spent in it now, and when
+    its oldest spend leaves it (room frees up) -- none for a window with nothing spent. Answered
+    for a role whose definition the caller may read, and as not found otherwise."""
+    from datetime import UTC, datetime
+
+    from provisa.security.llm_budget import budget_of, usage
+
+    org_id = _active_org(request)
+    identity = getattr(request.state, "identity", None)
+    full = role_definitions_visible(request, getattr(identity, "roles", []))
+    pool = _pool(request)
+    async with pool.acquire() as conn:
+        result = await conn.execute_core(
+            select(roles.c.rate_limit).where(
+                (roles.c.id == role_id) & or_(roles.c.org_id.is_(None), roles.c.org_id == org_id)
+            )
+        )
+        row = result.fetchone()
+    if row is None or not full(role_id):
+        raise ApiError(404, "roles.not_found", "Role not found")
+    budget = budget_of({"rate_limit": row[0]})
+    if budget is None:
+        return {"windows": []}
+    uses = await usage(pool, role_id, budget, datetime.now(UTC))
+    return {
+        "windows": [
+            {
+                "window": u.window,
+                "unit": u.limit.unit,
+                "limit": u.limit.amount,
+                "used": u.used,
+                "frees_at": u.frees_at.isoformat() if u.frees_at else None,
+            }
+            for u in uses
+        ]
+    }
+
+
 async def _data_access(request: Request, role_id: str, parents: dict) -> list[dict]:  # REQ-2161
     """``role_id``'s data access from what the runtime serves, capped by the caller's reads."""
     import types

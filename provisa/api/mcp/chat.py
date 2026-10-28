@@ -1881,6 +1881,7 @@ async def _run_chat_anthropic(
     convo: list[Any],
     *,
     max_iterations: int,
+    budget: Any,
     request: Any = None,
     current_route: str | None = None,
 ) -> AsyncIterator[dict]:
@@ -1891,6 +1892,11 @@ async def _run_chat_anthropic(
     client = AsyncAnthropic()
     model = await _resolve_model(state)
     assert model is not None  # _llm_configured() guarantees this for vendor == "anthropic"
+    refused = await _budget_refusal(budget, model)
+    if refused is not None:
+        yield refused
+        yield {"type": "done"}
+        return
     system = _system_prompt(current_route)
     # REQ-1850: rounds that finish entirely server-side (server tool called, result fed back)
     # before a later round pauses on a CLIENT tool must still reach the frontend's resumed
@@ -1964,6 +1970,12 @@ async def _run_chat_anthropic(
                 )
             resp = await stream.get_final_message()
             usage = usage + polly_usage.from_anthropic(resp.usage)
+            over = budget.over_cap(usage, model)  # REQ-1174: the turn ends at its role's cap
+            if over is not None:
+                yield {"type": "error", "error": over}
+                yield polly_usage.usage_event(model, usage)
+                yield {"type": "done"}
+                return
             if not any(b.type == "tool_use" for b in resp.content):
                 text = "".join(b.text for b in resp.content if b.type == "text" and b.text)
                 if _is_answer(text):
@@ -2189,6 +2201,7 @@ async def _run_chat_aisuite(
     vendor: str,
     *,
     max_iterations: int,
+    budget: Any,
     request: Any = None,
     current_route: str | None = None,
 ) -> AsyncIterator[dict]:
@@ -2221,6 +2234,11 @@ async def _run_chat_aisuite(
     assert model is not None  # _llm_configured() guarantees this
     model_id, provider_configs = await _resolve_aisuite_routing(state, vendor, model)
     provider_key, model_name = model_id.split(":", 1)
+    refused = await _budget_refusal(budget, model_name)
+    if refused is not None:
+        yield refused
+        yield {"type": "done"}
+        return
     provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
     cap = _output_cap(provider_key, custom_endpoint=bool(provider_configs))
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
@@ -2277,6 +2295,12 @@ async def _run_chat_aisuite(
         call_cost = getattr(resp.usage, "cost", None)
         if call_cost is not None:
             billed = (billed or 0.0) + float(call_cost)
+        over = budget.over_cap(usage, model_name)  # REQ-1174: the turn ends at its role's cap
+        if over is not None:
+            yield {"type": "error", "error": over}
+            yield polly_usage.usage_event(model_name, usage, billed)
+            yield {"type": "done"}
+            return
         message = resp.choices[0].message
         calls_tools = resp.choices[0].finish_reason == "tool_calls" and bool(
             getattr(message, "tool_calls", None)
@@ -2420,12 +2444,18 @@ async def run_chat(
 
     vendor = await _resolve_vendor(state)
     convo: list[Any] = list(messages)
+    # REQ-1174: the turn is held to the LLM budget of the roles it acts as, in the org's control
+    # plane: admitted once its model is known, ended at its role's per-call cap, debited at its end.
+    from provisa.security import llm_budget
+
+    budget = llm_budget.guard(state, role, state.model_db)
     impl = (
         _run_chat_anthropic(
             state,
             role,
             convo,
             max_iterations=max_iterations,
+            budget=budget,
             request=request,
             current_route=current_route,
         )
@@ -2436,9 +2466,34 @@ async def run_chat(
             convo,
             vendor,
             max_iterations=max_iterations,
+            budget=budget,
             request=request,
             current_route=current_route,
         )
     )
     async for event in impl:
+        if event["type"] == "usage":
+            await budget.debit(_event_usage(event), event["model"])
         yield event
+
+
+def _event_usage(event: dict) -> Any:
+    """A turn's ``usage`` event's tokens, as the usage they were summed from."""
+    return polly_usage.Usage(
+        input_tokens=event["input_tokens"],
+        output_tokens=event["output_tokens"],
+        cache_read_tokens=event["cache_read_tokens"],
+        cache_write_tokens=event["cache_write_tokens"],
+        calls=event["calls"],
+    )
+
+
+async def _budget_refusal(budget: Any, model: str) -> dict | None:
+    """The turn's refusal when no role it acts as has LLM budget left for ``model``."""
+    from provisa.security.llm_budget import BudgetRefused
+
+    try:
+        await budget.admit(model)
+    except BudgetRefused as exc:
+        return {"type": "error", "error": str(exc)}
+    return None

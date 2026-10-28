@@ -2078,6 +2078,13 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
         return "junction" if self.via_table else "direct"
 
 
+class LlmLimit(BaseModel):  # REQ-1174
+    """An LLM spend limit: an amount of tokens, or of USD at ``polly.model_prices`` (REQ-2012)."""
+
+    amount: float = Field(gt=0)
+    unit: Literal["tokens", "usd"]
+
+
 class RoleRateLimit(BaseModel):
     """Per-role rate limits (REQ-369) and query limits (REQ-1174). None = unlimited for that
     dimension.
@@ -2094,6 +2101,13 @@ class RoleRateLimit(BaseModel):
     max_flight_streams: int | None = None
     max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
+    # REQ-1174 (amended 2026-10-27): the most one Polly turn or LLM service call may use, and the
+    # rolling windows (hour, day, week, month) the role's LLM spend is held to
+    # (security.llm_budget). None / absent: no limit.
+    llm_call_cap: LlmLimit | None = None
+    llm_windows: dict[Literal["hour", "day", "week", "month"], LlmLimit] = Field(
+        default_factory=dict
+    )
 
 
 def required_description(kind: str, owner: str, value: str) -> str:  # REQ-2080, REQ-2081
