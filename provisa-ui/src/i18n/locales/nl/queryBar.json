@@ -2,6 +2,7 @@
   "queryBar": {
     "autoImputeOn": "Relaties automatisch afleiden AAN — klik om uit te schakelen",
     "autoImputeOff": "Relaties tussen zichtbare knopen automatisch afleiden",
-    "run": "Query uitvoeren (⌘↵)"
+    "run": "Query uitvoeren (⌘↵)",
+    "clear": "Query wissen"
   }
 }

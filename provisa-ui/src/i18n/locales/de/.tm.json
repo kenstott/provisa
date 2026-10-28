@@ -3923,6 +3923,7 @@
   "de/qdrantFields.json::qdrantFields.urlHint": "The instance's address with its port, as Qdrant Cloud shows it or your own deployment serves it.",
   "de/queryBar.json::queryBar.autoImputeOff": "Auto-impute relationships between visible nodes",
   "de/queryBar.json::queryBar.autoImputeOn": "Auto-impute relationships ON — click to disable",
+  "de/queryBar.json::queryBar.clear": "Clear query",
   "de/queryBar.json::queryBar.run": "Run query (⌘↵)",
   "de/queryPage.json::queryPage.dismissRedirect": "Dismiss redirect notice",
   "de/queryPage.json::queryPage.download": "Download",

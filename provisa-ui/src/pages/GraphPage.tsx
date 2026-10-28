@@ -41,6 +41,7 @@ import {
 } from "../components/graph/graph-persistence";
 import {
   pickedQuery,
+  pillQuery,
   sparqlStatement,
   SPARQL_ACCEPT,
   type SparqlVocabulary,
@@ -865,16 +866,21 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
 
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
 
-  // REQ-2135: a SPARQL pill adds to the query in the bar (pickedQuery).
+  // REQ-2135: a SPARQL class or property pill runs its own query as a result card, as a Cypher label
+  // pill does; any other pill adds to the query in the bar (pickedQuery).
   const handleVocabularyPick = useCallback(
     (pick: VocabularyPick) => {
       if (!vocabulary) return;
+      if (pick.kind === "class" || pick.kind === "predicate") {
+        runQuery(pillQuery(pick, vocabulary));
+        return;
+      }
       const next = pickedQuery(graphState.currentQuery, pick, vocabulary);
       graphState.currentQuery = next;
       saveGraphState(graphState);
       setHistoryQuery(next);
     },
-    [vocabulary, graphState],
+    [vocabulary, graphState, runQuery],
   );
   const handleDomainClick = useCallback(
     (domainId: string) => {

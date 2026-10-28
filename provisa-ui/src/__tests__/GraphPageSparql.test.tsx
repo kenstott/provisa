@@ -193,17 +193,43 @@ describe("the SPARQL tab", () => {
     expect(screen.queryByText("Bad Request")).toBeNull();
   });
 
-  it("adds a pill's triple pattern to the query in the bar, with its PREFIX line", async () => {
+  const posted = () =>
+    sent
+      .filter((s) => s.url.endsWith("/data/sparql") && s.init?.method === "POST")
+      .map((s) => s.init?.body as string);
+
+  it("runs a class pill as its own query, its instances with a limit", async () => {
     page();
     fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
-    fireEvent.click(screen.getByTestId("sparql-predicate-sales:amount"));
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toBe(
+      `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE {\n  ?s a sales:orders .\n}\nLIMIT 25`,
+    );
+    await waitFor(() => expect(framesSeen.some((f) => f.status === "done")).toBe(true));
+    // The query in the bar is left as it was.
+    const bar = document.querySelector(".gf-header-query-collapsed") as HTMLElement;
+    expect(bar.textContent).toBe(DEFAULT_QUERY.sparql.replace(/\s*\n\s*/g, " "));
+  });
+
+  it("runs a property pill as its own query, the triples using it with a limit", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-predicate-sales:amount"));
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toBe(
+      `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE {\n  ?s sales:amount ?o .\n}\nLIMIT 25`,
+    );
+  });
+
+  it("adds a domain pill's PREFIX line to the query in the bar without running it", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-domain-sales"));
     const bar = document.querySelector(".gf-header-query-collapsed") as HTMLElement;
     await waitFor(() =>
       expect(bar.textContent).toBe(
-        `PREFIX sales: <${BASE}/vocab/sales/> ` +
-          `${DEFAULT_QUERY.sparql.replace(/\s*\n\s*/g, " ").replace(/ }/, " . ?s a sales:orders . ?s sales:amount ?o2 . }")}`,
+        `PREFIX sales: <${BASE}/vocab/sales/> ${DEFAULT_QUERY.sparql.replace(/\s*\n\s*/g, " ")}`,
       ),
     );
+    expect(posted()).toHaveLength(0);
   });
 
   it("POSTs a query to /data/sparql and draws a CONSTRUCT's triples", async () => {
