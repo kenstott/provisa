@@ -12,13 +12,13 @@ import { useState } from "react";
 import { ActionIcon, Box, Text, UnstyledButton } from "@mantine/core";
 import { ChevronRight, ChevronDown, Table2, Columns3 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { Domain, RegisteredTable } from "../../types/admin";
+import type { Domain, ListedTable } from "../../types/admin";
 import type { TopTab } from "./types";
 import { columnSqlRef, tableSqlRef } from "../../naming";
 import { Tip } from "../Tip";
 
 interface SchemaSidebarProps {
-  domainGroups: Record<string, RegisteredTable[]>;
+  domainGroups: Record<string, ListedTable[]>;
   expandedDomains: Set<string>;
   toggleDomain: (d: string) => void;
   domainMap: Record<string, Domain>;

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Metric, Relationship, RegisteredTable } from "../../types/admin";
+import type { Metric, Relationship, ListedTable } from "../../types/admin";
 
 import type { MaskEntry } from "../../lib/masks";
 import type { StatementResult } from "./statementResults";
@@ -46,7 +46,7 @@ export interface CanvasMetric {
   y: number;
 }
 export interface JoinCanvasProps {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   existingRels: Relationship[];
   metrics: Metric[];
   onGenerateSql: (sql: string) => void;

@@ -10,7 +10,7 @@
 
 import { useTranslation } from "react-i18next";
 import { Select, Text, TextInput } from "@mantine/core";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { tableRef, type RelForm } from "./relationship-types";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
@@ -18,7 +18,7 @@ import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/Form
 interface AddRelationshipFormProps {
   form: RelForm;
   setForm: (f: RelForm) => void;
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   functions: TrackedFunction[];
   saving: string | null;
   /** What the form says of a save that did not go through. */

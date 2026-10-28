@@ -134,7 +134,7 @@ export function ScheduledTasks() {
   const { updateScheduledTask } = useUpdateScheduledTask();
   const { deleteScheduledTask } = useDeleteScheduledTask();
   const { roles } = useRoles();
-  const { tables } = useTables();
+  const { tables } = useTables({ inPage: true });
 
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
   const [commands, setCommands] = useState<TrackedFunction[]>([]);

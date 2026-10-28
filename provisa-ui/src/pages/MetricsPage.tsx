@@ -25,7 +25,7 @@ import {
 } from "@mantine/core";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { useMetrics, useTables, useUpsertMetric, useDeleteMetric } from "../hooks/useAdminQueries";
-import type { Metric, RegisteredTable } from "../types/admin";
+import type { Metric, ListedTable } from "../types/admin";
 import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
@@ -79,7 +79,7 @@ interface MetricFormCardProps {
   setForm: React.Dispatch<React.SetStateAction<MetricForm>>;
   builder: BuilderState;
   applyBuilder: (next: BuilderState) => void;
-  factTables: RegisteredTable[];
+  factTables: ListedTable[];
   saving: boolean;
   msg: string;
   onSave: () => void;

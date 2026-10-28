@@ -17,7 +17,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { ActionIcon, Checkbox, Group, Select, Text, TextInput, NumberInput } from "@mantine/core";
 import { Trash2, Pencil, ArrowLeftRight } from "lucide-react";
-import type { Relationship, RegisteredTable } from "../../types/admin";
+import type { Relationship, ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { tableRef, type RelForm } from "./relationship-types";
 import { domainToSqlName } from "../../naming";
@@ -40,7 +40,7 @@ interface RelationshipDetailProps {
   saving: string | null;
   /** What the form says of a save that did not go through. */
   problem: string;
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   functions: TrackedFunction[];
   tableDomainById: Record<string, string>;
   domainsEnabled: boolean;

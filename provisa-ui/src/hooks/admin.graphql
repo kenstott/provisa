@@ -247,6 +247,48 @@ query TagAssignmentsQuery {
   }
 }
 
+# The table list the pages that pick, name or count tables read: no editor knob, and neither of the
+# per-table derived fields the server works out per table only when asked (refreshPolicySummary,
+# qualityCheckers). TablesQuery is the editor's.
+query TableListQuery {
+  tables {
+    id
+    sourceId
+    domainId
+    schemaName
+    tableName
+    alias
+    description
+    draft
+    viewSql
+    materialize
+    productId
+    dqContract
+    dqDataset
+    timeTravel
+    apiEndpoint
+    modelingRole
+    viewMetrics {
+      metrics
+      dimensions
+      filters
+    }
+    columns {
+      id
+      columnName
+      alias
+      computedSqlAlias
+      description
+      dataType
+      nativeFilterType
+      nativeFilterRequired
+      requiredBySteward
+      isPrimaryKey
+      isForeignKey
+    }
+  }
+}
+
 query TablesQuery {
   tables {
     id

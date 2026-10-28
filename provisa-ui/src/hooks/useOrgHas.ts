@@ -10,13 +10,13 @@
 
 import { useCallback, useRef } from "react";
 import { useLazyQuery } from "@apollo/client/react";
-import type { DataProduct, RegisteredTable, Source } from "../types/admin";
+import type { DataProduct, ListedTable, Source } from "../types/admin";
 import type { OrgHas } from "../tour/tourPrerequisites";
 import { fetchMcpChatStatus } from "../api/mcpChat";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   SourcesQuery as SOURCES_QUERY,
-  TablesQuery as TABLES_QUERY,
+  TableListQuery as TABLE_LIST_QUERY,
 } from "./admin.graphql";
 
 /**
@@ -52,7 +52,7 @@ async function unlessCutShort<T>(load: () => Promise<T>): Promise<T> {
 
 export function useOrgHas(): () => Promise<OrgHas> {
   const [loadSources] = useLazyQuery<{ sources: Source[] }>(SOURCES_QUERY);
-  const [loadTables] = useLazyQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY);
+  const [loadTables] = useLazyQuery<{ tables: ListedTable[] }>(TABLE_LIST_QUERY);
   const [loadProducts] = useLazyQuery<{ dataProducts: DataProduct[] }>(DATA_PRODUCTS_QUERY);
   const inFlight = useRef<Promise<OrgHas> | null>(null);
   const read = useCallback(async (): Promise<OrgHas> => {

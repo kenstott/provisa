@@ -13,7 +13,7 @@
 // under the max-lines gate.
 
 import { useCallback, useMemo, useState, type SetStateAction } from "react";
-import type { RegisteredTable, TableColumn } from "../../types/admin";
+import type { ListedTable, ListedColumn } from "../../types/admin";
 import {
   paramColumns,
   requestParams,
@@ -23,12 +23,12 @@ import {
 type Values = Record<string, string>;
 
 /** A table's data columns: every column but its parameters, which a read gives in `params`. */
-export function dataColumnsOf(table: RegisteredTable | undefined): TableColumn[] {
+export function dataColumnsOf(table: ListedTable | undefined): ListedColumn[] {
   return (table?.columns ?? []).filter((c) => !c.nativeFilterType);
 }
 const NONE: Values = {};
 
-export function useJsonApiParams(table: RegisteredTable | undefined) {
+export function useJsonApiParams(table: ListedTable | undefined) {
   // Values by column name, held for the table they were typed for: another table starts empty.
   const key = table ? `${table.domainId}/${table.tableName}` : "";
   const [held, setHeld] = useState<{ key: string; values: Values }>({ key: "", values: NONE });

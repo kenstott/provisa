@@ -10,14 +10,14 @@
 
 import { useTranslation } from "react-i18next";
 import { Select, Stack, Text } from "@mantine/core";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import { tableRef, type RelForm } from "./relationship-types";
 import { FormField, FormLayout } from "../form/FormLayout";
 
 interface ParametersPanelProps {
   form: RelForm;
   setForm: (f: RelForm) => void;
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   testIdPrefix: string;
 }
 

@@ -93,7 +93,7 @@ export function TermEditForm({
 }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
-  const { tables } = useTables();
+  const { tables } = useTables({ inPage: true });
   const { relationships } = useRelationships();
   // The term's tables as read, and the draft made from the term and them.
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);

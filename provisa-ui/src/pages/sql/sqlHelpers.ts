@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
+import type { Metric, ListedTable, Relationship } from "../../types/admin";
 
 export type SampleMode = "first" | "last" | "random";
 
@@ -100,9 +100,9 @@ export function autoAliasConflicts(sql: string): string {
 // ── REQ-1322: semantic metric helpers ────────────────────────────────────────
 
 /** Split registered tables into star-schema modeling groups for the schema browser. */
-export function groupModelingTables(tables: RegisteredTable[]): {
-  facts: RegisteredTable[];
-  dimensions: RegisteredTable[];
+export function groupModelingTables(tables: ListedTable[]): {
+  facts: ListedTable[];
+  dimensions: ListedTable[];
 } {
   return {
     facts: tables.filter((t) => t.modelingRole === "fact"),
@@ -117,9 +117,9 @@ export function groupModelingTables(tables: RegisteredTable[]): {
  */
 export function metricDimensionTables(
   metric: Metric,
-  tables: RegisteredTable[],
+  tables: ListedTable[],
   existingRels: Relationship[],
-): RegisteredTable[] {
+): ListedTable[] {
   const byName = new Map(tables.map((t) => [t.tableName, t]));
   const referenced = new Set<string>();
   for (const m of metric.expression.matchAll(/\b(\w+)\.(\w+)\b/g)) {

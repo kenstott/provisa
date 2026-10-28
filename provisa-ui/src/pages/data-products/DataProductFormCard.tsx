@@ -22,7 +22,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import type { DataContract, RegisteredTable } from "../../types/admin";
+import type { DataContract, ListedTable } from "../../types/admin";
 import type { DataContractInput } from "../../hooks/useDataProductMutations";
 import { ContractEditor } from "./ContractEditor";
 import { contractDraft } from "./contractDraft";
@@ -39,7 +39,7 @@ export interface DataProductFormCardProps {
   setForm: React.Dispatch<React.SetStateAction<DataProductForm>>;
   domainOptions: string[];
   roleOptions: string[];
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   selectedTableIds: string[];
   setSelectedTableIds: React.Dispatch<React.SetStateAction<string[]>>;
   functions: TrackedFunction[];

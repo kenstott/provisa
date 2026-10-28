@@ -506,6 +506,46 @@ export interface RegisteredTable {
   implicitDimensions: string[]; // REQ-1360: metadata-only, populated only when enableGroupBy
 }
 
+/** A column as TableListQuery reads it. */
+export type ListedColumn = Pick<
+  TableColumn,
+  | "id"
+  | "columnName"
+  | "alias"
+  | "computedSqlAlias"
+  | "description"
+  | "dataType"
+  | "nativeFilterType"
+  | "nativeFilterRequired"
+  | "requiredBySteward"
+  | "isPrimaryKey"
+  | "isForeignKey"
+>;
+
+/** A table as TableListQuery reads it: what the pages that pick, name or count tables use. */
+export interface ListedTable extends Pick<
+  RegisteredTable,
+  | "id"
+  | "sourceId"
+  | "domainId"
+  | "schemaName"
+  | "tableName"
+  | "alias"
+  | "description"
+  | "draft"
+  | "viewSql"
+  | "materialize"
+  | "productId"
+  | "dqContract"
+  | "dqDataset"
+  | "timeTravel"
+  | "apiEndpoint"
+  | "modelingRole"
+  | "viewMetrics"
+> {
+  columns: ListedColumn[];
+}
+
 // REQ-1318: declarative metric-composed view definition. Mutually exclusive with
 // viewSql — the server generates (and regenerates on metric change) the view SQL.
 export interface ViewMetricsSpec {

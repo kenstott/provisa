@@ -13,11 +13,11 @@
 // registered column (REQ-2116), or its physical name.
 
 import { relationName, toSnakeCase } from "../../naming";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 
 export type DescribeColumn = (relation: string, column: string) => string | null;
 
-export function columnDescriber(tables: readonly RegisteredTable[]): DescribeColumn {
+export function columnDescriber(tables: readonly ListedTable[]): DescribeColumn {
   const byKey = new Map<string, string>();
   for (const tb of tables) {
     const relation = relationName(tb);
