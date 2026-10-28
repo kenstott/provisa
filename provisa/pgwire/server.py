@@ -726,8 +726,9 @@ def refuse_server_function(sql: str) -> None:  # REQ-2167
 def _evaluated_pid(args: str) -> int | None:
     """The pid a call names: its first argument, a literal or a constant expression, evaluated;
     None when it is NULL."""
-    import duckdb
     import sqlglot
+
+    from provisa.core import engine_memory
 
     import sqlglot.expressions as exp
 
@@ -735,7 +736,11 @@ def _evaluated_pid(args: str) -> int | None:
     sql = sqlglot.transpile(
         f"SELECT CAST(({first.sql(dialect='postgres')}) AS BIGINT)", read="postgres", write="duckdb"
     )[0]
-    ((pid,),) = duckdb.connect().execute(sql).fetchall()
+    con = engine_memory.connect()
+    try:
+        ((pid,),) = con.execute(sql).fetchall()
+    finally:
+        con.close()
     return pid
 
 
