@@ -80,6 +80,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import AssetKind, GlossaryTermAsset, junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.core.glossary import NOT_GROUNDED
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -925,7 +926,8 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
             definition=definition,
             is_abstract=True,
             deprecated=False,
-            status="live",
+            status="approved",
+            grounding=NOT_GROUNDED,  # a role group names no data
             semantic_uri=f"provisa://{snapshot.org_id}/glossary/roles/{role}",
         )
     for term in snapshot.glossary_terms:

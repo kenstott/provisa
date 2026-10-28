@@ -180,7 +180,14 @@ async def _require_term_readable(conn: "Connection", term_id: int, request: Requ
 
 
 async def _require_term_curatable(conn: "Connection", term_id: int, request: Request) -> None:
-    """May this caller CHANGE this term? (REQ-1592)
+    """Refuse a term this caller may not change (:func:`_curation_refusal`)."""
+    refusal = await _curation_refusal(conn, term_id, request)
+    if refusal is not None:
+        raise refusal
+
+
+async def _curation_refusal(conn: "Connection", term_id: int, request: Request) -> ApiError | None:
+    """May this caller CHANGE this term? (REQ-1592) The refusal when not, else ``None``.
 
     Three ways in, in this order:
 
@@ -203,27 +210,28 @@ async def _require_term_curatable(conn: "Connection", term_id: int, request: Req
     from provisa.core.glossary import ENTERPRISE_DOMAIN, within_domains
 
     if _is_org_curator(request):
-        return
+        return None
     authors = await glossary_repo.term_authors(conn, term_id)
     if authors:
         caller = _caller_id(request)
         if caller is not None and caller in authors:
-            return
-        raise ApiError(
+            return None
+        return ApiError(
             403,
             "glossary.term_claimed",
             f"term {term_id} is authored by {', '.join(sorted(authors))}",
         )
     scope = (await glossary_repo.term_domains(conn)).get(term_id, set())
     if ENTERPRISE_DOMAIN in scope:
-        raise ApiError(
+        return ApiError(
             403,
             "auth.domain_denied",
             f"term {term_id} is enterprise-wide; org_glossary_rw is required to change it",
         )
     allowed = _curate_authority(request)
     if not within_domains(allowed, scope):
-        raise ApiError(403, "auth.domain_denied", f"term {term_id} is outside your domains")
+        return ApiError(403, "auth.domain_denied", f"term {term_id} is outside your domains")
+    return None
 
 
 def _declared_domains(request: Request, raw: "Any", *, current: "set[str]") -> set[str]:
@@ -973,7 +981,12 @@ async def unground_term_table(
 # ---------------------------------------------------------------------------
 
 
-_DONE = {"deprecate": "deprecated", "retire": "retired", "restore": "restored"}
+_DONE = {
+    "approve": "approved",
+    "deprecate": "deprecated",
+    "retire": "retired",
+    "restore": "restored",
+}
 
 
 def _status_refused(exc: "glossary_repo.StatusRefused") -> ApiError:
@@ -1015,7 +1028,9 @@ async def change_status(
     by = _caller_id(request)
     changes: list[dict] = []
     try:
-        if action == "deprecate":
+        if action == "approve":
+            await glossary_repo.approve_term(conn, term_id, by=by)
+        elif action == "deprecate":
             await glossary_repo.deprecate_term(
                 conn,
                 term_id,
@@ -1057,7 +1072,7 @@ async def change_status(
 
 async def _status_route(request: Request, term_id: int, action: str) -> dict:
     org_id = require_active_org_id(request)
-    body = await request.json() if action != "restore" else {}
+    body = await request.json() if action not in ("restore", "approve") else {}
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -1069,9 +1084,117 @@ async def _status_route(request: Request, term_id: int, action: str) -> dict:
     return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
 
 
+@router.post("/terms/{term_id}/approve")
+async def approve_term(request: Request, term_id: int) -> dict:
+    """Approve a draft term (REQ-1387): it needs a definition."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "approve")
+
+
+@router.get("/approvable")
+async def list_approvable(request: Request) -> list[dict]:
+    """The defined, grounded draft terms the caller may curate, which a steward approves together
+    (REQ-2144): ``[{term_id, name}]``, by name."""
+    _require_glossary_rw(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        out = [
+            {"term_id": tid, "name": await glossary_repo.term_name(_conn, tid)}
+            for tid in await glossary_repo.bulk_approvable(_conn)
+            if await _curation_refusal(_conn, tid, request) is None
+        ]
+    return sorted(out, key=lambda t: t["name"])
+
+
+@router.post("/approve")
+async def bulk_approve(request: Request) -> dict:
+    """Approve defined, grounded draft terms together (REQ-2144): {term_ids}. One that is not
+    such a term, or not the caller's to curate, refuses the whole batch."""
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    term_ids = [int(tid) for tid in body.get("term_ids") or []]
+    if not term_ids:
+        raise ApiError(400, "glossary.term_ids_required", "name the terms to approve")
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        for tid in term_ids:
+            await _require_term_curatable(_conn, tid, request)
+        try:
+            approved = await glossary_repo.bulk_approve(_conn, term_ids, by=_caller_id(request))
+        except glossary_repo.StatusRefused as exc:
+            raise _status_refused(exc) from exc
+    await _notify(org_id, "ontology terms approved")
+    return {"ok": True, "approved": approved}
+
+
+@router.get("/terms/{term_id}/impact")
+async def preview_impact(
+    request: Request,
+    term_id: int,
+    action: str,
+    successor: int | None = None,
+    table_id: int | None = None,
+    column_name: str | None = None,
+) -> dict:
+    """What approving, retiring or binding a term would change, changing nothing (REQ-2144):
+    the terms becoming grounded, pending or not grounded, and the tables agents gain or lose a
+    path to."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_readable(_conn, term_id, request)
+        try:
+            found = await glossary_repo.impact(
+                _conn,
+                action,
+                term_id,
+                successor=successor,
+                table_id=table_id,
+                column_name=column_name,
+            )
+        except glossary_repo.ImpactRefused as exc:
+            raise ApiError(400, f"glossary.{exc.code}", str(exc), **exc.params) from exc
+        except glossary_repo.TermNotFound as exc:
+            raise ApiError(404, "glossary.term_not_found", str(exc)) from exc
+        return await _named_readable(_conn, request, found)
+
+
+async def _named_readable(conn: "Connection", request: Request, found: dict) -> dict:
+    """``found`` with each list of ``{term_id, name}`` narrowed to the terms the caller reads; a
+    count stays a count."""
+    scopes = await glossary_repo.term_domains(conn)
+    allowed = _authority(request)
+
+    from provisa.core.glossary import readable_term
+
+    def keep(items: list) -> list:
+        return [i for i in items if readable_term(allowed, scopes.get(i["term_id"], set()))]
+
+    return {k: keep(v) if isinstance(v, list) else v for k, v in found.items()}
+
+
+@router.get("/stewardship")
+async def stewardship(request: Request) -> dict:
+    """The stewardship summary (REQ-2144): the terms agents can see, the grounded_pending terms
+    each waiting on one approval, and the approved terms that reach no data -- each narrowed to
+    the terms the caller reads."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        return await _named_readable(_conn, request, await glossary_repo.stewardship_summary(_conn))
+
+
 @router.post("/terms/{term_id}/deprecate")
 async def deprecate_term(request: Request, term_id: int) -> dict:
-    """Deprecate a live term: {reason, retire_on?}. It stays in service until retire_on."""
+    """Deprecate an approved term: {reason, retire_on?}, retired on retire_on."""
     _require_glossary_rw(request)
     return await _status_route(request, term_id, "deprecate")
 

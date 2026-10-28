@@ -29,7 +29,7 @@ import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
 import { GlossaryRelationships } from "./GlossaryRelationships";
-import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
+import { TermGroundingChip, TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { RetiredTermRecord } from "./RetiredTermRecord";
 import { TermDag } from "./TermDag";
 
@@ -104,6 +104,16 @@ export function TermReadView({
           {
             label: t("glossaryTab.statusLabel"),
             value: <TermStatusBadge status={term.status} testId="glossary-detail-status" />,
+          },
+          // REQ-1387: computed, beside the status a person set and never with it.
+          {
+            label: t("glossaryTab.groundingLabel"),
+            value: (
+              <Group gap={6} data-testid="glossary-detail-grounding">
+                <TermGroundingChip grounding={term.grounding} />
+                <Text size="sm">{t(`glossaryTab.groundingValue_${term.grounding}`)}</Text>
+              </Group>
+            ),
           },
           // A deprecation or a retirement says why, who said so, and a deprecation when it ends.
           ...(term.status === "deprecated" || term.status === "retired"

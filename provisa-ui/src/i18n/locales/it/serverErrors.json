@@ -687,8 +687,7 @@
       "retire_on_invalid": "La data di ritiro prevista {{retire_on}} non è una data (usate AAAA-MM-GG).",
       "successor_is_self": "Un termine non può essere il proprio successore.",
       "successor_retired": "Il successore '{{successor}}' è ritirato. Scegliete un termine in servizio.",
-      "term_not_live": "Solo un termine attivo può essere deprecato; questo è {{status}}.",
-      "status_by_action": "Lo stato di un termine cambia con Depreca, Ritira o Ripristina, ognuno con un motivo.",
+      "status_by_action": "Lo stato di un termine cambia tramite Approva, Depreca, Ritira o Ripristina.",
       "successor_required": "Questo termine ha ancora colonne o tabelle; ritirarlo le sposta su un successore. Sceglietene uno.",
       "successor_role": "Il successore di un {{role}} deve essere un {{role}} o un concetto; '{{successor}}' è un {{successor_role}}.",
       "no_retirement_history": "La cronologia del modello non contiene alcun ritiro di questo termine.",
@@ -698,8 +697,18 @@
         "class_and_attribute_table": "La tabella {{table}} non ha classe: il suo concetto è questo termine, che ha colonne che non sono chiavi ({{columns}}).",
         "tag_wrong_kind": "Questo termine porta etichette ({{tags}}) che solo una proprietà passa alle sue colonne; è un {{role}}.",
         "retirement_blocked": "Questo termine doveva essere ritirato il {{retire_on}} ma ha ancora dati. Ritiratelo con un successore che li prenda.",
-        "no_data": "Questo concetto non è collegato a nessun termine che abbia dati."
-      }
+        "no_data": "Questo concetto in bozza non è collegato ad alcun termine che contenga dati.",
+        "approved_not_grounded": "Questo termine è approvato ma non raggiunge alcun dato, quindi nessun agente lo vede.",
+        "path_pending": "Ancorato · percorso in attesa di approvazione: raggiunge i dati solo tramite termini non ancora approvati.",
+        "path_pending_approve": "Ancorato · percorso in attesa di approvazione: approvare {{approve}} lo ancora."
+      },
+      "term_not_approved": "Solo un termine approvato può essere deprecato; questo è {{status}}.",
+      "term_not_draft": "Solo un termine in bozza può essere approvato; questo è {{status}}.",
+      "definition_required": "Dai una definizione al termine prima di approvarlo.",
+      "not_bulk_approvable": "Solo le bozze definite e ancorate si approvano insieme; non: {{terms}}.",
+      "term_ids_required": "Indica i termini da approvare.",
+      "impact_action": "Non esiste un'anteprima per questa azione.",
+      "impact_table_required": "Un collegamento nomina una tabella o una delle sue colonne."
     },
     "tag": {
       "not_on_terms": "Il tag '{{tag}}' non va su un termine; solo pii.",

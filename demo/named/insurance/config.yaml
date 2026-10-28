@@ -192,24 +192,35 @@ relationships:
 - {id: county-to-hazard-risk, alias: RISK_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: hazard_risk, target_column: county_fips}
 - {id: county-to-wildfire-risk, alias: WILDFIRE_RISK_OF, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: wildfire_risk, target_column: county_fips}
 - {id: county-to-storm-damage, alias: STORMS_IN, cardinality: one-to-many, source_table_id: counties, source_column: county_fips, target_table_id: storm_damage, target_column: county_fips}
-# The insurer's vocabulary: abstract terms, grounded through their edges in the terms the book's and
-# the risk tables' columns derive (insured value, eal rating, risk rating, line).
+# The insurer's vocabulary: abstract terms. Grounding runs down from a broader term to a narrower one
+# (KIND_OF, PART_OF, VALID_VALUE_OF, read from the narrower term) and across a synonym, never across
+# RELATED_TO (REQ-1387). Total insured value is the policies' insured value (tiv, summed), and a
+# policy's TIV is part of the exposure and the accumulation where it sits; line of business is the
+# policies' line. Probable maximum loss, expected annual loss and catastrophe peril have no column
+# that is one of them -- FEMA's eal and risk ratings rate a county, they are not its loss or its
+# perils -- so they stay related, not grounded.
 glossary_terms:
 - name: total insured value
+  approve: true
   definition: 'TIV: the sum of the values a policy insures -- buildings, contents and business income -- the most the insurer can pay on it.'
   domains:
   - insurance
   edges:
   - to: insured value
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
+  - to: tiv
+    rel_type: SYNONYM_OF
+  - to: exposure
+    rel_type: PART_OF
+  - to: accumulation
+    rel_type: PART_OF
 - name: exposure
+  approve: true
   definition: 'What the insurer stands to pay if a hazard strikes: the total insured value it holds in a place.'
   domains:
   - insurance
-  edges:
-  - to: total insured value
-    rel_type: RELATED_TO
 - name: accumulation
+  approve: true
   definition: 'Exposure concentrated in one place, so that one event -- a hurricane, an earthquake, a wildfire -- reaches many policies at once.'
   domains:
   - insurance
@@ -217,6 +228,7 @@ glossary_terms:
   - to: exposure
     rel_type: KIND_OF
 - name: probable maximum loss
+  approve: true
   definition: 'PML: the largest loss the insurer expects from one event in a place, at a given return period; accumulation is what drives it.'
   domains:
   - insurance
@@ -224,6 +236,7 @@ glossary_terms:
   - to: accumulation
     rel_type: RELATED_TO
 - name: expected annual loss
+  approve: true
   definition: 'EAL: the loss a hazard is expected to cause in a place in an average year. FEMA''s National Risk Index rates it for every county.'
   domains:
   - insurance
@@ -231,6 +244,7 @@ glossary_terms:
   - to: eal rating
     rel_type: RELATED_TO
 - name: catastrophe peril
+  approve: true
   definition: 'A natural hazard that can strike many risks at once -- hurricane, earthquake, wildfire, severe convective storm, flood.'
   domains:
   - insurance
@@ -240,9 +254,10 @@ glossary_terms:
   - to: accumulation
     rel_type: RELATED_TO
 - name: line of business
+  approve: true
   definition: 'The kind of policy: homeowners, commercial property or farmowners.'
   domains:
   - insurance
   edges:
   - to: line
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF

@@ -20,6 +20,8 @@ declare module "*.graphql" {
   export const DataProductsQuery: DocumentNode;
   export const ListedNamesQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
+  export const TableListQuery: DocumentNode;
+  export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
   export const CreateTag: DocumentNode;
@@ -158,6 +160,8 @@ declare module "*.gql" {
   export const DataProductsQuery: DocumentNode;
   export const ListedNamesQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
+  export const TableListQuery: DocumentNode;
+  export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
   export const CreateTag: DocumentNode;

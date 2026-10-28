@@ -17,7 +17,6 @@ import type {
   Domain,
   DataProduct,
   ListedNames,
-  RegisteredTable,
   Metric,
   RefreshPolicySummary,
   DqContract,
@@ -35,8 +34,9 @@ import type {
   ColumnDependentsResult,
   UserSummary,
 } from "../types/admin";
-import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
+import type { CompileResult, TableMetadata } from "../api/admin";
 import { useStartingPoll } from "./discoveryStartingPoll";
+export { useAvailableColumnsMetadataLazy } from "./useAvailableColumnsMetadataLazy";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import {
   RolesQuery as ROLES_QUERY,
@@ -46,6 +46,8 @@ import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   ListedNamesQuery as LISTED_NAMES_QUERY,
   TablesQuery as TABLES_QUERY,
+  TableListQuery as TABLE_LIST_QUERY,
+  TableRowsQuery as TABLE_ROWS_QUERY,
   Calendars as CALENDARS_QUERY,
   HoldOnFailingChecksSource as HOLD_ON_FAILING_CHECKS_SOURCE_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
@@ -69,7 +71,6 @@ import {
   KaggleDatasets,
   StageKaggleDataset,
   RefreshKaggleSource,
-  AvailableColumnsMetadata,
   AvailableFunctions,
   ColumnDependents,
   GenerateColumnDescription,
@@ -77,11 +78,6 @@ import {
   CompileQuery,
   CreateDomain,
   DeleteDomain,
-  RegisterTable,
-  RegisterEntity,
-  RegisterFact,
-  UpdateTable,
-  DeleteTable,
   DeployViewToDb,
   CreateRelationship,
   UpdateRelationship,
@@ -104,19 +100,21 @@ import {
   SuggestTableAlias,
   ResolveOwners,
 } from "./admin.graphql";
+import { firstLoad } from "./firstLoad";
+import { useShownTableQueries } from "./useTableQueries";
 
-/**
- * `loading` on the list hooks below means "nothing to show yet", not "a request is in flight".
- *
- * They all read `cache-and-network`, which reports `loading: true` on every mount that revalidates
- * a warm cache. Pages gate their whole render on that flag, so a cached page would blank itself on
- * re-entry — which is what made the guided tour (REQ-1362) land on empty screens even after its
- * prefetch had already fetched the data. An undefined `data` is the only signal that there is
- * genuinely nothing to paint; a cached empty list is an answer, not an absence.
- */
-export function firstLoad(loading: boolean, data: unknown): boolean {
-  return loading && data === undefined;
-}
+export { firstLoad } from "./firstLoad";
+export {
+  useDeleteTable,
+  useReadTableDetails,
+  useRegisterEntity,
+  useRegisterFact,
+  useRegisterTable,
+  useShownTableQueries,
+  useTableDetails,
+  useTables,
+  useUpdateTable,
+} from "./useTableQueries";
 
 /**
  * REQ-1362: warm the data the guided tour's destination pages read, not just their code.
@@ -127,9 +125,10 @@ export function firstLoad(loading: boolean, data: unknown): boolean {
  * — the runner then sits in waitForElement, showing nothing, for as long as those queries take.
  *
  * These are every query mounted by a page the tour navigates to: /relationships reads
- * relationships, all relationships, tables and domains; /security/roles and /security/rls read
- * roles, RLS rules, tables and domains; /sources, /tables and /views read sources, tables and
- * domains; /admin reads all of them. Running them fills the Apollo cache the page hooks then read
+ * relationships, all relationships, the tables with their columns and domains; /security/roles and
+ * /security/rls read roles, RLS rules, the tables without their columns and domains; /sources reads
+ * sources, the tables without their columns and domains, /tables and /views the tables' full rows;
+ * /admin reads all of them. Running them fills the Apollo cache the page hooks then read
  * from, so each page paints on arrival and revalidates behind the visible content.
  *
  * A rejection is swallowed per query for the same reason the chunk prefetch swallows its own: an
@@ -141,6 +140,8 @@ export function useTourPrefetch(): () => Promise<void> {
   const [loadSources] = useLazyQuery(SOURCES_QUERY, opts);
   const [loadDomains] = useLazyQuery(DOMAINS_QUERY, opts);
   const [loadTables] = useLazyQuery(TABLES_QUERY, opts);
+  const [loadTableList] = useLazyQuery(TABLE_LIST_QUERY, opts);
+  const [loadTableRows] = useLazyQuery(TABLE_ROWS_QUERY, opts);
   const [loadRelationships] = useLazyQuery(RELATIONSHIPS_QUERY, opts);
   const [loadAllRelationships] = useLazyQuery(ALL_RELATIONSHIPS_QUERY, opts);
   const [loadRlsRules] = useLazyQuery(RLS_RULES_QUERY, opts);
@@ -152,6 +153,8 @@ export function useTourPrefetch(): () => Promise<void> {
           loadSources,
           loadDomains,
           loadTables,
+          loadTableList,
+          loadTableRows,
           loadRelationships,
           loadAllRelationships,
           loadRlsRules,
@@ -162,6 +165,8 @@ export function useTourPrefetch(): () => Promise<void> {
       loadSources,
       loadDomains,
       loadTables,
+      loadTableList,
+      loadTableRows,
       loadRelationships,
       loadAllRelationships,
       loadRlsRules,
@@ -173,7 +178,6 @@ export function useTourPrefetch(): () => Promise<void> {
 const NO_SOURCES: Source[] = [];
 const NO_DOMAINS: Domain[] = [];
 const NO_DATA_PRODUCTS: DataProduct[] = []; // REQ-1634
-const NO_TABLES: RegisteredTable[] = [];
 const NO_RELATIONSHIPS: Relationship[] = [];
 
 export function useSources() {
@@ -222,18 +226,6 @@ export function useListedNames() {
     fetchPolicy: "cache-and-network",
   });
   return data?.listedNames ?? NO_LISTED_NAMES;
-}
-
-export function useTables() {
-  const { data, loading, error, refetch } = useQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY, {
-    fetchPolicy: "cache-and-network",
-  });
-  return {
-    tables: data?.tables ?? NO_TABLES,
-    loading: firstLoad(loading, data),
-    error,
-    refetch,
-  };
 }
 
 // REQ-1317: registered semantic metrics.
@@ -489,75 +481,6 @@ export function useDeleteDomain() {
     deleteDomain: async (id: string) => {
       const result = await deleteDomain({ variables: { id } });
       return (result.data?.deleteDomain ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useRegisterTable() {
-  const [registerTable, { loading }] = useMutation<{ registerTable: MutationResult }>(
-    RegisterTable,
-    {
-      refetchQueries: [{ query: TABLES_QUERY }],
-    },
-  );
-  return {
-    registerTable: async (input: Record<string, unknown>) => {
-      const result = await registerTable({ variables: { input } });
-      return (result.data?.registerTable ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useRegisterEntity() {
-  const [registerEntity, { loading }] = useMutation<{ registerEntity: MutationResult }>(
-    RegisterEntity,
-    { refetchQueries: [{ query: TABLES_QUERY }] },
-  );
-  return {
-    registerEntity: async (input: Record<string, unknown>) => {
-      const result = await registerEntity({ variables: { input } });
-      return (result.data?.registerEntity ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useRegisterFact() {
-  const [registerFact, { loading }] = useMutation<{ registerFact: MutationResult }>(RegisterFact, {
-    refetchQueries: [{ query: TABLES_QUERY }],
-  });
-  return {
-    registerFact: async (input: Record<string, unknown>) => {
-      const result = await registerFact({ variables: { input } });
-      return (result.data?.registerFact ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useUpdateTable() {
-  const [updateTable, { loading }] = useMutation<{ updateTable: MutationResult }>(UpdateTable, {
-    refetchQueries: [{ query: TABLES_QUERY }],
-  });
-  return {
-    updateTable: async (input: Record<string, unknown>) => {
-      const result = await updateTable({ variables: { input } });
-      return (result.data?.updateTable ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useDeleteTable() {
-  const [deleteTable, { loading }] = useMutation<{ deleteTable: MutationResult }>(DeleteTable, {
-    refetchQueries: [{ query: TABLES_QUERY }],
-  });
-  return {
-    deleteTable: async (id: number) => {
-      const result = await deleteTable({ variables: { id } });
-      return (result.data?.deleteTable ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -961,20 +884,6 @@ export function useStageKaggleDataset() {
   };
 }
 
-export function useAvailableColumnsMetadataLazy() {
-  const [run] = useLazyQuery<{ availableColumnsMetadata: ColumnMetadata[] }>(
-    AvailableColumnsMetadata,
-    { fetchPolicy: "cache-first" },
-  );
-  return useCallback(
-    async (sourceId: string, schemaName: string, tableName: string): Promise<ColumnMetadata[]> => {
-      const { data } = await run({ variables: { sourceId, schemaName, tableName } });
-      return data?.availableColumnsMetadata ?? [];
-    },
-    [run],
-  );
-}
-
 export function useAvailableFunctionsLazy() {
   const [run] = useLazyQuery<{ availableFunctions: TableMetadata[] }>(AvailableFunctions, {
     fetchPolicy: "cache-first",
@@ -1134,9 +1043,10 @@ export function useRenameSource() {
 }
 
 export function useDeployViewToDb() {
+  const refetchTables = useShownTableQueries();
   const [deployViewToDb, { loading }] = useMutation<{ deployViewToDb: MutationResult }>(
     DeployViewToDb,
-    { refetchQueries: [{ query: TABLES_QUERY }] },
+    { refetchQueries: refetchTables },
   );
   return {
     deployViewToDb: async (tableId: number) => {

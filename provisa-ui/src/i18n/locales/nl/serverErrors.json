@@ -687,8 +687,7 @@
       "retire_on_invalid": "De geplande buitengebruikstelling {{retire_on}} is geen datum (gebruik JJJJ-MM-DD).",
       "successor_is_self": "Een term kan niet zijn eigen opvolger zijn.",
       "successor_retired": "De opvolger '{{successor}}' is buiten gebruik. Kies een term die in gebruik is.",
-      "term_not_live": "Alleen een actieve term kan worden afgeschreven; deze is {{status}}.",
-      "status_by_action": "De status van een term verandert via Afschrijven, Buiten gebruik stellen of Herstellen, elk met een reden.",
+      "status_by_action": "De status van een term verandert via Goedkeuren, Afschaffen, Buiten gebruik stellen of Herstellen.",
       "successor_required": "Deze term heeft nog kolommen of tabellen; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
       "successor_role": "De opvolger van een {{role}} moet een {{role}} of een concept zijn; '{{successor}}' is een {{successor_role}}.",
       "no_retirement_history": "De geschiedenis van het model bevat geen buitengebruikstelling van deze term.",
@@ -698,8 +697,18 @@
         "class_and_attribute_table": "Tabel {{table}} heeft geen klasse: haar concept is deze term, die kolommen heeft die geen sleutels zijn ({{columns}}).",
         "tag_wrong_kind": "Deze term draagt tags ({{tags}}) die alleen een eigenschap aan haar kolommen doorgeeft; het is een {{role}}.",
         "retirement_blocked": "Deze term zou op {{retire_on}} buiten gebruik gaan, maar heeft nog gegevens. Stel hem buiten gebruik met een opvolger die ze overneemt.",
-        "no_data": "Dit concept is met geen enkele term verbonden die gegevens heeft."
-      }
+        "no_data": "Dit ontwerpconcept is met geen enkele term verbonden die data bevat.",
+        "approved_not_grounded": "Deze term is goedgekeurd maar bereikt geen data, dus geen agent ziet hem.",
+        "path_pending": "Verankerd · pad wacht op goedkeuring: hij bereikt data alleen via termen die nog niet zijn goedgekeurd.",
+        "path_pending_approve": "Verankerd · pad wacht op goedkeuring: goedkeuring van {{approve}} verankert hem."
+      },
+      "term_not_approved": "Alleen een goedgekeurde term kan worden afgeschaft; deze is {{status}}.",
+      "term_not_draft": "Alleen een ontwerpterm kan worden goedgekeurd; deze is {{status}}.",
+      "definition_required": "Geef de term een definitie voordat u hem goedkeurt.",
+      "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
+      "term_ids_required": "Noem de goed te keuren termen.",
+      "impact_action": "Voor die actie bestaat geen voorbeeld.",
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
     },
     "tag": {
       "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",

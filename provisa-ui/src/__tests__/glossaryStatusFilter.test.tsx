@@ -8,14 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1387: a term is a draft (see the badge next to it in the list) exactly when it is none
-// of live, retired or deprecated — the raw output of the semantic layer's derivation, not yet
-// curated. The Draft checkbox (checked = show, on by default) narrows the list to admitted
-// terms client-side when unchecked, since the three booleans it filters on are already in every
-// GlossaryTermSummary the list fetch returns.
+// REQ-1387, REQ-2144: a term's status (set by people) and its grounding (computed) are shown as
+// separate chips and filtered apart, client-side: both are already in every GlossaryTermSummary
+// the list fetch returns.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "../test-utils/render";
+import { render, screen, fireEvent, within } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import type { GlossaryTermSummary } from "../api/glossary";
 
@@ -53,7 +51,7 @@ import { storageKey as scopedKey } from "../lib/browserStorage";
 
 const mockList = vi.mocked(listGlossaryTerms);
 
-const LIVE: GlossaryTermSummary = {
+const APPROVED: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
@@ -63,19 +61,21 @@ const LIVE: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
-// A draft: not yet admitted, neither retired nor deprecated.
+// A draft a steward has not approved, reaching data only through terms not yet approved.
 const DRAFT: GlossaryTermSummary = {
-  ...LIVE,
+  ...APPROVED,
+  grounding: "grounded_pending",
+  agent_visible: false,
   id: 2,
   name: "Churn Velocity",
   ref_count: 0,
@@ -86,65 +86,88 @@ const DRAFT: GlossaryTermSummary = {
   status_reason: null,
   status_by: null,
   retire_on: null,
-  live: false,
 };
-// Not live, but retired: curated away from the draft state, so it must survive the filter too.
+// Retired: out of service, so it reaches no data.
 const RETIRED: GlossaryTermSummary = {
-  ...LIVE,
+  ...APPROVED,
+  grounding: "not_grounded",
+  agent_visible: false,
   id: 3,
   name: "Legacy Metric",
-  live: false,
   retired: true,
   status: "retired",
 };
 
-describe("glossary draft filter", () => {
+describe("glossary status and grounding filters", () => {
   beforeEach(() => {
     mockList.mockReset();
-    mockList.mockResolvedValue([LIVE, DRAFT, RETIRED]);
+    mockList.mockResolvedValue([APPROVED, DRAFT, RETIRED]);
     window.localStorage.clear();
   });
 
-  it("shows draft terms by default", async () => {
+  const pick = async (filter: string, option: string) => {
+    fireEvent.click(screen.getByTestId(filter));
+    fireEvent.click(await screen.findByRole("option", { name: option, hidden: true }));
+  };
+
+  it("shows every term by default", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     expect(screen.getByTestId("glossary-item-2")).toBeInTheDocument();
     expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-show-draft")).toBeChecked();
+    expect(screen.getByTestId("glossary-status-filter")).toHaveValue("");
+    expect(screen.getByTestId("glossary-grounding-filter")).toHaveValue("");
   });
 
-  it("hides only draft terms when unchecked", async () => {
+  it("marks status and grounding as separate chips", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-
-    fireEvent.click(screen.getByTestId("glossary-show-draft"));
-
-    expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
-    expect(screen.queryByTestId("glossary-item-2")).not.toBeInTheDocument();
-    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+    // An approved term is the ordinary case: the list marks only its grounding.
+    expect(screen.queryByTestId("glossary-status-1")).toBeNull();
+    expect(screen.getByTestId("glossary-grounding-1")).toHaveTextContent("grounded");
+    expect(screen.getByTestId("glossary-status-2")).toHaveTextContent("Draft");
+    const pending = screen.getByTestId("glossary-grounding-2");
+    expect(pending).toHaveTextContent("~grounded");
+    expect(pending).toHaveAttribute(
+      "aria-label",
+      "Reaches data, but only through terms not yet approved",
+    );
+    // Not grounded: no chip.
+    expect(screen.queryByTestId("glossary-grounding-3")).toBeNull();
   });
 
-  it("does not refetch the list — this is a client-side view filter", async () => {
+  it("narrows the list by status, client-side", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     const callsBefore = mockList.mock.calls.length;
-
-    fireEvent.click(screen.getByTestId("glossary-show-draft"));
-
-    expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
+    await pick("glossary-status-filter", "Draft");
+    expect(screen.queryByTestId("glossary-item-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-2")).toBeInTheDocument();
+    expect(screen.queryByTestId("glossary-item-3")).not.toBeInTheDocument();
     expect(mockList.mock.calls.length).toBe(callsBefore);
   });
 
-  it("remembers the choice in localStorage and restores it", async () => {
+  it("narrows the list by grounding, in the words findings use", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    await pick("glossary-grounding-filter", "Grounded · path pending approval");
+    const list = screen.getByTestId("glossary-list");
+    expect(within(list).queryByTestId("glossary-item-1")).not.toBeInTheDocument();
+    expect(within(list).getByTestId("glossary-item-2")).toBeInTheDocument();
+    await pick("glossary-grounding-filter", "Not grounded");
+    expect(within(list).getByTestId("glossary-item-3")).toBeInTheDocument();
+    expect(within(list).queryByTestId("glossary-item-2")).not.toBeInTheDocument();
+  });
+
+  it("remembers the choices in localStorage and restores them", async () => {
     const { unmount } = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    fireEvent.click(screen.getByTestId("glossary-show-draft"));
-    expect(window.localStorage.getItem(scopedKey("glossary.showDraft"))).toBe("false");
+    await pick("glossary-status-filter", "Approved");
+    expect(window.localStorage.getItem(scopedKey("glossary.status"))).toBe("approved");
     unmount();
 
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    expect(screen.getByTestId("glossary-show-draft")).not.toBeChecked();
     expect(screen.queryByTestId("glossary-item-2")).not.toBeInTheDocument();
   });
 });

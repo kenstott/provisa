@@ -207,12 +207,17 @@ async def test_retiring_moves_the_columns_to_the_successor_and_hides_the_term_fr
         assert detail["status"] == "retired" and detail["refs"] == []
         assert detail["status_reason"] == "Renamed."
         assert await tools.search_terms(state, "analyst", "customer") == []
+        await glossary_router.approve_term(_request(), client)  # a steward's choice (REQ-1387)
         assert [h["name"] for h in await tools.search_terms(state, "analyst", "client")] == [
             "client"
         ]
         restored = await glossary_router.restore_term(_request(), customer)
         assert restored["status"] == "draft"  # an empty Concept: its columns stayed on client
-        assert notified[-2:] == ["acme:ontology term retired", "acme:ontology term restored"]
+        assert notified[-3:] == [
+            "acme:ontology term retired",
+            "acme:ontology term approved",
+            "acme:ontology term restored",
+        ]
 
 
 async def test_edge_type_is_correctable_in_place(control_plane, monkeypatch):
@@ -362,11 +367,13 @@ async def test_mcp_search_terms_requires_role_and_returns_refs(control_plane, mo
             roles={"analyst": {"domain_access": ["*"]}},
         )
         customer = await _term_id("customer")
-        # Undefined terms are proposals; the search surface only offers defined ones.
+        # Draft terms are proposals; the search surface offers what a steward approved.
         assert await tools.search_terms(state, "analyst", "customer") == []
         await glossary_router.update_term(
             _with_json(_request(), {"definition": "The buyer."}), customer
         )
+        assert await tools.search_terms(state, "analyst", "customer") == []
+        await glossary_router.approve_term(_request(), customer)
         hits = await tools.search_terms(state, "analyst", "customer")
         assert [t["name"] for t in hits] == ["customer"]
         assert hits[0]["refs"][0]["column_name"] == "cust_id"

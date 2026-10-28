@@ -38,7 +38,7 @@ import { fetchSettings, profileTable, runSql } from "../api/admin";
 import { downloadModelReport } from "../api/modelReport";
 import type { PlatformSettings } from "../api/admin";
 import {
-  useTables,
+  useTableDetails,
   useSources,
   useDomains,
   useRoles,
@@ -108,6 +108,9 @@ import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
 import { matchesQuery } from "../lib/searchItems";
 
+const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
+  Object.fromEntries(cols.map((c) => [c.name, c.dataType]));
+
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -119,7 +122,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     loading: tablesLoading,
     error: tablesError,
     refetch: refetchTables,
-  } = useTables();
+  } = useTableDetails();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
@@ -131,7 +134,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showErd, setShowErd] = useState(false);
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
-  const getAvailableColumnsMetadata = useAvailableColumnsMetadataLazy();
+  const {
+    fetchColumns: getAvailableColumnsMetadata,
+    late: lateColumns,
+    starting: columnsStarting,
+    startingTimedOut: columnsStartingTimedOut,
+  } = useAvailableColumnsMetadataLazy();
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
   const getColumnDependents = useColumnDependents();
@@ -542,12 +550,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setEditingColumnTypes({});
     getAvailableColumnsMetadata(t.sourceId, t.schemaName, t.tableName)
       .then((meta) => {
-        const map: Record<string, string> = {};
-        for (const c of meta) map[c.name] = c.dataType;
-        setEditingColumnTypes(map);
+        if (meta) setEditingColumnTypes(columnTypes(meta));
       })
       .catch(() => {});
   };
+
+  // The types of a source that was still starting arrive once its server answers.
+  useEffect(() => {
+    if (
+      lateColumns &&
+      lateColumns.sourceId === editingTable?.sourceId &&
+      lateColumns.schemaName === editingTable.schemaName &&
+      lateColumns.tableName === editingTable.tableName
+    ) {
+      setEditingColumnTypes(columnTypes(lateColumns.columns));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applied once per answer
+  }, [lateColumns]);
 
   const cancelEditing = () => {
     setEditingTable(null);
@@ -859,6 +878,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         tables={tables}
         roles={roles}
         getAvailableColumnsMetadata={getAvailableColumnsMetadata}
+        lateColumns={lateColumns}
+        columnsStarting={columnsStarting}
+        columnsStartingTimedOut={columnsStartingTimedOut}
         suggestTableAlias={suggestTableAlias}
         onContinue={startCreating}
         onCancel={() => setShowForm(false)}

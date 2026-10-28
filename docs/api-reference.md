@@ -1374,8 +1374,8 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | List terms, each with its `status` and `findings` count. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
-| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, status, physical refs, typed edges, experts, tags |
+| `GET` | `/admin/glossary/terms` | List terms, each with its `status`, its `grounding`, `agent_visible` and its `findings` count. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, status, grounding, physical refs, typed edges, experts, tags, and for a `grounded_pending` term the drafts whose approval grounds it (`pending_on`) |
 | `POST` | `/admin/glossary/terms` | Create a Concept, a term with no columns or tables |
 | `PATCH` | `/admin/glossary/terms/{term_id}` | Rename, set the definition, set a Concept's domains, or toggle export exclusion |
 | `DELETE` | `/admin/glossary/terms/{term_id}` | Delete a term that holds no columns |
@@ -1383,7 +1383,12 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 | `GET` | `/admin/glossary/terms/{term_id}/tables` | List the tables a Class grounds |
 | `POST` | `/admin/glossary/terms/{term_id}/tables` | Ground a table on the term, making it the table's Class |
 | `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | Unground a table; its keys return to its proposed Class |
-| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Deprecate a live term |
+| `POST` | `/admin/glossary/terms/{term_id}/approve` | Approve a draft term; it needs a definition |
+| `GET` | `/admin/glossary/approvable` | The defined, grounded drafts you may approve together |
+| `POST` | `/admin/glossary/approve` | Approve several such drafts together: `{"term_ids": [...]}`. One that isn't such a draft refuses the batch |
+| `GET` | `/admin/glossary/terms/{term_id}/impact` | What `action` (`approve`, `retire` with `successor`, or `bind` with `table_id` and optional `column_name`) would change, changing nothing |
+| `GET` | `/admin/glossary/stewardship` | The terms agents can see, the `grounded_pending` terms each waiting on one approval, and the approved terms that reach no data |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Deprecate an approved term |
 | `POST` | `/admin/glossary/terms/{term_id}/retire` | Retire a term, moving its columns or tables to a successor |
 | `POST` | `/admin/glossary/terms/{term_id}/restore` | Clear a retirement or a curator's deprecation |
 | `GET` | `/admin/glossary/terms/{term_id}/applied-history` | A retired term's columns and tables as of the commit before its retirement |
@@ -1446,7 +1451,7 @@ Deleting a term that still holds columns returns `400 glossary.invalid`, naming 
 {"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
 ```
 
-`reason` is required. `retire_on` is optional and can't be in the past; on that date the org's scheduler retires the term. Only a live term can be deprecated.
+`reason` is required. `retire_on` is optional and can't be in the past; on that date the org's scheduler retires the term. Only an approved term can be deprecated.
 
 **`POST /admin/glossary/terms/{term_id}/retire` body:**
 
@@ -1519,7 +1524,7 @@ Response:
 search_terms(query, role=None, limit=25)
 ```
 
-Searches term names and definitions with a case-insensitive substring match, up to `limit` results. Each result is the full term detail: `name`, `definition`, `is_abstract`, `deprecated`, physical refs (with `source_id`, `schema_name`, `table_name`, `column_name`), typed edges, and expert assignments.
+Searches term names and definitions with a case-insensitive substring match, up to `limit` results, among the terms an agent may see: approved terms on a path to data, and defined drafts on a path that holds an approved term. Each result has `name`, `definition`, `status` (`approved` or `draft`), `grounding` (`grounded` or `grounded_pending`), physical refs (with `source_id`, `schema_name`, `table_name`, `column_name`), `bindings`, `experts`, `domains` and `paths`. Each path runs from the term down to the first term holding a binding. A step is a named term, `{term_id, name, status}`, or an undefined term as an anonymous `{hop}`, distinct per term; the data end also lists its `bindings`.
 
 Use `search_terms` before writing SQL to find every physical field that represents a concept by name. For example, searching `"order date"` returns the term and all `order_dt`, `orderDate`, `ORDER_DATE` columns across every registered table.
 
@@ -1553,11 +1558,11 @@ The glossary term graph is included in every `MetadataSnapshot` built by `build_
 
 The export applies the same filters as the rest of the snapshot:
 
-- Only live terms publish: in service, defined, and connected to a term whose column or table publishes.
-- A column publishes when it passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld). A term whose refs are all withheld this way isn't grounded for export.
-- A Concept publishes when it reaches a published term through the relationship graph.
+- Only approved terms publish, each with its grounding (`grounded`, `grounded_pending` or `not_grounded`), judged on the columns and tables that publish.
+- A column publishes when it passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld). A term whose refs are all withheld this way is withheld with them.
+- An approved Concept publishes with its grounding, `not_grounded` when it reaches no published term.
 - A term marked `export_excluded` is withheld outright.
-- A deprecated term publishes with its `status`, `status_reason` and `retire_on`, for each catalog to map to its own deprecation marker.
+- An approved term a curator deprecated since publishes with its `status`, `status_reason` and `retire_on`, for each catalog to map to its own deprecation marker.
 - An edge between two terms publishes only when both endpoint terms publish.
 
 Every vendor adapter publishes the term graph natively, into a glossary container that Provisa owns and creates idempotently, and never into an existing catalog glossary:

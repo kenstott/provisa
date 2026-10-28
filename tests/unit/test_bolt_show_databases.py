@@ -272,6 +272,24 @@ class TestUseSelectsRoleAndView:
         result = session._resolve_db("provisa_sales")
         assert result == ("sales", False)
 
+    def test_use_neo4j_resolves_like_provisa(self):
+        """REQ-807: 'neo4j' names the home database exactly as 'provisa' does."""
+        session, _ = _make_session(["sales", "finance"])
+        assert session._resolve_db("neo4j") == session._resolve_db("provisa") == ("sales", False)
+
+    def test_use_unknown_name_is_still_not_found(self):
+        """REQ-807: neo4j is an alias, not a fallback; other names stay DatabaseNotFound."""
+        session, _ = _make_session(["sales", "finance"])
+        for name in ("Neo4j", "neo4j2", "bogus", "neo4j_sales"):
+            assert session._resolve_db(name) is None
+
+    def test_show_databases_does_not_list_neo4j(self):
+        """REQ-807: SHOW DATABASES lists provisa_<role> forms only; the alias is not listed."""
+        from provisa.bolt.session import _show_databases_rows
+
+        _, rows = _show_databases_rows(["sales", "finance"])
+        assert "neo4j" not in [r[0] for r in rows]
+
     def test_use_provisa_ops_sales_selects_sales_ops_view(self):
         """REQ-807: ':use provisa_ops_sales' → role=sales, include_ops=True."""
         session, _ = _make_session(["sales", "finance"])

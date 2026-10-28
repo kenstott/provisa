@@ -660,10 +660,13 @@ def build_mcp_server(state: Any):
     async def search_terms(query: str, role: str | None = None, limit: int = 25) -> list[dict]:
         """Look up business-glossary terms by name or definition (REQ-1387).
 
-        Each hit carries the term's definition, its physical refs (every table/column
-        that means this concept), typed relationships to other terms, and the experts
-        who can answer questions about it. Use it to ground vocabulary before
-        composing SQL — e.g. find every physical field that means "order date".
+        Only terms a person approved, and defined drafts on a path to data through an
+        approved term (status "draft"), are returned. Each hit carries its status, its
+        grounding (grounded, or grounded_pending when its path to data runs through terms
+        not yet approved), its definition, its physical refs and bindings, its experts, and
+        its paths down to data, where an undefined term appears only as an anonymous hop.
+        Use it to find data and cite where it came from before composing SQL — e.g. find
+        every physical field that means "order date".
         """
         return await tools.search_terms(state, _role(role), query, limit=limit)
 
@@ -841,11 +844,19 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def approve_glossary_term(term_id: int, role: str | None = None) -> dict:
+        """Approve a draft ontology term; it needs a definition. Approval is a person's choice."""
+        resolved = _role(role)
+        return await tools.change_glossary_term_status(
+            state, resolved, _capability_request(resolved), term_id, "approve", {}
+        )
+
+    @_tool
     async def deprecate_glossary_term(
         term_id: int, reason: str, retire_on: str | None = None, role: str | None = None
     ) -> dict:
-        """Deprecate a live ontology term, with a reason and an optional planned retirement date
-        (ISO). It stays in service until then, and is retired on that date."""
+        """Deprecate an approved ontology term, with a reason and an optional planned retirement
+        date (ISO), on which it is retired."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state,
@@ -886,7 +897,8 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def restore_glossary_term(term_id: int, role: str | None = None) -> dict:
-        """Restore a retired or deprecated ontology term: its status is computed again."""
+        """Restore a retired or deprecated ontology term: a deprecated one is approved again, a
+        retired one a draft."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state, resolved, _capability_request(resolved), term_id, "restore", {}

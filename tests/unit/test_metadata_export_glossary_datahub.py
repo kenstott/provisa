@@ -57,7 +57,8 @@ def _term(term_id: int, name: str, *, deprecated: bool = False) -> GlossaryTermA
         definition=f"definition of {name}",
         is_abstract=False,
         deprecated=False,
-        status="deprecated" if deprecated else "live",
+        status="deprecated" if deprecated else "approved",
+        grounding="grounded",
         experts=("alice",) if name == "customer" else (),
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )

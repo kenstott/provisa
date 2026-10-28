@@ -193,7 +193,7 @@ export function GraphLegend({ graph }: { graph: GraphData }) {
         );
       })}
       {statuses &&
-        (["live", "draft", "deprecated", "retired"] as const).map((st) => (
+        (["approved", "draft", "deprecated", "retired"] as const).map((st) => (
           <span
             key={st}
             className={`g3d-legend-status ${labelClass(st)}`.trim()}

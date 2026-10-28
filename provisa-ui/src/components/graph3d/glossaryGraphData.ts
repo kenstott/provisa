@@ -14,8 +14,9 @@
 // (ontology._term_edges, read with the term); and the data products with their datasets, the datasets' columns and
 // the terms those columns are -- turned into the graph's nodes and edges.
 
-import { termRole } from "../../api/glossary";
+import { termRole, type TermGrounding } from "../../api/glossary";
 import { NEIGHBOURHOOD } from "./neighbourhood";
+import { TERM_STATUSES } from "./graphModel";
 import {
   operation,
   rootField,
@@ -49,15 +50,11 @@ export const ENTERPRISE_DOMAIN = "*";
  * a label. */
 const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
 
-/** The term standings ``hidden`` leaves out, as conditions on glossary_terms_meta's columns. */
-const NOT_STATUS: Record<TermStatus, Where> = {
-  retired: { retired: { eq: false } },
-  deprecated: { _or: [{ retired: { eq: true } }, { deprecated: { eq: false } }] },
-  live: { _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: false } }] },
-  draft: {
-    _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: true } }],
-  },
-};
+/** The term standings ``hidden`` leaves out, as conditions on the ontology's status column
+ * (REQ-1387: set by people). */
+const notStatus = (st: TermStatus): Where => ({
+  status: { in: TERM_STATUSES.filter((other) => other !== st) },
+});
 
 const all = (conds: Where[]): Where | undefined =>
   conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { _and: conds };
@@ -96,7 +93,7 @@ function termKept(s: QueryScope): Where | undefined {
         };
   return all([
     ...(domainWhere ? [domainWhere] : []),
-    ...s.hiddenStatuses.map((st) => NOT_STATUS[st]),
+    ...s.hiddenStatuses.map(notStatus),
   ]);
 }
 
@@ -151,7 +148,8 @@ const TERM_FIELDS = [
   "ref_count",
   "deprecated",
   "retired",
-  "live",
+  "status",
+  "grounding",
   "identity_gap",
 ];
 
@@ -399,7 +397,9 @@ export interface TermRow {
   ref_count: number;
   deprecated: boolean;
   retired: boolean;
-  live: boolean;
+  // REQ-1387: set by people, and computed from the graph.
+  status: TermStatus;
+  grounding: TermGrounding;
   // REQ-2130/2141: grounded in tables that same-entity relationships do not all join; absent
   // when the role cannot read it.
   identity_gap?: boolean;
@@ -480,13 +480,10 @@ export interface TermEdgeRow {
   rel_type: string;
 }
 
-/** A term's standing (REQ-1387: a draft is in service and not live). The graph names a term by its
- * title and marks its standing by style; it carries neither the term's definition nor reasons. */
+/** A term's standing: its status, set by people (REQ-1387). The graph names a term by its title
+ * and marks its standing by style; it carries neither the term's definition nor reasons. */
 export function standing(t: TermRow): TermStatus {
-  if (t.retired) return "retired";
-  if (t.deprecated) return "deprecated";
-  if (t.live) return "live";
-  return "draft";
+  return t.status;
 }
 
 /**

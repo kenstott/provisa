@@ -72,10 +72,13 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         FROM d
         JOIN s ON s.term_id = d.term_id
     """,
-    # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
-    # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
-    # in service, defined, and connected over in-service edges to a term holding a physical ref --
-    # a column, or a whole table (REQ-1387, GROUNDED TO A TABLE).
+    # REQ-1584: the business glossary as queryable metadata. `grounding` restates
+    # provisa.core.glossary.term_grounding in SQL rather than approximating it (REQ-1387): a term is
+    # grounded when some path down (in each edge type's direction: conducting_edges) to a term
+    # holding a physical ref -- a column, or a whole table (REQ-1387, GROUNDED TO A TABLE) -- has no
+    # draft term strictly between, grounded_pending when every path has one, and not_grounded when
+    # no path over in-service terms reaches data.
+    # `status` is the human-set one: draft, approved, deprecated or retired.
     # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
     # ontology schema is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
     # `rooted` here counts EVERY ref, which is the repository's reading of it; the exporter's
@@ -87,29 +90,52 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     "_terms": """
         CREATE OR REPLACE VIEW _terms_ontology AS
         WITH RECURSIVE in_service AS (
-            SELECT id FROM glossary_terms WHERE retired = FALSE AND deprecated = FALSE
+            SELECT id FROM glossary_terms
+            WHERE retired = FALSE AND deprecated = FALSE AND deprecation_asserted = FALSE
         ),
+        rooted AS (
+            SELECT r.term_id AS id
+            FROM (SELECT term_id FROM glossary_term_refs
+                  UNION
+                  SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
+            JOIN in_service s ON s.id = r.term_id
+        ),
+        -- Each conducting edge as (a, b): b is directly above a on a path down to data. A kind,
+        -- part or valid value (from_term_id) sits below the term it narrows (to_term_id); a
+        -- synonym conducts both ways; every other edge type conducts nothing (the same rule as
+        -- provisa.core.glossary.NARROWING_EDGE_TYPES and
+        -- EQUIVALENCE_EDGE_TYPES).
         conducting_edges AS (
             SELECT e.from_term_id AS a, e.to_term_id AS b
             FROM glossary_term_edges e
             JOIN in_service sa ON sa.id = e.from_term_id
             JOIN in_service sb ON sb.id = e.to_term_id
+            WHERE e.rel_type IN ('KIND_OF', 'PART_OF', 'VALID_VALUE_OF', 'SYNONYM_OF')
+              AND e.from_term_id <> e.to_term_id
             UNION ALL
             SELECT e.to_term_id, e.from_term_id
             FROM glossary_term_edges e
             JOIN in_service sa ON sa.id = e.from_term_id
             JOIN in_service sb ON sb.id = e.to_term_id
+            WHERE e.rel_type = 'SYNONYM_OF'
+              AND e.from_term_id <> e.to_term_id
         ),
         grounded AS (
-            SELECT DISTINCT r.term_id AS id
-            FROM (SELECT term_id FROM glossary_term_refs
-                  UNION
-                  SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
-            JOIN in_service s ON s.id = r.term_id
+            SELECT id FROM rooted
             UNION
             SELECT ce.b
             FROM grounded g
             JOIN conducting_edges ce ON ce.a = g.id
+        ),
+        -- Only a binding (the data end) or an approved term may stand between a term and data.
+        clean AS (
+            SELECT id FROM rooted
+            UNION
+            SELECT ce.b
+            FROM clean c
+            JOIN conducting_edges ce ON ce.a = c.id
+            JOIN glossary_terms via ON via.id = c.id
+            WHERE via.approved OR c.id IN (SELECT id FROM rooted)
         ),
         -- A class term grounded in several tables is a curation gap until same-entity
         -- relationships join them all -- every one reached from one of them (identity.py's
@@ -140,15 +166,13 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
                       OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
                     THEN TRUE ELSE FALSE END AS is_rooted,
-               CASE WHEN t.id IN (SELECT id FROM grounded)
-                     AND TRIM(COALESCE(t.definition, '')) <> ''
-                    THEN TRUE ELSE FALSE END AS live,
                t.tenant_id,
-               CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
+               CASE WHEN t.id IN (SELECT id FROM clean) THEN 'grounded'
+                    WHEN t.id IN (SELECT id FROM grounded) THEN 'grounded_pending'
+                    ELSE 'not_grounded' END AS grounding,
                CASE WHEN t.retired THEN 'retired'
                     WHEN t.deprecated OR t.deprecation_asserted THEN 'deprecated'
-                    WHEN t.id IN (SELECT id FROM grounded)
-                     AND TRIM(COALESCE(t.definition, '')) <> '' THEN 'live'
+                    WHEN t.approved THEN 'approved'
                     ELSE 'draft' END AS status,
                t.status_reason, t.retire_on,
                CASE WHEN (SELECT COUNT(*) FROM registered_tables r WHERE r.class_term_id = t.id)

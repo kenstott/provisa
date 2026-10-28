@@ -25,7 +25,7 @@ import { ActionIcon, Alert, Button, Group, Loader, Text, TextInput } from "@mant
 import { RefreshCw } from "lucide-react";
 import { PreviewRefused, previewTable, runSql } from "../api/admin";
 import type { ResultRedirect } from "../types/resultRedirect";
-import type { RegisteredTable } from "../types/admin";
+import type { ListedTable } from "../types/admin";
 import { ResultsGrid } from "../pages/sql/ResultsGrid";
 import type { ProvenanceEntry } from "../pages/sql/exportXlsx";
 import { useResultsGrid } from "../pages/sql/useResultsGrid";
@@ -56,7 +56,7 @@ interface PageResult {
 }
 
 interface GovernedTableViewerProps {
-  table: RegisteredTable;
+  table: ListedTable;
   /** Title + refresh row (the Reports viewer shows it; the modal has its own title). */
   showTitle?: boolean;
   /** The role the rows are read as -- one role, or the "Role: All" set (REQ-1620): a DRAFT's

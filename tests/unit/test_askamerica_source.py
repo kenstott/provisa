@@ -18,6 +18,7 @@ attached source's is. No in-process engine, no terminal of its own."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -608,6 +609,9 @@ def adapter(monkeypatch):
         def catalog_preparing(self):
             return False
 
+        def discovery_read(self):
+            return contextlib.nullcontext()
+
     def _answers(sql):
         # Rows as the server returns them: its column labels are upper case (ORACLE lexer), so
         # a reader that asks a row for "table_name" finds nothing.
@@ -671,7 +675,7 @@ async def test_discovery_answers_while_the_adapters_catalog_is_still_being_prepa
 
 def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
     """A listening server that cancels the read it held queued, as the adapter answers a
-    statement it held behind its catalog's preparation (SQLSTATE 57014)."""
+    statement it held past its queue bound behind its catalog's preparation (SQLSTATE 57014)."""
     import asyncpg
 
     statements: list[str] = []
@@ -686,10 +690,13 @@ def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
         def catalog_preparing(self):
             return False
 
+        def discovery_read(self):
+            return contextlib.nullcontext()
+
     class _Cancelling:
         async def fetch(self, sql, *args, timeout=None):
             statements.append(sql)
-            raise asyncpg.QueryCanceledError("canceling statement because the client disconnected")
+            raise asyncpg.QueryCanceledError("canceling statement because the server is busy")
 
         async def close(self):
             statements.append("closed")
@@ -717,7 +724,7 @@ async def test_a_read_cancelled_once_the_catalog_is_prepared_is_the_servers_answ
     import asyncpg
 
     statements = _cancelling_server(monkeypatch, catalog_pending=False)
-    with pytest.raises(asyncpg.QueryCanceledError, match="client disconnected"):
+    with pytest.raises(asyncpg.QueryCanceledError, match="server is busy"):
         await pr.adapter_tables(_source(), "sec")
     assert statements[-1] == "closed"
 
@@ -771,6 +778,101 @@ def test_a_catalog_is_being_prepared_only_while_its_first_query_is_unanswered():
     assert not replica.catalog_preparing()
     replica._catalog_ready, replica._catalog_error = False, RuntimeError("bad model")
     assert not replica.catalog_preparing()
+
+
+def _replica_of(source_type: str = "govdata") -> pr.ConnectorReplica:
+    replica = pr.ConnectorReplica.__new__(pr.ConnectorReplica)
+    replica._source = SimpleNamespace(id="aa", type=source_type)
+    replica._start_lock = threading.Lock()
+    replica._server_lock = threading.Lock()
+    replica._server = None
+    replica._retired = False
+    replica._discovery_reads = 0
+    return replica
+
+
+def test_a_second_discovery_read_is_starting_while_the_first_holds_the_server():
+    replica = _replica_of()
+    with replica.discovery_read():
+        with pytest.raises(pr.SourceStillStartingError) as raised:
+            with replica.discovery_read():
+                raise AssertionError("a second read was let through")
+    assert raised.value.answering_read and not raised.value.preparing_catalog
+    assert "is listening" in str(raised.value) and str(raised.value).startswith("STARTING:")
+    with replica.discovery_read():  # the first was answered: the server is free again
+        pass
+
+
+def test_a_retired_replica_refuses_a_discovery_read():
+    replica = _replica_of()
+    replica.retire()
+    with pytest.raises(pr.ServerRetired):
+        with replica.discovery_read():
+            raise AssertionError("a retired replica let a read through")
+
+
+def test_a_retire_during_a_discovery_read_waits_for_nothing():
+    replica = _replica_of()
+    with replica.discovery_read():
+        began = time.monotonic()
+        replica.retire()
+        assert time.monotonic() - began < 1
+        with pytest.raises(pr.ServerRetired):
+            with replica.discovery_read():
+                raise AssertionError("a retired replica let a read through")
+    with pytest.raises(pr.ServerRetired):  # the read ended: still retired
+        with replica.discovery_read():
+            pass
+
+
+def test_a_discovery_read_that_fails_frees_the_server():
+    replica = _replica_of()
+    with pytest.raises(OSError):
+        with replica.discovery_read():
+            raise OSError("connection refused")
+    with replica.discovery_read():
+        pass
+
+
+@pytest.mark.asyncio
+async def test_no_read_is_sent_behind_another_read_of_ours(monkeypatch):
+    """The adapter runs one statement at a time and keeps a signed-in client's statement queued
+    for as long as the client is connected (engine-v0.123.2): a listing sent while the catalog
+    index's read of a fresh server is unanswered waited that read out (a minute and more). It is
+    answered STARTING at once, sending nothing, and the first read is unaffected."""
+    import asyncio
+
+    replica = _replica_of()
+    replica._catalog_ready, replica._catalog_error, replica._catalog_thread = False, None, None
+    replica.endpoint = lambda *, timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)
+    first_sent = asyncio.Event()
+    answer = asyncio.Event()
+    connects: list[str] = []
+
+    class _Slow:
+        async def fetch(self, sql, *args, timeout=None):
+            first_sent.set()
+            await answer.wait()
+            return [("filings",)]
+
+        async def close(self):
+            connects.append("closed")
+
+    async def _connect(host, port, password):
+        connects.append("connect")
+        return _Slow()
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    first = asyncio.create_task(pr.adapter_tables(_source(), "sec"))
+    await first_sent.wait()
+    with pytest.raises(pr.SourceStillStartingError, match="is listening") as raised:
+        await pr.adapter_tables(_source(), "weather")
+    assert raised.value.answering_read
+    assert connects == ["connect"]  # the second read opened no connection
+    answer.set()
+    assert await first == ["filings"]
+    assert await pr.adapter_tables(_source(), "sec") == ["filings"]  # asked again: answered
 
 
 @pytest.mark.asyncio

@@ -21,23 +21,26 @@ from tests.unit.test_glossary_class_grounding import _surface
 
 
 @pytest.mark.asyncio
-async def test_live_terms_ground_classes_and_columns(control_plane, monkeypatch):
+async def test_approved_terms_ground_classes_and_columns(control_plane, monkeypatch):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         async with db.acquire() as conn:
             await glossary_repo.ground_table(conn, ids["party"], ids["customers"])
             note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
             assert note is not None
 
-            # Neither is defined yet: proposals, offered nowhere.
+            # Neither is approved yet: proposals, offered nowhere.
             assert await glossary_repo.vocabulary_refs(conn) == ({}, {})
 
             await glossary_repo.set_definition(conn, ids["party"], "Someone we deal with.")
             await glossary_repo.set_definition(conn, note["id"], "A free-text remark.")
+            assert await glossary_repo.vocabulary_refs(conn) == ({}, {})  # defined, still drafts
+            await glossary_repo.approve_term(conn, ids["party"], by=None)
+            await glossary_repo.approve_term(conn, note["id"], by=None)
             table_terms, column_terms = await glossary_repo.vocabulary_refs(conn)
             assert table_terms == {ids["customers"]: "party"}
             assert column_terms[(ids["customers"], "note")] == [note["name"]]
 
-            # Retired, party's table goes to its successor, which is not defined yet (REQ-2144).
+            # Retired, party's table goes to its successor, which is not approved (REQ-2144).
             client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
             await glossary_repo.retire_term(
                 conn, ids["party"], reason="renamed", successor=client, by=None

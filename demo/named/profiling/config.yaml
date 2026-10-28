@@ -376,6 +376,7 @@ relationships:
 # profile's columns derive.
 glossary_terms:
 - name: data profile
+  approve: true
   definition: 'A recorded description of what a table holds: for each column its nulls, distinct values, range, distribution and the shapes its values take, measured by a profile run.'
   domains:
   - harbor
@@ -383,6 +384,7 @@ glossary_terms:
   - to: null share
     rel_type: RELATED_TO
 - name: plausible type
+  approve: true
   definition: 'What a column actually holds -- an email, a phone number, a postal code, a category -- inferred from its profile, name and tags. A label, not a value.'
   domains:
   - harbor
@@ -390,6 +392,7 @@ glossary_terms:
   - to: data profile
     rel_type: PART_OF
 - name: value shape
+  approve: true
   definition: 'A value with each character reduced to its class: an upper-case letter A, a lower-case one a, a digit 9. A column whose values take several shapes holds several formats.'
   domains:
   - harbor
@@ -397,6 +400,7 @@ glossary_terms:
   - to: data profile
     rel_type: PART_OF
 - name: duplicate row
+  approve: true
   definition: 'A row that repeats another in every profiled column -- often one customer entered twice under two numbers.'
   domains:
   - harbor
@@ -404,6 +408,7 @@ glossary_terms:
   - to: data profile
     rel_type: PART_OF
 - name: placeholder value
+  approve: true
   definition: 'A value written where the real one was unknown -- 1900-01-01 for a date, 999999.99 for an amount -- that looks valid and distorts every measure taken over it.'
   domains:
   - harbor

@@ -15,11 +15,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { DataProductsQuery, SourcesQuery, TablesQuery } from "../admin.graphql";
+import { DataProductsQuery, SourcesQuery, TableRowsQuery } from "../admin.graphql";
 
 const answers = new Map<unknown, unknown>([
   [SourcesQuery, { sources: [{ id: "shop-db" }] }],
-  [TablesQuery, { tables: [{ sourceId: "shop-db", tableName: "orders" }] }],
+  [TableRowsQuery, { tables: [{ sourceId: "shop-db", tableName: "orders" }] }],
   [DataProductsQuery, { dataProducts: [{ id: "p1" }] }],
 ]);
 const executed: unknown[] = [];
@@ -112,7 +112,7 @@ describe("what the org has, read for the tour", () => {
   // past the menu's check (run 40692080291).
   it("reads the cached catalog before the server", () => {
     renderHook(() => useOrgHas());
-    for (const document of [SourcesQuery, TablesQuery, DataProductsQuery]) {
+    for (const document of [SourcesQuery, TableRowsQuery, DataProductsQuery]) {
       expect(policies.get(document)).toBe("cache-first");
     }
   });

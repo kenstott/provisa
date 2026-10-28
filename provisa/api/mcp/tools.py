@@ -521,9 +521,8 @@ async def list_glossary_terms(
     state: Any, role: str, request: Any, q: str | None = None, include_deprecated: bool = True
 ) -> list[dict]:  # REQ-1835
     """The org's ontology terms, optionally filtered by a search string. Each result carries
-    `status` -- draft (not admitted), live (admitted: defined and grounded to a real column, or
-    edge-connected to one), deprecated or retired -- so you can tell them apart without a second
-    call; see create/update below for what 'finalizing' a term means."""
+    `status`, set by people (draft, approved, deprecated or retired), and `grounding`, computed
+    (grounded, grounded_pending or not_grounded)."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import (
         _require_glossary_read,
@@ -550,11 +549,10 @@ async def create_glossary_term(
     definition: str | None = None,
     domains: list[str] | None = None,
 ) -> dict:  # REQ-1835
-    """Create a new concept: an ontology term naming no column or table yet. It starts
-    a draft — there is no separate live/finalized flag to flip: a term is 'live' automatically
-    once it is grounded, either by a real registered column landing on it (sync happens on table
-    registration, outside your control) or by connecting it via add_glossary_term_edge to a term
-    that is already live. If the deployment is multi-domain, at least one domain is required."""
+    """Create a new concept: an ontology term naming no column or table yet. It starts a draft,
+    which a steward approves once it has a definition; its grounding follows from its edges
+    (add_glossary_term_edge) and bindings. If the deployment is multi-domain, at least one domain
+    is required."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import _declared_domains, _notify, _require_glossary_rw
     from provisa.core.repositories import glossary as glossary_repo
@@ -621,7 +619,8 @@ async def update_glossary_term(
 async def change_glossary_term_status(
     state: Any, role: str, request: Any, term_id: int, action: str, body: dict
 ) -> dict:  # REQ-2144
-    """Deprecate, retire or restore an ontology term -- the one status path the API has too."""
+    """Approve, deprecate, retire or restore an ontology term -- the one status path the API has
+    too."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
     from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, change_status
@@ -649,7 +648,8 @@ async def change_glossary_term_status(
 async def list_glossary_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
     """What a curator should look at in the ontology: each term with its findings, each
     {kind, message, params} -- unlinked_tables, class_and_attribute, tag_wrong_kind,
-    retirement_blocked, no_data. A plain draft term is not a finding."""
+    retirement_blocked, no_data, approved_not_grounded, path_pending. A plain draft term is not a
+    finding."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import _authority, _require_glossary_read, term_findings
     from provisa.core.glossary import readable_term
@@ -1595,12 +1595,11 @@ async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> lis
 
 
 async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) -> list[dict]:
-    """Business-ontology term lookup (REQ-1387): grounded vocabulary for agent surfaces.
+    """Business-ontology term lookup (REQ-1387): the vocabulary an agent may see.
 
-    Matches term names and definitions; each hit carries its physical refs (which
-    tables/columns mean this concept), typed relationships to other terms, and the
-    experts who can answer questions about it. v1 scope is documentation and
-    discovery — term membership does not drive policy.
+    Matches term names and definitions among approved terms on a path to data and defined drafts
+    on a path holding an approved term; each hit carries its status, grounding, physical refs,
+    experts and its paths down to data, an undefined term on them an anonymous hop.
     """
     role = require_role(role, state)
     if not query or not query.strip():
