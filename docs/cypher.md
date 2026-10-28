@@ -262,7 +262,7 @@ If the session holds `Note` nodes, this returns model customers joined to their 
 
 The session belongs to the principal on every surface: Bolt, HTTP Cypher and MCP. It is stored per principal and kept for `temp_tables.graph_session_retention_days` after its last use. It ends when the principal clears it, when the principal's rights change, or when the retention expires.
 
-One session store serves all languages over that connection: a pgwire temp table is also an ephemeral table to Cypher, and a Cypher session node is a temp table to SQL.
+A SQL temporary table belongs to its own connection and is not part of the graph session; only the graph session is shared across a principal's connections.
 
 ### Clearing the session
 
