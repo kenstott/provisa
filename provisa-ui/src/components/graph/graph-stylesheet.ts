@@ -29,6 +29,35 @@ interface StylesheetRefs {
   relLineOverridesRef: { current: Record<string, RelLineOverride> };
 }
 
+/** The text a node is captioned with: its label property, else its name, else its id. */
+export function nodeCaption(
+  n: GNode | undefined,
+  label: unknown,
+  labelProperty: Record<string, string>,
+): string {
+  if (!n) return String(label ?? "");
+  const prop = labelProperty[n.label];
+  if (prop) return String(n.properties[prop] ?? n.id);
+  return String(n.properties["name"] ?? n.id);
+}
+
+/** Average glyph width as a share of the font size, for the labels' sans-serif face. */
+const GLYPH_EM = 0.58;
+export const CAPTION_FONT_MIN = 6;
+
+/** The font size a caption is drawn at in a node ``available`` pixels wide: ``base`` where it fits,
+ * scaled down to ``min`` where it does not; below that the caption is truncated. */
+export function fitFont(
+  caption: string,
+  available: number,
+  base: number,
+  min = CAPTION_FONT_MIN,
+): number {
+  if (caption.length === 0) return base;
+  const fit = available / (caption.length * GLYPH_EM);
+  return Math.max(min, Math.min(base, fit));
+}
+
 export function buildGraphStylesheet({
   colorOverridesRef,
   sizeOverridesRef,
@@ -43,15 +72,24 @@ export function buildGraphStylesheet({
           const lbl = ele.data("label") as string;
           return colorOverridesRef.current[lbl] ?? labelColor(lbl);
         },
-        label: (ele: CyElement) => {
-          const n = ele.data("_node") as GNode | undefined;
-          if (!n) return String(ele.data("label") ?? "");
-          const prop = labelPropertyRef.current[n.label];
-          if (prop) return String(n.properties[prop] ?? n.id);
-          return String(n.properties["name"] ?? n.id);
-        },
+        label: (ele: CyElement) =>
+          nodeCaption(
+            ele.data("_node") as GNode | undefined,
+            ele.data("label"),
+            labelPropertyRef.current,
+          ),
         color: "#fff",
-        "font-size": 10,
+        // A caption longer than its circle is scaled down to a minimum before it is truncated.
+        "font-size": (ele: CyElement) =>
+          fitFont(
+            nodeCaption(
+              ele.data("_node") as GNode | undefined,
+              ele.data("label"),
+              labelPropertyRef.current,
+            ),
+            ele.width() - 8,
+            10,
+          ),
         "text-valign": "center",
         "text-halign": "center",
         width: (ele: CyElement) => {
@@ -197,7 +235,17 @@ export function buildGraphStylesheet({
           const lbl = ele.data("label") as string;
           return (sizeOverridesRef.current[lbl] ?? 44) / 2;
         },
-        "font-size": 7,
+        "font-size": (ele: CyElement) =>
+          fitFont(
+            nodeCaption(
+              ele.data("_node") as GNode | undefined,
+              ele.data("label"),
+              labelPropertyRef.current,
+            ),
+            ele.width() - 4,
+            7,
+            CAPTION_FONT_MIN - 1,
+          ),
         "text-max-width": (ele: CyElement) => {
           const lbl = ele.data("label") as string;
           return `${(sizeOverridesRef.current[lbl] ?? 44) / 2 - 4}px`;
