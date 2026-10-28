@@ -132,6 +132,7 @@ class Session:
         model: dict[str, tuple[dict[str, str], str]],
         *,
         in_place: bool = True,
+        relationships: list[Any] | None = None,
     ) -> None:
         self.duck = duckdb.connect()
         self.duck.execute("SET TimeZone = 'UTC'")
@@ -143,8 +144,12 @@ class Session:
             if values:
                 self.duck.execute(f"INSERT INTO s.{label.lower()} VALUES {values}")
             nodes[label] = model_node(label, columns)
+        rels = {r.field_name: r for r in relationships or []}
+        aliases: dict[str, list[Any]] = {}
+        for r in rels.values():
+            aliases.setdefault(r.rel_type.upper(), []).append(r)
         self.model = CypherLabelMap(
-            nodes=nodes, relationships={}, nodes_by_table={k: [k] for k in nodes}
+            nodes=nodes, relationships=rels, aliases=aliases, nodes_by_table={k: [k] for k in nodes}
         )
         self.session = TempSession()
         self.state = SimpleNamespace(
