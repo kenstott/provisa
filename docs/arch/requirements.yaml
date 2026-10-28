@@ -89477,31 +89477,51 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     profiler''s classifications) and row rule for the owner to edit and save; the docs give guidance (columns
     that identify someone in combination, small tables, keys that must fake consistently for samples to
     join) and Provisa adds no checks. (Amended 2026-10-28, A PUBLISHED CONTRACT HOLDS ITS PROMISE; CONFORMANCE
-    IS A PROMISE CHECK:) A contract''s schema is read live from its member, so a change to the member could
-    change what a published contract promises without a new version. Publishing a contract version therefore
-    snapshots the member''s schema as it is then: columns, types, and the properties derived from them.
-    Every published contract has a built-in schema-conformance check among its promises (REQ-2157): does
-    the member still match the published snapshot? A column added is additive. A column removed, renamed
-    or retyped is breaking, and so is a column narrowed: a shorter length, a lower precision or scale, a
-    narrower numeric type, or a nullable column made required where the snapshot promised it could be null
-    (or the reverse, where consumers rely on it). Saving a member is never refused. The table view already
-    shows the products a table belongs to, and on save the editor shows the difference from each published
-    snapshot, labelled additive or breaking. [SUPERSEDED by REQ-2158 amendment DRIFT FAILS DATA QUALITY;
-    NOTHING IS RE-VERSIONED, 2026-10-28 -- drift fails the check; the contract is not re-versioned. Kept
-    here for history; do not implement against it.] The data quality steward sets the check''s severity
-    per contract, warn or fail, and triages a failing result: the owner publishes a new version for an intended
-    change, or the member''s change is reverted. [END SUPERSEDED BLOCK] A failing check shows the contract
-    as behind its member, with the difference, in the data quality panel and on the contract. [SUPERSEDED
-    by REQ-2158 amendment DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED, 2026-10-28 -- no version stepper,
-    effective date or publish notification. Kept here for history; do not implement against it.] Published
-    versions are kept: the Contracts panel steps through them with a schema difference between versions.
-    Each version has an effective_from date, so an owner can announce a version before it takes effect.
-    Publishing a new version notifies the product''s consumers by email (REQ-1330). [END SUPERSEDED BLOCK]
-    (Amended 2026-10-28, DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED:) A change to a contracted member
+    IS A PROMISE CHECK:) [SUPERSEDED by REQ-2158 amendment THE CHECKS ARE THE PROMISE; CONTRACT ROWS CARRY
+    A VERSION, 2026-10-28 -- no snapshot and no built-in conformance check; the checks are the promise.
+    Kept here for history; do not implement against it.] A contract''s schema is read live from its member,
+    so a change to the member could change what a published contract promises without a new version. Publishing
+    a contract version therefore snapshots the member''s schema as it is then: columns, types, and the properties
+    derived from them. Every published contract has a built-in schema-conformance check among its promises
+    (REQ-2157): does the member still match the published snapshot? [END SUPERSEDED BLOCK] [SUPERSEDED by
+    REQ-2158 amendment THE CHECKS ARE THE PROMISE; CONTRACT ROWS CARRY A VERSION, 2026-10-28 -- no diff
+    on save. Kept here for history; do not implement against it.] A column added is additive. A column removed,
+    renamed or retyped is breaking, and so is a column narrowed: a shorter length, a lower precision or
+    scale, a narrower numeric type, or a nullable column made required where the snapshot promised it could
+    be null (or the reverse, where consumers rely on it). Saving a member is never refused. The table view
+    already shows the products a table belongs to, and on save the editor shows the difference from each
+    published snapshot, labelled additive or breaking. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2158 amendment
+    DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED, 2026-10-28 -- drift fails the check; the contract
+    is not re-versioned. Kept here for history; do not implement against it.] The data quality steward sets
+    the check''s severity per contract, warn or fail, and triages a failing result: the owner publishes
+    a new version for an intended change, or the member''s change is reverted. [END SUPERSEDED BLOCK] [SUPERSEDED
+    by REQ-2158 amendment THE CHECKS ARE THE PROMISE; CONTRACT ROWS CARRY A VERSION, 2026-10-28 -- no conformance
+    state. Kept here for history; do not implement against it.] A failing check shows the contract as behind
+    its member, with the difference, in the data quality panel and on the contract. [END SUPERSEDED BLOCK]
+    [SUPERSEDED by REQ-2158 amendment DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED, 2026-10-28 -- no
+    version stepper, effective date or publish notification. Kept here for history; do not implement against
+    it.] Published versions are kept: the Contracts panel steps through them with a schema difference between
+    versions. Each version has an effective_from date, so an owner can announce a version before it takes
+    effect. Publishing a new version notifies the product''s consumers by email (REQ-1330). [END SUPERSEDED
+    BLOCK] (Amended 2026-10-28, DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED:) [SUPERSEDED by REQ-2158
+    amendment THE CHECKS ARE THE PROMISE; CONTRACT ROWS CARRY A VERSION, 2026-10-28 -- there is no built-in
+    conformance check. Kept here for history; do not implement against it.] A change to a contracted member
     that departs from the contract''s snapshot (a column removed, renamed, retyped or narrowed) fails the
     contract''s schema-conformance check; an added column passes. That failure is the whole response: the
     product and its contract are not re-versioned by it, and it is handled as any failing promise check
-    is, by the data quality steward, through the data quality panel and the check''s own notifications.'
+    is, by the data quality steward, through the data quality panel and the check''s own notifications.
+    [END SUPERSEDED BLOCK] (Amended 2026-10-28, THE CHECKS ARE THE PROMISE; CONTRACT ROWS CARRY A VERSION:)
+    A product''s promises are its data quality checks (REQ-2157). A column no check covers carries no promise
+    of stability; that is a risk the buyer sees and accepts. An owner who wants a column kept declares a
+    check for it with a supported checker (a schema check, for example), and a failing check is handled
+    as any other. Contracts are versioned by a number on every row that belongs to a contract: its fundamentals,
+    its schema property rows (descriptions, classification, examples), SLA, support and team, servers, pricing,
+    custom properties and tags, and its links to promise checks are keyed by contract and version. New version
+    copies the current version''s rows to the next number for the owner to edit; publishing makes it current;
+    earlier versions are kept read-only. Buyers and the ODCS export see the current version, and the Contracts
+    panel steps back through earlier versions. The parts derived live from the member (physical type, required,
+    keys, quality rules from its checks) are not versioned and are shown apart from the versioned fields,
+    visibly marked as live, so a reader never mistakes them for part of a version.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -90982,14 +91002,20 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     our people find the right data and get access to it the same day? (Amended 2026-10-28, THE DILEMMAS
     ARE SHOWN, NOT GLOSSED:) The tour shows the hard parts of data products as real moments rather than
     implying they are easy. Act one opens with demand: the owner sees suggestions against a listed table,
-    decides what to promise, and builds the product from it. One step shows promise discipline: the owner
-    changes a published member, the conformance check marks the contract behind its member, and a new contract
-    version is published. Act two includes a wrong turn: the buyer first names a broad team role, the owner
+    decides what to promise, and builds the product from it. [SUPERSEDED by REQ-2182 amendment THE PROMISES
+    ARE THE CHECKS, 2026-10-28 -- there is no conformance check; the checks are the promise. Kept here for
+    history; do not implement against it.] One step shows promise discipline: the owner changes a published
+    member, the conformance check marks the contract behind its member, and a new contract version is published.
+    [END SUPERSEDED BLOCK] Act two includes a wrong turn: the buyer first names a broad team role, the owner
     declines it as too broad, and the buyer is redirected to a prefilled role request. The recap lists the
     dilemmas the visitor walked through, each with Provisa''s answer, and links to the data products page
     in the docs and to /why/data-products: what a product is (what a domain promises outside itself), listed
     or product, who owns access, which role to ask under, judging data before access, the producer''s cost,
-    promise discipline, and partial access.'
+    promise discipline, and partial access. (Amended 2026-10-28, THE PROMISES ARE THE CHECKS:) One step
+    shows what a product promises: the buyer sees which columns the product''s data quality checks cover
+    and which they do not, the uncovered ones being an accepted risk (REQ-2158). The owner makes a new contract
+    version once, so the visitor can step back to version 1, with the live parts shown apart from the versioned
+    fields.'
   use_case: 'A visitor opens the data marketplace demo and sees how Provisa answers: How do our people find data they may use, and get access without a ticket queue?'
   scenario: 'Given the data marketplace demo started from its bundle
     When a visitor walks its tour to the end
