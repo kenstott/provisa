@@ -94,6 +94,29 @@ jobs:
         id: start
         uses: ./.github/actions/conformance-instance
 
+      # The TCK's session user (scripts/conformance/pgwire_catalog_types.py TCK_SESSION_USER):
+      # its name maps it to tck_empty, the role its Bolt sessions act as. Created by the break-glass
+      # account; its session token signs each Bolt connection in without a password check.
+      - name: Create the TCK session user
+        run: |
+          su="$PROVISA_SUPERUSER_USERNAME:$PROVISA_SUPERUSER_PASSWORD"
+          body='{"username": "tck-session", "password": "tck-session-password"}'
+          status=$(curl -s -o "$RUNNER_TEMP/session-user.txt" -w '%{http_code}' -u "$su" \
+            -X POST -H 'Content-Type: application/json' --data "$body" \
+            "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::POST /admin/users answered $status"; cat "$RUNNER_TEMP/session-user.txt"; exit 1
+          fi
+          status=$(curl -s -o "$RUNNER_TEMP/session-login.txt" -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' --data "$body" \
+            "http://127.0.0.1:$PROVISA_API_PORT/auth/login")
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::POST /auth/login answered $status"; cat "$RUNNER_TEMP/session-login.txt"; exit 1
+          fi
+          token=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["access_token"])' "$RUNNER_TEMP/session-login.txt")
+          echo "::add-mask::$token"
+          echo "CONFORMANCE_SESSION_TOKEN=$token" >> "$GITHUB_ENV"
+
 
       - name: Run the TCK
         timeout-minutes: 40

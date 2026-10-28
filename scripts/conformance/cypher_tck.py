@@ -626,13 +626,9 @@ def main(argv: list[str]) -> int:
     features, version, base, role, authorization, out_json, out_md = argv
     _CREDENTIAL["Authorization"] = authorization
     # A Bolt session for the scenarios whose setup builds their graph (REQ-2167, amended
-    # 2026-10-27): the job's Bolt endpoint and its user, from the job's env.
+    # 2026-10-27): the job's Bolt endpoint and the TCK session user's token, from the job's env.
     if os.environ.get("CONFORMANCE_BOLT_URI"):
-        bolt.configure(
-            os.environ["CONFORMANCE_BOLT_URI"],
-            os.environ["CONFORMANCE_USER"],
-            os.environ["CONFORMANCE_PASSWORD"],
-        )
+        bolt.configure(os.environ["CONFORMANCE_BOLT_URI"], os.environ["CONFORMANCE_SESSION_TOKEN"])
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
     outcomes = []
     for s in scenarios:

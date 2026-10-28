@@ -15,8 +15,9 @@ A scenario whose setup builds its graph runs its setup's statements and then its
 Bolt connection: the setup's CREATEs make the session's own nodes and relationships, and the query
 reads them. A scenario on an empty graph that matches a pattern runs the same way with no setup.
 Each scenario has a connection of its own (the driver's pool holds one, closed after it), so a
-session's graph is never read by the next. The connection acts as ``tck_empty``, a role that
-reaches no model domain: its graph is the session's alone, the TCK's empty graph.
+session's graph is never read by the next. The connection signs in with the TCK session user's
+token and acts as ``tck_empty``, the role that user's name maps to, which reaches no model domain:
+its graph is the session's alone, the TCK's empty graph.
 
 Values come back as the driver reads them and are put in the forms the runner compares: a node
 as ("node", labels, properties), a relationship as ("relationship", type, properties), a path as
@@ -33,12 +34,12 @@ from typing import Any
 #: The role a session scenario acts as: it reaches no model domain (pgwire_catalog_types.py).
 EMPTY_ROLE = "tck_empty"
 
-#: The Bolt endpoint and the job user's credential (main sets them).
+#: The Bolt endpoint and the TCK session user's session token (main sets them).
 _BOLT: dict[str, str] = {}
 
 
-def configure(uri: str, user: str, password: str) -> None:
-    _BOLT.update(uri=uri, user=user, password=password)
+def configure(uri: str, token: str) -> None:
+    _BOLT.update(uri=uri, token=token)
 
 
 def configured() -> bool:
@@ -48,11 +49,11 @@ def configured() -> bool:
 def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
     """The setup's statements and then the query, on one connection: (200, the answer's columns
     and rows) or (400, the refusal's words)."""
-    from neo4j import GraphDatabase
+    from neo4j import GraphDatabase, bearer_auth
     from neo4j.exceptions import Neo4jError
 
     driver = GraphDatabase.driver(
-        _BOLT["uri"], auth=(_BOLT["user"], _BOLT["password"]), max_connection_pool_size=1
+        _BOLT["uri"], auth=bearer_auth(_BOLT["token"]), max_connection_pool_size=1
     )
     try:
         with driver.session(database=f"provisa_{EMPTY_ROLE}") as session:

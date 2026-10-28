@@ -300,7 +300,7 @@ def test_a_setup_that_builds_its_graph_runs_with_its_query_in_one_session(scenar
         sent.append((list(setups), query))
         return 200, {"columns": ["a"], "rows": [[("node", frozenset({"A"}), {})]]}
 
-    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "user": "u", "password": "p"})
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
     monkeypatch.setattr(bolt, "run", session)
     outcome = tck.run(scenarios[3], "http://x", "org_admin")
     assert sent == [(["CREATE (:A)"], "MATCH (a) RETURN a")]
@@ -310,7 +310,7 @@ def test_a_setup_that_builds_its_graph_runs_with_its_query_in_one_session(scenar
 
 
 def test_a_setup_waiting_on_a_write_form_is_named_so(scenarios, monkeypatch):
-    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "user": "u", "password": "p"})
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
     monkeypatch.setattr(
         bolt,
         "run",

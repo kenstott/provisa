@@ -295,6 +295,10 @@ def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
     return registered
 
 
+#: The user the Cypher TCK's Bolt sessions sign in as (.github/workflows/conformance-cypher.yml).
+TCK_SESSION_USER = "tck-session"
+
+
 def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     """The model the conformance instance boots with.
 
@@ -322,10 +326,16 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
             },
             "assignments_source": "provisa",
-            # tck_empty too: the Cypher TCK's sessions act as it (scripts/conformance/cypher_tck_bolt.py).
-            "default_assignments": [
-                {"domain_id": "*", "role_id": "org_admin"},
-                {"domain_id": "*", "role_id": "tck_empty"},
+            "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
+            # The Cypher TCK's session user acts as tck_empty (scripts/conformance/cypher_tck_bolt.py):
+            # a Bolt sign-in holds the role its claims map to, not the control plane's assignments.
+            "role_mapping": [
+                {
+                    "claim": "username",
+                    "type": "exact",
+                    "value": TCK_SESSION_USER,
+                    "role": "tck_empty",
+                }
             ],
             # The role a pgwire login acts as when its user names none.
             "default_role": "org_admin",
