@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "Неявное измерение — для этой таблицы включено «Включить группировку»"
     },
     "derived": "производная",
+    "endpointUnread": "Не удалось прочитать документ API её источника",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

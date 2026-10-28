@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Включить группировку",
     "enableGroupByDesc": "(открыть корневое поле _group_by в GraphQL)",
     "apiEndpointLabel": "Конечная точка API",
+    "apiEndpointUnread": "Не удалось прочитать документ API её источника",
     "changeSignalLabel": "Сигнал изменений",
     "changeSignalHelp": "Как Provisa узнаёт об изменении строк. ttl = обновление по таймеру TTL кеша; probe = собственный запрос свежести источника, повторное чтение только при изменении; ttl_probe = проба после истечения нижнего порога TTL; native/debezium/kafka = push от источника. «Наследовать» = следовать значению по умолчанию уровня источника.",
     "csInherit": "Наследовать источник",

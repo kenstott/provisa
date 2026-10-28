@@ -58,6 +58,7 @@
       "impliedDimensionTitle": "ממד משתמע — האפשרות 'הפעלת Group By' מופעלת לטבלה זו"
     },
     "derived": "נגזר",
+    "endpointUnread": "לא ניתן היה לקרוא את מסמך ה-API של המקור שלה",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",

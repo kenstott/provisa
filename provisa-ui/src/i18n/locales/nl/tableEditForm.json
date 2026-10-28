@@ -144,6 +144,7 @@
     "enableGroupByLabel": "Group by inschakelen",
     "enableGroupByDesc": "(_group_by-rootveld beschikbaar maken in GraphQL)",
     "apiEndpointLabel": "API-endpoint",
+    "apiEndpointUnread": "Het API-document van de bron kon niet worden gelezen",
     "changeSignalLabel": "Wijzigingssignaal",
     "changeSignalHelp": "Hoe Provisa verneemt dat rijen zijn gewijzigd. ttl = verversen op de cache-TTL-timer; probe = bron-eigen versheidsquery, alleen opnieuw ophalen bij wijziging; ttl_probe = probe nadat de TTL-ondergrens is verstreken; native/debezium/kafka = push vanuit de bron. Overnemen = volg de standaard op bronniveau.",
     "csInherit": "Bron overnemen",
