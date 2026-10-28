@@ -612,7 +612,9 @@ def test_a_bare_name_a_class_shares_with_a_table_resolves_to_the_table() -> None
     ctx.tables = {
         t["table_name"] + str(t["id"]): TableMeta(
             table_id=t["id"],
-            field_name=t["table_name"],
+            field_name=(
+                f"on_{t['table_name']}" if t["domain_id"] == "ontology" else t["table_name"]
+            ),
             type_name=t["table_name"].title(),
             source_id=t["source_id"],
             catalog_name=t["source_id"],
