@@ -89999,7 +89999,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     session''s running statement, or closing it), on a session the caller owns unless the caller is an administrator;
     every other administrative function with an effect (pg_reload_conf, pg_read_file, pg_read_binary_file,
     pg_stat_file, pg_create_restore_point, the advisory locks) is refused naming it, and no function reads
-    the server''s files.'
+    the server''s files. (Amended 2026-10-28, EVERY CASE IS PASSED, BY DESIGN OR FAILED:) Every conformance
+    suite reports each of its cases in exactly one of three outcomes: passed; skipped by design, a case
+    a recorded decision excludes, each by-design group citing its requirement and decision; or failed. Nothing
+    else: a case that cannot run and has no by-design decision is failed, and a by-design case is never
+    counted as failed. Each suite''s result file and summary give the three counts the same way (passed,
+    by_design, failed), its pass rate is passed over passed plus failed, and the landing gate and its baselines
+    read those counts for every suite alike.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
