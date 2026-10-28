@@ -23,8 +23,10 @@ reports, so a test the binary never reached -- it exited on an earlier test's pa
 as failed and named "not reached" rather than missing from the total. The section of a test is the
 ``// Section N: Title`` comment its top-level function sits under in the source.
 
-A failing test is data, not an error: the exit status is non-zero only when the suite did not run
-(no leaf passed or failed).
+pgwire's baseline is every test passing: a failing test that no by-design group of the pgwire
+surface excludes (by_design/pgwire.yaml, by_design.py) is a regression, and the exit status is
+non-zero for one, as it is when the suite did not run (no leaf passed or failed). A test failed by
+design is left out of the counts, in the group naming its decision.
 
 Usage: pgspec_summary.py <pgspec_test.go> <results.jsonl> <out.json> <out.md> [<version>]
 """
@@ -38,6 +40,8 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import by_design
 
 _SECTION = re.compile(r"^//\s*Section\s+(\d+):\s*(.+?)\s*$")
 _FUNC = re.compile(r"^func\s+(Test\w+)\s*\(\s*t\s+\*testing\.T\s*\)")
@@ -71,9 +75,10 @@ def declared_tests(source: str) -> Declared:
             section = f"Section {m.group(1)}: {m.group(2)}"
             continue
         if m := _FUNC.match(line):
-            current = m.group(1)
-            declared.section_of[current] = section
-            declared.subtests[current] = []
+            name: str = m.group(1)
+            declared.section_of[name] = section
+            declared.subtests[name] = []
+            current = name
             continue
         if line.startswith("func "):
             current = None
@@ -133,6 +138,8 @@ def summarise(source: str, events: list[dict], version: str = "") -> dict:
     counts = {"passed": 0, "failed": 0, "skipped": 0}
     failed_by_section: dict[str, list[dict]] = {}
     not_reached: list[str] = []
+    declared_groups = by_design.groups("pgwire")
+    excluded: list[dict] = []
     for name in sorted(leaves):
         result = outcome.get(name)
         if result is None:
@@ -141,12 +148,17 @@ def summarise(source: str, events: list[dict], version: str = "") -> dict:
             reason = "not reached (the test binary exited before it ran)"
         else:
             reason = _first_failure_line(output.get(name, [])) if result == "failed" else ""
-        counts[result] += 1
+        top = name.split("/", 1)[0]
         if result == "failed":
-            top = name.split("/", 1)[0]
+            failure = {"feature": top, "scenario": name.partition("/")[2], "reason": reason}
+            left, by_design_hit = by_design.classify([failure], declared_groups)
+            if not left:
+                excluded = _merged(excluded, by_design_hit)
+                continue
             section = declared.section_of.get(top, "Unsectioned")
             failed_by_section.setdefault(section, []).append({"test": name, "reason": reason})
-    total = len(leaves)
+        counts[result] += 1
+    total = sum(counts.values())
     return {
         "suite": "pgspec",
         "module": "github.com/goceleris/celeris/test/pgspec",
@@ -157,8 +169,19 @@ def summarise(source: str, events: list[dict], version: str = "") -> dict:
         "skipped": counts["skipped"],
         "not_reached": not_reached,
         "pass_rate": round(counts["passed"] / total, 4) if total else 0.0,
+        "not_runnable": sum(g["count"] for g in excluded),
+        "by_design": excluded,
         "failed_by_section": dict(sorted(failed_by_section.items(), key=_section_key)),
     }
+
+
+def _merged(excluded: list[dict], hits: list[dict]) -> list[dict]:
+    """The by-design groups with one more case each of ``hits`` excluded."""
+    by_name = {g["group"]: dict(g) for g in excluded}
+    for hit in hits:
+        kept = by_name.setdefault(hit["group"], {**hit, "count": 0})
+        kept["count"] += 1
+    return list(by_name.values())
 
 
 def _section_key(item: tuple[str, list]) -> tuple[int, str]:
@@ -177,6 +200,13 @@ def markdown(summary: dict) -> str:
         f"| {summary['skipped']} | {rate} |",
         "",
     ]
+    if summary["by_design"]:
+        lines += [
+            f"Not runnable by design: {summary['not_runnable']}.",
+            "",
+            *by_design.table(summary["by_design"]),
+            "",
+        ]
     for section, failures in summary["failed_by_section"].items():
         lines.append(f"### {section} ({len(failures)} failed)")
         lines.append("")
@@ -200,6 +230,15 @@ def main(argv: list[str]) -> int:
     print(markdown(summary))
     if summary["passed"] + summary["failed"] - len(summary["not_reached"]) == 0:
         print("::error::pgspec did not run: no test passed or failed", file=sys.stderr)
+        return 1
+    if summary["failed"]:
+        # The baseline is every test passing: a failure no by-design group excludes is a
+        # regression, and fails the job (each is named in the summary above).
+        print(
+            f"::error::pgspec: {summary['failed']} test(s) failed that no by-design group of the "
+            "pgwire surface excludes (scripts/conformance/by_design/pgwire.yaml)",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

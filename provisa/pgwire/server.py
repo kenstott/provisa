@@ -671,6 +671,18 @@ def _register_reg_types() -> None:
 _register_reg_types()
 
 
+def _undescribed_read_shape(plan: Any, shape: Any) -> list[tuple[str, str]] | None:  # REQ-2171
+    """The read shape an undescribed statement's subtyped columns keep their PostgreSQL type by:
+    a row-returning read's. None for a described statement (sent by its description), for a
+    statement on a session's temporary table, which answers its command, not the rows of the
+    SELECT it is planned as, and for a write (a RETURNING write's rows keep the engine's typing)."""
+    if shape is not None or plan is None or plan.result_shape is None:
+        return None
+    if plan.temp is not None or plan.writes_tables:
+        return None
+    return plan.result_shape.subtyped()
+
+
 def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167
     """Whether a value served as type ``served`` is sent correctly as type ``declared``: the
     same wire type, or integers (or floats, integer lists, text, text lists) of another width or
@@ -1767,10 +1779,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 stripped,
                 shape,
                 plan=plan,
-                # REQ-2171: an undescribed statement's subtyped columns keep their PostgreSQL type.
-                read_shape=plan.result_shape.subtyped()
-                if shape is None and plan is not None and plan.result_shape is not None
-                else None,
+                read_shape=_undescribed_read_shape(plan, shape),
             )
         except Exception:
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
