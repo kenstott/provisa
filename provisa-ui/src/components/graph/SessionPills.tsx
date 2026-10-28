@@ -158,7 +158,13 @@ export function SessionPills({
               </div>
             ))}
           </div>
-          <Button size="xs" variant="default" onClick={clear} data-testid="graph-session-clear">
+          <Button
+            size="xs"
+            variant="default"
+            className="graph-session-clear"
+            onClick={clear}
+            data-testid="graph-session-clear"
+          >
             {t("graphSidebar.sessionClear")}
           </Button>
         </>
