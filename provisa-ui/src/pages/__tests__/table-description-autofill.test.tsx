@@ -156,7 +156,12 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useAvailableSchemas: (...args: Parameters<typeof mockUseAvailableSchemas>) =>
     mockUseAvailableSchemas(...args),
   useAvailableTables: (...args: unknown[]) => mockUseAvailableTables(...args),
-  useAvailableColumnsMetadataLazy: () => getAvailableColumnsMetadata,
+  useAvailableColumnsMetadataLazy: () => ({
+    fetchColumns: getAvailableColumnsMetadata,
+    late: null,
+    starting: false,
+    startingTimedOut: false,
+  }),
   useGenerateTableDescription: () => ({ generateTableDescription, loading: false }),
   useGenerateColumnDescription: () => ({ generateColumnDescription, loading: false }),
   useRegisterTable: () => ({ registerTable, loading: false }),

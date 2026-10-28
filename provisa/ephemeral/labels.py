@@ -14,10 +14,11 @@ a model node alike; a node never moves table, and the model never changes.
 ``[MATCH ... | UNWIND ... | WITH ...] SET a:L[:M][, b:N ...]`` (or REMOVE) reads the nodes it
 names through the surface's own governed read, as the session's role, then adds (or deletes) one
 node_labels row per node and label. A label already carried is not added again. A model node's
-own label is its table, which no label write removes.
+own label is its table, and its ontology Class its table's binding (REQ-2163): no label write
+removes either.
 """
 
-# Requirements: REQ-2176
+# Requirements: REQ-2176, REQ-2163
 
 from __future__ import annotations
 
@@ -101,6 +102,17 @@ async def write_labels(
             model = None if node_id in graph.node_keys else read_by[0]
             given.extend((node_id, key, model) for key in keys[var])
     if clause.verb == "REMOVE":
+        # REQ-2163: a Class table is a view of the ontology schema, which is read-only and
+        # regenerated with the model; a model node's Class is its table's binding, no
+        # node_labels row, so no label write removes it.
+        classes = sorted(
+            {key for _, key, model in given if model is not None and _is_class(label_map, key)}
+        )
+        if classes:
+            raise CypherParseError(
+                f"{', '.join(classes)} is an ontology Class: a model node's Class is its table's "
+                f"binding in the read-only ontology schema, which no label write removes"
+            )
         own = sorted({key for _, key, model in given if key == model})
         if own:
             raise CypherParseError(
@@ -112,6 +124,14 @@ async def write_labels(
             await store.remove_labels(state, session, removed)
         return Labelled(0, len(removed))
     return Labelled(await add_labels(state, session, given, held), 0)
+
+
+def _is_class(label_map: Any, key: str) -> bool:
+    """Whether the label ``key`` names an ontology Class table (REQ-2163)."""
+    from provisa.compiler.ontology_classes import is_class_table_id
+
+    node = label_map.nodes.get(key)
+    return node is not None and is_class_table_id(node.table_id)
 
 
 async def add_labels(

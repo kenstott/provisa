@@ -451,6 +451,17 @@ jobs:
           retention-days: ${{ inputs.artifact-retention }}
           if-no-files-found: ${{ inputs.artifact-required }}
 
+      # The adapter and server logs a test's launched servers wrote (PROVISA_TEST_SERVER_LOG_DIR),
+      # kept when a spec fails; the same retention as the report.
+      - name: Upload the server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-${{ steps.key.outputs.lane }}
+          path: results/${{ steps.key.outputs.lane }}/server-logs/
+          retention-days: ${{ inputs.artifact-retention }}
+          if-no-files-found: ignore
+
       - name: Upload the runner's samples
         if: always() && inputs.sampler
         uses: actions/upload-artifact@v4
