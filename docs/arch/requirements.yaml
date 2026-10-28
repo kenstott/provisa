@@ -6923,7 +6923,25 @@
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: 'Sources of type `govdata` (AskAmerica) expose U.S. government open data by subject. The subjects ticked on a source decide the schemas it offers; each subject brings its schemas, and every schema the adapter serves belongs to a subject or is a linker schema (REQ-541). The subjects and their schemas are stated once, by the server, and the Sources form and the Register Table form read them from it. Provisa runs the adapter bundle as installed, with the catalog it was built with, and writes no model of its own; narrowing to the ticked subjects is done by Provisa, which refuses a table or column outside the schemas of the source. A subscription reaches every table, so there is one AskAmerica source -- per organisation on a multi-tenant deployment -- and a second is refused when it is saved. The Register Table form lists the tables and columns of a schema from the adapter as soon as it is listening; listing names never waits on the row counts the adapter reports to engines.'
+  description: 'Sources of type `govdata` (AskAmerica) expose U.S. government open data by subject. The
+    subjects ticked on a source decide the schemas it offers; each subject brings its schemas, and every
+    schema the adapter serves belongs to a subject or is a linker schema (REQ-541). The subjects and their
+    schemas are stated once, by the server, and the Sources form and the Register Table form read them from
+    it. Provisa runs the adapter bundle as installed, with the catalog it was built with, and writes no
+    model of its own; narrowing to the ticked subjects is done by Provisa, which refuses a table or column
+    outside the schemas of the source. A subscription reaches every table, so there is one AskAmerica source
+    -- per organisation on a multi-tenant deployment -- and a second is refused when it is saved. The Register
+    Table form lists the tables and columns of a schema from the adapter as soon as it is listening; listing
+    names never waits on the row counts the adapter reports to engines. (Amended 2026-10-28, THE CATALOG
+    IS PREPARED ON FIRST USE; A KEY CHECK TIMEOUT IS NAMED:) The adapter holds every statement until its
+    first catalog preparation ends, which takes minutes. Provisa does not start that preparation when a
+    source is saved or its server starts listening. It starts it when the source is first used by the engine:
+    its first registered table, or a statement on it. Until then, the Register Table form reads the adapter''s
+    information_schema at once, so the tables are listed as soon as the server listens. While the preparation
+    runs, a query on the source answers that the source is starting, and the SQL page reruns it. Saving
+    the source checks its key against AskAmerica''s credentials service within 10 seconds. A check that
+    times out is reported by name as AskAmerica being unavailable, so the steward can retry. It is never
+    shown as a raw read timeout.'
   notes: 'Amended 2026-10-09 on maintainer rulings: the subjects ticked on the source narrow the schema list and every available schema has a home in a subject; the adapter is installed and called as built; two sources with two keys is unsupported, one per organisation on the cloud instance; row counting must not block listing table names.'
   use_case: Subject-grouped GovData sources let stewards selectively grant access to government data by
     domain area.
