@@ -90520,14 +90520,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   description: 'Provisa''s Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow''s FlightSql.proto),
     so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built
     on them) connect and query it. It decodes the Flight SQL commands (statement query, prepared statement
-    query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported
-    and exported keys, cross reference), the actions (create and close a prepared statement, get and set
-    session options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline
-    the endpoint''s native tickets already use, under the caller''s role, so a Flight SQL read is governed
-    exactly as a pgwire or HTTP SQL read is. The endpoint''s native Flight protocol (path descriptors,
-    JSON tickets) keeps working beside it. Catalog answers show what the caller is served. Object creation
-    stays out of scope by design (REQ-2167): a Flight SQL statement may create a session temp table where
-    pgwire allows one. Conformance is measured by the ADBC driver validation suite (REQ-2167).'
+    query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported and
+    exported keys, cross reference), the actions (create and close a prepared statement, get and set session
+    options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline the
+    endpoint''s native tickets already use, under the caller''s role, so a Flight SQL read is governed exactly
+    as a pgwire or HTTP SQL read is. The endpoint''s native Flight protocol (path descriptors, JSON tickets)
+    keeps working beside it. Catalog answers show what the caller is served. Object creation stays out of
+    scope by design (REQ-2167): a Flight SQL statement may create a session temp table where pgwire allows
+    one. Conformance is measured by the ADBC driver validation suite (REQ-2167). (Amended 2026-10-28, A
+    CONFLICTING INGEST IS INVALID_ARGUMENT:) A bulk ingest that would create a table that already exists,
+    or whose columns do not match the table it appends to, is refused by name with the status INVALID_ARGUMENT,
+    not ALREADY_EXISTS: the Flight server library Provisa serves on (pyarrow) can send no ALREADY_EXISTS
+    status. The conformance suite''s cases that expect ALREADY_EXISTS are by design under this decision.'
   scenario: 'Given a Flight SQL client using the ADBC Flight SQL driver signed in as a role
 
     When it runs a prepared statement with a bound parameter and lists the tables
