@@ -112,7 +112,7 @@ describe("what the org has, read for the tour", () => {
   // past the menu's check (run 40692080291).
   it("reads the cached catalog before the server", () => {
     renderHook(() => useOrgHas());
-    for (const document of [SourcesQuery, TablesQuery, DataProductsQuery]) {
+    for (const document of [SourcesQuery, TableRowsQuery, DataProductsQuery]) {
       expect(policies.get(document)).toBe("cache-first");
     }
   });
