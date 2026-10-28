@@ -11,7 +11,8 @@
 // REQ-2174 (amended 2026-10-28): the graph's 2D view, the lane diagram (laneDiagram.ts) drawn by
 // cytoscape and laid out by ELK's layered algorithm in fixed lane partitions, left to right; the
 // term lane is one compound laid out top-down. A click picks a node (the detail panel), a hover
-// shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text.
+// shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A
+// card holds the node's facts with links to their pages, and stays while the pointer is on it.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,6 +25,7 @@ import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import type { GraphHover } from "./graphScene";
 import { GraphLegend } from "./GraphStage";
 import { hoverBody } from "./hoverBody";
+import { MoreFacts } from "./nodeFacts";
 import { LANES, laneMermaid, type Lane, type LaneDiagram } from "./laneDiagram";
 import { nodeLook } from "./nodeLook";
 
@@ -40,6 +42,8 @@ if (!registered) cytoscape.use(elk);
 type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
 
 const FIT_PAD = 24;
+// How long a card stays once the pointer leaves its node: time to reach the card's links.
+const TIP_LINGER_MS = 300;
 const NODE_H = 26;
 const TERM_LANE = "lane:term";
 // A node is as wide as its name: ELK lays it out by this size, before cytoscape draws any text.
@@ -91,6 +95,18 @@ export function LaneStage({
   useEffect(() => {
     latest.current = { setSelected, setHover, onMore };
   });
+  // The pending hide of the card, cancelled while the pointer is on the card.
+  const linger = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keepTip = useCallback(() => {
+    if (linger.current !== null) clearTimeout(linger.current);
+    linger.current = null;
+  }, []);
+  const dropTip = useCallback(() => {
+    if (linger.current !== null) clearTimeout(linger.current);
+    linger.current = null;
+    setTip(null);
+    latest.current.setHover(null);
+  }, []);
   const laneTitle = useCallback((l: Lane) => t(`graph3d.lane_${l}`), [t]);
 
   useEffect(() => {
@@ -231,10 +247,11 @@ export function LaneStage({
     const enter = (h: GraphHover) => (evt: EventObject) => {
       // A pointer event always carries where it happened on the canvas.
       const at = evt.renderedPosition as cytoscape.Position;
+      keepTip();
       setTip({ h, x: at.x, y: at.y });
       latest.current.setHover(h);
     };
-    cy.on("mouseover", 'node[kind = "node"]', (evt: EventObject) =>
+    cy.on("mouseover", 'node[kind = "node"], node[kind = "more"]', (evt: EventObject) =>
       enter({ kind: "node", id: evt.target.id() })(evt),
     );
     cy.on("mouseover", "edge", (evt: EventObject) => {
@@ -242,9 +259,9 @@ export function LaneStage({
       if (g.edges.some((e) => e.id === evt.target.id()))
         enter({ kind: "edge", id: evt.target.id() })(evt);
     });
-    cy.on("mouseout", 'node[kind = "node"], edge', () => {
-      setTip(null);
-      latest.current.setHover(null);
+    cy.on("mouseout", 'node[kind = "node"], node[kind = "more"], edge', () => {
+      keepTip();
+      linger.current = setTimeout(dropTip, TIP_LINGER_MS);
     });
 
     // Each lane is an ELK partition, placed strictly left to right; inside the term lane its
@@ -395,7 +412,9 @@ export function LaneStage({
         (cy as unknown as { unmount: () => void }).unmount();
       }
     };
-  }, [diagram, scheme, t, laneTitle, bare]);
+  }, [diagram, scheme, t, laneTitle, bare, keepTip, dropTip]);
+  // A card's pending hide ends with the view.
+  useEffect(() => keepTip, [keepTip]);
 
   // What is picked or hovered is lit, with its lines; the rest fades while something is hovered.
   useEffect(() => {
@@ -443,7 +462,15 @@ export function LaneStage({
     });
   };
 
-  const body = tip ? hoverBody(diagram.graph, tip.h, t) : null;
+  const more = tip ? diagram.more.find((m) => m.id === tip.h.id) : undefined;
+  const body = !tip ? null : more ? (
+    <>
+      <b>{t("graph3d.moreColumns", { count: more.count })}</b>
+      <MoreFacts columns={more.columns} testId={`${testId}-tip-facts`} />
+    </>
+  ) : (
+    hoverBody(diagram.graph, tip.h, t, { data: diagram.data, testId: `${testId}-tip-facts` })
+  );
   return (
     <div
       className="p3d-stage g3d-lanes"
@@ -455,8 +482,10 @@ export function LaneStage({
       <div className="g3d-lanes-canvas" ref={boxRef} aria-label={t("graph3d.lanesLabel")} />
       {tip && body && (
         <div
-          className="p3d-tip"
+          className="p3d-tip g3d-tip-live"
           style={{ transform: `translate(${tip.x + 14}px, ${tip.y + 14}px)` }}
+          onMouseEnter={keepTip}
+          onMouseLeave={dropTip}
           data-testid={`${testId}-tip`}
         >
           {body}

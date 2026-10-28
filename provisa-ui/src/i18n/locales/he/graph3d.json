@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} עמודות",
     "copyMermaid": "העתקה כ-Mermaid",
     "mermaidCopied": "הועתק",
-    "lanesLabel": "תרשים מסלולים: מונחים, העמודות שהם קשורים אליהן, הטבלאות שלהן והמוצרים"
+    "lanesLabel": "תרשים מסלולים: מונחים, העמודות שהם קשורים אליהן, הטבלאות שלהן והמוצרים",
+    "factDefinition": "הגדרה",
+    "factStatus": "סטטוס",
+    "factStewards": "Stewards",
+    "factNone": "אין",
+    "factType": "סוג",
+    "factSensitivity": "רגישות",
+    "factMask": "מיסוך",
+    "factMasked": "ממוסך עבור חלק מהקוראים",
+    "factDescription": "תיאור",
+    "factTable": "טבלה",
+    "factDomain_one": "תחום",
+    "factDomain_other": "תחומים",
+    "factSource": "מקור",
+    "factQuality": "איכות",
+    "qualityAt": "{{quality}}, נבדק {{at}}",
+    "quality_pass": "עובר",
+    "quality_fail": "נכשל",
+    "quality_none": "טרם הורץ",
+    "factOwner": "בעלים",
+    "factMembers": "טבלאות חברות",
+    "factColumns": "עמודות"
   }
 }

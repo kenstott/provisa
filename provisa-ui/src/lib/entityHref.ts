@@ -20,6 +20,7 @@ export type EntityKind =
   | "table"
   | "column"
   | "domain"
+  | "source"
   | "relationship"
   | "tag"
   | "checker"
@@ -48,6 +49,9 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
       return `/tables?table=${q(table ?? id)}&section=quality`;
     case "domain":
       return `/admin/domains?domain=${q(id)}`;
+    case "source":
+      // The Sources page opens the source named by ``expanded``.
+      return `/sources?expanded=${q(id)}`;
     case "relationship":
       return `/relationships?relationship=${q(id)}`;
     case "tag":

@@ -80,3 +80,21 @@ export const DATA: GraphData = {
     { id: "17", a: "x:raw_orders", b: "t:orders", kind: "lineage" },
   ],
 };
+
+// REQ-2174: the same graph with what each node's hover card and detail panel say of it.
+const INFO: Record<string, Partial<GraphData["nodes"][number]>> = {
+  "term:customer": {
+    definition: "A person or company that has bought from us.",
+    info: { status: "live", stewards: ["ada"] },
+  },
+  "c:customers.email": { info: { dataType: "varchar", masked: true } },
+  "t:customers": {
+    info: { source: "sales_pg", description: "Every customer, one row each.", quality: "pass" },
+  },
+  "p:c360": { info: { status: "live", owner: "sales_steward" } },
+};
+
+export const FACTS: GraphData = {
+  nodes: DATA.nodes.map((n) => ({ ...n, ...INFO[n.id] })),
+  edges: DATA.edges,
+};

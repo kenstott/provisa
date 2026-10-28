@@ -17,7 +17,7 @@ import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 import { nodeHref } from "../nodeHref";
-import { DATA } from "./fixture";
+import { DATA, FACTS } from "./fixture";
 
 type Handler = { event: string; selector: string; fn: (evt: unknown) => void };
 type Element = { group: string; data: Record<string, unknown> };
@@ -101,9 +101,9 @@ vi.stubGlobal("IntersectionObserver", FakeObserver);
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 vi.mock("../useProductGraph", () => ({
   useProductGraph: (_product: string | null, enabled: boolean) => ({
-    data: enabled ? DATA : null,
+    data: enabled ? FACTS : null,
     error: null,
-    scoped: enabled ? { data: DATA, query: "query DataProductGraph { x }" } : null,
+    scoped: enabled ? { data: FACTS, query: "query DataProductGraph { x }" } : null,
     onScope: () => undefined,
   }),
 }));
@@ -145,16 +145,18 @@ async function explorer() {
 }
 
 describe("the product panel in 2D", () => {
-  it("draws the product's lanes: terms, columns, tables, the product", async () => {
+  it("draws the product's lanes: terms with their hierarchy, columns, tables, the product", async () => {
     panel();
     fireEvent.click(within(screen.getByTestId("graph-panel")).getByRole("radio", { name: "2D" }));
     await screen.findByTestId("graph-panel-lanes");
+    // Party, the term Customer is a kind of, heads the chain though the card draws no term edge.
     expect(ids("node")).toEqual([
       "c:customers.email",
       "p:c360",
       "t:customers",
       "t:orders",
       "term:customer",
+      "term:party",
     ]);
     expect(laneOf("term:customer")).toBe("term");
     expect(laneOf("c:customers.email")).toBe("column");
@@ -221,5 +223,82 @@ describe("the full graph in 2D", () => {
     expect(text.split("\n")[0]).toBe("flowchart LR");
     expect(text).toContain('subgraph lane_term["Terms"]');
     expect(text).toContain('["+1 column"]');
+  });
+});
+
+const hover = (id: string) => {
+  const h = last().handlers.find(
+    (x) => x.event === "mouseover" && x.selector.includes('node[kind = "more"]'),
+  ) as Handler;
+  act(() => h.fn({ target: { id: () => id }, renderedPosition: { x: 10, y: 10 } }));
+};
+
+describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {
+  it("shows no Layers control in 2D, and shows it again in 3D", async () => {
+    const full = await explorer();
+    expect(within(full).queryByTestId("graph3d-layers-menu")).not.toBeInTheDocument();
+    fireEvent.click(within(full).getByRole("radio", { name: "3D" }));
+    expect(await within(full).findByTestId("graph3d-layers-menu")).toBeInTheDocument();
+  });
+});
+
+describe("what each lane node says (EVERY LANE NODE INFORMS AND LINKS)", () => {
+  it("gives a term's hover card its definition, status and stewards", async () => {
+    await explorer();
+    hover("term:customer");
+    const facts = await screen.findByTestId("graph3d-lanes-tip-facts");
+    expect(facts).toHaveTextContent("A person or company that has bought from us.");
+    expect(facts).toHaveTextContent("Live");
+    expect(facts).toHaveTextContent("ada");
+  });
+
+  it("gives a column's card its type, its mask and a link to its table", async () => {
+    await explorer();
+    hover("c:customers.email");
+    const facts = await screen.findByTestId("graph3d-lanes-tip-facts");
+    expect(facts).toHaveTextContent("varchar");
+    expect(facts).toHaveTextContent("Masked for some readers");
+    const table = FACTS.nodes.find((n) => n.id === "t:customers") as (typeof FACTS.nodes)[number];
+    expect(within(facts).getByRole("link", { name: "sales.customers" })).toHaveAttribute(
+      "href",
+      nodeHref(table),
+    );
+  });
+
+  it("names a +N columns node's columns, each a link to its page", async () => {
+    await explorer();
+    hover("more:t:orders");
+    const facts = await screen.findByTestId("graph3d-lanes-tip-facts");
+    const column = FACTS.nodes.find((n) => n.id === "c:orders.total") as (typeof FACTS.nodes)[number];
+    expect(within(facts).getByRole("link", { name: "total" })).toHaveAttribute(
+      "href",
+      nodeHref(column),
+    );
+  });
+
+  it("gives a table's detail panel its domain, source and quality, the names linked", async () => {
+    await explorer();
+    tap("t:customers");
+    const facts = await screen.findByTestId("graph3d-facts");
+    expect(within(facts).getByRole("link", { name: "sales" })).toHaveAttribute(
+      "href",
+      "/admin/domains?domain=sales",
+    );
+    expect(within(facts).getByRole("link", { name: "sales_pg" })).toHaveAttribute(
+      "href",
+      "/sources?expanded=sales_pg",
+    );
+    expect(facts).toHaveTextContent("Passing");
+    expect(facts).toHaveTextContent("Every customer, one row each.");
+  });
+
+  it("gives a product's detail panel its status, owner and member count", async () => {
+    await explorer();
+    tap("p:c360");
+    const facts = await screen.findByTestId("graph3d-facts");
+    expect(facts).toHaveTextContent("Live");
+    expect(facts).toHaveTextContent("sales_steward");
+    // Its member tables: customers and orders (its checker is no table).
+    expect(within(facts).getByText("2")).toBeInTheDocument();
   });
 });

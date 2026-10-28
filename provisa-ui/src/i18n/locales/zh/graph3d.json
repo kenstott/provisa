@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} 列",
     "copyMermaid": "复制为 Mermaid",
     "mermaidCopied": "已复制",
-    "lanesLabel": "泳道图：术语、术语绑定的列、所属的表和产品"
+    "lanesLabel": "泳道图：术语、术语绑定的列、所属的表和产品",
+    "factDefinition": "定义",
+    "factStatus": "状态",
+    "factStewards": "数据管家",
+    "factNone": "无",
+    "factType": "类型",
+    "factSensitivity": "敏感度",
+    "factMask": "脱敏",
+    "factMasked": "对部分读者脱敏",
+    "factDescription": "描述",
+    "factTable": "表",
+    "factDomain_one": "域",
+    "factDomain_other": "域",
+    "factSource": "数据源",
+    "factQuality": "质量",
+    "qualityAt": "{{quality}}，检查于 {{at}}",
+    "quality_pass": "通过",
+    "quality_fail": "未通过",
+    "quality_none": "尚未运行",
+    "factOwner": "所有者",
+    "factMembers": "成员表",
+    "factColumns": "列"
   }
 }

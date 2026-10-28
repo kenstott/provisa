@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} कॉलम",
     "copyMermaid": "Mermaid के रूप में कॉपी करें",
     "mermaidCopied": "कॉपी हो गया",
-    "lanesLabel": "लेन आरेख: शब्द, उनसे बंधे कॉलम, उनकी टेबल और प्रोडक्ट"
+    "lanesLabel": "लेन आरेख: शब्द, उनसे बंधे कॉलम, उनकी टेबल और प्रोडक्ट",
+    "factDefinition": "परिभाषा",
+    "factStatus": "स्थिति",
+    "factStewards": "डेटा स्टीवर्ड",
+    "factNone": "कोई नहीं",
+    "factType": "प्रकार",
+    "factSensitivity": "संवेदनशीलता",
+    "factMask": "मास्क",
+    "factMasked": "कुछ पाठकों के लिए मास्क किया गया",
+    "factDescription": "विवरण",
+    "factTable": "टेबल",
+    "factDomain_one": "डोमेन",
+    "factDomain_other": "डोमेन",
+    "factSource": "स्रोत",
+    "factQuality": "गुणवत्ता",
+    "qualityAt": "{{quality}}, {{at}} को जाँचा गया",
+    "quality_pass": "पास",
+    "quality_fail": "विफल",
+    "quality_none": "अभी तक नहीं चला",
+    "factOwner": "स्वामी",
+    "factMembers": "सदस्य टेबल",
+    "factColumns": "कॉलम"
   }
 }

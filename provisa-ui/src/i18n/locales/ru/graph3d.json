@@ -124,6 +124,27 @@
     "moreColumns_other": "Ещё столбцов: {{count}}",
     "copyMermaid": "Копировать как Mermaid",
     "mermaidCopied": "Скопировано",
-    "lanesLabel": "Диаграмма дорожек: термины, связанные с ними столбцы, их таблицы и продукты"
+    "lanesLabel": "Диаграмма дорожек: термины, связанные с ними столбцы, их таблицы и продукты",
+    "factDefinition": "Определение",
+    "factStatus": "Статус",
+    "factStewards": "Стюарды",
+    "factNone": "Нет",
+    "factType": "Тип",
+    "factSensitivity": "Чувствительность",
+    "factMask": "Маска",
+    "factMasked": "Маскируется для некоторых читателей",
+    "factDescription": "Описание",
+    "factTable": "Таблица",
+    "factDomain_one": "Домен",
+    "factDomain_other": "Домены",
+    "factSource": "Источник",
+    "factQuality": "Качество",
+    "qualityAt": "{{quality}}, проверено {{at}}",
+    "quality_pass": "Пройдена",
+    "quality_fail": "Не пройдена",
+    "quality_none": "Ещё не запускалась",
+    "factOwner": "Владелец",
+    "factMembers": "Таблицы-участники",
+    "factColumns": "Столбцы"
   }
 }

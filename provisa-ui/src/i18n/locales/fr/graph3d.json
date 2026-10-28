@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} colonnes",
     "copyMermaid": "Copier en Mermaid",
     "mermaidCopied": "Copié",
-    "lanesLabel": "Diagramme en couloirs : termes, colonnes qu'ils lient, leurs tables et produits"
+    "lanesLabel": "Diagramme en couloirs : termes, colonnes qu'ils lient, leurs tables et produits",
+    "factDefinition": "Définition",
+    "factStatus": "Statut",
+    "factStewards": "Intendants",
+    "factNone": "Aucun",
+    "factType": "Type",
+    "factSensitivity": "Sensibilité",
+    "factMask": "Masque",
+    "factMasked": "Masquée pour certains lecteurs",
+    "factDescription": "Description",
+    "factTable": "Table",
+    "factDomain_one": "Domaine",
+    "factDomain_other": "Domaines",
+    "factSource": "Source",
+    "factQuality": "Qualité",
+    "qualityAt": "{{quality}}, vérifiée {{at}}",
+    "quality_pass": "Réussie",
+    "quality_fail": "En échec",
+    "quality_none": "Pas encore exécutée",
+    "factOwner": "Propriétaire",
+    "factMembers": "Tables membres",
+    "factColumns": "Colonnes"
   }
 }

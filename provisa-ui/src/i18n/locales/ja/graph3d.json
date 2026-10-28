@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} 列",
     "copyMermaid": "Mermaid としてコピー",
     "mermaidCopied": "コピーしました",
-    "lanesLabel": "レーン図: 用語、用語が紐づく列、そのテーブルとプロダクト"
+    "lanesLabel": "レーン図: 用語、用語が紐づく列、そのテーブルとプロダクト",
+    "factDefinition": "定義",
+    "factStatus": "ステータス",
+    "factStewards": "データスチュワード",
+    "factNone": "なし",
+    "factType": "型",
+    "factSensitivity": "機密度",
+    "factMask": "マスク",
+    "factMasked": "一部の閲覧者にはマスク",
+    "factDescription": "説明",
+    "factTable": "テーブル",
+    "factDomain_one": "ドメイン",
+    "factDomain_other": "ドメイン",
+    "factSource": "ソース",
+    "factQuality": "品質",
+    "qualityAt": "{{quality}}（{{at}} にチェック）",
+    "quality_pass": "合格",
+    "quality_fail": "不合格",
+    "quality_none": "未実行",
+    "factOwner": "オーナー",
+    "factMembers": "メンバーテーブル",
+    "factColumns": "列"
   }
 }

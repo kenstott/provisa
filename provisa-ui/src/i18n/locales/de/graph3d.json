@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} Spalten",
     "copyMermaid": "Als Mermaid kopieren",
     "mermaidCopied": "Kopiert",
-    "lanesLabel": "Bahnendiagramm: Begriffe, die Spalten, an die sie gebunden sind, deren Tabellen und Produkte"
+    "lanesLabel": "Bahnendiagramm: Begriffe, die Spalten, an die sie gebunden sind, deren Tabellen und Produkte",
+    "factDefinition": "Definition",
+    "factStatus": "Status",
+    "factStewards": "Stewards",
+    "factNone": "Keine",
+    "factType": "Typ",
+    "factSensitivity": "Sensibilität",
+    "factMask": "Maske",
+    "factMasked": "Für einige Leser maskiert",
+    "factDescription": "Beschreibung",
+    "factTable": "Tabelle",
+    "factDomain_one": "Domäne",
+    "factDomain_other": "Domänen",
+    "factSource": "Quelle",
+    "factQuality": "Qualität",
+    "qualityAt": "{{quality}}, geprüft {{at}}",
+    "quality_pass": "Bestanden",
+    "quality_fail": "Fehlgeschlagen",
+    "quality_none": "Noch nicht ausgeführt",
+    "factOwner": "Eigentümer",
+    "factMembers": "Mitgliedstabellen",
+    "factColumns": "Spalten"
   }
 }

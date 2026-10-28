@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} kolommen",
     "copyMermaid": "Kopiëren als Mermaid",
     "mermaidCopied": "Gekopieerd",
-    "lanesLabel": "Baandiagram: termen, de kolommen die ze binden, hun tabellen en producten"
+    "lanesLabel": "Baandiagram: termen, de kolommen die ze binden, hun tabellen en producten",
+    "factDefinition": "Definitie",
+    "factStatus": "Status",
+    "factStewards": "Data stewards",
+    "factNone": "Geen",
+    "factType": "Type",
+    "factSensitivity": "Gevoeligheid",
+    "factMask": "Masker",
+    "factMasked": "Gemaskeerd voor sommige lezers",
+    "factDescription": "Beschrijving",
+    "factTable": "Tabel",
+    "factDomain_one": "Domein",
+    "factDomain_other": "Domeinen",
+    "factSource": "Bron",
+    "factQuality": "Kwaliteit",
+    "qualityAt": "{{quality}}, gecontroleerd {{at}}",
+    "quality_pass": "Geslaagd",
+    "quality_fail": "Mislukt",
+    "quality_none": "Nog niet uitgevoerd",
+    "factOwner": "Eigenaar",
+    "factMembers": "Lidtabellen",
+    "factColumns": "Kolommen"
   }
 }

@@ -63,6 +63,7 @@ import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
 import { nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
+import { NodeFacts } from "./nodeFacts";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -166,20 +167,25 @@ export function GraphExplorer({
   const presetOwn = scope.presets[preset]?.edgeTypes;
   const presetTypes = useMemo(() => presetOwn ?? edgeTypes, [presetOwn, edgeTypes]);
   const savedLayers = saved.layers as string[];
+  const flat = saved.flat as boolean;
   // A layer the graph always draws is on whatever was remembered (an old "ontology off" too).
+  // REQ-2174 (2D SHOWS ONLY 2D CONTROLS): in 2D the lane diagram is the only layout and the
+  // Layers control is not shown, so the preset's own layers are drawn.
+  const presetLayers = presetOf(preset).layers;
   const layers = useMemo(
     () =>
       new Set([
         ...scope.implicitLayers,
-        ...savedLayers.filter((l): l is LayerId => scope.layerOrder.includes(l as LayerId)),
+        ...(flat
+          ? presetLayers
+          : savedLayers.filter((l): l is LayerId => scope.layerOrder.includes(l as LayerId))),
       ]),
-    [savedLayers, scope],
+    [savedLayers, scope, flat, presetLayers],
   );
   const orphans = saved.orphans as boolean;
   const rotate = saved.rotate as boolean;
   const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
   const grid = saved.grid as boolean;
-  const flat = saved.flat as boolean;
   const [focus, setFocus] = useState<string[]>(initialFocus ? [initialFocus] : []);
   const savedDomains = saved.domains as string[] | null;
   const savedTypes = saved.edgeTypes as string[] | null;
@@ -279,12 +285,23 @@ export function GraphExplorer({
     narrowed.tags,
     narrowed.sensitivities,
     searchItems(search ?? ""),
+    flat,
   ]);
   useEffect(() => {
     if (!onScope) return;
-    const [l, domains, types, statuses, kept, tags, sensitivities, items] = JSON.parse(
+    const [l, domains, types, statuses, kept, tags, sensitivities, items, lanes] = JSON.parse(
       scopeKey,
-    ) as [LayerId[], string[], string[], TermStatus[], boolean, string[], string[], string[]];
+    ) as [
+      LayerId[],
+      string[],
+      string[],
+      TermStatus[],
+      boolean,
+      string[],
+      string[],
+      string[],
+      boolean,
+    ];
     onScope({
       layers: new Set(l),
       domains,
@@ -294,6 +311,7 @@ export function GraphExplorer({
       tags,
       sensitivities,
       search: items,
+      lanes,
     });
   }, [onScope, scopeKey]);
 
@@ -433,7 +451,7 @@ export function GraphExplorer({
         {query && <OpenAsQuery query={query.text} focused={focused} testId={testId} />}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
-      {!scope.menus && (
+      {!scope.menus && !flat && (
         <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>
           <Text size="xs" c="dimmed">
             {t("graph3d.layers")}
@@ -454,7 +472,7 @@ export function GraphExplorer({
         </Group>
       )}
       <Group className="p3d-toolbar g3d-filters" gap="xs" wrap="wrap">
-        {scope.menus && (
+        {scope.menus && !flat && (
           <LayersMenu
             offered={scope.layerOrder.filter(
               (l) => offered.has(l) && !scope.implicitLayers.includes(l),
@@ -520,7 +538,7 @@ export function GraphExplorer({
           someText={(count, total) => t("graph3d.someDomains", { count, total })}
           testId={`${testId}-filter-domain`}
         />
-        {!scope.menus && offered.has("columns") && (
+        {!scope.menus && !flat && offered.has("columns") && (
           <Chip
             size="xs"
             checked={layers.has("columns")}
@@ -530,7 +548,7 @@ export function GraphExplorer({
             {t("graph3d.columnsToggle")}
           </Chip>
         )}
-        {!scope.menus && offered.has("ownerTables") && (
+        {!scope.menus && !flat && offered.has("ownerTables") && (
           <Chip
             size="xs"
             checked={layers.has("ownerTables")}
@@ -695,6 +713,8 @@ function GraphDetail({
               </Text>
             </ClampedDetail>
           )}
+          {/* REQ-2174: what the node is, each name a link to its page. */}
+          <NodeFacts node={node} data={data} testId={`${testId}-facts`} />
           {node.unlinkedTables && (
             <Text size="xs" c="orange" data-testid={`${testId}-unlinked-tables`}>
               {t("graph3d.unlinkedTables", { tables: node.unlinkedTables.join(", ") })}

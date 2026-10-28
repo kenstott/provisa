@@ -124,6 +124,27 @@
     "moreColumns_other": "+{{count}} colunas",
     "copyMermaid": "Copiar como Mermaid",
     "mermaidCopied": "Copiado",
-    "lanesLabel": "Diagrama de raias: termos, as colunas que vinculam, suas tabelas e produtos"
+    "lanesLabel": "Diagrama de raias: termos, as colunas que vinculam, suas tabelas e produtos",
+    "factDefinition": "Definição",
+    "factStatus": "Status",
+    "factStewards": "Stewards",
+    "factNone": "Nenhum",
+    "factType": "Tipo",
+    "factSensitivity": "Sensibilidade",
+    "factMask": "Máscara",
+    "factMasked": "Mascarada para alguns leitores",
+    "factDescription": "Descrição",
+    "factTable": "Tabela",
+    "factDomain_one": "Domínio",
+    "factDomain_other": "Domínios",
+    "factSource": "Fonte",
+    "factQuality": "Qualidade",
+    "qualityAt": "{{quality}}, verificada {{at}}",
+    "quality_pass": "Aprovada",
+    "quality_fail": "Reprovada",
+    "quality_none": "Ainda não executada",
+    "factOwner": "Proprietário",
+    "factMembers": "Tabelas membro",
+    "factColumns": "Colunas"
   }
 }

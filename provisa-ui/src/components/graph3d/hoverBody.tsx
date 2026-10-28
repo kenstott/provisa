@@ -8,16 +8,24 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2128: a graph's hover card -- a node's name, kind and connections, an edge's ends and kind.
+// REQ-2128: a graph's hover card -- a node's name, kind and connections, an edge's ends and kind;
+// REQ-2174: in the lane diagram, with the node's facts (nodeFacts).
 
 import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { edgesOf, type GraphData } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { kindKey } from "./nodeLook";
+import { NodeFacts } from "./nodeFacts";
 
-/** The hover card's body for what ``h`` points at in ``graph``. */
-export function hoverBody(graph: GraphData, h: GraphHover, t: TFunction): ReactNode {
+/** The hover card's body for what ``h`` points at in ``graph``; with ``facts``, a node's facts
+ * read from the whole graph. */
+export function hoverBody(
+  graph: GraphData,
+  h: GraphHover,
+  t: TFunction,
+  facts?: { data: GraphData; testId: string },
+): ReactNode {
   if (h.kind === "node") {
     const node = graph.nodes.find((n) => n.id === h.id);
     if (!node) return null;
@@ -28,6 +36,7 @@ export function hoverBody(graph: GraphData, h: GraphHover, t: TFunction): ReactN
         <span className="p3d-num">
           {t("graph3d.tipLinks", { count: edgesOf(graph, node.id).length })}
         </span>
+        {facts && <NodeFacts node={node} data={facts.data} definition testId={facts.testId} />}
       </>
     );
   }
