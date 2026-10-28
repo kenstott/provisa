@@ -89486,13 +89486,22 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     narrower numeric type, or a nullable column made required where the snapshot promised it could be null
     (or the reverse, where consumers rely on it). Saving a member is never refused. The table view already
     shows the products a table belongs to, and on save the editor shows the difference from each published
-    snapshot, labelled additive or breaking. The data quality steward sets the check''s severity per contract,
-    warn or fail, and triages a failing result: the owner publishes a new version for an intended change,
-    or the member''s change is reverted. A failing check shows the contract as behind its member, with the
-    difference, in the data quality panel and on the contract. Published versions are kept: the Contracts
-    panel steps through them with a schema difference between versions. Each version has an effective_from
-    date, so an owner can announce a version before it takes effect. Publishing a new version notifies the
-    product''s consumers by email (REQ-1330).'
+    snapshot, labelled additive or breaking. [SUPERSEDED by REQ-2158 amendment DRIFT FAILS DATA QUALITY;
+    NOTHING IS RE-VERSIONED, 2026-10-28 -- drift fails the check; the contract is not re-versioned. Kept
+    here for history; do not implement against it.] The data quality steward sets the check''s severity
+    per contract, warn or fail, and triages a failing result: the owner publishes a new version for an intended
+    change, or the member''s change is reverted. [END SUPERSEDED BLOCK] A failing check shows the contract
+    as behind its member, with the difference, in the data quality panel and on the contract. [SUPERSEDED
+    by REQ-2158 amendment DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED, 2026-10-28 -- no version stepper,
+    effective date or publish notification. Kept here for history; do not implement against it.] Published
+    versions are kept: the Contracts panel steps through them with a schema difference between versions.
+    Each version has an effective_from date, so an owner can announce a version before it takes effect.
+    Publishing a new version notifies the product''s consumers by email (REQ-1330). [END SUPERSEDED BLOCK]
+    (Amended 2026-10-28, DRIFT FAILS DATA QUALITY; NOTHING IS RE-VERSIONED:) A change to a contracted member
+    that departs from the contract''s snapshot (a column removed, renamed, retyped or narrowed) fails the
+    contract''s schema-conformance check; an added column passes. That failure is the whole response: the
+    product and its contract are not re-versioned by it, and it is handled as any failing promise check
+    is, by the data quality steward, through the data quality panel and the check''s own notifications.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
