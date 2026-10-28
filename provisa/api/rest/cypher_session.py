@@ -36,10 +36,8 @@ async def statement(request: Request, query: str) -> AsyncGenerator[GraphSession
     from provisa.api.app import state
     from provisa.cypher.parser import writes_in
 
-    identity = request.state.identity
-    async with graph_session.session_for(
-        state, identity.user_id, graph_session.claims_of(identity), writes=writes_in(query)
-    ) as held:
+    user_id, claims = graph_session.principal(state, request.state.identity)
+    async with graph_session.session_for(state, user_id, claims, writes=writes_in(query)) as held:
         yield held
 
 
