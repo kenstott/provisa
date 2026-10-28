@@ -147,7 +147,7 @@ export function LaneStage({
               label: n.label,
               lane,
               kind: "node",
-              status: n.status ?? "live",
+              status: n.status ?? "approved",
               shape: SHAPE[lane],
               fill: token(wrap, nodeLook(n).colour),
               w: nodeWidth(n.label),
