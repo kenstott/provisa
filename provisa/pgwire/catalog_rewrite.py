@@ -30,6 +30,7 @@ from provisa.pgwire.catalog_data import (
     _TABLE_MAP,
 )
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
+from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
@@ -318,6 +319,30 @@ def _rewrite_pg_cast(node, _transform):
     return None
 
 
+# REQ-2167: the sizes a client asks for, each its PostgreSQL type.
+_SIZES = {
+    "pg_relation_size": "BIGINT",
+    "pg_total_relation_size": "BIGINT",
+    "pg_indexes_size": "BIGINT",
+    "pg_table_size": "BIGINT",
+    "pg_database_size": "BIGINT",
+    "pg_tablespace_size": "BIGINT",
+    "pg_column_size": "INTEGER",
+}
+
+# REQ-2167: functions a client may call that Provisa has nothing to run them on, each refused by
+# name: it keeps no sequences, and creates no functions to validate.
+_REFUSED_FUNCTIONS = {
+    "setval": "setval is not available through Provisa: it keeps no sequences",
+    "plpgsql_validator": (
+        "plpgsql_validator is not available through Provisa: no function is created in it"
+    ),
+    "fmgr_c_validator": (
+        "fmgr_c_validator is not available through Provisa: no function is created in it"
+    ),
+}
+
+
 def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot.expressions as exp
@@ -335,10 +360,14 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
     sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 
+    sql = to_char_for_duckdb(sql)  # REQ-2167
     try:
         tree = sqlglot.parse_one(sql, read="postgres")
     except Exception:
         return sql
+    for call in tree.find_all(exp.Anonymous):
+        if call.name.lower() in _REFUSED_FUNCTIONS:
+            raise NotImplementedError(_REFUSED_FUNCTIONS[call.name.lower()])
     vectors = _vector_names(tree)
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -597,12 +626,15 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 or "pg_operator_is_visible" in fn
             ):
                 return exp.true()
-            if (
-                "pg_relation_size" in fn
-                or "pg_total_relation_size" in fn
-                or "pg_indexes_size" in fn
-            ):
-                return exp.Literal.number(0)
+            if fn == "pg_size_pretty" and len(args) == 1:
+                # DuckDB's pg_size_pretty takes a BIGINT; a sum of sizes is wider (psql's dP+).
+                return exp.Anonymous(
+                    this="pg_size_pretty",
+                    expressions=[exp.cast(args[0].transform(_transform), "BIGINT")],
+                )
+            if fn in _SIZES:
+                # REQ-2167: Provisa reports no storage; a size is unknown, never a made-up 0.
+                return exp.cast(exp.null(), _SIZES[fn])
             if "pg_stat_get" in fn:
                 return _emulated(fn, exp.Literal.number(0))
             if "pg_table_is_visible" in fn or "pg_has_role" in fn:

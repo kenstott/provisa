@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Excel 表",
+    "note": "在此数据源的工作簿中查找表的方式。除非某个工作簿读取有误，否则请将提示保留为“自动检测”。",
+    "auto": "自动检测",
+    "autoValue": "自动检测 ({{value}})",
+    "hint": {
+      "header_rows": "标题行",
+      "max_header_rows": "最多标题行",
+      "table_gap_rows": "表之间的空行",
+      "column_gap": "表之间的空列",
+      "min_columns": "最少列数",
+      "min_data_rows": "最少数据行",
+      "range": "区域"
+    },
+    "help": {
+      "header_rows": "标题行的确切数量。当数据行被读成标题、或标题被读成数据时设置它。",
+      "max_header_rows": "最多读作标题行的行数。1 表示每个表只有一行标题。",
+      "table_gap_rows": "连续多少个空行结束一个表。当表之间以一个空行分隔时设为 1。",
+      "column_gap": "连续多少个空列分隔并排的表。当一个空列分隔它们时设为 1。",
+      "min_columns": "一个表的最少列数。设为 1 可读取单列表。",
+      "min_data_rows": "一个表的最少数据行数。少于此数的表不会被读取。",
+      "range": "此表的单元格，按原样读取，例如 Sheet1!A3:F200。含空格的工作表名用引号括起：'Q1 results'!A1:D9。"
+    },
+    "entriesTitle": "针对单个工作簿或表",
+    "entriesNote": "此处的提示优先于上方的同一提示。表名为 文件__工作表，与列表中一致。",
+    "scope": "针对",
+    "scopeWorkbook": "工作簿",
+    "scopeTable": "表",
+    "workbookName": "工作簿文件",
+    "workbookNameHelp": "工作簿的文件名，例如 report.xlsx。",
+    "tableName": "表",
+    "tableNameHelp": "数据源列出的表名，例如 report__summary。指定区域时，这是该区域的表所取的名称。",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "重复指定；每个工作簿或表只保留一项。",
+    "repeatedFix": "Excel 表：某个工作簿或表出现在两项中。每个只保留一项。",
+    "add": "添加工作簿或表",
+    "remove": "移除"
+  }
+}

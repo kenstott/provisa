@@ -32,6 +32,7 @@ from provisa.pgwire.catalog_pg17_tables import (
     populate_unqueried_relations,
 )
 from provisa.pgwire.function_catalog import populate_functions
+from provisa.pgwire.catalog_macros import populate_catalog_macros
 from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
 from provisa.pgwire.catalog_data import (
     UNQUERIED_RELATIONS,
@@ -1014,6 +1015,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_is_constraints(db, constraint_rows, idx)
     populate_client_relations(db)  # REQ-2167
     populate_unqueried_relations(db, UNQUERIED_RELATIONS)
+    populate_catalog_macros(db)  # REQ-2167: over the relations above
 
     return db
 

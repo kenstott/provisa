@@ -18,6 +18,7 @@ and an infinite date or timestamp stays infinite on the wire."""
 from __future__ import annotations
 
 import datetime
+import re
 import struct
 
 import duckdb
@@ -123,3 +124,50 @@ def test_a_function_named_in_pg_catalog_is_that_function():
     # Named as PostgreSQL names it, though DuckDB spells it otherwise.
     assert _on_duckdb("SELECT pg_catalog.char_length('abc') AS v") == [(3,)]
     assert _on_duckdb("SELECT pg_catalog.lower(pg_catalog.btrim('  X ')) AS v") == [("x",)]
+
+
+# PostgreSQL's own to_char examples (Table 9.31), and a date's elements strftime has none of.
+_TO_CHAR = [
+    ("TIMESTAMP '2026-10-06 17:39:18'", "Day, DD  HH12:MI:SS", "Tuesday  , 06  05:39:18"),
+    ("TIMESTAMP '2026-10-06 17:39:18'", "FMDay, FMDD  HH12:MI:SS", "Tuesday, 6  05:39:18"),
+    ("DATE '2026-10-06'", 'YYYY-MM-DD"T" Mon MON mon D WW Q', "2026-10-06T Oct OCT oct 3 40 4"),
+    ("-0.1", "99.99", "  -.10"),
+    ("-0.1", "FM9.99", "-.1"),
+    ("-0.1", "FM90.99", "-0.1"),
+    ("0.1", "0.9", " 0.1"),
+    ("12", "9990999.9", "    0012.0"),
+    ("12", "FM9990999.9", "0012."),
+    ("485", "999", " 485"),
+    ("-485", "999", "-485"),
+    ("1485", "9,999", " 1,485"),
+    ("148.5", "999.999", " 148.500"),
+    ("148.5", "FM999.999", "148.5"),
+    ("148.5", "FM999.990", "148.500"),
+    ("0", "999", "   0"),
+    ("1485", "999", " ###"),
+    ("NULL::numeric", "999", None),
+]
+
+
+@pytest.mark.parametrize("value, fmt, written", _TO_CHAR)
+def test_to_char_writes_as_postgresql_writes(value, fmt, written):
+    assert _on_duckdb(f"SELECT to_char({value}, '{fmt}')") == [(written,)]
+    assert _on_duckdb(f"SELECT pg_catalog.to_char({value}, '{fmt}')") == [(written,)]
+
+
+@pytest.mark.parametrize(
+    "call, element",
+    [
+        ("to_char(5, '999S')", "'S'"),
+        ("to_char(now(), 'TMMonth')", "'TM'"),
+        ("to_char(now(), 'DDth')", "'DDth'"),
+        ("to_char(now(), 'J')", "'J'"),
+        ("to_char(now(), x) FROM (VALUES ('YYYY')) t(x)", "not a literal"),
+    ],
+)
+def test_a_to_char_element_not_carried_is_refused_by_name(call, element):
+    from provisa.pgwire.server import _sqlstate_of
+
+    with pytest.raises(NotImplementedError, match=re.escape(element)) as refused:
+        transpile_to_duckdb(f"SELECT {call}")
+    assert _sqlstate_of(refused.value) == "0A000"

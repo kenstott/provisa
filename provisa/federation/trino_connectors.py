@@ -587,6 +587,12 @@ class TrinoFilesConnector(_TrinoConnector):
         crawl = crawl_operand(source.id, source.mapping)
         if crawl is not None:
             details["crawl"] = json.dumps(crawl, sort_keys=True)
+        # The same Excel hints the pgwire bundle is given, as the ``excel-hints`` property.
+        from provisa.file_source.excel_hints import excel_hints_operand
+
+        excel_hints = excel_hints_operand(source.id, source.mapping)
+        if excel_hints is not None:
+            details["excel-hints"] = json.dumps(excel_hints, sort_keys=True)
         return details
 
 

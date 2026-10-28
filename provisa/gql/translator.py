@@ -1429,7 +1429,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
                     )
                 assert type_label is not None
-                alias = fv or nm.table_name
+                # An anonymous first node is named as every anonymous node is (_node_alias), so a
+                # later anonymous node of its table takes a name of its own (REQ-345).
+                alias = fv or self._node_alias(first_node, nm, as_source=True)
                 return _node_table_expr(nm, alias)
         return None
 

@@ -87317,7 +87317,12 @@ Then the schema <catalog>.customer_360 holds both tables, its comment and tags c
     and roles in ODPS''s own fields (not as custom properties), the documentation link as an authoritativeDefinition,
     the product''s tags, tenant and productCreatedTs, and managementPorts for the endpoints that observe
     and control it. A contract''s quality rules are the member''s promises only, never a check another product
-    owns; expectations appear on input ports, never in the product''s own contracts.'
+    owns; expectations appear on input ports, never in the product''s own contracts. (Amended 2026-10-27,
+    ODPS FIELDS WITH NO STORED SOURCE:) 2026-10-28, maintainer decisions: productCreatedTs is the product''s
+    own created_at, set when it is first saved and shown read-only on its page; the product''s tags are
+    the union of the model tags on its member tables; its tenant is its org; its managementPorts are its
+    page, its lineage endpoint and the admin GraphQL endpoint, each with its URL from the deployment''s
+    documentation base URL.'
   use_case: A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
   scenario: "Given a data product customer_360 with two member tables and the Dataplex target configured for the organisation's project
 
@@ -90080,7 +90085,24 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When a view opens, the layout is layered if its drawn rank and flow edges are all of one class and form
     no cycle, else force; a Force/Layered control lets the reader override it, Layered disabled where a
     cycle makes it impossible. A layered layout is flat in 3D as the tree is. It extends today''s tree layout
-    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views.'
+    (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views. (Amended 2026-10-27,
+    THE 2D VIEW IS A LANE DIAGRAM:) 2026-10-28: the Graph panel''s 2D view is a lane diagram read left to
+    right: the term hierarchy, then the columns its terms bind, then their tables, then the products those
+    tables belong to. Inside the term lane only rank edges (kind of, part of, valid value of) are drawn,
+    top-down; a chain ends at the columns that bind it. A table''s unbound columns are one ''+N columns''
+    node that expands in place on a click. The product lane is optional: a table in no product ends at the
+    tables lane, and on the Ontology preset every product the tables belong to is shown. Lateral and flow
+    edges and lineage are not drawn in this view. It is the existing graph view laid out with ELK''s layered
+    algorithm in fixed lane partitions, so every interaction (clicking through to a node''s page, hover,
+    selection, the detail panel) is kept, and its diagram can be copied as Mermaid text. The 3D view stays
+    the free-form explorer. (Amended 2026-10-27, EVERY LANE NODE INFORMS AND LINKS:) 2026-10-28: every node
+    of the lane diagram carries what helps a reader understand and move on, in its hover card and the detail
+    panel, with each name a link to its own page: a term its definition, status and steward; a column its
+    type, its sensitivity or mask, its description and its table''s column; a table its domain, source,
+    freshness or row count where known, and quality status; a product its status, owner and member count;
+    and a ''+N columns'' node the names of the columns it holds. (Amended 2026-10-27, 2D SHOWS ONLY 2D CONTROLS:)
+    2026-10-28: in 2D the lane diagram is the only layout, so the layout toggle is not shown, and no control
+    that applies only to the 3D view appears; those controls show only when 3D is selected.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -90433,3 +90455,34 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And another session sees no Scratch label
 
     And the label is gone once the session ends'
+- id: REQ-2096
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: File & Lake Sources
+  feature: connector-catalog-files-and-lake
+  priority: SHOULD
+  type: behavioral
+  description: "A files source reads each Excel workbook as the tables it holds. The workbook's own Excel tables (Format as Table, with their header row count) and named ranges of a single block are read first, as declared; the rest of each sheet is searched for blocks of cells separated by blank rows and blank columns (two each), so tables side by side are read as two, and a single blank row or column inside a table stays. In each block a single-cell row above a wider row is the table's title and names it (<file>__<sheet>_<title>); header rows follow, and a row no wider than the header row above it is data, so a sheet of ids or codes keeps its first rows; a cell holding an empty string is blank and a formula is judged by its value. The source's mapping.excel_hints overrides each rule where a workbook is read wrong: header_rows (exact), max_header_rows (3), table_gap_rows (2), column_gap (2), min_columns (2), min_data_rows (1), for every workbook of the source, for one workbook by file name (workbooks) or for one table by the name it is read as (tables, which also take range, Sheet!A3:F200, naming the table those cells are). The narrowest that sets a hint wins; one left unset is the reader's own rule, shown in the source form as Auto-detect. Both engines give the file adapter the same hints (its excelHints operand; Trino's excel-hints catalog property). A hint the reader would not take is refused when the source is saved, naming it. A workbook read under other hints is read again, and the tables found before are gone."
+  use_case: "A control room keeps its watch list in a workbook whose deal_team sheet holds only ids and timestamps; the source reads it with its header row and every member, and a summary sheet whose header row is years is read with header_rows: 1."
+  scenario: "Given a files source over a workbook whose sheet holds two tables side by side, separated by two blank columns
+
+When its tables are listed
+
+Then each table is listed, named <file>__<sheet>_t1 and _t2
+
+And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
+  code:
+  - provisa/file_source/excel_hints.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/federation/trino_connectors.py
+  - provisa/api/admin/schema_common.py
+  - provisa-ui/src/pages/sources/excelHints.ts
+  - provisa-ui/src/pages/sources/ExcelHintsFields.tsx
+  tests:
+  - tests/unit/test_excel_hints.py
+  - provisa-ui/src/pages/sources/__tests__/excelHints.test.tsx
+  docs:
+  - sources.md
+  stakeholders:
+  - data-engineer

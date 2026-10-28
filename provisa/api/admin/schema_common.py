@@ -445,6 +445,27 @@ def logs_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1996
     return None
 
 
+def excel_hints_refusal(input: SourceInput) -> Optional[MutationResult]:
+    """Why a files source's Excel hints cannot be taken, naming the hint, or None: for another
+    source type, and for hints the reader takes."""
+    import json as _json
+
+    from provisa.file_source.excel_hints import InvalidExcelHints, excel_hints_operand
+
+    if input.type != "files":
+        return None
+    try:
+        excel_hints_operand(input.id, _json.loads(input.mapping_json or "{}"))
+    except InvalidExcelHints as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code="schema.excel_hints_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    return None
+
+
 def microsoft_365_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1923
     """Why a Microsoft 365 source's settings cannot be a source, in the setup's own terms, or
     None: for another source type, and for settings that can. The settings are the source's
