@@ -47262,7 +47262,12 @@
     A draft''s definition is always edited in place. (Amended 2026-10-28, SAVE, SAVE VERSION, CANCEL:) A
     term''s definition edit form: The edit form''s actions are Save, Save version and Cancel: Save writes
     the edit in place on the current version, Save version writes it as the next version and keeps the current
-    one read-only, and Cancel discards it.'
+    one read-only, and Cancel discards it. (Amended 2026-10-28, A CONCEPT''S PROPERTIES ARE ITS PARTS:)
+    A property term that describes a concept (a shift coverage''s start, end and location) is related to
+    it by PART_OF, not RELATED_TO, so the concept is grounded through the properties that reach data. The
+    glossary''s Generate Relationships action proposes PART_OF when it links a concept to one of its property-role
+    terms, and keeps RELATED_TO for loose associations, which conduct no grounding. Demo and shipped vocabularies
+    follow the same rule.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
