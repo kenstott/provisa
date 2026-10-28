@@ -223,7 +223,7 @@ async def test_duckdb_declares_its_keys_in_duckdb_constraints(tmp_path):
         await pool.close_all()
 
 
-async def test_postgresql_declares_its_keys_in_information_schema(control_plane):
+async def test_postgresql_declares_its_keys_in_its_catalog(control_plane):
     from tests.embedded_pg import PASSWORD, ROLE
 
     async with control_plane.platform.acquire() as conn:
@@ -261,9 +261,11 @@ class _Catalog:
         return SimpleNamespace(rows=found[0])
 
 
-@pytest.mark.parametrize("kind", ["mysql", "mariadb", "sqlserver"])
-async def test_mysql_and_sql_server_declare_their_keys_in_information_schema(kind):
-    foreign_marker = "referenced_table_name" if kind != "sqlserver" else "referential_constraints"
+@pytest.mark.parametrize("kind", ["mysql", "mariadb", "sqlserver", "cockroachdb"])
+async def test_mysql_sql_server_and_cockroachdb_declare_their_keys_in_information_schema(kind):
+    foreign_marker = (
+        "referenced_table_name" if kind in ("mysql", "mariadb") else "referential_constraints"
+    )
     catalog = _Catalog(
         {
             "constraint_type IN": [
@@ -307,30 +309,57 @@ async def test_a_composite_primary_key_is_read_in_key_order_and_a_unique_index_i
     assert keys == DeclaredKeys(primary_key=("pet_id", "vet_id"))
 
 
-async def test_a_composite_foreign_key_keeps_its_pairing_column_by_column():
-    """PostgreSQL's catalog query, run over DuckDB's information_schema (which follows the
-    standard as PostgreSQL's does): two pairs, never one key paired with another table's."""
-    from provisa.discovery.declared_keys import READERS
+async def test_a_composite_foreign_key_keeps_its_pairing_column_by_column(control_plane):
+    """PostgreSQL's catalog query: two pairs, never one key paired with another table's; and a
+    composite key's columns in the key's order, not the table's."""
+    from tests.embedded_pg import PASSWORD, ROLE
 
-    con = duckdb.connect()
-    con.execute("CREATE SCHEMA s")
-    con.execute("CREATE TABLE s.parent (a INT, b INT, PRIMARY KEY (a, b))")
-    con.execute("CREATE TABLE s.other (a INT, b INT, PRIMARY KEY (a, b))")
-    con.execute(
-        "CREATE TABLE s.child (id INT PRIMARY KEY, pb INT, pa INT,"
-        " FOREIGN KEY (pa, pb) REFERENCES s.parent (a, b))"
+    async with control_plane.platform.acquire() as conn:
+        for ddl in (
+            "CREATE SCHEMA s",
+            "CREATE TABLE s.parent (a INT, b INT, c INT, PRIMARY KEY (b, a), UNIQUE (c, a))",
+            "CREATE TABLE s.other (a INT, b INT, PRIMARY KEY (a, b))",
+            "CREATE TABLE s.child (id INT PRIMARY KEY, pb INT, pa INT,"
+            " FOREIGN KEY (pa, pb) REFERENCES s.parent (a, b))",
+        ):
+            await conn.execute(ddl)
+    pool = SourcePool()
+    await pool.add(
+        "pg", "postgresql", "127.0.0.1", control_plane.pg.port, control_plane.name, ROLE, PASSWORD
     )
-
-    class _Pool:
-        async def execute(self, _source_id, sql, _params=None):
-            return SimpleNamespace(rows=con.execute(sql).fetchall())
-
-    keys = await READERS["postgresql"](_Pool(), "src", "s", "child")
-    assert keys.primary_key == ("id",)
-    assert keys.foreign == (
+    try:
+        child = await declared_keys(pool, "postgresql", "pg", "s", "child")
+        parent = await declared_keys(pool, "postgresql", "pg", "s", "parent")
+    finally:
+        await pool.close_all()
+    assert child is not None and child.primary_key == ("id",)
+    assert child.foreign == (
         ForeignKey("pa", "parent", "a"),
         ForeignKey("pb", "parent", "b"),
     )
+    assert parent == DeclaredKeys(
+        primary_key=("b", "a"), unique=(UniqueKey("parent_c_a_key", ("c", "a")),)
+    )
+
+
+async def test_postgresql_keys_are_read_from_pg_catalog_by_the_tables_name():
+    """information_schema computes every constraint in the database before a name narrows it: on
+    a database of tens of thousands of tables each read took seconds and the boot that read every
+    registered table's keys never answered. The catalog is read by the schema's and table's names."""
+    catalog = _Catalog(
+        {
+            "c.contype IN": [("PRIMARY KEY", "pets_pkey", "id")],
+            "c.contype = 'f'": [("owner_id", "owners", "id")],
+        }
+    )
+    keys = await declared_keys(catalog, "postgresql", "src", "zoo", "pets")
+    assert keys == DeclaredKeys(
+        primary_key=("id",), foreign=(ForeignKey("owner_id", "owners", "id"),)
+    )
+    assert len(catalog.statements) == 2
+    for sql in catalog.statements:
+        assert "information_schema" not in sql
+        assert "n.nspname = 'zoo'" in sql and "t.relname = 'pets'" in sql
 
 
 async def test_the_admin_save_reads_the_keys_its_source_declares(monkeypatch, sqlite_pool):
