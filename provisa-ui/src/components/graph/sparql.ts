@@ -283,6 +283,42 @@ const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 /** A literal's label in the drawing: one of its own, so a literal is drawn apart from resources. */
 export const LITERAL_LABEL = "Literal";
 
+/** The last two path segments of an IRI (``pets/3`` of ``https://x.example/id/pet-store/pets/3``),
+ * the tail that identifies it without its base; the whole IRI where it has no path. */
+export function iriTail(iri: string): string {
+  const path = iri.replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/]*/, "");
+  const segments = path.split("/").filter((x) => x !== "");
+  return segments.length === 0 ? iri : segments.slice(-2).join("/");
+}
+
+/** A resource or class named for the drawing: its compacted name where the vocabulary has a prefix
+ * for it, else the tail of its IRI; a blank node by its label. */
+const resourceName = (c: RdfCell): string =>
+  c.rdfTerm === "iri" && c.shown.startsWith("<") ? iriTail(c.value) : c.shown;
+
+/** Predicates that name what they are said of, in the order they are preferred: a predicate's
+ * local name, lower-cased (``rdfs:label`` and a column's ``name`` both read so). */
+const NAMING = ["name", "label", "preflabel"];
+
+const predicateLocal = (iri: string): string => iri.split(/[/#:]/).pop()?.toLowerCase() ?? "";
+
+const isString = (c: RdfCell): boolean =>
+  c.datatype === undefined || c.datatype === "http://www.w3.org/2001/XMLSchema#string";
+
+/** What a resource is captioned by: its name-like literal (name, label, rdfs:label,
+ * skos:prefLabel), else its first string literal, else its name (resourceName). */
+function captionOf(subject: RdfCell, literals: Triple[]): string {
+  const mine = literals.filter(
+    (t) => t.s.value === subject.value && t.s.rdfTerm === subject.rdfTerm,
+  );
+  for (const key of NAMING) {
+    const named = mine.find((t) => predicateLocal(t.p.value) === key && isString(t.o));
+    if (named) return named.o.shown;
+  }
+  const first = mine.find((t) => isString(t.o));
+  return first ? first.o.shown : resourceName(subject);
+}
+
 /**
  * The triples as the canvas draws them: each resource a node, labelled by its class where a triple
  * types it (else its namespace's prefix), and each triple whose object is a resource an edge named
@@ -293,6 +329,8 @@ export const LITERAL_LABEL = "Literal";
 export function triplesGraph(
   triples: Triple[],
   literalNodes = false,
+  /** The class a query types a resource as, where no triple does (a SELECT's rows). */
+  typed: ReadonlyMap<string, string> = new Map(),
 ): {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
@@ -300,7 +338,9 @@ export function triplesGraph(
   const typeOf = new Map<string, string>();
   for (const { s, p, o } of triples)
     if (p.value === RDF_TYPE && o.rdfTerm === "iri" && !typeOf.has(s.value))
-      typeOf.set(s.value, o.shown);
+      typeOf.set(s.value, resourceName(o));
+  for (const [iri, label] of typed) if (!typeOf.has(iri)) typeOf.set(iri, label);
+  const literals = triples.filter((t) => t.o.rdfTerm === "literal");
   // Keyed as GraphCanvas keys a node (`${label}:${id}`), which draws an edge only between two
   // nodes it finds so; a resource is found again by its term.
   const nodes = new Map<string, GNode>();
@@ -322,7 +362,7 @@ export function triplesGraph(
         id: next++,
         label,
         tableLabel: label,
-        properties: { name: c.shown, iri: c.value },
+        properties: { name: captionOf(c, literals), iri: c.value },
       };
       resources.set(key, add(n));
     }
@@ -364,6 +404,15 @@ export function triplesGraph(
   return { nodes, edges };
 }
 
+/** The class each variable of ``query`` is typed as (``?s a pet-store:pets``), as the query names
+ * it; the tail of its IRI where the query writes it in full. */
+function queryClasses(query: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of query.matchAll(/[?$](\w+)\s+(?:a|rdf:type)\s+(<[^>]*>|[^\s.;,{}]+)/g))
+    if (!out.has(m[1])) out.set(m[1], m[2].startsWith("<") ? iriTail(m[2].slice(1, -1)) : m[2]);
+  return out;
+}
+
 /** How a SELECT's variables pair into an edge: its subject and object columns, and the column a
  * bound predicate is read from (null where the query binds none). */
 export interface SelectPairing {
@@ -391,15 +440,14 @@ export function selectPairing(
   const [s, p, o] = columns;
   const pattern = new RegExp(`[?$]${s}\\s+[?$]${p}\\s+[?$]${o}(?![\\w])`);
   // The pattern is read in the WHERE group, never in the SELECT clause that lists the variables.
-  return pattern.test(query.slice(query.indexOf("{"))) ? { subject: s, predicate: p, object: o } : null;
+  return pattern.test(query.slice(query.indexOf("{")))
+    ? { subject: s, predicate: p, object: o }
+    : null;
 }
 
 /** A SELECT's rows as triples, one per row: the predicate bound where the pairing has one, else
  * an unnamed edge. */
-export function pairedTriples(
-  pairing: SelectPairing,
-  rows: Record<string, unknown>[],
-): Triple[] {
+export function pairedTriples(pairing: SelectPairing, rows: Record<string, unknown>[]): Triple[] {
   const unnamed: RdfCell = { rdfTerm: "iri", value: "", shown: "" };
   return rows.map((r) => ({
     s: r[pairing.subject] as RdfCell,
@@ -411,10 +459,27 @@ export function pairedTriples(
 /** ``frame`` as it is drawn: a CONSTRUCT's triples with their literals as properties or, with
  * ``literalNodes``, as nodes; a pairable SELECT's rows, once ``drawSelect`` asks, as nodes and
  * edges. Any other frame is as answered. */
-export function sparqlDrawn(frame: FrameData, literalNodes: boolean, drawSelect: boolean): FrameData {
+export function sparqlDrawn(
+  frame: FrameData,
+  literalNodes: boolean,
+  drawSelect: boolean,
+): FrameData {
   if (frame.sparqlTriples) return { ...frame, ...triplesGraph(frame.sparqlTriples, literalNodes) };
-  if (drawSelect && frame.sparqlPairing)
-    return { ...frame, ...triplesGraph(pairedTriples(frame.sparqlPairing, frame.rows)) };
+  if (drawSelect && frame.sparqlPairing) {
+    const pairing = frame.sparqlPairing;
+    // The class the query types each end as (``?s a pet-store:pets``), for the nodes' labels.
+    const classes = queryClasses(frame.query);
+    const typed = new Map<string, string>();
+    for (const [column, variable] of [
+      [pairing.subject, pairing.subject],
+      [pairing.object, pairing.object],
+    ]) {
+      const cls = classes.get(variable);
+      if (cls === undefined) continue;
+      for (const r of frame.rows) typed.set((r[column] as RdfCell).value, cls);
+    }
+    return { ...frame, ...triplesGraph(pairedTriples(pairing, frame.rows), false, typed) };
+  }
   return frame;
 }
 

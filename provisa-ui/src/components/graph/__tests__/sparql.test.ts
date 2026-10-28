@@ -23,6 +23,7 @@ import {
   pickedQuery,
   relationshipPattern,
   type SparqlVocabulary,
+  iriTail,
   sparqlDrawn,
   withPrefixes,
   LITERAL_LABEL,
@@ -141,9 +142,10 @@ describe("a CONSTRUCT's triples", () => {
     const resources = [...nodes.values()].filter((n) => n.label !== LITERAL_LABEL);
     const literals = [...nodes.values()].filter((n) => n.label === LITERAL_LABEL);
     // Order 1 is typed; order 2 has no type triple, so it is drawn by its namespace's prefix.
+    // Captioned by its first string literal, else by the tail of its IRI; a class by its name.
     expect(resources.map((n) => [n.properties.name, n.label]).sort()).toEqual([
-      ["<https://provisa.example/id/sales/orders/1>", "sales:orders"],
-      ["<https://provisa.example/id/sales/orders/2>", "Resource"],
+      ["orders/2", "Resource"],
+      ['said "hi"', "sales:orders"],
       ["sales:orders", "sales"],
     ]);
     // The same literal under two subjects is two nodes.
@@ -404,5 +406,69 @@ describe("a CONSTRUCT frame's literal toggle", () => {
     const frame = { id: "f", ...st } as FrameData;
     expect(sparqlDrawn(frame, false, false).nodes.size).toBe(3);
     expect(sparqlDrawn(frame, true, false).nodes.size).toBe(6);
+  });
+});
+
+describe("a drawn resource's caption", () => {
+  const cap = (nt: string) =>
+    [...triplesGraph(parseNTriples(nt, P)).nodes.values()].map((n) => n.properties.name);
+  const a = `<${BASE}/id/pet-store/pets/3>`;
+
+  it("is its name-like literal, in the order name, label, preferred label", () => {
+    const lit = (p: string, v: string) => `${a} <${p}> "${v}" .`;
+    expect(
+      cap(
+        [
+          lit(`${BASE}/vocab/pet-store/pets#species`, "dog"),
+          lit("http://www.w3.org/2004/02/skos/core#prefLabel", "Pref"),
+          lit("http://www.w3.org/2000/01/rdf-schema#label", "Label"),
+          lit(`${BASE}/vocab/pet-store/pets#name`, "Rex"),
+        ].join("\n"),
+      ),
+    ).toEqual(["Rex"]);
+    expect(
+      cap(
+        [
+          lit(`${BASE}/vocab/pet-store/pets#species`, "dog"),
+          lit("http://www.w3.org/2004/02/skos/core#prefLabel", "Pref"),
+          lit("http://www.w3.org/2000/01/rdf-schema#label", "Label"),
+        ].join("\n"),
+      ),
+    ).toEqual(["Label"]);
+  });
+
+  it("is its first string literal where none is name-like, a number being no caption", () => {
+    const nt = [
+      `${a} <${BASE}/vocab/pet-store/pets#age> "4"^^<${P.xsd}integer> .`,
+      `${a} <${BASE}/vocab/pet-store/pets#species> "dog" .`,
+    ].join("\n");
+    expect(cap(nt)).toEqual(["dog"]);
+  });
+
+  it("is the tail of its IRI, not the base, where it has no string", () => {
+    expect(cap(`${a} <${BASE}/vocab/pet-store/pets#age> "4"^^<${P.xsd}integer> .`)).toEqual([
+      "pets/3",
+    ]);
+    expect(iriTail(`${BASE}/id/pet-store/pets/3`)).toBe("pets/3");
+    expect(iriTail("https://x.example")).toBe("https://x.example");
+  });
+
+  it("names a class by its compacted name, untruncated", () => {
+    const nt = `${a} <${P.rdf}type> <${BASE}/vocab/sales/orders> .`;
+    expect(cap(nt).sort()).toEqual(["pets/3", "sales:orders"]);
+  });
+
+  it("labels a drawn SELECT's nodes by the class the query types them as", async () => {
+    const q = `SELECT ?s ?o WHERE { ?s a sales:orders . ?s <http://x/k> ?o . ?o a <${BASE}/vocab/sales/items> }`;
+    const st = await sparqlStatement(
+      q,
+      answer(["s", "o"], [{ s: iri("pets/1"), o: iri("pets/2") }]),
+      P,
+    );
+    const drawn = sparqlDrawn({ id: "f", ...st } as FrameData, false, true);
+    expect([...drawn.nodes.values()].map((n) => [n.properties.name, n.label]).sort()).toEqual([
+      ["pets/1", "sales:orders"],
+      ["pets/2", "sales/items"],
+    ]);
   });
 });
