@@ -26681,3 +26681,13 @@ A data product organises an access request. A role that can see a product but ca
 **Code:** —
 
 **Tests:** —
+
+### REQ-2181 · Data Catalog Integration {#REQ-2181}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+The data product page has a buyer view, shown when the role the user acts as cannot read every member table of the product (a user acting as Data buyer, [REQ-2155](#REQ-2155)); a role that reads every member, and the owner, steward and admin roles, see the full page. No other permission decides it. In the buyer view: shown, as what the product advertises, are its details and custom properties, tags and related terms, contracts, the Sample Data panel with its profile ([REQ-2158](#REQ-2158)), input ports, and lineage upstream to the input ports without the downstream hop. Collapsed and disabled, each with its label, a count (for example 12 queries, 4 related tables) and the note that it is available once access is granted, are the GraphQL queries (access patterns), related tables, relationships, the knowledge graph and data quality results; the count names nothing. Profiles appear only in the Sample Data panel. Consumers are not shown at all, since who else uses a product is not a buyer's business. A Your request strip at the top shows the user's own role request and access request for the product ([REQ-2180](#REQ-2180)), their status and any decline reason, including the role-too-broad redirect; each user sees only their own.
+
+**Code:** —
+
+**Tests:** —
