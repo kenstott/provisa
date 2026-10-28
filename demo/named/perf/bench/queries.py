@@ -304,15 +304,20 @@ QUERIES: list[Query] = [
     Query(
         id="neo4j_materialize_cold",
         category="materialize_cost",
-        description="First read of a Neo4j-source table after cache expiry — one Cypher HTTP call + flatten + land",
-        sql="SELECT count(*) FROM perf_bench.bench_order_node",
+        description="First read of a Neo4j-source row after cache expiry — one Cypher HTTP call + flatten + land",
+        # bench_order_node is row_materialize (REQ-1865): it lands the rows a request names by key,
+        # and refuses a read of the whole table. A literal primary-key filter is the read that
+        # lands one row.
+        sql="SELECT count(*) FROM perf_bench.bench_order_node WHERE order_id = :order_id",
+        params={"order_id": 12345},
         iterations=1,
     ),
     Query(
         id="neo4j_materialize_warm",
         category="materialize_cost",
-        description="Repeat read of the same Neo4j-source table within TTL — local materialized scan",
-        sql="SELECT count(*) FROM perf_bench.bench_order_node",
+        description="Repeat read of the same Neo4j-source row within TTL — local materialized read",
+        sql="SELECT count(*) FROM perf_bench.bench_order_node WHERE order_id = :order_id",
+        params={"order_id": 12345},
         iterations=10,
     ),
     Query(

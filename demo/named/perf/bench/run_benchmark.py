@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import random
 import re
@@ -193,6 +194,9 @@ class QueryResult:
     # pass, or another query sharing the same governed shape/role, may have already warmed this
     # exact cache key), so it is neither a reliable cold sample nor a reliable warm one.
     cache_pass: str = "cache"
+    # The query language the request was written in (sql/cypher/graphql/grpc), beside the
+    # transport that carried it: flight carries SQL here, never Cypher, and the report says so.
+    dialect: str = ""
 
     @property
     def ok_samples(self) -> list[Sample]:
@@ -201,14 +205,18 @@ class QueryResult:
     def summary(self) -> dict:
         ok = self.ok_samples
         errors = len(self.samples) - len(ok)
+        # The first failure's text, so a failed cell says why in the report, not only on stderr.
+        first_error = next((s.error for s in self.samples if s.error is not None), None)
         if not ok:
             return {
                 "query_id": self.query_id,
                 "category": self.category,
                 "transport": self.transport,
+                "dialect": self.dialect,
                 "concurrency": self.concurrency,
                 "cache_pass": self.cache_pass,
                 "errors": errors,
+                "first_error": first_error,
                 "status": "all_failed",
             }
         # REQ-1894: the "nocache" pass measures every iteration; the "cache" pass drops iteration
@@ -231,24 +239,28 @@ class QueryResult:
             "query_id": self.query_id,
             "category": self.category,
             "transport": self.transport,
+            "dialect": self.dialect,
             "concurrency": self.concurrency,
             "cache_pass": self.cache_pass,
             "n": len(measured),
             "errors": errors,
+            "first_error": first_error,
             "total_rows": total_rows,
             "total_bytes": total_bytes,
             "bytes_per_sec": total_bytes / wall_s if wall_s > 0 else None,
             "qps": qps,
             "ops_per_hour": qps * 3600 if qps is not None else None,
             "latency_ms_p50": statistics.median(latencies_ms),
-            "latency_ms_p95": latencies_ms[int(len(latencies_ms) * 0.95) - 1]
-            if len(latencies_ms) > 1
-            else latencies_ms[0],
-            "latency_ms_p99": latencies_ms[int(len(latencies_ms) * 0.99) - 1]
-            if len(latencies_ms) > 1
-            else latencies_ms[0],
+            "latency_ms_p95": _percentile(latencies_ms, 0.95),
+            "latency_ms_p99": _percentile(latencies_ms, 0.99),
             "latency_ms_max": latencies_ms[-1],
         }
+
+
+def _percentile(sorted_values: list[float], p: float) -> float:
+    """Nearest-rank percentile of an ascending list: the smallest value with at least ``p`` of the
+    values at or below it. Never below the median, however few the samples."""
+    return sorted_values[max(0, math.ceil(p * len(sorted_values)) - 1)]
 
 
 class Transport:
@@ -1003,7 +1015,11 @@ def _run_sequential(
     # ("nocache") or drop iteration 1 ("cache"). See QueryResult.cache_pass's own docstring.
     cache_pass = "nocache" if no_cache else "cache"
     result = QueryResult(
-        query_id=q.id, category=q.category, transport=transport.name, cache_pass=cache_pass
+        query_id=q.id,
+        category=q.category,
+        transport=transport.name,
+        cache_pass=cache_pass,
+        dialect=method,
     )
     call = getattr(transport, _CALL_METHOD[method])
     if method == "sql" and not no_cache and isinstance(text, str):
@@ -1193,7 +1209,7 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
                         timeouts,
                         achieved,
                         statistics.median(lat),
-                        lat[int(len(lat) * 0.99) - 1] if len(lat) > 1 else lat[0],
+                        _percentile(lat, 0.99),
                         total_bytes / wall_s if wall_s > 0 else 0.0,
                     )
                 )
@@ -1465,22 +1481,37 @@ def main() -> int:
     return 0
 
 
-def _print_table(summaries: list[dict]) -> None:
-    header = f"{'query_id':<24} {'cat':<26} {'transport':<8} {'conc':>5} {'n':>5} {'QPS':>10} {'bytes/s':>14} {'p50ms':>8} {'p99ms':>8}"
-    print("\n" + header)
-    print("-" * len(header))
+def cell_label(summary: dict) -> str:
+    """A cell's transport with the dialect it carried, e.g. ``flight(sql)`` or ``http(cypher)``."""
+    return f"{summary['transport']}({summary['dialect']})"
+
+
+def format_table(summaries: list[dict]) -> str:
+    header = (
+        f"{'query_id':<26} {'pass':<7} {'transport(dialect)':<18} {'conc':>5} {'n':>5} "
+        f"{'errors':>6} {'rows/iter':>10} {'QPS':>10} {'bytes/s':>14} {'p50ms':>8} {'p95ms':>8} "
+        f"{'p99ms':>8}"
+    )
+    lines = ["", header, "-" * len(header)]
     for s in summaries:
+        prefix = f"{s['query_id']:<26} {s['cache_pass']:<7} {cell_label(s):<18} "
         if s.get("status") == "all_failed":
-            print(
-                f"{s['query_id']:<24} {s['category']:<26} {s['transport']:<8} {'':>5} {'ALL FAILED':>10}"
+            lines.append(
+                f"{prefix}{'':>5} {'':>5} {s['errors']:>6} ALL FAILED: {s['first_error'] or ''}"[
+                    :240
+                ]
             )
             continue
-        print(
-            f"{s['query_id']:<24} {s['category']:<26} {s['transport']:<8} "
-            f"{str(s['concurrency'] or ''):>5} {s['n']:>5} "
-            f"{s['qps']:>10.1f} {s['bytes_per_sec']:>14,.0f} "
-            f"{s['latency_ms_p50']:>8.1f} {s['latency_ms_p99']:>8.1f}"
+        lines.append(
+            f"{prefix}{str(s['concurrency'] or ''):>5} {s['n']:>5} {s['errors']:>6} "
+            f"{s['total_rows'] / s['n']:>10.0f} {s['qps']:>10.1f} {s['bytes_per_sec']:>14,.0f} "
+            f"{s['latency_ms_p50']:>8.1f} {s['latency_ms_p95']:>8.1f} {s['latency_ms_p99']:>8.1f}"
         )
+    return "\n".join(lines)
+
+
+def _print_table(summaries: list[dict]) -> None:
+    print(format_table(summaries))
 
 
 if __name__ == "__main__":
