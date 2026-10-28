@@ -89369,11 +89369,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     schema included, whether or not it can read the member''s data. A contract carries no data and grants
     nothing; reading a member still needs a grant. The product panel''s data quality section keeps REQ-2157''s
     rule for check results. (Amended 2026-10-28, A PRODUCT''S SAMPLE IS A VIEW EVERY ROLE READS:) Each member
-    of a product may have a sample: a view over the member holding a fixed set of rows the owner chose once
-    (not a live limit that can be paged past), with masks on the columns the owner masks, granted to the
-    standard Viewer role so that every role reads it under its own role, with no role to switch into. The
-    Contracts panel shows each member''s sample rows beside its schema, and the sample can be queried like
-    any table. Reading beyond the sample is what a product request (REQ-2180) asks for.'
+    of a product may have a sample: [SUPERSEDED by REQ-2158 amendment A SAMPLE IS WHATEVER THE OWNER SUPPLIES,
+    2026-10-28 -- the sample need not be drawn from the member. Kept here for history; do not implement
+    against it.] a view over the member holding a fixed set of rows the owner chose once (not a live limit
+    that can be paged past), with masks on the columns the owner masks, [END SUPERSEDED BLOCK] granted to
+    the standard Viewer role so that every role reads it under its own role, with no role to switch into.
+    The Contracts panel shows each member''s sample rows beside its schema, and the sample can be queried
+    like any table. Reading beyond the sample is what a product request (REQ-2180) asks for. (Amended 2026-10-28,
+    A SAMPLE IS WHATEVER THE OWNER SUPPLIES:) A member''s sample is any table or view the product owner
+    supplies for it: selected real rows (fixed, masked), faked rows (REQ-1494), synthetic data, or rows
+    uploaded or registered from anywhere. Provisa asks only that it is granted to the Viewer role and named
+    as that member''s sample; how it was made is the owner''s choice.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
