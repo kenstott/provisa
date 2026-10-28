@@ -1038,7 +1038,27 @@ def _parse_date_text(text: str) -> "datetime.date":
         else:
             fields |= {"month": int(g["m"] or 1), "day": int(g["d"] or 1)}
         return _date_of(fields)
+    if _EXTENDED_DATE.fullmatch(text):
+        # REQ-2173 (amended 2026-10-27, TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA).
+        raise CypherTranslateError(
+            f"{text!r} is beyond the dates Provisa holds, years 0001 to 9999"
+        )
     raise CypherTranslateError(f"{text!r} is no date, e.g. '2015-07-21'")
+
+
+#: An ISO-8601 date of a signed or more-than-four-digit year (-999999999-01-01).
+_EXTENDED_DATE = re.compile(r"[+-]\d{4,}-\d{2}-\d{2}|\d{5,}-\d{2}-\d{2}")
+#: The largest offset a time holds on the engine (DuckDB's TIMETZ: under 16 hours either way).
+_TIME_OFFSET_LIMIT = 16 * 3600
+
+
+def _refuse_time_offset(seconds: int, written: str) -> None:
+    """REQ-2173 (amended 2026-10-27, TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA): a
+    time at an offset the engine does not hold is refused by name, never answered wrongly."""
+    if abs(seconds) >= _TIME_OFFSET_LIMIT:
+        raise CypherTranslateError(
+            f"{written!r} is at an offset beyond the times Provisa holds, -15:59:59 to +15:59:59"
+        )
 
 
 def _parse_time_text(text: str) -> tuple["datetime.time", str]:
@@ -1081,6 +1101,7 @@ def text_value(kind: str, text: str) -> str:
         tz = _offset_of(zone) or _dt.timezone.utc
         offset = _dt.datetime.combine(_dt.date.today(), value, tz).utcoffset()
         assert offset is not None
+        _refuse_time_offset(int(offset.total_seconds()), text)
         return value.replace(tzinfo=_dt.timezone(offset)).isoformat()
     date_text, _, time_text = text.partition("T")
     date = _parse_date_text(date_text)
@@ -1107,6 +1128,7 @@ def map_value(kind: str, entries: Mapping[str, object]) -> str:
         assert tz is not None
         offset = _dt.datetime.combine(_dt.date.today(), value, tz).utcoffset()
         assert offset is not None
+        _refuse_time_offset(int(offset.total_seconds()), str(zone))
         return value.replace(tzinfo=_dt.timezone(offset)).isoformat()
     date = _date_of(numbers)
     value = _time_of(numbers)
@@ -1266,6 +1288,8 @@ def composed_value(
         if not (isinstance(named, Literal) and named.kind == "string"):
             raise CypherTranslateError(f"{kind}() takes its timezone written in the statement")
         target = _offset_seconds(str(named.value))
+        if kind == TIME:
+            _refuse_time_offset(target, str(named.value))
         if zoned_source and source_offset is not None:
             shift = exp.Sub(this=exp.Literal.number(target), expression=source_offset)
             local = exp.Add(

@@ -54,6 +54,9 @@ class _FakeCtx:
     def is_json_value(self, expr):
         return False
 
+    def is_null(self, expr):
+        return getattr(expr, "kind", None) == "null"
+
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
 

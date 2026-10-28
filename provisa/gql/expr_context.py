@@ -30,6 +30,7 @@ from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
     MapProjection,
+    Parameter,
     PatternComprehension,
     Property,
     SubqueryExpr,
@@ -330,6 +331,9 @@ class TranslatorExprContext:
             return expr.kind == "string"
         if isinstance(expr, Variable):
             return expr.name in self._t._text_vars
+        if isinstance(expr, Parameter):
+            # The value the client gives it, a string.
+            return expr.name in self._t._params and isinstance(self._t._params[expr.name], str)
         if isinstance(expr, Property):
             if not isinstance(expr.obj, Variable):
                 return False
@@ -379,7 +383,21 @@ class TranslatorExprContext:
             return all(self.is_list(b) for b in branches)
         return False
 
+    def is_null(self, expr: CypherExpr) -> bool:
+        from provisa.gql.expr_ast import Literal
+
+        if isinstance(expr, Literal):
+            return expr.kind == "null"
+        return isinstance(expr, Variable) and expr.name in self._t._null_vars
+
     def is_json_value(self, expr: CypherExpr) -> bool:
+        from provisa.gql.expr_ast import Index, Paren
+
+        while isinstance(expr, Paren):
+            expr = expr.inner
+        if isinstance(expr, Index):
+            # An item of a variable bound to a list of several types.
+            return isinstance(expr.obj, Variable) and expr.obj.name in self._t._json_list_vars
         return isinstance(expr, Variable) and expr.name in self._t._json_value_vars
 
     def holds_list_items(self, expr: CypherExpr) -> bool:

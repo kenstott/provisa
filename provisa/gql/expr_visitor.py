@@ -157,6 +157,10 @@ class ExprContext(Protocol):
         """Whether ``expr`` is an item of a list of values of several types: its JSON."""
         ...
 
+    def is_null(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
+        ...
+
     def resolve_term(self, node: Term) -> exp.Expression:
         """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
@@ -259,6 +263,10 @@ def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expressi
         ],
         default=exp.Div(this=left, expression=right),
     )
+
+
+def _non_negative_literal(node: CypherExpr) -> bool:
+    return isinstance(node, Literal) and node.kind == "number" and cast(float, node.value) >= 0
 
 
 #: A value not written wholly in the statement (_written_value).
@@ -588,6 +596,13 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if not isinstance(node.obj, (MapLiteral, Variable)):
+            held = self.lower(node.obj)
+            if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
+                # A map read from a list of several types is its JSON: its key, read as JSON
+                # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
+                path = "$." + json.dumps(node.name)
+                return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
         if isinstance(node.obj, MapLiteral):
             # A map literal's key is its entry's own value; a key it has not is null (#287).
             for key, value in node.obj.entries:
@@ -898,6 +913,42 @@ class ExprLowering:
             return self._wall(node, None)
         return self.lower(node)
 
+    def _from_epoch(self, clock: str, args: list[CypherExpr]) -> exp.Expression:
+        """datetime.fromepoch(seconds, nanoseconds) and datetime.fromepochmillis(milliseconds):
+        the instant that long after 1970-01-01T00:00Z, to the microsecond (REQ-2173)."""
+        if any(isinstance(a, Literal) and a.kind == "null" for a in args):
+            return exp.Null()
+        double = exp.DataType.build("DOUBLE")
+        if clock == "fromepochmillis":
+            if len(args) != 1:
+                raise CypherTranslateError("datetime.fromepochmillis() takes the milliseconds")
+            seconds = exp.Div(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Literal.number(1000),
+            )
+        else:
+            if len(args) != 2:
+                raise CypherTranslateError(
+                    "datetime.fromepoch() takes the seconds and the nanoseconds"
+                )
+            micros = exp.Cast(
+                this=exp.Anonymous(
+                    this="TRUNC",
+                    expressions=[
+                        exp.Div(
+                            this=exp.Cast(this=self.lower(args[1]), to=double),
+                            expression=exp.Literal.number(1000),
+                        )
+                    ],
+                ),
+                to=double,
+            )
+            seconds = exp.Add(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Div(this=micros, expression=exp.Literal.number(1_000_000)),
+            )
+        return _anon("TO_TIMESTAMP", seconds)
+
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
@@ -974,6 +1025,8 @@ class ExprLowering:
             zones = [self._ctx.temporal_zone(a) for a in node.args]
             return temporal.duration_function(node.name, node.args, kinds, self.lower, zones)
         kind, _, clock = node.name.lower().partition(".")
+        if kind == temporal.DATETIME and clock in ("fromepoch", "fromepochmillis"):
+            return self._from_epoch(clock, node.args)
         if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
             # REQ-2173: the current value, as the engine's clock reads it.
             if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
@@ -1073,7 +1126,7 @@ class ExprLowering:
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
-        if any(isinstance(n, Literal) and n.kind == "null" for n in (node.obj, node.index)):
+        if self._ctx.is_null(node.obj) or self._ctx.is_null(node.index):
             return exp.Null()  # null[k] and m[null] are null (openCypher)
         if (
             isinstance(node.obj, (MapLiteral, Variable))
@@ -1082,17 +1135,41 @@ class ExprLowering:
         ):
             # m['k'] is m.k: the key's value as it is, not its JSON.
             return self.lower(Property(obj=node.obj, name=str(node.index.value)))
+        if self._ctx.is_text(node.obj):
+            # openCypher's TypeError (InvalidArgumentType): a string has no elements to index.
+            raise CypherTranslateError(
+                "A string cannot be indexed like a list; use substring(s, i, 1) for a character"
+            )
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
         idx = self.lower(node.index)
         if isinstance(node.index, Literal) and node.index.kind == "number":
             idx = exp.Literal.number(int(cast("int | float", node.index.value)) + 1)
+        elif not (isinstance(node.index, Unary) and node.index.op == "-") and (
+            self._ctx.is_list(node.obj) or self._value_kind(node.index) == "number"
+        ):
+            # A computed index into a list: from the start shifted to the engine's 1-based one,
+            # from the end (negative) as it is.
+            idx = exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.GTE(this=idx.copy(), expression=exp.Literal.number(0)),
+                        true=exp.Add(this=idx.copy(), expression=exp.Literal.number(1)),
+                    )
+                ],
+                default=idx,
+            )
         return _anon("element_at", base, idx)
 
     def _lower_Slice(self, node: Slice) -> exp.Expression:
         # Cypher's list[a..b] is 0-based with b excluded; the engine's slice(list, start, length)
         # starts at 1: start a + 1, length b - a.
         base = self.lower(node.obj)
+        if any(
+            bound is not None and not _non_negative_literal(bound)
+            for bound in (node.start, node.stop)
+        ):
+            return self._slice_from_either_end(base, node)
         first = self.lower(node.start) if node.start is not None else exp.Literal.number(0)
         if node.start is None:
             start = exp.Literal.number(1)
@@ -1105,6 +1182,41 @@ class ExprLowering:
             length = stop if node.start is None else exp.Sub(this=stop, expression=first.copy())
             return _anon("slice", base, start, length)
         return _anon("slice", base, start, _anon("cardinality", base))
+
+    def _slice_from_either_end(self, base: exp.Expression, node: Slice) -> exp.Expression:
+        """list[a..b] with a bound that may be negative: a negative one counts from the end
+        (list[-3..-1] is the third- and second-last items), each is held to the list, and a slice
+        that ends before it starts is empty (openCypher)."""
+        size = _anon("cardinality", base.copy())
+        zero = exp.Literal.number(0)
+
+        def held(bound: CypherExpr | None, default: exp.Expression) -> exp.Expression:
+            if bound is None:
+                return default
+            value = self.lower(bound)
+            from_end = exp.Add(this=size.copy(), expression=value.copy())
+            placed = exp.Case(
+                ifs=[exp.If(this=exp.LT(this=value.copy(), expression=zero.copy()), true=from_end)],
+                default=value,
+            )
+            return exp.Greatest(
+                this=zero.copy(), expressions=[exp.Least(this=placed, expressions=[size.copy()])]
+            )
+
+        first = held(node.start, zero.copy())
+        last = held(node.stop, size.copy())
+        length = exp.Greatest(
+            this=zero.copy(), expressions=[exp.Sub(this=last, expression=first.copy())]
+        )
+        start = exp.Add(this=first, expression=exp.Literal.number(1))
+        sliced = _anon("slice", base, start, length)
+        bounds = [self.lower(b) for b in (node.start, node.stop) if b is not None]
+        # A null bound slices to null (an engine's GREATEST skips a null).
+        missing = [exp.Is(this=b, expression=exp.Null()) for b in bounds]
+        either = missing[0]
+        for more in missing[1:]:
+            either = exp.Or(this=either, expression=more)
+        return exp.Case(ifs=[exp.If(this=either, true=exp.Null())], default=sliced)
 
     # -- comprehensions / quantifiers / reduce (engine list functions) ----- #
 

@@ -58,6 +58,9 @@ def _rows(query: str, params: dict | None = None) -> list[tuple]:
         # Graph9 [4]: properties() of a map is the map.
         ("RETURN keys(properties({name: 'Popeye', level: 9001})) AS k", [(["name", "level"],)]),
         ("RETURN properties(null) AS p", [(None,)]),
+        # Map2 [3], [4]: a map or key bound to null indexes to null.
+        ("WITH null AS expr, 'x' AS idx RETURN expr[idx] AS value", [(None,)]),
+        ("WITH {name: 'Mats'} AS expr, null AS idx RETURN expr[idx] AS value", [(None,)]),
         # Quantifier9-12 [5]: a key every unwound map gives a value of one type reads as it.
         (
             "UNWIND [{list: [2], fixed: true}, {list: [1, 2, 3], fixed: false}] AS input"
@@ -93,3 +96,20 @@ def test_keys_of_a_parameter_are_the_map_the_client_gives():
 def test_keys_of_a_parameter_not_given_is_refused_by_name():
     with pytest.raises(CypherTranslateError, match=r"\$param was not supplied"):
         _rows("RETURN keys($param) AS k")
+
+
+def test_a_map_read_from_a_list_of_several_types_answers_its_keys():
+    # Map1 [3]: (list[1]).key of a map inside a list of several types, null where it has none.
+    from provisa.gql.assembler import assemble_rows
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
+
+    query = (
+        "WITH [123, {existing: 42, notMissing: null}] AS list"
+        " RETURN (list[1]).missing AS m, (list[1]).notMissing AS n, (list[1]).existing AS e"
+    )
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    sql = apply_graph_rewrites(sql_ast, graph_vars, _EMPTY)
+    cur = duckdb.sql(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    names = [d[0] for d in cur.description]
+    rows = assemble_rows([dict(zip(names, r)) for r in cur.fetchall()], graph_vars)
+    assert rows == [{"m": None, "n": None, "e": 42}]
