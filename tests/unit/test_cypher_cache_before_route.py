@@ -90,11 +90,15 @@ async def test_a_data_cypher_cache_hit_does_no_route_work(graph):
     assert sent == 1
     graph.state.tenant_db = _ControlPlane()
     graph.state.model_db = graph.state.tenant_db
+    read = len(graph.sessions)
     for _ in range(3):
         hit = await _call()
         assert hit.headers["X-Provisa-Cache"] == "HIT" and "X-Provisa-Cache-Age" in hit.headers
         assert hit.body == miss.body
     _assert_no_route_work(graph, before, sent)
+    # REQ-1897, REQ-2176: the one control-plane read a Cypher cache hit makes is its principal's
+    # graph session.
+    assert len(graph.sessions) == read + 3
 
 
 async def test_a_flight_cypher_cache_hit_does_no_route_work(graph):

@@ -90291,6 +90291,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-27: the saved session is deleted when the principal''s rights change: the roles granted to the
     principal, or the grants of any of them. A principal''s rights are the union of all its roles; acting
     within one of them, or switching which it acts as, is not a change and keeps the saved session.'
+  code:
+  - provisa/api/graph_session.py
+  - provisa/api/rest/cypher_session.py
+  - provisa/api/rest/cypher_router.py
+  - provisa/ephemeral/store.py
+  - provisa/compiler/temp_tables.py
+  - provisa/pgwire/temp_exec.py
+  - provisa/pgwire/temp_keeper.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/cache/key.py
+  tests:
+  - tests/unit/test_cypher_page_session.py
+  - tests/integration/test_graph_session_shared.py
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)

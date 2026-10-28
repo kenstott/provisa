@@ -1636,6 +1636,21 @@ CREATE TABLE IF NOT EXISTS session_temp_schemas (
     beat_at      TIMESTAMPTZ NOT NULL
 );
 
+-- REQ-2176: state -- each principal's ephemeral graph session in this environment: its tables'
+-- shapes, generation and graph index, read under a lock for each statement (see schema_org.py).
+-- Never part of the model.
+CREATE TABLE IF NOT EXISTS graph_sessions (
+    user_id    TEXT NOT NULL PRIMARY KEY,
+    generation BIGINT NOT NULL,
+    stored     BOOLEAN NOT NULL,
+    tables     JSONB NOT NULL,
+    graph      JSONB NOT NULL,
+    roles      JSONB NOT NULL,
+    assigned   JSONB NOT NULL,
+    rights     TEXT NOT NULL,
+    used_at    TIMESTAMPTZ NOT NULL
+);
+
 -- Replica state (REQ-1912, REQ-826): one row per replica of a source table, shared by every
 -- worker and instance. ``promoted`` is the automatic-promotion decision (a Hot-N table past its
 -- threshold); the replica build's own state is added to this same row. Keyed by the table's
