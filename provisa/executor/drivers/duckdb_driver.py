@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -64,7 +65,14 @@ def fetch_rows(result: Any) -> list[tuple]:  # noqa: ANN401 — a DuckDB result 
         return result.fetchall()
     from provisa.core.ir_arrow import column_values
 
+    types = [str(d[1]) for d in result.description]
     columns = [column_values(c) for c in result.to_arrow_table().columns]
+    # Arrow carries a UUID as its text; DuckDB's own rows, and so every other result, read it as
+    # the uuid.UUID it is.
+    columns = [
+        [None if v is None else uuid.UUID(v) for v in values] if t == "UUID" else values
+        for t, values in zip(types, columns, strict=True)
+    ]
     return list(zip(*columns))
 
 
