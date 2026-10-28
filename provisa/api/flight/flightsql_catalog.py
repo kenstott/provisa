@@ -102,7 +102,8 @@ class RoleCatalog:
 
     database: str
     tables: list[_Table]
-    columns: dict[int, list[tuple[str, str]]]  # table oid → (column, registered type), in order
+    # table oid → (column, registered type, nullable), in order
+    columns: dict[int, list[tuple[str, str, bool]]]
     constraints: list[tuple]  # pg_constraint rows (pgwire.catalog_constraints)
     names: dict[tuple[int, int], str]  # (table oid, attnum) → column
 
@@ -120,9 +121,9 @@ def role_catalog(state: Any, role_id: str) -> RoleCatalog:
         (_Table(cat, sch, name, toid) for cat, sch, name, _, toid in idx.tables),
         key=lambda t: (t.catalog, t.schema, t.name),
     )
-    columns: dict[int, list[tuple[str, str]]] = {}
-    for toid, name, column_type, _, ordinal in sorted(idx.all_cols, key=lambda c: (c[0], c[4])):
-        columns.setdefault(toid, []).append((name, column_type))
+    columns: dict[int, list[tuple[str, str, bool]]] = {}
+    for toid, name, column_type, nullable, _ in sorted(idx.all_cols, key=lambda c: (c[0], c[4])):
+        columns.setdefault(toid, []).append((name, column_type, bool(nullable)))
     return RoleCatalog(
         idx.database, tables, columns, catalog_constraint_rows(ctx, idx), dict(idx.attnum_to_col)
     )
@@ -142,7 +143,7 @@ def with_temporary(catalog: RoleCatalog, session: Any) -> RoleCatalog:
     for i, table in enumerate(sorted(session.tables.values(), key=lambda t: t.name)):
         toid = -(i + 1)  # no model table's oid: a temporary table is no model object
         tables.append(_Table(catalog.database, TEMPORARY_SCHEMA, table.name, toid))
-        columns[toid] = list(table.columns)
+        columns[toid] = [(c, landed, True) for c, landed in table.columns]
     return RoleCatalog(catalog.database, tables, columns, catalog.constraints, catalog.names)
 
 
@@ -190,20 +191,26 @@ def db_schemas(catalog: RoleCatalog, command: pb.CommandGetDbSchemas) -> pa.Tabl
     )
 
 
-def table_arrow_schema(columns: list[tuple[str, str]]) -> pa.Schema:
+def table_arrow_schema(columns: list[tuple[str, str, bool]]) -> pa.Schema:
     """A listed table's columns as Arrow, as the native catalog types them: a type neither the
-    catalog nor the product's vocabulary names is listed as text and says so in its metadata."""
+    catalog nor the product's vocabulary names is listed as text and says so in its metadata.
+    Each is nullable or not as its registration records, and says so in the xdbc fields a client
+    reads it by (XDBC_NULLABLE, XDBC_IS_NULLABLE)."""
     from provisa.core.catalog_types import _physical_type_to_arrow
 
     fields = []
-    for name, column_type in columns:
-        metadata = {b"ARROW:FLIGHT:SQL:TYPE_NAME": column_type.encode("utf-8")}
+    for name, column_type, nullable in columns:
+        metadata = {
+            b"ARROW:FLIGHT:SQL:TYPE_NAME": column_type.encode("utf-8"),
+            b"XDBC_NULLABLE": b"1" if nullable else b"0",
+            b"XDBC_IS_NULLABLE": b"YES" if nullable else b"NO",
+        }
         try:
             arrow_type = _physical_type_to_arrow(column_type)
         except KeyError:
             arrow_type = pa.utf8()
             metadata[b"type_unmapped"] = column_type.encode("utf-8")
-        fields.append(pa.field(name, arrow_type, metadata=metadata))
+        fields.append(pa.field(name, arrow_type, nullable=nullable, metadata=metadata))
     return pa.schema(fields)
 
 
