@@ -90830,7 +90830,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     if the role request is declined, the draft ends. Each approver writes only what its own role may write:
     the owner never creates roles. Later requests name the same role, so a buyer''s purchases accumulate
     under it. A marketplace is then: give a person Data buyer, they request a role and then a product, and
-    once both are approved they query as that role.'
+    once both are approved they query as that role. (Amended 2026-10-28, THE OWNER JUDGES THE ROLE''S BREADTH:)
+    An access request shows its approver the named role''s breadth: the users holding it (count and list)
+    and any rule that assigns it. Declining always carries a reason. One standard reason, the role is too
+    broad, declines and hands the requester a prefilled role request with this access request attached as
+    its draft, so the narrower path is one step. Other reasons are free text. Provisa does not judge breadth
+    itself; the approver does.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
