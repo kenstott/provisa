@@ -89279,7 +89279,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     sets new grants. Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A
     REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
     earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
-    before the product is declared green.'
+    before the product is declared green. (Amended 2026-10-28, A ROLE SERVED NO TABLES IS NOT REFUSED:)
+    A role whose grants serve it no table is not refused as such: its data surface is simply empty. A statement
+    naming a table answers as for any role that is not served that table, and statements that need no table
+    (a graph-session CREATE, MATCH or MERGE of ephemeral objects, literals, catalog reads) run as for any
+    role.'
   scenario: 'Given a steward acting as data_steward registers table claims
 
     Then every column of claims grants read to data_steward and viewer and grants no write
