@@ -238,9 +238,15 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     return uris
 
 
-async def org_snapshot(org_id: str) -> "MetadataSnapshot":
+async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "MetadataSnapshot":
     """The bound org's full metadata snapshot: what every target is published (REQ-1072) and
-    what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org."""
+    what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org.
+
+    ``product_id`` names the one product whose documents the snapshot is built for (REQ-2118,
+    REQ-2158). Its documents carry only the checks that product owns and only its own creation
+    time, so only those are read: the last outcomes of its own checker tables, each a governed
+    query, and its own row. Every other check in that snapshot reads as never run, so it is that
+    product's to describe and never one to publish."""
     from provisa.api.app import state
 
     model = await _model_for_export()
@@ -259,12 +265,15 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         # REQ-2118: a product's owners are its owner role's holders, by their addresses.
         owner_emails = await holder_emails(conn)
         # REQ-2118: when each product was created, its ODPS productCreatedTs.
-        product_created = {
-            row["id"]: row["created_at"] for row in await data_product_repo.list_all(conn)
-        }
+        if product_id is None:
+            created_rows = await data_product_repo.list_all(conn)
+        else:
+            product_row = await data_product_repo.get(conn, product_id)
+            created_rows = [] if product_row is None else [product_row]
+        product_created = {row["id"]: row["created_at"] for row in created_rows}
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
-    dq_outcomes = await read_latest_outcomes(model)
+    dq_outcomes = await read_latest_outcomes(model, product_id=product_id)
     base_url = state.config.mail.base_url if state.config else None
     return build_snapshot(
         model,
