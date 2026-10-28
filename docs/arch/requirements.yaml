@@ -89528,7 +89528,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     reports its score as before until it reaches that point, and the lead compares its score to main''s
     before landing. TCK scenarios whose setup builds their graph with statements run in one ephemeral session
     per scenario (REQ-2176): the setup''s writes build session nodes and relationships and the query reads
-    them; setups needing a write form the session does not yet take wait for it.'
+    them; setups needing a write form the session does not yet take wait for it. (Amended 2026-10-27, PGWIRE''S
+    CATALOG FUNCTIONS:) Maintainer 2026-10-27: pgwire serves the PostgreSQL catalog functions a client calls
+    (psql, pgAdmin, DBeaver, pgjdbc), standalone as well as inside a catalog statement. SQL functions are
+    otherwise the serving engine''s own: a PostgreSQL-only function with no engine equivalent that no client
+    calls (type operators and I/O, geometric, math, JSON, text search, XML, range, network, large object
+    and index access-method functions) is not provided, by design. Of the administrative functions clients
+    call, pg_cancel_backend and pg_terminate_backend act on Provisa''s own pgwire sessions (cancelling the
+    session''s running statement, or closing it), on a session the caller owns unless the caller is an administrator;
+    every other administrative function with an effect (pg_reload_conf, pg_read_file, pg_read_binary_file,
+    pg_stat_file, pg_create_restore_point, the advisory locks) is refused naming it, and no function reads
+    the server''s files.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
