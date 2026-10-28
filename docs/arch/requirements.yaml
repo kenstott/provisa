@@ -90820,7 +90820,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and the request names one of the user''s own roles, not Data buyer. Approval grants that role read on
     the member tables. That role does not inherit Data buyer, so the sample masks and row rule targeted
     at Data buyer do not reach it: acting as it, the user reads the members under its own grants, masks
-    and row rules.'
+    and row rules. (Amended 2026-10-28, AN ACCESS REQUEST NAMES A ROLE THAT EXISTS; A ROLE REQUEST COMES
+    FIRST:) A product request is one kind of access request: an access request names a role the requester
+    already holds and asks for read on a set of tables, and a product request''s tables are the product''s
+    members, approved by the product''s owner role. A requester with no suitable role (one holding only
+    Data buyer) first files a role request: a proposed role name, sent to a security admin or org admin,
+    whose approval creates the role and assigns it to the requester and grants nothing. A product request
+    may be drafted attached to a pending role request, but it is sent to the owner only once that role exists;
+    if the role request is declined, the draft ends. Each approver writes only what its own role may write:
+    the owner never creates roles. Later requests name the same role, so a buyer''s purchases accumulate
+    under it. A marketplace is then: give a person Data buyer, they request a role and then a product, and
+    once both are approved they query as that role.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
