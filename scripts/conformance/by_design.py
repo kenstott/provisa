@@ -14,11 +14,11 @@ A suite's test that fails because of a designed limitation of Provisa is counted
 by design, in a group that names the design decision (its requirement), and left out of the pass
 rate. The groups are declared per surface in ``by_design/<surface>.yaml``:
 
-    - group: DETACH DELETE
-      requirement: REQ-671
-      decision: DETACH DELETE is not supported; a client deletes each table in dependency order.
-      reason: "Cypher write pattern 'DETACH'"     # a regex the failure's reason matches, and/or
-      case: "test_readme"                          # a regex its feature::scenario matches
+    - group: Unbounded variable-length patterns
+      requirement: REQ-348
+      decision: Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected.
+      reason: "Unbounded variable-length pattern"  # a regex the failure's reason matches, and/or
+      case: "VarLengthAcceptance"                  # a regex its feature::scenario matches
 
 A group with no requirement is refused: an exclusion with no design decision behind it stays a
 failure.
