@@ -35,7 +35,7 @@
     "autoTracked": "Automatisch erfasst",
     "cardinalityWarning": "Warnung: Liefert dieser Join mehr als eine Zeile pro Elternzeile, wird nur der erste Wert verwendet.",
     "toggleDetails": "Beziehungsdetails ein-/ausblenden",
-    "junctionBadge": "mit Eigenschaften",
+    "junctionBadge": "Eig.",
     "junctionBadgeTitle": "Beziehung mit Eigenschaften aus {{table}}",
     "deleteTitle": "Beziehung „{{id}}“ löschen?",
     "deleteConsequence": "Die Beziehung wird aus dem Modell entfernt. Abfragen können nicht mehr über sie verknüpfen.",

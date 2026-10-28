@@ -22,7 +22,7 @@
     "properties": "מאפיינים",
     "copyValue": "העתקת ערך",
     "resizePanel": "שינוי גודל חלונית הבחינה",
-    "junctionTable": "מאפיינים מתוך {{table}}",
+    "junctionTable": "מאפ': {{table}}",
     "openTable": "פתח את הטבלה שלו",
     "openRelationship": "פתח את קשר הגומלין שלו"
   }

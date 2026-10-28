@@ -35,7 +35,7 @@
     "autoTracked": "自動追跡",
     "cardinalityWarning": "警告: このJOINが親ごとに複数行を返す場合、最初の値のみが使用されます。",
     "toggleDetails": "リレーションシップ詳細の表示切替",
-    "junctionBadge": "プロパティ付き",
+    "junctionBadge": "プロパティ",
     "junctionBadgeTitle": "{{table}} のプロパティを持つリレーションシップ",
     "deleteTitle": "リレーションシップ「{{id}}」を削除しますか？",
     "deleteConsequence": "リレーションシップはモデルから削除されます。クエリはこれを介して結合できなくなります。",

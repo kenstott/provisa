@@ -35,7 +35,7 @@
     "autoTracked": "自动跟踪",
     "cardinalityWarning": "警告：如果此联接为每个父行返回多于一行，则只会使用第一个值。",
     "toggleDetails": "切换关系详情",
-    "junctionBadge": "带属性",
+    "junctionBadge": "属性",
     "junctionBadgeTitle": "带有来自 {{table}} 的属性的关系",
     "deleteTitle": "删除关系“{{id}}”？",
     "deleteConsequence": "该关系将从模型中移除。查询将无法再通过它进行联接。",

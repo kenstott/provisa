@@ -22,7 +22,7 @@
     "properties": "Properties",
     "copyValue": "Copy value",
     "resizePanel": "Resize inspector panel",
-    "junctionTable": "properties from {{table}}",
+    "junctionTable": "props: {{table}}",
     "openTable": "Open its table",
     "openRelationship": "Open its relationship"
   }

@@ -22,7 +22,7 @@
     "properties": "プロパティ",
     "copyValue": "値をコピー",
     "resizePanel": "インスペクターパネルをリサイズ",
-    "junctionTable": "{{table}} のプロパティ",
+    "junctionTable": "プロパティ: {{table}}",
     "openTable": "テーブルを開く",
     "openRelationship": "リレーションシップを開く"
   }

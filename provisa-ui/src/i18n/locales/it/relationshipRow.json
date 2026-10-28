@@ -35,7 +35,7 @@
     "autoTracked": "Tracciato automaticamente",
     "cardinalityWarning": "Attenzione: se questo join restituisce più di una riga per elemento padre, verrà usato solo il primo valore.",
     "toggleDetails": "Mostra/nascondi dettagli della relazione",
-    "junctionBadge": "con proprietà",
+    "junctionBadge": "prop.",
     "junctionBadgeTitle": "Relazione con proprietà da {{table}}",
     "deleteTitle": "Eliminare la relazione \"{{id}}\"?",
     "deleteConsequence": "La relazione viene rimossa dal modello. Le query non possono più eseguire join attraverso di essa.",
