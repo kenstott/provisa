@@ -38,6 +38,7 @@ def _load(name: str):
 
 by_design = _load("by_design")  # the scripts import it as their sibling
 bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
+procedures = _load("cypher_tck_procedures")  # and this
 tck = _load("cypher_tck")
 fill_docs = _load("fill_docs")
 
@@ -458,3 +459,325 @@ def test_a_side_effect_the_summary_has_no_counter_for_is_a_failure_naming_it():
         "+properties 1, expected 0; -properties expected 1, the summary has no counter for it"
     )
     assert tck.side_effects({"-properties": 0}, {}) is None
+
+
+# --- named TCK graphs ---------------------------------------------------------------------------
+
+_NAMED_FEATURE = '''
+Feature: TriadicSelection1 - Query three related nodes on binary-tree graphs
+
+  Scenario: [1] Handling triadic friend of a friend
+    Given the binary-tree-1 graph
+    When executing query:
+      """
+      MATCH (a:A)-[:KNOWS]->(b)-->(c)
+      RETURN c.name
+      """
+    Then the result should be, in any order:
+      | c.name |
+      | 'b2'   |
+'''
+
+
+@pytest.fixture
+def named_graph_scenario(tmp_path, monkeypatch):
+    features = tmp_path / "tck" / "features"
+    features.mkdir(parents=True)
+    graph = tmp_path / "tck" / "graphs" / "binary-tree-1"
+    graph.mkdir(parents=True)
+    (graph / "binary-tree-1.cypher").write_text(
+        "CREATE (a:A {name: 'a'}), (b1:X {name: 'b1'})\nCREATE (a)-[:KNOWS]->(b1);\n"
+    )
+    monkeypatch.setitem(tck._GRAPHS, "graphs", tmp_path / "tck" / "graphs")
+    path = features / "triadic.feature"
+    path.write_text(_NAMED_FEATURE)
+    (scenario,) = tck.parse_feature(path)
+    return scenario
+
+
+def test_a_named_graph_s_create_script_is_its_session_s_setup(named_graph_scenario, monkeypatch):
+    sent = []
+
+    def session(setups, query, params):
+        sent.append((list(setups), query))
+        return 200, {"columns": ["c.name"], "rows": [["b2"]], "stats": {}}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", session)
+    assert tck._session_scenario(named_graph_scenario) == tck.NAMED_GRAPH
+    outcome = tck.run(named_graph_scenario, "http://x", "org_admin")
+    # The script as a `having executed` runs it: one statement, its closing semicolon left out.
+    assert sent == [
+        (
+            ["CREATE (a:A {name: 'a'}), (b1:X {name: 'b1'})\nCREATE (a)-[:KNOWS]->(b1)"],
+            "MATCH (a:A)-[:KNOWS]->(b)-->(c)\n      RETURN c.name",
+        )
+    ]
+    assert (outcome.status, outcome.reason) == ("passed", tck.NAMED_GRAPH)
+    doc = tck.report([outcome], "2024.3")
+    assert [g["group"] for g in doc["adapted"]] == ["Named TCK graphs"]
+
+
+def test_a_named_graph_the_tck_does_not_have_is_said(named_graph_scenario, monkeypatch):
+    monkeypatch.setitem(tck._GRAPHS, "graphs", Path("/nonexistent"))
+    with pytest.raises(ValueError, match="the TCK has no named graph binary-tree-1"):
+        tck.named_graph("the binary-tree-1 graph")
+    assert tck.named_graph("an empty graph") is None
+
+
+def test_a_named_graph_with_no_session_is_not_runnable(named_graph_scenario, monkeypatch):
+    monkeypatch.setattr(bolt, "_BOLT", {})
+    outcome = tck.run(named_graph_scenario, "http://x", "org_admin")
+    assert (outcome.status, outcome.reason) == ("not_runnable", "its setup uses a named TCK graph")
+
+
+# --- test procedures as commands -----------------------------------------------------------------
+
+_PROCEDURE_FEATURE = '''
+Feature: Call2 - Procedure arguments
+
+  Scenario: [1] In-query call to procedure with explicit arguments
+    Given an empty graph
+    And there exists a procedure test.my.proc(name :: STRING?, id :: INTEGER?) :: (city :: STRING?, country_code :: INTEGER?):
+      | name     | id | city      | country_code |
+      | 'Stefan' | 1  | 'Berlin'  | 49           |
+      | 'Stefan' | 2  | 'München' | 49           |
+    When executing query:
+      """
+      CALL test.my.proc('Stefan', 1) YIELD city, country_code
+      RETURN city, country_code
+      """
+    Then the result should be, in order:
+      | city     | country_code |
+      | 'Berlin' | 49           |
+    And no side effects
+
+  Scenario: [2] A call with no procedure
+    Given an empty graph
+    When executing query:
+      """
+      CALL test.my.proc
+      """
+    Then a ProcedureError should be raised at compile time: ProcedureNotFound
+
+  Scenario: [3] Standalone call to procedure with null argument
+    Given an empty graph
+    And there exists a procedure test.my.proc(in :: INTEGER?) :: (out :: STRING?):
+      | in   | out   |
+      | null | 'nix' |
+    When executing query:
+      """
+      CALL test.my.proc(null)
+      """
+    Then the result should be, in order:
+      | out   |
+      | 'nix' |
+
+  Scenario: [4] A VOID procedure
+    Given an empty graph
+    And there exists a procedure test.doNothing() :: ():
+      |
+    When executing query:
+      """
+      CALL test.doNothing()
+      """
+    Then the result should be empty
+
+  Scenario: [5] The first procedure again
+    Given an empty graph
+    And there exists a procedure test.my.proc(name :: STRING?, id :: INTEGER?) :: (city :: STRING?, country_code :: INTEGER?):
+      | name     | id | city      | country_code |
+      | 'Stefan' | 1  | 'Berlin'  | 49           |
+      | 'Stefan' | 2  | 'München' | 49           |
+    When executing query:
+      """
+      CALL test.my.proc('Stefan', 2)
+      """
+    Then the result should be, in order:
+      | city      | country_code |
+      | 'München' | 49           |
+'''
+
+
+@pytest.fixture
+def procedure_scenarios(tmp_path):
+    path = tmp_path / "call2.feature"
+    path.write_text(_PROCEDURE_FEATURE)
+    return tck.parse_feature(path)
+
+
+def test_a_procedure_s_signature_and_rows_are_read(procedure_scenarios):
+    proc = tck.procedure(procedure_scenarios[0])
+    assert proc == procedures.Procedure(
+        "test.my.proc",
+        (("name", "STRING"), ("id", "INTEGER")),
+        (("city", "STRING"), ("country_code", "INTEGER")),
+        (("Stefan", 1, "Berlin", 49), ("Stefan", 2, "München", 49)),
+    )
+    assert tck.procedure(procedure_scenarios[1]) is None
+    void = tck.procedure(procedure_scenarios[3])
+    assert (void.name, void.inputs, void.outputs, void.rows) == ("test.doNothing", (), (), ())
+
+
+def test_a_procedure_is_a_statement_command_bound_in_cypher_to_its_name(procedure_scenarios):
+    from provisa.core.command_bindings import check_names
+    from provisa.core.models import Function
+
+    entry = procedures.command(tck.procedure(procedure_scenarios[0]))
+    assert {k: entry[k] for k in ("name", "impl_kind", "kind", "domain_id", "visible_to")} == {
+        "name": "tck_test_my_proc",
+        "impl_kind": "statement",
+        "kind": "query",
+        "domain_id": "tck_empty",
+        "visible_to": [],
+    }
+    assert entry["arguments"] == [
+        {"name": "name", "type": "text"},
+        {"name": "id", "type": "bigint"},
+    ]
+    assert entry["language_bindings"] == {"cypher": {"name": "test.my.proc"}}
+    # The model takes it as declared: a query, its statement naming each argument.
+    function = Function(**entry)
+    assert function.kind == "query"
+    check_names([function.model_dump()])
+
+
+@pytest.mark.parametrize(
+    ("proc", "args", "rows"),
+    [
+        (
+            procedures.Procedure(
+                "test.my.proc",
+                (("name", "STRING"), ("id", "INTEGER")),
+                (("city", "STRING"), ("country_code", "INTEGER")),
+                (("Stefan", 1, "Berlin", 49), ("Stefan", 2, "München", 49), ("Petra", 1, "x", 1)),
+            ),
+            ["Stefan", 2],
+            [("München", 49)],
+        ),
+        (
+            procedures.Procedure(
+                "test.my.proc",
+                (("in", "NUMBER"),),
+                (("out", "STRING"),),
+                ((42, "wisdom"), (42.3, "about right")),
+            ),
+            [42],
+            [("wisdom",)],
+        ),
+        (
+            procedures.Procedure(
+                "test.my.proc", (("in", "INTEGER"),), (("out", "STRING"),), ((None, "nix"),)
+            ),
+            [None],
+            [("nix",)],
+        ),
+        (
+            procedures.Procedure("test.my.proc", (("in", "INTEGER"),), (("out", "INTEGER"),), ()),
+            [1],
+            [],
+        ),
+        (
+            procedures.Procedure(
+                "test.labels", (), (("label", "STRING"),), (("C",), ("A",), ("B",))
+            ),
+            [],
+            [("C",), ("A",), ("B",)],
+        ),
+    ],
+)
+def test_a_procedure_s_statement_answers_its_rows_for_the_arguments(proc, args, rows):
+    # As the pipeline runs it: the statement's arguments positional, on the DuckDB engine.
+    import duckdb
+    import sqlglot
+
+    from provisa.core.statement_declaration import declared
+
+    entry = procedures.command(proc)
+    found = declared(entry["name"], entry["binding"], [a["name"] for a in entry["arguments"]])
+    sql = sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0]
+    assert duckdb.execute(sql, args).fetchall() == rows
+
+
+def test_a_void_procedure_is_no_command(procedure_scenarios):
+    with pytest.raises(procedures.NotACommand, match="VOID"):
+        procedures.command(tck.procedure(procedure_scenarios[3]))
+
+
+def test_a_procedure_scenario_puts_the_model_holding_its_command(
+    procedure_scenarios, tmp_path, monkeypatch
+):
+    import yaml
+
+    model = tmp_path / "provisa.yaml"
+    model.write_text(yaml.safe_dump({"domains": [{"id": "tck_empty"}], "tables": []}))
+    monkeypatch.setattr(procedures, "_MODEL", {})
+    procedures.configure("http://x", model, "su", "pw")
+    put = []
+
+    def _put(body):
+        put.append(yaml.safe_load(body))
+        return {"success": True, "message": "Config uploaded and applied"}
+
+    monkeypatch.setattr(procedures, "_put", _put)
+    answers = {
+        "CALL test.my.proc('Stefan', 1) YIELD city, country_code": (
+            200,
+            {"columns": ["city", "country_code"], "rows": [["Berlin", 49]]},
+        ),
+        "CALL test.my.proc": (400, {"detail": "unknown command"}),
+        "CALL test.my.proc(null)": (200, {"columns": ["out"], "rows": [["nix"]]}),
+        "CALL test.my.proc('Stefan', 2)": (
+            200,
+            {"columns": ["city", "country_code"], "rows": [["München", 49]]},
+        ),
+    }
+
+    def post(_b, _r, query, _p):
+        return answers[query.split("\n")[0]]
+
+    monkeypatch.setattr(tck, "_post", post)
+    monkeypatch.setattr(bolt, "_BOLT", {})
+    order = tck.in_running_order(procedure_scenarios)
+    # No procedure first; then each procedure's scenarios together.
+    assert order == [1, 0, 4, 2, 3]
+    outcomes = {n: tck.run(procedure_scenarios[n], "http://x", "org_admin") for n in order}
+    assert [(o.status, o.reason) for _, o in sorted(outcomes.items())] == [
+        ("passed", tck.AS_A_COMMAND),
+        ("passed", ""),
+        ("passed", tck.AS_A_COMMAND),
+        (
+            "failed",
+            "its test procedure is no command: the procedure test.doNothing is VOID (it has no "
+            "outputs), which no command expresses: a command answers rows of its columns",
+        ),
+        ("passed", tck.AS_A_COMMAND),
+    ]
+    # The model is put once per procedure declared, its other blocks as it booted.
+    assert [[f["language_bindings"]["cypher"]["name"] for f in m["functions"]] for m in put] == [
+        ["test.my.proc"],
+        ["test.my.proc"],
+    ]
+    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1]
+    assert all(m["domains"] == [{"id": "tck_empty"}] for m in put)
+    doc = tck.report(list(outcomes.values()), "2024.3")
+    (group,) = doc["adapted"]
+    assert (group["group"], len(group["cases"])) == ("Test procedures", 3)
+
+
+def test_a_procedure_with_no_model_to_declare_it_in_is_a_failure(procedure_scenarios, monkeypatch):
+    monkeypatch.setattr(procedures, "_MODEL", {})
+    monkeypatch.setattr(bolt, "_BOLT", {})
+    outcome = tck.run(procedure_scenarios[0], "http://x", "org_admin")
+    assert outcome.status == "failed"
+    assert "CONFORMANCE_MODEL is not set" in outcome.reason
+
+
+def test_a_model_not_applied_is_said(procedure_scenarios, tmp_path, monkeypatch):
+    model = tmp_path / "provisa.yaml"
+    model.write_text("domains: []\n")
+    monkeypatch.setattr(procedures, "_MODEL", {})
+    procedures.configure("http://x", model, "su", "pw")
+    monkeypatch.setattr(procedures, "_put", lambda _b: {"success": False, "message": "bad"})
+    with pytest.raises(ValueError, match="was not applied"):
+        procedures.declare(tck.procedure(procedure_scenarios[0]))
