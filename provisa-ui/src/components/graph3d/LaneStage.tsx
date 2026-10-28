@@ -56,6 +56,20 @@ const SHAPE: Record<Lane, string> = {
   product: "round-hexagon",
 };
 
+/** A card beside the pointer: below and right of it, or -- past the stage's middle -- on the
+ * other side, so a card never runs off the stage. */
+interface TipAt {
+  h: GraphHover;
+  x: number;
+  y: number;
+  left: boolean;
+  up: boolean;
+}
+
+const tipPlace = (at: TipAt) =>
+  `translate(${at.x + (at.left ? -14 : 14)}px, ${at.y + (at.up ? -14 : 14)}px) ` +
+  `translate(${at.left ? "-100%" : "0"}, ${at.up ? "-100%" : "0"})`;
+
 /** A --p3d-* token's value on ``el`` (profile3d.css sets one per colour scheme). */
 const token = (el: HTMLElement, name: string) =>
   getComputedStyle(el).getPropertyValue(`--p3d-${name}`).trim();
@@ -88,7 +102,7 @@ export function LaneStage({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
-  const [tip, setTip] = useState<{ h: GraphHover; x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<TipAt | null>(null);
   const [copied, setCopied] = useState(false);
   // The cytoscape effect binds these once per diagram; the ref holds the latest callbacks.
   const latest = useRef({ setSelected, setHover, onMore });
@@ -248,7 +262,13 @@ export function LaneStage({
       // A pointer event always carries where it happened on the canvas.
       const at = evt.renderedPosition as cytoscape.Position;
       keepTip();
-      setTip({ h, x: at.x, y: at.y });
+      setTip({
+        h,
+        x: at.x,
+        y: at.y,
+        left: at.x > wrap.clientWidth / 2,
+        up: at.y > wrap.clientHeight / 2,
+      });
       latest.current.setHover(h);
     };
     cy.on("mouseover", 'node[kind = "node"], node[kind = "more"]', (evt: EventObject) =>
@@ -483,7 +503,7 @@ export function LaneStage({
       {tip && body && (
         <div
           className="p3d-tip g3d-tip-live"
-          style={{ transform: `translate(${tip.x + 14}px, ${tip.y + 14}px)` }}
+          style={{ transform: tipPlace(tip) }}
           onMouseEnter={keepTip}
           onMouseLeave={dropTip}
           data-testid={`${testId}-tip`}
