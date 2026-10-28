@@ -5918,7 +5918,7 @@ Phase 1 (AF1, complete): Shell script installer with Docker Compose, `provisa` C
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Integration tests must use Docker: spin up required containers (PG, Trino, Redis, etc.), install dependencies, run tests, and tear down containers. Tests must not assume a pre-existing Docker Compose stack.
+Integration tests must use Docker: spin up required containers (PG, Trino, Redis, etc.), install dependencies, run tests, and tear down containers. Tests must not assume a pre-existing Docker Compose stack. (Amended 2026-10-28, A TEST LEAVES NOTHING IN A LIVE EXTERNAL ACCOUNT:) A test that reaches a live external account (a warehouse, a catalog such as Purview, Dataplex, Unity Catalog or Snowflake Horizon, Google Sheets, Salesforce, ServiceNow, Athena, a mail service) tears down everything it created there, as it tears down its containers: tables, schemas, files, catalog entries (data products, glossary terms, domains, asset links), records and messages, in teardown that runs even when the test fails. Compute it starts or resumes (a warehouse, capacity or cluster) is suspended or stopped again. The names it creates carry a per-run prefix, so teardown and a later sweep find exactly its own objects. A shared, durable fixture the test only reads stays. Anything left behind is a defect, since external accounts bill for what they hold and process.
 
 **Use case:** Integration tests that spin up Docker containers ensure tests validate against real service behaviour.
 
