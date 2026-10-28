@@ -13,17 +13,21 @@
 
 Provisa creates no label or relationship type through a query surface, so the labels and types
 the driver's examples create as their setup are declared here, in the job's PostgreSQL (schema
-``conformance``) and in the model's ``conformance`` domain, writable by ``org_admin``: Person,
-Company and Greeting, and KNOWS (Person to Person) and WORKS_FOR (Person to Company), each a
-junction table; KNOWS carries the ``from`` property the driver's introduction example writes. The
-examples then write and read their own rows of them. The companies the
-examples name as already there (Wayne Enterprises, LexCorp, Neo4j) are seeded. A junction's keys
-cascade a deleted person or company, as the examples' DETACH DELETE cleanup does.
+``conformance``) and in a model domain of their own, ``bolt_examples``: Person, Company and
+Greeting, and KNOWS (Person to Person) and WORKS_FOR (Person to Company), each a junction table;
+KNOWS carries the ``from`` property the driver's introduction example writes. The tables start
+empty: each example writes the rows it reads, after its cleanup has emptied the graph.
+
+The job's driver user acts as a role of its own, ``bolt_examples``, mapped from its username,
+whose domain access is that domain alone: the examples' ``MATCH (a) DETACH DELETE a`` cleanup
+reaches their own graph and nothing else (not conformance.types_fixture), and their MERGE and
+DETACH DELETE run as written. A junction's keys cascade a deleted person or company.
 
 What each adapted case's setup became is stated in by_design/bolt.yaml, for the page.
 
 Usage (in the job's .venv, before the instance starts):
-  fixtures.py seed --pg <dsn> --tables <tables.yaml> --relationships <relationships.yaml>
+  fixtures.py seed --pg <dsn> --user <the driver's user> --tables <tables.yaml>
+      --relationships <relationships.yaml> --access <access.yaml>
 """
 
 # Requirements: REQ-2167
@@ -38,12 +42,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 SCHEMA = "conformance"
-ROLE = "org_admin"
+#: The examples' model domain, and the role the driver's user acts as: it reaches that domain alone.
+DOMAIN = "bolt_examples"
+ROLE = "bolt_examples"
 
 #: Each node table: its columns after its key, ``id``.
 NODES: dict[str, list[str]] = {"person": ["name"], "company": ["name"], "greeting": ["message"]}
-#: The companies the examples employ people at, as already there.
-COMPANIES = ("Wayne Enterprises", "LexCorp", "Neo4j")
 #: Each junction table: its relationship type, its source and target node tables.
 JUNCTIONS: dict[str, tuple[str, str, str]] = {
     "knows": ("KNOWS", "person", "person"),
@@ -69,16 +73,12 @@ def ddl() -> list[str]:
             f"from_id integer NOT NULL REFERENCES {SCHEMA}.{source}(id) ON DELETE CASCADE, "
             f"to_id integer NOT NULL REFERENCES {SCHEMA}.{target}(id) ON DELETE CASCADE{attrs})"
         )
-    statements.append(
-        f"INSERT INTO {SCHEMA}.company (name) VALUES "
-        + ", ".join(f"('{name}')" for name in COMPANIES)
-    )
     return statements
 
 
 def _table(table: str, written: list[str]) -> dict:
-    """A model table entry: its columns typed as registration types them, read and written by
-    ``org_admin``."""
+    """A model table entry in the examples' domain: its columns typed as registration types them,
+    read and written by the examples' role."""
     from pgwire_catalog_types import registered_typing
 
     columns = [
@@ -96,7 +96,7 @@ def _table(table: str, written: list[str]) -> dict:
         "schema": SCHEMA,
         "table": table,
         "alias": table,
-        "domain_id": SCHEMA,
+        "domain_id": DOMAIN,
         "columns": columns,
         "write_grants": [
             {"role": ROLE, "operation": "insert", "columns": written},
@@ -134,7 +134,26 @@ def relationships() -> list[dict]:
     ]
 
 
-def seed(pg_dsn: str, tables_out: Path, relationships_out: Path) -> None:
+def access(user: str) -> dict:
+    """The examples' domain, their role (reaching that domain alone, writing as the examples do)
+    and the rule mapping the driver's user to it, by username."""
+    return {
+        "domains": [{"id": DOMAIN, "description": "The Neo4j driver examples' graph"}],
+        "roles": [
+            {
+                "id": ROLE,
+                "description": "The Neo4j driver examples' user: reads and writes their graph alone",
+                "capabilities": ["query_development", "full_results", "write"],
+                "domain_access": [DOMAIN],
+            }
+        ],
+        "role_mapping": [{"claim": "username", "type": "exact", "value": user, "role": ROLE}],
+    }
+
+
+def seed(
+    pg_dsn: str, user: str, tables_out: Path, relationships_out: Path, access_out: Path
+) -> None:
     import psycopg
     import yaml
 
@@ -143,7 +162,8 @@ def seed(pg_dsn: str, tables_out: Path, relationships_out: Path) -> None:
             conn.execute(statement)
     tables_out.write_text(yaml.safe_dump(tables(), sort_keys=False))
     relationships_out.write_text(yaml.safe_dump(relationships(), sort_keys=False))
-    print(f"seeded {SCHEMA}: {', '.join([*NODES, *JUNCTIONS])}")
+    access_out.write_text(yaml.safe_dump(access(user), sort_keys=False))
+    print(f"seeded {SCHEMA}: {', '.join([*NODES, *JUNCTIONS])}; {user} acts as {ROLE}")
 
 
 def main(argv: list[str]) -> int:
@@ -151,10 +171,12 @@ def main(argv: list[str]) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     s = sub.add_parser("seed")
     s.add_argument("--pg", required=True)
+    s.add_argument("--user", required=True, help="the user the driver signs in as")
     s.add_argument("--tables", required=True, type=Path)
     s.add_argument("--relationships", required=True, type=Path)
+    s.add_argument("--access", required=True, type=Path)
     args = parser.parse_args(argv)
-    seed(args.pg, args.tables, args.relationships)
+    seed(args.pg, args.user, args.tables, args.relationships, args.access)
     return 0
 
 
