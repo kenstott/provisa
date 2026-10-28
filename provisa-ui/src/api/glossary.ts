@@ -38,8 +38,13 @@ export const ENTERPRISE_DOMAIN = "*";
 export const GLOSSARY_EXPERT_KINDS = ["expert", "author"] as const;
 export type GlossaryExpertKind = (typeof GLOSSARY_EXPERT_KINDS)[number];
 
-/** A term's lifecycle (REQ-2144): draft until admitted, live, deprecated, retired. */
-export type TermStatus = "draft" | "live" | "deprecated" | "retired";
+/** A term's status (REQ-1387, REQ-2144), set by people: draft (the default), approved (a
+ * steward's choice, which needs a definition), deprecated or retired. */
+export type TermStatus = "draft" | "approved" | "deprecated" | "retired";
+
+/** A term's grounding (REQ-1387), computed and never set: it looks down the term's paths to data.
+ * grounded_pending: every path down has a term not yet approved between it and the data. */
+export type TermGrounding = "grounded" | "grounded_pending" | "not_grounded";
 
 export interface GlossaryTermSummary {
   id: number;
@@ -56,14 +61,11 @@ export interface GlossaryTermSummary {
   // Curator soft delete: the term keeps its refs but no consuming surface binds it —
   // agent term search skips it and metadata export withholds it.
   retired: boolean;
-  // Server-computed admission: in service, defined, and connected to a term holding a
-  // physical ref. Only live terms reach an agent or a downstream catalog; anything else is
-  // a proposal. Groundedness is a property of the term graph, so it is not derivable here.
-  live: boolean;
-  // Server-computed, structural only (ignores definition): true when the term has a path,
-  // over in-service terms, to one holding a physical ref. An abstract term with no path is
-  // dangling — it names no data, regardless of whether it carries a definition.
-  grounded: boolean;
+  // REQ-1387: server-computed from the term graph, never derivable here.
+  grounding: TermGrounding;
+  // REQ-1387: an agent sees the term by name (approved on a path to data, or a defined draft on
+  // a path holding an approved term).
+  agent_visible: boolean;
   // REQ-1591: a rooted term's domains are DERIVED from its refs' tables, an abstract term's are
   // DECLARED. Empty means unscoped — reachable by any glossary-right holder.
   domains: string[];
@@ -71,7 +73,7 @@ export interface GlossaryTermSummary {
   findings: number;
   status: TermStatus;
   // REQ-2144: why it was deprecated or retired, who said so, and a deprecation's planned
-  // retirement; none on a draft or a live term.
+  // retirement; none on a draft or an approved term.
   status_reason: string | null;
   status_by: string | null;
   retire_on: string | null;
@@ -105,6 +107,8 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   experts: GlossaryExpert[];
   // REQ-2145: the tags on the term (pii), which every column it holds carries.
   tags: { tag_id: string; reason: string | null }[];
+  // REQ-1387: for a grounded_pending term, the drafts whose approval alone grounds it.
+  pending_on: { term_id: number; name: string }[];
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
@@ -114,7 +118,8 @@ export interface RelatedGlossaryTerm {
   name: string;
   definition: string | null;
   is_abstract: boolean;
-  live: boolean;
+  status: TermStatus;
+  grounding: TermGrounding;
   domains: string[];
 }
 
@@ -342,7 +347,9 @@ export type FindingKind =
   | "class_and_attribute"
   | "tag_wrong_kind"
   | "retirement_blocked"
-  | "no_data";
+  | "no_data"
+  | "approved_not_grounded"
+  | "path_pending";
 
 export interface GlossaryFinding {
   kind: FindingKind;
@@ -407,8 +414,7 @@ export async function retireGlossaryTerm(
   return res.json();
 }
 
-/** Deprecate a live term (REQ-2144): it stays in service until ``retire_on``, if given, when it
- * is retired. */
+/** Deprecate an approved term (REQ-2144): it is retired on ``retire_on``, if given. */
 export async function deprecateGlossaryTerm(
   termId: number,
   body: { reason: string; retire_on: string | null },
@@ -479,4 +485,76 @@ export type TermRole = "class" | "property" | "concept";
 export function termRole(t: { table_count: number; ref_count: number }): TermRole {
   if (t.table_count > 0) return "class";
   return t.ref_count > 0 ? "property" : "concept";
+}
+
+/** Approve a draft term (REQ-1387): it needs a definition. */
+export async function approveGlossaryTerm(termId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/approve`, {
+    method: "POST",
+  });
+  if (!res.ok) throw await mutationError(res, "approveGlossaryTerm");
+}
+
+export interface TermRef {
+  term_id: number;
+  name: string;
+}
+
+/** The defined, grounded drafts the caller may approve together (REQ-2144). */
+export async function listApprovableTerms(): Promise<TermRef[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/approvable`);
+  if (!res.ok) throw await mutationError(res, "listApprovableTerms");
+  return res.json();
+}
+
+export async function bulkApproveTerms(termIds: number[]): Promise<{ approved: number[] }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ term_ids: termIds }),
+  });
+  if (!res.ok) throw await mutationError(res, "bulkApproveTerms");
+  return res.json();
+}
+
+/** The steward actions whose impact is previewed (REQ-2144). */
+export type ImpactAction = "approve" | "retire" | "bind";
+
+/** What an action would change, changing nothing (REQ-2144). */
+export interface TermImpact {
+  action: ImpactAction;
+  term_id: number;
+  term: string;
+  becomes_grounded: TermRef[];
+  becomes_pending: TermRef[];
+  becomes_not_grounded: TermRef[];
+  tables_gained: number;
+  tables_lost: number;
+}
+
+export async function previewTermImpact(
+  termId: number,
+  action: ImpactAction,
+  extra: { successor?: number | null; table_id?: number; column_name?: string } = {},
+): Promise<TermImpact> {
+  const params = new URLSearchParams({ action });
+  if (extra.successor != null) params.set("successor", String(extra.successor));
+  if (extra.table_id != null) params.set("table_id", String(extra.table_id));
+  if (extra.column_name != null) params.set("column_name", extra.column_name);
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/impact?${params}`);
+  if (!res.ok) throw await mutationError(res, "previewTermImpact");
+  return res.json();
+}
+
+/** The stewardship summary (REQ-2144). */
+export interface StewardshipSummary {
+  agent_visible: (TermRef & { status: TermStatus })[];
+  waiting_on_one_approval: (TermRef & { approve: TermRef[] })[];
+  approved_not_grounded: TermRef[];
+}
+
+export async function fetchStewardshipSummary(): Promise<StewardshipSummary> {
+  const res = await fetch(`${API_BASE}/admin/glossary/stewardship`);
+  if (!res.ok) throw await mutationError(res, "fetchStewardshipSummary");
+  return res.json();
 }

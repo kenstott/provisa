@@ -247,6 +247,62 @@ query TagAssignmentsQuery {
   }
 }
 
+# The fields of a registered table every table list reads: no editor knob, and neither of the
+# per-table derived fields the server works out per table only when asked (refreshPolicySummary,
+# qualityCheckers). LISTED_TABLE_FIELDS (types/admin.ts) names the same fields.
+fragment ListedTableFields on RegisteredTableType {
+  id
+  sourceId
+  domainId
+  schemaName
+  tableName
+  alias
+  description
+  draft
+  viewSql
+  materialize
+  productId
+  dqContract
+  dqDataset
+  timeTravel
+  apiEndpoint
+  modelingRole
+  viewMetrics {
+    metrics
+    dimensions
+    filters
+  }
+}
+
+# The registered tables without their columns, for the pages that name, count or pick tables and
+# show none of their columns.
+query TableRowsQuery {
+  tables {
+    ...ListedTableFields
+  }
+}
+
+# The registered tables with the columns the pages that list them read. TablesQuery is the
+# editor's, every field of every table.
+query TableListQuery {
+  tables {
+    ...ListedTableFields
+    columns {
+      id
+      columnName
+      alias
+      computedSqlAlias
+      description
+      dataType
+      nativeFilterType
+      nativeFilterRequired
+      requiredBySteward
+      isPrimaryKey
+      isForeignKey
+    }
+  }
+}
+
 query TablesQuery {
   tables {
     id

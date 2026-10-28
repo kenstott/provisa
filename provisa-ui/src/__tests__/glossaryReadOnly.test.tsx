@@ -60,14 +60,14 @@ const REVENUE: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 const CHURN: GlossaryTermSummary = {
@@ -102,6 +102,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn" }],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
+  pending_on: [],
 };
 
 /** Mount the tab and open Revenue. */

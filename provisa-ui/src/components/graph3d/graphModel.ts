@@ -74,7 +74,7 @@ export type { TermStatus } from "../../api/glossary";
 import type { TermStatus } from "../../api/glossary";
 
 /** Every standing a term can have, in the order a reader picks them. */
-export const TERM_STATUSES: TermStatus[] = ["live", "draft", "deprecated", "retired"];
+export const TERM_STATUSES: TermStatus[] = ["approved", "draft", "deprecated", "retired"];
 
 export interface GraphNode {
   id: string;

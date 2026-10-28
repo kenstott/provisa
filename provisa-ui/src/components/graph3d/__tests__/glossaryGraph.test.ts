@@ -45,7 +45,8 @@ const term = (id: number, name: string, over: Partial<TermRow>): TermRow => ({
   ref_count: 0,
   deprecated: false,
   retired: false,
-  live: true,
+  status: "approved",
+  grounding: "grounded",
   domains: [{ domain_id: "sales" }],
   refs: [],
   ...over,
@@ -56,13 +57,13 @@ const TERMS: TermRow[] = [
   term(2, "Party", { ref_count: 0, domains: [{ domain_id: "*" }] }),
   term(3, "Loyalty tier", {
     definition: null,
-    live: false,
+    status: "draft",
     ref_count: 1,
     refs: [ref(10, "tier")],
   }),
-  term(4, "Concept", { ref_count: 0, live: false }),
-  term(5, "Old customer", { deprecated: true, live: false, domains: [{ domain_id: "finance" }] }),
-  term(6, "Ancient", { retired: true, live: false }),
+  term(4, "Concept", { ref_count: 0, status: "draft", grounding: "not_grounded" }),
+  term(5, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded", domains: [{ domain_id: "finance" }] }),
+  term(6, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
 ];
 const EDGES: TermEdgeRow[] = [
   { id: 1, from_term_id: 1, to_term_id: 2, rel_type: "KIND_OF" },
@@ -110,7 +111,7 @@ describe("the Ontology View's terms", () => {
   it("names a draft term by its title, its standing marked by style alone", () => {
     expect(node(G, "term:3")).toMatchObject({ status: "draft", label: "Loyalty tier" });
     expect(node(G, "term:4")).toMatchObject({ status: "draft", label: "Concept" });
-    expect(node(G, "term:1")).toMatchObject({ status: "live", label: "Customer" });
+    expect(node(G, "term:1")).toMatchObject({ status: "approved", label: "Customer" });
     expect(G.nodes.some((n) => /undefined|·/.test(n.label))).toBe(false);
     // The definition rides along for the side panel, never in the label; none, nothing.
     expect(node(G, "term:1")?.definition).toBe("Customer, as the business uses it.");
@@ -233,7 +234,7 @@ describe("a draft named for a column, with Domains alone drawn", () => {
     // domain the server's (term_domains: its refs' tables' domain).
     const draft = term(7, "shift end", {
       definition: null,
-      live: false,
+      status: "draft",
       ref_count: 1,
       refs: undefined,
       domains: [{ domain_id: "shelter" }],

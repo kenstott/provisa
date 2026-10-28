@@ -156,7 +156,7 @@ function _scheduleActiveRefetch() {
     // flight". Its useQuery then holds error set and data undefined permanently —
     // cache-and-network never retries — which is how MetricsPage ended up rendering a
     // forever-disabled fact picker (factTables derives from useTables(), and an errored
-    // TablesQuery yields zero tables). refetchQueries re-runs the same active queries
+    // TableListQuery yields zero tables). refetchQueries re-runs the same active queries
     // without touching the store, so nothing in flight is disturbed; the Query.tables/
     // domains/relationships/roles merge policies above replace each list wholesale, so
     // the refetched result cannot merge with stale entries. A navigation away mid-refetch

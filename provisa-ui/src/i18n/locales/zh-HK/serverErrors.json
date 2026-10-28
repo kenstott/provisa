@@ -687,8 +687,7 @@
       "retire_on_invalid": "計劃的停用日期 {{retire_on}} 不是日期（請使用 YYYY-MM-DD）。",
       "successor_is_self": "詞彙不能成為自己的繼任者。",
       "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個仍在使用的詞彙。",
-      "term_not_live": "只有已發佈的詞彙才能棄用；該詞彙為 {{status}}。",
-      "status_by_action": "詞彙的狀態透過「棄用」「停用」或「恢復」更改，每項都需要原因。",
+      "status_by_action": "術語的狀態透過「批准」「棄用」「停用」或「還原」來改變。",
       "successor_required": "該詞彙仍有欄位或表；停用它會將其移到繼任者。請選擇一個。",
       "successor_role": "{{role}} 的繼任者必須是 {{role}} 或概念；「{{successor}}」是 {{successor_role}}。",
       "no_retirement_history": "模型的歷史中沒有該詞彙的停用記錄。",
@@ -698,8 +697,18 @@
         "class_and_attribute_table": "表 {{table}} 沒有類：它的概念是該詞彙，而該詞彙擁有不是鍵的欄位（{{columns}}）。",
         "tag_wrong_kind": "該詞彙帶有只有屬性才會傳給其欄位的標籤（{{tags}}）；它是 {{role}}。",
         "retirement_blocked": "該詞彙原定於 {{retire_on}} 停用，但仍有數據。請指定接收數據的繼任者後再停用。",
-        "no_data": "該概念未連接到任何擁有數據的詞彙。"
-      }
+        "no_data": "此草稿概念未連接到任何持有資料的術語。",
+        "approved_not_grounded": "此術語已批准，但未到達任何資料，因此沒有智能體能看到它。",
+        "path_pending": "已錨定 · 路徑待批准：它只經過尚未批准的術語到達資料。",
+        "path_pending_approve": "已錨定 · 路徑待批准：批准 {{approve}} 後它即錨定。"
+      },
+      "term_not_approved": "只有已批准的術語才能棄用；此術語為 {{status}}。",
+      "term_not_draft": "只有草稿術語才能批准；此術語為 {{status}}。",
+      "definition_required": "批准前請先為術語加上定義。",
+      "not_bulk_approvable": "只有已定義且已錨定的草稿術語才能一起批准；以下不符合：{{terms}}。",
+      "term_ids_required": "請指定要批准的術語。",
+      "impact_action": "此操作沒有預覽。",
+      "impact_table_required": "綁定指定一張表或其中的一欄。"
     },
     "tag": {
       "not_on_terms": "標籤「{{tag}}」不能加在詞彙上；只有 pii 可以。",

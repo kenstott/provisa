@@ -49,6 +49,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useRelationships, useTables } from "../../hooks/useAdminQueries";
 import { DescriptionField } from "../../pages/tables/DescriptionField";
+import { TermImpactPreview } from "./TermImpactPreview";
 import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
 import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
@@ -93,7 +94,7 @@ export function TermEditForm({
 }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
-  const { tables } = useTables();
+  const { tables } = useTables({ inPage: true });
   const { relationships } = useRelationships();
   // The term's tables as read, and the draft made from the term and them.
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);
@@ -527,6 +528,21 @@ export function TermEditForm({
           />
         </FormField>
       </FormLayout>
+      {/* REQ-2144: what binding each table chosen here changes, seen before Save. */}
+      {read !== null &&
+        read.termId === term.id &&
+        draft.tables
+          .filter((id) => !read.tables.includes(id))
+          .map((id) => (
+            <Stack key={id} gap={2} data-testid={`glossary-bind-impact-${id}`}>
+              <Text size="xs" fw={500}>
+                {t("glossaryTab.impactTitle_bind", {
+                  term: `${term.name} → ${tableOptions.find((o) => o.value === String(id))?.label ?? id}`,
+                })}
+              </Text>
+              <TermImpactPreview termId={term.id} action="bind" extra={{ table_id: id }} />
+            </Stack>
+          ))}
       {said("tables")}
 
       <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>

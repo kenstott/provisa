@@ -1204,7 +1204,7 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
     stated = [
         t
         for t in config.glossary_terms
-        if t.deprecate is not None or t.retire is not None or t.restore
+        if t.approve or t.deprecate is not None or t.retire is not None or t.restore
     ]
     if not stated:
         return
@@ -1219,6 +1219,11 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
     for gt in stated:
         term_id = term_ids[gt.name.strip().lower()]
         try:
+            # Loading the same configuration again changes nothing: an approval already made
+            # stands.
+            if gt.approve and statuses[term_id] == "draft":
+                await glossary_repo.approve_term(conn, term_id, by=None)
+                statuses[term_id] = "approved"
             if gt.restore:
                 if statuses[term_id] in ("deprecated", "retired"):
                     await glossary_repo.restore_term(conn, term_id, by=None)
@@ -1239,7 +1244,7 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
             elif gt.deprecate is not None:
                 # Loading the same configuration again changes nothing: a deprecation already
                 # stated stands, and one its planned date has retired stays retired.
-                if statuses[term_id] == "live":
+                if statuses[term_id] == "approved":
                     await glossary_repo.deprecate_term(
                         conn,
                         term_id,
@@ -1250,7 +1255,8 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
                     )
                 elif statuses[term_id] == "draft":
                     raise glossary_repo.StatusRefused(
-                        "term_not_live", "only a live term is deprecated; this one is draft"
+                        "term_not_approved",
+                        "only an approved term is deprecated; this one is draft (state approve)",
                     )
         except glossary_repo.StatusRefused as exc:
             raise ValueError(f"glossary term {gt.name!r}: {exc}") from exc

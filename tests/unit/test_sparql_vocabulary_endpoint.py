@@ -110,20 +110,20 @@ def test_each_edge_type_with_its_source_and_target():
     assert {"iri": WORKS_AT, "type": "WORKS_AT", "source": "Person", "target": "Company"} in edges
 
 
-def test_the_live_concept_terms_are_offered_and_nothing_else_of_the_glossary():
+def test_the_agent_visible_concept_terms_are_offered_and_nothing_else_of_the_glossary():
     rows = [
         {
             "name": "customer lifetime",
             "definition": "How long a customer stays.",
             "is_abstract": True,
-            "live": True,
+            "agent_visible": True,
         },
-        {"name": "draft idea", "definition": None, "is_abstract": True, "live": False},
+        {"name": "draft idea", "definition": None, "is_abstract": True, "agent_visible": False},
         {
             "name": "party",
             "definition": "Someone we deal with.",
             "is_abstract": False,
-            "live": True,
+            "agent_visible": True,
         },
     ]
     concepts = concepts_of(BASE, rows)

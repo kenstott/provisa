@@ -687,8 +687,7 @@
       "retire_on_invalid": "予定された廃止日 {{retire_on}} は日付ではありません（YYYY-MM-DD を使ってください）。",
       "successor_is_self": "用語を自分自身の後継にすることはできません。",
       "successor_retired": "後継の「{{successor}}」は廃止されています。使用中の用語を選んでください。",
-      "term_not_live": "非推奨にできるのは公開中の用語だけです。この用語は {{status}} です。",
-      "status_by_action": "用語のステータスは「非推奨にする」「廃止する」「復元する」で変更し、それぞれに理由が必要です。",
+      "status_by_action": "用語のステータスは、承認・非推奨化・廃止・復元のいずれかで変わります。",
       "successor_required": "この用語にはまだ列またはテーブルがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
       "successor_role": "{{role}} の後継は {{role}} か概念でなければなりません。「{{successor}}」は {{successor_role}} です。",
       "no_retirement_history": "モデルの履歴にこの用語の廃止はありません。",
@@ -698,8 +697,18 @@
         "class_and_attribute_table": "テーブル {{table}} にはクラスがありません。その概念はこの用語ですが、キーではない列を持っています（{{columns}}）。",
         "tag_wrong_kind": "この用語には、プロパティだけが列に渡すタグ（{{tags}}）が付いています。この用語は {{role}} です。",
         "retirement_blocked": "この用語は {{retire_on}} に廃止される予定でしたが、まだデータを持っています。データを引き継ぐ後継を指定して廃止してください。",
-        "no_data": "この概念は、データを持つどの用語にもつながっていません。"
-      }
+        "no_data": "この下書きの概念は、データを持つどの用語にもつながっていません。",
+        "approved_not_grounded": "この用語は承認済みですがデータに到達しないため、どのエージェントにも見えません。",
+        "path_pending": "紐付け済み · 経路が承認待ち: まだ承認されていない用語を通じてのみデータに到達します。",
+        "path_pending_approve": "紐付け済み · 経路が承認待ち: {{approve}} を承認すると紐付け済みになります。"
+      },
+      "term_not_approved": "非推奨にできるのは承認済みの用語だけです。この用語は {{status}} です。",
+      "term_not_draft": "承認できるのは下書きの用語だけです。この用語は {{status}} です。",
+      "definition_required": "承認する前に用語に定義を付けてください。",
+      "not_bulk_approvable": "まとめて承認できるのは定義済み・紐付け済みの下書きだけです。対象外: {{terms}}。",
+      "term_ids_required": "承認する用語を指定してください。",
+      "impact_action": "この操作にはプレビューがありません。",
+      "impact_table_required": "バインドはテーブル、またはその列の1つを指定します。"
     },
     "tag": {
       "not_on_terms": "タグ「{{tag}}」は用語には付けられません。付けられるのは pii だけです。",

@@ -69,14 +69,14 @@ const LIVE: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 // A term with a finding: what To review keeps.
@@ -89,6 +89,7 @@ const LIVE_DETAIL: GlossaryTermDetail = {
   edges_in: [],
   experts: [],
   tags: [],
+  pending_on: [],
 };
 
 const search = () =>

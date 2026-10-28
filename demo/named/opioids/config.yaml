@@ -254,6 +254,7 @@ relationships:
 # terms the fund's and the public tables' columns derive (spent, awarded, program area, rate).
 glossary_terms:
 - name: opioid settlement fund
+  approve: true
   definition: 'The money drug makers, distributors and pharmacies agreed to pay states and local governments to settle the opioid lawsuits, paid out over many years and to be spent on abating the epidemic.'
   domains:
   - opioids
@@ -261,6 +262,7 @@ glossary_terms:
   - to: awarded
     rel_type: RELATED_TO
 - name: abatement
+  approve: true
   definition: 'What the settlements require the money be spent on: reducing the harm of the epidemic -- treatment, recovery, prevention and overdose reversal.'
   domains:
   - opioids
@@ -270,6 +272,7 @@ glossary_terms:
   - to: opioid settlement fund
     rel_type: RELATED_TO
 - name: treatment
+  approve: true
   definition: 'Care for opioid use disorder, chiefly medication (buprenorphine, methadone, naltrexone) with counselling.'
   domains:
   - opioids
@@ -277,6 +280,7 @@ glossary_terms:
   - to: abatement
     rel_type: KIND_OF
 - name: allocation
+  approve: true
   definition: 'An amount set aside for one county, program area and provider in one fiscal year.'
   domains:
   - opioids
@@ -284,6 +288,7 @@ glossary_terms:
   - to: awarded
     rel_type: RELATED_TO
 - name: expenditure
+  approve: true
   definition: 'Money actually paid out of an allocation, as opposed to what was awarded; the gap between the two is what is still unspent.'
   domains:
   - opioids
@@ -293,10 +298,12 @@ glossary_terms:
   - to: allocation
     rel_type: RELATED_TO
 - name: fiscal year
+  approve: true
   definition: 'The state''s budget year, July to June, named for the June it ends in. The federal fiscal year runs October to September.'
   domains:
   - opioids
 - name: rate per 100,000
+  approve: true
   definition: 'Deaths for every 100,000 residents, so a small county and a large one can be compared.'
   domains:
   - opioids
@@ -304,6 +311,7 @@ glossary_terms:
   - to: rate
     rel_type: RELATED_TO
 - name: suppressed count
+  approve: true
   definition: 'A count of 1 to 9 that CDC does not publish, so no one can be identified; CDC publishes a modelled rate for the county instead.'
   domains:
   - opioids

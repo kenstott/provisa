@@ -197,14 +197,14 @@ const REVENUE: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 const CHURN: GlossaryTermSummary = {
@@ -217,14 +217,14 @@ const CHURN: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 const MARGIN: GlossaryTermSummary = {
@@ -243,8 +243,9 @@ const MARGIN: GlossaryTermSummary = {
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  // A deprecated term breaks the chain (REQ-1387).
+  grounding: "not_grounded",
+  agent_visible: false,
   domains: [],
 };
 // Abstract with no edge chain to a rooted term -- the dangling case (grounded: false).
@@ -264,8 +265,8 @@ const DANGLING: GlossaryTermSummary = {
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: false,
-  grounded: false,
+  grounding: "not_grounded",
+  agent_visible: false,
   domains: [],
 };
 
@@ -286,6 +287,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_in: [],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
+  pending_on: [],
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -295,6 +297,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
   experts: [],
   tags: [],
+  pending_on: [],
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -305,6 +308,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   edges_in: [],
   experts: [],
   tags: [],
+  pending_on: [],
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
@@ -555,6 +559,8 @@ describe("GlossaryTab", () => {
       ["Role", "Concept"],
       // Deprecated by its last column leaving: no one gave a reason or a date.
       ["Status", "Deprecated"],
+      // REQ-1387: computed, beside the status a person set.
+      ["Grounding", "Not grounded"],
       ["Reason", "—"],
       ["By", "—"],
       ["Planned retirement", "—"],

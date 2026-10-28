@@ -218,6 +218,7 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 glossary_terms.c.name,
                 glossary_terms.c.definition,
                 glossary_terms.c.retired,
+                glossary_terms.c.approved,
                 glossary_terms.c.deprecation_asserted,
                 glossary_terms.c.status_reason,
                 glossary_terms.c.retire_on,
@@ -232,13 +233,15 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
         # successor rides its REPLACES edge, on the successor's own entry.
         if r.retired and r.status_reason:
             return {"retire": GlossaryTermRetirement(reason=r.status_reason)}
+        # REQ-1387: an approval is a person's, so a configuration states it.
+        approve = {"approve": True} if r.approved else {}
         if r.deprecation_asserted:
-            return {
+            return approve | {
                 "deprecate": GlossaryTermDeprecation(
                     reason=r.status_reason or "", retire_on=r.retire_on
                 )
             }
-        return {}
+        return approve
 
     return [
         _written(

@@ -92,6 +92,8 @@ function answer(path: string): unknown {
   if (path.endsWith("/members")) return [];
   if (path.includes("/admin/actions")) return { functions: [], webhooks: [] };
   if (path.includes("/admin/glossary/terms")) return [];
+  if (path.includes("/admin/glossary/stewardship"))
+    return { agent_visible: [], waiting_on_one_approval: [], approved_not_grounded: [] };
   return {};
 }
 

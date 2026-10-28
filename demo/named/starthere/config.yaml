@@ -643,6 +643,7 @@ data_products:
   support_contact: kennethstott@gmail.com
 glossary_terms:
 - name: referral
+  approve: true
   definition: The act of sending a pet to an outside veterinary practice for care beyond in-house capability.
   domains:
   - pet-store
@@ -652,10 +653,12 @@ glossary_terms:
   - to: specialty
     rel_type: RELATED_TO
 - name: clinic
+  approve: true
   definition: The outside veterinary practice a pet is referred to.
   domains:
   - pet-store
 - name: specialty
+  approve: true
   definition: The area of veterinary care a referral clinic focuses on.
   domains:
   - pet-store
