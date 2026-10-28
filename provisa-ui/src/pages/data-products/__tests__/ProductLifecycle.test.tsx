@@ -60,7 +60,7 @@ function Lifecycle(props: {
   findings?: ProductFinding[];
   canEdit?: boolean;
   status: DataProductStatus;
-  onChanged?: (m: string) => void;
+  onChanged?: (m: string, membersMoved: boolean) => void;
   onFailed?: (m: string) => void;
   onEdit?: () => void;
   openProduct?: (id: string) => void;
@@ -116,7 +116,7 @@ describe("a data product's status actions", () => {
       <Lifecycle product={product("c360", { status: "draft" })} status={status} onChanged={onChanged} />,
     );
     fireEvent.click(screen.getByTestId("data-product-publish-c360"));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 published."));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 published.", false));
     expect(status.publish).toHaveBeenCalledWith("c360");
   });
 
@@ -155,7 +155,7 @@ describe("a data product's status actions", () => {
       target: { value: "Replaced by c360 v2" },
     });
     fireEvent.click(submit);
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 deprecated."));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 deprecated.", false));
     expect(status.deprecate).toHaveBeenCalledWith("c360", "Replaced by c360 v2", null);
   });
 });
@@ -196,7 +196,7 @@ describe("a data product's retirement", () => {
     fireEvent.click(options[0]);
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 retired."));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 retired.", true));
     expect(status.retire).toHaveBeenCalledWith("c360", "Merged", "c360_v2");
   });
 

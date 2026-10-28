@@ -65,15 +65,15 @@ async function pickTable(name: string) {
 describe("RegisterTableForm paging (REQ-318)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // Paging is not asked in the short step: a table registers with none declared unless its
-  // paging is set on the Load and timeliness section that follows the step (REQ-2109).
-  it("registers a table whose source suggests paging with none declared, not asking it", async () => {
+  // Paging is not asked in the short step: the paging the source proposes is carried to the
+  // Load and timeliness section that follows it, where it is accepted or edited (REQ-2109, REQ-318).
+  it("carries the paging a source proposes out of the short step without asking it", async () => {
     const { onContinue } = renderForm();
     const user = await pickTable("listPets");
     expect(screen.queryByRole("textbox", { name: "Paging type" })).toBeNull();
     await user.click(screen.getByTestId("register-table-submit"));
     await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].pagination).toBeNull();
+    expect(onContinue.mock.calls[0][0].pagination).toEqual(OFFERED[0].pagination);
   });
 
   it("registers a table whose source suggests none with no paging", async () => {

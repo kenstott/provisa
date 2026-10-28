@@ -164,10 +164,10 @@ def _ops_ctx():
 
     ctx = CompilationContext()
     ctx.tables = {
-        "query_audit_log": TableMeta(
+        "op_query_audit_log": TableMeta(
             table_id=1,
-            field_name="query_audit_log",
-            type_name="QueryAuditLog",
+            field_name="op_query_audit_log",
+            type_name="OP_QueryAuditLog",
             source_id="provisa-admin",
             catalog_name="provisa-admin",
             schema_name="org_default",

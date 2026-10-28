@@ -45,12 +45,16 @@ from provisa.compiler.aggregate_gen import (
 from provisa.compiler.naming import (
     active_gql_convention,
     apply_gql_name,
+    bare_field_name,
     domain_to_sql_name,
     generate_name,
     refuse_taken_sql_addresses,
     junction_field_name,
     rel_field_name,
+    SYSTEM_SCHEMA_GQL_PREFIX,
+    system_schema_names,
     to_type_name,
+    unprefixed_field_name,
 )
 from provisa.compiler.metric_expand import metric_reference_tables
 from provisa.compiler.ontology_classes import is_class_table_id, served_class_columns
@@ -316,7 +320,10 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                 alias=t.alias,
                 convention=t.gql_convention_override or active_gql_convention(),
             )
-            if domain_prefix:
+            if domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+                # REQ-2163: a system schema's names carry its own prefix, domains prefixed or not.
+                t.field_name, t.type_name = system_schema_names(domain_id, t.field_name)
+            elif domain_prefix:
                 alias = (domain_alias_map or {}).get(domain_id)
                 if alias:
                     t.field_name = f"{alias}__{t.field_name}"
@@ -328,27 +335,28 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                     t.type_name = to_type_name(t.field_name)
             else:
                 t.type_name = to_type_name(t.field_name)
-    if not domain_prefix:
-        _qualify_classes_named_as_tables(tables, domain_alias_map or {})
+    _refuse_system_schema_names(tables)
 
 
-def _qualify_classes_named_as_tables(
-    tables: list[_TableInfo], domain_alias_map: dict[str, str]
-) -> None:
-    """REQ-2163: a Class table never takes a model table's name. Where a served table and an
-    ontology Class compute one field name (domains unprefixed), the Class is named as a prefixed
-    schema names it -- its domain's alias, then its own name -- so the bare name, and the graph
-    label made from it, stay the table's; the Class is reached by its qualified label
-    (Ontology:Person). Its SQL relation, its domain's schema and its own name, is unchanged."""
-    from provisa.compiler.ontology_classes import is_class_table_id
-
-    taken = {t.field_name for t in tables if not is_class_table_id(t.table_id)}
+def _refuse_system_schema_names(tables: list[_TableInfo]) -> None:
+    """REQ-2163: no model table takes a name a system schema's table has (``on_terms``, its type
+    ``ON_Terms``); one that would is refused by name rather than shadowing it."""
+    system = {
+        name: t
+        for t in tables
+        if t.domain_id in SYSTEM_SCHEMA_GQL_PREFIX
+        for name in (t.field_name, t.type_name)
+    }
     for t in tables:
-        if not is_class_table_id(t.table_id) or t.field_name not in taken:
+        if t.domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
             continue
-        prefix = domain_alias_map.get(t.domain_id) or domain_to_sql_name(t.domain_id)
-        t.field_name = f"{prefix}__{t.field_name}"
-        t.type_name = f"{prefix.upper()}__{to_type_name(t.field_name.split('__', 1)[1])}"
+        for name in (t.field_name, t.type_name):
+            if name in system:
+                raise ValueError(
+                    f"the table {t.domain_id}.{t.table_name} is exposed in GraphQL as {name!r}, "
+                    f"which is the {system[name].domain_id} schema's table "
+                    f"{system[name].table_name!r}; give it an alias"
+                )
 
 
 #: REQ-1365 (amended 2026-10-27, "THE RESOLVER IS META'S"): the extension marking the Query
@@ -599,9 +607,7 @@ def _add_ops_traversal_fields(
     for ops_t in ops_targets:
         if ops_t.table_id not in gql_types:
             continue
-        ops_base = (
-            ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
-        )
+        ops_base = bare_field_name(ops_t.field_name, ops_t.domain_id)
         fields[f"_{ops_base}"] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
             args=_build_db_field_args(
@@ -661,7 +667,9 @@ def _where_relationships(  # REQ-2136
             target_where = where_types.get(target.table_id) if target else None
             if target is None or target_where is None:
                 continue
-            name = rel.get("graphql_alias") or rel_field_name(target.field_name, rel["cardinality"])
+            name = rel.get("graphql_alias") or rel_field_name(
+                unprefixed_field_name(target.field_name, target.domain_id), rel["cardinality"]
+            )
             out[name] = GraphQLInputField(target_where)
         return out
 
@@ -698,7 +706,9 @@ def _add_standard_relationship_field(
             cypher_alias=rel.get("alias"),
         )
     else:
-        field_name = rel_field_name(target.field_name, cardinality)
+        field_name = rel_field_name(
+            unprefixed_field_name(target.field_name, target.domain_id), cardinality
+        )
     if cardinality in ("many-to-one", "one-to-one"):
         # REQ-1163: a related relation that has versions takes its time-travel arguments here too.
         travel: dict[str, GraphQLArgument] = {}

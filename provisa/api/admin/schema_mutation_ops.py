@@ -183,6 +183,9 @@ async def reprovision_source_after_registration(pool, state, source_id: str) -> 
     from provisa.api.admin.schema_common import _synthesize_mapping_dsl_tables
     from provisa.core.secrets import resolve_secrets
     from provisa.core.secrets_store import bound_to_request_org
+    import asyncio
+
+    from provisa.federation.pgwire_replica import use_catalog_of
     from provisa.federation.registry_view import registered_sources
 
     model = next((s for s in await registered_sources(state) if s.id == source_id), None)
@@ -190,6 +193,8 @@ async def reprovision_source_after_registration(pool, state, source_id: str) -> 
         return
     async with bound_to_request_org():
         await _synthesize_mapping_dsl_tables(pool, model)
+        # REQ-540: the source's first registered table is its first use by the engine.
+        await asyncio.to_thread(use_catalog_of, model)
         state.federation_engine.register_source(
             model,
             resolve_secrets(model.password) if model.password else "",

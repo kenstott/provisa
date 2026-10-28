@@ -418,6 +418,26 @@ class _SeamSource:
             return await asyncio.to_thread(seam, self._source, schema)
 
 
+def index_task_name(kind: str, source_id: str) -> str:
+    """The background task name of a source's catalog ``kind`` ("index" or "reindex") walk, in
+    the bound org: a source id names a source within one org only."""
+    from provisa.core.request_context import require_current_org
+
+    return f"catalog-{kind}:{require_current_org()}:{source_id}"
+
+
+async def stop_indexing(source_id: str) -> None:
+    """End every catalog walk of ``source_id`` in the bound org, and return once each has ended.
+
+    A walk reads the source's catalog and its engine catalog name; once the source is deleted
+    neither exists, so the walk is stopped before they are removed, never left to fail on them."""
+    from provisa.core.connection_loop import cancel_background
+
+    for kind in ("index", "reindex"):
+        for fut in cancel_background(index_task_name(kind, source_id)):
+            await asyncio.wrap_future(fut)
+
+
 async def index_source(
     source_id: str, pool, engine, source_pools, source_types, state
 ) -> None:  # REQ-464

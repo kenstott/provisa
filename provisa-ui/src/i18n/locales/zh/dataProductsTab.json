@@ -174,7 +174,6 @@
       "column": "列",
       "type": "类型",
       "required": "从不为空",
-      "yes": "是",
       "versionLabel": "契约版本",
       "statusLabel": "契约状态",
       "descriptionLabel": "用途说明",
@@ -186,7 +185,36 @@
       "slaValue": "值",
       "slaUnit": "单位",
       "slaRemove": "移除服务级别",
-      "slaAdd": "添加服务级别"
+      "slaAdd": "添加服务级别",
+      "notDeclared": "未声明",
+      "loadError": "无法读取契约：{{error}}",
+      "notExported": "{{member}} 没有已导出的契约",
+      "section": {
+        "fundamentals": "基本信息",
+        "schema": "架构",
+        "quality": "质量",
+        "sla": "SLA",
+        "support": "支持与团队",
+        "servers": "服务器",
+        "pricing": "定价",
+        "custom": "自定义属性和标签"
+      },
+      "summary": {
+        "properties_one": "{{count}} 个属性",
+        "properties_other": "{{count}} 个属性",
+        "rules_one": "{{count}} 条规则",
+        "rules_other": "{{count}} 条规则",
+        "serviceLevels_one": "{{count}} 个服务级别",
+        "serviceLevels_other": "{{count}} 个服务级别",
+        "supportChannels_one": "{{count}} 个支持渠道",
+        "supportChannels_other": "{{count}} 个支持渠道",
+        "roles_one": "{{count}} 个角色",
+        "roles_other": "{{count}} 个角色",
+        "customProperties_one": "{{count}} 个自定义属性",
+        "customProperties_other": "{{count}} 个自定义属性",
+        "tags_one": "{{count}} 个标签",
+        "tags_other": "{{count}} 个标签"
+      }
     }
   }
 }

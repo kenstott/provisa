@@ -1322,6 +1322,33 @@ kafka_sources:
 
 ---
 
+## Column Subtypes
+
+Some column types carry extra meaning that surfaces care about. Provisa represents these as **subtypes**: each subtype has a canonical base type (text, bigint, or numeric) for engines and operations that need only a plain type, and its own name for surfaces that can use the richer form.
+
+Registration records the subtype whenever the source's native type maps to one. A Postgres `inet` column registers as the `inet` subtype; a Trino `ipaddress` column registers the same way. From then on, each surface decides independently:
+
+- **pgwire** reports the subtype's Postgres type OID (`inet` → 869, `cidr` → 650, `macaddr` → 829, `xml` → 142, `point` → 600, `oid` → 26, `money` → 790) and sends values in Postgres text format.
+- **GraphQL** names the subtype's scalar (`IPAddress`, `CIDR`, `MACAddress`, `XML`, `Point`, `OID`, `Money`), serialized as its base type.
+- **Arrow Flight** carries the subtype as an Arrow extension type.
+- **Engines** that have the native type use it; others use the canonical base type with correct semantics (normalized ordering and equality for `inet`; numeric arithmetic for `money`).
+
+| Subtype | Base type | Semantics |
+|---|---|---|
+| `inet` | `text` | IP address ordering and equality; 10.0.0.1 equals 10.0.0.1/32 |
+| `cidr` | `text` | CIDR network; ordering and equality as network address |
+| `macaddr` | `text` | MAC address; text comparison |
+| `xml` | `text` | XML document; text comparison |
+| `point` | `text` | 2D point `(x,y)`; text comparison |
+| `oid` | `bigint` | Postgres object identifier; integer arithmetic and ordering |
+| `money` | `numeric` | Fixed-decimal currency; numeric arithmetic and ordering |
+
+Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there: Postgres `inet` and `cidr`, Trino `ipaddress`, ClickHouse `IPv4`/`IPv6`, Cassandra `inet`, and DuckDB `inet` all register as `inet`. SQL Server and Oracle `money` types register as `money`. SQL Server and Oracle XML types register as `xml`.
+
+A type not in this table registers as its nearest base type. Model tables never change after registration; re-registering a source does not change a column's recorded subtype.
+
+---
+
 ## Column Visibility
 
 The `visible_to` field on each column is a list of role IDs that can see that column.

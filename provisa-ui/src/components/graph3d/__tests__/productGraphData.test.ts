@@ -61,7 +61,7 @@ function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
           m__dataProducts: list("M__DataProducts"),
           m__registeredTables: list("M__RegisteredTables"),
           m__tableColumns: list("M__TableColumns"),
-          ...(opts.ranks ? { ont__termEdges: list("ONT__TermEdges") } : {}),
+          ...(opts.ranks ? { on_termEdges: list("ON_TermEdges") } : {}),
         }),
         type("M__DataProducts", {
           id: scalar,
@@ -85,24 +85,24 @@ function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
         type("M__TableColumns", {
           columnName: scalar,
           columnKey: scalar,
-          glossaryRef: list("ONT__TermRefs"),
+          glossaryRef: list("ON_TermRefs"),
           sensitivity: list("M__SensitiveCoverage"),
           ...(opts.tags ? { tags: list("M__TagAssignments") } : {}),
         }),
-        type("ONT__TermRefs", { termId: scalar, term: one("ONT__Terms") }),
-        type("ONT__Terms", {
+        type("ON_TermRefs", { termId: scalar, term: one("ON_Terms") }),
+        type("ON_Terms", {
           id: scalar,
           name: scalar,
-          edgesOut: list("ONT__TermEdges"),
-          edgesIn: list("ONT__TermEdges"),
+          edgesOut: list("ON_TermEdges"),
+          edgesIn: list("ON_TermEdges"),
         }),
-        type("ONT__TermEdges", {
+        type("ON_TermEdges", {
           id: scalar,
           fromTermId: scalar,
           toTermId: scalar,
           relType: scalar,
-          sourceTerm: one("ONT__Terms"),
-          targetTerm: one("ONT__Terms"),
+          sourceTerm: one("ON_Terms"),
+          targetTerm: one("ON_Terms"),
         }),
         type("M__SensitiveCoverage", { tags: scalar }),
         type("M__TrackedFunctions", { name: scalar, domainId: scalar }),
@@ -117,7 +117,7 @@ function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
       [rootKey("meta", "registered_tables"), "m__registeredTables"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
       ...(opts.ranks
-        ? ([[rootKey("ontology", "_term_edges"), "ont__termEdges"]] as [string, string][])
+        ? ([[rootKey("ontology", "_term_edges"), "on_termEdges"]] as [string, string][])
         : []),
     ]),
   };
@@ -527,7 +527,7 @@ describe("the product graph's term hierarchy (REQ-2174)", () => {
     const q = squash(productsQuery(reader({ tags: true, ranks: true }), "c360"));
     expect(q.startsWith("query DataProductGraph {")).toBe(true);
     expect(q).toContain(
-      '_term_edges: ont__termEdges(where: { relType: { in: ["KIND_OF","PART_OF","VALID_VALUE_OF"] } })',
+      '_term_edges: on_termEdges(where: { relType: { in: ["KIND_OF","PART_OF","VALID_VALUE_OF"] } })',
     );
     expect(q).toContain("source_term: sourceTerm { id: id name: name }");
     expect(q).toContain("target_term: targetTerm { id: id name: name }");

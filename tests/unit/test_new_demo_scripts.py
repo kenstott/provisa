@@ -46,7 +46,7 @@ def scaffolded(tmp_path):
         (locales / tour_json.parent.name).mkdir(parents=True)
         (locales / tour_json.parent.name / "tour.json").write_text(tour_json.read_text())
     home = new_demo.scaffold(
-        "harbor", title="Harbor", port=28632, requires="0.1.0a486", named=named, locales=locales
+        "harbor", title="Harbor", port=28632, requires="0.1.0a496", named=named, locales=locales
     )
     return home, locales
 
@@ -302,3 +302,39 @@ def test_an_unpublished_or_single_region_demo_needs_no_entry(tmp_path):
 
 def test_the_deployed_regions_demos_are_read_from_the_install():
     assert "retail" in check_demo.regions_demos()
+
+
+def _demo_using(tmp_path, requires, config="roles: []\n", code=None):
+    home = tmp_path / "demo"
+    (home / "code").mkdir(parents=True)
+    (home / "demo.yaml").write_text(f"requires_provisa: {requires}\n")
+    (home / "config.yaml").write_text(config)
+    if code is not None:
+        import io
+        import tarfile
+
+        with tarfile.open(home / "code" / "x.tar.gz", "w:gz") as tar:
+            data = code.encode()
+            info = tarfile.TarInfo("x.py")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return home
+
+
+def test_a_demo_using_role_parents_must_require_the_release_carrying_them(tmp_path):
+    config = "roles:\n  - {id: reader, parents: [viewer]}\n"
+    old = _demo_using(tmp_path, "0.1.0a495", config)
+    assert [p for p in check_demo.check_bundle(old) if "REQ-2155" in p]
+    (old / "demo.yaml").write_text("requires_provisa: 0.1.0a496\n")
+    assert check_demo.check_features(old, "0.1.0a496") == []
+
+
+def test_a_demo_with_a_code_export_taking_inputs_must_require_the_release_carrying_it(tmp_path):
+    home = _demo_using(tmp_path, "0.1.0a495", code="def churn_risk(inputs, context): ...\n")
+    assert [p for p in check_demo.check_features(home, "0.1.0a495") if "REQ-2100" in p]
+    assert check_demo.check_features(home, "0.1.0a496") == []
+
+
+def test_a_demo_using_nothing_newer_is_not_reported(tmp_path):
+    home = _demo_using(tmp_path, "0.1.0a483", code="def f(x): ...\n")
+    assert check_demo.check_features(home, "0.1.0a483") == []

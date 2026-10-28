@@ -174,7 +174,6 @@
       "column": "Coluna",
       "type": "Tipo",
       "required": "Nunca nulo",
-      "yes": "Sim",
       "versionLabel": "Versão do contrato",
       "statusLabel": "Status do contrato",
       "descriptionLabel": "Para que serve",
@@ -186,7 +185,36 @@
       "slaValue": "Valor",
       "slaUnit": "Unidade",
       "slaRemove": "Remover nível de serviço",
-      "slaAdd": "Adicionar nível de serviço"
+      "slaAdd": "Adicionar nível de serviço",
+      "notDeclared": "Não declarado",
+      "loadError": "Não foi possível ler os contratos: {{error}}",
+      "notExported": "{{member}} não tem contrato exportado",
+      "section": {
+        "fundamentals": "Fundamentos",
+        "schema": "Esquema",
+        "quality": "Qualidade",
+        "sla": "SLA",
+        "support": "Suporte e equipe",
+        "servers": "Servidores",
+        "pricing": "Preços",
+        "custom": "Propriedades personalizadas e tags"
+      },
+      "summary": {
+        "properties_one": "{{count}} propriedade",
+        "properties_other": "{{count}} propriedades",
+        "rules_one": "{{count}} regra",
+        "rules_other": "{{count}} regras",
+        "serviceLevels_one": "{{count}} nível de serviço",
+        "serviceLevels_other": "{{count}} níveis de serviço",
+        "supportChannels_one": "{{count}} canal de suporte",
+        "supportChannels_other": "{{count}} canais de suporte",
+        "roles_one": "{{count}} papel",
+        "roles_other": "{{count}} papéis",
+        "customProperties_one": "{{count}} propriedade personalizada",
+        "customProperties_other": "{{count}} propriedades personalizadas",
+        "tags_one": "{{count}} tag",
+        "tags_other": "{{count}} tags"
+      }
     }
   }
 }

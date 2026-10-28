@@ -19,7 +19,7 @@ published: true
 group: bi
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. A placeholder for the first release carrying the bundle code; set when that is cut.
-requires_provisa: 0.1.0a483
+requires_provisa: 0.1.0a496
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Logs Are Tables!"

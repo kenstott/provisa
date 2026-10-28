@@ -267,7 +267,7 @@ def test_an_unfiltered_junction_field_is_an_untyped_relationship_and_a_filtered_
     ],
 )
 def test_a_condition_on_a_relationship_is_an_exists_over_its_pattern(glossary, where):
-    text = f"{{ ont__terms(where: {where}) {{ id name }} }}"
+    text = f"{{ on_terms(where: {where}) {{ id name }} }}"
     cypher = _cypher(text, GRAPHQL)
     assert "EXISTS { MATCH (n0)" in cypher
     expected = _graphql_answer(glossary, text)
@@ -281,13 +281,13 @@ def test_a_condition_on_a_relationship_is_an_exists_over_its_pattern(glossary, w
 @pytest.mark.parametrize("op", ["like", "ilike"])
 def test_a_like_pattern_matches_as_sql_s_does(glossary, pattern, op):
     value = pattern.upper() if op == "ilike" else pattern
-    text = f'{{ ont__terms(where: {{ name: {{ {op}: "{value}" }} }}) {{ id }} }}'
+    text = f'{{ on_terms(where: {{ name: {{ {op}: "{value}" }} }}) {{ id }} }}'
     expected = _graphql_answer(glossary, text)
     assert _sorted(_cypher_answer(glossary, _cypher(text, GRAPHQL))) == _sorted(expected)
 
 
 def test_a_like_pattern_prints_as_the_string_predicate_it_is():
-    text = '{{ ont__terms(where: {{ name: {{ {op}: "{p}" }} }}) {{ id }} }}'
+    text = '{{ on_terms(where: {{ name: {{ {op}: "{p}" }} }}) {{ id }} }}'
     printed = {
         (op, p): _cypher(text.format(op=op, p=p), GRAPHQL).splitlines()[1]
         for op, p in [
@@ -318,8 +318,8 @@ def test_an_unfiltered_junction_field_is_refused_where_other_relationships_join_
 
     extra = RelationshipMapping(
         rel_type="MENTORS",
-        source_label="ONT__Terms",
-        target_label="ONT__Terms",
+        source_label="ON_Terms",
+        target_label="ON_Terms",
         join_source_column="id",
         join_target_column="id",
         field_name="mentors",
@@ -335,7 +335,7 @@ def test_an_unfiltered_junction_field_is_refused_where_other_relationships_join_
 
 
 def test_as_nodes_a_level_with_its_own_limit_is_refused_by_name():
-    text = "{ ont__terms { id edgesOut(limit: 1) { id targetTerm { id } } } }"
+    text = "{ on_terms { id edgesOut(limit: 1) { id targetTerm { id } } } }"
     _g, _cg, _schema, ctx, lm = _model()
     with pytest.raises(GraphQLLoweringRefused, match="the limit of the relationship edgesOut"):
         lower_read(parse(text), ctx, lm, None, NODES)

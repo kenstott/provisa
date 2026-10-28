@@ -50,8 +50,17 @@ const TITLE_SCOPED_FILES = [SOURCE_TO_QUERY_FILE];
 // exactly this one file — see neo4j-container.ts's own module comment.
 const NEO4J_EXPORT_FILE = "neo4j-docker-export.spec.ts";
 
+// A spec argument may carry a line (and column) filter -- `e2e/x.spec.ts:144` -- which the CI's
+// targeted reruns always pass. Matching only a bare `.spec.ts` suffix dropped those arguments, so a
+// targeted run of neo4j-docker-export.spec.ts:144 never started the export container (run
+// 40693926851: "No such container").
+const SPEC_ARG = /^(.+\.spec\.ts)(?::\d+){0,2}$/;
+
 function argSpecFiles(): string[] {
-  return process.argv.filter((a) => a.endsWith(".spec.ts")).map((a) => path.basename(a));
+  return process.argv.flatMap((a) => {
+    const m = SPEC_ARG.exec(a);
+    return m ? [path.basename(m[1])] : [];
+  });
 }
 
 function grepPattern(): string | undefined {

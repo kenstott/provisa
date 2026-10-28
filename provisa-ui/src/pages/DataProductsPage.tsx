@@ -34,6 +34,7 @@ import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchProductLineage, type ProductLineage } from "../api/lineage";
+import { fetchProductContracts, type OdcsContract } from "../api/dataProductContracts";
 import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
@@ -177,6 +178,10 @@ export function DataProductsPage() {
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
   const core = useProductCore(expanded, coreVersion);
+  // The expanded product's lineage and contracts are read again only when its members can have
+  // changed -- a save, or a retirement that moves them to the successor. Every other status change
+  // leaves both as they were, so it does not read them again.
+  const [membersVersion, setMembersVersion] = useState(0);
   // REQ-2158: the open product's contracts, read with its panel core.
   const contracts = core.data ? coreContracts(core.data) : [];
   const reader = useMetaReader();
@@ -187,6 +192,16 @@ export function DataProductsPage() {
   const [lineageGraph, setLineageGraph] = useState<ProductLineage | null>(null);
   const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError] = useState("");
+  // REQ-2158: the expanded product's ODCS contracts, declared and derived; read again after the
+  // product is saved. They are read only for a product whose panel shows a Contracts card: one
+  // with no contract has nothing to show, and the server has no document for a product with no
+  // exported member.
+  const contractsOf =
+    expanded !== null && core.data?.product.id === expanded && contracts.length > 0
+      ? expanded
+      : null;
+  const [odcs, setOdcs] = useState<Record<string, OdcsContract> | null>(null);
+  const [odcsError, setOdcsError] = useState("");
 
   useEffect(() => {
     // REQ-1634: command <-> data product membership lives on the (REST-served) Function row.
@@ -216,7 +231,26 @@ export function DataProductsPage() {
     return () => {
       cancelled = true;
     };
-  }, [expanded, coreVersion]);
+  }, [expanded, membersVersion]);
+
+  useEffect(() => {
+    if (contractsOf === null) return;
+    let cancelled = false;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       clears the last product's contracts synchronously before the async fetch starts */
+    setOdcs(null);
+    setOdcsError("");
+    fetchProductContracts(contractsOf)
+      .then((documents) => {
+        if (!cancelled) setOdcs(documents);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setOdcsError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contractsOf, membersVersion]);
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
@@ -370,20 +404,25 @@ export function DataProductsPage() {
     }
     products.reload();
     setCoreVersion((v) => v + 1);
+    setMembersVersion((v) => v + 1);
     closeForm();
   };
 
-  // REQ-1634 STATUS: a status change. The products and their findings are read again, and the
-  // panel's core and the tables and commands with it: a retirement moves the members.
-  const statusChanged = (message: string) => {
+  // REQ-1634 STATUS: a status change. The products, their findings and the panel's core are read
+  // again. Only a retirement moves members (to the successor), so only it reads the tables, the
+  // commands, the lineage and the contracts again: the tables are every registered table, the
+  // page's heaviest read, and reading them after each change held the badge back.
+  const statusChanged = (message: string, membersMoved: boolean) => {
     notifications.show({ color: "green", message });
     products.reload();
     void productFindings.refetch();
+    setCoreVersion((v) => v + 1);
+    if (!membersMoved) return;
     void refetchTables();
     fetchActions()
       .then((actions) => setFunctions(actions.functions))
       .catch(() => setFunctions([]));
-    setCoreVersion((v) => v + 1);
+    setMembersVersion((v) => v + 1);
   };
 
   const handleDelete = async () => {
@@ -616,6 +655,8 @@ export function DataProductsPage() {
                                 lineageLoading={lineageLoading}
                                 lineageError={lineageError}
                                 lineageGraph={lineageGraph}
+                                odcs={odcs}
+                                odcsError={odcsError}
                                 lineageMembers={lineageMembers}
                                 describeColumn={describeColumn}
                                 relationLabel={relationLabel}
