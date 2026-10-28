@@ -90835,7 +90835,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and any rule that assigns it. Declining always carries a reason. One standard reason, the role is too
     broad, declines and hands the requester a prefilled role request with this access request attached as
     its draft, so the narrower path is one step. Other reasons are free text. Provisa does not judge breadth
-    itself; the approver does.'
+    itself; the approver does. (Amended 2026-10-28, REASONS, WITHDRAWAL, NOTIFICATIONS; OWNERS WRITE NO
+    SECURITY RULES:) Every role request and access request states its reason, required free text shown to
+    the approver. A requester may withdraw a pending request, and withdrawal ends it and any draft attached
+    to it. Approval of an access request writes only read grants on the tables: the approver never writes
+    masks, row rules or other security rules and cannot scope a grant; a narrower need is a narrower role,
+    which a security admin makes. Access is revoked through security, as any grant is; the request flow
+    adds no revocation of its own. Requests push notifications by email through Provisa''s outbound mail
+    (REQ-1330): a submitted request to the users holding the approving role (the product''s owner role for
+    an access request, security and org admins for a role request), and an approval, decline or withdrawal
+    to the requester and the approvers. The product page''s Your request strip (REQ-2181) is the in-app
+    view of the same requests.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
