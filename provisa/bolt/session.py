@@ -513,7 +513,8 @@ class BoltSession:
         The db name encodes two axes:
           provisa_ops_<role> → role + ops/meta domains included
           provisa_<role>     → role + business domains only (ops/meta excluded)
-        Empty / "system" / "provisa" → default role, business view.
+        Empty / "system" / "provisa" / "neo4j" → default role, business view (REQ-807: neo4j names
+        the home database as provisa does; a named alias, not a fallback).
         ``<role>`` may be a comma-separated set of held roles, which acts as their meta-role
         (security/meta_role.py; resolved once the session's org is bound). Every role must be in
         the user's set, or a derived role the session holds (``derived_held``, read once its org
@@ -524,7 +525,7 @@ class BoltSession:
         if not self.roles:
             return None
         default = self.roles[0]
-        if not db or db in ("system", "provisa"):
+        if not db or db in ("system", "provisa", "neo4j"):
             return default, False
         for prefix, include_ops in (("provisa_ops_", True), ("provisa_", False)):
             if isinstance(db, str) and db.startswith(prefix):
