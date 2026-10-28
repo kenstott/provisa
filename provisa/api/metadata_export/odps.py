@@ -17,8 +17,8 @@ target is published from, so they say what the catalogs are told:
 
 * the product's ODPS fields -- purpose, limitations and usage as its description, its status,
   version, domain, team and support;
-* an output port per member, each its declared ODCS contract (REQ-2158): the columns it promises
-  with their types and descriptions, the governance tags on them (masked, hidden from some roles,
+* an output port per member, each its declared ODCS contract (REQ-2158): its schema, the member's
+  columns with their types and descriptions, the governance tags on them (masked, hidden from some roles,
   row-filtered; never a rule body), its terms, its declared service levels beside its freshness
   (the cache_ttl it is kept at) and the quality checks registered against it.
 
@@ -720,35 +720,32 @@ def _servers(
 def _property(
     snapshot: "MetadataSnapshot",
     table: "TableAsset",
-    promised: Any,
-    column: "ColumnAsset | None",
+    column: "ColumnAsset",
     signals: list[str],
     sensitive: set[tuple[str, ...]],
     quality: list["DataQualityAssertion"],
 ) -> dict[str, Any]:
-    prop: dict[str, Any] = {"name": promised.name, "physicalType": promised.type}
-    if logical := logical_type(promised.type):
+    """One of the member's columns as its contract's schema property (REQ-2158)."""
+    prop: dict[str, Any] = {"name": column.name, "physicalType": column.data_type}
+    if logical := logical_type(column.data_type):
         prop["logicalType"] = logical
-        if options := logical_type_options(promised.type, column.subtype if column else None):
+        if options := logical_type_options(column.data_type, column.subtype):
             prop["logicalTypeOptions"] = options
-    if description := promised.description or (column.description if column else None):
-        prop["description"] = description
-    if promised.required:
-        prop["required"] = True
-    if (promised.name,) in table.unique_keys or table.primary_key == (promised.name,):
+    if column.description:
+        prop["description"] = column.description
+    if (column.name,) in table.unique_keys or table.primary_key == (column.name,):
         prop["unique"] = True
-    if promised.name in table.primary_key:
+    if column.name in table.primary_key:
         prop["primaryKey"] = True
-        prop["primaryKeyPosition"] = table.primary_key.index(promised.name) + 1
-    if column is not None:
-        if classification := _classification(column.ref.parts in sensitive, signals):
-            prop["classification"] = classification
-        if table.is_view:
-            sources, operations = _transforms(snapshot, column)
-            if sources:
-                prop["transformSourceObjects"] = sources
-            if operations:
-                prop["transformLogic"] = "; ".join(operations)
+        prop["primaryKeyPosition"] = table.primary_key.index(column.name) + 1
+    if classification := _classification(column.ref.parts in sensitive, signals):
+        prop["classification"] = classification
+    if table.is_view:
+        sources, operations = _transforms(snapshot, column)
+        if sources:
+            prop["transformSourceObjects"] = sources
+        if operations:
+            prop["transformLogic"] = "; ".join(operations)
     if quality:
         prop["quality"] = [_quality_rule(assertion) for assertion in quality]
     return prop
@@ -758,15 +755,14 @@ def odcs_contract(
     snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
 ) -> dict[str, Any]:
     """A member's ODCS 3.1 contract (REQ-2158, REQ-2118): what it declares, and every element
-    Provisa already knows of it, derived -- its address, each column's key, uniqueness, type
-    options, classification, derivation and checks, its foreign keys, the product's promises on
+    Provisa already knows of it, derived -- its address, its schema (the member's columns, each
+    one's key, uniqueness, type options, classification, derivation and checks), its foreign keys, the product's promises on
     it, the roles that read and write it, the endpoints it is read through, and the product's
     tags."""
     declared = table.contract
     assert declared is not None  # only an output port has a contract document
     tags = _column_tags(snapshot)
     sensitive = _sensitive_columns(snapshot)
-    by_name = {column.name: column for column in table.columns}
     promises = _promises(snapshot, product, table)
     on_column: dict[str, list["DataQualityAssertion"]] = {}
     on_table: list["DataQualityAssertion"] = []
@@ -775,20 +771,18 @@ def odcs_contract(
             on_column.setdefault(assertion.asset.parts[3], []).append(assertion)
         else:
             on_table.append(assertion)
-    properties = []
-    for promised in declared.columns:
-        column = by_name.get(promised.name)
-        properties.append(
-            _property(
-                snapshot,
-                table,
-                promised,
-                column,
-                tags.get(column.ref.fqn(), []) if column else [],
-                sensitive,
-                on_column.get(promised.name, []),
-            )
+    # REQ-2158: a contract's schema is its member's columns; it selects none of its own.
+    properties = [
+        _property(
+            snapshot,
+            table,
+            column,
+            tags.get(column.ref.fqn(), []),
+            sensitive,
+            on_column.get(column.name, []),
         )
+        for column in table.columns
+    ]
     schema_object: dict[str, Any] = {
         "name": table.name,
         "physicalName": table.ref.fqn(),

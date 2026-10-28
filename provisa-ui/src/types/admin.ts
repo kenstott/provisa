@@ -123,13 +123,6 @@ export interface DataProduct {
 }
 
 // REQ-2158: a column an output port promises, of the type it is stored as.
-export interface ContractColumn {
-  name: string;
-  type: string;
-  description?: string | null;
-  required: boolean;
-}
-
 // REQ-2158: a declared ODCS service-level property; freshness is the member's own.
 export interface ContractSlaProperty {
   property: string;
@@ -156,7 +149,6 @@ export interface DataContract {
   description?: string | null;
   terms: ContractTerms;
   sla: ContractSlaProperty[];
-  columns: ContractColumn[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.

@@ -488,7 +488,8 @@ def _products_rows(
 
 def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
     """Each output port's contract: a member of a product the workbook shows, with the contract
-    its owner declared. A promised column the reader is not served is not named."""
+    its owner declared. Its schema is its member's columns, those the reader is served
+    (REQ-2158)."""
     product_of = {
         member: product for product in snapshot.data_products for member in product.members
     }
@@ -498,7 +499,6 @@ def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
         product = product_of.get(table.ref)
         if contract is None or product is None:
             continue
-        served = {column.name for column in table.columns}
         rows.append(
             [
                 table.semantic_uri,
@@ -509,11 +509,7 @@ def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
                 contract.description or "",
                 contract.terms.usage or "",
                 contract.terms.limitations or "",
-                ", ".join(
-                    f"{column.name} ({column.type}{', required' if column.required else ''})"
-                    for column in contract.columns
-                    if column.name in served
-                ),
+                ", ".join(f"{column.name} ({column.data_type})" for column in table.columns),
             ]
         )
     return rows

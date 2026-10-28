@@ -599,9 +599,8 @@ async def _save_data_product(
 async def _save_data_contract(
     info: StrawberryInfo, table_id: int, contract: DataContractInput
 ) -> MutationResult:  # REQ-2158
-    """A product member's contract replaced, by whoever may curate its product's domain. A change
-    that breaks the stored contract at its version, or a promise the member cannot keep, is
-    refused by name and writes nothing."""
+    """A product member's contract replaced, by whoever may curate its product's domain. Its
+    schema is its member's columns, so the save holds none."""
     from provisa.api.admin.capabilities import require_capability, require_right_in_domains
     from provisa.core.data_contracts import ContractRefused
     from provisa.core.models import DataContract
@@ -617,7 +616,6 @@ async def _save_data_contract(
                 "description": contract.description,
                 "terms": vars(contract.terms),
                 "sla": [vars(s) for s in contract.sla],
-                "columns": [vars(c) for c in contract.columns],
             }
         )
     except ValueError as invalid:

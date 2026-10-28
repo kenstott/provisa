@@ -405,10 +405,8 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
 
 
 async def _contract_for_save(conn: "Connection", table: Table) -> DataContract | None:
-    """REQ-2158: the contract the table's save stores, checked against the stored one and the
-    columns it saves (provisa.core.data_contracts)."""
+    """REQ-2158: the contract the table's save stores (provisa.core.data_contracts)."""
     from provisa.core import data_contracts
-    from provisa.core.ir_types import base_type
 
     stored = (
         await conn.execute_core(
@@ -419,26 +417,12 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
             )
         )
     ).fetchone()
-    existing = await stored_column_types(conn, table.source_id, table.schema_name, table.table_name)
-    column_types: dict[str, str] = {}
-    for col in table.columns:
-        declared_type = getattr(col, "data_type", None) or existing.get(col.name)
-        if not declared_type:
-            continue  # refused by name where the columns are written (REQ-1426)
-        try:
-            # REQ-2171: a contract promises the stored type, a subtype's base.
-            column_types[col.name] = stored_type_of(base_type(declared_type))
-        except ReportedNumericMalformed as malformed:
-            raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
     return data_contracts.for_save(
         product_id=getattr(table, "product_id", None),
         is_checker=getattr(table, "dq_contract", None) is not None,
-        schema_name=table.schema_name,
-        table_name=table.table_name,
         declared=getattr(table, "contract", None),
         stored=None if stored is None else stored.contract,
         stored_product_id=None if stored is None else stored.product_id,
-        column_types=column_types,
     )
 
 

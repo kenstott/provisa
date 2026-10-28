@@ -180,14 +180,6 @@ class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
 
 
 @strawberry.type
-class ContractColumnType:  # REQ-2158
-    name: str
-    type: str
-    description: str | None = None
-    required: bool = False
-
-
-@strawberry.type
 class ContractSlaPropertyType:  # REQ-2158
     property: str
     value: JsonScalar | None = None
@@ -204,7 +196,8 @@ class ContractTermsType:  # REQ-2158
 
 @strawberry.type
 class DataContractType:  # REQ-2158
-    """A product member's contract, its output port: what it promises, at its own version."""
+    """A product member's contract, its output port, at its own version. Its schema is its
+    member's columns (the product's ODCS contracts), never a selection of its own."""
 
     table_id: int
     source_id: str
@@ -216,7 +209,6 @@ class DataContractType:  # REQ-2158
     description: str | None
     terms: ContractTermsType
     sla: list[ContractSlaPropertyType]
-    columns: list[ContractColumnType]
 
 
 @strawberry.type
@@ -1131,14 +1123,6 @@ class DataProductInput:  # REQ-1634
 
 
 @strawberry.input
-class ContractColumnInput:  # REQ-2158
-    name: str
-    type: str
-    description: str | None = None
-    required: bool = False
-
-
-@strawberry.input
 class ContractSlaPropertyInput:  # REQ-2158
     property: str
     value: JsonScalar | None = None
@@ -1160,7 +1144,6 @@ class DataContractInput:  # REQ-2158
     description: str | None = None
     terms: ContractTermsInput
     sla: list[ContractSlaPropertyInput]
-    columns: list[ContractColumnInput]
 
 
 @strawberry.input

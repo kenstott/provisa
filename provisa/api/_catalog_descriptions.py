@@ -189,8 +189,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
         # REQ-2158
-        "contract": "A data product member's contract: its version, status, terms, service "
-        "levels and the columns it promises; empty for a table in no product",
+        "contract": "A data product member's contract: its version, status, terms and service "
+        "levels; its schema is the table's columns. Empty for a table in no product",
     },
     # REQ-2126
     "data_product_edges": {

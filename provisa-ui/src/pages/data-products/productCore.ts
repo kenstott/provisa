@@ -213,7 +213,6 @@ export interface StoredContract {
   description?: string | null;
   terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
   sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
-  columns?: { name: string; type: string; description?: string | null; required?: boolean }[];
 }
 
 /** REQ-2158: each output port's contract, in the order the members are read. */
@@ -244,12 +243,6 @@ export function coreContracts(core: ProductCore): DataContract[] {
           value: x.value ?? null,
           unit: x.unit ?? null,
           description: x.description ?? null,
-        })),
-        columns: (c.columns ?? []).map((x) => ({
-          name: x.name,
-          type: x.type,
-          description: x.description ?? null,
-          required: x.required ?? false,
         })),
       },
     ];

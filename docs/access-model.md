@@ -24,18 +24,21 @@ Roles carry capabilities. Provisa ships a set of standard roles, and you build y
 
 | Standard role | Built on | Adds |
 | --- | --- | --- |
-| Viewer | | Reading the catalog, the glossary and data products |
+| Viewer | | Reading the catalog and the glossary |
+| Data buyer | Viewer | Reading data products and requesting them |
 | Analyst | Viewer | Querying and query development |
 | Developer | Analyst | Views, environments and write |
 | Modeler | Developer | Bypassing the relationship guard |
-| Data product owner | Viewer | Editing the data products it owns |
+| Data product owner | Viewer | Reading data products and editing the ones it owns |
 | Data quality reader | Viewer | Reading check definitions and results |
 | Data quality steward | Viewer | Managing checks, expectations and promises |
 | Source admin | Viewer | Registering sources and tables |
 | Security admin | Viewer | Access configuration, column grants and masking |
-| Data steward | Security admin, Analyst | Glossary editing, relationships, data product editing and full results |
+| Data steward | Security admin, Analyst | Glossary editing, relationships, reading and editing data products, and full results |
 | Org operator | | Org settings, observability, and approving views and relationships |
 | Org admin | All of the above | User and environment management |
+
+Only a role holding `data_product_read` sees data products: the Data products page, the `data_products` catalog table and the admin API list them to no other role. Data product owner, Data steward and Org admin hold that capability themselves rather than through Data buyer, so rules you write for Data buyer, such as a sample's masks and row rule, never reach them. Data buyer carries no grants: it reads only the columns granted to it.
 
 Provisa maintains the standard roles, and you cannot edit them. You extend them with child roles of your own. When Provisa adds a capability to a standard role, every role built on it gets that capability.
 

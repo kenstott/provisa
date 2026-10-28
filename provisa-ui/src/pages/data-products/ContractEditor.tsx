@@ -9,14 +9,12 @@
 // permission from the copyright holder.
 
 // REQ-2158: a product member's contract as the product's form edits it: the same fields the panel
-// shows. A change that stops promising a column is a new version; the server refuses the same
-// version, naming the contract.
+// shows. Its schema is its member's columns, so the form selects none.
 
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Button,
-  MultiSelect,
   Select,
   Stack,
   Text,
@@ -24,26 +22,18 @@ import {
   TextInput,
 } from "@mantine/core";
 import { Plus, X } from "lucide-react";
-import type { ContractColumn, DataContract } from "../../types/admin";
+import type { DataContract } from "../../types/admin";
 import { CONTRACT_STATUSES } from "./contractDraft";
 import type { DataContractInput } from "../../hooks/useDataProductMutations";
 import { FieldGroup, FormField, FormLayout } from "../../components/form/FormLayout";
 
-export interface MemberColumn {
-  name: string;
-  dataType: string | null;
-}
-
 export function ContractEditor({
   contract,
   draft,
-  memberColumns,
   onChange,
 }: {
   contract: DataContract;
   draft: DataContractInput;
-  /** The member's registered columns: what the contract may promise. */
-  memberColumns: MemberColumn[];
   onChange: (draft: DataContractInput) => void;
 }) {
   const { t } = useTranslation();
@@ -51,20 +41,6 @@ export function ContractEditor({
   const set = (patch: Partial<DataContractInput>) => onChange({ ...draft, ...patch });
   const setTerms = (patch: Partial<DataContractInput["terms"]>) =>
     set({ terms: { ...draft.terms, ...patch } });
-  const promised = draft.columns.map((c) => c.name);
-  const typeOf = new Map(memberColumns.map((c) => [c.name, c.dataType]));
-  // A promise keeps the type it was made at; a newly promised column takes the member's type.
-  const promise = (names: string[]): ContractColumn[] =>
-    names.map(
-      (name) =>
-        draft.columns.find((c) => c.name === name) ?? {
-          name,
-          type: typeOf.get(name) ?? "",
-          description: null,
-          required: false,
-        },
-    );
-  const choices = Array.from(new Set([...memberColumns.map((c) => c.name), ...promised]));
   return (
     <Stack gap="xs" data-testid={`data-contract-editor-${id}`}>
       <Text size="sm" ff="monospace" fw={500}>
@@ -129,31 +105,6 @@ export function ContractEditor({
             onChange={(e) => setTerms({ limitations: e.target.value || null })}
             rows={2}
             data-testid={`data-contract-limitations-input-${id}`}
-          />
-        </FormField>
-      </FormLayout>
-      <FormLayout>
-        <FormField size="long" help={t("dataProductsTab.contract.columnsHelp")}>
-          <MultiSelect
-            label={t("dataProductsTab.contract.columnsLabel")}
-            value={promised}
-            onChange={(names) => set({ columns: promise(names) })}
-            data={choices}
-            searchable
-            data-testid={`data-contract-columns-input-${id}`}
-          />
-        </FormField>
-        <FormField size="long">
-          <MultiSelect
-            label={t("dataProductsTab.contract.requiredLabel")}
-            value={draft.columns.filter((c) => c.required).map((c) => c.name)}
-            onChange={(names) =>
-              set({
-                columns: draft.columns.map((c) => ({ ...c, required: names.includes(c.name) })),
-              })
-            }
-            data={promised}
-            data-testid={`data-contract-required-input-${id}`}
           />
         </FormField>
       </FormLayout>

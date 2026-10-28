@@ -69,7 +69,6 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
-    ContractColumnType,
     ContractSlaPropertyType,
     ContractTermsType,
     DataContractType,
@@ -497,7 +496,6 @@ def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
         description=c.description,
         terms=ContractTermsType(**c.terms.model_dump()),
         sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
-        columns=[ContractColumnType(**col.model_dump()) for col in c.columns],
     )
 
 

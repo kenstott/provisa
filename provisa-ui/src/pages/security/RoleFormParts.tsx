@@ -36,6 +36,9 @@ const ALL_CAPABILITIES: Capability[] = [
   "dq_read",
   "dq_rw",
   "data_product_owned_rw",
+  // REQ-2155 (DATA BUYER): reading data products is no longer every role's, and requesting one.
+  "data_product_read",
+  "data_product_request",
   "environment_owned_management",
 ];
 

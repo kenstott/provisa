@@ -327,9 +327,6 @@ export function DataProductFormCard({
                   key={c.tableId}
                   contract={c}
                   draft={contractDrafts[c.tableId] ?? contractDraft(c)}
-                  memberColumns={(tables.find((tb) => tb.id === c.tableId)?.columns ?? []).map(
-                    (col) => ({ name: col.columnName, dataType: col.dataType }),
-                  )}
                   onChange={(draft) => setContractDrafts((d) => ({ ...d, [c.tableId]: draft }))}
                 />
               ))}

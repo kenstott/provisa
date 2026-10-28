@@ -221,6 +221,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         GLOSSARY_SCOPED_VIEWS,
         GOVERNANCE_META_COLUMNS,
         META_DOMAIN_ID,
+        META_PRODUCT_TABLES,
         LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
         ONTOLOGY_DOMAIN_ID,
@@ -233,6 +234,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     )
 
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
+    _lists_products = has_capability(role, Capability.DATA_PRODUCT_READ)
     gov.can_write = has_capability(role, Capability.WRITE)
     # table_id → domain_id, so meta (catalog) tables can be governed by the tiered rule (REQ-1132)
     # rather than their static seed (meta columns are seeded visible_to: [] = nobody).
@@ -278,10 +280,16 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # columns (visible_to, masks, view_sql, …) require the view_governance capability. Which
             # META ROWS a role sees (its readable tables + 1-hop neighbours vs the whole catalog with
             # a meta grant) is enforced by row-level scoping (REQ-1132), not here.
-            gov.visible_columns[table_id] = frozenset(
-                c["column_name"]
-                for c in cols
-                if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
+            # REQ-2155 (DATA BUYER): the tables that list data products, only to a role holding
+            # data_product_read, as the schema build serves them (compiler.schema_gen).
+            gov.visible_columns[table_id] = (
+                frozenset(
+                    c["column_name"]
+                    for c in cols
+                    if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
+                )
+                if _lists_products or tbl["table_name"] not in META_PRODUCT_TABLES
+                else frozenset()
             )
         else:
             # ONE rule with the schema build (security.rights.column_served): the column's grant

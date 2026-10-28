@@ -61,11 +61,13 @@ export type Capability =
   // org_admin only; it widens what a curator may do rather than opening the surface, so a holder
   // carries `glossary_read` and `glossary_rw` as well.
   | "org_glossary_rw"
-  // REQ-1634: data products' two rights. `data_product_read` opens the surface — org_admin,
-  // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
-  // same footing as `table_registration`: org_admin only.
+  // REQ-1634: data products' two rights. `data_product_read` opens the surface: data_buyer,
+  // data_product_owner, data_steward and org_admin hold it, Viewer does not (REQ-2155 DATA BUYER).
+  // `data_product_rw` is create/delete, on the same footing as `table_registration`.
   | "data_product_read"
   | "data_product_rw"
+  // REQ-2155, REQ-2180: ask a product's owner role for read on its members (data_buyer's).
+  | "data_product_request"
   // REQ-2155: edit a data product the caller's role owns (its owner_role, an ancestor included).
   | "data_product_owned_rw"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing

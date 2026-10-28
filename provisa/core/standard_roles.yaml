@@ -22,10 +22,18 @@
 # Read by provisa/core/db.py and by the UI's DEFAULT_ADMIN_ROLE test; this file is the one source.
 
 viewer:
-  description: "The base every role builds on: reads the catalog it is granted, the glossary and the data products."
+  description: "The base every role builds on: reads the catalog it is granted and the glossary."
   parents: []
   domain_access: ["*"]
-  capabilities: [glossary_read, data_product_read]  # REQ-1590, REQ-1634
+  capabilities: [glossary_read]  # REQ-1590
+
+data_buyer:
+  description: "Browses the data products and requests them. Reads only what it is granted."
+  parents: [viewer]
+  domain_access: ["*"]
+  # REQ-2155 (DATA BUYER), REQ-2180: the role a person browses and requests products as. No other
+  # standard role inherits it, so the sample rules targeted at it (REQ-2158) reach no other role.
+  capabilities: [data_product_read, data_product_request]
 
 analyst:
   description: "Reads and queries the governed data it is granted. What an invitation gives when it names no role."
@@ -53,7 +61,8 @@ data_product_owner:
   description: "Edits the data products it owns."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [data_product_owned_rw]
+  # REQ-2155 (DATA BUYER): reads data products as its own right, not by inheriting data_buyer.
+  capabilities: [data_product_read, data_product_owned_rw]
 
 security_admin:
   description: "Configures access: row rules, column grants, masks and sensitive columns."
@@ -68,7 +77,8 @@ data_steward:
   # it changes (api/admin/capabilities.right_domain_refusal).
   parents: [security_admin, analyst]
   domain_access: ["*"]
-  capabilities: [glossary_rw, create_relationship, data_product_rw, full_results]
+  # REQ-2155 (DATA BUYER): data_product_read is its own right, not data_buyer's.
+  capabilities: [glossary_rw, create_relationship, data_product_read, data_product_rw, full_results]
 
 dq_reader:
   description: "Reads data quality check definitions and results."
@@ -102,7 +112,9 @@ org_admin:
   domain_access: ["*"]
   # REQ-1573: creating or deleting an environment spends the plan ceiling and drops a schema;
   # REQ-1942: an environment's data choices; REQ-1592: the override over any term, whoever authored it.
-  capabilities: [environment_management, environment_data, user_management, org_glossary_rw]
+  # REQ-2155 (DATA BUYER): data_product_read comes through data_product_owner and data_steward, never
+  # data_buyer; requesting a product is its own right here.
+  capabilities: [environment_management, environment_data, user_management, org_glossary_rw, data_product_request]
 
 sandbox:
   description: "A Try it Out visitor: what the product does, inside an environment that expires, but not members, environments or the organization glossary."
@@ -112,9 +124,10 @@ sandbox:
   # Not developer's child: developer manages the environments it owns, and the sandbox never
   # manages an environment (REQ-2053). It holds developer's other rights: create_relationship and
   # full_results through data_steward, the rest as its own.
+  # REQ-2155 (DATA BUYER): it requests products as org_admin does, so a tour may act as data_buyer.
   parents: [analyst, data_product_owner, dq_steward, source_admin, security_admin, data_steward, org_operator]
   domain_access: ["*"]
-  capabilities: [create_view, write, environment_switch]
+  capabilities: [create_view, write, environment_switch, data_product_request]
 
 platform_admin:
   description: "Runs the platform: organizations, infrastructure and deployment settings. Holds no right to any organization's data."

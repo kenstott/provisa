@@ -64,6 +64,7 @@ from provisa.compiler.schema_types import SchemaInput, _TableInfo
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
     META_DOMAIN_ID,
+    META_PRODUCT_TABLES,
     SQL_ONLY_TABLES,
     Capability,
     column_served,
@@ -143,8 +144,18 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             and not c.get("native_filter_type")
         )
 
+    # REQ-2155 (DATA BUYER): the catalog's data products are listed only to a role holding
+    # data_product_read; Viewer no longer does.
+    _lists_products = has_capability(role, Capability.DATA_PRODUCT_READ)
+
     result: list[_TableInfo] = []
     for table in si.tables:
+        if (
+            table["domain_id"] == META_DOMAIN_ID
+            and table["table_name"] in META_PRODUCT_TABLES
+            and not _lists_products
+        ):
+            continue
         # REQ-2163: a Class table's column is served where one of the columns it is bound to is,
         # and the Class is reached by a reader served any of them.
         class_served = served_class_columns(table, _served) if "class_bindings" in table else None

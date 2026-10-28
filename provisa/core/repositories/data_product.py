@@ -23,7 +23,6 @@ from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, rem
 from provisa.core.schema_org import (
     data_products,
     registered_tables,
-    table_columns,
     tracked_functions,
 )
 
@@ -157,8 +156,7 @@ async def save_contract(  # REQ-2158
     conn: "Connection", table_id: int, contract: DataContract
 ) -> dict:
     """A member's contract replaced: refused (data_contracts.ContractRefused) when the table is no
-    product's output port, when it stops promising a column at the same version, or when it
-    promises a column the member does not hold as that type. The member's row, as it is now."""
+    product's output port. The member's row, as it is now."""
     from provisa.core import data_contracts
 
     async with conn.transaction():
@@ -173,21 +171,8 @@ async def save_contract(  # REQ-2158
             )
         cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
-        contract = data_contracts.as_stored(cid, contract)
         previous = DataContract.model_validate(row.contract)
-        data_contracts.require_new_version(cid, previous, contract)
         contract = data_contracts.created_as(previous, contract)
-        types = {
-            r.column_name: r.data_type
-            for r in (
-                await conn.execute_core(
-                    select(table_columns.c.column_name, table_columns.c.data_type).where(
-                        table_columns.c.table_id == table_id
-                    )
-                )
-            ).fetchall()
-        }
-        data_contracts.require_provided(cid, contract, types)
         await conn.execute_core(
             update(registered_tables)
             .where(registered_tables.c.id == table_id)

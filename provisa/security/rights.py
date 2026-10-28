@@ -42,6 +42,9 @@ GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
         "synthetic_rule",
     }
 )
+# REQ-2155 (DATA BUYER): the meta tables that list data products, served only to a role holding
+# data_product_read (compiler.schema_gen), as the admin API's product reads are.
+META_PRODUCT_TABLES: frozenset[str] = frozenset({"data_products", "data_product_edges"})
 
 
 class Capability(str, Enum):  # REQ-042, REQ-060
@@ -117,8 +120,12 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # which products exist is how an analyst/developer/modeler finds what a domain already
     # publishes, so it is a read right rather than ORG_SETTINGS. Creating and deleting a product
     # is catalog curation, on the same footing as TABLE_REGISTRATION — org_admin only.
+    # REQ-2155 (DATA BUYER): data_product_read is no longer every role's -- Viewer lost it; Data
+    # buyer, Data product owner, Data steward and Org admin hold it. DATA_PRODUCT_REQUEST asks a
+    # product's owner role for read on its members (REQ-2180).
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    DATA_PRODUCT_REQUEST = "data_product_request"
     # REQ-2155: edit a data product whose owner_role is a role the caller holds (an ancestor
     # included) -- the data product owner's right; DATA_PRODUCT_RW edits any product.
     DATA_PRODUCT_OWNED_RW = "data_product_owned_rw"

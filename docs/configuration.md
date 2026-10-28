@@ -1377,7 +1377,7 @@ A role names the roles it inherits from in `parents`, in order. The inheritance 
 
 RLS resolves per table. A role's own rule for a table stands. Without one, the rules its parents resolve are combined with OR, and a parent with no rule adds nothing, so adding a parent never lifts a row rule. A role with no rule anywhere among its ancestors reads every row its grants allow. Write grants resolve the same way per operation. A property such as `max_rows`, `rate_limit` or a session value comes from the role itself, else from the first ancestor that sets it, ancestors walked depth-first in the order `parents` lists them.
 
-Provisa ships standard roles (`viewer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
+Provisa ships standard roles (`viewer`, `data_buyer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
 
 ```yaml
 roles:
