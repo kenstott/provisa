@@ -605,6 +605,9 @@ def adapter(monkeypatch):
         def await_catalog(self, ports, timeout):
             raise AssertionError("discovery waited on the adapter's pg_catalog")
 
+        def catalog_preparing(self):
+            return False
+
     def _answers(sql):
         # Rows as the server returns them: its column labels are upper case (ORACLE lexer), so
         # a reader that asks a row for "table_name" finds nothing.
@@ -680,6 +683,9 @@ def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
         def catalog_pending(self):
             return catalog_pending
 
+        def catalog_preparing(self):
+            return False
+
     class _Cancelling:
         async def fetch(self, sql, *args, timeout=None):
             statements.append(sql)
@@ -725,6 +731,46 @@ def test_a_catalog_is_pending_until_it_is_prepared_or_has_failed():
     assert not replica.catalog_pending()
     replica._catalog_ready, replica._catalog_error = False, RuntimeError("bad model")
     assert not replica.catalog_pending()
+
+
+@pytest.mark.asyncio
+async def test_no_read_is_sent_while_the_catalog_is_being_prepared(monkeypatch):
+    """The adapter holds a statement behind its first catalog query: a listing sent then waited
+    out the preparation (a minute and more). It is answered STARTING at once, sending nothing."""
+    sent: list[str] = []
+
+    class _Replica:
+        def endpoint(self, *, timeout=None):
+            return pr.PortPair(5440, "127.0.0.1", 5540)
+
+        def catalog_preparing(self):
+            return True
+
+    async def _connect(host, port, password):
+        sent.append("connect")
+        raise AssertionError("a read was sent while the catalog was being prepared")
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: _Replica())
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        await pr.adapter_tables(_source(), "sec")
+    assert raised.value.preparing_catalog
+    assert "is listening" in str(raised.value)
+    assert sent == []
+
+
+def test_a_catalog_is_being_prepared_only_while_its_first_query_is_unanswered():
+    replica = pr.ConnectorReplica.__new__(pr.ConnectorReplica)
+    replica._start_lock = threading.Lock()
+    replica._catalog_ready, replica._catalog_error = False, None
+    replica._catalog_thread = None
+    assert not replica.catalog_preparing()  # not sent yet: a read is answered
+    replica._catalog_thread = threading.Thread(target=lambda: None)
+    assert replica.catalog_preparing()
+    replica._catalog_ready = True
+    assert not replica.catalog_preparing()
+    replica._catalog_ready, replica._catalog_error = False, RuntimeError("bad model")
+    assert not replica.catalog_preparing()
 
 
 @pytest.mark.asyncio
