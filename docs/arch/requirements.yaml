@@ -82883,21 +82883,25 @@
   feature: replicas-and-freshness-landed-shape
   priority: MUST
   type: behavioral
-  description: 'A replica is indexed as its table is used: its declared primary key, enforced as the
-    key, and the columns its declared relationships join on: the foreign key of each relationship whose
-    source is the table, the target column of one whose target it is when that column is not the key, and
-    both foreign keys of a junction table a relationship traverses. The indexes are built after the replica
-    lands, never in its landing: the replica is read from its swap, and its indexes follow, built by the
-    replica runner under a per-replica index lock that a landing never waits on. PostgreSQL stores build
-    each with CREATE INDEX CONCURRENTLY outside the swap, the key as a unique index made the primary key
-    (ADD CONSTRAINT ... PRIMARY KEY USING INDEX); other SQLAlchemy stores by the dialect''s DDL; the embedded
-    DuckDB store file through its broker. ClickHouse keeps its sorting key (the declared key) and warehouse
-    stores build none. What a landing asked for, what was built and what failed is kept by name on the
-    replica''s record (replica_state.index_state); a failed index is logged with its cause and asked for
-    again by the next landing, never failing the landing. Rows that repeat a declared key are a named failure
-    carrying the key''s columns. A landing that replaces the table while the last one''s indexes are being
-    built leaves them behind (a PostgreSQL swap cancels a build still running on the table it replaces), and
-    the new table gets its own. Index names are fixed by the replica and the columns.'
+  description: 'A replica is indexed as its table is used: its declared primary key, enforced as the key,
+    and the columns its declared relationships join on: the foreign key of each relationship whose source
+    is the table, the target column of one whose target it is when that column is not the key, and both
+    foreign keys of a junction table a relationship traverses. The indexes are built after the replica lands,
+    never in its landing: the replica is read from its swap, and its indexes follow, built by the replica
+    runner under a per-replica index lock that a landing never waits on. PostgreSQL stores build each with
+    CREATE INDEX CONCURRENTLY outside the swap, the key as a unique index made the primary key (ADD CONSTRAINT
+    ... PRIMARY KEY USING INDEX); other SQLAlchemy stores by the dialect''s DDL; the embedded DuckDB store
+    file through its broker. ClickHouse keeps its sorting key (the declared key) and warehouse stores build
+    none. What a landing asked for, what was built and what failed is kept by name on the replica''s record
+    (replica_state.index_state); a failed index is logged with its cause and asked for again by the next
+    landing, never failing the landing. Rows that repeat a declared key are a named failure carrying the
+    key''s columns. A landing that replaces the table while the last one''s indexes are being built leaves
+    them behind (a PostgreSQL swap cancels a build still running on the table it replaces), and the new
+    table gets its own. Index names are fixed by the replica and the columns. (Amended 2026-10-28, A MATERIALIZED
+    VIEW IS INDEXED AS A REPLICA IS:) A materialized view stored on an engine or store that supports indexes
+    is indexed by the same rule as a replica: its declared key, enforced as the key, and the columns the
+    relationships declared on it join on, built after it lands or refreshes, never in its landing, under
+    the same per-object index lock. Provisa never creates an index on a source''s own tables.'
   use_case: 'An operator declares orders.customer_id -> customers.id; the replica of orders is readable at once
     and carries an index on customer_id shortly after, so a join on it reads the index in a PostgreSQL store.'
   scenario: 'Given orders declares the key id and the relationship orders.customer_id -> customers.id
@@ -91116,4 +91120,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2052
   notes: 'Maintainer 2026-10-28: a data marketplace is a new demo. Targets internal users only, not an external
     commercial marketplace. Built after the Data buyer, Sample Data, request and buyer-view jobs land.'
+
+- id: REQ-2183
+  value: 'Multi-hop graph traversals walk a narrow indexed edge table instead of re-joining wide tables at every hop.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Graph & Cypher
+  feature: cypher-graph-queries
+  priority: SHOULD
+  type: behavioral
+  description: 'A relationship may be given an edge index, opted in by its owner: a materialization of the relationship
+    as a narrow table of (from_key, to_key) pairs, a junction relationship collapsed into one edge per junction row,
+    stored on the engine or store that holds materializations and indexed in both directions. It is refreshed with the
+    relationship''s endpoints'' freshness, like any materialization, and governed as the relationship is: a role reads
+    an edge only where it may read both ends. Variable-length patterns and shortestPath on that relationship (REQ-751,
+    REQ-348) compile their recursive steps against the edge index instead of joining the endpoint tables at every
+    hop, the endpoints joined once for the properties a statement returns. Provisa suggests candidates and does not
+    create them unasked: relationships ranked by how often path queries and joins use them (the audit log and the ops
+    domain''s join_hotspots), each with the owner''s opt-in. Provisa never creates an index on a source''s own tables.'
+  scenario: 'Given a relationship with an edge index and a [*1..4] pattern over it
+    When the pattern is compiled
+    Then its recursive steps read the edge index, indexed in both directions, and the endpoint tables are joined once
+    And a role that cannot read one end of an edge does not traverse it'
+  related_reqs:
+  - REQ-751
+  - REQ-348
+  - REQ-2015
+  - REQ-1386
+  stakeholders:
+  - data-steward
 
