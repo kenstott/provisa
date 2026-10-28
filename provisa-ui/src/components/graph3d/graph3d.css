@@ -133,9 +133,13 @@
   white-space: nowrap;
 }
 /* REQ-2174: the 2D view's lane diagram, drawn by cytoscape over the whole stage. */
+/* The canvas ends above the legend (LaneStage sets --g3d-legend-h from the legend's height). */
+.g3d-lanes {
+  --g3d-legend-h: 0px;
+}
 .g3d-lanes-canvas {
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--g3d-legend-h) 0;
 }
 /* REQ-2174: a lane node's card stays while the pointer is on it, so its links can be followed. */
 .p3d-tip.g3d-tip-live {

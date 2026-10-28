@@ -14,7 +14,7 @@
 // shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A
 // card holds the node's facts with links to their pages, and stays while the pointer is on it.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, useComputedColorScheme } from "@mantine/core";
 import { Check, Copy } from "lucide-react";
@@ -42,6 +42,8 @@ if (!registered) cytoscape.use(elk);
 type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
 
 const FIT_PAD = 24;
+// The legend's offset from the stage's foot (profile3d.css .p3d-legend) and a gap above it.
+const LEGEND_GAP = 16;
 // How long a card stays once the pointer leaves its node: time to reach the card's links.
 const TIP_LINGER_MS = 300;
 const NODE_H = 26;
@@ -101,6 +103,20 @@ export function LaneStage({
   const scheme = useComputedColorScheme("dark");
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const legendRef = useRef<HTMLDivElement | null>(null);
+  // The diagram is laid out above the legend, never under it: the canvas ends where the legend
+  // begins (graph3d.css, --g3d-legend-h), and its resize refits the diagram.
+  useLayoutEffect(() => {
+    const legend = legendRef.current;
+    const wrap = wrapRef.current;
+    if (!legend || !wrap) return;
+    const clear = () =>
+      wrap.style.setProperty("--g3d-legend-h", `${legend.offsetHeight + LEGEND_GAP}px`);
+    clear();
+    const observer = new ResizeObserver(clear);
+    observer.observe(legend);
+    return () => observer.disconnect();
+  }, []);
   const cyRef = useRef<CyCore | null>(null);
   const [tip, setTip] = useState<TipAt | null>(null);
   const [copied, setCopied] = useState(false);
@@ -527,7 +543,7 @@ export function LaneStage({
           <div className="p3d-hint">{t("profile3d.hintFlat")}</div>
         </>
       )}
-      <div className="p3d-legend">
+      <div className="p3d-legend" ref={legendRef}>
         <GraphLegend graph={diagram.graph} />
       </div>
     </div>
