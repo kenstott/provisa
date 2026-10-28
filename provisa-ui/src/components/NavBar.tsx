@@ -143,6 +143,7 @@ export function NavBar() {
     location.pathname === "/schema" ||
     location.pathname === "/query" ||
     location.pathname === "/graph" ||
+    location.pathname === "/sparql" ||
     location.pathname === "/sql" ||
     location.pathname === "/nl" ||
     location.pathname === "/grpc" ||

@@ -19,6 +19,9 @@ import {
   parseNTriples,
   sparqlStatement,
   triplesGraph,
+  pickedQuery,
+  relationshipPattern,
+  type SparqlVocabulary,
   withPrefixes,
   LITERAL_LABEL,
 } from "../sparql";
@@ -63,9 +66,9 @@ describe("a pill's pattern", () => {
   });
 
   it("ends the group's last triple first, where it is left open", () => {
-    expect(addPattern("SELECT * WHERE { ?s ?p ?o }", "?s a sales:orders .", ["sales:orders"], P)).toBe(
-      `PREFIX sales: <${P.sales}>\nSELECT * WHERE { ?s ?p ?o .\n  ?s a sales:orders .\n}`,
-    );
+    expect(
+      addPattern("SELECT * WHERE { ?s ?p ?o }", "?s a sales:orders .", ["sales:orders"], P),
+    ).toBe(`PREFIX sales: <${P.sales}>\nSELECT * WHERE { ?s ?p ?o .\n  ?s a sales:orders .\n}`);
   });
 
   it("starts a SELECT where the bar holds no group", () => {
@@ -204,5 +207,91 @@ describe("an answer of /data/sparql", () => {
       P,
     );
     expect(st).toMatchObject({ status: "error", error: "Unexpected end of query" });
+  });
+});
+
+const PETS: SparqlVocabulary = {
+  base: BASE,
+  prefixes: { "pet-store": `${BASE}/vocab/pet-store/`, rel: `${BASE}/vocab/rel/` },
+  classes: [
+    {
+      iri: `${BASE}/vocab/pet-store/owners`,
+      kind: "table",
+      labels: ["pet-store:owners"],
+      superclasses: [],
+    },
+    {
+      iri: `${BASE}/vocab/pet-store/pets`,
+      kind: "table",
+      labels: ["pet-store:pets"],
+      superclasses: [],
+    },
+  ],
+  predicates: [],
+  // HAS_PETS runs owner -> pets.
+  edges: [
+    {
+      iri: `${BASE}/vocab/rel/HAS_PETS`,
+      type: "HAS_PETS",
+      source: "pet-store:owners",
+      target: "pet-store:pets",
+    },
+  ],
+  concepts: [],
+};
+const HAS_PETS = `${BASE}/vocab/rel/HAS_PETS`;
+
+describe("a relationship pill", () => {
+  it("makes the variable that holds the source class the subject, and types the object", () => {
+    const q = "SELECT * WHERE {\n  ?s a pet-store:owners .\n}";
+    expect(relationshipPattern(q, HAS_PETS, PETS)).toEqual({
+      pattern: "?s rel:HAS_PETS ?o . ?o a pet-store:pets .",
+      terms: ["rel:HAS_PETS", "pet-store:pets"],
+    });
+  });
+
+  it("makes the variable that holds the target class the object, under a fresh subject", () => {
+    const q = "SELECT * WHERE {\n  ?s a pet-store:pets .\n}";
+    expect(relationshipPattern(q, HAS_PETS, PETS)).toEqual({
+      pattern: "?x rel:HAS_PETS ?s . ?x a pet-store:owners .",
+      terms: ["rel:HAS_PETS", "pet-store:owners"],
+    });
+  });
+
+  it("adds a fresh typed pair where no variable holds either class", () => {
+    expect(relationshipPattern("SELECT * WHERE {\n}", HAS_PETS, PETS)).toEqual({
+      pattern: "?s a pet-store:owners . ?s rel:HAS_PETS ?o . ?o a pet-store:pets .",
+      terms: ["pet-store:owners", "rel:HAS_PETS", "pet-store:pets"],
+    });
+    // Names taken by the query are not reused.
+    const q = "SELECT * WHERE {\n  ?s a pet-store:vets . ?o a pet-store:vets .\n}";
+    expect(relationshipPattern(q, HAS_PETS, PETS).pattern).toBe(
+      "?s2 a pet-store:owners . ?s2 rel:HAS_PETS ?o2 . ?o2 a pet-store:pets .",
+    );
+  });
+
+  it("reads a class written in full as the class it is", () => {
+    const q = `SELECT * WHERE {\n  ?s a <${BASE}/vocab/pet-store/owners> .\n}`;
+    expect(relationshipPattern(q, HAS_PETS, PETS).pattern).toBe(
+      "?s rel:HAS_PETS ?o . ?o a pet-store:pets .",
+    );
+  });
+
+  it("after the pets class pill, asks for the owners that have them, ready to draw", () => {
+    const first = pickedQuery("", { kind: "class", iri: `${BASE}/vocab/pet-store/pets` }, PETS);
+    expect(first).toContain("?s a pet-store:pets .");
+    const next = pickedQuery(first, { kind: "edge", iri: HAS_PETS }, PETS);
+    expect(next).toContain("?x rel:HAS_PETS ?s . ?x a pet-store:owners .");
+    expect(next).toContain("?s a pet-store:pets .");
+    expect(next).not.toContain("?s rel:HAS_PETS ?o2");
+    expect(next).toContain("PREFIX rel:");
+  });
+
+  it("is refused where the vocabulary has no class for an end", () => {
+    const bare = { ...PETS, classes: PETS.classes.slice(0, 1) };
+    expect(() => relationshipPattern("", HAS_PETS, bare)).toThrow(/no class for the label/);
+    expect(() => relationshipPattern("", `${BASE}/vocab/rel/NOPE`, PETS)).toThrow(
+      /no relationship/,
+    );
   });
 });
