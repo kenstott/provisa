@@ -38,7 +38,7 @@ vi.mock("../../../hooks/useAdminQueries", () => ({
 
 import { OpenAsQuery } from "../OpenAsQuery";
 
-const QUERY = "query Ontology {\n  _terms: ont__terms { id: id }\n}";
+const QUERY = "query Ontology {\n  _terms: on_terms { id: id }\n}";
 
 /** Where the control navigated, and what it handed over. */
 function Landed() {

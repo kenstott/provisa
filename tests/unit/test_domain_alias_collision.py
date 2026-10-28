@@ -75,7 +75,7 @@ def test_a_role_holding_ontology_and_ops_is_served_both_apart(access):
     from provisa.compiler.schema_gen import generate_schema
 
     fields = set(generate_schema(_schema_input(access)).query_type.fields)
-    assert {"ontology__terms", "ops__queries", "ops__traces"} <= fields
+    assert {"on_terms", "op_queries", "op_traces"} <= fields
     # The SQL-only table stays SQL's alone.
     assert not any("axioms" in f for f in fields)
 
@@ -86,9 +86,9 @@ def test_grpc_and_the_compilation_context_name_them_apart():
 
     si = _schema_input(["*"])
     names = {m.field_name for m in build_context(si).tables.values()}
-    assert {"ontology__terms", "ops__queries"} <= names
+    assert {"on_terms", "op_queries"} <= names
     from provisa.grpc.proto_gen import _to_proto_field_name
 
     proto = generate_proto(si)
-    for field in ("ontology__terms", "ops__queries"):
+    for field in ("on_terms", "op_queries"):
         assert f" {_to_proto_field_name(field)} = " in proto

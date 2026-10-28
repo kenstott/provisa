@@ -66,7 +66,7 @@ async function filteredView(page: Page) {
   );
   expect(viewed.query).toContain('relType: { in: ["KIND_OF","PART_OF"] }');
   // One root: the edges are read with their terms.
-  expect(viewed.query).not.toContain("ont__termEdges");
+  expect(viewed.query).not.toContain("on_termEdges");
   return viewed;
 }
 

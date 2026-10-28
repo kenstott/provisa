@@ -23,8 +23,8 @@ from provisa.compiler.sql_types import CompilationContext, TableMeta
 def ops_ctx():
     meta = TableMeta(
         table_id=1,
-        field_name="query_audit_log",
-        type_name="QueryAuditLog",
+        field_name="op_query_audit_log",  # REQ-2163: the ops schema's SDL prefix
+        type_name="OP_QueryAuditLog",
         source_id="provisa-admin",
         catalog_name="provisa_admin",
         schema_name="org_kstott",
@@ -32,7 +32,7 @@ def ops_ctx():
         domain_id="ops",
         original_table_name="query_audit_log",
     )
-    return CompilationContext(tables={"query_audit_log": meta})
+    return CompilationContext(tables={"op_query_audit_log": meta})
 
 
 def test_aliased_physical_table_keeps_semantic_alias(ops_ctx):

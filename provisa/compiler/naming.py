@@ -669,6 +669,47 @@ def domain_cypher_label(domain_id: str) -> str:  # REQ-572
     return apply_cql_label(domain_id)
 
 
+#: REQ-2163 (amended 2026-10-27): the prefix every root field and type a generated system schema
+#: gives carries in the GraphQL SDL, whether or not domains prefix their fields, so neither schema
+#: ever shares a name with a model table's field or type. Its Cypher labels and SQL relations are
+#: unprefixed.
+SYSTEM_SCHEMA_GQL_PREFIX: dict[str, str] = {"ontology": "on", "ops": "op"}
+
+
+def system_schema_names(domain_id: str, field_name: str) -> tuple[str, str]:  # REQ-2163
+    """The root field and type names of a ``domain_id`` system schema's table whose own field name
+    is ``field_name``: ``on_terms`` and ``ON_Terms``, its prefix upper-cased in the type as a
+    domain's is (``M__RegisteredTables``)."""
+    prefix = SYSTEM_SCHEMA_GQL_PREFIX[domain_id]
+    return f"{prefix}_{field_name}", f"{prefix.upper()}_{to_type_name(field_name)}"
+
+
+def unprefixed_field_name(field_name: str, domain_id: str) -> str:  # REQ-2163
+    """A table's field name without its system schema's SDL prefix (``on_terms`` is ``terms``);
+    any other domain's field name as it is."""
+    prefix = SYSTEM_SCHEMA_GQL_PREFIX.get(domain_id)
+    if prefix is None:
+        return field_name
+    if not field_name.startswith(f"{prefix}_"):
+        raise ValueError(f"the {domain_id} table field {field_name!r} lacks its prefix {prefix}_")
+    return field_name[len(prefix) + 1 :]
+
+
+def bare_field_name(field_name: str, domain_id: str) -> str:  # REQ-471, REQ-2163
+    """A table's root field name without its domain's prefix (``sa__orders`` is ``orders``) or its
+    system schema's (``on_terms`` is ``terms``)."""
+    if domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+        return unprefixed_field_name(field_name, domain_id)
+    return field_name.split("__", 1)[1] if "__" in field_name else field_name
+
+
+def table_type_name(field_name: str, domain_id: str) -> str:  # REQ-471, REQ-2163
+    """The GraphQL type name of the ``domain_id`` table whose root field is ``field_name``."""
+    if domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+        return system_schema_names(domain_id, unprefixed_field_name(field_name, domain_id))[1]
+    return to_type_name(field_name)
+
+
 def to_type_name(field_name: str) -> str:  # REQ-471
     """Convert a field name to a GraphQL type name (PascalCase).
 
