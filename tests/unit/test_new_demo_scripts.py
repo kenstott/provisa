@@ -45,9 +45,7 @@ def scaffolded(tmp_path):
     for tour_json in _LOCALES.glob("*/tour.json"):
         (locales / tour_json.parent.name).mkdir(parents=True)
         (locales / tour_json.parent.name / "tour.json").write_text(tour_json.read_text())
-    home = new_demo.scaffold(
-        "harbor", title="Harbor", port=28632, requires="0.1.0a496", named=named, locales=locales
-    )
+    home = new_demo.scaffold("harbor", title="Harbor", port=28632, named=named, locales=locales)
     return home, locales
 
 
@@ -73,6 +71,15 @@ def test_a_scaffolded_demo_passes_every_check_but_its_authors(scaffolded):
     untranslated = check_demo.check_locales("harbor", home, locales)
     assert len(untranslated) == len(list(locales.iterdir())) - 1  # every locale but English
     assert all("still the English words" in line for line in untranslated)
+
+
+def test_a_scaffold_with_no_requires_passes_check_demo_and_names_the_first_release_it_needs(
+    scaffolded,
+):
+    home, _ = scaffolded
+    required = yaml.safe_load((home / "demo.yaml").read_text())["requires_provisa"]
+    assert required == check_demo.needed_release(home)
+    assert check_demo.check_bundle(home) == []
 
 
 def test_the_scaffold_writes_no_template_stamp_and_no_token(scaffolded):

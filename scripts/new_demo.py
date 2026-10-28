@@ -11,7 +11,7 @@
 """Scaffold a named demo: demo/named/<name>/ in the shape every named demo has (docs/named-demos.md),
 and its tour's words in every locale of the UI.
 
-    python scripts/new_demo.py <name> [--title "..."] [--port 28632] [--requires 0.1.0a486]
+    python scripts/new_demo.py <name> [--title "..."] [--port 28632] [--requires 0.1.0a496]
 
 What it writes passes scripts/check_demo.py's checks from the start, except what only the demo's
 author can supply: the card's screenshot, and the translations of the tour's words (each locale
@@ -30,6 +30,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts import check_demo  # noqa: E402
+
 TEMPLATE = Path(__file__).resolve().parent / "new_demo_template"
 NAMED = ROOT / "demo" / "named"
 LOCALES = ROOT / "provisa-ui" / "src" / "i18n" / "locales"
@@ -111,12 +115,13 @@ def scaffold(
     *,
     title: str,
     port: int,
-    requires: str,
+    requires: str | None = None,
     named: Path = NAMED,
     locales: Path = LOCALES,
 ) -> Path:
     """Write demo/named/<name>/ and the tour's words in every locale; refused by name when the
-    name is not one a demo can have or the demo exists."""
+    name is not one a demo can have or the demo exists. ``requires`` defaults to the first release
+    carrying every feature the scaffold uses (check_demo._FEATURES), else the newest release."""
     if NAME.fullmatch(name) is None:
         raise SystemExit(
             f"{name!r}: a demo's name is lower-case letters and digits, a letter first"
@@ -126,7 +131,7 @@ def scaffold(
         raise SystemExit(f"{home} exists: a new demo needs a name no demo has")
     values = {
         "__TITLE__": title,
-        "__REQUIRES__": requires,
+        "__REQUIRES__": requires or "0",
         "__DOMAIN__": name,
         "__PREFIX__": f"{name[0]}__",
         "__ENV__": name.upper(),
@@ -139,6 +144,14 @@ def scaffold(
         # The template's own canary stamps are its, not the demo's: the commit stamps the demo.
         kept = "".join(line for line in lines if "Canary:" not in line)
         path.write_text(_fill(kept, values))
+    if requires is None:
+        demo_yaml = home / "demo.yaml"
+        needed = check_demo.needed_release(home) or latest_release()
+        demo_yaml.write_text(
+            demo_yaml.read_text().replace(
+                "requires_provisa: 0\n", f"requires_provisa: {needed}\n", 1
+            )
+        )
     _add_words(name, title, locales)
     return home
 
@@ -160,13 +173,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("name", help="the demo's name: lower-case letters and digits")
     parser.add_argument("--title", help="the demo's title (default: the name)")
     parser.add_argument("--port", type=int, help="its database's port (default: the next free)")
-    parser.add_argument("--requires", help="requires_provisa (default: the newest release tag)")
+    parser.add_argument(
+        "--requires",
+        help="requires_provisa (default: the first release carrying the scaffold's features)",
+    )
     args = parser.parse_args(argv)
     home = scaffold(
         args.name,
         title=args.title or args.name.capitalize(),
         port=args.port or next_port(),
-        requires=args.requires or latest_release(),
+        requires=args.requires,
     )
     print(f"wrote {home.relative_to(ROOT)}; next: python scripts/check_demo.py {args.name}")
     return 0

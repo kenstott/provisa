@@ -187,6 +187,20 @@ def _uses_export_inputs(home: Path) -> bool:
     return False
 
 
+def _features_used(home: Path) -> list[str]:
+    """The first release of each _FEATURES entry this demo uses."""
+    used = (_uses_role_parents(home), _uses_export_inputs(home))
+    return [first for (_, first), uses in zip(_FEATURES, used) if uses]
+
+
+def needed_release(home: Path) -> str | None:
+    """The first release carrying every feature the demo uses; None when it uses none."""
+    from provisa.core import demo_bundles as bundles
+
+    firsts = _features_used(home)
+    return max(firsts, key=bundles.provisa_version_key) if firsts else None
+
+
 def check_features(home: Path, required: str) -> list[str]:
     """The features this demo uses that come after ``required``, one problem each."""
     from provisa.core import demo_bundles as bundles
