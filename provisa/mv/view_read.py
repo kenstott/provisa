@@ -267,7 +267,7 @@ def semantic_statement(
     is held to (REQ-1921) -- it stays the registered table it is in both."""
     from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
 
-    definitions = _definitions(view_sql_map, state)
+    definitions = _class_bodies(sql, _definitions(view_sql_map, state), state, gov)
     home_copies = {view for view in views_read(sql, definitions) if _home_copy(view, state)}
     bodies: dict[str, str] = {}
     for view, view_sql in _views_read_here(sql, definitions, home_copies).items():
@@ -281,6 +281,37 @@ def semantic_statement(
     marked = expand_view_refs(sql, bodies, mark=True)
     judged = {view: body for view, body in definitions.items() if view not in home_copies}
     return governed, expand_view_refs(marked, judged, mark=True)
+
+
+def _class_bodies(
+    sql: str, definitions: dict[str, str], state: Any, gov: "GovernanceContext"
+) -> dict[str, str]:
+    """``definitions`` with each Class table ``sql`` reads given the body made for this reader
+    (REQ-2163): a branch for each of its tables the reader is served a column of, each column it
+    is not served there read as null (provisa.compiler.ontology_classes.reader_body). Lowered to
+    the physical plan as every view's entry is, once per reader's visibility of its tables."""
+    classes = getattr(state, "class_tables", None) or {}
+    read = [view for view in views_read(sql, definitions) if view in classes]
+    if not read:
+        return definitions
+    from provisa.compiler.ontology_classes import reader_body  # noqa: PLC0415
+    from provisa.compiler.sql_rewrite import lower_to_catalog_physical  # noqa: PLC0415
+
+    bodies = dict(definitions)
+    for view in read:
+        row = classes[view]
+        seen = tuple(
+            (b["table_id"], gov.visible_columns[b["table_id"]]) for b in row["class_bindings"]
+        )
+        memo = state.class_bodies
+        key = (view, seen)
+        if key not in memo:
+            served = dict(seen)
+            memo[key] = lower_to_catalog_physical(
+                reader_body(row, served.__getitem__), state.view_context
+            )
+        bodies[view] = memo[key]
+    return bodies
 
 
 def _definitions(view_sql_map: dict[str, str], state: Any) -> dict[str, str]:

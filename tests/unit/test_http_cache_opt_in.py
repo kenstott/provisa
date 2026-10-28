@@ -21,7 +21,6 @@ states an opt-in too, two that disagree are refused by name. Each surface report
 
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,10 +35,24 @@ from provisa.executor.result import QueryResult
 from tests.unit import test_rest_jsonapi_request_plan as _plan_tests
 
 
+# One instant for the whole test: an entry is stored relative to it and its age is read at it, so
+# the age a response reports is the one the entry was made with however long the test takes.
+_NOW = 1_800_000_000.0
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock(monkeypatch):
+    from types import SimpleNamespace
+
+    from provisa.cache import store
+
+    monkeypatch.setattr(store, "time", SimpleNamespace(time=lambda: _NOW))
+
+
 def _stored(age_seconds: int):
     from provisa.cache.store import CachedResult
 
-    return CachedResult(data=b"", cached_at=time.time() - age_seconds, ttl=300)
+    return CachedResult(data=b"", cached_at=_NOW - age_seconds, ttl=300)
 
 
 # -- the standard header ---------------------------------------------------------------------------
