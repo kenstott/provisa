@@ -90311,9 +90311,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa/pgwire/temp_keeper.py
   - provisa/pgwire/_pipeline.py
   - provisa/cache/key.py
+  - provisa-ui/src/components/graph/SessionPills.tsx
   tests:
   - tests/unit/test_cypher_page_session.py
   - tests/integration/test_graph_session_shared.py
+  - provisa-ui/src/components/graph/__tests__/SessionPills.test.tsx
+  - provisa-ui/src/__tests__/GraphPageSession.test.tsx
   scenario: 'Given a Bolt session as a role
 
     When it runs CREATE (:Scratch {n: 1})-[:LINKS]->(:Scratch {n: 2}) and then MATCH (a:Scratch)-[:LINKS]->(b)
