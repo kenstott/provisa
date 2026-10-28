@@ -81,6 +81,17 @@ class DuckDBBackend(NativeEngineBackend):
             runtime._store_broker, schema=address.schema, table=address.table, columns=args.columns
         )
 
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: a session's tables in the embedded DuckDB store are written in place through
+        the store broker; in any other store, as that store writes them."""
+        runtime = self._runtime_for(state)
+        if not runtime._store_is_duckdb():
+            return self._materialize_store_rows()
+        from provisa.federation.session_rows import DuckDBSessionRows
+
+        runtime.ensure_materialize_attached()  # resolves the store broker (REQ-1901)
+        return DuckDBSessionRows(runtime._store_broker)
+
     def replica_indexer(self, state: Any, *, address: Any) -> Any:
         """REQ-2015: a replica in the embedded DuckDB store file is indexed through the store
         broker; one in any other store by that store's own way."""

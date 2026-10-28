@@ -70,10 +70,69 @@ def model_node(label: str, columns: dict[str, str], domain: str | None = None) -
     )
 
 
-class Session:
-    """One session: its DuckDB, its model and its temporary tables."""
+class _Rows:
+    """The store's in-place face (provisa.federation.session_rows) on the harness's DuckDB, whose
+    session tables are named alone."""
 
-    def __init__(self, monkeypatch: Any, model: dict[str, tuple[dict[str, str], str]]) -> None:
+    def __init__(self, duck: Any) -> None:
+        self.duck = duck
+        self.calls: list[str] = []
+
+    async def insert(self, schema, table, columns, batch):
+        self.calls.append(f"insert {table}")
+        names = ", ".join(f'"{c}"' for c, _ in columns)
+        self.duck.register("_rows", batch)
+        self.duck.execute(f'INSERT INTO "{table}" ({names}) SELECT {names} FROM _rows')
+        self.duck.unregister("_rows")
+
+    async def delete(self, schema, table, key_columns, keys):
+        self.calls.append(f"delete {table}")
+        held = {c: [k[i] for k in keys] for i, c in enumerate(key_columns)}
+        import pyarrow as pa
+
+        self.duck.register("_keys", pa.table(held))
+        same = " AND ".join(f'k."{c}" = t."{c}"' for c in key_columns)
+        self.duck.execute(
+            f'DELETE FROM "{table}" t WHERE EXISTS (SELECT 1 FROM _keys k WHERE {same})'
+        )
+        self.duck.unregister("_keys")
+
+    def _alter(self, table, sql):
+        # DuckDB alters no table an index stands on: dropped, altered, built again.
+        held = self.duck.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = ?", [table]
+        ).fetchall()
+        for name, _ in held:
+            self.duck.execute(f'DROP INDEX "{name}"')
+        self.duck.execute(sql)
+        for _, ddl in held:
+            self.duck.execute(ddl)
+
+    async def add_column(self, schema, table, column, kind):
+        self.calls.append(f"add {table}.{column}")
+        self._alter(table, f'ALTER TABLE "{table}" ADD COLUMN "{column}" {_duck_type(kind)}')
+
+    async def retype(self, schema, table, column, kind):
+        self.calls.append(f"retype {table}.{column}")
+        self._alter(table, f'ALTER TABLE "{table}" ALTER COLUMN "{column}" TYPE {_duck_type(kind)}')
+
+    async def index(self, schema, table, key_columns):
+        self.calls.append(f"index {table}")
+        cols = ", ".join(f'"{c}"' for c in key_columns)
+        self.duck.execute(f'CREATE UNIQUE INDEX IF NOT EXISTS "key_{table}" ON "{table}" ({cols})')
+
+
+class Session:
+    """One session: its DuckDB, its model and its temporary tables. ``in_place``: the store
+    writes them in place (provisa.federation.session_rows); else each is landed whole."""
+
+    def __init__(
+        self,
+        monkeypatch: Any,
+        model: dict[str, tuple[dict[str, str], str]],
+        *,
+        in_place: bool = True,
+    ) -> None:
         self.duck = duckdb.connect()
         self.duck.execute("SET TimeZone = 'UTC'")
         self.duck.execute("CREATE SCHEMA s")
@@ -108,6 +167,8 @@ class Session:
             result = duck.execute(sql)
             return [d[0] for d in result.description], result.fetchall()
 
+        self.rows = _Rows(duck) if in_place else None
+        monkeypatch.setattr(temp_exec, "in_place", lambda state: self.rows)
         monkeypatch.setattr(temp_exec, "_land", land)
         monkeypatch.setattr(temp_exec, "_store_address", address)
         monkeypatch.setattr(temp_exec, "_system_rows", system_rows)

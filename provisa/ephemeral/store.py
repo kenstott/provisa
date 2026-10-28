@@ -20,8 +20,12 @@
   its properties (``rel_id`` and its columns).
 
 Each is a temporary table of the session (:mod:`provisa.pgwire.temp_exec`): its own schema of
-the store, the session's caps, dropped when the session ends. A write lands each table it
-touches again whole, its columns grown and widened (:mod:`.types`).
+the store, the session's caps, dropped when the session ends. Where the store writes a session's
+tables in place (:mod:`provisa.federation.session_rows`), a write adds its rows to each table it
+touches, a new column added and a bigint widened to a double in place, and a removal deletes rows
+by their key; each table is indexed on its key when it is landed. A widening the store cannot make
+in place (to JSON, a list's element), and every change on a store with no such face, lands the
+table again whole, its columns grown and widened (:mod:`.types`).
 """
 
 # Requirements: REQ-2176
@@ -161,6 +165,39 @@ def _engine(state: Any) -> str:
     return state.federation_engine.engine.name
 
 
+#: Each fixed table's key: no two of its rows share it (an anchor's and a property table's key
+#: is its first column, ``node_id`` or ``rel_id``).
+_KEYS: dict[str, tuple[str, ...]] = {
+    NODES: (NODE_ID,),
+    NODE_LABELS: (NODE_ID, "label"),
+    RELS: (REL_ID,),
+}
+
+
+def _key_of(table: str, keys: tuple[tuple[str, str], ...]) -> tuple[str, ...]:
+    return _KEYS.get(table, tuple(k for k, _ in keys))
+
+
+async def _reland(
+    state: Any,
+    session: TempSession,
+    table: str,
+    keys: tuple[tuple[str, str], ...],
+    held_rows: list[tuple],
+    rows: list[dict[str, Any]],
+    writer: Any,
+) -> None:
+    """Land the session's ``table`` again whole: its ``held_rows`` and ``rows``, its columns
+    grown and widened; indexed on its key where the store indexes a session's tables."""
+    from provisa.pgwire import temp_exec
+
+    held = session.tables[table].columns if table in session.tables else []
+    columns, all_rows = types.relanded(held, keys, held_rows, rows, _engine(state))
+    await temp_exec.reland(state, session, table, columns, all_rows)
+    if writer is not None:
+        await temp_exec.index(session, table, _key_of(table, keys), writer)
+
+
 async def _add(
     state: Any,
     session: TempSession,
@@ -168,14 +205,59 @@ async def _add(
     keys: tuple[tuple[str, str], ...],
     rows: list[dict[str, Any]],
 ) -> None:
-    """Add ``rows`` to the session's ``table``, its columns grown and widened."""
+    """Add ``rows`` to the session's ``table``, its columns grown and widened: in place where
+    the store writes a session's tables so and the change of columns is one it makes in place,
+    else by landing the table again whole."""
     from provisa.pgwire import temp_exec
 
-    held = session.tables[table].columns if table in session.tables else []
-    columns, all_rows = types.relanded(
-        held, keys, await temp_exec.held_rows(state, session, table), rows, _engine(state)
-    )
-    await temp_exec.reland(state, session, table, columns, all_rows)
+    writer = temp_exec.in_place(state)
+    if writer is None or table not in session.tables:
+        held_rows = await temp_exec.held_rows(state, session, table)
+        await _reland(state, session, table, keys, held_rows, rows, writer)
+        return
+    held = session.tables[table].columns
+    names = tuple(k for k, _ in keys)
+    wanted = [
+        *keys,
+        *types.columns_for([c for c in held if c[0] not in names], names, rows, _engine(state)),
+    ]
+    changes = types.alteration(held, wanted)
+    if changes is None:
+        held_rows = await temp_exec.held_rows(state, session, table)
+        await _reland(state, session, table, keys, held_rows, rows, writer)
+        return
+    await temp_exec.alter(session, table, changes, wanted, writer)
+    converted = [tuple(types.as_type(r.get(k), kind, None) for k, kind in wanted) for r in rows]
+    await temp_exec.append(state, session, table, converted, writer)
+
+
+async def _remove(
+    state: Any,
+    session: TempSession,
+    table: str,
+    key_columns: tuple[str, ...],
+    keys: list[tuple],
+) -> None:
+    """Remove the rows of the session's ``table`` whose ``key_columns`` hold one of ``keys``:
+    deleted in place where the store writes a session's tables so, else the table landed again
+    whole without them."""
+    from provisa.pgwire import temp_exec
+
+    if table not in session.tables or not keys:
+        return
+    writer = temp_exec.in_place(state)
+    if writer is not None:
+        await temp_exec.delete_keys(session, table, key_columns, keys, writer)
+        return
+    columns = session.tables[table].columns
+    at = [[c for c, _ in columns].index(k) for k in key_columns]
+    gone = set(keys)
+    kept = [
+        r
+        for r in await temp_exec.held_rows(state, session, table)
+        if tuple(r[i] for i in at) not in gone
+    ]
+    await temp_exec.reland(state, session, table, columns, kept)
 
 
 async def write(state: Any, session: TempSession, writes: Writes) -> None:
@@ -206,6 +288,20 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
         g.label_anchors.setdefault(given.label, set()).add(g.node_anchors[given.node_id])
         held = tuple(k for k in g.node_keys[given.node_id] if k)
         g.node_keys[given.node_id] = (*held, given.label)
+    if writes.nodes and NODE_LABELS not in session.tables:
+        # Every read reads node_labels: it stands from the session's first node on, whatever the
+        # node's labels -- empty when it carries none.
+        from provisa.pgwire import temp_exec
+
+        await _reland(
+            state,
+            session,
+            NODE_LABELS,
+            tuple(_FIXED[NODE_LABELS]),
+            [],
+            [],
+            temp_exec.in_place(state),
+        )
     labels = [(n.node_id, label) for n in writes.nodes for label in n.labels]
     labels += [(t.node_id, t.label) for t in writes.tags]
     labels += [(given.node_id, given.label) for given in writes.labels]
@@ -260,18 +356,8 @@ async def held_labels(state: Any, session: TempSession) -> set[tuple[str, str]]:
 async def remove_labels(state: Any, session: TempSession, removed: set[tuple[str, str]]) -> None:
     """Delete the node_labels rows ``removed`` names. An ephemeral node left with no label is an
     unlabeled node; a node never moves table."""
-    from provisa.pgwire import temp_exec
-
     g = graph(session)
-    kept = [
-        {NODE_ID: n, "label": label}
-        for n, label in sorted(await held_labels(state, session))
-        if (n, label) not in removed
-    ]
-    columns, rows = types.relanded(
-        session.tables[NODE_LABELS].columns, tuple(_FIXED[NODE_LABELS]), [], kept, _engine(state)
-    )
-    await temp_exec.reland(state, session, NODE_LABELS, columns, rows)
+    await _remove(state, session, NODE_LABELS, (NODE_ID, "label"), sorted(removed))
     for node_id, label in removed:
         if node_id not in g.node_keys:
             continue  # a tag on a model node
@@ -279,3 +365,48 @@ async def remove_labels(state: Any, session: TempSession, removed: set[tuple[str
         g.node_keys[node_id] = left or ("",)
         if not left:
             g.label_anchors.setdefault("", set()).add(g.node_anchors[node_id])
+
+
+def _label_anchors(g: Graph) -> dict[str, set[str]]:
+    """Each label's anchor tables, as the session's ephemeral nodes now hold them."""
+    held: dict[str, set[str]] = {}
+    for node_id, labels in g.node_keys.items():
+        for label in labels:
+            held.setdefault(label, set()).add(g.node_anchors[node_id])
+    return held
+
+
+async def delete_nodes(state: Any, session: TempSession, node_ids: list[str]) -> None:
+    """Remove the ephemeral nodes ``node_ids``: their rows of their anchor tables, of nodes and
+    of node_labels. The caller removes their relationships."""
+    g = graph(session)
+    by_anchor: dict[str, list[tuple]] = {}
+    for node_id in node_ids:
+        by_anchor.setdefault(g.node_anchors[node_id], []).append((node_id,))
+    for table, keys in by_anchor.items():
+        await _remove(state, session, table, (NODE_ID,), keys)
+    keys = [(node_id,) for node_id in node_ids]
+    await _remove(state, session, NODES, (NODE_ID,), keys)
+    await _remove(state, session, NODE_LABELS, (NODE_ID,), keys)
+    for node_id in node_ids:
+        del g.node_keys[node_id]
+        del g.node_anchors[node_id]
+    # A label keeps only the anchors that still hold a node carrying it.
+    g.label_anchors = _label_anchors(g)
+
+
+async def delete_rels(state: Any, session: TempSession, rel_ids: list[str]) -> None:
+    """Remove the ephemeral relationships ``rel_ids``: their rows of rels and of their types'
+    property tables."""
+    from provisa.pgwire import temp_exec
+
+    if not rel_ids or RELS not in session.tables:
+        return
+    by_type: dict[str, list[tuple]] = {}
+    for rel_id, rel_type in await temp_exec.keyed_rows(
+        state, session, RELS, REL_ID, rel_ids, (REL_ID, "type")
+    ):
+        by_type.setdefault(str(rel_type), []).append((rel_id,))
+    for rel_type, keys in by_type.items():
+        await _remove(state, session, rel_table(rel_type), (REL_ID,), keys)
+    await _remove(state, session, RELS, (REL_ID,), [(rel_id,) for rel_id in rel_ids])

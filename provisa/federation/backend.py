@@ -258,6 +258,25 @@ class EngineBackend:
             native_vectors=False,
         )
 
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: how a session's temporary tables are written in place in this engine's store
+        (:class:`provisa.federation.session_rows.SessionRows`), or None for a store with no such
+        face. None here: a store that does not declare one has each session table landed again
+        whole on every change (provisa.pgwire.temp_exec), as every replica is."""
+        del state
+
+    def _materialize_store_rows(self) -> Any:
+        """The in-place face of this engine's materialization store, where its replicas and
+        session tables land: a PostgreSQL store's own connection, None for any other."""
+        from sqlalchemy import make_url
+
+        from provisa.federation.session_rows import SqlAlchemySessionRows
+
+        dsn = self.engine.materialize_store()
+        if make_url(dsn).get_backend_name() != "postgresql":
+            return None
+        return SqlAlchemySessionRows(dsn)
+
     def replica_indexer(self, state: Any, *, address: ReplicaAddress) -> Any:
         """How the replica at ``address`` gets its key and join indexes after it lands
         (REQ-2015), or None for a store that keeps no secondary index (a warehouse orders a
@@ -989,6 +1008,12 @@ class TrinoBackend(EngineBackend):
 
     reads_other_regions = True  # REQ-1922: a catalog of that region's store
     computes_fakes = True  # REQ-1494: the provisa-functions plugin
+
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: Trino's session tables are in its PostgreSQL materialization store, written
+        there in place."""
+        del state
+        return self._materialize_store_rows()
 
     @property
     def dialect(self) -> str:
