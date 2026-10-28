@@ -71,6 +71,8 @@ interface SidebarProps {
   onMaxNodesChange: (n: number) => void;
   /** A second vocabulary's panel (SPARQL's) in place of Cypher's labels, types and keys. */
   vocabulary?: React.ReactNode;
+  /** The user's graph session (REQ-2176), listed beside the model's labels and types. */
+  session?: React.ReactNode;
 }
 
 const NUMERIC_TYPES = new Set([
@@ -131,6 +133,7 @@ export function Sidebar({
   maxNodes,
   onMaxNodesChange,
   vocabulary,
+  session,
 }: SidebarProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<"db" | "history" | "favorites" | "settings">("db");
@@ -788,6 +791,7 @@ export function Sidebar({
                 ))}
             </div>
 
+            {session}
             {propertyKeys.length > 0 && (
               <div className="graph-schema-section">
                 <button
