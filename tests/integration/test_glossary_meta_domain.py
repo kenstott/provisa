@@ -153,15 +153,17 @@ async def test_grounding_agrees_with_the_python_rule(tenant_db):
         await _setup(conn, {"orders": ["cust_id", "order_dt"]})
         terms = await _terms(conn)
         # the abstract term reaches data through the rooted one; a second one only through it.
+        # A KIND_OF edge runs from the narrower term to the broader one, and grounding looks down
+        # from broader to narrower (REQ-1387, DOWN IS FROM BROADER TO NARROWER).
         await glossary_repo.set_definition(conn, terms["customer"]["id"], "A buying party.")
         abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.set_definition(conn, abstract, "Anyone we transact with.")
-        await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
+        await glossary_repo.add_edge(conn, terms["customer"]["id"], abstract, "KIND_OF")
         top = await glossary_repo.create_abstract_term(
             conn, "counterparty", definition="The other side.", domains=set()
         )
         await glossary_repo.approve_term(conn, top, by=None)
-        await glossary_repo.add_edge(conn, top, abstract, "KIND_OF")
+        await glossary_repo.add_edge(conn, abstract, top, "KIND_OF")
         # grounded in nothing
         floating = await glossary_repo.create_abstract_term(conn, "ambition", domains=set())
         await glossary_repo.set_definition(conn, floating, "Wired to no column.")
