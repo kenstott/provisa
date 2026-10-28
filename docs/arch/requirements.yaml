@@ -90499,7 +90499,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
     with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
     one graph has optional layers for a product''s commands, its quality checks, links to other products
-    and product lineage, off by default in snippets and available in the full view.'
+    and product lineage, off by default in snippets and available in the full view. (Amended 2026-10-28,
+    EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows term edges (the term page''s term graph,
+    the one ontology graph in 2D and 3D, the lane view and their snippets), an edge that conducts grounding
+    under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from broader to narrower, SYNONYM_OF, and a term''s
+    binding to a column) is drawn solid, and an edge that does not (RELATED_TO and every other type, and
+    a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
