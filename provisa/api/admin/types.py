@@ -481,6 +481,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         default_factory=list
     )  # REQ-1093
     api_endpoint: str | None = None
+    # Why the table's OpenAPI source names no endpoint: its document could not be read.
+    api_endpoint_error: str | None = None
     # REQ-1907: operator-set role -> TTL seconds (effective = max(cache_ttl, ttl)); empty = none.
     role_ttl: list[RoleTtlType] = strawberry.field(default_factory=list)
     # REQ-318: what reads the table page by page ("endpoint" | "connection"), null when nothing
