@@ -239,7 +239,14 @@ class _Resolver:
                 view = marked_view(name)
                 if view is None or not isinstance(source, Scope):
                     continue
-                view_id = self._table_id(exp.Table(this=exp.to_identifier(view)))
+                # A view keyed schema.name (an ontology Class, REQ-2163) is its schema's table.
+                schema, _, name = view.rpartition(".")
+                view_id = self._table_id(
+                    exp.Table(
+                        this=exp.to_identifier(name),
+                        db=exp.to_identifier(schema) if schema else None,
+                    )
+                )
                 if view_id is None:
                     continue
                 instance = id(source.expression)

@@ -31,6 +31,7 @@ from provisa.compiler.ontology_classes import (
     SOURCE_TABLE_COLUMN,
     class_table_id,
     class_tables,
+    class_view_key,
     reader_body,
     served_class_columns,
     whole_body,
@@ -334,13 +335,13 @@ def built(monkeypatch):
         draft_tables=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
-    monkeypatch.setattr(state, "class_tables", {r["table_name"]: r for r in rows}, raising=False)
+    monkeypatch.setattr(state, "class_tables", {class_view_key(r): r for r in rows}, raising=False)
     monkeypatch.setattr(state, "class_bodies", {}, raising=False)
     monkeypatch.setattr(
         state,
         "view_sql_map",
         {
-            r["table_name"]: lower_to_catalog_physical(whole_body(r), state.view_context)
+            class_view_key(r): lower_to_catalog_physical(whole_body(r), state.view_context)
             for r in rows
         },
         raising=False,
@@ -433,8 +434,10 @@ async def test_the_build_serves_each_class_and_keeps_why_one_is_refused(
     tables = _tables()
     await register_class_tables(conn, tables)
     assert [t["table_name"] for t in tables][-1] == "customer" and len(tables) == 4
-    assert set(state.view_sql_map) == {"a_view", "customer"}
-    assert state.view_sql_map["customer"] == whole_body(state.class_tables["customer"])
+    assert set(state.view_sql_map) == {"a_view", "ontology.customer"}
+    assert state.view_sql_map["ontology.customer"] == whole_body(
+        state.class_tables["ontology.customer"]
+    )
     assert list(state.refused_classes) == [ORDER]
     assert any(r.levelname == "ERROR" and "2nd order" in r.getMessage() for r in caplog.records)
 
@@ -541,3 +544,42 @@ async def test_mcp_serves_a_readers_class_rows_from_only_the_tables_it_is_served
     assert [(r["_source_table"], r["customer_name"]) for r in result["rows"]] == [
         ("sales.customers", "Ada")
     ]
+
+
+# --- a Class named as a table is ----------------------------------------------------------------
+
+
+_CLASS_FOUR = {
+    "ontology.four": 'SELECT \'sales.four\' AS "_source_table", "id" AS "four" FROM "pg"."public"."four"'
+}
+
+
+def test_a_table_named_as_a_class_is_read_as_the_table() -> None:
+    # A keyed table is grounded in a Class named for it (REQ-2141), so the Class ``four`` and the
+    # table ``sales.four`` share a name: reading the table must not read the Class in its place.
+    from provisa.compiler.view_expand import expand_view_refs
+
+    for sql in (
+        "SELECT id FROM sales.four",
+        'SELECT id FROM "sales"."four"',
+        'SELECT id FROM "pg"."public"."four"',
+    ):
+        assert expand_view_refs(sql, _CLASS_FOUR) == sql
+
+
+def test_the_class_is_read_where_the_ontology_schema_is_named() -> None:
+    from provisa.compiler.view_expand import expand_view_refs
+
+    body = _CLASS_FOUR["ontology.four"]
+    for sql in ("SELECT * FROM ontology.four", 'SELECT * FROM "ontology"."four"'):
+        assert expand_view_refs(sql, _CLASS_FOUR) == f'SELECT * FROM ({body}) "four"'
+    assert expand_view_refs('SELECT * FROM "x"."ontology"."four" AS c', _CLASS_FOUR) == (
+        f"SELECT * FROM ({body}) AS c"
+    )
+
+
+def test_views_read_finds_a_class_only_where_the_ontology_schema_is_named() -> None:
+    from provisa.mv.view_read import views_read
+
+    assert views_read("SELECT id FROM sales.four", _CLASS_FOUR) == {}
+    assert set(views_read('SELECT * FROM "ontology"."four"', _CLASS_FOUR)) == {"ontology.four"}
