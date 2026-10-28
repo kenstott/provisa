@@ -126,6 +126,7 @@ _SCALAR_NAMES = frozenset(
 _STANDALONE_CATALOG_FUNCTIONS = frozenset(
     {
         "pg_encoding_to_char",
+        "has_table_privilege",
         "pg_get_function_arguments",
         "pg_get_function_identity_arguments",
         "pg_get_function_result",

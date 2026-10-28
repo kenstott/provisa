@@ -33,6 +33,8 @@ from provisa.pgwire.catalog_pg17_tables import (
 )
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_macros import populate_catalog_macros
+from provisa.security.rights import Capability, has_capability
+from provisa.pgwire.catalog_privileges import populate_privilege_macros, populate_table_privileges
 from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
 from provisa.pgwire.catalog_data import (
     UNQUERIED_RELATIONS,
@@ -1001,9 +1003,20 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_system_attributes(db)
     _populate_pg_type(db)
     _populate_empty_system_tables(db)
+    roles = getattr(state, "roles", None)
+    role = roles.get(role_id) if isinstance(roles, dict) else None
+    raw_tables = state.schema_build_cache.get("tables", []) if state else []
+    populate_table_privileges(  # REQ-2167: has_table_privilege, pg_get_expr
+        db,
+        idx,
+        ctx,
+        raw_tables,
+        role_id,
+        isinstance(role, dict) and has_capability(role, Capability.WRITE),
+    )
+    populate_privilege_macros(db, role_id)
     _populate_pg_extension(db)  # REQ-892: advertise enabled extension surfaces
     populate_functions(db, state, role_id, idx.database)  # REQ-872
-    raw_tables = state.schema_build_cache.get("tables", []) if state else []
     raw_domains = state.schema_build_cache.get("domains", []) if state else []
     _populate_pg_description(db, idx, raw_tables, raw_domains, metrics)
     constraint_rows = _populate_pg_constraint(db, ctx, idx)
