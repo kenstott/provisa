@@ -29,6 +29,7 @@ import decimal
 import logging
 import os
 import re
+import socket
 import socketserver
 import ssl
 import struct
@@ -671,6 +672,73 @@ def _register_reg_types() -> None:
 _register_reg_types()
 
 
+# REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): a statement that only calls one of the server functions
+# Provisa answers on its own connections.
+_SERVER_FUNCTION_RE = re.compile(
+    r'^\s*SELECT\s+(?:pg_catalog\s*\.\s*)?"?(?P<name>pg_backend_pid|pg_cancel_backend|'
+    r'pg_terminate_backend)"?\s*\((?P<args>[^()]*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
+    re.IGNORECASE,
+)
+
+#: The server functions no client of Provisa may call: they act on a PostgreSQL server's own files,
+#: configuration, recovery or locks, which Provisa has none of a client may reach (REQ-2167).
+#: pg_advisory_unlock_all is answered (catalog.py): no lock is ever held, so all are released.
+REFUSED_SERVER_FUNCTIONS = frozenset(
+    {
+        "pg_reload_conf",
+        "pg_read_file",
+        "pg_read_binary_file",
+        "pg_stat_file",
+        "pg_create_restore_point",
+        "pg_advisory_lock",
+        "pg_advisory_lock_shared",
+        "pg_try_advisory_lock",
+        "pg_try_advisory_lock_shared",
+        "pg_advisory_xact_lock",
+        "pg_advisory_xact_lock_shared",
+        "pg_try_advisory_xact_lock",
+        "pg_try_advisory_xact_lock_shared",
+        "pg_advisory_unlock",
+        "pg_advisory_unlock_shared",
+    }
+)
+
+
+def refuse_server_function(sql: str) -> None:  # REQ-2167
+    """Refuse a statement that calls a server function Provisa does not carry, naming it."""
+    lowered = sql.lower()
+    if not any(name in lowered for name in REFUSED_SERVER_FUNCTIONS):
+        return
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.definitions import NotAvailableHere
+
+    for fn in sqlglot.parse_one(sql, read="postgres").find_all(exp.Anonymous):
+        name = fn.name.lower()
+        if name in REFUSED_SERVER_FUNCTIONS:
+            raise NotAvailableHere(
+                f"{name} is not available through Provisa: it acts on a PostgreSQL server's own "
+                "files, configuration, recovery or locks"
+            )
+
+
+def _evaluated_pid(args: str) -> int | None:
+    """The pid a call names: its first argument, a literal or a constant expression, evaluated;
+    None when it is NULL."""
+    import duckdb
+    import sqlglot
+
+    import sqlglot.expressions as exp
+
+    first = cast(exp.Select, sqlglot.parse_one(f"SELECT {args}", read="postgres")).selects[0]
+    sql = sqlglot.transpile(
+        f"SELECT CAST(({first.sql(dialect='postgres')}) AS BIGINT)", read="postgres", write="duckdb"
+    )[0]
+    ((pid,),) = duckdb.connect().execute(sql).fetchall()
+    return pid
+
+
 def _undescribed_read_shape(plan: Any, shape: Any) -> list[tuple[str, str]] | None:  # REQ-2171
     """The read shape an undescribed statement's subtyped columns keep their PostgreSQL type by:
     a row-returning read's. None for a described statement (sent by its description), for a
@@ -1191,8 +1259,11 @@ def _normalize_cursor_name(raw: str) -> str:
 
 
 class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
-    def __init__(self) -> None:
+    def __init__(self, peers: dict | None = None) -> None:
         super().__init__()
+        # REQ-2167: the server's connections, by backend process id -- what pg_cancel_backend and
+        # pg_terminate_backend name. A session made outside a server has none.
+        self.peers: dict = {} if peers is None else peers
         self.role_id: str | None = None
         # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
         # their meta-role, made again in this session's org before each statement (a model rebuild
@@ -1351,6 +1422,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         from provisa.pgwire.catalog import classify
 
         stripped = sql.strip()
+        refuse_server_function(stripped)  # REQ-2167
+        if _SERVER_FUNCTION_RE.match(stripped):
+            return self._execute_sql_bound(sql, params, None)
         if classify(stripped) == "INTERCEPT":
             return self._execute_sql_bound(sql, params, None)
         if self.role_id is None:
@@ -1387,6 +1461,55 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 raise RuntimeError(_COMMAND_NOT_REDIRECTED)
             return _StatementDescription(_REDIRECT_SHAPE, described.governed, stripped)
         return _StatementDescription(described.shape, described.governed, stripped)
+
+    def _server_function(self, match: re.Match[str]) -> Any:  # REQ-2167
+        """pg_backend_pid(), pg_cancel_backend(pid) or pg_terminate_backend(pid[, timeout]), on
+        this server's pgwire connections: a pid this server has no connection of answers false,
+        as PostgreSQL's does for a pid that is no backend of its."""
+        from provisa.executor.result import QueryResult
+
+        name = match["name"].lower()
+        column = match["alias"] or name
+        if name == "pg_backend_pid":
+            return QueryResult(
+                rows=[(self.process_id,)], column_names=[column], column_types=["INTEGER"]
+            )
+        pid = _evaluated_pid(match["args"])
+        if pid is None:
+            return QueryResult(rows=[(None,)], column_names=[column], column_types=["BOOLEAN"])
+        target = self.peers.get(pid)
+        if target is None:
+            return QueryResult(rows=[(False,)], column_names=[column], column_types=["BOOLEAN"])
+        peer = cast(ProvisaSession, target.session)
+        if not self._may_end(peer):
+            raise PermissionError(
+                f"{name}: the connection with pid {pid} is another user's; ending it takes the "
+                "user_management right in its org"
+            )
+        if name == "pg_cancel_backend":
+            deadline = peer.statement_deadline
+            if deadline is not None:
+                deadline.expire("canceling statement due to user request")
+        else:
+            deadline = peer.statement_deadline
+            if deadline is not None:
+                deadline.expire("terminating connection due to administrator command")
+            target.connection.shutdown(socket.SHUT_RDWR)
+        return QueryResult(rows=[(True,)], column_names=[column], column_types=["BOOLEAN"])
+
+    def _may_end(self, peer: "ProvisaSession") -> bool:
+        """Whether this session may cancel or end ``peer``'s statement: its own user's in its org,
+        or any of its org's for a caller with the user_management right. Another org's session is
+        never one (REQ-2167)."""
+        if peer.org_id != self.org_id:
+            return False
+        if peer.user_id is not None and peer.user_id == self.user_id:
+            return True
+        from provisa.api.app import state
+        from provisa.security.rights import Capability
+
+        claims = getattr(self.identity, "roles", []) or []
+        return Capability.USER_MANAGEMENT in capabilities_for_claims(claims, state.roles)
 
     def _with_org(self, fn: Callable[[], Any]) -> Any:
         # REQ-1266: bind this session's org on the connection thread so the sync state.X reads
@@ -1460,6 +1583,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # query) reads the values inline.
         stripped = sql.strip()
         bound = list(params) if params else None
+        refuse_server_function(stripped)  # REQ-2167
+        server_function = _SERVER_FUNCTION_RE.match(stripped)
+        if server_function is not None:
+            return ProvisaQueryResult(self._server_function(server_function), stripped)
         # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
         if self._set_redirect(stripped) or self._set_time_travel(stripped):
             from provisa.executor.result import QueryResult
@@ -1803,8 +1930,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
 
 class ProvisaConnection(Connection):  # REQ-529
+    def __init__(self) -> None:
+        super().__init__()
+        # The server's connections by backend process id (ProvisaServer.ctxts is this dict).
+        self.peers: dict = {}
+
     def new_session(self) -> ProvisaSession:
-        return ProvisaSession()
+        return ProvisaSession(self.peers)
 
     def parameters(self) -> dict[str, str]:
         # Startup ParameterStatus set. server_version declares PG 14, so we
@@ -2976,7 +3108,7 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}
-        self.ctxts: dict = {}
+        self.ctxts: dict = conn.peers
         self.auth = None
         self.ssl_ctx = ssl_ctx
 
