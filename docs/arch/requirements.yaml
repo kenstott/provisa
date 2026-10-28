@@ -47223,7 +47223,14 @@
     edges conduct both ways, as the two words mean the same thing. Related-to, derived-from, replaces, translation-of
     and antonym-of edges do not conduct grounding. So a term is never grounded in a sibling''s data by going
     up to a shared parent and back down. The metadata export publishes an approved term a curator later
-    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish.'
+    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish. (Amended 2026-10-28,
+    DEFINITIONS ARE VERSIONED; EDGES ARE RETIRED, NOT DELETED:) A term''s lifecycle is already kept; its
+    definition is versioned too. Editing the definition (and its examples) of an approved term writes the
+    next version and keeps every earlier one read-only; a draft''s definition is edited in place until it
+    is approved. The term page steps through the definition''s versions with a difference between them.
+    A relationship between terms (KIND_OF, PART_OF, VALID_VALUE_OF, SYNONYM_OF and the others) is never
+    deleted: removing it retires it, kept with the time it was retired. A retired edge does not conduct
+    grounding and is not shown as current, but remains for history and for resolving citations.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -90795,7 +90802,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     used, for people and agents alike. A term-only citation, for meaning used without data (a definitional
     answer, a policy judgement, a drafted text), holds the term''s URI, its definition as it read then (fixed
     by the model version), and its status and grounding at the time; a route citation, when data was used,
-    holds the record above. Term discovery returns term-only citations, data discovery route citations.'
+    holds the record above. Term discovery returns term-only citations, data discovery route citations.
+    (Amended 2026-10-28, A CITATION NAMES THE TERM VERSIONS IT USED:) A citation records the version of
+    each term''s definition it used, and a route citation the edges of its route. Resolving a citation shows
+    the definitions as of those versions and the route as it was, retired edges included, so it reproduces
+    the meaning the answer used; where a term has a newer definition or an edge of the route is retired,
+    the resolved citation says so (since revised, since retired).'
   scenario: 'Given an approved, grounded term Customer bound to sales.customers
     When an agent resolves Customer and reads a row
     Then its answer carries a citation naming Customer''s URI and grounding, the path to sales.customers, the row''s
