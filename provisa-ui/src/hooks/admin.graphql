@@ -211,6 +211,7 @@ query DataProductsQuery {
     support
     supportContact
     customProperties
+    createdAt
   }
 }
 

@@ -259,7 +259,7 @@ export function DataProductDetailPanel({
   openProduct,
   statusActions,
 }: DataProductDetailPanelProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   // REQ-1640/REQ-1627: expanded by default, same as statement lineage's initial view — this
   // subgraph (member tables + one relation-hop) is small like a single query's lineage, not
@@ -378,6 +378,11 @@ export function DataProductDetailPanel({
     { label: t("dataProductsTab.purposeLabel"), value: product.purpose },
     { label: t("dataProductsTab.limitationsLabel"), value: product.limitations },
     { label: t("dataProductsTab.usageLabel"), value: product.usage },
+    // REQ-2118: when the product was created; read-only, set when it was first saved.
+    {
+      label: t("dataProductsTab.createdAtLabel"),
+      value: new Date(product.createdAt).toLocaleString(i18n.language),
+    },
   ];
 
   const sqlDrill = (tb: TableRef & { id: number }, testId: string) => (

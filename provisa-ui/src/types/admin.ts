@@ -118,6 +118,8 @@ export interface DataProduct {
   /** The support contact (email or URL) a catalog listing requires. */
   supportContact?: string | null;
   customProperties: Record<string, unknown>;
+  /** When the product was created (ISO 8601), its ODPS productCreatedTs; set on insert. */
+  createdAt: string;
 }
 
 // REQ-2158: a column an output port promises, of the type it is stored as.

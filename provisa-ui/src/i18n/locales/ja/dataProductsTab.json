@@ -18,6 +18,7 @@
     "limitationsLabel": "制限事項",
     "limitationsPlaceholder": "既知の制約、注意点、または除外事項",
     "usageLabel": "使用方法",
+    "createdAtLabel": "作成日時",
     "usagePlaceholder": "このデータプロダクトの利用方法",
     "versionLabel": "バージョン",
     "versionPlaceholder": "例: 1.2.0",
