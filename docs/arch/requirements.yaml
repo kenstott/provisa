@@ -89476,7 +89476,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is granted to Data buyer. A Derive sample action on a contract proposes the Data buyer masks (from the
     profiler''s classifications) and row rule for the owner to edit and save; the docs give guidance (columns
     that identify someone in combination, small tables, keys that must fake consistently for samples to
-    join) and Provisa adds no checks.'
+    join) and Provisa adds no checks. (Amended 2026-10-28, A PUBLISHED CONTRACT HOLDS ITS PROMISE; CONFORMANCE
+    IS A PROMISE CHECK:) A contract''s schema is read live from its member, so a change to the member could
+    change what a published contract promises without a new version. Publishing a contract version therefore
+    snapshots the member''s schema as it is then: columns, types, and the properties derived from them.
+    Every published contract has a built-in schema-conformance check among its promises (REQ-2157): does
+    the member still match the published snapshot? A column added is additive. A column removed, renamed
+    or retyped is breaking, and so is a column narrowed: a shorter length, a lower precision or scale, a
+    narrower numeric type, or a nullable column made required where the snapshot promised it could be null
+    (or the reverse, where consumers rely on it). Saving a member is never refused. The table view already
+    shows the products a table belongs to, and on save the editor shows the difference from each published
+    snapshot, labelled additive or breaking. The data quality steward sets the check''s severity per contract,
+    warn or fail, and triages a failing result: the owner publishes a new version for an intended change,
+    or the member''s change is reverted. A failing check shows the contract as behind its member, with the
+    difference, in the data quality panel and on the contract. Published versions are kept: the Contracts
+    panel steps through them with a schema difference between versions. Each version has an effective_from
+    date, so an owner can announce a version before it takes effect. Publishing a new version notifies the
+    product''s consumers by email (REQ-1330).'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -90863,7 +90879,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (REQ-1330): a submitted request to the users holding the approving role (the product''s owner role for
     an access request, security and org admins for a role request), and an approval, decline or withdrawal
     to the requester and the approvers. The product page''s Your request strip (REQ-2181) is the in-app
-    view of the same requests.'
+    view of the same requests. (Amended 2026-10-28, SUGGEST A PRODUCT FROM A LISTED TABLE:) A listed table
+    is not requested directly. A person who finds a listed table (REQ-2153) they need suggests a product:
+    the suggestion names the table, or several tables of the same domain, and states its reason. It goes
+    to the domain''s data product owners and data stewards, with an email notification. A steward builds
+    a product from it, adds the table to an existing product, or declines with a reason; the suggester sees
+    the outcome. Suggestions are counted per table, so a domain sees which listed tables are most wanted.
+    Listed means "it exists, ask us"; a product means "we commit to this".'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -90948,7 +90970,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     owner role, the role request with its breadth check, and two approvals with reasons and email notifications.
     The recap shows the timestamps of the requests and approvals, so the visitor sees minutes where they
     expect weeks. Use case: A visitor sees how Provisa answers: can we offer our data as products, and can
-    our people find the right data and get access to it the same day?'
+    our people find the right data and get access to it the same day? (Amended 2026-10-28, THE DILEMMAS
+    ARE SHOWN, NOT GLOSSED:) The tour shows the hard parts of data products as real moments rather than
+    implying they are easy. Act one opens with demand: the owner sees suggestions against a listed table,
+    decides what to promise, and builds the product from it. One step shows promise discipline: the owner
+    changes a published member, the conformance check marks the contract behind its member, and a new contract
+    version is published. Act two includes a wrong turn: the buyer first names a broad team role, the owner
+    declines it as too broad, and the buyer is redirected to a prefilled role request. The recap lists the
+    dilemmas the visitor walked through, each with Provisa''s answer, and links to the data products page
+    in the docs and to /why/data-products: what a product is (what a domain promises outside itself), listed
+    or product, who owns access, which role to ask under, judging data before access, the producer''s cost,
+    promise discipline, and partial access.'
   use_case: 'A visitor opens the data marketplace demo and sees how Provisa answers: How do our people find data they may use, and get access without a ticket queue?'
   scenario: 'Given the data marketplace demo started from its bundle
     When a visitor walks its tour to the end
