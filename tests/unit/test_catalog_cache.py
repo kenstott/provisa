@@ -396,6 +396,94 @@ async def test_a_source_that_never_starts_is_reported_once_by_name(stores, monke
     assert await catalog_cache.read_cache(tenant_db, "test", "sec") is None
 
 
+def _driver_listed_source_arranged(monkeypatch, native_tables):
+    """A source whose driver lists its tables (govdata's adapter information_schema) and that
+    the engine holds no live attach of: the driver's list is the only list."""
+    from provisa.api.admin import introspect
+
+    async def _schemas(source_id, source_type, pools, conn):
+        return ["weather"]
+
+    async def _unattached(state, source_id):
+        return "no live attach"
+
+    monkeypatch.setattr(introspect, "native_schemas", _schemas)
+    monkeypatch.setattr(introspect, "native_tables", native_tables)
+    monkeypatch.setattr(introspect, "unattached_source", _unattached)
+
+
+@pytest.mark.asyncio
+async def test_a_driver_list_refused_while_the_source_starts_is_indexed_once_it_has_started(
+    stores, monkeypatch, caplog
+):
+    """The driver's table list of a source whose server is preparing its catalog is answered
+    STARTING (a read the server cancelled while it waited behind that preparation). That is
+    "index later", as on the attach seam: the index asks again, and nothing is warned."""
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.discovery import catalog_cache
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+
+    model_db, tenant_db = stores
+    refusals = [2]
+
+    async def _native_tables(source_id, source_type, schema, pools, conn, state):
+        if refusals[0] > 0:
+            refusals[0] -= 1
+            raise SourceStillStartingError(source_id, preparing_catalog=True)
+        return [AvailableTableType(name="nws_stations", comment=None)]
+
+    _driver_listed_source_arranged(monkeypatch, _native_tables)
+    waits: list[float] = []
+
+    async def _sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(catalog_cache, "_wait", _sleep)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await catalog_cache.index_source(
+            "gd", model_db, MagicMock(), None, {"gd": "govdata"}, state
+        )
+
+    assert waits == [catalog_cache.INDEX_STARTING_POLL_SECONDS] * 2
+    assert caplog.text == ""
+    found = await catalog_cache.read_cache(tenant_db, "gd", "weather")
+    assert found is not None and [t.table_name for t in found] == ["nws_stations"]
+
+
+@pytest.mark.asyncio
+async def test_a_driver_list_whose_server_exited_is_reported_once_by_name(
+    stores, monkeypatch, caplog
+):
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+    from provisa.federation.pgwire_replica import ServerExited
+
+    model_db, tenant_db = stores
+
+    async def _native_tables(source_id, source_type, schema, pools, conn, state):
+        raise ServerExited(source_id, 1, "boom")
+
+    _driver_listed_source_arranged(monkeypatch, _native_tables)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await catalog_cache.index_source(
+            "gd", model_db, MagicMock(), None, {"gd": "govdata"}, state
+        )
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1, warnings
+    assert "'gd' is not indexed" in warnings[0]
+    assert await catalog_cache.read_cache(tenant_db, "gd", "weather") is None
+
+
 @pytest.mark.asyncio
 async def test_an_engine_with_no_attach_seam_is_still_asked_for_its_catalog(stores, monkeypatch):
     """A federator (Trino) lists a source through a catalog of its own, columns included:

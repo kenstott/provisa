@@ -466,6 +466,7 @@ async def _index_source_once(
         native_tables,
         unattached_source,
     )
+    from provisa.federation.pgwire_replica import ServerNotServing
 
     source_type = source_types.get(source_id, "")
     _new_index_generation(source_id)  # its schemas' columns are loaded afresh on first search
@@ -477,6 +478,8 @@ async def _index_source_once(
     try:
         async with pool.acquire() as config_conn:
             schemas = await native_schemas(source_id, source_type, source_pools, config_conn)
+    except ServerNotServing:
+        raise  # still starting: index_source asks again; otherwise reported there by name
     except Exception as exc:
         log.warning("catalog_cache: schema list failed for %r: %s", source_id, exc)
         schemas = None
@@ -508,6 +511,8 @@ async def _index_source_once(
                 tables = await native_tables(
                     source_id, source_type, schema, source_pools, config_conn, state
                 )
+        except ServerNotServing:
+            raise  # still starting: index_source asks again; otherwise reported there by name
         except Exception as exc:
             log.warning(
                 "catalog_cache: the driver's table list failed for %r/%r: %s",
