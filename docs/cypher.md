@@ -191,9 +191,12 @@ Rules:
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. New labels or types cannot be created through Cypher.
 - Every write is gated on the target table's write grants: the role needs the `write` right and a grant for the operation, and the columns written must be in the grant. A role without them is rejected at compile time.
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time.
-- Relationships cannot be written: they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge.
+- A relationship backed by a foreign key or by columns on one of its end tables is read-only. Writing one is refused by name.
+- A relationship backed by a registered junction table is writable as an edge. `CREATE (a)-[:TYPE]->(b)` inserts the junction row when both ends are already matched in the statement; `DELETE` of such an edge deletes that row; `SET` of its properties updates it. The write is governed exactly like any other write on the junction table: write grants, row rules, masks and the role's admission all apply. A relationship type the model does not register, or one registered between other labels than the two nodes it joins, is refused by name. Both end nodes must be matched in the same statement; a relationship write never creates its end nodes.
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload).
-- `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time.
+- `MERGE` rewrites to MATCH then CREATE under the same write rules above: a governed model write when the result label names exactly one model table, ephemeral otherwise.
+- `DETACH DELETE` of a model node is governed when its label names exactly one model table and each relationship it detaches is a registered junction row. A foreign-key relationship cannot be detached and is refused by name.
+- `REMOVE` is unsupported on model nodes and rejected at parse time.
 
 ---
 
@@ -210,11 +213,68 @@ Cypher reaches the same governed pipeline over two transports:
 
 ---
 
+## Graph Session
+
+Each Bolt connection and each pgwire connection carries a session graph. Within that session you can create nodes and relationships that exist only in memory — visible to your connection alone, dropped when the connection closes — and read them beside your governed model data in the same query.
+
+### Creating ephemeral nodes
+
+A `CREATE` that names a label the model does not register produces an ephemeral node. Labels follow the same `Domain:Table` convention as model nodes, with one reserved domain, `Session`:
+
+```cypher
+CREATE (:Session:Note {text: 'follow up tomorrow'})
+CREATE (:Note {text: 'draft'})           -- resolves to Session:Note
+```
+
+The first free label in a `CREATE` becomes the node's storage table in the session domain. Each further label is a tag: it goes in a session `node_labels` table so `MATCH (n:Tag)` finds the node and `labels(n)` lists all its labels. A `CREATE` naming a domain label is refused by name; session nodes never join a governed domain.
+
+A `CREATE` naming exactly one model table and no free labels is a governed model write, as before.
+
+### Creating ephemeral relationships
+
+An ephemeral relationship may carry any type name. When its type name matches a registered junction type and both end nodes are matched model nodes, it is a governed junction write (see §Writes). Every other relationship — one end ephemeral, or a type the model does not register — is session-scoped.
+
+```cypher
+MATCH (c:Customer {id: 42})
+CREATE (n:Note {text: 'call back'})
+CREATE (c)-[:HAS_NOTE]->(n)
+```
+
+The `Customer` row is governed; the `Note` and `HAS_NOTE` are session-only.
+
+### Reading session data beside governed data
+
+A `MATCH` on a label with session matches expands to include those matches alongside the model's rows, under the role's governance. Labels with no session matches compile exactly as before: nothing changes for a session that holds no ephemeral objects.
+
+```cypher
+MATCH (c:Customer)-[:HAS_NOTE]->(n:Note) RETURN c.name, n.text
+```
+
+If the session holds `Note` nodes, this returns model customers joined to their session notes. The governed `Customer` rows are read under the role's row rules and masks as always.
+
+`labels(n)` on a model node returns its `Domain:Table` plus any session tags you added with `SET n:Tag`. On an ephemeral node it returns the labels the `CREATE` gave it.
+
+### Adding and removing labels on live nodes
+
+`SET n:Label` adds a label to any node in the session. On a model node it records a session tag; the model itself is not changed. `REMOVE n:Label` removes a session tag from a model node, or any label from an ephemeral node. Label writes on model nodes end with the session.
+
+### Session scope
+
+On Bolt the session is the connection. On HTTP Cypher and MCP, which have no persistent connection, the session is one request: ephemeral objects you create in a statement are visible to the rest of the same request body and gone when the response is sent.
+
+One session store serves all languages over that connection: a pgwire temp table is also an ephemeral table to Cypher, and a Cypher session node is a temp table to SQL.
+
+### Clearing the session
+
+Send `CALL db.clearSession()` to drop all ephemeral objects for the current connection at once. The session graph is also cleared when the connection closes.
+
+---
+
 ## Limitations
 
 ### Design constraints
 
-1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. See §Writes above. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. APOC procedures are also rejected.
+1. **Write clauses supported: `CREATE`, `MATCH … SET`, `MATCH … DELETE`, `MERGE`, and `DETACH DELETE`.** Each executes as a governed table write. `MERGE` runs MATCH then CREATE under the same write rules. `DETACH DELETE` is governed when the node has an exact model target and each detached relationship is a registered junction. `REMOVE` is not supported. APOC procedures are not supported.
 
 2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema: it's an edge here and a table everywhere else.
 

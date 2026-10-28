@@ -323,7 +323,7 @@ Five views expose the glossary's contents:
 | `_domains` | Domain membership: the term name and each domain it belongs to. |
 | `_experts` | Expert assignments: the term name, user ID, and role (`expert` or `author`). |
 
-A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns for subject, predicate, and object. TBD: exact column names and datatypes for `_axioms`. Tools that prefer triples over tabular rows read from here.
+A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns `subject` (IRI text), `predicate` (IRI text), and `object` (IRI or literal text). Tools that prefer triples over tabular rows read from here.
 
 A **term binding** — a term bound to a column, recorded in `_term_refs` — is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
 
@@ -331,7 +331,7 @@ A **term binding** — a term bound to a column, recorded in `_term_refs` — is
 
 Each live Class term becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
 
-In a union view, every source table's rows appear, with a column identifying which table each row came from. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column. TBD: the name of the source-table column.
+In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from: it holds the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
 
 Every column in a Class view corresponds to a bound Property. The view is governed through the same pipeline as any other read.
 
