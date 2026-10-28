@@ -102,8 +102,8 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         ),
         -- Each conducting edge as (a, b): b is directly above a on a path down to data. A kind,
         -- part or valid value (from_term_id) sits below the term it narrows (to_term_id); a
-        -- synonym conducts both ways; every other edge type conducts nothing (REQ-1387, DOWN IS
-        -- FROM BROADER TO NARROWER: provisa.core.glossary.NARROWING_EDGE_TYPES and
+        -- synonym conducts both ways; every other edge type conducts nothing (the same rule as
+        -- provisa.core.glossary.NARROWING_EDGE_TYPES and
         -- EQUIVALENCE_EDGE_TYPES).
         conducting_edges AS (
             SELECT e.from_term_id AS a, e.to_term_id AS b
