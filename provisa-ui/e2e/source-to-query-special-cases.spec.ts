@@ -65,6 +65,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 import {
   ASKAMERICA_SERVING_BUDGET_MS,
   openRegisterForm,
@@ -158,6 +159,20 @@ test.describe("google_sheets: source to query through the UI (REQ-1742)", () => 
 test.describe("govdata: source to query through the UI (REQ-1742)", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
+  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
+  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
+  // outcome.
+  let created: string | undefined;
+  test.afterEach(async ({ page }) => {
+    if (created === undefined) return;
+    const id = created;
+    created = undefined;
+    await deleteSourceAndItsTables(async (query, variables) => {
+      const res = await page.request.post("/admin/graphql", { data: { query, variables } });
+      return res.json();
+    }, id);
+  });
+
   test("add the source, register a weather table, query it on the SQL page", async ({ page }) => {
     test.skip(
       !apiKey,
@@ -178,6 +193,7 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     test.setTimeout(ASKAMERICA_SERVING_BUDGET_MS + 300000);
     const stamp = Date.now();
     const sourceId = `e2e_govdata_${stamp}`;
+    created = sourceId;
 
     // 1. Sources form — one data subject checked (Weather), API key filled
     await openSourcesForm(page);

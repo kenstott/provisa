@@ -1003,29 +1003,35 @@ export function SourcesPage() {
     e.preventDefault();
     setError(null);
     try {
-      const resp = await fetch("/admin/openapi/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          form.type in BRAND_CARRIER
-            ? // REQ-1923: a branded source sends its brand and a credential; the spec and the
-              // address are the brand's, and no tables are registered by adding it.
-              { source_id: form.id, brand: form.type, token: authFields.token ?? "" }
-            : {
-                ...(openapiSpecMode === "inline"
-                  ? { spec_content: openapiSpecInline }
-                  : { spec_path: openapiSpecPath }),
-                base_url: openapiBaseUrl || undefined,
-                source_id: form.id,
-                domain_id: "",
-                auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
-                cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
-              },
-        ),
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(serverMessage(body, requestFailed("OpenAPI register", resp.status)));
+      // A branded source's edit with no token typed keeps the credential stored with it (REQ-320:
+      // never read back): re-registering would ask for one, so only its settings are saved.
+      const keepsStored =
+        editingSourceId !== null && form.type in BRAND_CARRIER && !authFields.token;
+      if (!keepsStored) {
+        const resp = await fetch("/admin/openapi/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            form.type in BRAND_CARRIER
+              ? // REQ-1923: a branded source sends its brand and a credential; the spec and the
+                // address are the brand's, and no tables are registered by adding it.
+                { source_id: form.id, brand: form.type, token: authFields.token ?? "" }
+              : {
+                  ...(openapiSpecMode === "inline"
+                    ? { spec_content: openapiSpecInline }
+                    : { spec_path: openapiSpecPath }),
+                  base_url: openapiBaseUrl || undefined,
+                  source_id: form.id,
+                  domain_id: "",
+                  auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
+                  cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
+                },
+          ),
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+          throw new Error(serverMessage(body, requestFailed("OpenAPI register", resp.status)));
+        }
       }
       // REQ-1907: the cache TTL offered at create, as the GraphQL and generic paths apply it.
       const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
