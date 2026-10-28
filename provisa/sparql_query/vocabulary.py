@@ -244,12 +244,13 @@ def column_types_of(lm: CypherLabelMap, ctx: object) -> dict[tuple[str, str], st
 
 
 def concepts_of(base: str, terms: list[dict]) -> list[dict]:
-    """The live Concept terms of ``terms`` (glossary list rows): a term that grounds no table and
-    no column (REQ-2141) and that every consuming surface may offer (``live``), as IRIs."""
+    """The Concept terms of ``terms`` (glossary list rows) an agent may see by name: a term that
+    grounds no table and no column (REQ-2141) and that ``agent_visible`` admits (REQ-1387), as
+    IRIs."""
     return [
         {"iri": term_iri(base, t["name"]), "name": t["name"], "definition": t["definition"]}
         for t in terms
-        if t["is_abstract"] and t["live"]
+        if t["is_abstract"] and t["agent_visible"]
     ]
 
 

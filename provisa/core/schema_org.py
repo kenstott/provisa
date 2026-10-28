@@ -680,6 +680,8 @@ glossary_terms = Table(
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
     Column("export_excluded", Boolean, nullable=False, server_default=false()),
+    # REQ-1387 (STATUS IS HUMAN): a steward approved the term (schema.sql).
+    Column("approved", Boolean, nullable=False, server_default=false()),
     # REQ-2144: the asserted parts of a term's status (schema.sql).
     Column("deprecation_asserted", Boolean, nullable=False, server_default=false()),
     Column("status_reason", Text),

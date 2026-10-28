@@ -32,6 +32,7 @@ so the boundary regexes here serve a different output alphabet.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -301,31 +302,62 @@ def readable_term(allowed: "AbstractSet[str] | None", term_domains: "AbstractSet
     return ENTERPRISE_DOMAIN in term_domains or within_domains(allowed, term_domains)
 
 
+# ---------------------------------------------------------------------------
+# Status and grounding (REQ-1387, STATUS IS HUMAN, GROUNDING IS COMPUTED)
+# ---------------------------------------------------------------------------
+
+#: A term's status, set by people: draft (the default), approved (a steward's choice, which needs
+#: a definition), deprecated or retired.
+TERM_STATUSES = ("draft", "approved", "deprecated", "retired")
+
+#: A term's grounding, computed and never set.
+GROUNDED = "grounded"
+GROUNDED_PENDING = "grounded_pending"
+NOT_GROUNDED = "not_grounded"
+GROUNDINGS = (GROUNDED, GROUNDED_PENDING, NOT_GROUNDED)
+
+
+def term_status(term: "Mapping") -> str:
+    """A term's status from its stored flags: retired, deprecated (the derivation lost its last
+    column, or a curator deprecated it), approved, else draft."""
+    if term.get("retired"):
+        return "retired"
+    if term.get("deprecated") or term.get("deprecation_asserted"):
+        return "deprecated"
+    return "approved" if term.get("approved") else "draft"
+
+
+def _conducting(terms: "Iterable[Mapping]") -> dict[int, "Mapping"]:
+    """The terms a chain passes through: every term in service. A deprecated or retired term
+    breaks the chain."""
+    return {t["id"]: t for t in terms if term_status(t) in ("draft", "approved")}
+
+
+def _adjacency(
+    conducting: "AbstractSet[int]", edges: "Iterable[tuple[int, int]]"
+) -> dict[int, set[int]]:
+    adjacency: dict[int, set[int]] = {}
+    for a, b in edges:
+        if a in conducting and b in conducting and a != b:
+            adjacency.setdefault(a, set()).add(b)
+            adjacency.setdefault(b, set()).add(a)
+    return adjacency
+
+
 def grounded_term_ids(
     terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
 ) -> set[int]:
-    """Term ids connected, over in-service terms, to a term holding a physical ref.
+    """Term ids connected, over in-service terms, to a term holding a physical ref: every term
+    whose grounding is not ``not_grounded``.
 
-    Structural only — ignores ``definition``, unlike :func:`live_term_ids`. This is what a
-    curation surface checks to warn on a dangling abstract term: one with no definition is
-    merely a proposal, but one with no path to a column names no data at all, which a missing
-    definition alone does not convey.
-
-    ``rooted`` is the set of term ids holding at least one physical ref, to a column or to a whole
-    table (REQ-1387, GROUNDED TO A TABLE). Callers supply it
-    because the two callers count refs differently: the repository counts every ref, the
-    exporter counts only refs whose column actually publishes.
+    Structural only: status and definition do not matter, and a deprecated or retired term
+    conducts nothing. ``rooted`` is the set of term ids holding at least one physical ref, to a
+    column or to a whole table (REQ-1387, GROUNDED TO A TABLE). Callers supply it because they
+    count refs differently: the repository counts every ref, the exporter counts only refs whose
+    column actually publishes.
     """
-    by_id = {t["id"]: t for t in terms}
-    conducting = {
-        tid for tid, t in by_id.items() if not t.get("retired") and not t.get("deprecated")
-    }
-    adjacency: dict[int, set[int]] = {}
-    for a, b in edges:
-        if a not in conducting or b not in conducting:
-            continue
-        adjacency.setdefault(a, set()).add(b)
-        adjacency.setdefault(b, set()).add(a)
+    conducting = _conducting(terms)
+    adjacency = _adjacency(set(conducting), edges)
     frontier = [tid for tid in rooted if tid in conducting]
     grounded = set(frontier)
     while frontier:
@@ -336,27 +368,186 @@ def grounded_term_ids(
     return grounded
 
 
-def live_term_ids(
-    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+def _clean_ids(
+    conducting: "Mapping[int, Mapping]",
+    adjacency: "Mapping[int, set[int]]",
+    rooted: "AbstractSet[int]",
+    approved: "AbstractSet[int]",
 ) -> set[int]:
-    """The terms a consuming surface may offer, by the one admission rule (REQ-1387).
+    """The terms with a path down to data that has no draft term strictly between the term and
+    the term at the data end. A term holding a binding is its own data end; a term next to one,
+    or next to an approved term that has such a path, has one too."""
+    frontier = [tid for tid in rooted if tid in conducting]
+    clean = set(frontier)
+    while frontier:
+        current = frontier.pop()
+        # Only a binding (the data end) or an approved term may stand between a term and data.
+        if current not in rooted and current not in approved:
+            continue
+        for neighbor in adjacency.get(current, ()):
+            if neighbor not in clean:
+                clean.add(neighbor)
+                frontier.append(neighbor)
+    return clean
 
-    A term is live when it is all three of:
 
-    * **in service** — neither ``retired`` (a curator took it out) nor ``deprecated``
-      (the derivation lost its last column but the row was kept as an anchor);
-    * **defined** — it carries a definition. A term derived from a column name is a
-      token, not a meaning: "customer" off ``cust_id`` tells an agent nothing the schema
-      does not already say, so an undefined term is a proposal awaiting a curator, never
-      vocabulary to ground a question on;
-    * **grounded** — see :func:`grounded_term_ids`. The glossary is an entry point into
-      the data, so every chain must terminate at a column; an abstract term wired to
-      nothing physical names no data and cannot answer anything.
+def term_grounding(
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+) -> dict[int, str]:
+    """Every term's grounding (REQ-1387, GROUNDING LOOKS DOWN, STRICTLY BETWEEN).
 
-    Connectivity is structural and ignores definitions: an abstract term reaches data
-    through an undefined rooted term just as well as a defined one. Out-of-service terms
-    do not conduct — a retired term must not keep its dependents alive.
+    A term's grounding looks only down its own paths to data, never at the term itself or at
+    anything above it:
+
+    * ``grounded`` -- some path down has no draft term strictly between the term and the term at
+      the data end that holds the binding;
+    * ``grounded_pending`` -- every path down has a draft term in between;
+    * ``not_grounded`` -- no path reaches data, or the term is deprecated or retired.
+
+    Paths run over in-service terms; a deprecated or retired term breaks the chain. A draft term
+    at either end of a path counts against nothing: a draft abstract term drafted above an
+    approved chain is grounded, and an auto-derived draft term at the data end leaves the chain
+    above it unchanged.
     """
-    by_id = {t["id"]: t for t in terms}
-    grounded = grounded_term_ids(terms, edges, rooted)
-    return {tid for tid in grounded if (by_id[tid].get("definition") or "").strip()}
+    terms = list(terms)
+    conducting = _conducting(terms)
+    adjacency = _adjacency(set(conducting), edges)
+    approved = {tid for tid, t in conducting.items() if t.get("approved")}
+    reached = grounded_term_ids(terms, edges, rooted)
+    clean = _clean_ids(conducting, adjacency, rooted, approved)
+    return {
+        t["id"]: GROUNDED
+        if t["id"] in clean
+        else GROUNDED_PENDING
+        if t["id"] in reached
+        else NOT_GROUNDED
+        for t in terms
+    }
+
+
+def approvals_that_ground(
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+) -> dict[int, list[int]]:
+    """For each ``grounded_pending`` term, the draft terms whose approval alone makes it
+    grounded (REQ-1387 findings: the term whose approval makes it grounded). A pending term no
+    single approval grounds is absent."""
+    terms = list(terms)
+    conducting = _conducting(terms)
+    adjacency = _adjacency(set(conducting), edges)
+    approved = {tid for tid, t in conducting.items() if t.get("approved")}
+    grounding = term_grounding(terms, edges, rooted)
+    pending = {tid for tid, g in grounding.items() if g == GROUNDED_PENDING}
+    if not pending:
+        return {}
+    out: dict[int, list[int]] = {}
+    # A draft that could stand between a pending term and data: in service, reaching data, and
+    # not itself a data end (a data end never stands between).
+    candidates = sorted(
+        tid
+        for tid in conducting
+        if tid not in approved and tid not in rooted and grounding[tid] != NOT_GROUNDED
+    )
+    for candidate in candidates:
+        clean = _clean_ids(conducting, adjacency, rooted, approved | {candidate})
+        for tid in sorted(pending & clean):
+            out.setdefault(tid, []).append(candidate)
+    return out
+
+
+def _defined(term: "Mapping") -> bool:
+    return bool((term.get("definition") or "").strip())
+
+
+@dataclass(frozen=True)
+class AgentView:
+    """What an agent sees of the term graph (REQ-1387, STATUS IS HUMAN, GROUNDING IS COMPUTED).
+
+    ``named`` maps each term an agent may see by name to its status (approved, or draft for a
+    defined draft term). ``hops`` are the undefined terms an agent traverses with no name or
+    definition, each kept distinct. ``edges`` are the in-service edges between seen terms, named
+    or hop, so the shape of the lineage is unchanged.
+    """
+
+    named: "dict[int, str]"
+    hops: "frozenset[int]"
+    edges: "tuple[tuple[int, int], ...]"
+
+    def seen(self) -> set[int]:
+        return set(self.named) | set(self.hops)
+
+
+def agent_view(
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+) -> AgentView:
+    """The terms an agent may see, and how (REQ-1387): an approved term on a path to data; a
+    defined draft term on a path to data that holds at least one approved term, marked draft; an
+    undefined term on such a path only as an anonymous hop; nothing else -- nothing on a path with
+    no approved term, nothing not grounded, nothing deprecated or retired.
+
+    A path to data runs over in-service terms and ends at the first term holding a binding: a
+    term holding one is its own path. Every simple path is walked; the terms between a start and
+    its binding are Concepts (terms holding no binding), which a curator creates by hand, so the
+    walk is over that small part of the graph.
+    """
+    terms = list(terms)
+    edges = list(edges)
+    conducting = _conducting(terms)
+    adjacency = _adjacency(set(conducting), edges)
+    approved = {tid for tid, t in conducting.items() if t.get("approved")}
+    on_approved_path: set[int] = set()
+
+    def record(path: list[int]) -> None:
+        if any(tid in approved for tid in path):
+            on_approved_path.update(path)
+
+    def walk(path: list[int], members: set[int]) -> None:
+        for neighbor in sorted(adjacency.get(path[-1], ())):
+            if neighbor in members:
+                continue
+            if neighbor in rooted:
+                record([*path, neighbor])
+                continue
+            path.append(neighbor)
+            members.add(neighbor)
+            walk(path, members)
+            members.discard(neighbor)
+            path.pop()
+
+    for start in sorted(conducting):
+        if start in rooted:
+            record([start])
+        else:
+            walk([start], {start})
+    named = {
+        tid: "approved" if tid in approved else "draft"
+        for tid in on_approved_path
+        if tid in approved or _defined(conducting[tid])
+    }
+    hops = frozenset(on_approved_path - set(named))
+    seen = set(named) | hops
+    seen_edges = tuple(sorted({(a, b) for a, b in edges if a in seen and b in seen and a != b}))
+    return AgentView(named=named, hops=hops, edges=seen_edges)
+
+
+def agent_paths(view: AgentView, rooted: "AbstractSet[int]", start: int) -> list[list[int]]:
+    """``start``'s paths down to data over the terms ``view`` lets an agent see, each ending at the
+    first term holding a binding (REQ-1387). A term holding one is its own path."""
+    seen = view.seen()
+    if start not in seen:
+        return []
+    if start in rooted:
+        return [[start]]
+    adjacency = _adjacency(seen, view.edges)
+    paths: list[list[int]] = []
+
+    def walk(path: list[int]) -> None:
+        for neighbor in sorted(adjacency.get(path[-1], ())):
+            if neighbor in path:
+                continue
+            if neighbor in rooted:
+                paths.append([*path, neighbor])
+            else:
+                walk([*path, neighbor])
+
+    walk([start])
+    return paths

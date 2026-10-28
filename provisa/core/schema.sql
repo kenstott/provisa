@@ -726,9 +726,12 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- Per-term opt-out from metadata export: the term (and any edge touching it) is
     -- withheld from every vendor snapshot while its curation stays intact locally.
     export_excluded BOOLEAN NOT NULL DEFAULT FALSE,
-    -- REQ-2144: the parts of a term's status a curator asserts (draft and live are computed):
-    -- a deprecation of a live term, with its reason and an optional planned retirement date, on
-    -- which the scheduler retires it; a retirement's reason; and who asserted it, when.
+    -- REQ-1387 (STATUS IS HUMAN): a steward approved the term, which needs a definition. A term
+    -- not approved, deprecated or retired is a draft, which every derived term starts as.
+    approved        BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2144: the parts of a term's status a curator asserts: a deprecation of an approved
+    -- term, with its reason and an optional planned retirement date, on which the scheduler
+    -- retires it; a retirement's reason; and who asserted it, when.
     deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE,
     status_reason   TEXT,
     retire_on       DATE,
