@@ -28,6 +28,7 @@ Every failure is LOUD: an unknown/creds-missing source, a port collision, or a m
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -38,7 +39,7 @@ import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle 
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterator
 from typing import Any, Callable
 
 from provisa.core.held_sizes import held
@@ -197,19 +198,26 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
     fixed ``STARTING:`` prefix) so the frontend can recognize it and poll again shortly instead of
     surfacing it as a hard error."""
 
-    def __init__(self, source_id: str, *, preparing_catalog: bool = False) -> None:
-        # Two waits, told apart for whoever is waiting: the server has not opened its port
-        # yet, or it is listening and preparing its catalog (``ConnectorReplica.await_catalog``).
-        doing = (
-            "is listening, and its tables can be registered now; a query on them waits until "
-            "the engine can attach it, while the connector answers the engine's first catalog "
-            "query by reading the columns of every table it serves"
-            if preparing_catalog
-            else "is still starting up"
-        )
+    def __init__(
+        self, source_id: str, *, preparing_catalog: bool = False, answering_read: bool = False
+    ) -> None:
+        # Three waits, told apart for whoever is waiting: the server has not opened its port
+        # yet, it is listening and preparing its catalog (``ConnectorReplica.await_catalog``), or
+        # it is listening and answering another discovery read (``ConnectorReplica.discovery_read``).
+        if preparing_catalog:
+            doing = (
+                "is listening, and its tables can be registered now; a query on them waits until "
+                "the engine can attach it, while the connector answers the engine's first catalog "
+                "query by reading the columns of every table it serves"
+            )
+        elif answering_read:
+            doing = "is listening, and is answering another read of the tables it serves"
+        else:
+            doing = "is still starting up"
         super().__init__(f"STARTING: {source_id!r}'s connector {doing} — try again shortly.")
         self.source_id = source_id
         self.preparing_catalog = preparing_catalog
+        self.answering_read = answering_read
 
 
 def _source_type(source: Any) -> str:
@@ -1033,24 +1041,30 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
     import asyncpg
 
     ports = await asyncio.to_thread(listening_endpoint, source)
-    if _endpoint_replica(source).catalog_preparing():
+    replica = _endpoint_replica(source)
+    if replica.catalog_preparing():
         # The server holds every statement behind its first catalog query while that runs, so
         # a read sent now would wait out the preparation: answered "still starting" at once
         # (REQ-1824), and asked again by its caller.
         raise SourceStillStartingError(source.id, preparing_catalog=True)
-    conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
-    try:
-        return list(await conn.fetch(statement, timeout=_fetch_timeout()))
-    except asyncpg.QueryCanceledError as exc:
-        # The server cancels a statement it held queued behind the preparation of its catalog
-        # (its first catalog query): while that preparation runs the source is still starting
-        # (``ConnectorReplica.await_catalog``), and the read is asked again once it has started.
-        # A cancel after the catalog is prepared, or after it failed, is the server's answer.
-        if _endpoint_replica(source).catalog_pending():
-            raise SourceStillStartingError(source.id, preparing_catalog=True) from exc
-        raise
-    finally:
-        await conn.close()
+    # Nor is a read sent behind another of ours: the server would hold it until that one is
+    # answered, and nothing the server does ends the wait sooner (it keeps a signed-in client's
+    # statement queued for as long as the client is connected).
+    with replica.discovery_read():
+        conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
+        try:
+            return list(await conn.fetch(statement, timeout=_fetch_timeout()))
+        except asyncpg.QueryCanceledError as exc:
+            # The server cancels a statement it held queued past its queue bound, behind the
+            # preparation of its catalog (the engine's first catalog query): while that runs
+            # the source is still starting (``ConnectorReplica.await_catalog``), and the read
+            # is asked again once it has started. A cancel after the catalog is prepared, or
+            # after it failed, is the server's answer.
+            if replica.catalog_pending():
+                raise SourceStillStartingError(source.id, preparing_catalog=True) from exc
+            raise
+        finally:
+            await conn.close()
 
 
 async def adapter_tables(source: Any, schema: str) -> list[str]:
@@ -1291,6 +1305,8 @@ class ConnectorReplica:  # REQ-954/955/956
         self._catalog_server = 0
         # A start and the first endpoint request can come from different threads; one server.
         self._start_lock = threading.Lock()
+        # Discovery reads this process has in flight on the server (:meth:`discovery_read`).
+        self._discovery_reads = 0
 
     @property
     def spec(self) -> BundleSpec:
@@ -1522,6 +1538,25 @@ class ConnectorReplica:  # REQ-954/955/956
         Starts nothing and waits for nothing."""
         with self._start_lock:
             return not self._catalog_ready and self._catalog_error is None
+
+    @contextlib.contextmanager
+    def discovery_read(self) -> Iterator[None]:
+        """Hold the server for one discovery read, or raise ``SourceStillStartingError`` at once
+        if another read of this process holds it.
+
+        The server runs every statement on its one engine connection, one at a time: a read sent
+        while another is in flight waits behind it, and a fresh server's first reads of a schema
+        take a minute and more (its catalog is fetched). So a second read is not sent: it is
+        answered still starting, and asked again by its caller (REQ-1824). Waits for nothing."""
+        with self._start_lock:
+            if self._discovery_reads:
+                raise SourceStillStartingError(self._source.id, answering_read=True)
+            self._discovery_reads += 1
+        try:
+            yield
+        finally:
+            with self._start_lock:
+                self._discovery_reads -= 1
 
     def catalog_preparing(self) -> bool:
         """Whether the server's first catalog query has been sent and is not yet answered.
