@@ -86,6 +86,8 @@ class ColumnAsset:  # REQ-1070
     description: str
     aliases: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: <table uri>#field:<business name>
+    # REQ-2171, REQ-2118: the subtype data_type registers as (inet, money, ...); None for none.
+    subtype: str | None = None
 
 
 @dataclass
@@ -113,6 +115,12 @@ class TableAsset:  # REQ-1070
     # REQ-2158: the member's declared contract, its output port; None for a table in no product
     # and for a checker table.
     contract: DataContract | None = None
+    # REQ-1093, REQ-2118: the table's declared UNIQUE constraints, each an ordered column set.
+    unique_keys: tuple[tuple[str, ...], ...] = ()
+    # REQ-2118: the data roles served at least one of its columns, and those holding a write
+    # grant on it -- a contract's roles, read and write.
+    readers: tuple[str, ...] = ()
+    writers: tuple[str, ...] = ()
 
 
 def listed(product: "DataProductAsset") -> bool:
@@ -486,6 +494,19 @@ class GlossaryAxiom:  # REQ-2163
     object_literal: str | None
 
 
+@dataclass(frozen=True)
+class ServingEndpoints:  # REQ-2118
+    """Where a consumer reads the org's data products: the host its pgwire and Flight SQL
+    listeners are reached at (each port None when that listener is off), and the HTTP origin
+    its GraphQL and REST endpoints are under. A contract names them as its servers."""
+
+    hostname: str
+    database: str
+    http_origin: str
+    pgwire_port: int | None = None
+    flight_port: int | None = None
+
+
 @dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
@@ -507,6 +528,11 @@ class MetadataSnapshot:  # REQ-1070
     glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
     glossary_axioms: list[GlossaryAxiom] = field(default_factory=list)  # REQ-2163
     assertions: list[DataQualityAssertion] = field(default_factory=list)  # REQ-1443
+    # REQ-1943, REQ-2118: the ids of the tags whose Sensitive data option is set; a column
+    # carrying one is sensitive, its contract classification confidential.
+    sensitive_tags: frozenset[str] = frozenset()
+    # REQ-2118: where a consumer reads the products; None when the caller names none.
+    endpoints: ServingEndpoints | None = None
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

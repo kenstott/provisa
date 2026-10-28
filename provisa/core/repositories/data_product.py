@@ -174,7 +174,9 @@ async def save_contract(  # REQ-2158
         cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
         contract = data_contracts.as_stored(cid, contract)
-        data_contracts.require_new_version(cid, DataContract.model_validate(row.contract), contract)
+        previous = DataContract.model_validate(row.contract)
+        data_contracts.require_new_version(cid, previous, contract)
+        contract = data_contracts.created_as(previous, contract)
         types = {
             r.column_name: r.data_type
             for r in (
@@ -189,9 +191,9 @@ async def save_contract(  # REQ-2158
         await conn.execute_core(
             update(registered_tables)
             .where(registered_tables.c.id == table_id)
-            .values(contract=contract.model_dump())
+            .values(contract=contract.model_dump(mode="json"))
         )
-    return {**dict(row._mapping), "contract": contract.model_dump()}
+    return {**dict(row._mapping), "contract": contract.model_dump(mode="json")}
 
 
 # REQ-1634 STATUS: a data product's lifecycle. Every state is asserted by an action: publish takes
