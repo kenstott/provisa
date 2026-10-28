@@ -11,15 +11,15 @@
 // A table of an OpenAPI source whose document could not be read says so in the table list's row:
 // a warning mark, the reason on hover. The listing lists the table all the same.
 
-import { Tooltip } from "@mantine/core";
 import { TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Tip } from "../../components/Tip";
 
 export function EndpointErrorMark({ error, testId }: { error: string | null; testId: string }) {
   const { t } = useTranslation();
   if (!error) return null;
   return (
-    <Tooltip label={error} multiline w={360} withArrow>
+    <Tip text={error}>
       <span
         role="img"
         aria-label={t("tablesPage.endpointUnread")}
@@ -28,6 +28,6 @@ export function EndpointErrorMark({ error, testId }: { error: string | null; tes
       >
         <TriangleAlert size={14} />
       </span>
-    </Tooltip>
+    </Tip>
   );
 }
