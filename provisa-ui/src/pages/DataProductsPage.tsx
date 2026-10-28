@@ -189,7 +189,13 @@ export function DataProductsPage() {
   const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError] = useState("");
   // REQ-2158: the expanded product's ODCS contracts, declared and derived; read again after the
-  // product is saved.
+  // product is saved. They are read only for a product whose panel shows a Contracts card: one
+  // with no contract has nothing to show, and the server has no document for a product with no
+  // exported member.
+  const contractsOf =
+    expanded !== null && core.data?.product.id === expanded && contracts.length > 0
+      ? expanded
+      : null;
   const [odcs, setOdcs] = useState<Record<string, OdcsContract> | null>(null);
   const [odcsError, setOdcsError] = useState("");
 
@@ -224,13 +230,13 @@ export function DataProductsPage() {
   }, [expanded, coreVersion]);
 
   useEffect(() => {
-    if (expanded === null) return;
+    if (contractsOf === null) return;
     let cancelled = false;
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        clears the last product's contracts synchronously before the async fetch starts */
     setOdcs(null);
     setOdcsError("");
-    fetchProductContracts(expanded)
+    fetchProductContracts(contractsOf)
       .then((documents) => {
         if (!cancelled) setOdcs(documents);
       })
@@ -240,7 +246,7 @@ export function DataProductsPage() {
     return () => {
       cancelled = true;
     };
-  }, [expanded, coreVersion]);
+  }, [contractsOf, coreVersion]);
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
