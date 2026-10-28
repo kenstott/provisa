@@ -37,7 +37,6 @@ from provisa.security.rights import (
     ORG_ADMIN_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
     can_act_cross_org as _can_act_cross_org,
-    carries_platform_right as _carries_platform_right,
     capabilities_for_claims as _capabilities_for_claims,
     is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
@@ -247,15 +246,9 @@ def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337
 
 async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
     """The roles registry of ``org_id``'s own runtime (prod), built if it is not yet."""
-    from provisa.api.app import ensure_serving_runtime
-    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.auth.held_assignments import org_roles
 
-    await ensure_serving_runtime(org_id, None)
-    token = set_current_org(org_id)
-    try:
-        return _loaded_roles()
-    finally:
-        reset_current_org(token)
+    return await org_roles(org_id, _loaded_roles)
 
 
 async def org_env_capabilities(  # REQ-1573
@@ -283,20 +276,10 @@ async def org_env_capabilities(  # REQ-1573
 
 
 def _dedup_assignments(assignments: list[RoleAssignment]) -> list[RoleAssignment]:
-    """The same (role, domain) pair once, in first-seen order.
+    """The same (role, domain) pair once, in first-seen order (provisa.auth.held_assignments)."""
+    from provisa.auth.held_assignments import dedup
 
-    An assignment set is a set: holding a role in a domain twice grants nothing extra, but it does
-    reach /auth/me, which the UI renders as the role selector.
-    """
-    seen: set[tuple[str, str]] = set()
-    out: list[RoleAssignment] = []
-    for a in assignments:
-        key = (a.role_id, a.domain_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(a)
-    return out
+    return dedup(assignments)
 
 
 def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
@@ -898,19 +881,16 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # unioned in rather than substituted so the claimant keeps the org_admin seat that carries
         # their data rights in the bootstrap org.
         # REQ-1337: "already holds it" is asked of the cross_org RIGHT, not of the role's name.
-        if bootstrap_claimant and not any(
-            _is_control_plane_role(a.role_id, _loaded_roles()) for a in platform_assignments
-        ):
-            # The right-based test above reads the loaded roles map; before that map is populated the
-            # claimant's own persisted grant does not answer to it, so the union is deduplicated by
-            # (role, domain). /auth/me is the list the UI renders as the role selector, and the same
-            # assignment twice is a repeated option in it.
-            platform_assignments = _dedup_assignments(
-                [
-                    *platform_assignments,
-                    RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
-                ]
-            )
+        # The rule every transport's sign-in applies (provisa.auth.held_assignments.settle).
+        from provisa.auth.held_assignments import settle
+
+        platform_assignments = await settle(
+            platform_assignments,
+            claimant=bootstrap_claimant,
+            org_id=None,
+            root_org_id=self._default_org_id,
+            roles_now=_loaded_roles,
+        )
 
         # Resolve active org
         if not self._multitenancy:
@@ -1160,9 +1140,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 if tenant_roles is None:
                     assert active_org_id is not None  # a tenant org is a bound one (is_tenant_org)
                     tenant_roles = await _org_roles(active_org_id)
-                assignments = [
-                    a for a in assignments if not _carries_platform_right(a.role_id, tenant_roles)
-                ]
+                # The rule every transport's sign-in applies (provisa.auth.held_assignments).
+                assignments = await settle(
+                    assignments,
+                    claimant=False,
+                    org_id=active_org_id,
+                    root_org_id=self._default_org_id,
+                    tenant_roles=tenant_roles,
+                    roles_now=_loaded_roles,
+                )
 
             if named_env is not None and _org_binding is not None:
                 # REQ-1573: the right to be served by the environment the request names, judged by

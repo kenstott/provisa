@@ -44,6 +44,8 @@ def _state(source: str = "provisa"):
         contexts={"analyst": object(), "steward": object()},
         multitenancy=False,
         org_id="default",
+        user_attributes={},
+        settings_overrides={"derived_roles": []},
     )
 
 
@@ -58,7 +60,11 @@ def granted(monkeypatch):
         read_in.append(current_org.get(None))
         return list(_GRANTED) if identity.user_id == _USER.user_id else []
 
+    async def _roles(org_id, roles_now=None):  # noqa: ARG001  # the reader's
+        return {"steward": {"capabilities": []}}  # acme's own roles: no platform right
+
     monkeypatch.setattr(held_assignments, "read_assignments", _read)
+    monkeypatch.setattr(held_assignments, "org_roles", _roles)
     return read_in
 
 
@@ -148,3 +154,88 @@ def test_an_http_sign_in_reads_the_same_assignments(granted):
     middleware._db_pool = object()
     middleware._default_assignments = []
     assert asyncio.run(middleware._read_assignments(_USER)) == _GRANTED
+
+
+# -- the rules HTTP applies after the read, applied for every transport (REQ-1297, REQ-1337) --
+
+#: A tenant org's roles: ``ops`` carries a platform right, ``steward`` does not.
+_TENANT_ROLES = {
+    "ops": {"capabilities": ["cross_org"]},
+    "steward": {"capabilities": []},
+    "platform_admin": {"capabilities": ["cross_org"]},
+}
+
+
+@pytest.fixture
+def tenant(monkeypatch):
+    """The user holds ``ops`` and ``steward`` in the tenant org ``acme``; ``root`` is the
+    deployment's own org."""
+
+    async def _read(db_pool, identity, default_assignments):  # noqa: ARG001  # the reader's
+        return [RoleAssignment("ops", "*"), RoleAssignment("steward", "*")]
+
+    async def _roles(org_id, roles_now=None):  # noqa: ARG001  # the reader's
+        assert org_id == "acme"
+        return _TENANT_ROLES
+
+    monkeypatch.setattr(held_assignments, "read_assignments", _read)
+    monkeypatch.setattr(held_assignments, "org_roles", _roles)
+
+
+def _tenant_state():
+    state = _state()
+    state.multitenancy = True
+    state.org_id = "root"
+    state.config = None
+    return state
+
+
+def test_in_a_tenant_org_a_role_carrying_a_platform_right_is_not_held(tenant):
+    held = asyncio.run(held_assignments.held_assignments(_tenant_state(), _USER, "acme"))
+    assert held == [RoleAssignment("steward", "*")]
+
+
+def test_the_bootstrap_claimant_holds_platform_admin_in_the_deployments_org(monkeypatch):
+    async def _read(db_pool, identity, default_assignments):  # noqa: ARG001  # the reader's
+        return [RoleAssignment("org_admin", "*")]
+
+    async def _claimant(state, user_id):  # noqa: ARG001  # the reader's
+        return user_id == _USER.user_id
+
+    monkeypatch.setattr(held_assignments, "read_assignments", _read)
+    monkeypatch.setattr(held_assignments, "is_bootstrap_claimant", _claimant)
+    monkeypatch.setattr(held_assignments, "_roles_now", lambda: {})
+    held = asyncio.run(held_assignments.held_assignments(_tenant_state(), _USER, None))
+    assert held == [RoleAssignment("org_admin", "*"), RoleAssignment("platform_admin", "*")]
+
+
+def test_in_a_tenant_org_bolt_pgwire_and_bearer_hold_the_same_filtered_set(tenant, monkeypatch):
+    from provisa.auth.bearer import authorize_role_or_probe
+    from provisa.bolt.session import BoltSession
+    from provisa.pgwire.server import _held_roles
+    from provisa.security import role_probe
+
+    async def _not_suspended(identity, org_id, transport):  # noqa: ARG001  # role_probe's
+        return False
+
+    monkeypatch.setattr(role_probe, "suspended", _not_suspended)
+    state = _tenant_state()
+    state.contexts = {"analyst": object(), "steward": object(), "ops": object()}
+    in_acme = AuthIdentity(
+        user_id="u-1", email=None, display_name=None, roles=[], active_org_id="acme"
+    )
+    assert asyncio.run(BoltSession._selectable_roles(state, in_acme)) == ["analyst", "steward"]
+    assert _held_roles(state, in_acme, "analyst", "acme", run=asyncio.run) == {
+        "analyst",
+        "steward",
+    }
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org("acme")
+    try:
+        with pytest.raises(PermissionError):
+            authorize_role_or_probe(
+                state, in_acme, "ops", transport="flight", endpoint="flight", run=asyncio.run
+            )
+    finally:
+        reset_current_org(token)
