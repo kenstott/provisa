@@ -1164,7 +1164,8 @@ class ProvisaFlightServer(
         request = flightsql.unpack(body)
         if isinstance(request, flightsql.pb.ActionCreatePreparedStatementRequest):
             schema = self._described_schema(context, request.query)
-            result = flightsql.prepared_result(flightsql.prepared_handle(request.query), schema)
+            handle = flightsql.prepared_handle(request.query)
+            result = flightsql.prepared_result(handle, request.query, schema)
             return [flight.Result(result)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(request, flightsql.pb.ActionClosePreparedStatementRequest):
             flightsql.read_prepared_handle(request.prepared_statement_handle)

@@ -351,12 +351,37 @@ def serialized_schema(schema: pa.Schema | None) -> bytes:
     return b"" if schema is None else schema.serialize().to_pybytes()
 
 
-def prepared_result(handle: bytes, schema: pa.Schema | None) -> bytes:
-    """CreatePreparedStatement's answer: the handle, and the statement's schema when it is
-    known."""
+#: A placeholder's type oid (provisa.pgwire.parameters) as the Arrow type of its parameter.
+_PARAMETER_ARROW = {
+    25: pa.utf8(),
+    23: pa.int32(),
+    20: pa.int64(),
+    16: pa.bool_(),
+    701: pa.float64(),
+}
+
+
+def parameter_schema(query: str) -> pa.Schema:
+    """``query``'s parameters: one per ``$N`` placeholder, named for it and typed as pgwire's
+    ParameterDescription types it."""
+    from provisa.pgwire.parameters import placeholder_oids
+
+    return pa.schema(
+        [
+            pa.field(f"${i}", _PARAMETER_ARROW[oid])
+            for i, oid in enumerate(placeholder_oids(query), 1)
+        ]
+    )
+
+
+def prepared_result(handle: bytes, query: str, schema: pa.Schema | None) -> bytes:
+    """CreatePreparedStatement's answer: the handle, the statement's schema when it is known, and
+    its parameters' (:func:`parameter_schema`)."""
     return pack(
         pb.ActionCreatePreparedStatementResult(
-            prepared_statement_handle=handle, dataset_schema=serialized_schema(schema)
+            prepared_statement_handle=handle,
+            dataset_schema=serialized_schema(schema),
+            parameter_schema=parameter_schema(query).serialize().to_pybytes(),
         )
     )
 

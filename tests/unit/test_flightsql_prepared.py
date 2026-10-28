@@ -118,3 +118,24 @@ def test_closing_a_prepared_statement_is_answered(served):
         cur.adbc_prepare("SELECT 1")
         cur.close()  # ClosePreparedStatement
     assert served.asked == []
+
+
+def test_a_prepared_statements_parameters_are_typed_as_pgwire_types_them(served):
+    """One parameter per placeholder, typed as pgwire's ParameterDescription types it: by the
+    statement's own cast, else a bigint (REQ-2175)."""
+    with _connect(served.uri) as conn, conn.cursor() as cur:
+        cur.adbc_prepare("SELECT $1::text, $2 + $3::int")
+        handle = cur.adbc_statement.get_parameter_schema()
+        schema = pa.Schema._import_from_c(handle.address)
+    assert [(f.name, f.type) for f in schema] == [
+        ("$1", pa.utf8()),
+        ("$2", pa.int64()),
+        ("$3", pa.int32()),
+    ]
+
+
+def test_a_statement_with_no_placeholder_has_no_parameters(served):
+    with _connect(served.uri) as conn, conn.cursor() as cur:
+        cur.adbc_prepare("SELECT 1")
+        handle = cur.adbc_statement.get_parameter_schema()
+        assert len(pa.Schema._import_from_c(handle.address)) == 0

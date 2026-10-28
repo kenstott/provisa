@@ -2643,24 +2643,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 stored_oids = ctx.stmts[stmt][1]
                 if stored_oids:
                     param_oids = stored_oids
-                elif indices:
-                    _CAST_OID = {
-                        "text": 25,
-                        "varchar": 25,
-                        "int": 23,
-                        "int4": 23,
-                        "int8": 20,
-                        "bigint": 20,
-                        "bool": 16,
-                        "float8": 701,
-                    }
-                    cast_map = {
-                        int(m): _CAST_OID.get(t.lower(), 25)
-                        for m, t in re.findall(r"\$(\d+)::(\w+)", sql)
-                    }
-                    param_oids = [cast_map.get(i, 20) for i in range(1, max(indices) + 1)]
                 else:
-                    param_oids = []
+                    from provisa.pgwire.parameters import placeholder_oids
+
+                    param_oids = placeholder_oids(sql)
             # Update stored param_oids so describe_statement substitutes example values
             # instead of executing the SQL with unresolved $N placeholders.
             ctx.stmts[stmt] = (sql, param_oids)
