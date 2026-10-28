@@ -15413,6 +15413,7 @@
   - tests/integration/test_pgwire_integration.py
   - tests/unit/pgwire/test_wire_protocol.py
   - tests/unit/test_pgwire_requirements.py
+  - tests/unit/test_temp_table_cache_per_session.py
   since: 2026-01
   scenario: 'Given a SQL client submitting INSERT, UPDATE, or DELETE over pgwire
 

@@ -4952,7 +4952,7 @@ The pgwire listener accepts only SQL statements. GraphQL and Cypher query string
 
 **Code:** `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`, `tests/unit/test_temp_table_cache_per_session.py`
 
 **Docs:** [pgwire.md](../pgwire.md)
 
