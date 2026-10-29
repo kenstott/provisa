@@ -163,3 +163,57 @@ describe("_renderGroupedFields", () => {
     expect(result[0]?.props?.open).toBe(true);
   });
 });
+
+describe("_renderGroupedFields system schemas (REQ-2163)", () => {
+  const prefixes = { ontology: "on", ops: "op" };
+  const typed = (typeName: string) => ({ type: { ofType: { ofType: { name: typeName } } } });
+  const fields: Record<string, unknown> = {
+    m__resolve: typed("M__Resolve"),
+    ps__pets: typed("PS__Pets"),
+    on_terms: typed("ON_Terms"),
+    on_termEdges: typed("ON_TermEdges"),
+    op_queries: typed("OP_Queries"),
+    op_traces: typed("OP_Traces"),
+  };
+  const renderField = (name: string) => ({ field: name });
+  type Folder = { key: string; props: { open: boolean }; children?: unknown };
+
+  function folderFields(el: { props: { children: unknown[] } }) {
+    const body = el.props.children[1] as { props: { children: { field: string }[] } };
+    return body.props.children.map((c) => c.field);
+  }
+
+  it("puts on_* in an ontology folder and op_* in an ops folder, none loose", () => {
+    const labels = { ontology: "ontology", ops: "ops" };
+    const result = _renderGroupedFields(fields, renderField, [], labels, prefixes);
+    expect(result).toHaveLength(4);
+    expect(result.every((r: Folder) => r.props.open === false)).toBe(true);
+    const byLabel = Object.fromEntries(
+      result.map((r: { props: { children: unknown[] } }) => [
+        (r.props.children[0] as { props: { children: unknown[] } }).props.children[1],
+        folderFields(r),
+      ]),
+    );
+    expect(byLabel.ontology).toEqual(["on_termEdges", "on_terms"]);
+    expect(byLabel.ops).toEqual(["op_queries", "op_traces"]);
+    expect(byLabel.m).toEqual(["m__resolve"]);
+    expect(byLabel.ps).toEqual(["ps__pets"]);
+  });
+
+  it("opens the folder of a selected system field", () => {
+    const result = _renderGroupedFields(
+      fields, renderField, [{ name: { value: "op_traces" } }], {}, prefixes,
+    );
+    const open = result.filter((r: Folder) => r.props.open);
+    expect(open).toHaveLength(1);
+    expect(folderFields(open[0])).toEqual(["op_queries", "op_traces"]);
+  });
+
+  it("leaves a field that is not of a system schema type loose", () => {
+    const result = _renderGroupedFields(
+      { on_other: typed("Other"), health: typed("Boolean") }, renderField, [], {}, prefixes,
+    );
+    expect(result).toEqual([{ field: "health" }, { field: "on_other" }]);
+  });
+});
+
