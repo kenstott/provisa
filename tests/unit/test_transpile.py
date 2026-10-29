@@ -512,12 +512,21 @@ def test_a_json_value_s_size_is_read_by_trino():
 
 
 def test_a_json_value_s_place_in_order_is_read_by_trino():
-    # json_order_key(x): its kind's rank (map, list, string, boolean, number), its number, then
-    # its text with a list's end first (expr_visitor).
+    # json_order_key(x): its kind's rank (map 0, node 1, relationship 2, list 3, path 4, string 5,
+    # boolean 6, number 7 -- openCypher's orderability), its number, then its text with a list's
+    # end first (expr_visitor). An object's rank reads the keys a node, a relationship and a path
+    # are recognised by (REQ-2167); golden re-captured for that, the other ranks are unchanged.
     assert transpile_to_trino("SELECT json_order_key(x) FROM t") == (
-        "SELECT ROW(CASE SUBSTR(JSON_FORMAT(x), 1, 1) WHEN '{' THEN 0 WHEN '[' THEN 3"
-        " WHEN '\"' THEN 5 WHEN 't' THEN 6 WHEN 'f' THEN 6 ELSE 7 END, TRY_CAST(x AS DOUBLE),"
-        " REPLACE(JSON_FORMAT(x), ']', CHR(1))) FROM t"
+        "SELECT ROW(CASE SUBSTR(JSON_FORMAT(x), 1, 1) WHEN '{' THEN CASE"
+        " WHEN NOT JSON_EXTRACT(x, '$.nodes') IS NULL AND NOT JSON_EXTRACT(x, '$.edges') IS NULL"
+        " THEN 4 WHEN NOT JSON_EXTRACT(x, '$.type') IS NULL"
+        " AND NOT JSON_EXTRACT(x, '$.startNode') IS NULL"
+        " AND NOT JSON_EXTRACT(x, '$.endNode') IS NULL THEN 2"
+        " WHEN (NOT JSON_EXTRACT(x, '$.id') IS NULL AND NOT JSON_EXTRACT(x, '$.label') IS NULL"
+        " AND NOT JSON_EXTRACT(x, '$.properties') IS NULL)"
+        " AND JSON_EXTRACT(x, '$.startNode') IS NULL THEN 1 ELSE 0 END"
+        " WHEN '[' THEN 3 WHEN '\"' THEN 5 WHEN 't' THEN 6 WHEN 'f' THEN 6 ELSE 7 END,"
+        " TRY_CAST(x AS DOUBLE), REPLACE(JSON_FORMAT(x), ']', CHR(1))) FROM t"
     )
 
 
