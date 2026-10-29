@@ -260,6 +260,21 @@ def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:
     return isinstance(expr, ListLiteral) and _mixed_literal_kinds(expr.items)
 
 
+def _lists_mixed_lists(expr: CypherExpr, json_lists: set[str], json_list_lists: set[str]) -> bool:
+    """Whether ``expr`` is a list of lists of several types: a collect() of one, or a variable
+    bound to one."""
+    from provisa.gql.expr_ast import FunctionCall
+
+    if isinstance(expr, Variable):
+        return expr.name in json_list_lists
+    return (
+        isinstance(expr, FunctionCall)
+        and expr.name.lower() == "collect"
+        and len(expr.args) == 1
+        and _is_mixed_list(expr.args[0], json_lists)
+    )
+
+
 def _is_json_list(e: exp.Expression) -> bool:
     """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
     them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
@@ -590,6 +605,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A variable a WITH binds to a list of values of several types (each item its JSON), and
         # one an UNWIND or WITH binds to an item of one (its JSON): the answer decodes them.
         self._json_list_vars: set[str] = set()
+        # Variables bound to a list of lists of several types (collect() of one): an UNWIND of
+        # one binds a list of several types.
+        self._json_list_lists: set[str] = set()
         self._json_value_vars: set[str] = set()
         # A variable a WITH binds to null (WITH null AS m): m[k] is null.
         self._null_vars: set[str] = set()
@@ -658,6 +676,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_src_col: str | None = None
         self._all_rels_rel_col: str | None = None
         self._all_rels_tgt_col: str | None = None
+        # The relationship unions the rows read so far, the last one's far end's column, and the
+        # FROM the current pattern's first node is read in (translator_rel._all_rels_hop).
+        self._all_rels_hops = 0
+        self._all_rels_far_col: str | None = None
+        # The relationships a WITH carries that a union of relationships matched: a later MATCH
+        # naming one is tied to it by the union's edge identity (translator_rel._all_rels_hop).
+        self._all_rels_carried: set[str] = set()
+        self._pattern_first_scan: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # varlen rel variable → outer path variable (e.g. c from [c*..5] → r from MATCH r = ...)
         self._varlen_rel_vars: dict[str, str] = {}
 
@@ -1296,6 +1322,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_vars
             ):
                 self._json_value_vars.add(uw.variable)
+            if isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_lists:
+                self._json_list_vars.add(uw.variable)
             # Detect MAP-element arrays: a list holding map literals, or a variable assigned from
             # collect({...}) in a preceding WITH clause.
             source = uw.expression
@@ -1666,6 +1694,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         texts: set[str] = set()
         lists: set[str] = set()
         json_lists: set[str] = set()
+        json_list_lists: set[str] = set()
         json_values: set[str] = set()
         nulls = {
             i.alias
@@ -1684,6 +1713,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
         union_columns: dict[str, list[str]] = {}
+        carried_edges: set[str] = set()
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
@@ -1694,11 +1724,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 lists.add(name)
             if name and _is_mixed_list(item.expression, self._json_list_vars):
                 json_lists.add(name)
-            if (
-                name
-                and isinstance(item.expression, Variable)
-                and item.expression.name in self._json_value_vars
+            if name and _lists_mixed_lists(
+                item.expression, self._json_list_vars, self._json_list_lists
             ):
+                json_list_lists.add(name)
+            if name and self._temporal_context().is_json_value(item.expression):
+                # A value an item of a list of several types is: its JSON, as the list holds it.
                 json_values.add(name)
             found = self._temporal_context().temporal_kind(item.expression)
             if name and found is not None:
@@ -1722,17 +1753,23 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._map_array_vars.add(key)
             else:
                 new_var_table[key] = (cte_name, None)
+                if bare is not None and (
+                    bare in self._all_rels_rel_vars or bare in self._all_rels_carried
+                ):
+                    carried_edges.add(key)
                 # collect({...}) produces a MAP array — track the alias for UNWIND resolution
                 if _collects_maps(expr) and key:
                     self._map_array_vars.add(key)
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
+        self._all_rels_carried = carried_edges
         self._temporal_kinds = kinds
         self._temporal_zones = zones
         self._text_vars = texts
         self._list_vars = lists
         self._json_list_vars = json_lists
+        self._json_list_lists = json_list_lists
         self._json_value_vars = json_values
         self._null_vars = nulls
         self._param_vars = bound_params

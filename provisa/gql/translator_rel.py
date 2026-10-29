@@ -43,6 +43,9 @@ from provisa.gql.translator_helpers import (
 
 from provisa.gql.translator_types import CypherTranslateError
 
+if TYPE_CHECKING:
+    from provisa.gql.translator import _Translator
+
 
 def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
     return CypherTranslateError(
@@ -101,6 +104,17 @@ class _RelJoinMixin:  # mixin for _Translator
         _passthrough_vars: set[str]
         _all_rels_rel_vars: set[str]
         _all_rels_node_vars: set[str]
+        _all_rels_alias: str | None
+        _all_rels_src_col: str | None
+        _all_rels_rel_col: str | None
+        _all_rels_tgt_col: str | None
+        #: The relationship unions the statement's rows read so far, and the column of the last
+        #: one's far end (_all_rels_hop).
+        _all_rels_hops: int
+        _all_rels_far_col: str | None
+        _all_rels_carried: set[str]
+        #: The FROM this pattern's first node is read in, where the pattern made it.
+        _pattern_first_scan: exp.Expression | None
         _varlen_rel_vars: dict[str, str]
 
         def _register_node(self, node: _NodePattern) -> None: ...
@@ -126,6 +140,8 @@ class _RelJoinMixin:  # mixin for _Translator
             src_type: str | None = None,
             tgt_type: str | None = None,
             rel_type: str | None = None,
+            columns: tuple[str, str, str] | None = None,
+            undirected: bool = False,
         ) -> exp.Expression: ...
 
         def _translate_path_function(
@@ -292,10 +308,12 @@ class _RelJoinMixin:  # mixin for _Translator
         src_type: "str | None" = None,
         tgt_type: "str | None" = None,
         rel_type: "str | None" = None,
+        undirected: bool = False,
     ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Handle an untyped rel pattern: UNION ALL over the relationship types whose endpoints
         are of the node types the pattern labels (``src_type`` / ``tgt_type``), every type where
-        it labels neither; only ``rel_type``'s relationships when it names one."""
+        it labels neither; only ``rel_type``'s relationships when it names one; each read from
+        either end where ``undirected``."""
         src_domain = self._domain_nodes.get(src_var) if src_var else None
         tgt_domain = self._domain_nodes.get(tgt_var) if tgt_var else None
         from_expr = self._build_all_rels_union(
@@ -307,6 +325,7 @@ class _RelJoinMixin:  # mixin for _Translator
             src_type=src_type,
             tgt_type=tgt_type,
             rel_type=rel_type,
+            undirected=undirected,
         )
         if src_var:
             self._domain_nodes.pop(src_var, None)
@@ -322,6 +341,194 @@ class _RelJoinMixin:  # mixin for _Translator
             self._passthrough_vars.add(tgt_var)
             self._all_rels_node_vars.add(tgt_var)
         return from_expr
+
+    def _all_rels_hop(
+        self,
+        rel: "RelPattern",
+        src_node: "NodePattern",
+        tgt_node: "NodePattern",
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: "list[dict]",
+        i: int,
+        *,
+        src_type: "str | None" = None,
+        tgt_type: "str | None" = None,
+        rel_type: "str | None" = None,
+    ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A hop read from a union of relationships (every type's, or ``rel_type``'s) the way the
+        pattern reads it: from its source (``-->``), its target (``<--``) or either end (``--``).
+
+        Where it starts the statement's rows -- nothing read before it, or only its own first
+        node -- the union is those rows. Otherwise it goes on from the node it shares with what
+        the statement holds: joined to those rows by that node's identity (left joined in an
+        OPTIONAL MATCH), its column of that node named as no variable is."""
+        from provisa.gql.expr_context import graph_identity
+
+        held = src_node.variable
+        left, undirected = rel.direction == "left", rel.direction == "none"
+        # A relationship a WITH carries is that relationship: the union's edge read here under a
+        # name of its own, tied to the carried one by its identity.
+        carried = rel.variable if rel.variable in self._cte_sources else None
+        if carried is not None and carried not in self._all_rels_carried:
+            raise CypherTranslateError(
+                f"The relationship {carried!r} a WITH carries is matched again only where a "
+                "pattern of relationships of no one type matched it"
+            )
+        if carried is not None:
+            rel = dataclasses.replace(rel, variable=None)
+        lateral = from_expr is None and held is not None and held in self._lateral_bound
+        starts = not lateral and (
+            from_expr is None or (i == 0 and not joins and from_expr is self._pattern_first_scan)
+        )
+        if starts:
+            near, far = (tgt_node.variable, held) if left else (held, tgt_node.variable)
+            near_type, far_type = (tgt_type, src_type) if left else (src_type, tgt_type)
+            union = self._handle_unlabeled_rel_pattern(
+                near,
+                rel.variable,
+                far,
+                src_type=near_type,
+                tgt_type=far_type,
+                rel_type=rel_type,
+                undirected=undirected,
+            )
+            self._all_rels_hops += 1
+            self._all_rels_far_col = self._all_rels_src_col if left else self._all_rels_tgt_col
+            if carried is not None:
+                self._tie_carried_edge(carried, self._all_rels_rel_col)
+            return union, joins
+
+        combined = self._all_rels_hops > 0
+        if combined and (from_expr is None or joins or clause.variable):
+            raise CypherTranslateError(
+                "A pattern reads relationships of no one type in one run of hops: start the "
+                "statement with it, or give its relationships a type and its nodes a label"
+            )
+        k = self._all_rels_hops
+        held_col, rel_col, far_col = (
+            f"__held{k}",
+            rel.variable or f"__rel{k}",
+            tgt_node.variable or f"__far{k}",
+        )
+        held_nm = self._var_table.get(held, (None, None))[1] if held else None
+        held_domain = self._domain_nodes.get(held) if held else None
+        held_type = held_nm.type_name if held_nm is not None else src_type
+        far_domain = self._domain_nodes.get(tgt_node.variable) if tgt_node.variable else None
+        if left:
+            union = self._build_all_rels_union(
+                tgt_node.variable,
+                rel.variable,
+                held,
+                far_domain,
+                held_domain,
+                src_type=tgt_type,
+                tgt_type=held_type,
+                rel_type=rel_type,
+                columns=(far_col, rel_col, held_col),
+            )
+        else:
+            union = self._build_all_rels_union(
+                held,
+                rel.variable,
+                tgt_node.variable,
+                held_domain,
+                far_domain,
+                src_type=held_type,
+                tgt_type=tgt_type,
+                rel_type=rel_type,
+                columns=(held_col, rel_col, far_col),
+                undirected=undirected,
+            )
+        alias = self._all_rels_alias
+        assert alias is not None and isinstance(union, exp.Subquery)
+
+        def node_id(column: str, table: str) -> exp.Expression:
+            return exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[
+                    exp.column(column, table=table, quoted=True),
+                    exp.Literal.string("$.id"),
+                ],
+            )
+
+        join_type = "LEFT" if clause.optional else "INNER"
+        if combined:
+            # The union the statement's rows already are, and this one, joined at their shared
+            # node: one union of relationships still, each hop's columns its own.
+            assert from_expr is not None
+            prior_col = held or self._all_rels_far_col
+            if prior_col is None:
+                raise CypherTranslateError("A hop goes on from a node the statement holds")
+            prior, this = from_expr.this.copy(), union.this
+            names = _named_columns(prior), _named_columns(this)
+            rows = (
+                exp.select(
+                    *(exp.alias_(exp.column(c, table="_h0", quoted=True), c) for c in names[0]),
+                    *(exp.alias_(exp.column(c, table="_h1", quoted=True), c) for c in names[1]),
+                )
+                .from_(exp.alias_(exp.Subquery(this=prior), "_h0"))
+                .join(
+                    exp.alias_(exp.Subquery(this=this), "_h1"),
+                    on=exp.EQ(this=node_id(prior_col, "_h0"), expression=node_id(held_col, "_h1")),
+                    join_type=join_type,
+                )
+            )
+            from_expr = cast("exp.Expression", exp.alias_(exp.Subquery(this=rows), alias))
+        else:
+            if held is None:
+                raise CypherTranslateError(
+                    "A relationship of no one type goes on from a node the statement names"
+                )
+            held_id = graph_identity(cast("_Translator", self), held)
+            if held_id is None:
+                raise CypherTranslateError(
+                    f"A relationship of no one type goes on from {held!r}, which the statement "
+                    "does not hold as a node"
+                )
+            same = exp.EQ(this=held_id, expression=node_id(held_col, alias))
+            if lateral:
+                from_expr = union
+                self._lateral_conditions.append(same)
+            else:
+                joins.append({"table": union, "on": same, "join_type": join_type})
+        self._all_rels_hops += 1
+        self._all_rels_far_col = far_col
+        if carried is not None:
+            self._tie_carried_edge(carried, rel_col)
+        if rel.variable:
+            self._passthrough_vars.add(rel.variable)
+            self._all_rels_rel_vars.add(rel.variable)
+            if clause.optional:
+                self._optional_rel_vars.add(rel.variable)
+        far = tgt_node.variable
+        if far:
+            self._domain_nodes.pop(far, None)
+            self._var_table[far] = (far, None)
+            self._passthrough_vars.add(far)
+            self._all_rels_node_vars.add(far)
+        return from_expr, joins
+
+    def _tie_carried_edge(self, carried: str, column: "str | None") -> None:
+        """The edge of ``column`` (a column of this FROM's union of relationships) is the one the
+        variable ``carried`` holds in the rows of the WITH that carries it."""
+        assert column is not None and self._all_rels_alias is not None
+
+        def edge_id(name: str, table: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[
+                    exp.column(name, table=table, quoted=True),
+                    exp.Literal.string("$.id"),
+                ],
+            )
+
+        self._held_end_conditions.append(
+            exp.EQ(
+                this=edge_id(column, self._all_rels_alias),
+                expression=edge_id(carried, self._var_table[carried][0]),
+            )
+        )
 
     def _resolve_typed_rel_candidates(
         self,
@@ -427,6 +634,15 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
         src_nm_explicit = src_nm is not None
         tgt_nm_explicit = tgt_nm is not None
+
+        # An end's own label holds whether or not the pattern names it: (:A)-[r]->(:B) reads
+        # only the relationships from an A to a B.
+        if src_nm is None and src_node.labels:
+            type_label, _ = self._resolve_node_type(src_node.labels)
+            src_nm = self._lm.nodes.get(type_label) if type_label else None
+            if src_nm and src_var:
+                self._var_table[src_var] = (src_var, src_nm)
+            src_nm_explicit = src_nm is not None
 
         if tgt_nm is None and tgt_node.labels:
             type_label, _ = self._resolve_node_type(tgt_node.labels)
@@ -675,9 +891,8 @@ class _RelJoinMixin:  # mixin for _Translator
         ):
             # REQ-2176: stored edges of one type between nodes the pattern names no type of: each
             # edge its own row with its own ends, as a read of every relationship reads them.
-            near, far = (tgt_var, src_var) if rel.direction == "left" else (src_var, tgt_var)
-            from_expr = self._handle_unlabeled_rel_pattern(
-                near, rel.variable, far, rel_type=rel.types[0].upper()
+            from_expr, joins = self._all_rels_hop(
+                rel, src_node, tgt_node, clause, from_expr, joins, i, rel_type=rel.types[0].upper()
             )
             return from_expr, joins, True
 
@@ -707,10 +922,14 @@ class _RelJoinMixin:  # mixin for _Translator
             elif rel_mapping is None:
                 # An endpoint's own label holds: (n:Inquiries)-[r]->(m) reads only the
                 # relationships from Inquiries, never every relationship of the model.
-                from_expr = self._handle_unlabeled_rel_pattern(
-                    src_var,
-                    rel.variable,
-                    tgt_var,
+                from_expr, joins = self._all_rels_hop(
+                    rel,
+                    src_node,
+                    tgt_node,
+                    clause,
+                    from_expr,
+                    joins,
+                    i,
                     src_type=src_nm.type_name if src_nm is not None and src_nm_explicit else None,
                     tgt_type=tgt_nm.type_name if tgt_nm is not None and tgt_nm_explicit else None,
                 )
@@ -951,6 +1170,9 @@ class _RelJoinMixin:  # mixin for _Translator
         rel_mapping: RelationshipMapping | None = None
         tgt_nm: NodeMapping | None = None
         self._held_end_conditions = []
+        # This FROM's unions of relationships (one alias, _all_rels, per FROM).
+        self._all_rels_hops = 0
+        self._all_rels_far_col = None
 
         for clause in match_clauses:
             if isinstance(clause.pattern, TriplePattern):
@@ -1003,10 +1225,11 @@ class _RelJoinMixin:  # mixin for _Translator
             for node in nodes:
                 self._register_node(node)
 
+            self._pattern_first_scan = None
             if from_expr is None and nodes:
                 new_from = self._build_first_node_from(nodes[0])
                 if new_from is not None:
-                    from_expr = new_from
+                    from_expr = self._pattern_first_scan = new_from
             elif from_expr is not None and nodes and not rels:
                 j = self._build_standalone_node_join(nodes[0].variable, clause)
                 if j is not None:
@@ -1186,3 +1409,11 @@ class _RelJoinMixin:  # mixin for _Translator
             self._extra_path_branches = patched
 
         return from_expr, joins
+
+
+def _named_columns(rows: exp.Expression) -> list[str]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The columns a select, or a union of selects, names."""
+    while isinstance(rows, (exp.Union, exp.Subquery)):
+        rows = rows.this
+    assert isinstance(rows, exp.Select)
+    return rows.named_selects

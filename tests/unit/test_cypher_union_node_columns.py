@@ -17,13 +17,11 @@ model's tables, and its SQL is one statement for Postgres and Trino alike."""
 
 # Requirements: REQ-2167, REQ-2176
 
-import pytest
 import sqlglot
 
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.translator import cypher_to_sql
-from provisa.gql.translator_types import CypherTranslateError
 from tests.unit.ephemeral_harness import Session, model_node
 from provisa.gql.label_map import CypherLabelMap
 
@@ -85,11 +83,22 @@ def test_a_list_property_of_a_union_is_a_list(monkeypatch):
     assert [r["a"]["label"] for r in rows] == ["A"]
 
 
-def test_a_pattern_predicate_on_a_node_of_several_labels_is_refused(monkeypatch):
+def test_a_pattern_predicate_on_a_node_of_several_labels_holds_for_its_own_row(monkeypatch):
+    # The pattern goes on from the outer row's node, tied by its identity, never matched afresh:
+    # E has no REL1, so it is not answered.
     s = Session(monkeypatch, {})
-    s.run("CREATE (:C)-[:REL1]->(:D)")
-    with pytest.raises(CypherTranslateError, match="a node of several labels"):
-        s.run("MATCH (n) WHERE (n)-[:REL1]-() RETURN n")
+    s.run("CREATE (:C)-[:REL1]->(:D), (:E)")
+    rows = s.run("MATCH (n) WHERE (n)-[:REL1]->() RETURN n")
+    assert [r["n"]["label"] for r in rows] == ["C"]
+
+
+def test_a_pattern_predicate_on_a_carried_node_of_several_labels_holds_for_its_own_row(
+    monkeypatch,
+):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:C)-[:REL1]->(:D), (:E)")
+    rows = s.run("MATCH (n) WITH n WHERE (n)-[:REL1]->() RETURN n")
+    assert [r["n"]["label"] for r in rows] == ["C"]
 
 
 def test_its_sql_is_one_statement_on_every_dialect():
