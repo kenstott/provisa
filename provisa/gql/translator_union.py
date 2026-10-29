@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
-from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN
+from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN, is_session_node
 from provisa.gql.path_walk import graph_identity
 from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
@@ -196,6 +196,15 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
             this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
         )
     )
+    if is_session_node(nm):
+        # A graph session's node names its every label (REQ-2176), which labels() of the node
+        # a list or map holds reads.
+        kv.append(
+            exp.JSONKeyValue(
+                this=exp.Literal.string("labels"),
+                expression=exp.Column(this=exp.Identifier(this=LABELS_COLUMN, quoted=True)),
+            )
+        )
     return exp.JSONObject(expressions=kv)
 
 

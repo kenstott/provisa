@@ -60,6 +60,7 @@ _GRAPH_FUNCTIONS = {
     "nodes": "NODE",
     "startnode": "NODE",
     "endnode": "NODE",
+    "properties": "PROPERTIES",
 }
 
 
@@ -492,6 +493,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 ),
                 expression=identity_second,
             )
+            if via is not None and via[1].identity_column is not None:
+                # REQ-2176: an edge of its own row is named by it, as a bare edge is.
+                identity = via_column(via[0], via[1].identity_column)
             return exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
@@ -856,6 +860,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # nodes(null) and its like are null, no graph value to decode.
             if isinstance(expr, FunctionCall) and alias and not null_arg:
                 kind = _GRAPH_FUNCTIONS.get(expr.name.lower())
+                if kind == "PROPERTIES" and not isinstance(expr.args[0], Variable):
+                    kind = None  # properties() of a map is the map, decoded as a map is
                 if kind is not None:
                     self._graph_vars[alias.lower()] = GraphVarKind[kind]
             trail_kind = self._trail_kind(expr)

@@ -583,11 +583,25 @@ class SessionWalkMixin:  # REQ-348
         end = exp.Case(
             ifs=[exp.If(this=_col("__fwd", h), true=tgt_json.copy())], default=src_json.copy()
         )
+        # And its ends' graph identities, as an edge read by its type names them (identity,
+        # start, end: select_builder._build_edge_object), which a DELETE of it reads.
+        start_id = exp.Case(
+            ifs=[exp.If(this=_col("__fwd", h), true=_col(GRAPH_ID, ns))], default=_col(GRAPH_ID, nt)
+        )
+        end_id = exp.Case(
+            ifs=[exp.If(this=_col("__fwd", h), true=_col(GRAPH_ID, nt))], default=_col(GRAPH_ID, ns)
+        )
         edge = exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
                 exp.Literal.string("id"),
                 _col("rel_id", h),
+                exp.Literal.string("identity"),
+                _col("rel_id", h),
+                exp.Literal.string("start"),
+                start_id,
+                exp.Literal.string("end"),
+                end_id,
                 exp.Literal.string("type"),
                 _col("type", h),
                 exp.Literal.string("startNode"),

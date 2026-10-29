@@ -44,6 +44,9 @@ class GraphVarKind(str, Enum):
     # REQ-2135: an RDF term, one JSON value (provisa.gql.terms); a subject's IRI is built from it
     # outside SQL (provisa.gql.iri).
     TERM = "TERM"
+    # properties(n) or properties(r): its JSON object; the answer is the map of the properties
+    # it holds set (a null property is no property, openCypher).
+    PROPERTIES = "PROPERTIES"
 
 
 # The column a statement carries when one of its paths is bounded by the depth limit.

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.label_map import LABELS_COLUMN
+from provisa.gql.label_map import LABELS_COLUMN, SESSION_REL_ID
 from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_identity, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
@@ -50,6 +50,7 @@ from provisa.gql.translator_types import (
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
+    refused_when_read,
     via_alias_for,
 )
 from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
@@ -902,6 +903,8 @@ class TranslatorExprContext:
             # keys() of a map -- a literal, a parameter, a variable bound to one, or null -- is the
             # map's own keys, in order (null for null).
             return _anon("map_keys", args[0])
+        if var is None and name in ("labels", "type") and len(args) == 1:
+            return self._element_fn(name, args[0])
         if var is None:
             raise NotImplementedError(f"graph function {name!r} needs a variable argument")
         if result is None:
@@ -963,15 +966,23 @@ class TranslatorExprContext:
                 return self._union_keys(var)
             if nm is None and var in t._all_rels_rel_vars:
                 # A relationship of a read of every relationship: the properties it holds set.
-                return self._set_keys(exp.column(edge_properties_column(var)))
+                return self._set_keys(exp.column(edge_properties_column(var)), of_relationship=True)
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
                 via_bound = t._rel_var_via.get(var)
                 if via_bound is not None:
+                    if self._in_session(via_bound[1].catalog_name):
+                        # REQ-2176: a session relationship's columns are its type's: the keys
+                        # are those it holds set.
+                        return self._set_keys(self._held_properties(var))
                     return exp.Array(
                         expressions=[exp.Literal.string(k) for k in sorted(via_bound[1].attributes)]
                     )
                 return None
+            if self._in_session(nm.catalog_name):
+                # REQ-2176: a session node's columns are its label's: the keys are those it holds
+                # set (a property removed, or another node's, is none of its).
+                return self._set_keys(self._held_properties(var))
             return exp.Array(expressions=[exp.Literal.string(k) for k in sorted(nm.properties)])
         if name == "type":
             if var in t._all_rels_rel_vars:
@@ -988,6 +999,48 @@ class TranslatorExprContext:
             # Marked with its variable: an extra UNION branch names its own type (_of_branch).
             return _type_literal(var, rel_type)
         return None
+
+    @staticmethod
+    def _element_fn(name: str, element: exp.Expression) -> exp.Expression:
+        """labels() or type() of a node or relationship a list or map holds: its JSON object,
+        read for what it says (a node's every label where it names them, else its one label; a
+        relationship's type). Of null, null; of any other value, a type error when it is read."""
+        key = "$.type" if name == "type" else "$.label"
+        refused = refused_when_read(
+            f"{name}() takes a {'relationship' if name == 'type' else 'node'}, and was given "
+            f"another value",
+            "JSON",
+        )
+        checked = exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.Is(
+                        this=_anon("JSON_EXTRACT", element.copy(), exp.Literal.string(key)),
+                        expression=exp.Null(),
+                    ),
+                    true=refused,
+                )
+            ],
+            default=element.copy(),
+        )
+        if name == "type":
+            return _anon("JSON_EXTRACT_SCALAR", checked, exp.Literal.string("$.type"))
+        every = exp.Cast(
+            this=_anon("JSON_EXTRACT", checked.copy(), exp.Literal.string("$.labels")),
+            to=exp.DataType.build("ARRAY<TEXT>"),
+        )
+        one = exp.Array(
+            expressions=[_anon("JSON_EXTRACT_SCALAR", checked, exp.Literal.string("$.label"))]
+        )
+        return exp.Case(
+            ifs=[exp.If(this=exp.Is(this=element, expression=exp.Null()), true=exp.Null())],
+            default=exp.Coalesce(this=every, expressions=[one]),
+        )
+
+    def _in_session(self, catalog: str) -> bool:
+        """Whether a relation of ``catalog`` is a graph session's (REQ-2176)."""
+        walk = self._t._lm.session_walk
+        return walk is not None and catalog == walk.catalog_name
 
     def _union_properties(self, var: str) -> exp.Expression:
         """The properties of a node of a union of labels: those its row's value holds
@@ -1009,7 +1062,7 @@ class TranslatorExprContext:
         holds (NODE_COLUMN) that are set -- a property null on the row is no property of it."""
         return self._set_keys(self._union_properties(var))
 
-    def _set_keys(self, props: exp.Expression) -> exp.Expression:
+    def _set_keys(self, props: exp.Expression, of_relationship: bool = False) -> exp.Expression:
         """The keys of a properties JSON object whose values are set (not null)."""
         key = exp.to_identifier("_k")
         path = exp.DPipe(
@@ -1018,10 +1071,18 @@ class TranslatorExprContext:
         )
         # Set: a value of any kind but null (each property keeps its type, a list one included,
         # which no engine reads as a scalar).
-        is_set = exp.NEQ(
+        is_set: exp.Expression = exp.NEQ(
             this=_anon("JSON_KIND", _anon("JSON_EXTRACT", props.copy(), path)),
             expression=exp.Literal.string("null"),
         )
+        if of_relationship:
+            # A session relationship's id, read as a property while a rest runs, is no key.
+            is_set = exp.And(
+                this=is_set,
+                expression=exp.NEQ(
+                    this=exp.column("_k"), expression=exp.Literal.string(SESSION_REL_ID)
+                ),
+            )
         return _anon(
             "filter", _anon("JSON_KEYS", props), exp.Lambda(this=is_set, expressions=[key])
         )
@@ -1065,8 +1126,14 @@ class TranslatorExprContext:
         if name == "endnode":
             return self._path_endpoint(var, start=False)
         if name == "properties":
-            return self._properties_object(var)
+            return self.resolve_element_properties(var)
         return None
+
+    def _held_properties(self, var: str) -> exp.Expression:
+        """The properties JSON object of ``var``, a node or relationship the read resolved."""
+        held = self._properties_object(var)
+        assert held is not None, f"{var} is a resolved node or relationship"
+        return held
 
     def _properties_object(self, var: str) -> exp.Expression | None:
         info = self._t._var_table.get(var)
@@ -1084,6 +1151,8 @@ class TranslatorExprContext:
                 via_alias, via_map = via_bound
                 via_exprs: list[exp.Expression] = []
                 for prop_name, col_name in via_map.attributes.items():
+                    if prop_name == SESSION_REL_ID:
+                        continue  # a session relationship's id, read while a rest runs
                     via_exprs.append(exp.Literal.string(prop_name))
                     via_exprs.append(_via_column(via_alias, col_name))
                 return exp.Anonymous(this="JSON_OBJECT", expressions=via_exprs)
@@ -1216,6 +1285,12 @@ class TranslatorExprContext:
             # A node or relationship a union of relationships carries: its value, as it is.
             return exp.column(name, table=t._all_rels_var_alias.get(name))
         return None
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:
+        """The JSON object of the node, relationship or path ``name`` as a list, a map or
+        collect() holds it (_element_of's value); None for any other variable."""
+        found = self._element_of(name)
+        return None if found is None else found[1]
 
     def resolve_graph_identity(
         self, name: str

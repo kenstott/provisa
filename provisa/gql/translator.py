@@ -44,6 +44,7 @@ from provisa.gql.expr_ast import (
     FunctionCall,
     Index,
     Literal as ExprLiteral,
+    ListLiteral,
     MapLiteral,
     Parameter as ExprParameter,
     Paren,
@@ -757,6 +758,18 @@ def _statement_exprs(ast: CypherAST) -> list[CypherExpr]:
     return exprs
 
 
+def _held_whole(expr: Any, var: str) -> bool:
+    """Whether ``expr`` (a WITH's or RETURN's item) is ``var`` bare, or a list or map literal
+    holding it as one of its elements ([a, 1], {key: a}), at any depth."""
+    if isinstance(expr, Variable):
+        return expr.name == var
+    if isinstance(expr, ListLiteral):
+        return any(_held_whole(i, var) for i in expr.items)
+    if isinstance(expr, MapLiteral):
+        return any(_held_whole(v, var) for _, v in expr.entries)
+    return False
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
@@ -1278,8 +1291,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         result: "exp.Select | exp.Union",
         select_exprs: list["exp.Expr"],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict] | None = None,
     ) -> "exp.Select | exp.Union":
-        """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths."""
+        """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths. Each
+        branch is the same rows read another way, so each takes the main query's UNWINDs too;
+        a RETURN DISTINCT is distinct over every branch."""
+        distinct = bool(self._ast.return_clause and self._ast.return_clause.distinct)
+        unwinds = [j for j in joins or [] if isinstance(j["table"], exp.Unnest)]
         for extra_from, extra_joins, extra_path_steps_map, rel_types in self._extra_path_branches:
             branch_select_exprs = []
             for s_expr in select_exprs:
@@ -1296,9 +1314,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 branch = branch.distinct()
             for j in extra_joins:
                 branch = branch.join(j["table"], on=j["on"], join_type=j["join_type"])
+            for j in unwinds:
+                if not any(j["table"] == held["table"] for held in extra_joins):
+                    branch = branch.join(j["table"].copy(), join_type=j["join_type"])
             if where_expr:
                 branch = branch.where(_of_branch(where_expr, rel_types))
-            result = exp.Union(this=result, expression=branch, distinct=False)
+            result = exp.Union(this=result, expression=branch, distinct=distinct)
         return result
 
     def _construct_union(
@@ -1451,7 +1472,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         else:
             select_exprs = selects[0]
             query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
-            result = self._apply_extra_branches(query, select_exprs, where_expr)
+            result = self._apply_extra_branches(query, select_exprs, where_expr, joins)
 
         defined = 0
         for (cte_name, cte_query), made in zip(cte_defs, walks_by_stage, strict=True):
@@ -2047,7 +2068,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # Its values are read where the WITH reads, before it names the map: WITH {second:
         # m.first} AS m reads the m an earlier WITH carries.
         columns = [
-            exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
+            exp.alias_(self._carried_value(value), map_key_column(alias, n), quoted=True)
             for n, (_key, value) in enumerate(expr.entries)
         ]
         self._map_vars[alias] = {key: n for n, (key, _value) in enumerate(expr.entries)}
@@ -2058,9 +2079,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         }
         return columns
 
+    def _carried_value(self, value: CypherExpr) -> exp.Expression:
+        """A map's value a WITH carries: a node, relationship or path as its JSON object (as
+        the map holds it), any other value as it is."""
+        if isinstance(value, Variable):
+            element = self._temporal_context().resolve_element_value(value.name)
+            if element is not None:
+                return element
+        return self._lower_expr(value)
+
     def _is_graph_element(self, name: str) -> bool:
         """Whether ``name`` is a node, relationship or path of the query."""
-        return self._temporal_context().resolve_graph_element(name) is not None
+        return self._temporal_context().resolve_element_value(name) is not None
 
     def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping | None]:
         """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
@@ -2457,7 +2487,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
         if self._ast.return_clause:
             items.extend(self._ast.return_clause.items)
-        if any(isinstance(i.expression, Variable) and i.expression.name == var for i in items):
+        if any(_held_whole(i.expression, var) for i in items):
             return True
         # collect(n): a list of the nodes themselves (expr_context._agg_node).
         return any(

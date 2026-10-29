@@ -115,7 +115,7 @@ async def _write(
             )
         if split.kind == "delete":
             return await delete_bound(
-                split.head, params, model, session, state, run_read, run_write, keep
+                split.head, params, model, session, state, run_read, run_write, keep, statement
             )
         if split.kind == "labels":
             return await write_labels_bound(

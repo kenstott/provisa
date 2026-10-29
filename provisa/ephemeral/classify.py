@@ -144,7 +144,7 @@ def classify_create(
     ends: list[bool] = []
     for i, node in enumerate(pattern.nodes):
         if node.variable is not None and node.variable in named:
-            if node.labels or node.properties:
+            if node.labels or node.properties or node.has_map:
                 raise CypherParseError(
                     f"Variable `{node.variable}` already declared: a CREATE cannot give it "
                     f"labels or properties"

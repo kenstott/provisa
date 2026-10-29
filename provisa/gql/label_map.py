@@ -196,6 +196,9 @@ GRAPH_ID = "__graph_id"
 #: REQ-2176: the column a graph session's node relation names every label of its node by, which
 #: labels() of a session node reads.
 LABELS_COLUMN = "__labels"
+#: While a read after a write runs (provisa.ephemeral.then), a session relationship's id is read
+#: as this property, which the read finds it again by; it is none of the relationship's keys.
+SESSION_REL_ID = "__rel_id"
 
 
 #: The catalog a graph session's relations are named in (provisa.ephemeral.read, REQ-2176).

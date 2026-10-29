@@ -857,6 +857,16 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
     return node
 
 
+def refused_when_read(message: str, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A value of type ``to`` that is a type error when the engine reads it (openCypher's
+    TypeError at runtime): ``message`` cast to a number, which every engine refuses naming it.
+    Placed in a CASE branch, it is an error only for the rows that reach it."""
+    return exp.Cast(
+        this=exp.Cast(this=exp.Literal.string(message), to=exp.DataType.build("INT")),
+        to=exp.DataType.build(to),
+    )
+
+
 def _json_valued(
     e: exp.Expression, json_columns: frozenset[str] | set[str] = frozenset()
 ) -> str | None:
@@ -912,6 +922,8 @@ def _json_valued(
     if isinstance(e, exp.Case):
         results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
         found = {_json_valued(r) for r in results if r is not None}
+        if found == {"value"}:
+            return "value"  # one JSON value by a condition (expr_visitor._element_or_map_key)
         return "list" if found == {"list"} or ("list" in found and None not in found) else None
     return None
 
