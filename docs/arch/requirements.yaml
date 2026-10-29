@@ -88525,12 +88525,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     class or property is {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as
     a key is, since term names are unique and a term''s derived domains change (a renamed term has a new
     IRI); and an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property
-    term has the term''s IRI as its predicate, and its direct predicate stays usable. A class term types
-    the instances of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23,
-    GRAPHQL IS A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL:
-    a GraphQL read lowers to the IR -- a root field to a node pattern with its where, order, skip and limit;
-    a relationship field to a hop on its declared relationship (its direction, a junction''s relationships
-    of the types its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
+    term has the term''s IRI as its predicate, [SUPERSEDED by REQ-2163, 2026-10-29 -- a term-bound column
+    is published only under the term''s property IRI (A TERM-BOUND COLUMN''S PROPERTY IS THE TERM''S, 2026-10-28);
+    only a column bound to no term keeps its per-class IRI. Kept here for history; do not implement against
+    it.] and its direct predicate stays usable. [END SUPERSEDED BLOCK] A class term types the instances
+    of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23, GRAPHQL IS
+    A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL: a GraphQL read
+    lowers to the IR -- a root field to a node pattern with its where, order, skip and limit; a relationship
+    field to a hop on its declared relationship (its direction, a junction''s relationships of the types
+    its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
     cardinality, with the level''s own where, order, skip, limit and distinct_on; a relationship condition
     to EXISTS; an alias to its result name; aggregates and group-by to the IR''s aggregation. The IR''s
     SQL is the canonical semantic SQL (REQ-863), so equivalent GraphQL, Cypher and SPARQL reads compile
