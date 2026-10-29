@@ -48,9 +48,10 @@ jobs:
           exit 1
       - name: List
         if: env.MODE == 'list'
-        # bash, named: GitHub runs it with pipefail, so a failed script fails the step.
-        shell: bash
-        run: python scripts/snowflake_cleanup.py list --out snowflake-inventory.json | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          python scripts/snowflake_cleanup.py list --out snowflake-inventory.json > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload inventory
         if: env.MODE == 'list'
         uses: actions/upload-artifact@v4
@@ -60,6 +61,7 @@ jobs:
           if-no-files-found: error
       - name: Delete
         if: env.MODE == 'delete'
-        # bash, named: GitHub runs it with pipefail, so a failed script fails the step.
-        shell: bash
-        run: python scripts/snowflake_cleanup.py delete --items "$ITEMS" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          python scripts/snowflake_cleanup.py delete --items "$ITEMS" > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
