@@ -8952,6 +8952,8 @@
   code:
   - provisa/cypher/
   tests:
+  - tests/unit/test_cypher_with_where_scope.py
+  - tests/unit/test_cypher_mixed_list_graph_elements.py
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
@@ -47057,7 +47059,12 @@
     undefined terms on paths to data; and drift, the terms that lost or gained grounding since the previous
     period, read from the glossary''s retained history. Each row links to the term, and a placeholder row
     to its RELATED_TO review. Like every report it is an ops-domain view read through the governed pipeline
-    as the selected roles, exportable and access-controlled.'
+    as the selected roles, exportable and access-controlled. (Amended 2026-10-28, DRIFT FROM THE MODEL''S
+    HISTORY; A HUB IS FIVE:) The Ontology quality report''s drift is computed from the model''s retained
+    version history: the glossary as it stood at the start of the previous period is graded with the same
+    grounding computation as today''s and the two are compared; it is computed by Provisa rather than read
+    from a view, and shown with the report. A broad hub term is one with at least five terms directly beneath
+    it on grounding edges; the report states the rule.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -82504,7 +82511,10 @@
     outputs (a VOID command): calling it runs it and answers an empty result with no columns, as a Cypher
     VOID procedure does, on every surface that calls commands. In Cypher, a standalone CALL may omit its
     parentheses (CALL name): each argument is then bound from the statement parameter of the same name,
-    and a missing parameter is refused by name.'
+    and a missing parameter is refused by name. (Amended 2026-10-28, AN IMPLICIT CALL TAKES DECLARED DEFAULTS:)
+    In an implicit-argument CALL (CALL name, no parentheses), an argument that declares a default takes
+    it when no same-named $parameter is given, as in a positional call (REQ-2168); only an argument with
+    no default and no parameter is refused by name.'
   scenario: 'Given a statement command embed_tickets(since timestamp) whose statement is INSERT INTO kb.docs (id, title, body_vec) SELECT ticket_id, subject, embed(''text-embedding-3-small'', subject) FROM support.tickets WHERE updated_at > {{since}} ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, body_vec = EXCLUDED.body_vec
 
     When a steward runs it with since set to yesterday
@@ -91478,7 +91488,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Refresh on a URL document fetches it again and replaces its content with what the URL serves now; Upload
     new version on a file document replaces its content with the uploaded file. The document keeps its place,
     status and domains, and shows when it was last refreshed or replaced. Earlier content is not kept; citations
-    already made keep their quoted text, and later scans and answers read the current content.'
+    already made keep their quoted text, and later scans and answers read the current content. (Amended
+    2026-10-28, PASSAGES ARE KEPT, NOT FILES; KEPT DOCUMENTS ONLY; RE-EMBED:) The library keeps a document''s
+    passages (text, section or page, and their embeddings) and its metadata, not the original file; the
+    files source supplies the reading. Assistants draw only on kept documents; a proposed one is used only
+    once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
+    model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
+    which re-embeds the stored passage text with the current model.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage

@@ -334,6 +334,10 @@ class Walk:
                 answer = self.send(f"{key} (sql)", "POST", "/data/sql", body, sql=step["sql"])
                 if answer is not None:  # None: refused outside a view's read window (_answered)
                     self.answers[key] = answer["sql"]
+            if step.get("mcp_connect"):
+                # The explorer's Connect panel reads the MCP server's status; the agent's own
+                # questions (mcp) are answered live by a model, so the walk sends none.
+                self.send(f"{key} (mcp-connect)", "GET", "/admin/mcp-server", None)
             if "cypher" in step:
                 self.send(f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]})
             if "example" in step and not _is_subscription(examples[step["example"]]):
