@@ -44,8 +44,8 @@ def _connect():
     )
 
 
-def _find(cur, warehouse: str) -> tuple[str, str]:
-    """``(name as Snowflake spells it, state)`` of ``warehouse``."""
+def _row(cur, warehouse: str) -> dict:
+    """``warehouse``'s SHOW WAREHOUSES row, its columns by lower-case name."""
     pattern = warehouse.replace("'", "''")
     cur.execute(f"SHOW WAREHOUSES LIKE '{pattern}'")
     columns = [d[0].lower() for d in cur.description]
@@ -56,7 +56,17 @@ def _find(cur, warehouse: str) -> tuple[str, str]:
             f"Snowflake warehouse {warehouse!r}: {len(matches)} warehouses of that name are "
             "visible to the test's user, expected exactly one"
         )
-    return str(matches[0]["name"]), str(matches[0]["state"]).upper()
+    return matches[0]
+
+
+def _find(cur, warehouse: str) -> tuple[str, str]:
+    """``(name as Snowflake spells it, state)`` of ``warehouse``."""
+    row = _row(cur, warehouse)
+    return str(row["name"]), str(row["state"]).upper()
+
+
+def _ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def warehouse_state(warehouse: str) -> str:
@@ -81,8 +91,7 @@ def suspend_warehouse(warehouse: str) -> str:
         try:
             name, state = _find(cur, warehouse)
             if state not in _SUSPENDED:
-                ident = name.replace('"', '""')
-                cur.execute(f'ALTER WAREHOUSE "{ident}" SUSPEND')
+                cur.execute(f"ALTER WAREHOUSE {_ident(name)} SUSPEND")
                 state = _find(cur, warehouse)[1]
             if state not in _SUSPENDED:
                 raise RuntimeError(
@@ -90,6 +99,64 @@ def suspend_warehouse(warehouse: str) -> str:
                     "it may be billing"
                 )
             return state
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
+def set_auto_suspend(warehouse: str, seconds: int) -> int:
+    """Set ``warehouse`` to suspend itself after ``seconds`` idle, read the setting back, and
+    return it (maintainer 2026-10-29: a CI run that dies before its teardown cannot leave the
+    warehouse billing for longer than that). The ALTER resumes nothing."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        try:
+            name = str(_row(cur, warehouse)["name"])
+            cur.execute(f"ALTER WAREHOUSE {_ident(name)} SET AUTO_SUSPEND = {int(seconds)}")
+            found = int(_row(cur, warehouse)["auto_suspend"])
+            if found != int(seconds):
+                raise RuntimeError(
+                    f"Snowflake warehouse {name!r} suspends after {found}s idle after it was set "
+                    f"to {seconds}s"
+                )
+            return found
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
+def cap_monthly_credits(warehouse: str, monitor: str, credits: int) -> str:
+    """Put ``warehouse`` under the resource monitor ``monitor``: at most ``credits`` credits a
+    calendar month, then the warehouse is suspended at once (maintainer 2026-10-29: CI must not
+    run up the warehouse bill). A warehouse already under ``monitor`` is left as it is. Creating
+    a resource monitor and assigning one to a warehouse need the ACCOUNTADMIN role; a user
+    without it gets Snowflake's own refusal, raised as it is. Returns the monitor's name."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        try:
+            row = _row(cur, warehouse)
+            if str(row["resource_monitor"]).upper() == monitor.upper():
+                return monitor.upper()
+            cur.execute(
+                f"CREATE RESOURCE MONITOR IF NOT EXISTS {_ident(monitor.upper())} "
+                f"WITH CREDIT_QUOTA = {int(credits)} FREQUENCY = MONTHLY "
+                "START_TIMESTAMP = IMMEDIATELY TRIGGERS ON 100 PERCENT DO SUSPEND_IMMEDIATE"
+            )
+            cur.execute(
+                f"ALTER WAREHOUSE {_ident(str(row['name']))} "
+                f"SET RESOURCE_MONITOR = {_ident(monitor.upper())}"
+            )
+            found = str(_row(cur, warehouse)["resource_monitor"]).upper()
+            if found != monitor.upper():
+                raise RuntimeError(
+                    f"Snowflake warehouse {row['name']!r} is under resource monitor {found!r} "
+                    f"after it was assigned {monitor.upper()!r}"
+                )
+            return found
         finally:
             cur.close()
     finally:

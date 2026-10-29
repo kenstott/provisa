@@ -272,3 +272,78 @@ def test_a_databricks_warehouse_restarted_while_stopping_raises_at_once_naming_i
     assert "may be billing" in str(raised.value)
     assert http.posts == ["https://dbx.example/api/2.0/sql/warehouses/abc123/stop"]
     assert databricks_warehouse.time.monotonic() < databricks_warehouse._STOP_TIMEOUT_S
+
+
+# --- the warehouse lane's own Snowflake settings (maintainer 2026-10-29) -------------------------
+
+
+class _SettingsCursor:
+    """SHOW WAREHOUSES answers with the warehouse's current settings; an ALTER ... SET changes
+    them as Snowflake would, unless the statement is refused."""
+
+    def __init__(self, *, auto_suspend=600, monitor="null", refuse=None):
+        self.row = {"name": "Wh_X", "state": "SUSPENDED", "auto_suspend": auto_suspend,
+                    "resource_monitor": monitor}  # fmt: skip
+        self.refuse = refuse
+        self.statements = []
+        self.description = [(k,) for k in self.row]
+
+    def execute(self, sql):
+        self.statements.append(sql)
+        if self.refuse and sql.startswith(self.refuse):
+            raise RuntimeError("SQL access control error: Insufficient privileges")
+        if sql.startswith("ALTER WAREHOUSE") and "AUTO_SUSPEND" in sql:
+            self.row["auto_suspend"] = int(sql.rsplit("=", 1)[1])
+        if sql.startswith("ALTER WAREHOUSE") and "RESOURCE_MONITOR" in sql:
+            self.row["resource_monitor"] = sql.rsplit("=", 1)[1].strip().strip('"')
+
+    def fetchall(self):
+        return [tuple(self.row.values())]
+
+    def close(self):
+        pass
+
+
+def test_the_lane_sets_the_snowflake_warehouse_to_suspend_after_sixty_idle_seconds(monkeypatch):
+    cur = _SettingsCursor(auto_suspend=600)
+    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
+    assert snowflake_warehouse.set_auto_suspend("wh_x", 60) == 60
+    assert 'ALTER WAREHOUSE "Wh_X" SET AUTO_SUSPEND = 60' in cur.statements
+    # Nothing resumes or suspends the warehouse to change the setting.
+    assert not any(s.endswith(("RESUME", "SUSPEND")) for s in cur.statements)
+
+
+def test_a_snowflake_auto_suspend_that_does_not_read_back_raises(monkeypatch):
+    cur = _SettingsCursor(auto_suspend=600)
+    cur.execute = lambda sql, _orig=cur.execute: None if sql.startswith("ALTER") else _orig(sql)
+    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
+    with pytest.raises(RuntimeError, match="600s idle after it was set to 60s"):
+        snowflake_warehouse.set_auto_suspend("wh_x", 60)
+
+
+def test_the_snowflake_warehouse_is_put_under_a_monthly_credit_cap(monkeypatch):
+    cur = _SettingsCursor()
+    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
+    assert snowflake_warehouse.cap_monthly_credits("wh_x", "provisa_ci", 20) == "PROVISA_CI"
+    assert cur.statements[1] == (
+        'CREATE RESOURCE MONITOR IF NOT EXISTS "PROVISA_CI" WITH CREDIT_QUOTA = 20 '
+        "FREQUENCY = MONTHLY START_TIMESTAMP = IMMEDIATELY "
+        "TRIGGERS ON 100 PERCENT DO SUSPEND_IMMEDIATE"
+    )
+    assert cur.statements[2] == 'ALTER WAREHOUSE "Wh_X" SET RESOURCE_MONITOR = "PROVISA_CI"'
+
+
+def test_a_snowflake_warehouse_already_under_the_cap_is_left_as_it_is(monkeypatch):
+    cur = _SettingsCursor(monitor="PROVISA_CI")
+    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
+    assert snowflake_warehouse.cap_monthly_credits("wh_x", "provisa_ci", 20) == "PROVISA_CI"
+    assert cur.statements == ["SHOW WAREHOUSES LIKE 'wh_x'"]
+
+
+def test_a_user_who_may_not_create_the_credit_cap_gets_snowflakes_refusal(monkeypatch):
+    """Maintainer 2026-10-29: a CI user without the privilege fails the step with Snowflake's own
+    message; nothing catches it."""
+    cur = _SettingsCursor(refuse="CREATE RESOURCE MONITOR")
+    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
+    with pytest.raises(RuntimeError, match="Insufficient privileges"):
+        snowflake_warehouse.cap_monthly_credits("wh_x", "provisa_ci", 20)

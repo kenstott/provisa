@@ -12,6 +12,10 @@
 #
 #   ui-core-after.sh <playwright json report>
 #
+# Run by the core UI lane (ui-e2e-core.yml), which is passed no live warehouse's credentials, so
+# steps 2 and 3 do nothing there (maintainer 2026-10-29), and by the nightly warehouse UI job
+# (integration-suite-lanes.yml warehouse-ui), which is.
+#
 # 1. Names every test that did not execute (never counted as passed).
 # 2. Leaves the Fabric capacity paused. The cloud-warehouse spec resumes it (a billable compute
 #    unit) and pauses it in its own teardown -- which does not run when the spec dies or the job
@@ -23,8 +27,8 @@
 #    when one finishes). A warehouse that does not end stopped or suspended fails the step
 #    (REQ-254: compute a test starts or resumes is stopped again). No other run uses this
 #    compute meanwhile: the job holds the live-cloud-warehouses concurrency group, which the
-#    integration suite's warehouse lane holds too (ui-e2e-core.yml), so a stop here never takes
-#    the compute from under another run, and another run's queries never restart it.
+#    integration suite's warehouse lane holds too (integration-suite-lanes.yml), so a stop here
+#    never takes the compute from under another run, and another run's queries never restart it.
 # 4. Removes the credential files the prepare script wrote.
 # Each step runs even when an earlier one failed; the script fails if any did.
 set -euo pipefail
@@ -48,7 +52,7 @@ fi
 
 if [ -n "${SNOWFLAKE_ACCOUNT:-}" ] && [ -n "${SNOWFLAKE_USER:-}" ] && [ -n "${SNOWFLAKE_PASSWORD:-}" ]; then
   ( cd "$GITHUB_WORKSPACE" && uv run python -c \
-      "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ.get('SNOWFLAKE_WAREHOUSE', 'COMPUTE_WH')))" ) \
+      "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ['SNOWFLAKE_WAREHOUSE']))" ) \
     || { echo "::error::the Snowflake warehouse could not be confirmed suspended: check it, it may be billing"; status=1; }
 fi
 
