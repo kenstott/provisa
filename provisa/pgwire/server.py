@@ -567,6 +567,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
     "REGPROC": BVType.REGPROC,
     "REGTYPE": BVType.REGTYPE,
+    "REGCLASS": BVType.REGCLASS,
+    "REGNAMESPACE": BVType.REGNAMESPACE,
     "OIDVECTOR": BVType.OIDVECTOR,
     "INT2VECTOR": BVType.INT2VECTOR,
     "ACLITEM[]": BVType.ACLITEMARRAY,
@@ -633,6 +635,10 @@ _WIRE_FAMILIES = (
     ),
     frozenset({BVType.REAL, BVType.FLOAT}),
     frozenset({BVType.REALARRAY, BVType.FLOATARRAY}),
+    # A regclass or regnamespace result column is served as its oid and name together, a
+    # struct (catalog_regs).
+    frozenset({BVType.REGCLASS, BVType.JSON}),
+    frozenset({BVType.REGNAMESPACE, BVType.JSON}),
     frozenset({BVType.TEXT, BVType.INET, BVType.PG_LSN}),
     frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
     frozenset(
@@ -670,11 +676,23 @@ def _reg_binary(value: Any) -> bytes:
     return value.to_bytes(4, "big", signed=False)
 
 
+def _named_text(value: dict) -> str:  # REQ-2167
+    return value["name"]
+
+
+def _named_binary(value: dict) -> bytes:  # REQ-2167
+    return value["oid"].to_bytes(4, "big", signed=False)
+
+
 def _register_reg_types() -> None:
     from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
 
     type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
     BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
+    # A regclass or regnamespace value is its oid and its name (catalog_regs): sent as the name
+    # in text, the oid in binary.
+    BVTYPE_TO_PGTYPE[BVType.REGCLASS] = (2205, _named_text, _named_binary)
+    BVTYPE_TO_PGTYPE[BVType.REGNAMESPACE] = (4089, _named_text, _named_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY] = _array_entry(BVType.REGTYPE, 2211)
 

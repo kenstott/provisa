@@ -28,7 +28,7 @@ _VISIBLE = "('public', 'pg_catalog')"
 # FROM-less select (_a) before the body reads a relation with it.
 
 
-def _quoted(name: str) -> str:
+def quoted_identifier(name: str) -> str:
     """A name as quote_ident writes it: bare when it is a lowercase identifier."""
     return (
         f"CASE WHEN regexp_full_match({name}, '[a-z_][a-z0-9_$]*') THEN {name} "
@@ -45,7 +45,7 @@ def _type_name(oid: str, qualified: bool = False) -> str:
         for internal, display in _PG_TYPE_DISPLAY_NAMES.items()
     )
     other = (
-        f"{_quoted('_tn.nspname')} || '.' || {_quoted('_ty.typname')}"
+        f"{quoted_identifier('_tn.nspname')} || '.' || {quoted_identifier('_ty.typname')}"
         if qualified
         else "_ty.typname"
     )
@@ -53,6 +53,11 @@ def _type_name(oid: str, qualified: bool = False) -> str:
         f"(SELECT CASE _ty.typname {cases} ELSE {other} END FROM _pg_type _ty "
         f"JOIN _pg_namespace _tn ON _tn.oid = _ty.typnamespace WHERE _ty.oid = {oid})"
     )
+
+
+def type_display_name(oid: str) -> str:
+    """The name of the type ``oid`` (an SQL expression) as format_type writes it."""
+    return _type_name(oid)
 
 
 def _relation_kind(relkind: str) -> str:
@@ -131,8 +136,8 @@ _MACROS = (
 
 def _named_in_path(schema: str, name: str) -> str:
     return (
-        f"CASE WHEN {schema} IN {_VISIBLE} THEN '' ELSE {_quoted(schema)} || '.' END "
-        f"|| {_quoted(name)}"
+        f"CASE WHEN {schema} IN {_VISIBLE} THEN '' ELSE {quoted_identifier(schema)} || '.' END "
+        f"|| {quoted_identifier(name)}"
     )
 
 
@@ -153,7 +158,7 @@ _PROC = (
     "JOIN _pg_namespace _n ON _n.oid = _p.pronamespace"
 )
 _COLUMN = (
-    f"(SELECT {_quoted('_att.attname')} FROM _pg_attribute _att "
+    f"(SELECT {quoted_identifier('_att.attname')} FROM _pg_attribute _att "
     "WHERE _att.attrelid = _c.oid AND _att.attnum = _a._s)"
 )
 
@@ -189,12 +194,12 @@ def _identify_object() -> str:
             f"identity := {identity})"
         )
 
-    relation = f"{_quoted('_n.nspname')} || '.' || {_quoted('_c.relname')}"
+    relation = f"{quoted_identifier('_n.nspname')} || '.' || {quoted_identifier('_c.relname')}"
     no_name = "CAST(NULL AS VARCHAR)"
     return (
         f"CREATE MACRO pg_identify_object(classid, objid, objsubid) AS CASE {_CLASS_ID} "
         "WHEN '1259' THEN (SELECT CASE WHEN _a._s = 0 THEN "
-        + row(_relation_kind("_c.relkind"), "_n.nspname", _quoted("_c.relname"), relation)
+        + row(_relation_kind("_c.relkind"), "_n.nspname", quoted_identifier("_c.relname"), relation)
         + " ELSE "
         + row(
             _relation_kind("_c.relkind") + " || ' column'",
@@ -207,14 +212,14 @@ def _identify_object() -> str:
             "CASE _p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END",
             "_n.nspname",
             no_name,
-            f"{_quoted('_n.nspname')} || '.' || {_quoted('_p.proname')} || '(' || "
+            f"{quoted_identifier('_n.nspname')} || '.' || {quoted_identifier('_p.proname')} || '(' || "
             f"{_type_names('_p.proargtypes', ',', True)} || ')'",
         )
         + f" {_PROC}) WHEN '1247' THEN (SELECT "
-        + row("'type'", "_n.nspname", _quoted("_t.typname"), _type_name("_t.oid", True))
+        + row("'type'", "_n.nspname", quoted_identifier("_t.typname"), _type_name("_t.oid", True))
         + " FROM (SELECT objid AS _k) _a JOIN _pg_type _t ON _t.oid = _a._k "
         "JOIN _pg_namespace _n ON _n.oid = _t.typnamespace) WHEN '2615' THEN (SELECT "
-        + row("'schema'", no_name, _quoted("_n.nspname"), _quoted("_n.nspname"))
+        + row("'schema'", no_name, quoted_identifier("_n.nspname"), quoted_identifier("_n.nspname"))
         + " FROM (SELECT objid AS _k) _a JOIN _pg_namespace _n ON _n.oid = _a._k) END"
     )
 

@@ -573,6 +573,9 @@ _DESCRIBED_TYPE_OIDS = sorted(
     _with_underlying_types(
         {oid for columns in RELATIONS.values() for _, _, oid in columns}
         | set(CATALOG_TYPE_OIDS.values())
+        # The types a result column is sent as besides: a cast's (cast_types) and an object
+        # identifier's (catalog_regs).
+        | {1042, 2205, 2206, 4089}
     )
     - {row[0] for row in _PG_TYPE_ROWS}
 )
