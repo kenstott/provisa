@@ -71,6 +71,7 @@ const ORDER: GlossaryTermSummary = {
   ref_count: 2,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,

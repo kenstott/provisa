@@ -24,7 +24,7 @@ from provisa.sparql_query.vocabulary import build_vocabulary
 from tests.unit import test_sparql_compiler as _sparql_tests
 from tests.unit.test_sparql_compiler import (  # noqa: F401 -- fixtures
     BASE,
-    _GROUNDING,
+    _COLUMNS,
     _TYPES,
     _answer,
     _model,
@@ -43,7 +43,7 @@ def _cypher_rows(con, cypher: str) -> list[tuple]:
 
 def _export(cypher: str) -> str:
     lm = _model()
-    return ir_to_sparql(parse_cypher(cypher), build_vocabulary(lm, BASE, _TYPES, _GROUNDING), lm)
+    return ir_to_sparql(parse_cypher(cypher), build_vocabulary(lm, BASE, _TYPES, _COLUMNS), lm)
 
 
 def _sparql_rows(con, sparql: str) -> list[tuple]:

@@ -77,6 +77,7 @@
     "itemNotebook": "नोटबुक",
     "itemContainerRegistries": "कंटेनर रजिस्ट्री",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "कैटलॉग"
+    "itemCatalogs": "कैटलॉग",
+    "itemReferenceLibrary": "संदर्भ लाइब्रेरी"
   }
 }

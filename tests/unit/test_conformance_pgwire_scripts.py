@@ -90,7 +90,9 @@ def test_pgspec_results_are_counted_per_leaf_and_failures_grouped_by_section():
         _ev("pass", "TestLone"),
     ]
     s = m.summarise(_SOURCE, events, "v1.5.11")
-    assert (s["total"], s["passed"], s["failed"], s["skipped"]) == (5, 2, 2, 1)
+    # REQ-2167 (amended 2026-10-28): a skipped or unreached leaf no group names is failed.
+    assert (s["total"], s["passed"], s["by_design"], s["failed"]) == (5, 2, 0, 3)
+    assert "skipped" not in s
     assert s["not_reached"] == ["TestSimpleQuery/Cancel"]
     assert s["pass_rate"] == 0.4
     assert list(s["failed_by_section"]) == [
@@ -101,9 +103,14 @@ def test_pgspec_results_are_counted_per_leaf_and_failures_grouped_by_section():
     assert startup == [
         {"test": "TestStartup/WrongVersion", "reason": "pgspec_test.go:60: expected ErrorResponse"}
     ]
+    assert [f["test"] for f in s["failed_by_section"]["Section 2: Simple Query (55.2.3)"]] == [
+        "TestSimpleQuery/Cancel",
+        "TestSimpleQuery/Insert",
+    ]
     md = m.markdown(s)
-    assert "| 5 | 2 | 2 | 1 | 40.0% |" in md
+    assert "5 tests: 2 passed, 0 skipped by design, 3 failed. Pass rate 40.0%" in md
     assert "`TestSimpleQuery/Cancel`: not reached" in md
+    assert "`TestSimpleQuery/Insert`: skipped by pgspec" in md
 
 
 def test_a_top_level_test_that_failed_before_its_subtests_counts_them_not_itself():
@@ -148,7 +155,9 @@ def test_the_summary_fails_when_the_suite_did_not_run_or_a_test_failed(tmp_path)
     assert m.main(["x", str(src), str(passing), *args]) == 0
 
 
-def test_a_failure_a_by_design_group_names_is_left_out_and_fails_nothing(tmp_path, monkeypatch):
+def test_a_failure_a_by_design_group_names_is_skipped_by_design_and_fails_nothing(
+    tmp_path, monkeypatch
+):
     m = _load("pgspec_summary")
     rules = tmp_path / "by_design"
     rules.mkdir()
@@ -164,8 +173,15 @@ def test_a_failure_a_by_design_group_names_is_left_out_and_fails_nothing(tmp_pat
         for t in ("TestStartup/Version30", "TestStartup/WrongVersion", "TestSimpleQuery/Insert")
     ] + [_ev("fail", "TestSimpleQuery/Cancel"), _ev("pass", "TestLone")]
     s = m.summarise(_SOURCE, events)
-    assert (s["total"], s["passed"], s["failed"], s["not_runnable"]) == (4, 4, 0, 1)
-    assert s["by_design"][0]["group"] == "Cancel" and s["by_design"][0]["count"] == 1
+    assert (s["total"], s["passed"], s["by_design"], s["failed"]) == (5, 4, 1, 0)
+    assert s["pass_rate"] == 1.0
+    (group,) = s["by_design_groups"]
+    assert (group["group"], group["count"], group["cases"]) == (
+        "Cancel",
+        1,
+        [{"case": "TestSimpleQuery::Cancel", "reason": ""}],
+    )
+    assert "| Cancel | 1 | REQ-2167 |" in m.markdown(s)
     src, results = tmp_path / "pgspec_test.go", tmp_path / "r.jsonl"
     src.write_text(_SOURCE)
     results.write_text("\n".join(json.dumps(e) for e in events))
@@ -198,10 +214,23 @@ def test_catalog_columns_are_compared_by_name_order_type_and_typmod():
 
 
 def test_each_part_of_the_catalog_report_is_its_own_section():
+    import by_design
+
     m = _load("pgwire_catalog_types")
+    geometric = {
+        "group": "Geometric functions",
+        "requirement": "REQ-2167",
+        "decision": "d",
+        "count": 2,
+        "cases": [
+            {"case": "catalog function::point_above()", "reason": "no such function"},
+            {"case": "catalog function::box()", "reason": "no such function"},
+        ],
+    }
     report = {
         "postgres_version": "16.4",
         "catalog_relations": {
+            **by_design.outcomes(1, [], [{}, {}]),
             "postgres_relations": 3,
             "served": 2,
             "matching": ["pg_catalog.pg_class"],
@@ -210,22 +239,16 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             "served_not_in_postgres": [],
         },
         "catalog_functions": {
+            **by_design.outcomes(1, [geometric], [{}]),
             "postgres_functions": 2,
             "excluded": "pseudo-types",
             "served": 1,
             "matching": 1,
             "differing": {},
             "not_served": {"pg_catalog.foo(integer)": "function foo does not exist"},
-            "by_design": [
-                {
-                    "group": "Geometric functions",
-                    "requirement": "REQ-2167",
-                    "decision": "d",
-                    "count": 2,
-                }
-            ],
         },
         "type_conversions": {
+            **by_design.outcomes(0, [], [{}]),
             "fixture_columns": [],
             "casts": [
                 {
@@ -238,11 +261,14 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             ],
             "compared": 1,
             "matching": 0,
-            "by_design": [],
             "differing": 1,
         },
     }
     md = m.markdown(report)
+    # REQ-2167 (amended 2026-10-28): each part's three counts, side by side.
+    assert "| catalog relations | 3 | 1 | 0 | 2 | 33.3% |" in md
+    assert "| catalog functions | 4 | 1 | 2 | 1 | 50.0% |" in md
+    assert "| type conversions | 1 | 0 | 0 | 1 | 0.0% |" in md
     for heading in (
         "## pgwire catalog shape (PostgreSQL 16.4)",
         "## pgwire catalog coverage (PostgreSQL 16.4)",
@@ -251,7 +277,8 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         assert heading in md
     assert "`pg_catalog.pg_stat_database`" in md
     assert "`pg_catalog.foo(integer)`" in md
-    assert "Functions not served by design (2)" in md and "| Geometric functions | 2 |" in md
+    assert "Functions skipped by design (2)" in md
+    assert "| Geometric functions | 2 | REQ-2167 |" in md
     assert "| `SELECT 'x'::name AS v` | name | text |" in md
 
 
@@ -318,6 +345,17 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         "c_money": "money",
     }
     assert set(sampled) == {"c_numeric"}
+    # REQ-1961 (VARCHAR AND CHAR KEEP THEIR TYPE): a character column is text, its native type
+    # kept as a hidden attribute.
+    assert {
+        n: (arrays[n].data_type, arrays[n].native_type, arrays[n].native_platform)
+        for n in ("c_text", "c_varchar", "c_varchar_20", "c_bpchar_5")
+    } == {
+        "c_text": ("text", None, None),
+        "c_varchar": ("text", "character varying", "postgresql"),
+        "c_varchar_20": ("text", "character varying(20)", "postgresql"),
+        "c_bpchar_5": ("text", "character(5)", "postgresql"),
+    }
     assert cfg.sources[0].port == 55432
 
 
@@ -347,8 +385,18 @@ def test_a_catalog_function_of_a_by_design_family_is_left_out_of_not_served():
     provisa = _Probe(functions, refused={"point_above", "pg_cancel_backend"})
     report = m.catalog_functions(pg, provisa, {23: "int4"})
     assert list(report["not_served"]) == ["pg_cancel_backend()"]
-    assert [(g["group"], g["count"]) for g in report["by_design"]] == [("Geometric functions", 1)]
+    assert [(g["group"], g["count"]) for g in report["by_design_groups"]] == [
+        ("Geometric functions", 1)
+    ]
     assert report["matching"] == 1
+    # Each function probed is a case: passed, skipped by design, or failed (not served).
+    assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
+        3,
+        1,
+        1,
+        1,
+    )
+    assert report["failures"][0]["reason"].startswith("not served: ")
 
 
 def test_no_by_design_function_group_names_a_function_a_client_calls():
@@ -384,6 +432,8 @@ def test_a_conversion_is_passed_by_design_or_failed():
     """REQ-2167 (amended 2026-10-28): each compared statement is in one outcome; a difference a
     by-design group names (by_design/pgwire.yaml) is by design only when every difference the
     statement has is one the group allows."""
+    import by_design
+
     m = _load("pgwire_catalog_types")
     fixture = [
         _conversion("SELECT c_int4 FROM conformance.types_fixture"),
@@ -416,7 +466,8 @@ def test_a_conversion_is_passed_by_design_or_failed():
     ]
     out = m.conversion_outcomes(fixture, casts)
     assert (out["compared"], out["matching"], out["differing"]) == (6, 1, 2)
-    assert {g["group"]: g["count"] for g in out["by_design"]} == {
+    assert (out["total"], out["passed"], out["by_design"], out["failed"]) == (6, 1, 3, 2)
+    assert {g["group"]: g["count"] for g in out["by_design_groups"]} == {
         "A source's array column is JSON": 1,
         "The session's role and database": 1,
         "The server's version": 1,
@@ -433,6 +484,7 @@ def test_a_conversion_is_passed_by_design_or_failed():
         {
             "postgres_version": "17.11",
             "catalog_relations": {
+                **by_design.outcomes(0, [], []),
                 "postgres_relations": 0,
                 "served": 0,
                 "matching": [],
@@ -441,17 +493,89 @@ def test_a_conversion_is_passed_by_design_or_failed():
                 "served_not_in_postgres": [],
             },
             "catalog_functions": {
+                **by_design.outcomes(0, [], []),
                 "postgres_functions": 0,
                 "excluded": "pseudo-types",
                 "served": 0,
                 "matching": 0,
                 "differing": {},
                 "not_served": {},
-                "by_design": [],
             },
             "type_conversions": out,
         }
     )
-    assert "1 identical in type OID, typmod, text and binary encoding; 3 differ by design; " in md
+    assert (
+        "1 passed (identical in type OID, typmod, text and binary encoding); 3 skipped by "
+        "design; 2 failed." in md
+    )
     assert "| `SELECT session_user AS v` |" in md
     assert "| `SELECT current_user AS v` |" not in md
+
+
+def test_the_pgwire_artifact_sums_each_part_s_three_counts_at_the_top():
+    """REQ-2167 (amended 2026-10-28): the pgwire run's artifact has the shape every conformance
+    report has -- passed, by_design and failed at the top -- summed over pgspec and the catalog
+    and type parts, each part keeping its own; a comparison that did not complete counts nowhere."""
+    import by_design
+
+    m = _load("pgwire_catalog_types")
+    group = {
+        "group": "g",
+        "kind": "design",
+        "requirement": "REQ-1",
+        "decision": "d",
+        "count": 1,
+        "cases": [{"case": "x", "reason": "y"}],
+    }
+    pgspec = {"suite": "pgspec", **by_design.outcomes(50, [group], [])}
+    catalog = {
+        "postgres_version": "17.11",
+        "catalog_relations": by_design.outcomes(196, [], [{}] * 15),
+        "catalog_functions": by_design.outcomes(477, [{**group, "count": 10}], [{}] * 5),
+        "type_conversions": by_design.outcomes(81, [{**group, "count": 3}], [{}] * 5),
+    }
+    doc = m.combined(pgspec, catalog)
+    assert doc["surface"] == "pgwire"
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (843, 804, 14, 25)
+    assert doc["pass_rate"] == round(804 / 829, 4)
+    assert doc["pgspec"] is pgspec and doc["catalog_relations"]["failed"] == 15
+    alone = m.combined(pgspec, None)
+    assert (alone["total"], alone["passed"], alone["by_design"], alone["failed"]) == (51, 50, 1, 0)
+    assert alone["catalog_functions"] is None
+
+
+def test_the_sampled_numerics_size_and_the_bootstrap_owner_are_by_design():
+    """REQ-1961 (PGWIRE SENDS NUMERIC(P,S)): the unsized numeric registration samples into
+    numeric(38,4) is described as that, a typmod PostgreSQL's unsized numeric does not have.
+    REQ-2167 (THE CATALOG'S BOOTSTRAP OWNER IS PROVISA): pg_get_userbyid(10) is provisa. Only
+    those statements and those differences."""
+    m = _load("pgwire_catalog_types")
+    numeric_typmod = "typmod 2490376, PostgreSQL -1"
+    owner = (
+        "text 'provisa', PostgreSQL 'postgres'",
+        "binary 70726f76697361, PostgreSQL 706f737467726573",
+    )
+    fixture = [
+        _conversion("SELECT c_numeric FROM conformance.types_fixture", numeric_typmod),
+        # Another column with a typmod difference, or the same column with another difference,
+        # stays a failure.
+        _conversion("SELECT c_numeric_10_2 FROM conformance.types_fixture", numeric_typmod),
+    ]
+    casts = [
+        _conversion("SELECT pg_catalog.pg_get_userbyid(10) AS v", *owner),
+        _conversion("SELECT pg_catalog.pg_get_userbyid(11) AS v", *owner),
+    ]
+    out = m.conversion_outcomes(fixture, casts)
+    assert [r["outcome"] for r in fixture + casts] == ["by_design", "failed", "by_design", "failed"]
+    assert {g["group"]: g["count"] for g in out["by_design_groups"]} == {
+        "An unsized source numeric is the numeric(38,s) registration samples": 1,
+        "The catalog's bootstrap owner is provisa": 1,
+    }
+    other = [
+        _conversion(
+            "SELECT c_numeric FROM conformance.types_fixture",
+            numeric_typmod,
+            "text '12345.6789', PostgreSQL '12345.67890'",
+        )
+    ]
+    assert m.conversion_outcomes(other, [])["fixture_columns"][0]["outcome"] == "failed"

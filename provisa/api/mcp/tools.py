@@ -1489,11 +1489,12 @@ def _cfg_get(entry: Any, key: str, default: Any = None) -> Any:
     return entry.get(key, default) if isinstance(entry, dict) else getattr(entry, key, default)
 
 
-async def _resolve_embedding_model(state: Any) -> Any:
-    """The embedding model for catalog search — the first enabled ``vector_models`` entry.
+async def resolve_embedding_model(state: Any, *, purpose: str = "catalog search") -> Any:
+    """The org's embedding model — the first enabled ``vector_models`` entry — for catalog
+    search and the reference library (REQ-2185).
 
-    No silent fallback (CLAUDE.md): with no enabled embedding model registered, catalog
-    search is unavailable and says so, rather than inventing a model.
+    No silent fallback (CLAUDE.md): with no enabled embedding model registered, ``purpose`` is
+    unavailable and says so, rather than inventing a model.
     """
     from provisa.vector.registry import VectorModel
 
@@ -1507,7 +1508,7 @@ async def _resolve_embedding_model(state: Any) -> Any:
                 base_url=_cfg_get(vm, "base_url"),
             )
     raise ValueError(
-        "catalog search requires an enabled embedding model — register one in "
+        f"{purpose} requires an enabled embedding model — register one in "
         "vector_models (admin → AI Models)"
     )
 
@@ -1520,7 +1521,7 @@ async def build_catalog_index(state: Any, provider: Any = None) -> int:
     """
     from provisa.api.mcp.search import CatalogSearchIndex
 
-    model = await _resolve_embedding_model(state)
+    model = await resolve_embedding_model(state)
     catalog = await _catalog(state, None)
     index = CatalogSearchIndex(model, provider)
     await index.build(catalog, _domain_descriptions(state))
@@ -1622,6 +1623,16 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
             limit=limit,
             domains=None if allowed is None else frozenset(allowed),
         )
+
+
+async def search_reference_library(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
+    """The reference library's passages that best answer ``question`` (REQ-2185), from the kept
+    documents ``role`` may read: those whose domains it reads, and every ``*`` document. Each
+    carries what citing it takes -- the document, its section or page, the quoted text."""
+    role = require_role(role, state)
+    from provisa.reference_library.retrieve import search_for_role
+
+    return await search_for_role(state, role, question, k=k)
 
 
 async def _jev_api_key(state: Any) -> str:

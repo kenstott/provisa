@@ -648,6 +648,7 @@ function App() {
                                             ["/admin/package-registries", "org_settings"], // REQ-1984
                                             ["/admin/container-registries", "org_settings"], // REQ-2098
                                             ["/admin/catalogs", "org_settings"], // REQ-2122
+                                            ["/admin/reference-library", "org_settings"], // REQ-2185
                                             ["/admin/metadata-export", "org_settings"],
                                             ["/admin/import", "org_settings"], // REQ-1483
                                             ["/admin/tags", "org_settings"],
