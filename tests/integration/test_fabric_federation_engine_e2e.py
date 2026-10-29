@@ -47,6 +47,7 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context  
 from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
+from tests.integration.live_teardown import none_remain, run_every, run_name  # noqa: E402
 
 _DB = os.environ.get("FABRIC_DATABASE", "")
 _ADMIN = {
@@ -56,7 +57,10 @@ _ADMIN = {
     "domain_access": ["*"],
 }
 _SRC = "fab-e2e"
-_SCH = "provisa_e2e_it"
+# Every schema the module creates carries the run's own suffix (REQ-254), so its teardown drops
+# exactly this run's objects and a later sweep finds any a killed run left.
+_SCH = run_name("provisa_e2e_it")
+_EXT_SCH = run_name("provisa_ext_it")
 
 
 def _col(n, d="varchar", nl=True):
@@ -112,7 +116,6 @@ def runtime():
     The runtime resumes the capacity on connect (REQ-1775), so it is built inside
     ``capacity_resumed()``: a connect that fails still pauses what it resumed."""
     from tests.integration.fabric_capacity import capacity_resumed
-    from tests.integration.live_teardown import run_every
 
     with capacity_resumed():
         rt = MssqlWarehouseRuntime(
@@ -123,14 +126,27 @@ def runtime():
         finally:
             # Drop the object then the schema land_table/attach auto-created -- dropping only
             # the object would leak the schema. T-SQL requires an empty schema before DROP SCHEMA.
-            # Every drop is attempted, then any that failed is raised (never swallowed).
+            # Every drop is attempted, then read back, then any that failed is raised (never
+            # swallowed).
             run_every(
                 [
                     (f"drop {obj} [{sch}].[orders] and schema [{sch}]", _dropper(rt, sch, obj))
-                    for sch, obj in ((_SCH, "TABLE"), ("provisa_ext_it", "VIEW"))
+                    for sch, obj in ((_SCH, "TABLE"), (_EXT_SCH, "VIEW"))
                 ]
-                + [("close the runtime", rt.close)]
+                + [
+                    ("read back the run's schemas", lambda: _no_schemas_left(rt)),
+                    ("close the runtime", rt.close),
+                ]
             )
+
+
+def _no_schemas_left(rt) -> None:
+    cur = rt.connection.cursor()
+    try:
+        cur.execute("SELECT name FROM sys.schemas WHERE name IN (?, ?)", [_SCH, _EXT_SCH])
+        none_remain("Fabric schemas", [r[0] for r in cur.fetchall()])
+    finally:
+        cur.close()
 
 
 def _dropper(rt, sch: str, obj: str):
@@ -176,53 +192,77 @@ async def test_fabric_r2_external_link_autoprovisions_shortcut(runtime):
     r2 = (
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "AWS_ENDPOINT_OVERRIDE",
         "CLOUDFLARE_ACCOUNT_ID",
         "FABRIC_WORKSPACE_ID",
     )
     if not all(os.environ.get(v) for v in r2):
         pytest.skip(f"not set: {unset(*r2)}")
-    boto3 = pytest.importorskip("boto3")
+    pytest.importorskip("boto3")
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     from provisa.core.models import SourceType
 
-    bucket = os.environ.get("PROVISA_R2_TEST_BUCKET", "pubs")
-    key = "provisa_ext_link_test/orders.parquet"
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=os.environ["AWS_ENDPOINT_OVERRIDE"],
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        region_name="auto",
-    )
-    buf = io.BytesIO()
-    pq.write_table(
-        pa.table(
-            {"id": [1, 2, 3], "region": ["west", "east", "west"], "amount": [10.0, 20.0, 30.0]}
-        ),
-        buf,
-    )
-    s3.put_object(Bucket=bucket, Key=key, Body=buf.getvalue())
+    from tests.integration import fabric_external_link, r2_objects
 
+    bucket = r2_objects.bucket()
+    prefix = run_name("provisa_ext_link_test") + "/"
     acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    endpoint = f"https://{acct}.r2.cloudflarestorage.com"
+    workspace = os.environ["FABRIC_WORKSPACE_ID"]
+    # The source id names the shortcut (mssql_warehouse_runtime._resolve_bulk_path): the run's own.
     src = SimpleNamespace(
-        id="fab-r2",
+        id=run_name("fab-r2", "-"),
         type=SourceType.parquet,
-        schema_name="provisa_ext_it",
+        schema_name=_EXT_SCH,
         table_name="orders",
-        path=f"s3://{bucket}/provisa_ext_link_test/orders.parquet",
+        path=f"s3://{bucket}/{prefix}orders.parquet",
         federation_hints={
             "access_key_id": os.environ["AWS_ACCESS_KEY_ID"],
             "secret_access_key": os.environ["AWS_SECRET_ACCESS_KEY"],
-            "endpoint": f"https://{acct}.r2.cloudflarestorage.com",
+            "endpoint": endpoint,
         },
     )
-    # ONE call auto-provisions: S3-compatible connection + lakehouse + OneLake shortcut + view + validate
-    runtime.attach_source(src)
-    t = runtime.run_arrow("SELECT id, region, amount FROM [provisa_ext_it].[orders] ORDER BY id")
-    assert t.num_rows == 3
-    assert t.column("region").to_pylist() == ["west", "east", "west"]
+    shortcut = "".join(c if c.isalnum() else "_" for c in f"{src.id}_{src.table_name}").strip("_")
+    # The connection and lakehouse are named by the product, not the run: what exists now stays.
+    before = fabric_external_link.found(workspace, endpoint)
+    try:
+        buf = io.BytesIO()
+        pq.write_table(
+            pa.table(
+                {"id": [1, 2, 3], "region": ["west", "east", "west"], "amount": [10.0, 20.0, 30.0]}
+            ),
+            buf,
+        )
+        r2_objects.client().put_object(
+            Bucket=bucket, Key=f"{prefix}orders.parquet", Body=buf.getvalue()
+        )
+        # ONE call auto-provisions: S3-compatible connection + lakehouse + OneLake shortcut + view
+        runtime.attach_source(src)
+        t = runtime.run_arrow(f"SELECT id, region, amount FROM [{_EXT_SCH}].[orders] ORDER BY id")
+        assert t.num_rows == 3
+        assert t.column("region").to_pylist() == ["west", "east", "west"]
+    finally:
+        # The view and its schema go with the runtime fixture; the workspace's and the bucket's
+        # objects go here, shortcut before the lakehouse holding it and the connection it uses.
+        run_every(
+            [
+                (
+                    f"delete shortcut Files/{shortcut}",
+                    lambda: fabric_external_link.remove_shortcut(workspace, shortcut),
+                ),
+                (
+                    "delete the lakehouse if this run created it",
+                    lambda: fabric_external_link.remove_lakehouse(workspace, before),
+                ),
+                (
+                    "delete the connection if this run created it",
+                    lambda: fabric_external_link.remove_connection(workspace, endpoint, before),
+                ),
+                (f"delete R2 objects under {prefix}", lambda: r2_objects.remove_prefix(prefix)),
+            ]
+        )
 
 
 if __name__ == "__main__":

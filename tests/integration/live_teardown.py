@@ -38,3 +38,21 @@ def run_every(steps: Iterable[tuple[str, Callable[[], object]]]) -> None:
             "created",
             failures,
         )
+
+
+def run_name(stem: str, sep: str = "_") -> str:
+    """``stem`` with a per-run suffix (REQ-254): every object a live test creates carries one, so
+    its teardown, and a later sweep, find exactly that run's objects -- never another run's, and
+    never a durable fixture a test only reads. ``sep`` joins them for names that cannot hold
+    ``_`` (or must use it)."""
+    import uuid
+
+    return f"{stem}{sep}{uuid.uuid4().hex[:8]}"
+
+
+def none_remain(what: str, remaining: Iterable[object]) -> None:
+    """Raise when a teardown's own read-back still finds what it deleted: an object left in a live
+    account bills (REQ-254), so a delete that answered but did not take is a failure too."""
+    left = list(remaining)
+    if left:
+        raise AssertionError(f"teardown left {what} in the live account: {left!r}")

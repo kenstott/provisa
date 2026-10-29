@@ -31,7 +31,9 @@ _HAVE_CREDS = all(os.environ.get(v) for v in _ENV)
 pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=f"not set: {unset(*_ENV)}"))
 
 from provisa.executor.pool import SourcePool  # noqa: E402
+from tests.integration import databricks_uc  # noqa: E402
 from tests.integration.databricks_warehouse import warehouse_running  # noqa: E402
+from tests.integration.live_teardown import run_every, run_name  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -45,7 +47,8 @@ def _warehouse_awake():
 
 
 _SID = "dbx_src_e2e"
-_SCHEMA = "provisa_src_e2e"
+# The run's own schema (REQ-254): dropped whole after the test, never another run's.
+_SCHEMA = run_name("provisa_src_e2e")
 _TABLE = "widgets"
 
 
@@ -64,20 +67,27 @@ def seeded():
         _retry_stop_after_attempts_count=2,
         **databricks_tls_kwargs(),
     )
-    cur = conn.cursor()
     fq = f"`workspace`.`{_SCHEMA}`.`{_TABLE}`"
-    cur.execute(f"CREATE SCHEMA IF NOT EXISTS `workspace`.`{_SCHEMA}`")
-    cur.execute(f"DROP TABLE IF EXISTS {fq}")
-    cur.execute(f"CREATE TABLE {fq} (id BIGINT, name STRING) USING DELTA")
-    cur.execute(f"INSERT INTO {fq} VALUES (1,'a'),(2,'b'),(3,'c')")
-    cur.close()
     try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"CREATE SCHEMA `workspace`.`{_SCHEMA}`")
+            cur.execute(f"CREATE TABLE {fq} (id BIGINT, name STRING) USING DELTA")
+            cur.execute(f"INSERT INTO {fq} VALUES (1,'a'),(2,'b'),(3,'c')")
+        finally:
+            cur.close()
         yield fq
     finally:
-        cur = conn.cursor()
-        cur.execute(f"DROP TABLE IF EXISTS {fq}")
-        cur.close()
-        conn.close()
+        # The schema, its table with it, read back gone; then the connection (REQ-254).
+        run_every(
+            [
+                (
+                    f"drop schema workspace.{_SCHEMA}",
+                    lambda: databricks_uc.drop_schema(conn, "workspace", _SCHEMA),
+                ),
+                ("close the connection", conn.close),
+            ]
+        )
 
 
 @pytest.mark.asyncio
