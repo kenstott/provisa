@@ -196,6 +196,19 @@ GRAPH_ID = "__graph_id"
 #: REQ-2176: the column a graph session's node relation names every label of its node by, which
 #: labels() of a session node reads.
 LABELS_COLUMN = "__labels"
+#: The catalog a graph session's relations are named in (provisa.ephemeral.read, REQ-2176).
+SESSION_CATALOG = "__session__"
+
+
+def is_session_node(nm: "NodeMapping") -> bool:
+    """Whether ``nm`` is a graph session's node relation (provisa.ephemeral.read), whose rows
+    carry each node's labels (LABELS_COLUMN)."""
+    return nm.catalog_name == SESSION_CATALOG
+
+
+#: While a read after a write runs (provisa.ephemeral.then), a session relationship's id is read
+#: as this property, which the read finds it again by; it is none of the relationship's keys.
+SESSION_REL_ID = "__rel_id"
 
 
 @dataclass(frozen=True)

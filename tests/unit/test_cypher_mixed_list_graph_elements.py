@@ -85,14 +85,15 @@ def test_comparison2_3_orders_only_the_numbers(model):
 
 @pytest.mark.parametrize("op", ["<", "<=", ">", ">="])
 def test_a_graph_element_has_no_order_against_any_item(model, op):
-    # Every ordering of a node, relationship or path against another item is null.
+    # Every ordering of a node, relationship or path against another item is null; the other
+    # items here are of three kinds, none ordered against another either. (toString() of a
+    # graph element is a type error, openCypher: it never picks the pairs out.)
     query = (
         _MATCH
         + "WITH [n, r, p, '', 1, {}] AS types "
         + _PAIRS
         + f"WITH lhs, rhs, lhs {op} rhs AS result "
-        "WHERE lhs IS NOT NULL AND (toString(lhs) CONTAINS 'City:' OR toString(rhs) CONTAINS "
-        "'City:') RETURN result"
+        "WHERE lhs IS NOT NULL RETURN result"
     )
     assert {row[0] for row in _rows(model, query)} == {None}
 

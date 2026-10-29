@@ -41,6 +41,7 @@ from typing import Any
 
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import store
+from provisa.gql.label_map import SESSION_REL_ID
 
 #: A variable's binding after a write: ("n", graph identity, labels) for a node, ("r", rel id,
 #: type) for a session relationship, ("m", None, what) for a model relationship (which the rest
@@ -54,7 +55,7 @@ PARAM = "__bound"
 ROW = "__b"
 #: While the rest runs, a session relationship's id reads as this property (read.overlay), which
 #: the rest finds it again by; it is taken out of the answer's values.
-REL_ID = "__rel_id"
+REL_ID = SESSION_REL_ID
 _FLAG = "cypher.bound"
 
 _CLAUSES = frozenset(
@@ -409,6 +410,8 @@ def rest_read(
     for row in rows:
         out: dict[str, Any] = {"__live": True}
         for var, names in fields_of.items():
+            if not names:
+                continue  # null in every row: carried as null, never found again
             b = row[var]
             assert b is not None
             if b[0] == "v":

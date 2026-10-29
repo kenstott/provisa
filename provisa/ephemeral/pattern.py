@@ -27,6 +27,8 @@ class NodeSpec:
     variable: str | None
     labels: list[str]
     properties: list[tuple[str, str]]  # (key, the value's expression as written)
+    #: Whether it writes a property map, an empty one (``{}``) included.
+    has_map: bool = False
 
 
 @dataclass
@@ -131,7 +133,12 @@ def paths_pattern(paths: list[Any], *, undirected: bool = False) -> CreatePatter
         base = len(out.nodes)
         for node in path.nodes:
             out.nodes.append(
-                NodeSpec(node.variable, list(node.labels), list(node.property_text.items()))
+                NodeSpec(
+                    node.variable,
+                    list(node.labels),
+                    list(node.property_text.items()),
+                    node.has_map,
+                )
             )
         for i, rel in enumerate(path.rels):
             if len(rel.types) != 1:

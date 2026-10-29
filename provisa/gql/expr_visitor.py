@@ -63,7 +63,7 @@ from provisa.gql.expr_ast import (
     walk,
 )
 from provisa.gql import spatial, temporal
-from provisa.gql.translator_helpers import _and_all, _json_valued
+from provisa.gql.translator_helpers import _and_all, _json_valued, refused_when_read
 from provisa.gql.translator_types import UNION_NODE, CypherTranslateError
 
 #: A regex's leading inline flags, which PostgreSQL takes only at the regex's start.
@@ -116,6 +116,38 @@ def _as_text(value: exp.Expression) -> exp.Expression:
     if isinstance(inner, exp.Anonymous) and str(inner.this).upper() == "JSON_EXTRACT":
         return exp.Paren(this=_anon("JSON_EXTRACT_SCALAR", *(e.copy() for e in inner.expressions)))
     return value
+
+
+def _json_text_of(e: exp.Expression) -> exp.Expression | None:
+    """The JSON a value is read as the text of (``JSON_EXTRACT_SCALAR(j, '$')``, a key of a map
+    inside a map a WITH carries, expr_context.resolve_property), or None for any other value."""
+    if not (isinstance(e, exp.Anonymous) and str(e.this).upper() == "JSON_EXTRACT_SCALAR"):
+        return None
+    if len(e.expressions) != 2:
+        return None
+    held, path = e.expressions
+    return held if isinstance(path, exp.Literal) and path.this == "$" else None
+
+
+def _element_or_map_key(held: exp.Expression, name: str) -> exp.Expression:
+    """``name`` of ``held``, a JSON value: a node's or relationship's property where it is one
+    (an object of ``properties`` and a ``label`` or ``type``), else the map's key; JSON null where
+    it has none."""
+    key = json.dumps(name)
+
+    def at(path: str) -> exp.Expression:
+        return _anon("JSON_EXTRACT", held.copy(), exp.Literal.string(path))
+
+    element = exp.and_(
+        exp.Not(this=exp.Is(this=at("$.properties"), expression=exp.Null())),
+        exp.or_(
+            exp.Not(this=exp.Is(this=at("$.label"), expression=exp.Null())),
+            exp.Not(this=exp.Is(this=at("$.type"), expression=exp.Null())),
+        ),
+    )
+    return exp.Case(
+        ifs=[exp.If(this=element, true=at(f"$.properties.{key}"))], default=at(f"$.{key}")
+    )
 
 
 class ExprContext(Protocol):
@@ -687,8 +719,9 @@ class ExprLowering:
             if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
                 # A map read from a list of several types is its JSON: its key, read as JSON
                 # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
-                path = "$." + json.dumps(node.name)
-                return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
+                # A node or relationship such a list holds is its JSON object: a property of it
+                # is read from its properties.
+                return exp.Paren(this=_element_or_map_key(held, node.name))
         if isinstance(node.obj, MapLiteral):
             # A map literal's key is its entry's own value; a key it has not is null (#287).
             for key, value in node.obj.entries:
@@ -1164,8 +1197,23 @@ class ExprLowering:
                 # An item of a list of several types is its JSON: a string is its own text, never
                 # its quoted JSON ('apa', not '"apa"').
                 # Bracketed: DuckDB writes it x ->> '$', which in a lambda reads as (x -> x) ->> '$'.
-                text = _anon("JSON_EXTRACT_SCALAR", self.lower(given), exp.Literal.string("$"))
-                return exp.Paren(this=text)
+                held = self.lower(given)
+                text = _anon("JSON_EXTRACT_SCALAR", held.copy(), exp.Literal.string("$"))
+                # A list, a map, a node, a relationship or a path (each a JSON array or object)
+                # has no string: toString() refuses it when it is read, toStringOrNull() is null.
+                as_text = exp.Cast(this=held, to=exp.DataType.build("TEXT"))
+                composite = exp.Or(
+                    this=exp.Like(this=as_text, expression=exp.Literal.string("[%")),
+                    expression=exp.Like(this=as_text.copy(), expression=exp.Literal.string("{%")),
+                )
+                otherwise = (
+                    exp.Null()
+                    if node.name.lower() == "tostringornull"
+                    else refused_when_read("toString() takes no list, map or graph element", "TEXT")
+                )
+                return exp.Paren(
+                    this=exp.Case(ifs=[exp.If(this=composite, true=otherwise)], default=text)
+                )
         if node.name.lower() == "properties" and len(node.args) == 1:
             given = node.args[0]
             # properties() of a map is the map itself; of null, null.
@@ -1309,7 +1357,15 @@ class ExprLowering:
         # rewrite). to_json, NOT CAST(v AS JSON): in the IR dialect (Postgres) CAST AS JSON *parses*
         # the input as JSON text, so a bare string 'Siamese' fails; to_json *encodes* any scalar.
         keys = [exp.Literal.string(k) for k, _ in node.entries]
-        values = [_anon("to_json", self.lower(v)) for _, v in node.entries]
+        # A node, relationship or path is its JSON object, as a list literal holds one.
+        elements = [
+            self._ctx.resolve_graph_element(v.name) if isinstance(v, Variable) else None
+            for _, v in node.entries
+        ]
+        values = [
+            e if e is not None else _anon("to_json", self.lower(v))
+            for (_, v), e in zip(node.entries, elements, strict=True)
+        ]
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
@@ -1354,6 +1410,17 @@ class ExprLowering:
             )
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
+        held_json = _json_text_of(base)
+        if (
+            held_json is not None
+            and isinstance(node.index, Literal)
+            and node.index.kind == "number"
+            and int(cast("int | float", node.index.value)) >= 0
+        ):
+            # An item of a list a map inside a carried map holds: read from its JSON, as JSON
+            # (the answer decodes it), never a character of its text.
+            path = f"$[{int(cast('int | float', node.index.value))}]"
+            return exp.Paren(this=_anon("JSON_EXTRACT", held_json, exp.Literal.string(path)))
         idx = self.lower(node.index)
         if isinstance(node.index, Literal) and node.index.kind == "number":
             idx = exp.Literal.number(int(cast("int | float", node.index.value)) + 1)

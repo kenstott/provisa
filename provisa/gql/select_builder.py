@@ -23,7 +23,13 @@ import sqlglot.expressions as exp
 
 from provisa.gql import spatial, temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
-from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.label_map import (
+    LABELS_COLUMN,
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    is_session_node,
+)
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields, via_column  # REQ-1586
 from provisa.gql.translator_types import NODE_COLUMN
@@ -49,6 +55,7 @@ _GRAPH_FUNCTIONS = {
     "nodes": "NODE",
     "startnode": "NODE",
     "endnode": "NODE",
+    "properties": "PROPERTIES",
 }
 
 
@@ -133,8 +140,20 @@ def node_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
             exp.Literal.string(nm.table_label),
             exp.Literal.string("properties"),
             node_properties_json(alias, nm),
+            *_labels_entry(node_labels(alias, nm)),
         ],
     )
+
+
+def node_labels(alias: str | None, nm: NodeMapping) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The labels of ``alias``'s node, every one, where its relation names them: a graph
+    session's node (LABELS_COLUMN, REQ-2176); None for a model node, whose label is its type's."""
+    return _key_column(alias, LABELS_COLUMN) if is_session_node(nm) else None
+
+
+def _labels_entry(labels: exp.Expression | None) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A node object's ``labels`` key and value, where its node names its labels (node_labels)."""
+    return [] if labels is None else [exp.Literal.string("labels"), labels]
 
 
 def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -469,6 +488,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 ),
                 expression=identity_second,
             )
+            if via is not None and via[1].identity_column is not None:
+                # REQ-2176: an edge of its own row is named by it, as a bare edge is.
+                identity = via_column(via[0], via[1].identity_column)
             return exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
@@ -825,6 +847,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # nodes(null) and its like are null, no graph value to decode.
             if isinstance(expr, FunctionCall) and alias and not null_arg:
                 kind = _GRAPH_FUNCTIONS.get(expr.name.lower())
+                if kind == "PROPERTIES" and not isinstance(expr.args[0], Variable):
+                    kind = None  # properties() of a map is the map, decoded as a map is
                 if kind is not None:
                     self._graph_vars[alias.lower()] = GraphVarKind[kind]
             trail_kind = self._trail_kind(expr)

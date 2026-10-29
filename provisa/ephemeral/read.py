@@ -47,9 +47,8 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import store
-from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN
+from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN, SESSION_CATALOG
 
-SESSION_CATALOG = "__session__"
 SESSION_SCHEMA = "s"
 NODE_ID = "__node_id"
 #: The session relation of every session relationship, which a path function walks (REQ-348).

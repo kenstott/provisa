@@ -691,11 +691,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         detach = kw == "DETACH"
         if detach:
             self._consume_keyword("DELETE")
-        deleted = [self._write_expression()]
+        texts = [self._write_expression_text()]
         while (_c := self._peek()) and _c.type == "COMMA":
             self._advance()
-            deleted.append(self._write_expression())
-        return DeleteClause(expressions=deleted, detach=detach, start=start)
+            texts.append(self._write_expression_text())
+        deleted = [parse_expression(text) for text in texts]
+        return DeleteClause(expressions=deleted, detach=detach, start=start, texts=texts)
 
     def _parse_write_pattern(self) -> PathPattern:
         self._write_pattern = True
@@ -904,7 +905,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 label_alternation = True
 
         text: dict[str, str] = {}
-        if (_tnlb := self._peek()) and _tnlb.type == "LBRACE":
+        has_map = bool((_tnlb := self._peek()) and _tnlb.type == "LBRACE")
+        if has_map:
             props, text = self._parse_map_literal()
             if variable is None and not self._write_pattern:
                 variable = self._inline_variable()
@@ -916,6 +918,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             properties=props,
             label_alternation=label_alternation,
             property_text=text,
+            has_map=has_map,
         )
 
     def _parse_rel_and_node(self) -> tuple[RelPattern, NodePattern]:

@@ -65,6 +65,8 @@ class NodePattern:
     #: Each inline property's value as the statement writes it (``'x'``, ``42``, ``$p``), which a
     #: read matches on as ``WHERE var.prop = <value>`` (:func:`with_inline_conditions`).
     property_text: dict[str, str] = field(default_factory=dict)
+    #: Whether the pattern writes a property map, an empty one (``{}``) included.
+    has_map: bool = False
 
     @property
     def label_expr(self) -> LabelExpr:
@@ -337,6 +339,8 @@ class DeleteClause:
     expressions: list[CypherExpr]
     detach: bool = False
     start: int = -1  # as CreateClause.start
+    #: Each expression as written, which a session's DELETE reads its value by (REQ-2176).
+    texts: list[str] = field(default_factory=list)
 
 
 @dataclass

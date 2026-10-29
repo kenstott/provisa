@@ -122,6 +122,13 @@ def _count(counts: dict, key: Any, by: int) -> None:
 def resolve(session: TempSession) -> None:
     """Each label's Resolved, as the session's graph and tables now hold it."""
     g = graph(session)
+    # A pair no relationship holds any more, between unlabeled nodes the session no longer has,
+    # is no pair to read (its end would be no label the overlay maps).
+    g.rel_pairs = {
+        pair
+        for pair in g.rel_pairs
+        if pair in g.pair_counts or "" in g.label_anchors or "" not in pair[1:]
+    }
     resolved: dict[str, Resolved] = {}
     for key in view_keys(g):
         anchors = g.label_anchors.get(key, set())
