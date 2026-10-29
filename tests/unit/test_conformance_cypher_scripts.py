@@ -395,6 +395,19 @@ def test_a_temporal_value_from_bolt_is_written_as_opencypher_writes_it():
     assert bolt.value(time.Duration()) == "PT0S"
 
 
+def test_a_date_time_at_offset_zero_from_bolt_names_no_region():
+    # Temporal4 [9]/[10]: the driver hydrates a DateTime at offset 0 as pytz.utc, whose zone is
+    # named "UTC"; it is written as the offset Z, as the TCK writes it. A region keeps its name.
+    from neo4j._codec.hydration.v2.temporal import hydrate_datetime
+
+    epoch_1912 = -1830384000
+    assert bolt.value(hydrate_datetime(epoch_1912, 0, 0)) == "1912-01-01T00:00Z"
+    assert bolt.value(hydrate_datetime(epoch_1912, 0, 3600)) == "1912-01-01T01:00+01:00"
+    assert bolt.value(hydrate_datetime(1437514832, 142000000, "Europe/Stockholm")) == (
+        "2015-07-21T23:40:32.142+02:00[Europe/Stockholm]"
+    )
+
+
 _SIDE_EFFECTS_FEATURE = '''
 Feature: Remove3 - Removing a label
 

@@ -234,6 +234,12 @@ def _temporal_text(v: Any) -> str:
         return text
     offset = v.utcoffset()
     text += _offset(int(offset.total_seconds()) if offset is not None else 0)
+    # The driver reads an offset of zero as pytz's UTC (pytz.FixedOffset(0) is pytz.utc), whose
+    # zone is named "UTC": that is the offset Z, no region. (A region named UTC reads the same.)
+    import pytz
+
+    if v.tzinfo is pytz.utc:
+        return text
     zone = getattr(v.tzinfo, "key", None) or getattr(v.tzinfo, "zone", None)
     return text + (f"[{zone}]" if zone else "")
 
