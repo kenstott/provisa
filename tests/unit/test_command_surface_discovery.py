@@ -134,6 +134,7 @@ def _schema_input():
         role={"id": "admin", "domain_access": ["*"]},
         functions=fns,
         webhooks=[],  # mirrors SchemaInput.webhooks (default []) — proto_gen reads both
+        root_domain_ids=None,  # the role's whole proto, no domain asked for
     )
 
 

@@ -1149,7 +1149,9 @@ class _RelJoinMixin:  # mixin for _Translator
                     if rel.variable and clause.variable:
                         self._varlen_rel_vars[rel.variable] = clause.variable
                     pf_from, pf_joins = self._translate_path_function(pf_clause, joined)
-                    if from_expr is None:
+                    if from_expr is None or from_expr is own_first:
+                        # The path reads its own start (REQ-348): the end it walks from, which
+                        # is not the first node when that one is free.
                         from_expr = pf_from
                     joins.extend(pf_joins)
                     break

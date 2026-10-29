@@ -153,10 +153,11 @@ def test_a_walk_reads_the_relationships_table_once(monkeypatch):
 # --- refused --------------------------------------------------------------------------------------
 
 
-def test_the_model_graph_refuses_an_unlabelled_end_by_name(monkeypatch):
+def test_the_model_graph_refuses_a_path_with_both_ends_free_by_name(monkeypatch):
+    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end is enough; neither is refused.
     s = Session(monkeypatch, _PEOPLE)
     with pytest.raises(CypherTranslateError, match=UNLABELLED_ENDS):
-        s.run("MATCH p = shortestPath((a:Person)-[*..3]->(b)) RETURN p")
+        s.run("MATCH p = shortestPath((a)-[*..3]->(b)) RETURN p")
 
 
 def test_a_walk_the_models_relationships_could_take_is_refused_by_name(monkeypatch):
@@ -165,3 +166,19 @@ def test_a_walk_the_models_relationships_could_take_is_refused_by_name(monkeypat
     s.run("CREATE (:Robot {m: 'R2'})-[:KNOWS]->(:Robot {m: 'C3'})")
     with pytest.raises(CypherTranslateError, match=UNLABELLED_ENDS):
         s.run("MATCH (a)-[:KNOWS*1..2]->(b) RETURN b.m")
+
+
+def test_a_walk_from_a_labelled_model_end_takes_the_models_relationships(monkeypatch):
+    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end places the walk on the model's
+    # relationships, session or not; Ann knows Bo, Bo knows no one.
+    people = {
+        "Person": (
+            {"id": "integer", "name": "text", "knows_id": "integer"},
+            "(1, 'Ann', 2), (2, 'Bo', NULL)",
+        )
+    }
+    knows = RelationshipMapping("KNOWS", "Person", "Person", "knows_id", "id", "knows")
+    s = Session(monkeypatch, people, relationships=[knows])
+    s.run("CREATE (:Robot {m: 'R2'})-[:KNOWS]->(:Robot {m: 'C3'})")
+    rows = s.run("MATCH (a:Person {name: 'Ann'})-[:KNOWS*1..2]->(b) RETURN b.name")
+    assert _sorted(rows) == [("Bo",)]
