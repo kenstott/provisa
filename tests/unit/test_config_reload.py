@@ -376,9 +376,11 @@ class TestRollbackOnValidationFailure:
         with pytest.raises(PydanticValidationError):
             NamingConfig(convention="unknown_convention")
 
-    def test_generate_schema_raises_when_no_tables_visible(self):
-        """generate_schema raises ValueError when no tables are visible to the role —
-        this is the schema-level equivalent of a rollback trigger."""
+    def test_generate_schema_builds_an_empty_schema_when_no_tables_visible(self):
+        """REQ-2154 (amended): a role served no table is not refused as such -- generate_schema
+        builds it a valid schema with no table's field, not an error a reload would roll back."""
+        from graphql import validate_schema
+
         si = _make_schema_input()
         # A role whose one domain holds none of these tables
         si.role = {
@@ -387,8 +389,9 @@ class TestRollbackOnValidationFailure:
             "capabilities": ["read"],
             "domain_access": ["nowhere"],
         }
-        with pytest.raises(ValueError, match="No tables visible"):
-            generate_schema(si)
+        schema = generate_schema(si)
+        assert validate_schema(schema) == []
+        assert set(schema.query_type.fields) == {"resolve"}
 
 
 # ---------------------------------------------------------------------------

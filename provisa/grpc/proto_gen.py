@@ -342,9 +342,9 @@ def generate_proto(
     FULL set (every column, ``visible_to=[]``) — the one point in a build that can tell a genuinely
     dropped column from a role simply not seeing it, so only that call may retire a field number.
     """
+    # REQ-2154: a role served no table is not refused as such: its proto has no table's message
+    # or RPC, and keeps the service's command and resolve RPCs, as its GraphQL schema does.
     tables = _build_visible_tables(si)
-    if not tables:
-        raise ValueError(f"No tables visible to role {si.role['id']!r}. Cannot generate proto.")
 
     domain_alias_map = _build_domain_alias_map(si.domains)
     _assign_names(

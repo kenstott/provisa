@@ -82,9 +82,8 @@ async def two_orgs():
 
     # The boot below seeds the deployment org's runtime with this module's config: a ``trig_writer``
     # role granted no table (the orgs' tables are registered per org). That runtime outlives the
-    # app's lifespan, so every later test in the session met a role it could not build (a step's
-    # ``state.contexts = ...`` resolves every held surface and raised RoleServedNothing). The
-    # surfaces it held before are put back at teardown.
+    # app's lifespan, so every later test in the session met this module's roles in place of its
+    # own. The surfaces it held before are put back at teardown.
     deployment_rt = state._default_runtime()
     held_surfaces = deployment_rt.surfaces
     held_inputs = deployment_rt.role_build_inputs

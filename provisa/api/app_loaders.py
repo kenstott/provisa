@@ -1780,7 +1780,7 @@ def warm_role_surfaces(state: Any) -> None:
     inputs = runtime.role_build_inputs
 
     async def _warm() -> None:
-        from provisa.api.role_surface import LazySurface, RoleServedNothing, RoleSurfaceUnbuilt
+        from provisa.api.role_surface import LazySurface, RoleSurfaceUnbuilt
 
         for held in list(runtime.surfaces.values()):
             if runtime.role_build_inputs is not inputs:
@@ -1789,8 +1789,8 @@ def warm_role_surfaces(state: Any) -> None:
                 continue
             try:
                 held.resolve()
-            except (RoleSurfaceUnbuilt, RoleServedNothing):
-                pass  # held by the surface itself; its requests raise it
+            except RoleSurfaceUnbuilt:
+                pass  # held and logged by the surface itself; its requests raise it
             await asyncio.sleep(_WARM_PAUSE_S)
 
     spawn_after(_WARM_DELAY_S, _warm(), name=f"warm role surfaces {runtime.org_id}")

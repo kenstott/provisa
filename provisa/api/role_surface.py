@@ -36,7 +36,9 @@ its parts are built the first time anything reads them, once, then held. A rebui
 the model-wide parts alone, not every role's schema, context and proto (REQ-1882); the role a
 request acts as is built when it is first asked for. A role whose build fails holds that failure:
 it is logged as an ERROR naming the role, and every read of the role raises it
-(:class:`RoleSurfaceUnbuilt`) -- never "no schema".
+(:class:`RoleSurfaceUnbuilt`) -- never "no schema". A role served no table is not a failure and
+is not refused as such (REQ-2154): its surface is built, empty, and a statement naming a table is
+refused as for any role not served that table.
 """
 
 from __future__ import annotations
@@ -69,20 +71,6 @@ class RoleSurfaceUnbuilt(RuntimeError):
         super().__init__(f"the data surface of role {role_id!r} could not be built: {cause}")
 
 
-class RoleServedNothing(PermissionError):
-    """A role served no table (REQ-2154: no column of any table is granted to it): every read
-    of the role is refused naming it -- the caller's refusal, never a build failure."""
-
-    code = "data.role_served_nothing"
-
-    def __init__(self, role_id: str) -> None:
-        self.role_id = role_id
-        self.params = {"role_id": role_id}
-        super().__init__(
-            f"Role {role_id!r} is served no tables: no column of any table is granted to it"
-        )
-
-
 class LazySurface:
     """A role's surface, built the first time it is read and held after: one build, however
     many requests ask at once. A failed build is held too, and raised to every reader; a build a
@@ -95,7 +83,7 @@ class LazySurface:
         self._build = build
         self._lock = threading.Lock()
         self._surface: RoleSurface | None = None
-        self._failure: RoleSurfaceUnbuilt | RoleServedNothing | None = None
+        self._failure: RoleSurfaceUnbuilt | None = None
 
     @property
     def built(self) -> bool:
@@ -104,7 +92,6 @@ class LazySurface:
     def resolve(self) -> RoleSurface:
         from provisa.core.request_deadline import DeadlinePassed, RequestTimedOut
         from provisa.core.runtime_gone import RuntimeNotBuilt
-        from provisa.compiler.schema_gen import NoTablesServed
 
         with self._lock:
             if self._surface is not None:
@@ -115,9 +102,6 @@ class LazySurface:
                 self._surface = self._build()
             except (DeadlinePassed, RequestTimedOut):
                 raise  # the reader's time ran out, not the role's build: the next one builds
-            except NoTablesServed:
-                self._failure = RoleServedNothing(self.role_id)
-                raise self._failure from None
             except RuntimeNotBuilt:
                 # The runtime it was registered for is gone (a change of an environment's data,
                 # an engine wake): the role's build did not fail, so nothing is held; the reader

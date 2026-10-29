@@ -307,12 +307,14 @@ class TestRoleFiltering:
         assert "amount" not in proto
         assert "secret" not in proto
 
-    def test_no_visible_tables_raises(self):
+    def test_no_visible_tables_generates_a_proto_with_no_table(self):
+        # REQ-2154 (amended): a role served no table is not refused as such.
         si = _make_si(
             role={"id": "nobody", "domain_access": ["other"], "capabilities": []},
         )
-        with pytest.raises(ValueError, match="No tables visible"):
-            generate_proto(si)
+        proto = generate_proto(si)
+        assert "message Orders" not in proto and "QueryOrders" not in proto
+        assert "rpc CallCommand(CommandRequest) returns (CommandResponse);" in proto
 
 
 class TestRelationships:

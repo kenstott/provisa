@@ -494,6 +494,9 @@ def test_pg_sleep_ends_with_the_requests_timeout():
         0.05, transport="pgwire", setting="the pgwire request timeout"
     )
     start = time.monotonic()
-    with request_deadline.bound(deadline), pytest.raises(TimeoutError):
-        answer("SELECT pg_sleep(30)", "testrole", _state())
+    try:
+        with request_deadline.bound(deadline), pytest.raises(TimeoutError):
+            answer("SELECT pg_sleep(30)", "testrole", _state())
+    finally:
+        deadline.stop()  # the request is over: a live deadline would leak into later tests
     assert time.monotonic() - start < 5
