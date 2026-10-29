@@ -91464,7 +91464,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to the library as proposed, with the domains the steward is working in, which the steward can change;
     the steward then keeps it or discards it, and a proposed document is listed on the Admin Reference library
     page until someone does. A document already in the library is not added again; the scan cites the library''s
-    copy.'
+    copy. (Amended 2026-10-28, RESCANNED ON DEMAND, NEVER RE-REVIEWED AUTOMATICALLY:) Nothing is re-reviewed
+    automatically when a library document changes or is refreshed; terms are not flagged and no review is
+    queued. Instead, whenever someone is working in the glossary they can scan any library document again,
+    or add and scan a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold
+    yet and the ones that match or duplicate existing terms and synonyms, each with its passages, enough
+    to decide whether to change anything. A refreshed URL document is simply scanned from its current content.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
