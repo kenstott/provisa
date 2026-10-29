@@ -93,15 +93,16 @@ def test_each_arm_carries_its_node_as_one_value():
 def test_the_nodes_answered_are_each_type_s_own(answer):
     rows = answer("MATCH (n) RETURN n")
     assert sorted((r["n"] for r in rows), key=lambda n: n.id) == [
-        # Every column a property under its own name, its key column ``id`` included.
+        # Every column a property under its own name, its key column ``id`` included, each of its
+        # column's type.
         Node(
             id="Pet|1",
             label="Pet",
             table_label="",
-            properties={"age": "3", "id": "1", "name": "rex"},
+            properties={"age": 3, "id": 1, "name": "rex"},
         ),
-        Node(id="Pet|2", label="Pet", table_label="", properties={"age": "5", "id": "2"}),
-        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo", "id": "7"}),
+        Node(id="Pet|2", label="Pet", table_label="", properties={"age": 5, "id": 2}),
+        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo", "id": 7}),
     ]
 
 
@@ -115,12 +116,12 @@ def test_a_property_the_statement_reads_is_still_its_own_column():
 def test_a_node_a_statement_reads_a_property_of_is_answered_whole(answer):
     rows = answer("MATCH (n) WHERE n.city = 'oslo' RETURN n")
     assert [r["n"] for r in rows] == [
-        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo", "id": "7"})
+        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo", "id": 7})
     ]
     rows = answer("MATCH (n) RETURN n ORDER BY n.age DESC")
     assert [r["n"].properties for r in rows] == [
         # An ORDER BY's property orders the nodes, each answered whole; null sorts first descending.
-        {"city": "oslo", "id": "7"},
-        {"age": "5", "id": "2"},
-        {"age": "3", "id": "1", "name": "rex"},
+        {"city": "oslo", "id": 7},
+        {"age": 5, "id": 2},
+        {"age": 3, "id": 1, "name": "rex"},
     ]

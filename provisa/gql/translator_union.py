@@ -180,15 +180,11 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
     # and ``label`` included, held apart from the node's own keys.
     props: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for prop in sorted(nm.properties):
-        # As a property column of the arm is: its physical column as text, null with none.
+        # Its physical column as the column holds it, a list a list and a number a number (each
+        # arm's value is JSON, so the arms need no one type); null with none.
         phys_col = nm.physical_properties.get(prop)
         value = (
-            exp.Cast(
-                this=exp.Column(this=exp.Identifier(this=phys_col, quoted=True)),
-                to=exp.DataType(this=exp.DataType.Type.VARCHAR),
-            )
-            if phys_col
-            else exp.null()
+            exp.Column(this=exp.Identifier(this=phys_col, quoted=True)) if phys_col else exp.null()
         )
         props.append(exp.JSONKeyValue(this=exp.Literal.string(prop), expression=value))
     kv.append(
