@@ -1334,11 +1334,14 @@ def _system_query(
             ],
         ]
 
-    # SHOW TRANSACTIONS / SHOW SETTINGS / SHOW INDEXES / SHOW CONSTRAINTS
+    # SHOW TRANSACTIONS / SHOW SETTINGS / SHOW INDEXES / SHOW CONSTRAINTS. In a graph session
+    # SHOW INDEXES lists the session's own (REQ-2176, provisa.ephemeral.indexes).
+    from provisa.compiler import temp_tables
+
     if (
         q_upper.startswith("SHOW TRANSACTIONS")
         or q_upper.startswith("SHOW SETTINGS")
-        or q_upper.startswith("SHOW INDEXES")
+        or (q_upper.startswith("SHOW INDEXES") and temp_tables.current() is None)
         or q_upper.startswith("SHOW CONSTRAINTS")
     ):
         _dbg.warning(
@@ -1813,7 +1816,8 @@ async def _execute_cypher(
             run_write,
         )
         if made is not None:
-            return [], [], None
+            # A write followed by reads answers with the rest's rows (REQ-2176).
+            return (*seam.rows_of(made), None)
     involved = ephemeral_read.involved(temp)
 
     translation = None if involved else kept.cached()

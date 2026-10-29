@@ -73,15 +73,24 @@ def _identity(node: Any, label_map: Any, graph: store.Graph) -> tuple[str, tuple
     from provisa.gql.assembler import Node
 
     if isinstance(node, Node):
-        label, props = node.label, node.properties
+        label, props, read_as = node.label, node.properties, node.id
     elif isinstance(node, dict) and "properties" in node and "label" in node:
-        label, props = node["label"], node["properties"]
+        label, props, read_as = node["label"], node["properties"], node.get("id")
     else:
         raise CypherParseError("A created relationship's end is a node")
     key = props.get("_id")
     if isinstance(key, str) and key.startswith("e:"):
         return key, graph.node_keys[key]
     by_label = {nm.label: nm for nm in label_map.nodes.values()}
+    if key is None and isinstance(read_as, str) and "|" in read_as:
+        # Read with no label, a node is ``Label|key``: a session node's id after the label it
+        # was read by, a model node's graph identity.
+        first, after = read_as.split("|", 1)
+        if after in graph.node_keys and (first == "" or first in graph.node_keys[after]):
+            return after, graph.node_keys[after]
+        named = by_label.get(first)
+        if named is not None:
+            return read_as, (named.type_name,)
     owners = [nm for nm in label_map.nodes.values() if nm.label == label]
     owner = owners[0] if len(owners) == 1 else None
     # A model node read under a label not its own (a session tag) is its graph identity
@@ -139,6 +148,25 @@ async def create(
     leading clauses give, each governed row is written by the governed path and the session's
     parts land in the session. The two paths are not one transaction: the outcome is the parts
     written as statements of their own."""
+    done = await create_bound(statement, params, label_map, session, state, read, governed_write)
+    return None if done is None else done[0]
+
+
+async def create_bound(
+    statement: str,
+    params: dict[str, Any],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    read: Read,
+    governed_write: Write,
+    keep: tuple[str, ...] | None = None,
+) -> tuple[Created, list[dict[str, Any]]] | None:
+    """:func:`create`, and with ``keep`` (the variables a read after it names) each row's
+    bindings of them (then.Bound): a variable of the leading clauses as it was read, a new node
+    by its graph identity, a new relationship by its id."""
+    from provisa.ephemeral.then import bound_value
+
     create = pattern.create_of(statement)
     if create is None:
         return None
@@ -158,9 +186,33 @@ async def create(
                 f"{prefix} CREATE ({source or ''})-[:{rel.rel_type}]->({target or ''})".strip(),
                 params,
             )
-    answer = await read(f"{prefix} RETURN {', '.join(_items(p, kind, bound))}".strip(), params)
-    made, _ = await write_rows(p, kind, answer, label_map, session, state, governed_write)
-    return made
+    keep = keep or ()
+    items = _items(p, kind, bound)
+    reached = {n.variable for n in p.nodes if n.variable in bound}
+    items += [f"{v} AS _v_{v}" for v in keep if v in bound and v not in reached]
+    answer = await read(f"{prefix} RETURN {', '.join(items)}".strip(), params)
+    created_at = {c.index: p.nodes[c.index].variable for c in kind.created}
+    identify = frozenset(i for i, var in created_at.items() if var in keep)
+    made, ids, rel_ids = await write_rows(
+        p, kind, answer, label_map, session, state, governed_write, identify
+    )
+    node_at = {n.variable: i for i, n in reversed(list(enumerate(p.nodes))) if n.variable}
+    rel_at = {r.variable: j for j, r in enumerate(p.rels) if r.variable}
+    rows: list[dict[str, Any]] = []
+    for row, row_ids, row_rels in zip(answer, ids, rel_ids, strict=True):
+        out: dict[str, Any] = {}
+        for var in keep:
+            if var in bound:
+                out[var] = bound_value(row[f"_v_{var}"], label_map, graph)
+            elif var in node_at:
+                node_id, labels = row_ids[node_at[var]]
+                out[var] = ("n", node_id, labels)
+            elif var in rel_at:
+                j = rel_at[var]
+                rel_type = p.rels[j].rel_type
+                out[var] = ("r", row_rels[j], rel_type) if j in row_rels else ("m", None, rel_type)
+        rows.append(out)
+    return made, rows
 
 
 #: Each node a pattern's row wrote or reached back to, by its index among the pattern's nodes:
@@ -177,11 +229,12 @@ async def write_rows(
     state: Any,
     governed_write: Write,
     identify: frozenset[int] = frozenset(),
-) -> tuple[Created, list[RowIds]]:
+) -> tuple[Created, list[RowIds], list[dict[int, str]]]:
     """Make ``p``'s nodes and relationships once per row (``rows``: what the leading clauses read,
     as _items names it): each governed row through the governed write, the session's parts in the
     session; a governed relationship is the caller's. Each row's node identities are given back,
-    a governed row's only when a session relationship ends on it or ``identify`` names it."""
+    a governed row's only when a session relationship ends on it or ``identify`` names it, and
+    each row's session relationships' ids, by their index among the pattern's."""
     graph = store.graph(session)
     made = {p.nodes[c.index].variable: c.index for c in kind.created}
     created_at = {c.index for c in kind.created}
@@ -195,8 +248,10 @@ async def write_rows(
     writes = Writes()
     rows_written = 0
     every: list[RowIds] = []
+    every_rel: list[dict[int, str]] = []
     for row in rows:
         ids: RowIds = {}
+        rel_ids: dict[int, str] = {}
         for c in kind.created:
             props = {k: row[f"_n{c.index}_{k}"] for k, _ in p.nodes[c.index].properties}
             if c.governed:
@@ -226,12 +281,12 @@ async def write_rows(
                 continue
             props = {k: row[f"_r{j}_{k}"] for k, _ in rel.properties}
             (source, from_labels), (target, to_labels) = ids[rel.source], ids[rel.target]
+            rel_ids[j] = graph.new_id("r")
             writes.rels.append(
-                NewRel(
-                    graph.new_id("r"), rel.rel_type, source, target, props, from_labels, to_labels
-                )
+                NewRel(rel_ids[j], rel.rel_type, source, target, props, from_labels, to_labels)
             )
         every.append(ids)
+        every_rel.append(rel_ids)
     for c in kind.created:
         if c.anchor is not None:
             graph.anchors.setdefault(c.anchor, store.anchor_table(c.anchor))
@@ -252,4 +307,4 @@ async def write_rows(
         len(writes.rels),
         sum(len(n.labels) for n in writes.nodes) + rows_written,
     )
-    return created, every
+    return created, every, every_rel

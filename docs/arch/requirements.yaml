@@ -8980,9 +8980,23 @@
   feature: cypher-and-graph-analytics-paths
   priority: SHOULD
   type: behavioral
-  description: Path queries — `shortestPath(...)`, `allShortestPaths(...)`, and variable-length relationship
+  description: 'Path queries — `shortestPath(...)`, `allShortestPaths(...)`, and variable-length relationship
     patterns `[*1..n]` — translate to Trino recursive CTEs (`WITH RECURSIVE`) against the adjacency relation
     defined in the label mapping. Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected.
+    (Amended 2026-10-28, A SHORTEST PATH NAMES ITS ENDPOINTS'' LABELS:) [SUPERSEDED by REQ-348 amendment
+    UNLABELLED SHORTEST PATHS IN A SESSION, 2026-10-28 -- unlabelled endpoints are allowed in a graph session.
+    Kept here for history; do not implement against it.] shortestPath and allShortestPaths require a labelled
+    source node and a labelled target node, in the model graph and in a graph session alike: a label is
+    what places an endpoint, and a path search from an unlabelled node would start from every table and
+    walk every relationship. A shortest-path pattern with an unlabelled endpoint is refused by name, and
+    the conformance cases that use one are skipped by design under this decision. [END SUPERSEDED BLOCK]
+    (Amended 2026-10-28, UNLABELLED SHORTEST PATHS IN A SESSION:) On the model graph, shortestPath and allShortestPaths
+    require a labelled source node and a labelled target node: a label places an endpoint in its table and
+    the hops in their relationship tables, and without it every hop would be a union over all of them. An
+    unlabelled endpoint there is refused by name, and conformance cases that need one on the model graph
+    are skipped by design under this decision. In a graph session the endpoints need no label: every session
+    relationship lives in the session''s one relationships table, indexed on both ends, so an unlabelled
+    shortest path walks the same table a labelled one does, at the same cost.'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
@@ -10974,9 +10988,16 @@
   feature: cypher-and-graph-analytics-writes
   priority: SHOULD
   type: behavioral
-  description: Cypher write endpoints return the number of rows affected (rows inserted for CREATE, rows
+  description: 'Cypher write endpoints return the number of rows affected (rows inserted for CREATE, rows
     updated for SET, rows deleted for DELETE). The response includes an `affected_rows` field in the JSON
-    response body.
+    response body. (Amended 2026-10-28, A WRITE''S COUNTERS, AS NEO4J COUNTS THEM:) Every Cypher write,
+    governed or in the graph session, also reports what it did as Neo4j counts it: nodes-created, nodes-deleted,
+    relationships-created, relationships-deleted, properties-set, labels-added and labels-removed, from
+    the rows actually written. Bolt sends them as the summary''s stats (only the non-zero counters, with
+    contains-updates), and the HTTP Cypher answer carries the same map as counters beside affected_rows.
+    A MERGE that matched creates nothing, and an unchanged value set still counts as a property set. A count
+    Provisa cannot know exactly (a governed SET to null, a write whose driver reports no row count) is never
+    guessed: no counters are sent, and the answer carries the count-unknown warning.'
   use_case: Affected-row counts let clients validate mutation success and detect silent failures.
   code:
   - provisa/api/rest/cypher_router.py
@@ -24971,7 +24992,7 @@
   - ops
   - data-engineer
 - id: REQ-818
-  status: complete
+  status: in-progress
   since: 2026-07
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
@@ -25004,6 +25025,7 @@
   - provisa/cypher/parser.py
   tests:
   - tests/integration/test_cypher_endpoint.py
+  - tests/steps/steps_cypher_writes_req818.py
   - tests/unit/test_cypher_parser.py
   - tests/unit/test_cypher_translator.py
   related_reqs:
@@ -47248,7 +47270,12 @@
     A draft''s definition is always edited in place. (Amended 2026-10-28, SAVE, SAVE VERSION, CANCEL:) A
     term''s definition edit form: The edit form''s actions are Save, Save version and Cancel: Save writes
     the edit in place on the current version, Save version writes it as the next version and keeps the current
-    one read-only, and Cancel discards it.'
+    one read-only, and Cancel discards it. (Amended 2026-10-28, A CONCEPT''S PROPERTIES ARE ITS PARTS:)
+    A property term that describes a concept (a shift coverage''s start, end and location) is related to
+    it by PART_OF, not RELATED_TO, so the concept is grounded through the properties that reach data. The
+    glossary''s Generate Relationships action proposes PART_OF when it links a concept to one of its property-role
+    terms, and keeps RELATED_TO for loose associations, which conduct no grounding. Demo and shipped vocabularies
+    follow the same rule.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -82345,7 +82372,48 @@
   feature: commands-and-functions-sql-commands
   priority: SHOULD
   type: behavioral
-  description: 'A command can be implemented by a Provisa SQL statement with typed arguments (implementation kind statement): the statement is governed and run through the one pipeline under the caller''s rights like any statement, its arguments bound as values, never spliced. An argument is written {{name}} in the statement, as a MongoDB pipeline command writes one: every placeholder is a declared argument and every declared argument is used. A statement command is a query when its statement reads and a mutation when it writes. It is invocable on every surface commands are, a scheduled trigger can run it (the trigger''s SQL is one call of the command, run as the trigger''s role), and every run is audited, a scheduled run under the scheduler''s audit identity and bounded by the scheduler''s own request timeout (limits.request_timeouts.scheduler, REQ-1905). An INSERT ... SELECT whose SELECT reads a source other than its target''s, or computes embed(), is run as its governed SELECT read as any read, its rows then written into the target through that table''s write route as an INSERT ... VALUES, so a command can compute rows across sources and write them to one target; an ON CONFLICT ... DO UPDATE on it is carried to that write, and a target whose write route has no upsert refuses it by name. The statement is the command''s declaration: at registration its contract is derived from the governed statement and stored, namely its kind (a SELECT is a query, a write a mutation), writes_table (its target), the tables it reads after view expansion, its output columns (the select list''s types, or the write''s row count), its column lineage as REQ-1160 computes it, and the types of its {{name}} arguments. The command form shows the steward that contract (e.g. "reads support.tickets, writes kb.docs (upsert), returns a row count"). A declared kind or writes_table that contradicts the statement is refused by name. At every schema rebuild the command''s contract is derived again; one that no longer resolves (a table or column it reads or writes was renamed or dropped) is marked broken with the reason, its invocation refused naming that reason and the commands page showing it; lineage and impact analysis list statement commands as they list views, so a rename or drop that would break one lists it beforehand, through its write edge. The lineage carries the write edge: the target table shows it is written by the command, from the tables and columns the command reads (e.g. kb.docs "written by command embed_tickets, from support.tickets (ticket_id, subject)"), in the lineage graph and in impact analysis, so rows a command derives into a source stay traceable as derived, not as plain source data. Those edges (its reads, its write to the target, column by column) are added to the lineage graph from the statement itself at registration, as a view''s are, and derived again on a model change; a run adds none, its audit record kept apart. Each run creates one audit record for provenance, the command call''s own record extended for this kind (no second log): the command and the version of its contract that ran, the caller (or the scheduled trigger''s role and principal), the argument values, its start and end, its outcome, the tables it read, the target it wrote and the rows affected; the record names the command, so a derived table answers both "derived from what" (the lineage graph) and "which run, when, by whom, with what inputs" (the audit). The record lets someone prove what produced the rows: it holds the exact registered statement text with its hash and contract version, the bound argument values, and each embed() call''s model (its id, provider, dimensions and version, REQ-2002), beside the caller, start and end, outcome, tables read, target and rows affected. Run records are append-only, as the audit log is.'
+  description: 'A command can be implemented by a Provisa SQL statement with typed arguments (implementation
+    kind statement): the statement is governed and run through the one pipeline under the caller''s rights
+    like any statement, its arguments bound as values, never spliced. An argument is written {{name}} in
+    the statement, as a MongoDB pipeline command writes one: every placeholder is a declared argument and
+    every declared argument is used. A statement command is a query when its statement reads and a mutation
+    when it writes. It is invocable on every surface commands are, a scheduled trigger can run it (the trigger''s
+    SQL is one call of the command, run as the trigger''s role), and every run is audited, a scheduled run
+    under the scheduler''s audit identity and bounded by the scheduler''s own request timeout (limits.request_timeouts.scheduler,
+    REQ-1905). An INSERT ... SELECT whose SELECT reads a source other than its target''s, or computes embed(),
+    is run as its governed SELECT read as any read, its rows then written into the target through that table''s
+    write route as an INSERT ... VALUES, so a command can compute rows across sources and write them to
+    one target; an ON CONFLICT ... DO UPDATE on it is carried to that write, and a target whose write route
+    has no upsert refuses it by name. The statement is the command''s declaration: at registration its contract
+    is derived from the governed statement and stored, namely its kind (a SELECT is a query, a write a mutation),
+    writes_table (its target), the tables it reads after view expansion, its output columns (the select
+    list''s types, or the write''s row count), its column lineage as REQ-1160 computes it, and the types
+    of its {{name}} arguments. The command form shows the steward that contract (e.g. "reads support.tickets,
+    writes kb.docs (upsert), returns a row count"). A declared kind or writes_table that contradicts the
+    statement is refused by name. At every schema rebuild the command''s contract is derived again; one
+    that no longer resolves (a table or column it reads or writes was renamed or dropped) is marked broken
+    with the reason, its invocation refused naming that reason and the commands page showing it; lineage
+    and impact analysis list statement commands as they list views, so a rename or drop that would break
+    one lists it beforehand, through its write edge. The lineage carries the write edge: the target table
+    shows it is written by the command, from the tables and columns the command reads (e.g. kb.docs "written
+    by command embed_tickets, from support.tickets (ticket_id, subject)"), in the lineage graph and in impact
+    analysis, so rows a command derives into a source stay traceable as derived, not as plain source data.
+    Those edges (its reads, its write to the target, column by column) are added to the lineage graph from
+    the statement itself at registration, as a view''s are, and derived again on a model change; a run adds
+    none, its audit record kept apart. Each run creates one audit record for provenance, the command call''s
+    own record extended for this kind (no second log): the command and the version of its contract that
+    ran, the caller (or the scheduled trigger''s role and principal), the argument values, its start and
+    end, its outcome, the tables it read, the target it wrote and the rows affected; the record names the
+    command, so a derived table answers both "derived from what" (the lineage graph) and "which run, when,
+    by whom, with what inputs" (the audit). The record lets someone prove what produced the rows: it holds
+    the exact registered statement text with its hash and contract version, the bound argument values, and
+    each embed() call''s model (its id, provider, dimensions and version, REQ-2002), beside the caller,
+    start and end, outcome, tables read, target and rows affected. Run records are append-only, as the audit
+    log is. (Amended 2026-10-28, A VOID COMMAND; IMPLICIT ARGUMENTS IN CYPHER:) A command may declare no
+    outputs (a VOID command): calling it runs it and answers an empty result with no columns, as a Cypher
+    VOID procedure does, on every surface that calls commands. In Cypher, a standalone CALL may omit its
+    parentheses (CALL name): each argument is then bound from the statement parameter of the same name,
+    and a missing parameter is refused by name.'
   scenario: 'Given a statement command embed_tickets(since timestamp) whose statement is INSERT INTO kb.docs (id, title, body_vec) SELECT ticket_id, subject, embed(''text-embedding-3-small'', subject) FROM support.tickets WHERE updated_at > {{since}} ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, body_vec = EXCLUDED.body_vec
 
     When a steward runs it with since set to yesterday
@@ -90480,7 +90548,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
     with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
     one graph has optional layers for a product''s commands, its quality checks, links to other products
-    and product lineage, off by default in snippets and available in the full view.'
+    and product lineage, off by default in snippets and available in the full view. (Amended 2026-10-28,
+    EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows term edges (the term page''s term graph,
+    the one ontology graph in 2D and 3D, the lane view and their snippets), an edge that conducts grounding
+    under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from broader to narrower, SYNONYM_OF, and a term''s
+    binding to a column) is drawn solid, and an edge that does not (RELATED_TO and every other type, and
+    a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -90520,14 +90593,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   description: 'Provisa''s Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow''s FlightSql.proto),
     so standard Flight SQL clients (the ADBC Flight SQL driver, the JDBC Flight SQL driver, tools built
     on them) connect and query it. It decodes the Flight SQL commands (statement query, prepared statement
-    query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported
-    and exported keys, cross reference), the actions (create and close a prepared statement, get and set
-    session options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline
-    the endpoint''s native tickets already use, under the caller''s role, so a Flight SQL read is governed
-    exactly as a pgwire or HTTP SQL read is. The endpoint''s native Flight protocol (path descriptors,
-    JSON tickets) keeps working beside it. Catalog answers show what the caller is served. Object creation
-    stays out of scope by design (REQ-2167): a Flight SQL statement may create a session temp table where
-    pgwire allows one. Conformance is measured by the ADBC driver validation suite (REQ-2167).'
+    query and update, SqlInfo, catalogs, database schemas, tables, table types, primary keys, imported and
+    exported keys, cross reference), the actions (create and close a prepared statement, get and set session
+    options) and DoPut for bound parameters, and answers each through the one governed SQL pipeline the
+    endpoint''s native tickets already use, under the caller''s role, so a Flight SQL read is governed exactly
+    as a pgwire or HTTP SQL read is. The endpoint''s native Flight protocol (path descriptors, JSON tickets)
+    keeps working beside it. Catalog answers show what the caller is served. Object creation stays out of
+    scope by design (REQ-2167): a Flight SQL statement may create a session temp table where pgwire allows
+    one. Conformance is measured by the ADBC driver validation suite (REQ-2167). (Amended 2026-10-28, A
+    CONFLICTING INGEST IS INVALID_ARGUMENT:) A bulk ingest that would create a table that already exists,
+    or whose columns do not match the table it appends to, is refused by name with the status INVALID_ARGUMENT,
+    not ALREADY_EXISTS: the Flight server library Provisa serves on (pyarrow) can send no ALREADY_EXISTS
+    status. The conformance suite''s cases that expect ALREADY_EXISTS are by design under this decision.'
   scenario: 'Given a Flight SQL client using the ADBC Flight SQL driver signed in as a role
 
     When it runs a prepared statement with a bound parameter and lists the tables

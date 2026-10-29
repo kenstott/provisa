@@ -137,3 +137,17 @@ def test_a_delete_of_a_model_node_in_a_session_counts_it_once(monkeypatch):
         "nodes-deleted": 1,
         "contains-updates": True,
     }
+
+
+def test_a_session_property_set_and_remove_count_as_properties_set(monkeypatch):
+    # A session property SET or REMOVE (then.py's write path) counts each property it writes.
+    s = _session(monkeypatch)
+    _run(s, "CREATE (:Temp {k: 1}), (:Temp {k: 2})")
+    assert _stats(s, "MATCH (n:Temp) SET n.z = 5") == {
+        "properties-set": 2,
+        "contains-updates": True,
+    }
+    assert _stats(s, "MATCH (n:Temp {k: 1}) REMOVE n.z") == {
+        "properties-set": 1,
+        "contains-updates": True,
+    }

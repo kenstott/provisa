@@ -710,14 +710,21 @@ async def _session_write(
         return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
     if made is None:
         return None
-    if any(vars(made).values()):
+    if any(seam.counters(made).values()):
         from provisa.api import graph_session
 
         held = graph_session.bound()
         assert held is not None, "an ephemeral write is made in the principal's graph session"
         held.wrote = True
+    # A write followed by reads answers with the rest's rows (REQ-2176).
+    columns, rows = seam.rows_of(made)
     return JSONResponse(
-        content={"type": "cypher", "columns": [], "rows": [], **_counters(counted, body.query)}
+        content={
+            "type": "cypher",
+            "columns": columns,
+            "rows": rows,
+            **_counters(counted, body.query),
+        }
     )
 
 

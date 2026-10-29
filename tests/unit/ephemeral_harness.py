@@ -127,6 +127,11 @@ class _Rows:
         name = f"on_{table}_{'_'.join(columns)}"
         self.duck.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON "{table}" ({cols})')
 
+    async def drop_lookup_index(self, schema, table, columns):
+        self.calls.append(f"drop {table} {','.join(columns)}")
+        name = f"on_{table}_{'_'.join(columns)}"
+        self.duck.execute(f'DROP INDEX IF EXISTS "{name}"')
+
 
 class Session:
     """One session: its DuckDB, its model and its temporary tables. ``in_place``: the store

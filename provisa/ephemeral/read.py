@@ -127,6 +127,11 @@ def overlay(model: Any, session: TempSession) -> Any:
             nodes_by_table.setdefault(key, [key])
     relationships = dict(model.relationships)
     aliases = {k: list(v) for k, v in model.aliases.items()}
+    # While a read after a write runs (then.py), a relationship's id is read as a property too,
+    # which the read finds the write's relationships again by.
+    from provisa.ephemeral import then
+
+    rel_id = {then.REL_ID: store.REL_ID} if then.rel_ids_read(session) else {}
     for rel_type, source, target in sorted(graph.rel_pairs):
         # Each end is a label the overlay maps: an ephemeral end's (its unlabeled nodes' "" among
         # them, store.view_keys), a model end's type name.
@@ -149,10 +154,14 @@ def overlay(model: Any, session: TempSession) -> Any:
                 source_columns=("from_id",),
                 target_columns=("to_id",),
                 identity_column=store.REL_ID,
-                attributes={name: name for name, _ in columns if name != store.REL_ID},
+                attributes={
+                    **{name: name for name, _ in columns if name != store.REL_ID},
+                    **rel_id,
+                },
                 attribute_types=tuple(
                     (name, _spelled(kind)) for name, kind in columns if name != store.REL_ID
-                ),
+                )
+                + tuple((name, "text") for name in rel_id),
             ),
         )
         relationships[mapping.field_name] = mapping
