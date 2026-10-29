@@ -814,7 +814,7 @@ def _json_valued(
             "list"
             if e.expressions
             and all(
-                isinstance(x, exp.Anonymous) and str(x.this).upper() == "TO_JSON"
+                isinstance(x, exp.Anonymous) and str(x.this).upper() in ("TO_JSON", "JSON_OBJECT")
                 for x in e.expressions
             )
             else None

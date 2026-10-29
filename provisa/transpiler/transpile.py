@@ -70,17 +70,62 @@ def _range_step(step: exp.Expression, raise_with: str) -> exp.Expression:  # pyr
     )
 
 
+def _json_has_keys(value: exp.Expression, *keys: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """True where the JSON object ``value`` holds every one of ``keys``."""
+    held = [
+        exp.Not(
+            this=exp.Is(
+                this=exp.Anonymous(
+                    this="json_extract", expressions=[value.copy(), exp.Literal.string(f"$.{k}")]
+                ),
+                expression=exp.Null(),
+            )
+        )
+        for k in keys
+    ]
+    return exp.and_(*held)  # pyright: ignore[reportReturnType]
+
+
 def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """json_order_key(x), a JSON value's place in openCypher's order (expr_visitor): its kind --
-    a map, a list, a string, a boolean, a number, read from the first character of ``text``, its
-    JSON text -- then its number, then its text."""
+    read from the first character of ``text``, its JSON text, and for an object from its keys --
+    then its number, then its text.
+
+    openCypher's orderability (Cypher Manual, "Ordering and comparison of values"; openCypher 9
+    spec, "Orderability"), ascending: MAP, NODE, RELATIONSHIP, LIST, PATH, STRING, BOOLEAN,
+    NUMBER, then null last. A node, a relationship and a path are each a JSON object, told from a
+    map by the keys the result assembler (gql/assembler.py) and Bolt packstream
+    (bolt/packstream.py: _is_node_dict, _is_rel_dict, _is_path_dict) recognise them by."""
     first = exp.Anonymous(
         this="substr", expressions=[text, exp.Literal.number(1), exp.Literal.number(1)]
     )
-    ranks = [("{", 0), ("[", 3), ('"', 5), ("t", 6), ("f", 6)]
+    is_path = _json_has_keys(value, "nodes", "edges")
+    is_rel = _json_has_keys(value, "type", "startNode", "endNode")
+    is_node = exp.and_(
+        _json_has_keys(value, "id", "label", "properties"),
+        exp.Is(
+            this=exp.Anonymous(
+                this="json_extract", expressions=[value.copy(), exp.Literal.string("$.startNode")]
+            ),
+            expression=exp.Null(),
+        ),
+    )
+    # Packstream tests a node, then a relationship, then a path; a path holds no node's keys.
+    as_object = exp.Case(
+        ifs=[
+            exp.If(this=is_path, true=exp.Literal.number(4)),
+            exp.If(this=is_rel, true=exp.Literal.number(2)),
+            exp.If(this=is_node, true=exp.Literal.number(1)),
+        ],
+        default=exp.Literal.number(0),
+    )
+    ranks = [("[", 3), ('"', 5), ("t", 6), ("f", 6)]
     rank = exp.Case(
         this=first,
-        ifs=[exp.If(this=exp.Literal.string(c), true=exp.Literal.number(r)) for c, r in ranks],
+        ifs=[
+            exp.If(this=exp.Literal.string("{"), true=as_object),
+            *(exp.If(this=exp.Literal.string(c), true=exp.Literal.number(r)) for c, r in ranks),
+        ],
         default=exp.Literal.number(7),
     )
     number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
