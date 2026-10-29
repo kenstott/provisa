@@ -594,8 +594,21 @@ def _optional_start(
     it matches whole or not at all (_optional_step_matches_whole). After a WITH, the rows the WITH
     carries are where it starts; in a CALL body, the outer row its imported variables are bound to
     (``lateral_bound``)."""
-    if carried is not None or lateral_bound or not matches or not matches[0].optional:
+    if lateral_bound or not matches or not matches[0].optional:
         return from_clause, joins
+    if carried is not None:
+        read = {
+            t.name
+            for part in [from_clause, *(j["table"] for j in joins)]
+            for t in part.find_all(exp.Table)
+            if not t.db
+        }
+        if carried in read:
+            return from_clause, joins  # its pattern goes on from the carried rows already
+        # The rows the WITH carries are where it starts: the pattern is joined to each, so a row
+        # it matches nothing for is kept, its variables null.
+        start = exp.Table(this=exp.Identifier(this=carried))
+        return start, [{"table": from_clause, "on": exp.true(), "join_type": "LEFT"}, *joins]
     one = exp.Subquery(
         this=exp.select(exp.alias_(exp.Literal.number(1), "_one")),
         alias=exp.TableAlias(this=exp.to_identifier(_OPTIONAL_START)),

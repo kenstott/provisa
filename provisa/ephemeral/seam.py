@@ -31,7 +31,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.temp_tables import TempSession
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import read, store, then
-from provisa.ephemeral.delete import Deleted, delete
+from provisa.ephemeral.delete import Deleted, delete, delete_bound
 from provisa.ephemeral.indexes import Indexed, index_statement
 from provisa.ephemeral.labels import Labelled, write_labels, write_labels_bound
 from provisa.ephemeral.merge import _governed as merge_governed
@@ -108,6 +108,10 @@ async def _write(
             if merge_governed(statement, model, store.graph(session)):
                 return None
             return await merge_bound(
+                split.head, params, model, session, state, run_read, run_write, keep
+            )
+        if split.kind == "delete":
+            return await delete_bound(
                 split.head, params, model, session, state, run_read, run_write, keep
             )
         if split.kind == "labels":

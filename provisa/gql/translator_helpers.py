@@ -493,6 +493,17 @@ def _fold_where_into_optional_joins(
         if join["join_type"] == "LEFT" and (alias := _join_alias(join["table"])) in step_vars
     }
     if not order:
+        # A hop between two nodes bound before it introduces only its relationship, joined by
+        # its junction (via_alias_for): that join is the match's, which its WHERE conditions.
+        order = {
+            alias: i
+            for i, join in enumerate(joins)
+            if join["join_type"] == "LEFT"
+            and (alias := _join_alias(join["table"])) is not None
+            and alias.endswith("__via")
+            and alias[: -len("__via")] in step_vars
+        }
+    if not order:
         # The OPTIONAL MATCH is the statement's FROM, not a join: there is no join to condition,
         # so its WHERE filters its own rows, as it always has here.
         return joins, where_expr
