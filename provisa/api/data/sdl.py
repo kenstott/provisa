@@ -101,6 +101,7 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
+        root_domain_ids=set(domain_ids),
         relationships=relationships,
         column_types=cache["column_types"],
         naming_rules=cache["naming_rules"],

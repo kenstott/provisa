@@ -60,7 +60,7 @@ from provisa.compiler.metric_expand import metric_reference_tables
 from provisa.compiler.ontology_classes import is_class_table_id, served_class_columns
 from provisa.core.modeling_tags import append_modeling_tag
 from provisa.compiler.type_map import JSONScalar, column_type_to_graphql, array_graphql_type
-from provisa.compiler.schema_types import SchemaInput, _TableInfo
+from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
     META_DOMAIN_ID,
@@ -473,6 +473,9 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     fields: dict[str, GraphQLField] = {}
 
     for t in tables:
+        # Only a root table subscribes, as only a root table is queried (root_table_ids).
+        if si.root_table_ids is not None and t.table_id not in si.root_table_ids:
+            continue
         raw = raw_by_id.get(t.table_id, {})
         source_type = (si.source_types or {}).get(t.source_id, "")
         if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):
@@ -1282,9 +1285,10 @@ def generate_schema(
             command = extra[field].extensions["provisa_command"]
             raise CommandFieldTaken(root, field, command, "a table's field")
         fields.update(extra)
-    _add_resolve_field(  # REQ-1365
-        query_fields, resolve_field_name(si.domain_prefix, domain_alias_map)
-    )
+    # REQ-1365: the resolver is meta's field, so a per-domain schema has it only when meta is asked
+    # for; meta filters by the Domains menu like any domain.
+    if offers_domain(si, META_DOMAIN_ID):
+        _add_resolve_field(query_fields, resolve_field_name(si.domain_prefix, domain_alias_map))
 
     mutation_type: GraphQLObjectType | None = None
     if mutation_fields:

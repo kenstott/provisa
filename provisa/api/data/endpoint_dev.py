@@ -169,6 +169,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
         si = SchemaInput(
             tables=filtered_tables,
             root_table_ids=seed_ids,
+            root_domain_ids=set(domain_list),
             relationships=relationships,
             column_types=cache["column_types"],
             naming_rules=cache["naming_rules"],
