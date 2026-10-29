@@ -20,9 +20,12 @@ const renderChart = vi.fn(async (id: string, chart: string) => ({
   svg: `<svg data-testid="${id}" data-chart="${chart.split("\n")[0]}"></svg>`,
 }));
 
+const parseChart = vi.fn(async (_chart: string) => ({ diagramType: "flowchart-v2" }));
+
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
+    parse: (chart: string) => parseChart(chart),
     render: (id: string, chart: string) => renderChart(id, chart),
   },
 }));
@@ -61,6 +64,7 @@ function renderStats(queryStats: unknown) {
 describe("SQL stats execution diagram", () => {
   beforeEach(() => {
     renderChart.mockClear();
+    parseChart.mockClear();
   });
 
   it("renders the DAG the server sent with the stats", async () => {

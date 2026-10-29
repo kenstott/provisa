@@ -30,6 +30,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
+from provisa.executor import mermaid_label
+
 # --------------------------------------------------------------------------- #
 # Dialect syntax
 # --------------------------------------------------------------------------- #
@@ -347,12 +349,8 @@ def parse_explain(rows: list[tuple], column_names: list[str], fmt: str) -> list[
 # --------------------------------------------------------------------------- #
 
 
-def _esc(text: str) -> str:
-    return text.replace('"', "'").replace("\n", " ")[:90]
-
-
 def _node_label(node: ExplainNode) -> str:
-    parts = [_esc(node.op)]
+    parts = [mermaid_label.label(node.op)]
     if node.rows is not None:
         parts.append(f"{node.rows:g} rows")
     if node.actual_ms is not None:
@@ -390,14 +388,18 @@ def build_explain_mermaid(
         for child in node.children:
             emit(child, nid)
 
-    reason = f"\\n{_esc(route_reason)}" if route_reason else ""
+    reason = f"\\n{mermaid_label.label(route_reason)}" if route_reason else ""
     lines.append(f'  route{{{{"{route.lower()} route{reason}"}}}}')
     for root in nodes:
         emit(root, "route")
 
     for i, label in enumerate(optimizations):
         kind, _, relation = label.partition(": ")
-        text = f"{_esc(kind)}\\n{_esc(relation)}" if relation else _esc(kind)
+        text = (
+            f"{mermaid_label.label(kind)}\\n{mermaid_label.label(relation)}"
+            if relation
+            else mermaid_label.label(kind)
+        )
         lines.append(f'  o{i}[/"{text}"/]')
         lines.append(f"  o{i} --> route")
     if optimizations:

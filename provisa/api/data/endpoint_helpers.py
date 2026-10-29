@@ -32,6 +32,8 @@ from provisa.executor.serialize import (
     serialize_rows,
 )
 from provisa.executor import stats as _qs_mod
+from provisa.executor.mermaid_label import label as _label
+from provisa.executor.mermaid_label import node_id as _node_id
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route
 
@@ -255,10 +257,8 @@ def _build_mermaid(
                     sources in `sources` that appear as join targets are rendered via join_fields.
     cache_catalog: the engine catalog used for API cache — shown on cache node label.
     """
-    _cache_label = f"{cache_catalog or root_source_id or 'pg'} cache"
-
-    def _node_id(s: str) -> str:
-        return s.replace("-", "_").replace(".", "_")
+    _cache_label = _label(f"{cache_catalog or root_source_id or 'pg'} cache")
+    root_label = _label(root_field)
 
     lines = ["flowchart LR"]
 
@@ -279,12 +279,12 @@ def _build_mermaid(
         if src_type == "openapi":
             h_ms = hydration_ms.get(src_id, 0.0)
             cache_label = "cache hit" if h_ms < _HYDRATION_CACHE_HIT_MS else f"{round(h_ms)}ms"
-            lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
-            lines.append(f'    pg_{nid}["{_cache_label}\\n{root_field}"]')
+            lines.append(f'    {nid}["{root_label}\\n({_label(src_id)})"]')
+            lines.append(f'    pg_{nid}["{_cache_label}\\n{root_label}"]')
             lines.append(f'    {nid} -->|"{cache_label}"| pg_{nid}')
             if single:
                 elapsed_label = f"{round(h_ms)}ms" if h_ms >= _HYDRATION_CACHE_HIT_MS else ""
-                lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
+                lines.append(f'    result(["{root_label}\\n{result_rows} rows"])')
                 lines.append(
                     f'    pg_{nid} -->|"{elapsed_label}"| result'
                     if elapsed_label
@@ -296,8 +296,8 @@ def _build_mermaid(
         else:
             if single:
                 elapsed_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
-                lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
-                lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
+                lines.append(f'    {nid}["{root_label}\\n({_label(src_id)})"]')
+                lines.append(f'    result(["{root_label}\\n{result_rows} rows"])')
                 lines.append(
                     f'    {nid} -->|"federated {elapsed_label}"| result'
                     if elapsed_label
@@ -305,7 +305,7 @@ def _build_mermaid(
                 )
             else:
                 engine_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
-                lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
+                lines.append(f'    {nid}["{root_label}\\n({_label(src_id)})"]')
                 lines.append(f'    {nid} -->|"federated {engine_label}"| engine')
 
     # Render JOIN target nodes — separate node per join target, even if same source as root.
@@ -313,20 +313,21 @@ def _build_mermaid(
         engine_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
         for rel_field, jt_src_id, is_hit in join_fields:
             jt_type = source_types.get(jt_src_id, "")
-            jnid = _node_id(rel_field)
+            # Prefixed: a join field named like a source must not merge into that source's node.
+            jnid = _node_id(f"join_{rel_field}")
             if jt_type == "openapi":
                 hit_label = "cache hit" if is_hit else "fetched"
-                lines.append(f'    {jnid}["{rel_field}\\n({jt_src_id})"]')
-                lines.append(f'    pg_{jnid}["{_cache_label}\\n{rel_field}"]')
+                lines.append(f'    {jnid}["{_label(rel_field)}\\n({_label(jt_src_id)})"]')
+                lines.append(f'    pg_{jnid}["{_cache_label}\\n{_label(rel_field)}"]')
                 lines.append(f'    {jnid} -->|"{hit_label}"| pg_{jnid}')
                 lines.append(f'    pg_{jnid} -->|"federated {engine_label}"| engine')
             else:
-                lines.append(f'    {jnid}["{rel_field}\\n({jt_src_id})"]')
+                lines.append(f'    {jnid}["{_label(rel_field)}\\n({_label(jt_src_id)})"]')
                 lines.append(f'    {jnid} -->|"federated {engine_label}"| engine')
 
     if not single:
         lines.append('    engine{"Virtual\\nJoin"}')
-        lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
+        lines.append(f'    result(["{root_label}\\n{result_rows} rows"])')
         lines.append("    engine --> result")
 
     return "\n".join(lines)
