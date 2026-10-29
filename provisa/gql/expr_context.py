@@ -1291,6 +1291,16 @@ class TranslatorExprContext:
         inner_tr = _Translator(inner_ast, outer._lm, outer._params)
         # The outer nodes it matches under names of its own are bound where it reads them.
         inner_tr._drawn_vars = set(drawn.values()) | outer._drawn_vars
+        # Each such name's outer identity, and those the outer statement was handed and binds
+        # no node of: a statement nested deeper binds them, tied there to the outer row.
+        tied: dict[str, exp.Expression] = {  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            w: e for w, e in outer._outer_identities.items() if graph_identity(outer, w) is None
+        }
+        for v, w in drawn.items():
+            identity = graph_identity(outer, v)
+            assert identity is not None  # drawn holds only the nodes that have one
+            tied[w] = identity
+        inner_tr._outer_identities = tied
         inner_tr._var_table.update({v: b for v, b in outer._var_table.items() if v not in drawn})
         # A node a WITH carries is held in that WITH's rows, under its name there.
         inner_tr._cte_sources = set(outer._cte_sources)
@@ -1299,8 +1309,8 @@ class TranslatorExprContext:
         inner_tr._lateral_bound = {v for v, (_, nm) in outer._var_table.items() if nm is not None}
         inner_select, inner_params, inner_kinds = inner_tr.translate()
         same = [
-            exp.EQ(this=inner_id, expression=graph_identity(outer, v))
-            for v, w in drawn.items()
+            exp.EQ(this=inner_id, expression=e.copy())
+            for w, e in inner_tr._outer_identities.items()
             if (inner_id := graph_identity(inner_tr, w)) is not None
         ]
         if same:

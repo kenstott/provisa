@@ -234,7 +234,8 @@ class _EveryRelMixin:  # mixin for _Translator
         elif var in self._all_rels_node_vars:
             return _value_of(var, "id"), var in self._every_rel_clause_cols
         elif var in self._domain_nodes:
-            return exp.column("__id", table=var), False
+            # Its union's identity, where it is held: its own alias, or a WITH carrying it.
+            return exp.column("__id", table=self._var_table.get(var, (var, None))[0]), False
         elif nm is not None:
             return node_identity(self._var_table[var][0], nm), False
         raise CypherTranslateError(
@@ -323,6 +324,11 @@ class _EveryRelMixin:  # mixin for _Translator
                     identity, of_clause = self._held_identity(node, nm, as_source=as_source)
                     cond = exp.EQ(this=_value_of(col, "id"), expression=identity)
                     (inner if of_clause else outer).append(cond)
+                    if session and node.labels and var is not None:
+                        # A held node a later pattern labels: it has those labels too (REQ-347).
+                        ctx = self._temporal_context()  # type: ignore[attr-defined]
+                        has = ctx.resolve_label_predicate(ctx.resolve_variable(var), node.labels)
+                        (inner if of_clause else outer).append(has)
                 if var is None:
                     self._every_rel_anon[id(node)] = col
                 domains.append(None)

@@ -307,6 +307,19 @@ def _lists_mixed_lists(
     )
 
 
+def _comprehends_elements(expr: CypherExpr) -> bool:
+    """Whether ``expr`` is a pattern comprehension of paths, nodes or relationships of its
+    pattern: a list each item of which is its JSON (expr_context.resolve_pattern_comprehension)."""
+    from provisa.gql.expr_ast import PatternComprehension
+
+    if not isinstance(expr, PatternComprehension) or not isinstance(expr.projection, Variable):
+        return False
+    named = {expr.path_var} | {
+        item.variable for item in [*expr.pattern.nodes, *expr.pattern.rels] if item.variable
+    }
+    return expr.projection.name in named
+
+
 def _is_json_list(e: exp.Expression) -> bool:
     """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
     them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
@@ -769,8 +782,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._carried_paths: set[str] = set()
         # A WITH's alias of a list of a session walk's nodes or relationships -> NODE or EDGE
         self._element_lists: dict[str, str] = {}
-        # An embedded statement's names for the outer nodes it matches (expr_context)
+        # An embedded statement's names for the outer nodes it matches (expr_context), and each
+        # one's identity in the outer statement it is tied to
         self._drawn_vars: set[str] = set()
+        self._outer_identities: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: a walk's path variable -> its start's and end's identities (path_walk, path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'
@@ -1387,8 +1402,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             name = projection.alias_or_name
             if not name or name.lower() in self._graph_vars:
                 continue
+            held = projection.this if isinstance(projection, exp.Alias) else projection
             if _holds_json_maps(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
+            elif isinstance(held, exp.Column) and held.name in self._json_list_vars:
+                # A list of several types a WITH carries: each item its JSON.
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
             elif _is_json_list(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
             elif _json_valued(projection, self._json_value_vars) == "value":
@@ -1973,8 +1992,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
                 lists.add(name)
-            if name and _is_mixed_list(
-                item.expression, self._json_list_vars, self._is_graph_element
+            if name and (
+                _is_mixed_list(item.expression, self._json_list_vars, self._is_graph_element)
+                or _comprehends_elements(item.expression)
             ):
                 json_lists.add(name)
             if name and _lists_mixed_lists(
