@@ -16,10 +16,18 @@ linked object's parent directory and a storage credential named for the bucket. 
 objects under an R2 prefix of its own, so the locations over that prefix are the run's and are
 removed. The credential is named by the product for the bucket alone, so a test reads whether it
 exists before it attaches and removes it only if the run created it. Each removal is read back.
+
+Unity Catalog rate-limits its listings: the read-back listing right after a delete answered 429
+in runs 40861827715 and 40869045831. A 429 is Unity Catalog asking the caller to wait, so a
+listing waits as long as it is told (``Retry-After``), or else doubles its wait from a second,
+and raises once the waits run out: a teardown that cannot read the account back has not shown
+that nothing is left.
 """
 
 from __future__ import annotations
 
+import time
+from http import HTTPStatus
 from typing import Any
 
 from tests.integration.databricks_warehouse import _client
@@ -33,13 +41,30 @@ def _base() -> str:
     return f"https://{os.environ['DATABRICKS_SERVER_HOSTNAME']}{_UC}"
 
 
+_THROTTLE_WAITS = 5  # waits of 1, 2, 4, 8, 16s unless Unity Catalog names its own
+
+
+def _get(client: Any, url: str, params: dict) -> Any:
+    """``GET url``, waiting out a 429 as Unity Catalog asks, then raising on any error status."""
+    for attempt in range(_THROTTLE_WAITS + 1):
+        resp = client.get(url, params=params)
+        if resp.status_code != HTTPStatus.TOO_MANY_REQUESTS or attempt == _THROTTLE_WAITS:
+            return resp.raise_for_status()
+        retry_after = resp.headers.get("Retry-After")
+        time.sleep(float(retry_after) if retry_after else float(2**attempt))
+    raise AssertionError("unreachable: the last attempt returns or raises")
+
+
 def _listed(client: Any, kind: str) -> list[dict]:
-    """Every entry of a paged Unity Catalog listing (``external-locations``, ...)."""
+    """Every entry of a paged Unity Catalog listing (``external-locations``, ...).
+    ``max_results=0`` asks Unity Catalog to page it at its own page size."""
     entries: list[dict] = []
     token: str | None = None
     while True:
-        params = {"page_token": token} if token else {}
-        body = client.get(f"{_base()}/{kind}", params=params).raise_for_status().json()
+        params: dict[str, object] = {"max_results": 0}
+        if token:
+            params["page_token"] = token
+        body = _get(client, f"{_base()}/{kind}", params).json()
         entries.extend(body.get(kind.replace("-", "_"), []))
         token = body.get("next_page_token")
         if not token:
@@ -60,17 +85,25 @@ def credential_exists(bucket: str) -> bool:
         )
 
 
+def _under(url: str, url_prefix: str) -> bool:
+    """``url`` is ``url_prefix`` (a directory, ending ``/``) or lies under it. Unity Catalog lists
+    a location created at ``.../run/`` as ``.../run``, so the comparison is by path segment."""
+    return bool(url) and (url.rstrip("/") + "/").startswith(url_prefix)
+
+
 def remove_locations_under(url_prefix: str) -> None:
-    """Delete every external location whose URL lies under the run's ``url_prefix``, then list
-    again and raise if any is still there."""
+    """Delete every external location whose URL lies under the run's ``url_prefix`` (a directory,
+    ending ``/``), then list again and raise if any is still there."""
+    if not url_prefix.endswith("/"):
+        raise ValueError(f"the run's prefix is a directory and ends with '/': {url_prefix!r}")
     with _client() as client:
         for loc in _listed(client, "external-locations"):
-            if (loc.get("url") or "").startswith(url_prefix):
+            if _under(loc.get("url") or "", url_prefix):
                 client.delete(f"{_base()}/external-locations/{loc['name']}").raise_for_status()
         left = [
             loc["name"]
             for loc in _listed(client, "external-locations")
-            if (loc.get("url") or "").startswith(url_prefix)
+            if _under(loc.get("url") or "", url_prefix)
         ]
     if left:
         raise RuntimeError(f"Unity Catalog external locations left under {url_prefix}: {left}")

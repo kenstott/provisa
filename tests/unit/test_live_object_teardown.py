@@ -200,10 +200,13 @@ def test_the_lakehouse_and_connection_the_run_created_are_deleted(monkeypatch):
 
 
 class _Response:
-    def __init__(self, body=None):
+    def __init__(self, body=None, status_code=HTTPStatus.OK, headers=None):
         self.body = body or {}
+        self.status_code, self.headers = status_code, headers or {}
 
     def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
         return self
 
     def json(self):
@@ -211,9 +214,14 @@ class _Response:
 
 
 class _UC:
-    def __init__(self, locations, credentials, *, deletes=True):
+    """Unity Catalog's REST API. ``throttled`` listings answer 429 first (the rate limit runs
+    40861827715 and 40869045831 met on the read-back listing right after a delete)."""
+
+    def __init__(self, locations, credentials, *, deletes=True, throttled=0, retry_after=None):
         self.locations, self.credentials = dict(locations), set(credentials)
         self.deletes, self.deleted = deletes, []
+        self.throttled, self.retry_after = throttled, retry_after
+        self.params: list = []
 
     def __enter__(self):
         return self
@@ -222,7 +230,11 @@ class _UC:
         return False
 
     def get(self, url, params=None):
-        del params
+        self.params.append(params)
+        if self.throttled:
+            self.throttled -= 1
+            headers = {"Retry-After": self.retry_after} if self.retry_after else {}
+            return _Response(status_code=HTTPStatus.TOO_MANY_REQUESTS, headers=headers)
         if url.endswith("/external-locations"):
             listed = [{"name": n, "url": u} for n, u in self.locations.items()]
             return _Response({"external_locations": listed})
@@ -237,9 +249,51 @@ class _UC:
         return _Response()
 
 
-def _uc(monkeypatch, uc):
+def _uc(monkeypatch, uc, slept=None):
     monkeypatch.setenv("DATABRICKS_SERVER_HOSTNAME", "dbc.example")
     monkeypatch.setattr(databricks_uc, "_client", lambda: uc)
+    monkeypatch.setattr(databricks_uc.time, "sleep", (slept if slept is not None else []).append)
+
+
+def test_a_location_stored_without_its_trailing_slash_is_the_runs(monkeypatch):
+    """Unity Catalog lists a location at ``.../run_a`` for one created at ``.../run_a/``; it is the
+    run's all the same, and a location at ``.../run_ab`` is not."""
+    uc = _UC({"loc_run": "r2://pubs@a/run_a", "loc_stem": "r2://pubs@a/run_ab"}, [])
+    _uc(monkeypatch, uc)
+    databricks_uc.remove_locations_under("r2://pubs@a/run_a/")
+    assert uc.deleted == ["loc_run"]
+    assert set(uc.locations) == {"loc_stem"}
+
+
+def test_a_throttled_listing_waits_and_is_read_again(monkeypatch):
+    slept: list[float] = []
+    uc = _UC({"loc_run": "r2://pubs@a/run_a/"}, [], throttled=2)
+    _uc(monkeypatch, uc, slept)
+    databricks_uc.remove_locations_under("r2://pubs@a/run_a/")
+    assert uc.deleted == ["loc_run"] and not uc.locations
+    assert slept == [1.0, 2.0]
+
+
+def test_a_throttled_listing_waits_as_long_as_unity_catalog_asks(monkeypatch):
+    slept: list[float] = []
+    uc = _UC({}, [], throttled=1, retry_after="7")
+    _uc(monkeypatch, uc, slept)
+    databricks_uc.remove_locations_under("r2://pubs@a/run_a/")
+    assert slept == [7.0]
+
+
+def test_a_listing_still_throttled_after_every_wait_raises(monkeypatch):
+    uc = _UC({}, [], throttled=100)
+    _uc(monkeypatch, uc)
+    with pytest.raises(RuntimeError, match="429"):
+        databricks_uc.remove_locations_under("r2://pubs@a/run_a/")
+
+
+def test_a_listing_asks_unity_catalog_to_page_it(monkeypatch):
+    uc = _UC({}, [])
+    _uc(monkeypatch, uc)
+    databricks_uc.remove_locations_under("r2://pubs@a/run_a/")
+    assert uc.params and all(p["max_results"] == 0 for p in uc.params)
 
 
 def test_only_the_external_locations_under_the_runs_prefix_are_deleted(monkeypatch):
