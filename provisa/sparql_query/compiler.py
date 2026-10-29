@@ -19,7 +19,8 @@ How a query's parts become the IR:
   gives several groups, each a UNION ALL part of one statement.
 - Every variable in a subject position, or the object of an edge or a path, is a NODE, and is a
   node of one label in each INTERPRETATION of the group: the labels its triples allow (a class it
-  is typed by, the label of a property read from it, an edge's ends) are intersected, and each
+  is typed by, the labels of a property read from it -- every class whose column binds it, for a
+  Property term's (REQ-2163) -- an edge's ends) are intersected, and each
   combination of one label per node that every triple holds in is one interpretation, a UNION ALL
   part. The parts are bounded by graph.union_limit.
 - A property triple binds its object variable to the property, or compares it; an edge triple is a
@@ -32,7 +33,7 @@ A subject named by its IRI is parsed back to its table and keys (provisa.gql.iri
 the keys. What the front end does not lower is refused by name.
 """
 
-# Requirements: REQ-2135
+# Requirements: REQ-2135, REQ-2163
 
 from __future__ import annotations
 
