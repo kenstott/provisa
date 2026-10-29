@@ -64,7 +64,7 @@
           The claim is literal. Point Provisa at your sources, describe how they fit together, and you have a governed API across every source. The five minutes are real: the <a href="/demos">Start here demo</a> walks through it on a sample dataset, start to finish.
         </p>
 
-        <h2>The mechanism</h2>
+        <h2 id="mechanism">The mechanism</h2>
         <p>
           Provisa is a data kernel: a compiler and runtime for building your data control plane.
         </p>
@@ -94,12 +94,12 @@
           Operating systems, virtual machines, Kubernetes, Terraform and Helm share a habit. Faced with a problem, they first ask which primitives would let the solution be assembled instead of written. Code stays valuable. It keeps its place behind contracts, for the work the primitives can't express.
         </p>
         <p>
-          Infrastructure has already made this move. Servers used to be built by hand and kept alive by scripts; today you declare them, and a controller reconciles what runs with what you declared. Data is where infrastructure stood before Kubernetes and Terraform. Each of those tools gave Provisa one idea.
+          Infrastructure has already made this move. Servers used to be built by hand and kept alive by scripts; today you declare them, and a controller reconciles what runs with what you declared. Data is where infrastructure stood before Kubernetes and Terraform. Each of those tools gave Provisa one idea, and so did a compiler toolkit, LLVM.
         </p>
         <ul>
           <li>
             <strong>Operating systems and virtual machines: a small kernel that enforces isolation.</strong>
-            Sources, tables, relationships, roles, rules, terms and commands make up Provisa's kernel. The kernel enforces isolation and permissions, so governance is compiled into every request and no application has to write it again. Sources and engines are drivers. You plug them in, and you can swap one without touching the model above it.
+            The primitives listed under <a href="#mechanism">The mechanism</a> make up Provisa's kernel. The kernel enforces isolation and permissions, so governance is compiled into every request and no application has to write it again. Sources and engines are drivers. You plug them in, and you can swap one without touching the model above it.
           </li>
           <li>
             <strong>Terraform: declare the desired state, and plan before you apply.</strong>
@@ -108,6 +108,10 @@
           <li>
             <strong>Kubernetes and Helm: a control plane that reconciles.</strong>
             What you declared and what is running are kept apart. The model store holds the declaration; the state store holds what the runtime is doing. The runtime keeps converging replicas, freshness and materialized views toward the model, so what you serve follows what you declared.
+          </li>
+          <li>
+            <strong>LLVM: many front ends, one intermediate form, many back ends.</strong>
+            GraphQL, SQL, Cypher, SPARQL, gRPC and MCP each compile to one intermediate form. Governance, materialized-view rewrites and optimization run as passes over it, once, for every language. The engines are the back ends that run the result. This is why <a href="#one-compiler">one compiler can speak every language</a>.
           </li>
         </ul>
 
