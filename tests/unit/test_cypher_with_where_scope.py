@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 766fb9d4-b0bb-40d3-a2e3-34e294a2f14e
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A WITH's WHERE reads the variables in scope before the WITH as well as the names it projects:
 it filters the rows the WITH reads (openCypher TCK WithWhere7, WithWhere1 [2], Comparison2 [3]).
 A WHERE after an aggregating WITH filters the aggregated rows, and so reads only what the WITH
