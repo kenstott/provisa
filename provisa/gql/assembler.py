@@ -197,11 +197,16 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
             except json.JSONDecodeError as exc:
                 raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
         return value
+    data: Any
     try:
         if isinstance(value, str):
             data = json.loads(value)
         elif isinstance(value, dict):
             data = value
+        elif isinstance(value, list) and kind in (GraphVarKind.NODE, GraphVarKind.EDGE):
+            # A list of nodes or relationships the engine hands back as a list of JSON values (a
+            # session walk's, REQ-751), each its text or decoded.
+            data = [json.loads(v) if isinstance(v, str) else v for v in value]
         else:
             raise CypherAssemblyError(
                 f"Unexpected graph column value type for {col!r}: {type(value)}"

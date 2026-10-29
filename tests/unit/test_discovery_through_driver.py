@@ -259,10 +259,12 @@ async def test_column_metadata_of_a_floored_source_never_asks_the_engine(monkeyp
         ("ship_to", "json", False),
         ("stops", "json", False),
     ]
-    # REQ-1965: the hidden attributes, read from the catalog's own spelling of each type.
+    # REQ-1965: the hidden attributes, read from the catalog's own spelling of each type; a
+    # character column keeps its native type the same way (REQ-1961).
     assert {
         c.name: (c.array_depth, c.element_type, c.native_type) for c in columns if c.native_type
     } == {
+        "name": (0, None, "character varying(40)"),
         "tags": (1, "text", "text[]"),
         "amounts": (1, "numeric(18,2)", "numeric(18,2)[]"),
         "ship_to": (0, None, "address"),

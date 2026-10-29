@@ -812,10 +812,24 @@ async def list_terms(
 
     found = await _findings(conn)  # REQ-2146: counted on the row, so a list filters on it
     scope = await term_domains(conn)
+    # REQ-1387 (RELATED_TO HOLDS THE PLACE): the RELATED_TO edges each term is on, either end,
+    # counted on the row so the list filters on the ones that want review.
+    related_rows = (
+        await conn.execute_core(
+            select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id).where(
+                glossary_term_edges.c.rel_type == "RELATED_TO"
+            )
+        )
+    ).fetchall()
+    related: dict[int, int] = {}
+    for e in related_rows:
+        for tid in (e.from_term_id, e.to_term_id):
+            related[tid] = related.get(tid, 0) + 1
     return [
         dict(r._mapping)
         | {
             "ref_count": counts.get(r.id, 0),
+            "related_to": related.get(r.id, 0),
             "table_count": table_counts.get(r.id, 0),
             # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
             "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),

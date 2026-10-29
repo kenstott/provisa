@@ -75,6 +75,12 @@ def _mutation_name(op: str, field_name: str, convention: str = "apollo_graphql")
     return f"{op}{field_name[0].upper()}{field_name[1:]}"
 
 
+def void_return_type() -> GraphQLNonNull:
+    """A VOID command's field (REQ-2001): it answers an empty result, a list that is always
+    empty -- GraphQL has no type of no fields."""
+    return GraphQLNonNull(GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))))
+
+
 def _json_schema_to_gql_type(schema: dict, type_name: str):
     """Convert a JSON Schema object/array definition to a GraphQL return type."""
     if not schema:
@@ -235,6 +241,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 extra_mutation[field_key] = gql_field
 
     def _resolve_function(func: dict):
+        from provisa.core.void_command import is_void
+
+        if is_void(func):
+            args = _build_args(func["arguments"] if isinstance(func["arguments"], list) else [])
+            return void_return_type(), args
         returns_str = func.get("returns", "")
         # returns_str is "schema.table" — look up the GraphQL object type
         parts = returns_str.split(".", 1) if returns_str else []

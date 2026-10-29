@@ -647,21 +647,22 @@ glossary_terms:
   definition: The act of sending a pet to an outside veterinary practice for care beyond in-house capability.
   domains:
   - pet-store
-  edges:
-  - to: clinic
-    rel_type: RELATED_TO
-  - to: specialty
-    rel_type: RELATED_TO
 - name: clinic
   approve: true
   definition: The outside veterinary practice a pet is referred to.
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: specialty
   approve: true
   definition: The area of veterinary care a referral clinic focuses on.
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 tag_assignments:
 - tag_id: pii
   object_type: column

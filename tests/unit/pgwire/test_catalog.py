@@ -43,6 +43,7 @@ class _ColMeta:
     data_type: str
     is_nullable: bool
     subtype: str | None = None  # REQ-2171
+    native_type: str | None = None  # REQ-1965, REQ-1961
 
 
 def _make_state(tables: dict, col_types: dict) -> Any:

@@ -28,6 +28,7 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/FilterInput.tsx": "the search box above a list",
   "components/admin/MergeRequestsPanel.tsx":
     "the open-only filter above the list of merge requests",
+  "components/admin/relTypeGuide.tsx": "the related-to filter tick above the glossary term list",
   "components/admin/RegionSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",

@@ -1257,6 +1257,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             self._advance()
             name.append(self._expect("IDENT").value)
         proc = ".".join(name)
+        if (t := self._peek()) is None or t.type != "LPAREN":
+            # REQ-2001: only a standalone call binds its arguments from same-named parameters.
+            raise CypherParseError(
+                f"CALL {proc} in a larger statement passes its arguments in parentheses: "
+                f"CALL {proc}(…); only a standalone call takes them from same-named parameters"
+            )
         self._expect("LPAREN")
         args: list[str] = []
         current: list[str] = []
@@ -1280,24 +1286,30 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             current.append(self._advance().value)
         if current or args:
             args.append(" ".join(current))
-        if not self._opt_keyword("YIELD"):
+        yields: list[tuple[str, str]] = []
+        # No YIELD: a VOID command's call, which yields nothing and keeps every row (REQ-2001);
+        # a command with outputs is refused once it is known (cypher_commands.put_command_rows).
+        where = None
+        if self._peek() is None:
+            # Nothing follows: no call composed in a statement (a standalone call is read by
+            # cypher/command_call before the statement parser).
             raise CypherParseError(
                 f"CALL {proc}: name the columns it returns with YIELD: "
                 f"CALL {proc}(…) YIELD column [AS variable], …"
             )
-        yields: list[tuple[str, str]] = []
-        while True:
-            if (t := self._peek()) is not None and t.type == "STAR":
-                raise CypherParseError(
-                    f"CALL {proc} … YIELD * is not read in a larger statement; name the columns"
-                )
-            column = self._expect("IDENT").value
-            variable = self._expect("IDENT").value if self._opt_keyword("AS") else column
-            yields.append((column, variable))
-            if (t := self._peek()) is None or t.type != "COMMA":
-                break
-            self._advance()
-        where = _where(self._parse_where()) if self._opt_keyword("WHERE") else None
+        if self._opt_keyword("YIELD"):
+            while True:
+                if (t := self._peek()) is not None and t.type == "STAR":
+                    raise CypherParseError(
+                        f"CALL {proc} … YIELD * is not read in a larger statement; name the columns"
+                    )
+                column = self._expect("IDENT").value
+                variable = self._expect("IDENT").value if self._opt_keyword("AS") else column
+                yields.append((column, variable))
+                if (t := self._peek()) is None or t.type != "COMMA":
+                    break
+                self._advance()
+            where = _where(self._parse_where()) if self._opt_keyword("WHERE") else None
         call = ProcedureCall(
             name=proc,
             args=[parse_expression(a) for a in args],

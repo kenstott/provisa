@@ -218,6 +218,7 @@ def list_visible_commands(state, role_id: str | None, language: str) -> list[dic
     role), matching the REST/OpenAPI surface.
     """
     from provisa.core.command_bindings import binding_name
+    from provisa.core.void_command import is_void
 
     out: list[dict] = []
     seen: set[str] = set()
@@ -248,6 +249,8 @@ def list_visible_commands(state, role_id: str | None, language: str) -> list[dic
                 "set_returning": bool(
                     fn.get("return_schema") or fn.get("returns") or fn.get("inline_return_type")
                 ),
+                # REQ-2001: a VOID command declares no outputs; a call answers no columns.
+                "void": is_void(fn),
                 "arguments": [
                     {
                         "name": a.get("name"),
@@ -321,13 +324,20 @@ def _default_of(declared: list[dict], name: str):
     return next(a["default"] for a in declared if a["name"] == name)
 
 
-def bind_command_args(name: str, values: list, state, role_id: str | None) -> dict:
+def bind_command_args(name: str, values: list | dict, state, role_id: str | None) -> dict:
     """Positional argument ``values`` bound to ``name``'s declared arguments, for a surface that
     passes them by position (Cypher CALL). The command is admitted first, so a caller learns
     nothing of a command it may not use; then a count that does not match its signature is
-    refused, naming the command and the signature."""
+    refused, naming the command and the signature.
+
+    ``values`` may instead be a Cypher ``CALL name``'s parameters (``ImplicitArguments``,
+    REQ-2001): each declared argument is then bound from the parameter of its name."""
+    from provisa.cypher.command_call import ImplicitArguments
+
     command = _admitted(name, state, role_id)
     declared = [a for a in command.get("arguments") or [] if a.get("name")]
+    if isinstance(values, ImplicitArguments):
+        return _bind_implicit(name, declared, values)
     # REQ-2168: the trailing arguments that declare a default may be left out.
     required = len(declared)
     while required and "default" in declared[required - 1]:
@@ -347,6 +357,23 @@ def bind_command_args(name: str, values: list, state, role_id: str | None) -> di
     return {
         a["name"]: values[i] if i < len(values) else a["default"] for i, a in enumerate(declared)
     }
+
+
+def _bind_implicit(name: str, declared: list[dict], params: dict) -> dict:
+    """Each declared argument from the parameter of the same name; one the request does not
+    carry is refused naming it, or takes its default where it declares one (REQ-2168)."""
+    missing = [a["name"] for a in declared if a["name"] not in params and "default" not in a]
+    if missing:
+        signature = _signature(name, declared)
+        raise ApiError(
+            400,
+            "functions.argument_missing",
+            f"{signature}: called without parentheses, its argument {missing[0]!r} is bound from "
+            f"the parameter ${missing[0]}, which was not supplied",
+            signature=signature,
+            argument=missing[0],
+        )
+    return {a["name"]: params[a["name"]] if a["name"] in params else a["default"] for a in declared}
 
 
 async def invoke_tracked_function(name: str, args: dict, state, role_id: str | None) -> list[dict]:
@@ -376,14 +403,14 @@ async def invoke_command(
             await _require_approval(fn, args, state, role_id, role)
         if fn.get("impl_kind") == "statement":
             rows = await _run_recorded(fn, args, state, role_id)  # REQ-2001
-            return await govern_action_rows(rows, fn, role_id, state)
+            return await _answered(rows, fn, role_id, state)
         _record_call(name, args, state, role_id)
         rows = await dispatch_function(fn, args, state, role_id)
         # A statement command's write passed the pipeline's own write terminal, which already
         # did what follows a write to its table (REQ-2001).
         if fn.get("writes_table") and fn.get("impl_kind") != "statement":
             await _table_was_written(fn, state)
-        return await govern_action_rows(rows, fn, role_id, state)
+        return await _answered(rows, fn, role_id, state)
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
@@ -396,6 +423,18 @@ async def invoke_command(
         # environment; the call is refused saying why, on every surface.
         raise ApiError(409, "functions.not_defined_synthetic", reason, name=name)
     raise unknown_command(name)
+
+
+async def _answered(
+    rows: list[dict], fn: dict, role_id: str, state
+) -> tuple[list[dict], ActionEnforcement | None]:
+    """What a call answers: a VOID command (REQ-2001), having run, an empty result with no
+    columns, whatever its implementation gave back; any other, its rows as the role may see them."""
+    from provisa.core.void_command import is_void
+
+    if is_void(fn):
+        return [], None
+    return await govern_action_rows(rows, fn, role_id, state)
 
 
 def _with_defaults(command: dict, args: dict) -> dict:
