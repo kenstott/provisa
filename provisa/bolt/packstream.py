@@ -308,8 +308,11 @@ def _pack_node_dict(d: dict) -> bytes:
     element_id = _element_id(d["id"])
     label = d.get("label", "")
     # "Domain:Table" → two labels [Table, Domain] so both appear in the graph;
-    # both are also listed by db.labels().
-    if ":" in label:
+    # both are also listed by db.labels(). A graph session's node names every label it carries
+    # (REQ-2176, ephemeral.seam.answered).
+    if isinstance(d.get("labels"), list):
+        labels = list(d["labels"])
+    elif ":" in label:
         domain, table = label.split(":", 1)
         labels = [table, domain]
     else:

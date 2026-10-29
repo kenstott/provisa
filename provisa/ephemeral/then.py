@@ -199,6 +199,7 @@ def split_of(statement: str) -> Split | None:
     """The statement as its first write and the rest after it; None when it writes nothing, its
     first write ends it, or its first write is a DELETE (delete.py's)."""
     from provisa.cypher.parser import parse_cypher_statement, writes_in
+    from provisa.ephemeral.props import prop_items
     from provisa.gql.ir import CreateClause, MergeClause, RemoveClause, SetClause
 
     if not writes_in(statement):
@@ -221,7 +222,7 @@ def split_of(statement: str) -> Split | None:
         items = first.items
         if all(i.property is None and not getattr(i, "value", None) for i in items):
             kind = "labels"
-        elif all(i.property is not None for i in items):
+        elif prop_items(items) is not None:
             kind = "props"
         else:
             return None

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
+from provisa.gql.label_map import LABELS_COLUMN
 from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_identity, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
@@ -703,6 +704,13 @@ class TranslatorExprContext:
                 return _col(nm.id_column, var)
             return _col("__id", var) if var in t._domain_nodes else None
         if name == "labels":
+            walk = t._lm.session_walk
+            if nm is not None and walk is not None and nm.catalog_name == walk.catalog_name:
+                # REQ-2176: a node of a graph session's relation carries every label the session
+                # holds for it (ephemeral.read).
+                return _col(LABELS_COLUMN, var)
+            if var in t._labels_unions:
+                return _col(LABELS_COLUMN, var)
             if nm is not None:
                 return exp.Array(expressions=[exp.Literal.string(nm.label)])
             # A node matched with no label: the label of the table its row is from.

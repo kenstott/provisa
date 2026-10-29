@@ -965,3 +965,65 @@ def test_a_filtered_result_carries_the_filter_and_a_full_one_does_not():
     assert tck.report([outcome], "2024.3", "Merge*")["filter"] == "Merge*"
     assert "filter" not in tck.report([outcome], "2024.3", "")
     assert "filter" not in tck.report([outcome], "2024.3")
+
+
+_CONTROL_FEATURE = '''
+Feature: Merge6 - Merge relationships - on create
+
+  Scenario: [3] Updating one property with ON CREATE
+    Given an empty graph
+    And having executed:
+      """
+      CREATE (:A {name: 'A'}), (:B {name: 'B'})
+      """
+    When executing query:
+      """
+      MATCH (a {name: 'A'}), (b {name: 'B'})
+      MERGE (a)-[r:TYPE]->(b)
+        ON CREATE SET r.name = 'foo'
+      """
+    Then the result should be empty
+    And the side effects should be:
+      | +relationships | 1 |
+      | +properties    | 1 |
+    When executing control query:
+      """
+      MATCH ()-[r:TYPE]->()
+      RETURN [key IN keys(r) | key + '->' + r[key]] AS keyValue
+      """
+    Then the result should be, in any order:
+      | keyValue      |
+      | ['name->foo'] |
+'''
+
+
+@pytest.fixture
+def control_scenario(tmp_path):
+    path = tmp_path / "merge6.feature"
+    path.write_text(_CONTROL_FEATURE)
+    (scenario,) = tck.parse_feature(path)
+    return scenario
+
+
+@pytest.mark.parametrize(
+    ("control_rows", "status"),
+    [([[["name->foo"]]], "passed"), ([[["name->bar"]]], "failed")],
+)
+def test_a_control_query_runs_after_the_query_in_its_session_and_is_checked(
+    control_scenario, monkeypatch, control_rows, status
+):
+    sent = []
+
+    def session(setups, query, params, control=None):
+        sent.append((list(setups), query.split()[0], control))
+        effects = {"+relationships": 1, "+properties": 1}
+        held = {"columns": ["keyValue"], "rows": control_rows}
+        return 200, {"columns": [], "rows": [], "effects": effects, "control": held}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", session)
+    outcome = tck.run(control_scenario, "http://x", "org_admin")
+    [(setups, verb, control)] = sent
+    assert (setups, verb) == (["CREATE (:A {name: 'A'}), (:B {name: 'B'})"], "MATCH")
+    assert control is not None and control.startswith("MATCH ()-[r:TYPE]->()")
+    assert outcome.status == status

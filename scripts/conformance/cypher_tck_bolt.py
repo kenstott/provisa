@@ -53,10 +53,11 @@ def authorization() -> str:
     return f"Bearer {_BOLT['token']}"
 
 
-def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
+def run(setups: list[str], query: str, params: dict, control: str | None = None) -> tuple[int, Any]:
     """The setup's statements and then the query, on one connection: (200, the answer's columns,
     rows and the query's side effects as the TCK observes them, :func:`effects`) or (400, the
-    refusal's words)."""
+    refusal's words). ``control``: the scenario's control query, run after the query on the same
+    connection, its answer's columns and rows given as ``control``."""
     from neo4j import GraphDatabase, bearer_auth
     from neo4j.exceptions import Neo4jError
 
@@ -85,9 +86,19 @@ def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
                 after = observe(session)
             except Neo4jError as exc:
                 return 400, {"detail": f"observing the graph after the query: {exc.message}"}
+            body = {"columns": columns, "rows": rows, "effects": effects(before, after)}
+            if control is not None:
+                try:
+                    checked = session.run(control)
+                    body["control"] = {
+                        "columns": list(checked.keys()),
+                        "rows": [[value(v) for v in record.values()] for record in checked],
+                    }
+                except Neo4jError as exc:
+                    return 400, {"detail": f"control query: {exc.message}"}
     finally:
         driver.close()
-    return 200, {"columns": columns, "rows": rows, "effects": effects(before, after)}
+    return 200, body
 
 
 # --- side effects, as the TCK observes them ----------------------------------------------------

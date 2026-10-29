@@ -41,7 +41,7 @@ from provisa.ephemeral.then import Answered, counters
 from provisa.ephemeral.write import Created, Read, Write, create, create_bound
 from provisa.pgwire import temp_exec
 
-__all__ = ["Answered", "counters", "expand", "label_map", "rows_of", "write"]
+__all__ = ["Answered", "answered", "counters", "expand", "label_map", "rows_of", "write"]
 
 
 def label_map(model: Any, session: TempSession | None) -> Any:
@@ -138,9 +138,57 @@ async def _write(
     return None if done is None else done[0]
 
 
-def rows_of(made: Any) -> tuple[list[str], list[list[Any]]]:
+def rows_of(made: Any, session: TempSession | None = None) -> tuple[list[str], list[list[Any]]]:
     """A write's answer as columns and rows of values: a write followed by reads answers with
-    the rest's; any other with none."""
+    the rest's (its session nodes as :func:`answered` gives them); any other with none."""
     if isinstance(made, Answered):
-        return list(made.columns), [[row.get(c) for c in made.columns] for row in made.rows]
+        rows = answered(made.rows, session) if session is not None else made.rows
+        return list(made.columns), [[row.get(c) for c in made.columns] for row in rows]
     return [], []
+
+
+def answered(rows: list[dict[str, Any]], session: TempSession) -> list[dict[str, Any]]:
+    """``rows`` (an answer's, serialized) with each of the session's own nodes as the session
+    holds it: its id within the session, whatever label read it; every label it carries
+    (``labels``); and only the properties written to it -- an ephemeral node's built-in ``_id`` is
+    that id, read by the session's own writes, never one of its properties. A model node is as
+    the model reads it."""
+    graph = store.graph(session)
+    if not graph.node_keys:
+        return rows
+    return [{k: _answered(v, graph) for k, v in row.items()} for row in rows]
+
+
+def _session_node_id(node_id: Any, graph: store.Graph) -> str | None:
+    """The ephemeral node a node's answered id is (``e:1``, or ``Label|e:1`` read by a label or
+    none), or None for any other node."""
+    if not isinstance(node_id, str):
+        return None
+    if node_id in graph.node_keys:
+        return node_id
+    after = node_id.split("|", 1)[1] if "|" in node_id else None
+    return after if after in graph.node_keys else None
+
+
+def _answered(value: Any, graph: store.Graph) -> Any:
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY
+
+    if isinstance(value, list):
+        return [_answered(v, graph) for v in value]
+    if not isinstance(value, dict):
+        return value
+    if "label" in value and "properties" in value and "startNode" not in value:
+        node_id = _session_node_id(value.get("id"), graph)
+        if node_id is None:
+            return value
+        props = {k: v for k, v in (value["properties"] or {}).items() if k != NODE_KEY_PROPERTY}
+        labels = [label for label in graph.node_keys[node_id] if label]
+        return {**value, "id": node_id, "labels": labels, "properties": props}
+    out = {k: _answered(v, graph) if isinstance(v, (dict, list)) else v for k, v in value.items()}
+    if "startNode" in value:
+        # A relationship's ends by the ids its end nodes are answered with.
+        for end in ("start", "end"):
+            held = _session_node_id(out.get(end), graph)
+            if held is not None:
+                out[end] = held
+    return out

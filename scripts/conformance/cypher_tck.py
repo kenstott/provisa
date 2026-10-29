@@ -549,10 +549,21 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             marks.append(session)
         return Outcome(scenario.feature, scenario.name, status, " ".join([reason, *marks]).strip())
 
+    # The scenario's control query: run after its query, in the same graph session, its answer
+    # what the steps after it check.
+    control = next(
+        (s.doc or "" for s in scenario.steps if s.text.startswith("executing control query")), None
+    )
+
     def ask(query: str, params: dict) -> tuple[int, Any]:
         if session is None:
-            return _post(base, role, query, params)
-        return bolt.run(setups, query, params)
+            asked = _post(base, role, query, params)
+            if control is not None and asked[0] < 400 and isinstance(asked[1], dict):
+                asked[1]["control"] = _post(base, role, control, {})
+            return asked
+        if control is None:
+            return bolt.run(setups, query, params)
+        return bolt.run(setups, query, params, control)
 
     _clear(base, _CREDENTIAL["Authorization"] if session is None else bolt.authorization())
     params: dict = {}
@@ -588,10 +599,17 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             query = step.doc or ""
             continue
         assert query is not None
-        if text.startswith("executing control query"):
-            return out("not_runnable", "checks state with a control query")
         if answer is None:
             answer = ask(query, params)
+        if text.startswith("executing control query"):
+            status, body = answer
+            if status >= 400:
+                detail = (body or {}).get("detail") if isinstance(body, dict) else body
+                return out("failed", f"refused ({status}): {str(detail)[:200]}")
+            # An HTTP control answer is its own (status, body); a session's is its rows.
+            held = body["control"]
+            answer = held if isinstance(held, tuple) else (200, held)
+            continue
         status, body = answer
         if "should be raised" in text:
             if status >= 400:

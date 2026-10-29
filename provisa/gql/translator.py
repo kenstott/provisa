@@ -487,6 +487,23 @@ def _properties_read(node: Any, var: str) -> bool:
     return any(_properties_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
 
 
+def labels_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads ``labels(var)``."""
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "labels"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(labels_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(labels_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
+
+
 def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
     """A pattern after a WITH, read from the node the WITH carries: ``(b)-[:K]->(a)`` with ``a``
     carried is ``(a)<-[:K]-(b)``, which goes on from ``a``'s rows instead of reading ``a`` again
@@ -762,6 +779,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: the node unions that name each node's graph identity (translator_union)
         self._graph_id_unions: set[str] = set()
+        # REQ-2176: each union holding a graph session's nodes that names every label of its
+        # node (``__labels``), read by labels().
+        self._labels_unions: set[str] = set()
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
         self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source

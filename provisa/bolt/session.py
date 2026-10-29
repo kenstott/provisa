@@ -1828,7 +1828,7 @@ async def _execute_cypher(
         )
         if made is not None:
             # A write followed by reads answers with the rest's rows (REQ-2176).
-            return (*seam.rows_of(made), None)
+            return (*seam.rows_of(made, temp), None)
     involved = ephemeral_read.involved(temp)
 
     translation = None if involved else kept.cached()
@@ -1938,6 +1938,9 @@ async def _execute_cypher(
         _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
         await register_node_ids(serializable, _model_db)
         await register_rel_ids(serializable, _model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable = seam.answered(serializable, temp)
 
     columns = list(raw_rows[0].keys()) if raw_rows else []
     rows = [[row.get(col) for col in columns] for row in serializable]
