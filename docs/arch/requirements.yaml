@@ -47325,7 +47325,18 @@
     birthday cake, KIND_OF cake), or by an umbrella term both are PART_OF (shift start and shift end PART_OF
     shift coverage). Because RELATED_TO edges are the ones that want review, the ontology term list has
     a filter checkbox, beside Deprecated and To review, that shows only terms with at least one RELATED_TO
-    edge.'
+    edge. (Amended 2026-10-28, THE SHAPES THAT RESOLVE A RELATED PAIR:) The guidance names every one-term
+    shape that turns a RELATED_TO pair into grounding edges, tightest first: COMPONENT TYPE (candles KIND_OF
+    cake decoration, cake decoration PART_OF cake); SPECIALISATION (candles PART_OF birthday cake, birthday
+    cake KIND_OF cake); COMMON WHOLE (cake and candles PART_OF party); COMMON GENUS (cake and candles KIND_OF
+    party supplies); COMMON ENUMERATION (cake and candles VALID_VALUE_OF party item type). It says why the
+    order matters: the broader the new term, the less its grounding tells a reader, since a hub such as
+    party grounds candles without saying which data answers a question about them. The relationship assistant''s
+    "may want resolving" note offers these shapes for the pair in that order, with candidate names for the
+    new term, and the user chooses; the assistant adds nothing unasked. The same guidance (the type tests,
+    RELATED_TO as the placeholder, the five shapes and the breadth caution) is a section of the ontology
+    documentation, written for the people who build a glossary, who rarely get it, and it is reachable from
+    the type picker and from the RELATED_TO review filter.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
