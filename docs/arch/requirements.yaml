@@ -88193,7 +88193,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     View reads them; a column''s tags are the column''s, reached from table_columns, and nothing hangs off
     a ref. (Amended 2026-10-27, PROPOSED IS DRAFT:) 2026-10-28: a term''s status is human-set (REQ-1387,
     STATUS IS HUMAN, GROUNDING IS COMPUTED); proposed is the draft status, and a term leaves it only when
-    a steward approves it, which needs a definition. Grounding no longer decides status.'
+    a steward approves it, which needs a definition. Grounding no longer decides status. (Amended 2026-10-29,
+    THE ONTOLOGY VIEW DRAWS ONLY WHAT A TERM REACHES:) Maintainer 2026-10-29: everything the Ontology view
+    draws is reached from a term it shows: from the term through its term relationships to other terms,
+    from a term to the element it grounds (a column, or a table), from a grounded column to its table, and
+    from a table to the data products it is in. Nothing else is drawn: a table or column no shown term reaches
+    (for example a domain''s data-quality checker tables) is not in the view, whichever layers are on, and
+    a node with no path to a shown term is not kept. (Amended 2026-10-29, AN ONTOLOGY VIEW, NOT A DATA-FLOW
+    VIEW:) Maintainer 2026-10-29: the Ontology view shows an ontology with the elements that ground it,
+    not data flow. Its edges are the terms'' relationships and the grounding chain only (term to the column
+    or table it grounds, column to its table, table to its data product); no relationship, join or lineage
+    edge between tables or columns is drawn in it.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
