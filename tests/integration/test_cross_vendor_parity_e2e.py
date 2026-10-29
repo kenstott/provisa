@@ -56,7 +56,9 @@ from provisa.compiler.sql_rewrite import (
 )
 from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.federation.conformance import compare_governed_results
+from provisa.core.catalog import _to_catalog_name
 from provisa.transpiler.transpile import transpile
+from tests.integration.live_teardown import none_remain, run_every, run_name
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows
 
 pytestmark = [pytest.mark.integration]
@@ -238,6 +240,13 @@ _DUCKDB = Lane(
 
 
 # ---- Snowflake --------------------------------------------------------------
+# Every lane's source id, dataset or schema carries the run's suffix (REQ-254): its teardown
+# drops exactly this run's objects, and a later sweep finds any a killed run left.
+_SF_SRC = run_name("parity-sf", "-")
+_SF_CAT = _to_catalog_name(_SF_SRC)
+_DBX_SRC = run_name("parity-dbx", "-")
+
+
 def _sf_warehouse() -> str:
     return os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
 
@@ -258,14 +267,14 @@ def _sf_connect():
     user = quote(os.environ["SNOWFLAKE_USER"], safe="")
     pw = quote(os.environ["SNOWFLAKE_PASSWORD"], safe="")
     wh = _sf_warehouse()
-    cat = "parity_sf"
+    cat = _SF_CAT
     return SnowflakeFederationRuntime(
         url=f"snowflake://{user}:{pw}@{acct}/{cat}/{_SCHEMA}?warehouse={wh}"
     )
 
 
 def _sf_seed(rt):
-    cat = "parity_sf"
+    cat = _SF_CAT
     fq = f'"{cat}"."{_SCHEMA}"."{_TABLE}"'
     cur = rt.connection.cursor()
     try:
@@ -281,16 +290,14 @@ def _sf_seed(rt):
 
 
 def _sf_teardown(rt):
-    from tests.integration.live_teardown import run_every
+    from tests.integration.snowflake_warehouse import drop_database
 
-    def drop() -> None:
-        cur = rt.connection.cursor()
-        try:
-            cur.execute('DROP DATABASE IF EXISTS "parity_sf"')
-        finally:
-            cur.close()
-
-    run_every([('drop database "parity_sf"', drop), ("close the runtime", rt.close)])
+    run_every(
+        [
+            (f"drop database {_SF_CAT}", lambda: drop_database(rt.connection, _SF_CAT)),
+            ("close the runtime", rt.close),
+        ]
+    )
 
 
 _SNOWFLAKE = Lane(
@@ -300,7 +307,7 @@ _SNOWFLAKE = Lane(
     driver_module="snowflake.connector",
     cred_env=("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"),
     catalog_rewrite=True,
-    source_id="parity-sf",  # -> catalog parity_sf (compiler naming: hyphen -> underscore)
+    source_id=_SF_SRC,  # -> catalog parity_sf_<run> (compiler naming: hyphen -> underscore)
     catalog=None,  # derived from source id
     connect=_sf_connect,
     seed=_sf_seed,
@@ -328,7 +335,7 @@ def _dbx_connect():
             f"@{os.environ['DATABRICKS_SERVER_HOSTNAME']}"
             f"?http_path={os.environ['DATABRICKS_HTTP_PATH']}"
             # the lane's own Unity Catalog — the name the governed SQL gives the table's catalog
-            "&catalog=parity_dbx"
+            f"&catalog={_to_catalog_name(_DBX_SRC)}"
         )
     )
 
@@ -344,19 +351,15 @@ async def _dbx_seed(rt):
 
 
 def _dbx_teardown(rt):
-    from provisa.core.catalog import _to_catalog_name
-    from tests.integration.live_teardown import run_every
+    from tests.integration.databricks_uc import drop_catalog
 
-    catalog = _to_catalog_name("parity-dbx")
-
-    def drop() -> None:
-        cur = rt.connection.cursor()
-        try:
-            cur.execute(f"DROP CATALOG IF EXISTS `{catalog}` CASCADE")
-        finally:
-            cur.close()
-
-    run_every([(f"drop catalog {catalog}", drop), ("close the runtime", rt.close)])
+    catalog = _to_catalog_name(_DBX_SRC)
+    run_every(
+        [
+            (f"drop catalog {catalog}", lambda: drop_catalog(rt.connection, catalog)),
+            ("close the runtime", rt.close),
+        ]
+    )
 
 
 _DATABRICKS = Lane(
@@ -366,7 +369,7 @@ _DATABRICKS = Lane(
     driver_module="databricks.sql",
     cred_env=("DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN"),
     catalog_rewrite=True,
-    source_id="parity-dbx",
+    source_id=_DBX_SRC,
     catalog=None,
     connect=_dbx_connect,
     seed=_dbx_seed,
@@ -377,7 +380,7 @@ _DATABRICKS = Lane(
 
 
 # ---- BigQuery ---------------------------------------------------------------
-_BQ_DS = "provisa_parity_it"
+_BQ_DS = run_name("provisa_parity_it")
 
 
 def _bq_connect():
@@ -399,8 +402,15 @@ async def _bq_seed(rt):
 
 def _bq_teardown(rt):
     proj = os.environ["GOOGLE_CLOUD_PROJECT"]
-    rt.connection.query(f"DROP SCHEMA IF EXISTS `{proj}`.`{_BQ_DS}` CASCADE").result()
-    rt.close()
+
+    def drop() -> None:
+        rt.connection.query(f"DROP SCHEMA IF EXISTS `{proj}`.`{_BQ_DS}` CASCADE").result()
+        none_remain(
+            "BigQuery datasets",
+            [d.dataset_id for d in rt.connection.list_datasets(proj) if d.dataset_id == _BQ_DS],
+        )
+
+    run_every([(f"drop dataset {_BQ_DS}", drop), ("close the runtime", rt.close)])
 
 
 _BIGQUERY = Lane(
@@ -421,7 +431,7 @@ _BIGQUERY = Lane(
 
 
 # ---- Microsoft Fabric (T-SQL warehouse) -------------------------------------
-_FAB_SCH = "provisa_parity_it"
+_FAB_SCH = run_name("provisa_parity_it")
 
 
 def _fab_compute():
@@ -453,14 +463,14 @@ async def _fab_seed(rt):
 
 
 def _fab_teardown(rt):
-    from tests.integration.live_teardown import run_every
-
     def drop() -> None:
         cur = rt.connection.cursor()
         try:
             cur.execute(f"DROP TABLE IF EXISTS [{_FAB_SCH}].[{_TABLE}]")
             cur.execute(f"DROP SCHEMA IF EXISTS [{_FAB_SCH}]")
             rt.connection.commit()
+            cur.execute("SELECT name FROM sys.schemas WHERE name = ?", [_FAB_SCH])
+            none_remain("Fabric schemas", [r[0] for r in cur.fetchall()])
         finally:
             cur.close()
 

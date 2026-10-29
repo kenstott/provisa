@@ -41,6 +41,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  #
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.snowflake_runtime import SnowflakeFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.integration.live_teardown import run_every, run_name  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 _ADMIN = {
@@ -49,7 +50,8 @@ _ADMIN = {
     "capabilities": ALL_DATA_CAPABILITIES,
     "domain_access": ["*"],
 }
-_SRC = "e2e-sf"
+# The run's own source id, so its own database (REQ-254): teardown drops exactly this run's.
+_SRC = run_name("e2e-sf", "-")
 _SCHEMA = "public"
 _TABLE = "orders"
 
@@ -95,7 +97,7 @@ def _compile_to_snowflake(si: SchemaInput, gql: str, rls: RLSContext | None = No
     return transpile(rewrite_semantic_to_catalog_physical(sql, ctx), "snowflake")
 
 
-_CATALOG = _SRC.replace("-", "_")  # compiler catalog for source id (e2e_sf)
+_CATALOG = _SRC.replace("-", "_")  # compiler catalog for source id (e2e_sf_<run>)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -141,18 +143,16 @@ def runtime():
             cur.close()
         yield rt
     finally:
-        from tests.integration.live_teardown import run_every
+        from tests.integration.snowflake_warehouse import drop_database
 
-        # Drop the whole database the fixture created (cascades schema + table) so runs
-        # never leak databases into the account -- also when the seed itself failed.
-        def drop() -> None:
-            cur = rt.connection.cursor()
-            try:
-                cur.execute(f'DROP DATABASE IF EXISTS "{_CATALOG}"')
-            finally:
-                cur.close()
-
-        run_every([(f"drop database {_CATALOG}", drop), ("close the runtime", rt.close)])
+        # Drop the whole database the fixture created (cascades schema + table), read back gone,
+        # so runs never leak databases into the account -- also when the seed itself failed.
+        run_every(
+            [
+                (f"drop database {_CATALOG}", lambda: drop_database(rt.connection, _CATALOG)),
+                ("close the runtime", rt.close),
+            ]
+        )
 
 
 @pytest.mark.asyncio

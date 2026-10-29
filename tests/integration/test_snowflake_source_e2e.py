@@ -31,8 +31,11 @@ pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=f"not set: {unset(*
 
 from provisa.executor.pool import SourcePool  # noqa: E402
 
+from tests.integration.live_teardown import run_name  # noqa: E402
+
 _SID = "sf_src_e2e"
-_DB = "PROVISA_SRC_E2E"
+# The run's own database (REQ-254); unquoted, so Snowflake folds it upper case.
+_DB = run_name("PROVISA_SRC_E2E").upper()
 _SCHEMA = "PUBLIC"
 _TABLE = "WIDGETS"
 
@@ -73,16 +76,16 @@ def seeded():
             cur.close()
         yield f"{_DB}.{_SCHEMA}.{_TABLE}"
     finally:
-        # Drop the whole database the fixture created (cascades schema + table) so runs
-        # never leak databases into the account -- also when the seed itself failed.
-        def drop() -> None:
-            cur = conn.cursor()
-            try:
-                cur.execute(f"DROP DATABASE IF EXISTS {_DB}")
-            finally:
-                cur.close()
+        from tests.integration.snowflake_warehouse import drop_database
 
-        run_every([(f"drop database {_DB}", drop), ("close the connection", conn.close)])
+        # Drop the whole database the fixture created (cascades schema + table), read back gone,
+        # so runs never leak databases into the account -- also when the seed itself failed.
+        run_every(
+            [
+                (f"drop database {_DB}", lambda: drop_database(conn, _DB)),
+                ("close the connection", conn.close),
+            ]
+        )
 
 
 @pytest.mark.asyncio

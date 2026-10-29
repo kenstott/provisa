@@ -116,3 +116,18 @@ def warehouse_in_use(warehouse: str) -> Generator[None, None, None]:
             )
         else:
             suspend_warehouse(warehouse)
+
+
+def drop_database(connection, name: str) -> None:
+    """``DROP DATABASE "<name>"`` (its schemas and tables with it) through ``connection``, then
+    read back that it is gone (REQ-254). ``name`` is exact: quoted, so case-sensitive."""
+    cur = connection.cursor()
+    try:
+        cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
+        cur.execute(f"SHOW DATABASES LIKE '{name}'")
+        # SHOW ... LIKE matches without case; the name column (the second) is exact.
+        left = [row[1] for row in cur.fetchall() if row[1] == name]
+    finally:
+        cur.close()
+    if left:
+        raise RuntimeError(f"Snowflake database {name} still listed after its drop")
