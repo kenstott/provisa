@@ -54,3 +54,12 @@ def test_delete_of_a_null_node_deletes_nothing(monkeypatch, model):
     asyncio.run(s.write("OPTIONAL MATCH (n) DELETE n", {}))
     assert s.sent == []
     assert s.run("MATCH (n) RETURN n") == []
+
+
+@_GRAPHS
+def test_with_carries_an_empty_union_node(monkeypatch, model):
+    # A WITH carries a union node as its union's columns (__node beside the properties read), so
+    # the empty union registers the same columns an arm would.
+    s = Session(monkeypatch, model)
+    assert s.run("MATCH (n) WITH n ORDER BY n.name RETURN n") == []
+    assert s.run("OPTIONAL MATCH (n) WITH n RETURN n") == [{"n": None}]

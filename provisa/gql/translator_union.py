@@ -496,6 +496,7 @@ class _UnionMixin:  # mixin for _Translator
                     for p in props
                 ]
                 empty = exp.select(*typed).where(exp.false())
+                self._union_columns[var] = empty.named_selects
                 return exp.alias_(exp.Subquery(this=empty), alias=var)  # pyright: ignore[reportReturnType]
             # All types exist but none have the required properties — return zero rows without
             # scanning any tables (metadata resolved this at translation time).
