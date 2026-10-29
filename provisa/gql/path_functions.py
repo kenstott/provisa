@@ -142,6 +142,23 @@ def _rels_between(
     return [r for r in rels if r.source_label in from_src and r.target_label in to_tgt]
 
 
+def _within_reach(
+    rels: list[RelationshipMapping], src_type: str, depth: int
+) -> list[RelationshipMapping]:
+    """The relationships a walk from ``src_type`` can take within ``depth`` hops: one whose source
+    the walk reaches in fewer. A relationship of the model's other labels -- another domain's --
+    is no step of the walk, and a label no relationship touches takes none."""
+    seen, frontier = {src_type}, [src_type]
+    for _ in range(depth - 1):
+        frontier = [
+            r.target_label
+            for r in rels
+            if r.source_label in frontier and r.target_label not in seen
+        ]
+        seen.update(frontier)
+    return [r for r in rels if r.source_label in seen]
+
+
 def _needs_recursive_cte(
     variable_length: bool,
     is_undirected: bool,
@@ -329,7 +346,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         backward: list[RelationshipMapping] = []
         if needs_recursive and is_undirected:
             backward = [_reversed(r) for r in allowed_rels if not r.constant_source]
-            allowed_rels = [*allowed_rels, *backward]
+            allowed_rels = _within_reach(
+                [*allowed_rels, *backward], src_type, max_hops + 1 if by_limit else max_hops
+            )
 
         is_all_paths = pf.func_name.lower() == "allpaths"
 
@@ -350,6 +369,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 is_all_paths,
                 CypherTranslateError,
                 backward=frozenset(id(r) for r in backward),
+                undirected=is_undirected,
             )
 
         return self._translate_path_flat_branch(
@@ -387,11 +407,13 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         CypherTranslateError: type,
         *,
         backward: frozenset[int] = frozenset(),
+        undirected: bool = False,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Dispatch to recursive CTE translation after validating base rels exist. ``backward``:
-        the ids of the relationships an undirected walk takes from target to source (#310)."""
+        the ids of the relationships an undirected walk takes from target to source (#310). An
+        undirected walk from a label no relationship touches takes no hop: it reads no rows."""
         base_rels = [r for r in allowed_rels if r.source_label == src_type]
-        if not base_rels:
+        if not base_rels and not undirected:
             raise CypherTranslateError(
                 f"No schema path found from {src_type!r} to {tgt_type!r} within {max_hops} hops"
             )
@@ -977,6 +999,22 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             base_branches.append(branch)
 
+        if not base_branches:
+            # No relationship leaves the start: the walk takes no first hop and reads no rows. The
+            # traversal keeps its columns, typed as the start's key, for the joins that read it.
+            seed_id = self._path_key(src_nm, "_seed", textual)
+            return (
+                exp.select(
+                    exp.alias_(seed_id, alias="src_id"),
+                    exp.alias_(exp.Literal.string(src_nm.type_name), alias="cur_type"),
+                    exp.alias_(seed_id.copy(), alias="cur_id"),
+                    exp.alias_(exp.Literal.number(0), alias="hops"),
+                    *([exp.alias_(exp.Literal.string("|"), alias="trail")] if backward else []),
+                )
+                .from_(_tbl(src_nm, "_seed"))
+                .where(exp.false())
+            )
+
         # ------------------------------------------------------------------
         # Recursive step: extend frontier by one hop for each allowed rel
         # ------------------------------------------------------------------
@@ -1059,8 +1097,6 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             ]
 
         all_branches = base_branches + rec_branches
-        if not all_branches:
-            raise ValueError(f"No traversal branches for recursive CTE {cte_name!r}")
 
         result: exp.Expression = all_branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for branch in all_branches[1:]:
