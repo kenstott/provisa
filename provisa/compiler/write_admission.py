@@ -588,10 +588,12 @@ def admit_write(
 
         rename_write_columns(tree, gov.published[table_id])
         table, listed = _target(tree)
-    require_write_op(gov, table_id, name, kind)
+    # The form is judged first: a MERGE on a table that takes no UPDATE is refused as a MERGE, the
+    # statement the caller sent, not as the UPDATE it would perform.
     form = write_form(tree)
     if form is not None and form in gov.write_refused_forms[table_id]:
         raise WriteFormNotSupported(name, form)
+    require_write_op(gov, table_id, name, kind)
     if tree.args.get("returning") is not None and not gov.write_returns_rows[table_id]:
         raise ReturningNotSupported(name)
     if not gov.can_write:
