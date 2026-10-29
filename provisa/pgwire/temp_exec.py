@@ -439,6 +439,14 @@ async def lookup_index(
     await writer.lookup_index(_schema(session), name, columns)
 
 
+async def drop_lookup_index(
+    session: TempSession, name: str, columns: tuple[str, ...], writer: Any
+) -> None:
+    """Drop the index :func:`lookup_index` made on the session's table ``name`` on ``columns``
+    (REQ-2176: DROP INDEX of a session index)."""
+    await writer.drop_lookup_index(_schema(session), name, columns)
+
+
 def _next_serial(table: TempTable, column: str) -> int | None:
     """The value an INSERT omitting ``column`` gives it: a SERIAL's next, else NULL."""
     if column not in table.serials:

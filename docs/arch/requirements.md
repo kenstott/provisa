@@ -8252,7 +8252,7 @@ Trino memory overflow handling uses Fault-Tolerant Execution (FTE) with task.ret
 
 ### REQ-818 · Cypher Mutations {#REQ-818}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
 Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, [SUPERSEDED by [REQ-1925](#REQ-1925), 2026-10-03 -- the row filter is applied by the one write admission and the hooks are its one after-write step. Kept here for history; do not implement against it.] with RLS injection, dialect transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking, Kafka change events, Kafka sink triggers, hot-table reload — absorbs [REQ-798](#REQ-798)) [END SUPERSEDED BLOCK]. [SUPERSEDED by [REQ-2176](#REQ-2176), 2026-10-27 -- MERGE is MATCH then CREATE, DETACH DELETE is governed when every part is an exact target, and SET/REMOVE of labels write session label rows; all lower through the graph IR. Kept here for history; do not implement against it.] Non-direct write patterns (MERGE, DETACH, REMOVE) are unsupported and rejected. [END SUPERSEDED BLOCK] All writes are governed by table/view write rights like any other write. This supersedes [REQ-346](#REQ-346) (read-only constraint), which is now inaccurate. (Amended 2026-10-03, CYPHER WRITES PASS THE ONE WRITE ADMISSION AND BIND THEIR PARAMETERS:) A Cypher write is translated and then admitted by the one write admission ([REQ-1925](#REQ-1925)), which applies the role's row filter to the translated write and runs the one after-write step. A Cypher definition (CREATE, DROP or ALTER of an index, a constraint or another object) is refused before lowering ([REQ-1926](#REQ-1926)). Cypher has no TRUNCATE; a statement opening with TRUNCATE is not Cypher and fails to parse (amended 2026-10-19). A Cypher write binds its parameters: `$name` is a bound value and never literal text, and a statement that names a parameter the request did not supply is refused with an error naming it.
 
@@ -8260,7 +8260,7 @@ Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET st
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/write_translator.py`, `provisa/cypher/parser.py`
 
-**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`
+**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/steps/steps_cypher_writes_req818.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -26717,3 +26717,15 @@ A feature demo, an internal data marketplace: an organisation offers its data pr
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2184 · Views (Governed Computed Datasets) {#REQ-2184}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+A Provisa view whose SQL reads one source only can be deployed onto that source (Deploy to DB on the table's page): Provisa writes CREATE OR REPLACE VIEW with the view's SQL in the chosen schema of the source, and the source then answers the view natively as Provisa did. This is the only DDL Provisa ever runs on a source, and only on the operator's request. It is limited to a small set of relational source types whose view DDL Provisa writes (the PostgreSQL family: postgresql, cockroachdb, yugabytedb, greenplum, redshift; and duckdb); a source of any other type is refused by name, with the supported types listed, before any DDL runs. A view reading more than one source is refused naming the sources, and a role without table registration is refused; neither creates anything.
+
+**Code:** —
+
+**Tests:** `tests/unit/test_deploy_view_source_types.py`, `tests/integration/test_deploy_view_to_db_e2e.py`

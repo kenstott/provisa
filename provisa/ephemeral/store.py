@@ -165,6 +165,9 @@ class Graph:
     # takes off the counts.
     rel_ends: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = field(default_factory=dict)
     last_id: int = 0
+    # Each session index (CREATE INDEX, REQ-2176) by its name -> ("node", label, properties) on
+    # the label's anchor table, or ("rel", type, properties) on the type's property table.
+    indexes: dict[str, tuple[str, str, tuple[str, ...]]] = field(default_factory=dict)
 
     def new_id(self, prefix: str = "e") -> str:
         """A new node's or relationship's id, unique in the session."""
@@ -220,7 +223,10 @@ def graph_to_json(g: Graph) -> dict[str, Any]:
 def graph_from_json(held: dict[str, Any]) -> Graph:
     """The Graph :func:`graph_to_json` gave ``held`` for."""
     hints = get_type_hints(Graph)
-    return Graph(**{f.name: _from_json(held[f.name], hints[f.name]) for f in fields(Graph)})
+    # A field the graph was kept without (one added since) takes its default.
+    return Graph(
+        **{f.name: _from_json(held[f.name], hints[f.name]) for f in fields(Graph) if f.name in held}
+    )
 
 
 _KEY = "cypher"
@@ -309,6 +315,25 @@ def key_of(table: str, columns: Sequence[tuple[str, str]]) -> tuple[str, ...]:
     return _KEYS.get(table, (columns[0][0],))
 
 
+def index_table(kind: str, of: str) -> str:
+    """The session table a session index of ``kind`` ("node" or "rel") on ``of`` (a label or a
+    relationship type) is made on."""
+    return anchor_table(of) if kind == "node" else rel_table(of)
+
+
+async def build_indexes(session: TempSession, table: str, writer: Any) -> None:
+    """Make each session index on ``table`` whose columns it holds (a property no node has yet
+    is no column, and its index is made once one has it)."""
+    from provisa.pgwire import temp_exec
+
+    if writer is None or table not in session.tables:
+        return
+    held = {name for name, _ in session.tables[table].columns}
+    for kind, of, props in graph(session).indexes.values():
+        if index_table(kind, of) == table and set(props) <= held:
+            await temp_exec.lookup_index(session, table, props, writer)
+
+
 async def _reland(
     state: Any,
     session: TempSession,
@@ -329,6 +354,7 @@ async def _reland(
         await temp_exec.index(session, table, key_of(table, keys), writer)
         for looked_up in _LOOKUPS.get(table, ()):
             await temp_exec.lookup_index(session, table, looked_up, writer)
+        await build_indexes(session, table, writer)
 
 
 async def _add(
@@ -362,6 +388,8 @@ async def _add(
     await temp_exec.alter(session, table, changes, wanted, writer)
     converted = [tuple(types.as_type(r.get(k), kind, None) for k, kind in wanted) for r in rows]
     await temp_exec.append(state, session, table, converted, writer)
+    if changes:
+        await build_indexes(session, table, writer)
 
 
 async def _remove(
@@ -484,6 +512,46 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
                 for t in r.to_labels:
                     _count(g.pair_counts, (r.rel_type, s, t), 1)
             g.rel_ends[r.rel_id] = (r.rel_type, r.from_labels, r.to_labels)
+    resolve(session)
+
+
+async def set_properties(
+    state: Any,
+    session: TempSession,
+    nodes: dict[str, dict[str, Any]],
+    rels: dict[str, dict[str, Any]],
+) -> None:
+    """Write each ephemeral node's (``nodes``: id -> property -> value) and session
+    relationship's (``rels``) property values into its row of its anchor or its type's property
+    table; a value None clears the property (SET n.p = null, REMOVE n.p). A row is taken out and
+    written again whole, its table's columns grown and widened as any write grows them."""
+    from provisa.pgwire import temp_exec
+
+    g = graph(session)
+    by_table: dict[str, dict[str, dict[str, Any]]] = {}
+    for node_id, values in nodes.items():
+        by_table.setdefault(g.node_anchors[node_id], {})[node_id] = values
+    for rel_id, values in rels.items():
+        by_table.setdefault(rel_table(g.rel_ends[rel_id][0]), {})[rel_id] = values
+    for table, updates in by_table.items():
+        if table not in session.tables:
+            # A table no property was ever written to stands only once one is.
+            held: list[dict[str, Any]] = []
+            key = NODE_ID if table.startswith("cypher__anchor") else REL_ID
+        else:
+            columns = tuple(name for name, _ in session.tables[table].columns)
+            key = columns[0]
+            held = [
+                dict(zip(columns, r, strict=True))
+                for r in await temp_exec.keyed_rows(
+                    state, session, table, key, list(updates), columns
+                )
+            ]
+        found = {row[key] for row in held}
+        rows = [{**row, **updates[row[key]]} for row in held]
+        rows += [{key: k, **values} for k, values in updates.items() if k not in found]
+        await _remove(state, session, table, (key,), [(row[key],) for row in held])
+        await _add(state, session, table, ((key, _TEXT),), rows)
     resolve(session)
 
 
