@@ -784,6 +784,22 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
     )
 
 
+# PostgreSQL's character types, by the name ``type_name`` gives their spellings (format_type's
+# ``character varying(20)`` and ``character(5)``, its ``bpchar``, the catalog's ``varchar``).
+_PG_CHARACTER_TYPES = frozenset({"character varying", "varchar", "character", "char", "bpchar"})
+
+
+def character_typing(native_type: str, platform: str) -> ColumnTyping | None:
+    """What a PostgreSQL-wire column of a character type registers as (REQ-1961, VARCHAR AND
+    CHAR KEEP THEIR TYPE): text, keeping its native type -- varchar, varchar(n), char(n) or
+    bpchar, with its length -- as a hidden attribute, as a native array's is kept (REQ-1965).
+    None for any other type."""
+    spelling = native_type.strip().lower()
+    if type_name(spelling) not in _PG_CHARACTER_TYPES:
+        return None
+    return ColumnTyping("text", native_type=spelling, native_platform=platform.split("+", 1)[0])
+
+
 def composite_typing(native_type: str, platform: str) -> ColumnTyping:
     """What a column of a named composite type registers as (REQ-1965): a struct, so plain JSON
     with its native type recorded. A composite's name does not say it is one -- only its
