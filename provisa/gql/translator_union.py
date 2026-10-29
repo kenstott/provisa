@@ -104,6 +104,19 @@ def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.Data
     return None
 
 
+def _held_by_any(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> bool:
+    """Whether a table of ``labels`` holds ``prop`` as a column of its own."""
+    return any(
+        nm is not None and nm.physical_properties.get(prop)
+        for nm in (lm.nodes.get(label) for label in labels)
+    )
+
+
+def _typed(value: exp.Expression, kind: exp.DataType | None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``value`` cast to ``kind``; as it is where the property has no type (no table holds it)."""
+    return value if kind is None else exp.Cast(this=value, to=kind)
+
+
 def key_names(nm: "NodeMapping") -> list[str]:
     """The columns of ``nm``'s key, in key order (select_builder.node_key_text)."""
     return list(nm.key_columns) if len(nm.key_columns) > 1 else [nm.id_column]
@@ -539,8 +552,12 @@ class _UnionMixin:  # mixin for _Translator
         props = self._referenced_var_props(var) if as_one_value else self._collect_var_props(var)
 
         required = [] if as_one_value else self._required_var_props(var)
+        # A property no table holds is null in every arm, of no one type: a value of any type
+        # (a number to average, a string to join) beside it, never text.
         held_as = {
-            p: union_type(p, type_labels, self._lm) or exp.DataType.build("VARCHAR") for p in props
+            p: union_type(p, type_labels, self._lm)
+            or (exp.DataType.build("VARCHAR") if _held_by_any(p, type_labels, self._lm) else None)
+            for p in props
         }
         branches: list[exp.Select] = []
         had_resolvable = False
@@ -581,7 +598,7 @@ class _UnionMixin:  # mixin for _Translator
                 # Each arm's value as the one type the property has in every table holding it.
                 select_items.append(
                     exp.alias_(
-                        exp.Cast(this=value, to=held_as[prop]),
+                        _typed(value, held_as[prop]),
                         alias=exp.Identifier(this=prop, quoted=True),
                     )
                 )
@@ -628,7 +645,7 @@ class _UnionMixin:  # mixin for _Translator
                     ),
                 ] + [
                     exp.alias_(
-                        exp.Cast(this=exp.null(), to=held_as[p]),
+                        _typed(exp.null(), held_as[p]),
                         alias=exp.Identifier(this=p, quoted=True),
                     )
                     for p in props

@@ -39,6 +39,8 @@ from provisa.gql import temporal
 from provisa.gql.expr_ast import (
     Binary,
     CypherExpr,
+    FunctionCall,
+    Index,
     Literal as ExprLiteral,
     MapLiteral,
     Parameter as ExprParameter,
@@ -391,6 +393,47 @@ def _of_branch(node: _E, rel_types: dict[str, str]) -> _E:
 _FLIPPED = {"right": "left", "left": "right", "none": "none"}
 
 
+def _inlined(node: Any, values: dict[str, CypherExpr]) -> Any:
+    """``node`` (an IR tree) with each variable ``values`` holds read as its expression there."""
+    if isinstance(node, Variable) and node.name in values:
+        return copy.deepcopy(values[node.name])
+    if isinstance(node, list):
+        return [_inlined(item, values) for item in node]
+    if isinstance(node, tuple):
+        return tuple(_inlined(item, values) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return node
+    changed = {
+        f.name: _inlined(getattr(node, f.name), values) for f in dataclasses.fields(node) if f.init
+    }
+    return replace(node, **changed)
+
+
+def _properties_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads the variable ``var``'s properties by name at run
+    time: keys(var), or var[key] of a key that is not a literal."""
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "keys"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if (
+        isinstance(node, Index)
+        and isinstance(node.obj, Variable)
+        and node.obj.name == var
+        and not isinstance(node.index, ExprLiteral)
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(_properties_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(_properties_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
+
+
 def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
     """A pattern after a WITH, read from the node the WITH carries: ``(b)-[:K]->(a)`` with ``a``
     carried is ``(a)<-[:K]-(b)``, which goes on from ``a``'s rows instead of reading ``a`` again
@@ -660,6 +703,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # A path a WITH carries on: one column of its CTE, its path object (WITH p)
+        self._carried_paths: set[str] = set()
         # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: the node unions that name each node's graph identity (translator_union)
@@ -1572,9 +1617,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             and r.expression.name != r.alias
             and r.alias not in self._var_table
         }
+        # A name the clause gives a value that a variable already has (RETURN n.num AS n): the
+        # ORDER BY reads the value, not the variable, which the engine would bind it to.
+        shadowing = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and r.alias in self._var_table
+            and not (isinstance(r.expression, Variable) and r.expression.name == r.alias)
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
-            target = item.expression
+            target = _inlined(item.expression, shadowing)
             if (
                 isinstance(target, Property)
                 and isinstance(target.obj, Variable)
@@ -1592,7 +1646,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 # A key null for every row (a property the label has not) orders nothing, and an
                 # engine refuses a literal one.
                 continue
-            if isinstance(target, Variable) and target.name in self._json_value_vars:
+            if (
+                isinstance(item.expression, Variable)
+                and item.expression.name in self._json_value_vars
+            ):
                 # Values of several types, each its JSON, in openCypher's order (json_order_key).
                 inner = exp.Anonymous(this="json_order_key", expressions=[inner])
             # Cypher orders null as the largest value: last ascending, first descending.
@@ -1704,6 +1761,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         )
                     )
                 continue
+            if bare is not None and bare in self._path_vars and bare not in self._var_table:
+                # A path goes on as its object, as RETURN p answers it: its nodes and edges are
+                # read here, where the pattern that matched them is in scope.
+                path = self._build_path_object(bare)
+                exprs.append(exp.alias_(path, alias or bare, quoted=True))
+                continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
@@ -1778,6 +1841,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 bound_params[name] = self._param_vars[i.expression.name]
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
+        carried_paths: set[str] = set()
         union_columns: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
@@ -1808,6 +1872,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
             if bare is not None and bare in self._union_columns:
                 union_columns[key] = self._union_columns[bare]
+            if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
+                # From here on the path is the column its WITH carries, not its pattern.
+                carried_paths.add(key)
             if key in split:
                 # Read as its own row of the carried columns, under its own name.
                 new_var_table[key] = (key, split[key])
@@ -1834,6 +1901,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 self._all_rels_node_vars.add(key)
                 self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
             self._all_rels_var_alias[key] = cte_name
+        for path in carried_paths:
+            self._path_vars.pop(path, None)
+        self._carried_paths = carried_paths
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
@@ -1949,10 +2019,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         statement reads."""
         if var not in self._domain_nodes:
             return False
+        if var in self._zero_hop_paths().values():
+            # The one node of a path of no hops (MATCH p = (a)): the path's value is the node's.
+            return True
+        if _properties_read(self._ast, var):
+            # keys(n), n[key]: read from the properties its value holds (expr_context).
+            return True
         items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
         if self._ast.return_clause:
             items.extend(self._ast.return_clause.items)
         return any(isinstance(i.expression, Variable) and i.expression.name == var for i in items)
+
+    def _zero_hop_paths(self) -> dict[str, str]:
+        """Each path of no hops the statement names (MATCH p = (a)), to its one node's variable."""
+        return {
+            m.variable: m.pattern.nodes[0].variable
+            for s in self._ast.pipeline
+            if isinstance(s, MatchStep)
+            for m in s.matches
+            if m.variable
+            and isinstance(m.pattern, PathPattern)
+            and not m.pattern.rels
+            and m.pattern.nodes[0].variable
+        }
 
     def _collect_var_props(self, var: str) -> list[str]:
         """Return ordered list of property names referenced as var.prop in the AST.

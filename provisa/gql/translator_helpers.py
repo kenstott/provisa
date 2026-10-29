@@ -866,6 +866,12 @@ def _json_valued(
             )
             else None
         )
+    if called == "ARRAY" and len(e.expressions) == 1 and isinstance(e.expressions[0], exp.Select):
+        # A pattern comprehension's rows, each its JSON (expr_context.resolve_pattern_comprehension).
+        (row,) = e.expressions[0].expressions or [None]
+        held = row.this if isinstance(row, exp.Alias) else row
+        is_json = isinstance(held, exp.Anonymous) and str(held.this).upper() == "TO_JSON"
+        return "list" if is_json else None
     if called in ("ARRAY_APPEND", "SLICE") and e.expressions:
         return "list" if _json_valued(e.expressions[0]) == "list" else None
     if called == "ARRAY_PREPEND" and len(e.expressions) == 2:

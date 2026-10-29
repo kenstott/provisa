@@ -37,7 +37,12 @@ from provisa.gql.expr_ast import (
     Term,
     Variable,
 )
-from provisa.gql.translator_types import UNION_NODE, CypherTranslateError, map_key_column
+from provisa.gql.translator_types import (
+    NODE_COLUMN,
+    UNION_NODE,
+    CypherTranslateError,
+    map_key_column,
+)
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -702,6 +707,8 @@ class TranslatorExprContext:
             # A node matched with no label: the label of the table its row is from.
             return exp.Array(expressions=[_col("__label", var)]) if var in t._domain_nodes else None
         if name == "keys":
+            if nm is None and var in t._domain_nodes:
+                return self._union_keys(var)
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
                 via_bound = t._rel_var_via.get(var)
@@ -726,6 +733,35 @@ class TranslatorExprContext:
             # Marked with its variable: an extra UNION branch names its own type (_of_branch).
             return _type_literal(var, rel_type)
         return None
+
+    def _union_properties(self, var: str) -> exp.Expression:
+        """The properties of a node of a union of labels: those its row's value holds
+        (NODE_COLUMN), as JSON."""
+        alias = self._t._var_table.get(var, (var, None))[0]
+        return _anon("JSON_EXTRACT", _col(NODE_COLUMN, alias), exp.Literal.string("$.properties"))
+
+    def resolve_element_properties(self, name: str) -> exp.Expression | None:
+        if name in self._t._domain_nodes and self._t._var_table.get(name, (name, None))[1] is None:
+            return self._union_properties(name)
+        return self._properties_object(name)
+
+    def _union_keys(self, var: str) -> exp.Expression:
+        """keys(n) of a node of a union of labels: the keys of the properties its row's value
+        holds (NODE_COLUMN) that are set -- a property null on the row is no property of it."""
+        props = self._union_properties(var)
+        key = exp.to_identifier("_k")
+        path = exp.DPipe(
+            this=exp.DPipe(this=exp.Literal.string('$."'), expression=exp.column("_k")),
+            expression=exp.Literal.string('"'),
+        )
+        is_set = exp.Not(
+            this=exp.Is(
+                this=_anon("JSON_EXTRACT_SCALAR", props.copy(), path), expression=exp.Null()
+            )
+        )
+        return _anon(
+            "filter", _anon("JSON_KEYS", props), exp.Lambda(this=is_set, expressions=[key])
+        )
 
     def _graph_json_fn(self, name: str, var: str) -> exp.Expression | None:
         """Graph functions that build a JSON node/edge object or array: relationships, nodes,
@@ -850,6 +886,9 @@ class TranslatorExprContext:
                 is_reversed,
                 t._rel_var_via.get(name),
             )
+        if name in t._path_vars:
+            # A path as a value ([n, r, p], WITH p): its object, as RETURN p answers it.
+            return t._build_path_object(name)
         alias, nm = t._var_table.get(name, (name, None))
         if nm is not None:
             from provisa.gql.select_builder import node_json
@@ -979,19 +1018,47 @@ class TranslatorExprContext:
                 f"unresolved target node in pattern comprehension: {src_var}-[{rel_type or ''}]->{tgt_var}"
             )
 
-        # Lower the projection (and predicate) with the target var temporarily in scope.
+        src_alias, src_nm = t._var_table.get(src_var, (src_var, None))
+        # Lower the projection (and predicate) with the target var -- and the path var, of the
+        # source, the one edge and the target -- temporarily in scope.
         saved = t._var_table.get(tgt_var)
         t._var_table[tgt_var] = (tgt_var, tgt_nm)
+        path = node.path_var
+        held_ends = t._path_vars.get(path) if path is not None else None
+        held_steps = t._path_steps.get(path) if path is not None else None
+        if path is not None:
+            if src_nm is None:
+                raise NotImplementedError(
+                    f"a path in a pattern comprehension starts at a node of one label: {src_var}"
+                )
+            via = None if rel.via is None else (via_alias_for(rel, tgt_var), rel.via)
+            edge = (rel.rel_type, src_alias, src_nm, tgt_var, tgt_nm, False, via)
+            t._path_vars[path] = (src_alias, tgt_var, False)
+            t._path_steps[path] = ([(src_alias, src_nm), (tgt_var, tgt_nm)], [edge])
         try:
-            proj = ExprLowering(self).lower(node.projection)
+            # A bare path, node or relationship is its object, as RETURN answers it.
+            bare = node.projection.name if isinstance(node.projection, Variable) else None
+            element = self.resolve_graph_element(bare) if bare else None
+            proj = (
+                ExprLowering(self).lower(node.projection)
+                if element is None
+                # As its JSON: the answer decodes each (GraphVarKind.JSON_LIST).
+                else _anon("to_json", element)
+            )
             pred = ExprLowering(self).lower(node.predicate) if node.predicate is not None else None
         finally:
             if saved is None:
                 t._var_table.pop(tgt_var, None)
             else:
                 t._var_table[tgt_var] = saved
+            if path is not None:
+                t._path_vars.pop(path, None)
+                t._path_steps.pop(path, None)
+                if held_ends is not None:
+                    t._path_vars[path] = held_ends
+                if held_steps is not None:
+                    t._path_steps[path] = held_steps
 
-        src_alias = t._var_table.get(src_var, (src_var, None))[0]
         tgt_table = exp.table_(
             tgt_nm.sql_table_name, db=tgt_nm.schema_name, catalog=tgt_nm.catalog_name, quoted=True
         )

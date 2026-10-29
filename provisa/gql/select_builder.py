@@ -26,6 +26,7 @@ from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Te
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields, via_column  # REQ-1586
+from provisa.gql.translator_types import NODE_COLUMN
 
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 
@@ -155,6 +156,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _var_table: dict
     _graph_vars: dict
     _path_vars: dict
+    _carried_paths: set[str]
     _shortestpath_hops_col: exp.Expression | None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     _lm: CypherLabelMap
     _rel_var_types: dict
@@ -167,6 +169,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         raise NotImplementedError(expr)
+
+    def _zero_hop_paths(self) -> dict[str, str]:
+        raise NotImplementedError
 
     def _temporal_context(self) -> "TranslatorExprContext":  # REQ-2173
         raise NotImplementedError
@@ -293,6 +298,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         if path_step_info is not None:
             step_nodes, step_edges = path_step_info
             return self._build_path_json(step_nodes, step_edges)
+        one_node = self._zero_hop_paths().get(path_var)
+        if one_node is not None:
+            return self._one_node_path(one_node)
         # All-rels union path (anonymous or unlabeled-rel): build from _all_rels subquery columns.
         all_rels_alias = getattr(self, "_all_rels_alias", None)
         all_rels_src_col = getattr(self, "_all_rels_src_col", None)
@@ -364,6 +372,30 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 tgt_id,
                 exp.Literal.string("length"),
                 length_val,
+            ],
+        )
+
+    def _one_node_path(self, var: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A path of no hops (MATCH p = (a)): its one node, as RETURN a answers it, and no edge."""
+        alias, nm = self._var_table[var]
+        node = (
+            node_json(alias, nm)
+            if nm is not None
+            # A node of a union of labels: the value its union's row carries (translator_union).
+            else exp.Column(
+                this=exp.Identifier(this=NODE_COLUMN, quoted=True),
+                table=exp.Identifier(this=alias),
+            )
+        )
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("nodes"),
+                exp.Anonymous(this="JSON_ARRAY", expressions=[node]),
+                exp.Literal.string("edges"),
+                exp.Anonymous(this="JSON_ARRAY", expressions=[]),
+                exp.Literal.string("length"),
+                exp.Literal.number(0),
             ],
         )
 
@@ -730,6 +762,12 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # Path variable: RETURN p where p = shortestPath(...)
             if is_bare and expr_text in self._path_vars:
                 exprs.append(self._select_path_var(expr_text, alias, GraphVarKind.PATH))
+                continue
+
+            # A path a WITH carried on: its object, the one column of the WITH that holds it
+            if is_bare and expr_text in self._carried_paths:
+                self._graph_vars[alias or expr_text] = GraphVarKind.PATH
+                exprs.append(exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True))
                 continue
 
             # Bare relationship variable: RETURN r
