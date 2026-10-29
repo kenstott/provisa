@@ -122,3 +122,130 @@ describe("the SPARQL vocabulary as the Cypher sidebar reads it", () => {
     expect(screen.getByTestId("sparql-edge-rel:WORKS")).toBeInTheDocument();
   });
 });
+
+// REQ-1723 (EVERY EXPLORER FOLLOWS THE CHECKED DOMAINS), REQ-2163's readable-term rule: a term or
+// concept is shown when one of its domains is checked, and one with no domain is always shown.
+const termed: SparqlVocabulary = {
+  base: BASE,
+  prefixes: { hr: `${BASE}/hr/`, ops: `${BASE}/ops/`, term: `${BASE}/vocab/term/` },
+  classes: [
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], superclasses: [] },
+    {
+      iri: `${BASE}/vocab/term/Staff`,
+      kind: "term",
+      labels: [],
+      superclasses: [],
+      domains: ["hr"],
+    },
+    {
+      iri: `${BASE}/vocab/term/Shift`,
+      kind: "term",
+      labels: [],
+      superclasses: [],
+      domains: ["ops"],
+    },
+    {
+      iri: `${BASE}/vocab/term/Both`,
+      kind: "term",
+      labels: [],
+      superclasses: [],
+      domains: ["hr", "ops"],
+    },
+    { iri: `${BASE}/vocab/term/Loose`, kind: "term", labels: [], superclasses: [], domains: [] },
+  ],
+  predicates: [
+    {
+      iri: `${BASE}/vocab/term/pay`,
+      kind: "term",
+      label: "E",
+      property: "p",
+      datatype: "x",
+      domains: ["hr"],
+    },
+    {
+      iri: `${BASE}/vocab/term/roster`,
+      kind: "term",
+      label: "S",
+      property: "r",
+      datatype: "x",
+      domains: ["ops"],
+    },
+    {
+      iri: `${BASE}/vocab/term/note`,
+      kind: "term",
+      label: "S",
+      property: "n",
+      datatype: "x",
+      domains: [],
+    },
+  ],
+  edges: [],
+  concepts: [
+    { iri: `${BASE}/vocab/term/Churn`, name: "Churn", definition: null, domains: ["hr"] },
+    { iri: `${BASE}/vocab/term/Uptime`, name: "Uptime", definition: null, domains: ["ops"] },
+    { iri: `${BASE}/vocab/term/Idea`, name: "Idea", definition: null, domains: [] },
+  ],
+};
+const termPanel = (checked: string[]) =>
+  render(
+    <SparqlVocabularyPanel
+      vocabulary={termed}
+      error={null}
+      onPick={vi.fn()}
+      colorOverrides={{}}
+      checkedDomains={new Set(checked)}
+    />,
+  );
+const ids = (prefix: string) =>
+  screen.queryAllByTestId(new RegExp(`^${prefix}`)).map((e) => e.getAttribute("data-testid"));
+
+describe("the SPARQL vocabulary's terms follow the checked domains", () => {
+  it("shows a term or concept when one of its domains is checked, and one with none always", () => {
+    termPanel(["hr"]);
+    expect(ids("sparql-class-term:")).toEqual([
+      "sparql-class-term:Both",
+      "sparql-class-term:Loose",
+      "sparql-class-term:Staff",
+    ]);
+    expect(ids("sparql-predicate-term:")).toEqual([
+      "sparql-predicate-term:note",
+      "sparql-predicate-term:pay",
+    ]);
+    expect(ids("sparql-concept-")).toEqual(["sparql-concept-Churn", "sparql-concept-Idea"]);
+  });
+
+  it("hides the terms of an unchecked domain, ops here", () => {
+    termPanel(["ops"]);
+    expect(screen.queryByTestId("sparql-class-term:Staff")).toBeNull();
+    expect(screen.getByTestId("sparql-class-term:Shift")).toBeInTheDocument();
+    expect(screen.queryByTestId("sparql-predicate-term:pay")).toBeNull();
+    expect(screen.queryByTestId("sparql-concept-Churn")).toBeNull();
+    expect(screen.getByTestId("sparql-concept-Uptime")).toBeInTheDocument();
+  });
+
+  it("lists every term while no domain is checked", () => {
+    termPanel([]);
+    expect(ids("sparql-class-term:")).toHaveLength(4);
+    expect(ids("sparql-predicate-term:")).toHaveLength(3);
+    expect(ids("sparql-concept-")).toHaveLength(3);
+  });
+
+  it("shows an enterprise-wide term (domain *) under any selection", () => {
+    const v = {
+      ...termed,
+      concepts: [
+        { iri: `${BASE}/vocab/term/Shared`, name: "Shared", definition: null, domains: ["*"] },
+      ],
+    };
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={v}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set(["hr"])}
+      />,
+    );
+    expect(screen.getByTestId("sparql-concept-Shared")).toBeInTheDocument();
+  });
+});

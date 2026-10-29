@@ -248,7 +248,12 @@ def concepts_of(base: str, terms: list[dict]) -> list[dict]:
     grounds no table and no column (REQ-2141) and that ``agent_visible`` admits (REQ-1387), as
     IRIs."""
     return [
-        {"iri": term_iri(base, t["name"]), "name": t["name"], "definition": t["definition"]}
+        {
+            "iri": term_iri(base, t["name"]),
+            "name": t["name"],
+            "definition": t["definition"],
+            "domains": list(t["domains"]),
+        }
         for t in terms
         if t["is_abstract"] and t["agent_visible"]
     ]
@@ -269,18 +274,32 @@ def superclasses_of(
     return out
 
 
+def term_domains_of(base: str, terms: list[dict]) -> dict[str, list[str]]:
+    """Each term's domains (REQ-1591, ``domains`` on a glossary list row) by its IRI, so a client
+    shows a term when one of its domains is checked (REQ-1723)."""
+    return {term_iri(base, t["name"]): list(t["domains"]) for t in terms}
+
+
 def vocabulary_document(
-    vocab: Vocabulary, concepts: list[dict], superclasses: Mapping[str, list[str]]
+    vocab: Vocabulary,
+    concepts: list[dict],
+    superclasses: Mapping[str, list[str]],
+    term_domains: Mapping[str, list[str]],
 ) -> dict:
     """The vocabulary as GET /data/sparql/vocabulary answers it: its base and prefixes; each class
     (a table's own, or a Class term) with the labels it types and, for a Class term, the terms it
     is a KIND_OF (:func:`superclasses_of`); each predicate (a column's own, or a Property term) with
     its label, property and datatype; each edge type with its source and target; and the live
-    Concept terms (:func:`concepts_of`)."""
+    Concept terms (:func:`concepts_of`). A Class or Property term, and a Concept, carries its
+    ``domains`` (:func:`term_domains_of`); a term with none is in no domain, and a client shows it
+    under every selection (REQ-1723, REQ-2163)."""
     term_root = f"{vocab.base}/vocab/term/"
 
     def kind(iri: str, own: str) -> str:
         return "term" if iri.startswith(term_root) else own
+
+    def terms_part(iri: str) -> dict:
+        return {"domains": list(term_domains.get(iri, []))} if iri.startswith(term_root) else {}
 
     return {
         "base": vocab.base,
@@ -291,6 +310,7 @@ def vocabulary_document(
                 "kind": kind(iri, "table"),
                 "labels": list(labels),
                 "superclasses": list(superclasses.get(iri, [])),
+                **terms_part(iri),
             }
             for iri, labels in vocab.classes.items()
         ],
@@ -301,6 +321,7 @@ def vocabulary_document(
                 "label": cp.label,
                 "property": cp.prop,
                 "datatype": cp.datatype,
+                **terms_part(iri),
             }
             for iri, cps in vocab.columns.items()
             for cp in cps
