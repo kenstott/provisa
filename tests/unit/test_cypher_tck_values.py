@@ -192,3 +192,36 @@ def test_a_pattern_comprehension_reads_its_own_rows_node(monkeypatch):
     )
     rows = s.run("MATCH (n:X) RETURN n.num, size([(n)--() | 1]) > 0 AS b")
     assert sorted(rows, key=repr) == [{"n.num": 42, "b": True}, {"n.num": 43, "b": False}]
+
+
+# -- Null1 [6], Null2 [6]: an ephemeral node is answered as it was written ------------------- #
+
+
+def test_an_ephemeral_node_is_answered_without_the_sessions_handle(monkeypatch):
+    from provisa.ephemeral.read import as_answered
+
+    s = _session(monkeypatch, "CREATE (:X {prop: 42}), (:X)")
+    rows = as_answered(s.run("MATCH (n:X) RETURN n, n.prop IS NULL AS b"))
+    got = sorted(((r["n"]["properties"], r["b"]) for r in rows), key=repr)
+    assert got == sorted([({"prop": 42}, False), ({}, True)], key=repr)
+
+
+def test_a_model_node_keeps_its_key_when_answered():
+    from provisa.ephemeral.read import as_answered
+
+    node = {"id": "P|1", "label": "P", "tableLabel": "P", "properties": {"_id": 1, "k": "v"}}
+    assert as_answered([{"n": node, "l": [node]}]) == [{"n": node, "l": [node]}]
+
+
+# -- List12 [3]: a pattern no relationship can be matches nothing ---------------------------- #
+
+
+def test_a_hop_no_relationship_can_be_matches_no_row(monkeypatch):
+    s = _session(monkeypatch)
+    rows = s.run(
+        "MATCH (n) OPTIONAL MATCH (n)-[r]->(m) RETURN size([x IN collect(r) WHERE x <> null]) AS cn"
+    )
+    assert rows == [{"cn": 0}]
+    assert s.run("OPTIONAL MATCH (n)-[r]->(m) RETURN n, r, m") == [
+        {"n": None, "r": None, "m": None}
+    ]
