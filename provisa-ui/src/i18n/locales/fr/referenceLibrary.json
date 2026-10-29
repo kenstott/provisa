@@ -40,7 +40,6 @@
     "remove": "Retirer",
     "refresh": "Actualiser depuis son URL",
     "uploadVersion": "Téléverser une nouvelle version",
-    "saveDomains": "Enregistrer les domaines",
     "passagesHeading": "Passages",
     "loadingPassages": "Chargement des passages...",
     "page": "page {{page}}",

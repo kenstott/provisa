@@ -8637,7 +8637,6 @@
   "it/referenceLibrary.json::referenceLibrary.remove": "Remove",
   "it/referenceLibrary.json::referenceLibrary.refresh": "Refresh from its URL",
   "it/referenceLibrary.json::referenceLibrary.uploadVersion": "Upload new version",
-  "it/referenceLibrary.json::referenceLibrary.saveDomains": "Save domains",
   "it/referenceLibrary.json::referenceLibrary.passagesHeading": "Passages",
   "it/referenceLibrary.json::referenceLibrary.loadingPassages": "Loading passages...",
   "it/referenceLibrary.json::referenceLibrary.page": "page {{page}}",

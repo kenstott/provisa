@@ -40,7 +40,6 @@
     "remove": "Удалить",
     "refresh": "Обновить по URL",
     "uploadVersion": "Загрузить новую версию",
-    "saveDomains": "Сохранить домены",
     "passagesHeading": "Фрагменты",
     "loadingPassages": "Загрузка фрагментов...",
     "page": "стр. {{page}}",

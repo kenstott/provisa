@@ -8636,7 +8636,6 @@
   "nl/referenceLibrary.json::referenceLibrary.remove": "Remove",
   "nl/referenceLibrary.json::referenceLibrary.refresh": "Refresh from its URL",
   "nl/referenceLibrary.json::referenceLibrary.uploadVersion": "Upload new version",
-  "nl/referenceLibrary.json::referenceLibrary.saveDomains": "Save domains",
   "nl/referenceLibrary.json::referenceLibrary.passagesHeading": "Passages",
   "nl/referenceLibrary.json::referenceLibrary.loadingPassages": "Loading passages...",
   "nl/referenceLibrary.json::referenceLibrary.page": "page {{page}}",

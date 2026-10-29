@@ -8636,7 +8636,6 @@
   "ru/referenceLibrary.json::referenceLibrary.remove": "Remove",
   "ru/referenceLibrary.json::referenceLibrary.refresh": "Refresh from its URL",
   "ru/referenceLibrary.json::referenceLibrary.uploadVersion": "Upload new version",
-  "ru/referenceLibrary.json::referenceLibrary.saveDomains": "Save domains",
   "ru/referenceLibrary.json::referenceLibrary.passagesHeading": "Passages",
   "ru/referenceLibrary.json::referenceLibrary.loadingPassages": "Loading passages...",
   "ru/referenceLibrary.json::referenceLibrary.page": "page {{page}}",

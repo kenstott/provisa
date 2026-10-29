@@ -8638,7 +8638,6 @@
   "hi/referenceLibrary.json::referenceLibrary.remove": "Remove",
   "hi/referenceLibrary.json::referenceLibrary.refresh": "Refresh from its URL",
   "hi/referenceLibrary.json::referenceLibrary.uploadVersion": "Upload new version",
-  "hi/referenceLibrary.json::referenceLibrary.saveDomains": "Save domains",
   "hi/referenceLibrary.json::referenceLibrary.passagesHeading": "Passages",
   "hi/referenceLibrary.json::referenceLibrary.loadingPassages": "Loading passages...",
   "hi/referenceLibrary.json::referenceLibrary.page": "page {{page}}",

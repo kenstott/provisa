@@ -40,7 +40,6 @@
     "remove": "移除",
     "refresh": "從其 URL 重新整理",
     "uploadVersion": "上載新版本",
-    "saveDomains": "儲存網域",
     "passagesHeading": "段落",
     "loadingPassages": "正在載入段落...",
     "page": "第 {{page}} 頁",

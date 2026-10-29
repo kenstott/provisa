@@ -8637,7 +8637,6 @@
   "zh-HK/referenceLibrary.json::referenceLibrary.remove": "Remove",
   "zh-HK/referenceLibrary.json::referenceLibrary.refresh": "Refresh from its URL",
   "zh-HK/referenceLibrary.json::referenceLibrary.uploadVersion": "Upload new version",
-  "zh-HK/referenceLibrary.json::referenceLibrary.saveDomains": "Save domains",
   "zh-HK/referenceLibrary.json::referenceLibrary.passagesHeading": "Passages",
   "zh-HK/referenceLibrary.json::referenceLibrary.loadingPassages": "Loading passages...",
   "zh-HK/referenceLibrary.json::referenceLibrary.page": "page {{page}}",
