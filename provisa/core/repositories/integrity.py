@@ -157,6 +157,7 @@ KINDS: dict[str, Kind] = {
     "store": Kind("stores", "id"),  # REQ-1922
     "region": Kind("org_regions", "id"),  # REQ-1921
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
+    "reference_document": Kind("reference_documents", "id"),  # REQ-2185
 }
 
 _P, _D = Standing.PART, Standing.DEPENDENT
@@ -329,6 +330,10 @@ REFERENCES: tuple[Reference, ...] = (
     _part("api_endpoints", "source_id", "api_source"),
     _part("kafka_topics", "source_id", "kafka_source"),
     _part("event_status", "event_id", "event"),
+    # --- to a reference-library document -------------------------------------------------------
+    # REQ-2185: a document's domains and its embedded passages go with the document.
+    _part("reference_document_domains", "document_id", "reference_document"),
+    _part("reference_passages", "document_id", "reference_document"),
 )
 
 

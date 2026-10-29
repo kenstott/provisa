@@ -184,6 +184,9 @@ class Graph:
     # Each session index (CREATE INDEX, REQ-2176) by its name -> ("node", label, properties) on
     # the label's anchor table, or ("rel", type, properties) on the type's property table.
     indexes: dict[str, tuple[str, str, tuple[str, ...]]] = field(default_factory=dict)
+    # Each database a client created (CREATE DATABASE over Bolt, provisa.bolt.databases): a name
+    # for the home database, kept with the session and ended with it.
+    databases: set[str] = field(default_factory=set)
 
     def new_id(self, prefix: str = NODE_ID_PREFIX) -> str:
         """A new node's or relationship's id, unique in the session."""
