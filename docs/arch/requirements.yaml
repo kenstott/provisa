@@ -9003,7 +9003,10 @@
     unlabelled endpoint there is refused by name, and conformance cases that need one on the model graph
     are skipped by design under this decision. In a graph session the endpoints need no label: every session
     relationship lives in the session''s one relationships table, indexed on both ends, so an unlabelled
-    shortest path walks the same table a labelled one does, at the same cost.'
+    shortest path walks the same table a labelled one does, at the same cost. (Amended 2026-10-28, LABELLED
+    OR BOUND:) Wherever an endpoint must be labelled (shortestPath, allShortestPaths and variable-length
+    patterns on the model graph), it must be labelled or bound: a variable an earlier clause bound, as in
+    `MATCH (n0:Terms) OPTIONAL MATCH (n0)-[*..2]->(m:Terms)`, satisfies the rule, written bare or not (REQ-347).'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
