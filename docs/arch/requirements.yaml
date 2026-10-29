@@ -47311,12 +47311,21 @@
     VALID_VALUE_OF: X is one of Y''s allowed values; RELATED_TO: distinct topics that go together, neither
     a kind, part or value of the other, and does not ground); the relationship assistant''s prompt carries
     the same tests, prefers KIND_OF, PART_OF and VALID_VALUE_OF wherever one fits, proposes RELATED_TO only
-    when none does, and leaves an edge out rather than default to RELATED_TO (a pair that seems related
-    with no structural type may lack an intermediate term, as candles are part of a birthday cake, a kind
-    of cake; adding that term is the user''s call, never the assistant''s); and a term whose only links
-    are RELATED_TO and which is not grounded says so on its page with that question, as guidance, never
-    a block. The shipped seed models a concept''s properties with PART_OF (shift start, shift end and schedule
-    location are PART_OF shift coverage), not RELATED_TO.'
+    when none does, [SUPERSEDED by REQ-1387 amendment RELATED_TO HOLDS THE PLACE; REVIEW IT, 2026-10-28
+    -- an unresolved pair is RELATED_TO until the user resolves it. Kept here for history; do not implement
+    against it.] and leaves an edge out rather than default to RELATED_TO (a pair that seems related with
+    no structural type may lack an intermediate term, as candles are part of a birthday cake, a kind of
+    cake; adding that term is the user''s call, never the assistant''s); [END SUPERSEDED BLOCK] and a term
+    whose only links are RELATED_TO and which is not grounded says so on its page with that question, as
+    guidance, never a block. The shipped seed models a concept''s properties with PART_OF (shift start,
+    shift end and schedule location are PART_OF shift coverage), not RELATED_TO. (Amended 2026-10-28, RELATED_TO
+    HOLDS THE PLACE; REVIEW IT:) When two terms go together and no grounding type fits, the relationship
+    assistant proposes RELATED_TO, saying that the pair may want resolving; it never invents a term. RELATED_TO
+    holds the place until the user resolves the pair, if ever: by an intermediate term (candles PART_OF
+    birthday cake, KIND_OF cake), or by an umbrella term both are PART_OF (shift start and shift end PART_OF
+    shift coverage). Because RELATED_TO edges are the ones that want review, the ontology term list has
+    a filter checkbox, beside Deprecated and To review, that shows only terms with at least one RELATED_TO
+    edge.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
