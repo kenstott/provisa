@@ -853,13 +853,13 @@ def test_allshortestpaths_same_result_as_shortestpath():
     assert "companies" in sql.lower()
 
 
-def test_shortestpath_no_path_raises():
+def test_shortestpath_with_no_schema_path_is_no_rows():
+    # REQ-347: a pattern no relationship can match answers no rows, never an error. No
+    # relationship leaves a Company, so the walk takes no first hop.
     lm = _make_label_map()
-    from provisa.gql.translator_types import CypherTranslateError
-
     ast = parse_cypher("MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name")
-    with pytest.raises(CypherTranslateError, match="No schema path"):
-        cypher_to_sql(ast, lm, {})
+    sql = cypher_to_sql(ast, lm, {})[0].sql(dialect="postgres")
+    assert "WHERE FALSE" in sql
 
 
 def test_shortestpath_multiple_schema_paths_union_all():

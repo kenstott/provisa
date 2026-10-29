@@ -142,6 +142,42 @@ def _rels_between(
     return [r for r in rels if r.source_label in from_src and r.target_label in to_tgt]
 
 
+@dataclasses.dataclass(frozen=True)
+class _FreeEnd:
+    """The end of a path search that no label places and no earlier clause binds to a table
+    (REQ-348, ONE END BOUND OR BINDABLE): whatever node the walk reaches. ``var`` names it (None:
+    anonymous); ``domain`` is the ad-hoc domain of the labels the walk can reach; ``types`` pairs
+    each one's traversal type with its label; ``bound``: an earlier clause holds it, as a union of
+    labels, so the walk is tied to that row rather than reading the union again."""
+
+    var: str | None
+    domain: str
+    types: tuple[tuple[str, str], ...]
+    bound: bool
+
+
+def _free_id(var: str) -> exp.Column:
+    """The identity column of a free end's union (``label|key``)."""
+    return exp.Column(this=exp.Identifier(this="__id"), table=exp.Identifier(this=var))
+
+
+def _within_reach(
+    rels: list[RelationshipMapping], src_type: str, depth: int
+) -> list[RelationshipMapping]:
+    """The relationships a walk from ``src_type`` can take within ``depth`` hops: one whose source
+    the walk reaches in fewer. A relationship of the model's other labels -- another domain's --
+    is no step of the walk, and a label no relationship touches takes none."""
+    seen, frontier = {src_type}, [src_type]
+    for _ in range(depth - 1):
+        frontier = [
+            r.target_label
+            for r in rels
+            if r.source_label in frontier and r.target_label not in seen
+        ]
+        seen.update(frontier)
+    return [r for r in rels if r.source_label in seen]
+
+
 def _needs_recursive_cte(
     variable_length: bool,
     is_undirected: bool,
@@ -294,15 +330,31 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
 
         pf: PathFunction = clause.pattern  # type: ignore[assignment]
         src_node, tgt_node, rel = _extract_path_nodes(pf, CypherTranslateError)
+        held = set(self._var_table) if joined is None else joined
         if not src_node.labels or not tgt_node.labels:
-            # REQ-348: on the model graph an end's label places it and its hops; a graph
-            # session walks its one relationships relation from any end (path_walk).
             walk = self._lm.session_walk
-            if walk is None:
-                raise CypherTranslateError(UNLABELLED_ENDS)
-            held = set(self._var_table) if joined is None else joined
-            return self._translate_session_walk(  # type: ignore[attr-defined]
-                clause, pf, src_node, tgt_node, rel, walk, held, CypherTranslateError
+            # REQ-347, REQ-348: a variable an earlier clause bound to a table keeps that table's
+            # label, written bare or not.
+            src_bound, tgt_bound = self._as_bound(src_node, held), self._as_bound(tgt_node, held)
+            on_model = any(self._on_model(n) for n in (src_bound, tgt_bound))
+            if walk is not None and not (on_model and self._walks_model_hops(walk, rel)):  # type: ignore[attr-defined]
+                # A graph session walks its one relationships relation from any end (path_walk).
+                return self._translate_session_walk(  # type: ignore[attr-defined]
+                    clause, pf, src_node, tgt_node, rel, walk, held, CypherTranslateError
+                )
+            # A walk from an end the model places takes the model's relationships (REQ-348).
+            src_node, tgt_node = src_bound, tgt_bound
+        if not src_node.labels and not tgt_node.labels:
+            # REQ-348: a path search starts from a bound or labelled end; both free is refused.
+            raise CypherTranslateError(UNLABELLED_ENDS)
+        # The walk starts from the end the statement holds, or else from a labelled one: an end
+        # held already is joined where it is read, and the other is whatever the walk reaches.
+        src_held = bool(src_node.variable and src_node.variable in held)
+        tgt_held = bool(tgt_node.variable and tgt_node.variable in held)
+        from_tgt = not src_node.labels or (tgt_held and not src_held)
+        if from_tgt or not tgt_node.labels:
+            return self._translate_free_end_walk(
+                clause, pf, src_node, tgt_node, rel, held, from_tgt=from_tgt
             )
         src_type, tgt_type, src_nm, tgt_nm = self._resolve_path_node_types(
             src_node, tgt_node, CypherTranslateError
@@ -329,7 +381,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         backward: list[RelationshipMapping] = []
         if needs_recursive and is_undirected:
             backward = [_reversed(r) for r in allowed_rels if not r.constant_source]
-            allowed_rels = [*allowed_rels, *backward]
+            allowed_rels = _within_reach(
+                [*allowed_rels, *backward], src_type, max_hops + 1 if by_limit else max_hops
+            )
 
         is_all_paths = pf.func_name.lower() == "allpaths"
 
@@ -369,6 +423,134 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             CypherTranslateError,
         )
 
+    def _on_model(self, node: NodePattern) -> bool:
+        """Whether ``node``'s labels place it on the model graph: a table's, or a domain's."""
+        known = (*self._lm.nodes, *self._lm.domains)
+        return any(self._lm.canonical_label(label) in known for label in node.labels)
+
+    def _as_bound(self, node: NodePattern, held: set[str]) -> NodePattern:
+        """``node`` labelled with the table an earlier clause bound its variable to (REQ-347: a
+        bound variable keeps its labels); ``node`` itself when it is labelled or not so bound."""
+        if node.labels or not node.variable or node.variable not in held:
+            return node
+        nm = (self._var_table.get(node.variable) or (None, None))[1]
+        key = next((k for k, m in self._lm.nodes.items() if m is nm), None)
+        return node if key is None else dataclasses.replace(node, labels=[key])
+
+    def _translate_free_end_walk(
+        self,
+        clause: MatchClause,
+        pf: PathFunction,
+        src_node: NodePattern,
+        tgt_node: NodePattern,
+        rel: RelPattern | None,
+        held: set[str],
+        *,
+        from_tgt: bool,
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """REQ-348 (ONE END BOUND OR BINDABLE): a path search from one placed end (labelled, or
+        bound to a table) to an end that is free, or that only the statement or its labels place.
+        The walk starts from the placed end and takes, hop by hop, only the relationships leaving
+        the tables it has reached; the far end is whichever node it reaches within the bound, of
+        any of those tables its labels admit. ``from_tgt``: the walk starts from the pattern's
+        target, each relationship taken backward."""
+        from provisa.gql.label_map import CypherLabelMap
+        from provisa.gql.translator_types import CypherTranslateError
+        from provisa.gql.translator_union import union_labels
+
+        rel_types, _, is_undirected, max_hops, min_hops, by_limit = _extract_rel_attrs(rel)
+        reverse = from_tgt
+        anchor, far = (tgt_node, src_node) if reverse else (src_node, tgt_node)
+        anchor_type, _ = self._resolve_node_type(anchor.labels)  # type: ignore[attr-defined]
+        if anchor_type is None:
+            raise CypherTranslateError(
+                "shortestPath/allShortestPaths require type-labeled (not domain-only) nodes"
+            )
+        anchor_nm = self._lm.nodes[anchor_type]
+        _register_path_vars(self._var_table, anchor.variable, None, anchor_nm, anchor_nm)
+
+        rels = _filter_allowed_rels(self._lm, rel_types)
+        backward: list[RelationshipMapping] = []
+        if is_undirected:
+            backward = [_reversed(r) for r in rels if not r.constant_source]
+            rels = [*rels, *backward]
+        elif reverse:
+            rels = [_reversed(r) for r in rels if not r.constant_source]
+        rels = _within_reach(rels, anchor_type, max_hops + 1 if by_limit else max_hops)
+
+        reached = [r.target_label for r in rels] + ([anchor_type] if min_hops == 0 else [])
+        labels = [k for k in dict.fromkeys(reached) if k in self._lm.nodes]
+        if far.labels:
+            far_type, far_domain = self._resolve_node_type(far.labels)  # type: ignore[attr-defined]
+            admitted = {far_type} if far_type else set(union_labels(self._lm, far_domain or ""))
+            labels = [k for k in labels if k in admitted]
+        # An anonymous end its labels place is read all the same, to keep only those nodes.
+        far_var = far.variable or ("_path_far" if far.labels else None)
+        domain = f"__reach_{far_var or 'anon'}__"
+        self._lm = CypherLabelMap(
+            nodes=self._lm.nodes,
+            relationships=self._lm.relationships,
+            domains={**self._lm.domains, domain: labels},
+        )
+        bound = bool(far_var and far_var in held)
+        if far_var and not bound:
+            self._domain_nodes[far_var] = domain  # type: ignore[attr-defined]
+            self._var_table[far_var] = (far_var, None)
+        free_end = _FreeEnd(
+            var=far_var,
+            domain=domain,
+            types=tuple((self._lm.nodes[k].type_name, self._lm.nodes[k].label) for k in labels),
+            bound=bound,
+        )
+        if clause.variable:
+            self._path_vars[clause.variable] = (src_node.variable, tgt_node.variable, True)
+        is_all_paths = pf.func_name.lower() == "allpaths"
+        result = self._translate_path_function_recursive(
+            clause,
+            anchor.variable,
+            None,
+            anchor_nm,
+            anchor_nm,
+            anchor_type,
+            "",
+            rels,
+            max_hops,
+            min_hops,
+            by_limit,
+            is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
+            suppress_hops_order=is_all_paths,
+            backward=frozenset(id(r) for r in backward),
+            free_end=free_end,
+        )
+        if clause.variable and far_var:
+            from provisa.gql.select_builder import node_identity
+
+            anchor_id = node_identity(anchor.variable or anchor_nm.table_name, anchor_nm)
+            far_id = exp.Column(
+                this=exp.Identifier(this="__id"), table=exp.Identifier(this=far_var)
+            )
+            ends = (far_id, anchor_id) if reverse else (anchor_id, far_id)
+            self._walk_paths[clause.variable] = ends  # type: ignore[attr-defined]
+        return result
+
+    @staticmethod
+    def _reached_identity(free_end: _FreeEnd) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The identity (``label|key``) of the node the walk's row reached: its traversal type
+        read as its label, then its key text."""
+        label = exp.Case(
+            this=exp.Column(this=exp.Identifier(this="cur_type"), table=exp.Identifier(this="_t")),
+            ifs=[
+                exp.If(this=exp.Literal.string(t), true=exp.Literal.string(label))
+                for t, label in free_end.types
+            ],
+        )
+        return exp.DPipe(
+            this=exp.DPipe(this=label, expression=exp.Literal.string("|")),
+            expression=exp.Column(
+                this=exp.Identifier(this="cur_id"), table=exp.Identifier(this="_t")
+            ),
+        )
+
     def _translate_path_recursive_branch(
         self,
         clause: MatchClause,
@@ -389,12 +571,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         backward: frozenset[int] = frozenset(),
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Dispatch to recursive CTE translation after validating base rels exist. ``backward``:
-        the ids of the relationships an undirected walk takes from target to source (#310)."""
-        base_rels = [r for r in allowed_rels if r.source_label == src_type]
-        if not base_rels:
-            raise CypherTranslateError(
-                f"No schema path found from {src_type!r} to {tgt_type!r} within {max_hops} hops"
-            )
+        the ids of the relationships an undirected walk takes from target to source (#310). A
+        walk no relationship leaves the start of takes no hop: it reads no rows (REQ-347)."""
         return self._translate_path_function_recursive(
             clause,
             src_var,
@@ -456,11 +634,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         ):
             self._cut_checks.append(exp.true())
         if not all_paths:
-            direction_hint = " (undirected — both directions searched)" if is_undirected else ""
-            raise CypherTranslateError(
-                f"No schema path found from {src_type!r} to {tgt_type!r} "
-                f"within {max_hops} hops{direction_hint}"
-            )
+            # REQ-347: a pattern no relationship can match answers no rows (null for an OPTIONAL
+            # MATCH), never an error.
+            return self._no_path(clause, src_var, tgt_var, src_nm, tgt_nm)
 
         candidate_paths = _select_candidate_paths(all_paths, is_all_paths, is_undirected)
         return self._build_flat_join_result(
@@ -485,6 +661,42 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         for extra_path in candidate_paths[1:]:
             self._register_extra_path_branch(clause, extra_path, src_var, tgt_var, src_nm, tgt_nm)
         return primary_from, primary_joins
+
+    def _no_path(
+        self,
+        clause: MatchClause,
+        src_var: str | None,
+        tgt_var: str | None,
+        src_nm: NodeMapping,
+        tgt_nm: NodeMapping,
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A path the schema has no relationships for: the start, joined to the end on nothing."""
+        src_alias = src_var or src_nm.table_name
+        tgt_alias = tgt_var or tgt_nm.table_name
+        if clause.variable is not None:
+            nodes = [(src_alias, src_nm), (tgt_alias, tgt_nm)]
+            self._path_steps[clause.variable] = (nodes, [])  # type: ignore[attr-defined]
+        tgt_join = {
+            "table": exp.alias_(
+                exp.Table(
+                    this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
+                    db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
+                    catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
+                ),
+                alias=tgt_alias,
+            ),
+            "on": exp.false(),
+            "join_type": "LEFT" if clause.optional else "INNER",
+        }
+        src_from = exp.alias_(
+            exp.Table(
+                this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
+                db=exp.Identifier(this=src_nm.schema_name, quoted=True),
+                catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+            ),
+            alias=src_alias,
+        )
+        return cast(exp.Expression, src_from), [tgt_join]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _register_extra_path_branch(
         self,
@@ -681,8 +893,12 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         is_all: bool,
         suppress_hops_order: bool = False,
         backward: frozenset[int] = frozenset(),
+        free_end: _FreeEnd | None = None,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Emit WITH RECURSIVE CTE for paths that may repeat edge traversals in data.
+
+        ``free_end``: the target is whatever node the walk reaches (REQ-348), read from the union
+        of the labels it can reach by its identity, so the walk carries every key as text.
 
         The CTE walks from one hop up to the bound; a lower bound above one keeps only the rows
         that far out (#283), and a lower bound of zero adds each start node as its own target.
@@ -690,7 +906,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         rows within it: a row past it means the walk was cut there (REQ-2135).
         """
         cte_name = f"_traverse_{src_var or src_type.lower()}"
-        textual = self._textual_keys(src_nm, tgt_nm, allowed_rels)
+        textual = free_end is not None or self._textual_keys(src_nm, tgt_nm, allowed_rels)
         cte_expr = self._build_recursive_cte(
             cte_name,
             src_nm,
@@ -716,22 +932,24 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         join_type = "LEFT" if clause.optional else "INNER"
 
         # JOIN _traverse_X AS _t ON _t.src_id = src.id AND _t.cur_type = tgt_label
-        traverse_join_on = exp.And(
-            this=exp.EQ(
-                this=exp.Column(
-                    this=exp.Identifier(this="src_id"),
-                    table=exp.Identifier(this="_t"),
-                ),
-                expression=self._path_key(src_nm, src_alias, textual),
+        traverse_join_on: exp.Expression = exp.EQ(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            this=exp.Column(
+                this=exp.Identifier(this="src_id"),
+                table=exp.Identifier(this="_t"),
             ),
-            expression=exp.EQ(
-                this=exp.Column(
-                    this=exp.Identifier(this="cur_type"),
-                    table=exp.Identifier(this="_t"),
-                ),
-                expression=exp.Literal.string(tgt_type),
-            ),
+            expression=self._path_key(src_nm, src_alias, textual),
         )
+        if free_end is None:
+            traverse_join_on = exp.And(
+                this=traverse_join_on,
+                expression=exp.EQ(
+                    this=exp.Column(
+                        this=exp.Identifier(this="cur_type"),
+                        table=exp.Identifier(this="_t"),
+                    ),
+                    expression=exp.Literal.string(tgt_type),
+                ),
+            )
         if by_limit:
             traverse_join_on = exp.And(
                 this=traverse_join_on,
@@ -774,6 +992,32 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             ),
         )
 
+        tgt_join: dict | None = {
+            "table": exp.alias_(
+                exp.Table(
+                    this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
+                    db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
+                    catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
+                ),
+                alias=tgt_alias,
+            ),
+            "on": tgt_join_on,
+            "join_type": join_type,
+        }
+        if free_end is not None:
+            tgt_join = None
+            reached = self._reached_identity(free_end)
+            if free_end.var is not None and free_end.bound:
+                traverse_join_on = exp.And(
+                    this=traverse_join_on,
+                    expression=exp.EQ(this=_free_id(free_end.var), expression=reached),
+                )
+            elif free_end.var is not None:
+                tgt_join = {
+                    "table": self._build_domain_union(free_end.var, free_end.domain),  # type: ignore[attr-defined]
+                    "on": exp.EQ(this=_free_id(free_end.var), expression=reached),
+                    "join_type": join_type,
+                }
         joins = [
             {
                 "table": exp.alias_(
@@ -783,18 +1027,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 "on": traverse_join_on,
                 "join_type": join_type,
             },
-            {
-                "table": exp.alias_(
-                    exp.Table(
-                        this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
-                        db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
-                        catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
-                    ),
-                    alias=tgt_alias,
-                ),
-                "on": tgt_join_on,
-                "join_type": join_type,
-            },
+            *([tgt_join] if tgt_join is not None else []),
         ]
 
         # Signal translate() to add ORDER BY hops [LIMIT 1] — suppressed for allPaths()
@@ -977,6 +1210,22 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             base_branches.append(branch)
 
+        if not base_branches:
+            # No relationship leaves the start: the walk takes no first hop and reads no rows. The
+            # traversal keeps its columns, typed as the start's key, for the joins that read it.
+            seed_id = self._path_key(src_nm, "_seed", textual)
+            return (
+                exp.select(
+                    exp.alias_(seed_id, alias="src_id"),
+                    exp.alias_(exp.Literal.string(src_nm.type_name), alias="cur_type"),
+                    exp.alias_(seed_id.copy(), alias="cur_id"),
+                    exp.alias_(exp.Literal.number(0), alias="hops"),
+                    *([exp.alias_(exp.Literal.string("|"), alias="trail")] if backward else []),
+                )
+                .from_(_tbl(src_nm, "_seed"))
+                .where(exp.false())
+            )
+
         # ------------------------------------------------------------------
         # Recursive step: extend frontier by one hop for each allowed rel
         # ------------------------------------------------------------------
@@ -1059,8 +1308,6 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             ]
 
         all_branches = base_branches + rec_branches
-        if not all_branches:
-            raise ValueError(f"No traversal branches for recursive CTE {cte_name!r}")
 
         result: exp.Expression = all_branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for branch in all_branches[1:]:

@@ -12,7 +12,7 @@
 hops apart, and [*0..n] pairs each node with itself too. The recursive form runs on DuckDB over a
 chain of people, so the rows it returns are checked, not only its SQL."""
 
-# Requirements: REQ-348, REQ-2135
+# Requirements: REQ-347, REQ-348, REQ-2135
 
 import duckdb
 import pytest
@@ -20,7 +20,6 @@ import pytest
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.gql.translator import cypher_to_sql
-from provisa.gql.translator_types import CypherTranslateError
 from tests.unit.table_ids import table_id
 
 
@@ -136,6 +135,7 @@ def test_a_flat_path_keeps_only_schema_paths_at_least_its_lower_bound():
     assert '"ship_city_id"' in one_or_two
 
 
-def test_a_flat_path_with_no_schema_path_that_long_is_refused():
-    with pytest.raises(CypherTranslateError, match="No schema path"):
-        _sql("MATCH (o:Order)-[:SHIPS_TO*2..3]->(c:City) RETURN o.name, c.name", _orders())
+def test_a_flat_path_with_no_schema_path_that_long_is_no_rows():
+    # REQ-347: a pattern no relationship can match answers no rows, never an error.
+    sql = _sql("MATCH (o:Order)-[:SHIPS_TO*2..3]->(c:City) RETURN o.name, c.name", _orders())
+    assert "ON FALSE" in sql
