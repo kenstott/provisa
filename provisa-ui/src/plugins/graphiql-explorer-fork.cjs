@@ -1948,12 +1948,6 @@ var defaultStyles = {
  * expand/collapse to avoid React state interfering with the
  * Explorer's query manipulation.
  */
-// The named type of a field (list / non-null wrappers removed).
-function _namedTypeName(type) {
-  while (type && type.ofType) type = type.ofType;
-  return type && type.name;
-}
-
 function _renderGroupedFields(fields, renderField, selections, domainLabels, systemSchemaPrefixes) {
   var fieldNames = Object.keys(fields).sort();
 
@@ -1967,15 +1961,13 @@ function _renderGroupedFields(fields, renderField, selections, domainLabels, sys
     });
   }
 
-  // A system schema's root field (REQ-2163): "<prefix>_<name>" whose type is "<PREFIX>_<Name>".
+  // A system schema's root field (REQ-2163): "<prefix>_<name>". Model tables can't take such
+  // names, so the prefix alone identifies it.
   function systemSchemaOf(fieldName) {
     var ids = Object.keys(systemSchemaPrefixes || {});
     for (var i = 0; i < ids.length; i++) {
       var prefix = systemSchemaPrefixes[ids[i]];
-      var typeName = _namedTypeName(fields[fieldName] && fields[fieldName].type);
-      if (fieldName.indexOf(prefix + '_') === 0 && typeName && typeName.indexOf(prefix.toUpperCase() + '_') === 0) {
-        return ids[i];
-      }
+      if (fieldName.indexOf(prefix + '_') === 0) return ids[i];
     }
     return null;
   }

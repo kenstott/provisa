@@ -208,12 +208,5 @@ describe("_renderGroupedFields system schemas (REQ-2163)", () => {
     expect(open).toHaveLength(1);
     expect(folderFields(open[0])).toEqual(["op_queries", "op_traces"]);
   });
-
-  it("leaves a field that is not of a system schema type loose", () => {
-    const result = _renderGroupedFields(
-      { on_other: typed("Other"), health: typed("Boolean") }, renderField, [], {}, prefixes,
-    );
-    expect(result).toEqual([{ field: "health" }, { field: "on_other" }]);
-  });
 });
 
