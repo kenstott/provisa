@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} part of {{term}}; {{term}} kind of {{to}}",
     "shapeEdges_common_whole": "{{from}} and {{to}} part of {{term}}",
     "shapeEdges_common_genus": "{{from}} and {{to}} kind of {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} and {{to}} valid values of {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} and {{to}} valid values of {{term}}",
+    "relatedToDialogTitle": "Link {{from}} and {{to}} with Related to?",
+    "relatedToDialogWhy": "Related to is the least useful edge: it does not ground, so the term still cannot reach data through it. One new term between the two would turn the pair into edges that ground.",
+    "relatedToDialogShapes": "Shapes that would resolve the pair, tightest first:",
+    "relatedToDialogSuggesting": "Suggesting names…",
+    "relatedToDialogNoNames": "No names were suggested ({{reason}}). Start a shape and type the name yourself.",
+    "relatedToDialogStart": "Start",
+    "relatedToDialogAnyway": "Add Related to anyway",
+    "newTermPlaceholder": "new term",
+    "shapeFormTitle": "New term: {{shape}}",
+    "shapeFormEdges": "Edges added with it"
   }
 }

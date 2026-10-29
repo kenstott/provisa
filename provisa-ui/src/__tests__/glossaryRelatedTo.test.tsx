@@ -28,6 +28,9 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   generateGlossaryRelationships: vi.fn(),
+  suggestResolvingTerms: vi.fn(),
+  createGlossaryTerm: vi.fn(),
+  addGlossaryEdge: vi.fn(),
   listTermTables: vi.fn(async () => []),
   fetchGlossaryFindings: vi.fn(async () => []),
 }));
@@ -50,16 +53,34 @@ vi.mock("../context/AuthContext", () => ({
   }),
 }));
 vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
+// Single-domain mode: a new term declares no domains.
+const filter = {
+  domains: [],
+  setDomains: () => {},
+  selectedDomain: "all",
+  setSelectedDomain: () => {},
+  checkedDomains: new Set<string>(),
+  toggleDomain: () => {},
+  ensureDomainChecked: () => {},
+  domainsEnabled: false,
+};
+vi.mock("../context/DomainFilterContext", () => ({ useDomainFilter: () => filter }));
 
 import {
+  addGlossaryEdge,
+  createGlossaryTerm,
   fetchGlossaryTerm,
   generateGlossaryRelationships,
   listGlossaryTerms,
+  suggestResolvingTerms,
 } from "../api/glossary";
 
 const mockList = vi.mocked(listGlossaryTerms);
 const mockFetchTerm = vi.mocked(fetchGlossaryTerm);
 const mockBulkRelationships = vi.mocked(generateGlossaryRelationships);
+const mockSuggest = vi.mocked(suggestResolvingTerms);
+const mockCreate = vi.mocked(createGlossaryTerm);
+const mockPostEdge = vi.mocked(addGlossaryEdge);
 
 const REVENUE: GlossaryTermSummary = {
   id: 1,
@@ -83,6 +104,7 @@ const REVENUE: GlossaryTermSummary = {
   domains: [],
 };
 const CHURN: GlossaryTermSummary = { ...REVENUE, id: 2, name: "Churn", ref_count: 0 };
+const CAKE: GlossaryTermSummary = { ...REVENUE, id: 5, name: "Cake", domains: ["sales"] };
 const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   ...term,
   refs: [],
@@ -120,7 +142,7 @@ describe("Related to guidance", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mockList.mockReset();
-    mockList.mockResolvedValue([REVENUE, CHURN]);
+    mockList.mockResolvedValue([REVENUE, CHURN, CAKE]);
     mockFetchTerm.mockReset();
     mockFetchTerm.mockImplementation(async (id) => (id === 2 ? CHURN_DETAIL : REVENUE_DETAIL));
   });
@@ -230,5 +252,97 @@ describe("Related to guidance", () => {
     );
     fireEvent.click(screen.getByTestId("glossary-review-close"));
     await waitFor(() => expect(screen.queryByTestId("glossary-review-pair-1-2")).toBeNull());
+  });
+
+  // REQ-1387 (CHOOSING RELATED_TO OPENS THE ALTERNATIVES): choosing Related to while adding an
+  // edge interrupts with the alternatives first.
+  const chooseRelatedTo = async () => {
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    const terms = await openSelect("glossary-edge-term-select");
+    fireEvent.click(within(terms).getByText("Cake"));
+    const types = await openSelect("glossary-edge-rel-select");
+    fireEvent.click(within(types).getByTestId("glossary-rel-option-RELATED_TO"));
+    return screen.findByTestId("glossary-related-to-dialog");
+  };
+
+  it("opens the alternatives, tightest first, with the model's names, before adding Related to", async () => {
+    mockSuggest.mockResolvedValue({
+      resolve: [
+        { shape: "component_type", candidates: ["revenue line"] },
+        { shape: "common_whole", candidates: ["bakery sale"] },
+      ],
+    });
+    render(<GlossaryTab />);
+    const dialog = await chooseRelatedTo();
+    expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogWhy"));
+    expect(mockSuggest).toHaveBeenCalledWith(1, 5);
+    await within(dialog).findByText(/revenue line/);
+    const shapes = within(dialog)
+      .getAllByTestId(/^glossary-related-to-option-/)
+      .map((el) => el.getAttribute("data-testid")?.replace("glossary-related-to-option-", ""));
+    expect(shapes).toEqual([
+      "component_type",
+      "specialisation",
+      "common_whole",
+      "common_genus",
+      "common_enumeration",
+    ]);
+    expect(within(dialog).getByTestId("glossary-related-to-option-common_whole")).toHaveTextContent(
+      "Revenue and Cake part of bakery sale",
+    );
+    // Not added until the person says so: Add anyway is one click.
+    expect(screen.queryByTestId("glossary-edge-out-5-RELATED_TO")).toBeNull();
+    fireEvent.click(within(dialog).getByTestId("glossary-related-to-anyway"));
+    expect(await screen.findByTestId("glossary-edge-out-5-RELATED_TO")).toBeInTheDocument();
+  });
+
+  it("adds nothing when the alternatives are cancelled", async () => {
+    mockSuggest.mockResolvedValue({ resolve: [] });
+    render(<GlossaryTab />);
+    const dialog = await chooseRelatedTo();
+    fireEvent.click(within(dialog).getByTestId("glossary-related-to-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("glossary-related-to-dialog")).toBeNull());
+    expect(screen.queryByTestId("glossary-edge-out-5-RELATED_TO")).toBeNull();
+  });
+
+  it("starts a shape: the new-term form, prefilled, creates the term and both edges", async () => {
+    mockSuggest.mockResolvedValue({
+      resolve: [{ shape: "common_whole", candidates: ["bakery sale"] }],
+    });
+    mockCreate.mockResolvedValue({ id: 9 });
+    mockPostEdge.mockResolvedValue(undefined);
+    render(<GlossaryTab />);
+    const dialog = await chooseRelatedTo();
+    await within(dialog).findByText(/bakery sale/);
+    fireEvent.click(within(dialog).getByTestId("glossary-related-to-start-common_whole"));
+    const form = await screen.findByTestId("glossary-shape-form");
+    expect(within(form).getByTestId("glossary-shape-name")).toHaveValue("bakery sale");
+    expect(within(form).getByTestId("glossary-shape-edges")).toHaveTextContent(
+      `Revenue · ${t("glossaryTab.rel_PART_OF")} · bakery sale`,
+    );
+    // The person may rename it before it exists.
+    fireEvent.change(within(form).getByTestId("glossary-shape-name"), {
+      target: { value: "cake sale" },
+    });
+    fireEvent.click(within(form).getByTestId("glossary-shape-create"));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledWith({ name: "cake sale" }));
+    // The edge between the other term and the new one is written; this term's joins the form.
+    await waitFor(() => expect(mockPostEdge).toHaveBeenCalledWith(5, 9, "PART_OF"));
+    expect(await screen.findByTestId("glossary-edge-out-9-PART_OF")).toHaveTextContent("cake sale");
+    expect(screen.queryByTestId("glossary-edge-out-5-RELATED_TO")).toBeNull();
+  });
+
+  it("without the model's names, the person types the name in the form", async () => {
+    mockSuggest.mockRejectedValue(new Error("no AI model configured"));
+    render(<GlossaryTab />);
+    const dialog = await chooseRelatedTo();
+    expect(await within(dialog).findByTestId("glossary-related-to-no-names")).toHaveTextContent(
+      "no AI model configured",
+    );
+    fireEvent.click(within(dialog).getByTestId("glossary-related-to-start-component_type"));
+    const form = await screen.findByTestId("glossary-shape-form");
+    expect(within(form).getByTestId("glossary-shape-name")).toHaveValue("");
+    expect(within(form).getByTestId("glossary-shape-create")).toBeDisabled();
   });
 });

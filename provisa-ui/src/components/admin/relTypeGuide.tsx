@@ -117,7 +117,7 @@ export function RelatedToHint() {
 }
 
 /** One shape for a pair, as the edges it would add, with the candidate names for the new term. */
-function ShapeLine({
+export function ShapeLine({
   shape,
   candidates,
   from,

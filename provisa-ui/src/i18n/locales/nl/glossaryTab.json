@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} onderdeel van {{term}}; {{term}} soort van {{to}}",
     "shapeEdges_common_whole": "{{from}} en {{to}} onderdeel van {{term}}",
     "shapeEdges_common_genus": "{{from}} en {{to}} soort van {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} en {{to}} geldige waarden van {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} en {{to}} geldige waarden van {{term}}",
+    "relatedToDialogTitle": "{{from}} en {{to}} koppelen met ‘Gerelateerd aan’?",
+    "relatedToDialogWhy": "‘Gerelateerd aan’ is de minst nuttige koppeling: ze verankert niet, dus de term bereikt via haar nog steeds geen data. Eén nieuwe term tussen beide zou het paar omzetten in koppelingen die verankeren.",
+    "relatedToDialogShapes": "Vormen die het paar zouden oplossen, van nauwst naar breedst:",
+    "relatedToDialogSuggesting": "Namen worden voorgesteld…",
+    "relatedToDialogNoNames": "Er zijn geen namen voorgesteld ({{reason}}). Begin een vorm en typ de naam zelf.",
+    "relatedToDialogStart": "Beginnen",
+    "relatedToDialogAnyway": "Toch ‘Gerelateerd aan’ toevoegen",
+    "newTermPlaceholder": "nieuwe term",
+    "shapeFormTitle": "Nieuwe term: {{shape}}",
+    "shapeFormEdges": "Koppelingen die ermee worden toegevoegd"
   }
 }

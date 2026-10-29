@@ -978,6 +978,7 @@ export function GlossaryTab() {
                     navigateToTerm={navigateToTerm}
                     onSaved={handleSaved}
                     onCancel={() => setEditing(false)}
+                    onTermCreated={() => void refreshList()}
                   />
                 ) : (
                   <TermReadView

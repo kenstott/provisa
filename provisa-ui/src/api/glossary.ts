@@ -244,6 +244,57 @@ export interface RelatedToReview {
   resolve: { shape: ResolveShape; candidates: string[] }[];
 }
 
+/** A shape's two edges between the pair (x, y) and the new term ``n``, as stored: from, to, type. */
+export function shapeEdges<T>(
+  shape: ResolveShape,
+  x: T,
+  y: T,
+  n: T,
+): { from: T; to: T; rel_type: GlossaryRelType }[] {
+  switch (shape) {
+    case "component_type":
+      return [
+        { from: x, to: n, rel_type: "KIND_OF" },
+        { from: n, to: y, rel_type: "PART_OF" },
+      ];
+    case "specialisation":
+      return [
+        { from: x, to: n, rel_type: "PART_OF" },
+        { from: n, to: y, rel_type: "KIND_OF" },
+      ];
+    case "common_whole":
+      return [
+        { from: x, to: n, rel_type: "PART_OF" },
+        { from: y, to: n, rel_type: "PART_OF" },
+      ];
+    case "common_genus":
+      return [
+        { from: x, to: n, rel_type: "KIND_OF" },
+        { from: y, to: n, rel_type: "KIND_OF" },
+      ];
+    case "common_enumeration":
+      return [
+        { from: x, to: n, rel_type: "VALID_VALUE_OF" },
+        { from: y, to: n, rel_type: "VALID_VALUE_OF" },
+      ];
+  }
+}
+
+/** Candidate names for the term that would resolve one RELATED_TO pair (REQ-1387): the model
+ * names them, shape by shape; nothing is written. */
+export async function suggestResolvingTerms(
+  fromTermId: number,
+  toTermId: number,
+): Promise<{ resolve: { shape: ResolveShape; candidates: string[] }[] }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/relationships/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_term_id: fromTermId, to_term_id: toTermId }),
+  });
+  if (!res.ok) throw await mutationError(res, "suggestResolvingTerms");
+  return res.json();
+}
+
 // Where the guidance on building a glossary that grounds lives: the type tests, RELATED_TO as the
 // placeholder, and the shapes that resolve a pair. Served by the app's own docs site, so an
 // air-gapped install reaches it too.

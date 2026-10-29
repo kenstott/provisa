@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} parte di {{term}}; {{term}} tipo di {{to}}",
     "shapeEdges_common_whole": "{{from}} e {{to}} parte di {{term}}",
     "shapeEdges_common_genus": "{{from}} e {{to}} tipo di {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} e {{to}} valori validi di {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} e {{to}} valori validi di {{term}}",
+    "relatedToDialogTitle": "Collegare {{from}} e {{to}} con «Correlato a»?",
+    "relatedToDialogWhy": "«Correlato a» è il collegamento meno utile: non ancora, quindi il termine continua a non raggiungere i dati attraverso di esso. Un nuovo termine tra i due trasformerebbe la coppia in collegamenti che ancorano.",
+    "relatedToDialogShapes": "Forme che risolverebbero la coppia, dalla più stretta:",
+    "relatedToDialogSuggesting": "Suggerimento dei nomi…",
+    "relatedToDialogNoNames": "Nessun nome suggerito ({{reason}}). Avvia una forma e scrivi tu il nome.",
+    "relatedToDialogStart": "Avvia",
+    "relatedToDialogAnyway": "Aggiungi comunque «Correlato a»",
+    "newTermPlaceholder": "nuovo termine",
+    "shapeFormTitle": "Nuovo termine: {{shape}}",
+    "shapeFormEdges": "Collegamenti aggiunti con esso"
   }
 }

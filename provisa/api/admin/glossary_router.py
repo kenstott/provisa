@@ -670,15 +670,8 @@ def relationship_prompt(terms: list[dict]) -> str:
         "when two terms clearly go together and no type above fits. For every RELATED_TO, add a "
         '"resolve" object: the pair may want resolving by one new term, and you name candidates '
         "for it in each shape that fits, tightest first:\n"
-        '- "component_type": X KIND_OF new, new PART_OF Y (candles KIND_OF cake decoration, '
-        "cake decoration PART_OF cake).\n"
-        '- "specialisation": X PART_OF new, new KIND_OF Y (candles PART_OF birthday cake, '
-        "birthday cake KIND_OF cake).\n"
-        '- "common_whole": X and Y both PART_OF new (cake and candles PART_OF party).\n'
-        '- "common_genus": X and Y both KIND_OF new (cake and candles KIND_OF party supplies).\n'
-        '- "common_enumeration": X and Y both VALID_VALUE_OF new (cake and candles VALID_VALUE_OF '
-        "party item type).\n"
-        "Each value is a list of candidate names for the new term; leave out a shape that does "
+        + _SHAPE_TEMPLATES
+        + "Each value is a list of candidate names for the new term; leave out a shape that does "
         "not fit. Never propose an edge to or from a term that is not in the list below: the new "
         "term is the user's choice to add, not yours.\n\n"
         "Only propose relationships you are confident in; fewer, correct edges beat many "
@@ -708,6 +701,81 @@ def resolve_shapes(raw: object) -> list[dict]:
         if candidates:
             shapes.append({"shape": shape, "candidates": candidates})
     return shapes
+
+
+_SHAPE_TEMPLATES = (
+    '- "component_type": X KIND_OF new, new PART_OF Y (candles KIND_OF cake decoration, '
+    "cake decoration PART_OF cake).\n"
+    '- "specialisation": X PART_OF new, new KIND_OF Y (candles PART_OF birthday cake, '
+    "birthday cake KIND_OF cake).\n"
+    '- "common_whole": X and Y both PART_OF new (cake and candles PART_OF party).\n'
+    '- "common_genus": X and Y both KIND_OF new (cake and candles KIND_OF party supplies).\n'
+    '- "common_enumeration": X and Y both VALID_VALUE_OF new (cake and candles VALID_VALUE_OF '
+    "party item type).\n"
+)
+
+
+def resolve_prompt(x: dict, y: dict) -> str:
+    """The prompt naming candidates for the term that would resolve one RELATED_TO pair (REQ-1387,
+    CHOOSING RELATED_TO OPENS THE ALTERNATIVES): the same shapes, in the same order, as the bulk
+    assistant's note."""
+
+    def line(t: dict) -> str:
+        return f"{t['name']} [{_term_role(t)}]" + (
+            f": {t['definition']}" if t["definition"] else ""
+        )
+
+    return (
+        "You are a data catalog assistant. A curator is about to link two ontology terms with "
+        "RELATED_TO, which does not ground: the term still cannot reach data through it. One new "
+        "term between them would turn the pair into grounding edges. For each shape below, name "
+        "the new term that would fit, as short business vocabulary:\n"
+        + _SHAPE_TEMPLATES
+        + f"\nX: {line(x)}\nY: {line(y)}\n\n"
+        "Give up to three candidate names per shape, the best first, and leave out a shape that "
+        "does not fit. A candidate is a suggestion for the curator, never an existing term's "
+        "name.\n\n"
+        'Respond with only a JSON object like {"component_type": ["candidate"], '
+        '"common_whole": ["candidate"]} — no prose, no code fences.'
+    )
+
+
+@router.post("/relationships/resolve")
+async def suggest_resolving_terms(request: Request) -> dict:
+    """Candidate names for the term that would resolve one RELATED_TO pair, shape by shape.
+
+    Nothing is written: the curator starts a shape, which opens the new-term form, or adds the
+    RELATED_TO anyway.
+    """
+    _require_glossary_rw(request)
+    import json
+
+    from provisa.api.admin.schema_helpers import _call_llm
+
+    body = await request.json()
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        pair = []
+        for key in ("from_term_id", "to_term_id"):
+            term = await glossary_repo.get_term(_conn, int(body[key]))
+            if term is None:
+                raise ApiError(404, "glossary.term_not_found", f"term {body[key]} not found")
+            await _require_term_readable(_conn, term["id"], request)
+            pair.append(term)
+    raw = await _call_llm(
+        resolve_prompt(pair[0], pair[1]), "glossary_relationships", max_tokens=512
+    )
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+    try:
+        proposed = json.loads(raw)
+    except ValueError as exc:
+        raise ApiError(
+            502, "glossary.generation_unparseable", f"Model response was not JSON: {exc}"
+        ) from exc
+    if not isinstance(proposed, dict):
+        raise ApiError(502, "glossary.generation_unparseable", "Model response was not an object")
+    return {"resolve": resolve_shapes(proposed)}
 
 
 @router.post("/relationships/generate")

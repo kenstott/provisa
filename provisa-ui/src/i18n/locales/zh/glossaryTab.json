@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} 是 {{term}} 的一部分；{{term}} 是一种 {{to}}",
     "shapeEdges_common_whole": "{{from}} 和 {{to}} 是 {{term}} 的一部分",
     "shapeEdges_common_genus": "{{from}} 和 {{to}} 是一种 {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} 和 {{to}} 是 {{term}} 的有效值"
+    "shapeEdges_common_enumeration": "{{from}} 和 {{to}} 是 {{term}} 的有效值",
+    "relatedToDialogTitle": "用“相关于”连接 {{from}} 和 {{to}}？",
+    "relatedToDialogWhy": "“相关于”是最没用的关系：它不起锚定作用，术语仍无法通过它到达数据。在两者之间加一个新术语，就能把这对术语变成能锚定的关系。",
+    "relatedToDialogShapes": "可解决这对术语的形式，从最窄开始：",
+    "relatedToDialogSuggesting": "正在建议名称…",
+    "relatedToDialogNoNames": "未建议名称（{{reason}}）。请开始一种形式并自行输入名称。",
+    "relatedToDialogStart": "开始",
+    "relatedToDialogAnyway": "仍然添加“相关于”",
+    "newTermPlaceholder": "新术语",
+    "shapeFormTitle": "新术语：{{shape}}",
+    "shapeFormEdges": "随之添加的关系"
   }
 }

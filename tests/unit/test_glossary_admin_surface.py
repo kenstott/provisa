@@ -455,3 +455,41 @@ async def test_relationship_assistant_steers_to_grounding_types(control_plane, m
         # The list counts each term's RELATED_TO edges, the review filter's input.
         assert {t["name"]: t["related_to"] for t in terms} == {"customer": 1, "order date": 1}
         assert notified == ["acme:ontology relationships generated"]
+
+
+async def test_resolving_terms_for_one_pair_are_suggested_not_written(control_plane, monkeypatch):
+    """REQ-1387 (CHOOSING RELATED_TO OPENS THE ALTERNATIVES): a curator choosing RELATED_TO is
+    offered candidate names per shape, through the assistant's own model path, tightest first;
+    nothing is written."""
+    from provisa.api.admin import schema_helpers
+
+    prompts: list[str] = []
+
+    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+        prompts.append(prompt)
+        assert operation == "glossary_relationships"
+        return '{"common_whole": ["purchase"], "component_type": ["order moment"], "x": ["y"]}'
+
+    monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
+    async with _surface(control_plane, monkeypatch) as (_db, notified):
+        customer = await _term_id("customer")
+        order_date = await _term_id("order date")
+        result = await glossary_router.suggest_resolving_terms(
+            _with_json(_request(), {"from_term_id": order_date, "to_term_id": customer})
+        )
+        assert result == {
+            "resolve": [
+                {"shape": "component_type", "candidates": ["order moment"]},
+                {"shape": "common_whole", "candidates": ["purchase"]},
+            ]
+        }
+        assert "X: order date [property]" in prompts[0] and "Y: customer [property]" in prompts[0]
+        assert "does not ground" in prompts[0]
+        terms = await glossary_router.list_terms(_request(), domains=None)
+        assert {t["name"] for t in terms} == {"customer", "order date"}
+        assert notified == []
+        with pytest.raises(ApiError) as err:
+            await glossary_router.suggest_resolving_terms(
+                _with_json(_request(), {"from_term_id": 99999, "to_term_id": customer})
+            )
+        assert err.value.status_code == 404

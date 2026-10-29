@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} parte de {{term}}; {{term}} tipo de {{to}}",
     "shapeEdges_common_whole": "{{from}} e {{to}} parte de {{term}}",
     "shapeEdges_common_genus": "{{from}} e {{to}} tipo de {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} e {{to}} valores válidos de {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} e {{to}} valores válidos de {{term}}",
+    "relatedToDialogTitle": "Ligar {{from}} e {{to}} com \"Relacionado a\"?",
+    "relatedToDialogWhy": "\"Relacionado a\" é a ligação menos útil: não ancora, então o termo continua sem alcançar dados por ela. Um termo novo entre os dois transformaria o par em ligações que ancoram.",
+    "relatedToDialogShapes": "Formas que resolveriam o par, da mais estreita à mais ampla:",
+    "relatedToDialogSuggesting": "Sugerindo nomes…",
+    "relatedToDialogNoNames": "Nenhum nome foi sugerido ({{reason}}). Comece uma forma e digite o nome você mesmo.",
+    "relatedToDialogStart": "Começar",
+    "relatedToDialogAnyway": "Adicionar \"Relacionado a\" mesmo assim",
+    "newTermPlaceholder": "termo novo",
+    "shapeFormTitle": "Termo novo: {{shape}}",
+    "shapeFormEdges": "Ligações adicionadas com ele"
   }
 }

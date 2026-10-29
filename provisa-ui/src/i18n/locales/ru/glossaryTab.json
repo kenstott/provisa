@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} — часть {{term}}; {{term}} — разновидность {{to}}",
     "shapeEdges_common_whole": "{{from}} и {{to}} — части {{term}}",
     "shapeEdges_common_genus": "{{from}} и {{to}} — разновидности {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} и {{to}} — допустимые значения {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} и {{to}} — допустимые значения {{term}}",
+    "relatedToDialogTitle": "Связать {{from}} и {{to}} через «Связан с»?",
+    "relatedToDialogWhy": "«Связан с» — наименее полезная связь: она не привязывает, поэтому термин по-прежнему не достигает через неё данных. Один новый термин между ними превратил бы пару в привязывающие связи.",
+    "relatedToDialogShapes": "Формы, которые разрешили бы пару, от самой узкой:",
+    "relatedToDialogSuggesting": "Подбираем названия…",
+    "relatedToDialogNoNames": "Названия не предложены ({{reason}}). Начните форму и введите название сами.",
+    "relatedToDialogStart": "Начать",
+    "relatedToDialogAnyway": "Всё равно добавить «Связан с»",
+    "newTermPlaceholder": "новый термин",
+    "shapeFormTitle": "Новый термин: {{shape}}",
+    "shapeFormEdges": "Связи, добавляемые вместе с ним"
   }
 }

@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} Teil von {{term}}; {{term}} Art von {{to}}",
     "shapeEdges_common_whole": "{{from}} und {{to}} Teil von {{term}}",
     "shapeEdges_common_genus": "{{from}} und {{to}} Art von {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} und {{to}} gültige Werte von {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} und {{to}} gültige Werte von {{term}}",
+    "relatedToDialogTitle": "{{from}} und {{to}} mit „Verwandt mit“ verknüpfen?",
+    "relatedToDialogWhy": "„Verwandt mit“ ist die am wenigsten nützliche Kante: Sie verankert nicht, der Begriff erreicht über sie also weiterhin keine Daten. Ein neuer Begriff zwischen beiden würde das Paar in verankernde Kanten verwandeln.",
+    "relatedToDialogShapes": "Formen, die das Paar auflösen würden, vom engsten an:",
+    "relatedToDialogSuggesting": "Namen werden vorgeschlagen…",
+    "relatedToDialogNoNames": "Es wurden keine Namen vorgeschlagen ({{reason}}). Beginnen Sie eine Form und geben Sie den Namen selbst ein.",
+    "relatedToDialogStart": "Beginnen",
+    "relatedToDialogAnyway": "Trotzdem „Verwandt mit“ hinzufügen",
+    "newTermPlaceholder": "neuer Begriff",
+    "shapeFormTitle": "Neuer Begriff: {{shape}}",
+    "shapeFormEdges": "Damit hinzugefügte Kanten"
   }
 }

@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} partie de {{term}} ; {{term}} type de {{to}}",
     "shapeEdges_common_whole": "{{from}} et {{to}} partie de {{term}}",
     "shapeEdges_common_genus": "{{from}} et {{to}} type de {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} et {{to}} valeurs valides de {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} et {{to}} valeurs valides de {{term}}",
+    "relatedToDialogTitle": "Relier {{from}} et {{to}} par « Lié à » ?",
+    "relatedToDialogWhy": "« Lié à » est le lien le moins utile : il n'ancre pas, donc le terme n'atteint toujours aucune donnée par lui. Un nouveau terme entre les deux transformerait la paire en liens qui ancrent.",
+    "relatedToDialogShapes": "Formes qui résoudraient la paire, de la plus étroite à la plus large :",
+    "relatedToDialogSuggesting": "Suggestion de noms…",
+    "relatedToDialogNoNames": "Aucun nom n'a été suggéré ({{reason}}). Commencez une forme et saisissez le nom vous-même.",
+    "relatedToDialogStart": "Commencer",
+    "relatedToDialogAnyway": "Ajouter « Lié à » quand même",
+    "newTermPlaceholder": "nouveau terme",
+    "shapeFormTitle": "Nouveau terme : {{shape}}",
+    "shapeFormEdges": "Liens ajoutés avec lui"
   }
 }

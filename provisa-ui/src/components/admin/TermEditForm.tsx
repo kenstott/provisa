@@ -76,6 +76,7 @@ export function TermEditForm({
   navigateToTerm,
   onSaved,
   onCancel,
+  onTermCreated,
 }: {
   term: GlossaryTermDetail;
   otherTermOptions: Option[];
@@ -91,6 +92,8 @@ export function TermEditForm({
    * left it with nothing and the server removed it. */
   onSaved: (done: boolean, removed: boolean) => Promise<void>;
   onCancel: () => void;
+  /** A resolving shape created a term (REQ-1387): the list is read again. */
+  onTermCreated: () => void;
 }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
@@ -272,13 +275,20 @@ export function TermEditForm({
 
   // The relationships editor changes the draft, not the server.
   const shown: GlossaryTermDetail = { ...term, edges_out: draft.edgesOut, edges_in: draft.edgesIn };
-  const addEdge = async (from: number, to: number, rel: GlossaryRelType) =>
+  // ``name``: a term the options do not hold yet, one a resolving shape just created (REQ-1387).
+  const addEdge = async (from: number, to: number, rel: GlossaryRelType, name?: string) =>
     setDraft((d) =>
       d === null
         ? d
         : from === term.id
-          ? { ...d, edgesOut: [...d.edgesOut, { term_id: to, rel_type: rel, name: nameOf(to) }] }
-          : { ...d, edgesIn: [...d.edgesIn, { term_id: from, rel_type: rel, name: nameOf(from) }] },
+          ? {
+              ...d,
+              edgesOut: [...d.edgesOut, { term_id: to, rel_type: rel, name: name ?? nameOf(to) }],
+            }
+          : {
+              ...d,
+              edgesIn: [...d.edgesIn, { term_id: from, rel_type: rel, name: name ?? nameOf(from) }],
+            },
     );
   const removeEdge = async (from: number, to: number, rel: GlossaryRelType) =>
     setDraft((d) =>
@@ -569,6 +579,7 @@ export function TermEditForm({
         retypeGlossaryEdge={retypeEdge}
         removeGlossaryEdge={removeEdge}
         addGlossaryEdge={addEdge}
+        newTerm={{ domainOptions, domainsEnabled, onCreated: onTermCreated }}
       />
       {said("relationships")}
 

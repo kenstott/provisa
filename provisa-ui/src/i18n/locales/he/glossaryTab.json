@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} חלק מ{{term}}; {{term}} סוג של {{to}}",
     "shapeEdges_common_whole": "{{from}} ו{{to}} חלק מ{{term}}",
     "shapeEdges_common_genus": "{{from}} ו{{to}} סוג של {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} ו{{to}} ערכים תקפים עבור {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} ו{{to}} ערכים תקפים עבור {{term}}",
+    "relatedToDialogTitle": "לקשר את {{from}} ואת {{to}} ב„קשור אל”?",
+    "relatedToDialogWhy": "„קשור אל” הוא הקשר הפחות שימושי: הוא אינו מעגן, ולכן המונח עדיין אינו מגיע דרכו לנתונים. מונח חדש אחד ביניהם יהפוך את הזוג לקשרים מעגנים.",
+    "relatedToDialogShapes": "צורות שיפתרו את הזוג, מהצרה ביותר:",
+    "relatedToDialogSuggesting": "מציע שמות…",
+    "relatedToDialogNoNames": "לא הוצעו שמות ({{reason}}). התחילו צורה והקלידו את השם בעצמכם.",
+    "relatedToDialogStart": "התחלה",
+    "relatedToDialogAnyway": "להוסיף „קשור אל” בכל זאת",
+    "newTermPlaceholder": "מונח חדש",
+    "shapeFormTitle": "מונח חדש: {{shape}}",
+    "shapeFormEdges": "קשרים שנוספים איתו"
   }
 }

@@ -8620,5 +8620,15 @@
   "zh-HK/glossaryTab.json::glossaryTab.shapeEdges_specialisation": "{{from}} part of {{term}}; {{term}} kind of {{to}}",
   "zh-HK/glossaryTab.json::glossaryTab.shapeEdges_common_whole": "{{from}} and {{to}} part of {{term}}",
   "zh-HK/glossaryTab.json::glossaryTab.shapeEdges_common_genus": "{{from}} and {{to}} kind of {{term}}",
-  "zh-HK/glossaryTab.json::glossaryTab.shapeEdges_common_enumeration": "{{from}} and {{to}} valid values of {{term}}"
+  "zh-HK/glossaryTab.json::glossaryTab.shapeEdges_common_enumeration": "{{from}} and {{to}} valid values of {{term}}",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogTitle": "Link {{from}} and {{to}} with Related to?",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogWhy": "Related to is the least useful edge: it does not ground, so the term still cannot reach data through it. One new term between the two would turn the pair into edges that ground.",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogShapes": "Shapes that would resolve the pair, tightest first:",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogSuggesting": "Suggesting names…",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogNoNames": "No names were suggested ({{reason}}). Start a shape and type the name yourself.",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogStart": "Start",
+  "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogAnyway": "Add Related to anyway",
+  "zh-HK/glossaryTab.json::glossaryTab.newTermPlaceholder": "new term",
+  "zh-HK/glossaryTab.json::glossaryTab.shapeFormTitle": "New term: {{shape}}",
+  "zh-HK/glossaryTab.json::glossaryTab.shapeFormEdges": "Edges added with it"
 }

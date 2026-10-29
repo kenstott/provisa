@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} は {{term}} の一部、{{term}} は {{to}} の一種",
     "shapeEdges_common_whole": "{{from}} と {{to}} は {{term}} の一部",
     "shapeEdges_common_genus": "{{from}} と {{to}} は {{term}} の一種",
-    "shapeEdges_common_enumeration": "{{from}} と {{to}} は {{term}} の有効な値"
+    "shapeEdges_common_enumeration": "{{from}} と {{to}} は {{term}} の有効な値",
+    "relatedToDialogTitle": "{{from}} と {{to}} を「に関連」で結びますか？",
+    "relatedToDialogWhy": "「に関連」は最も役に立たない関係です。紐付けにならないため、この用語はそれを通じてデータに到達できません。二つの間に新しい用語を一つ置けば、このペアは紐付けになる関係に変わります。",
+    "relatedToDialogShapes": "このペアを解消する形（狭いものから順に）：",
+    "relatedToDialogSuggesting": "名前を提案しています…",
+    "relatedToDialogNoNames": "名前は提案されませんでした（{{reason}}）。形を選んで、名前を自分で入力してください。",
+    "relatedToDialogStart": "開始",
+    "relatedToDialogAnyway": "それでも「に関連」を追加",
+    "newTermPlaceholder": "新しい用語",
+    "shapeFormTitle": "新しい用語：{{shape}}",
+    "shapeFormEdges": "一緒に追加される関係"
   }
 }

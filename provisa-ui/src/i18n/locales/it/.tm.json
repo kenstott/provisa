@@ -8620,5 +8620,15 @@
   "it/glossaryTab.json::glossaryTab.shapeEdges_specialisation": "{{from}} part of {{term}}; {{term}} kind of {{to}}",
   "it/glossaryTab.json::glossaryTab.shapeEdges_common_whole": "{{from}} and {{to}} part of {{term}}",
   "it/glossaryTab.json::glossaryTab.shapeEdges_common_genus": "{{from}} and {{to}} kind of {{term}}",
-  "it/glossaryTab.json::glossaryTab.shapeEdges_common_enumeration": "{{from}} and {{to}} valid values of {{term}}"
+  "it/glossaryTab.json::glossaryTab.shapeEdges_common_enumeration": "{{from}} and {{to}} valid values of {{term}}",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogTitle": "Link {{from}} and {{to}} with Related to?",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogWhy": "Related to is the least useful edge: it does not ground, so the term still cannot reach data through it. One new term between the two would turn the pair into edges that ground.",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogShapes": "Shapes that would resolve the pair, tightest first:",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogSuggesting": "Suggesting names…",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogNoNames": "No names were suggested ({{reason}}). Start a shape and type the name yourself.",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogStart": "Start",
+  "it/glossaryTab.json::glossaryTab.relatedToDialogAnyway": "Add Related to anyway",
+  "it/glossaryTab.json::glossaryTab.newTermPlaceholder": "new term",
+  "it/glossaryTab.json::glossaryTab.shapeFormTitle": "New term: {{shape}}",
+  "it/glossaryTab.json::glossaryTab.shapeFormEdges": "Edges added with it"
 }

@@ -238,6 +238,16 @@
     "shapeEdges_specialisation": "{{from}} parte de {{term}}; {{term}} tipo de {{to}}",
     "shapeEdges_common_whole": "{{from}} y {{to}} parte de {{term}}",
     "shapeEdges_common_genus": "{{from}} y {{to}} tipo de {{term}}",
-    "shapeEdges_common_enumeration": "{{from}} y {{to}} valores válidos de {{term}}"
+    "shapeEdges_common_enumeration": "{{from}} y {{to}} valores válidos de {{term}}",
+    "relatedToDialogTitle": "¿Vincular {{from}} y {{to}} con «Relacionado con»?",
+    "relatedToDialogWhy": "«Relacionado con» es la relación menos útil: no ancla, así que el término sigue sin llegar a los datos a través de ella. Un término nuevo entre ambos convertiría el par en relaciones que anclan.",
+    "relatedToDialogShapes": "Formas que resolverían el par, de la más ajustada a la más amplia:",
+    "relatedToDialogSuggesting": "Sugiriendo nombres…",
+    "relatedToDialogNoNames": "No se sugirieron nombres ({{reason}}). Empiece una forma y escriba el nombre usted mismo.",
+    "relatedToDialogStart": "Empezar",
+    "relatedToDialogAnyway": "Añadir «Relacionado con» de todos modos",
+    "newTermPlaceholder": "término nuevo",
+    "shapeFormTitle": "Término nuevo: {{shape}}",
+    "shapeFormEdges": "Relaciones que se añaden con él"
   }
 }
