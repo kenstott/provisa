@@ -14,6 +14,8 @@ sources is refused naming both, and a role without table_registration is refused
 source types: ``VIEW_DEPLOY_SOURCE_TYPES`` (every other type is refused by name, unit-tested in
 tests/unit/test_deploy_view_source_types.py)."""
 
+# Requirements: REQ-2184
+
 import json
 import os
 from types import SimpleNamespace

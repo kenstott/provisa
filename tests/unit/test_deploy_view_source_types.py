@@ -11,6 +11,8 @@
 """deploy_view_to_db writes a real view back only to the RDBs that take its DDL; every other
 source type is refused by name before any DDL runs."""
 
+# Requirements: REQ-2184
+
 import pytest
 
 from provisa.api.admin.schema_mutation_ops import (
