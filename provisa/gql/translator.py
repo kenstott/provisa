@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import functools
 import re
 from collections.abc import Callable
 from dataclasses import replace
@@ -121,7 +122,48 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     """
     ast = _null_bound_matches(ast)
     translator = _Translator(ast, label_map, params)
-    return translator.translate()
+    sql_ast, ordered, graph_vars = translator.translate()
+    return quote_keywords(sql_ast), ordered, graph_vars
+
+
+@functools.cache
+def _keywords() -> frozenset[str]:
+    """The keywords sqlglot reads back as other than a column (``like``, ``qualify``) when its
+    own SQL text writes them bare."""
+    import sqlglot
+    from sqlglot.dialects.postgres import Postgres
+    from sqlglot.errors import SqlglotError
+
+    found: set[str] = set()
+    for keyword in Postgres.Tokenizer.KEYWORDS:
+        word = keyword.lower()
+        if not word.isidentifier() or word in found:
+            continue
+        for probe in (f"SELECT {word} FROM t", f"SELECT f({word}, 1), {word}.x FROM t AS {word}"):
+            try:
+                tree = sqlglot.parse_one(probe, read="postgres")
+            except SqlglotError:
+                found.add(word)
+                break
+            names = {n for c in tree.find_all(exp.Column) for n in (c.name, c.table)}
+            if word not in {n.lower() for n in names}:
+                found.add(word)
+                break
+    return frozenset(found)
+
+
+def quote_keywords(tree: exp.Expression) -> Any:
+    """``tree`` with each unquoted column name or column table that is a SQL keyword quoted: a Cypher variable
+    may be named ``like`` or ``order``, which the SQL text sqlglot writes (it quotes no keyword)
+    would read back as the keyword (REQ-347)."""
+    keywords = _keywords()
+    for column in tree.find_all(exp.Column):
+        # A column's name and its table's: an alias (AS like) sqlglot reads back as written.
+        for part in (column.args.get("this"), column.args.get("table")):
+            if isinstance(part, exp.Identifier) and not part.quoted:
+                if part.name.lower() in keywords:
+                    part.set("quoted", True)
+    return tree
 
 
 #: A value's type as a map literal writes it (expr_visitor._literal_kind) -> its engine type.
@@ -774,6 +816,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._map_unwind_types: dict[str, dict[str, str]] = {}
         # Variables whose value is a MAP array (from collect({...}) or similar)
         self._map_array_vars: set[str] = set()
+        #: Each variable bound to a list of graph elements (_element_list_kind): collect(n) of a
+        #: node, relationship or path, or a session walk's nodes or relationships; their JSON
+        #: values, which the answer decodes.
+        self._element_list_vars: dict[str, str] = {}
+        #: The node types a list of collected nodes draws from, by its variable (union_type).
+        self._element_list_labels: dict[str, list[str]] = {}
         # Each UNWIND's UNNEST alias (``UNNEST(a) AS _uw0(x)``): its variable is that alias's column
         self._unwind_aliases: set[str] = set()
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
@@ -818,8 +866,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # A path a WITH carries on: one column of its CTE, its path object (WITH p)
         self._carried_paths: set[str] = set()
-        # A WITH's alias of a list of a session walk's nodes or relationships -> NODE or EDGE
-        self._element_lists: dict[str, str] = {}
         # An embedded statement's names for the outer nodes it matches (expr_context), and each
         # one's identity in the outer statement it is tied to
         self._drawn_vars: set[str] = set()
@@ -986,14 +1032,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
         # The WITH's ORDER BY, SKIP and LIMIT pick the rows it carries on, before its WHERE.
-        if with_clause.order_by:
-            stage_query = stage_query.order_by(
-                *self._build_order_by(with_clause.order_by, with_clause.items)
-            )
+        # Each key that orders nothing (a property no row has, null) is dropped: none may be left.
+        with_orders = (
+            self._build_order_by(with_clause.order_by, with_clause.items)
+            if with_clause.order_by
+            else []
+        )
+        if with_orders:
+            stage_query = stage_query.order_by(*with_orders)
         if with_clause.limit is not None:
-            stage_query = stage_query.limit(with_clause.limit)
+            stage_query = stage_query.limit(self._row_count(with_clause.limit, "LIMIT"))
         if with_clause.skip is not None:
-            stage_query = stage_query.offset(with_clause.skip)
+            stage_query = stage_query.offset(self._row_count(with_clause.skip, "SKIP"))
         if with_clause.where is not None and not filters_read_rows:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
             before = (
@@ -1088,7 +1138,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if carried in read:
             return joins
         table = exp.Table(this=exp.Identifier(this=carried))
-        return [*joins, {"table": table, "on": None, "join_type": "CROSS"}]
+        beside = {"table": table, "on": None, "join_type": "CROSS"}
+        # Set before the first join whose condition reads its rows ((x:X), (a)-->(b) with a
+        # carried), which an engine binds only once they are joined.
+        first = next(
+            (
+                n
+                for n, j in enumerate(joins)
+                if j.get("on") is not None
+                and any(c.table == carried for c in j["on"].find_all(exp.Column))
+            ),
+            len(joins),
+        )
+        return [*joins[:first], beside, *joins[first:]]
 
     def _build_final_from(
         self,
@@ -1318,16 +1380,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if order_exprs:
                 outer = outer.order_by(*order_exprs)
             if self._ast.limit is not None:
-                outer = outer.limit(self._ast.limit)
+                outer = outer.limit(self._row_count(self._ast.limit, "LIMIT"))
             if self._ast.skip is not None:
-                outer = outer.offset(self._ast.skip)
+                outer = outer.offset(self._row_count(self._ast.skip, "SKIP"))
             return outer
         if order_exprs:
             result = result.order_by(*order_exprs)
         if self._ast.limit is not None:
-            result = result.limit(self._ast.limit)
+            result = result.limit(self._row_count(self._ast.limit, "LIMIT"))
         if self._ast.skip is not None:
-            result = result.offset(self._ast.skip)
+            result = result.offset(self._row_count(self._ast.skip, "SKIP"))
         return result
 
     def translate(self) -> tuple[exp.Select | exp.Union, list[str], dict[str, GraphVarKind]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1412,9 +1474,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             and (self._ast.limit is not None or self._ast.skip is not None)
         ):
             if self._ast.limit is not None:
-                result = result.limit(self._ast.limit)
+                result = result.limit(self._row_count(self._ast.limit, "LIMIT"))
             if self._ast.skip is not None:
-                result = result.offset(self._ast.skip)
+                result = result.offset(self._row_count(self._ast.skip, "SKIP"))
             result = exp.select(exp.Star()).from_(
                 exp.alias_(exp.Subquery(this=result), alias="_ub_first")
             )
@@ -1441,20 +1503,132 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             select = select.this
         if not isinstance(select, exp.Select):
             return
+        element_lists = {
+            (i.alias or i.name).lower()
+            for i in (self._ast.return_clause.items if self._ast.return_clause else [])
+            if self._is_element_list(i.expression)
+        }
         for projection in select.expressions:
             name = projection.alias_or_name
             if not name or name.lower() in self._graph_vars:
                 continue
             held = projection.this if isinstance(projection, exp.Alias) else projection
-            if _holds_json_maps(projection):
+            if name.lower() in element_lists:
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
+            elif _holds_json_maps(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
             elif isinstance(held, exp.Column) and held.name in self._json_list_vars:
                 # A list of several types a WITH carries: each item its JSON.
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
-            elif _is_json_list(projection):
+            elif _is_json_list(projection) or self._lists_union_values(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
             elif _json_valued(projection, self._json_value_vars) == "value":
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_VALUE
+
+    def _is_element_list(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a list of graph elements as their JSON values: collect(x) of a
+        node, relationship or path, or a variable a WITH bound to one."""
+        return self._element_list_kind(expr) is not None
+
+    def _element_list_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path": what the list of graph elements ``expr`` is holds, each its
+        JSON value: collect(x); a session walk's nodes(p) or relationships(p), or its
+        relationship variable (REQ-751); a variable a WITH bound to one; its tail, reverse or
+        slice; or a comprehension over one projecting its elements or a path's end,
+        [x IN collect(p) | head(nodes(x))]. None for any other expression."""
+        from provisa.gql.expr_ast import ListComprehension, Paren, Slice
+
+        while isinstance(expr, Paren):
+            expr = expr.inner
+        if isinstance(expr, Variable):
+            if expr.name in self._walk_trails and expr.name in self._varlen_rel_vars:
+                return "rel"
+            return self._element_list_vars.get(expr.name)
+        if isinstance(expr, Slice):
+            return self._element_list_kind(expr.obj)
+        if isinstance(expr, FunctionCall) and len(expr.args) == 1:
+            arg, fn = expr.args[0], expr.name.lower()
+            if fn in ("relationships", "nodes"):
+                walked = isinstance(arg, Variable) and (
+                    arg.name in self._walk_trails
+                    or arg.name in getattr(self, "_every_rel_paths", {})
+                )
+                if not walked:
+                    return None
+                return "node" if fn == "nodes" else "rel"
+            if fn in ("tail", "reverse"):
+                return self._element_list_kind(arg)
+        if isinstance(expr, ListComprehension):
+            held = self._element_list_kind(expr.source)
+            body = expr.projection
+            if held is None or body is None:
+                return held
+            if isinstance(body, Variable) and body.name == expr.var:
+                return held
+            if (
+                held == "path"
+                and isinstance(body, FunctionCall)
+                and body.name.lower() in ("head", "last")
+                and len(body.args) == 1
+                and isinstance(body.args[0], FunctionCall)
+                and body.args[0].name.lower() in ("nodes", "relationships")
+                and len(body.args[0].args) == 1
+                and isinstance(body.args[0].args[0], Variable)
+                and body.args[0].args[0].name == expr.var
+            ):
+                return "node" if body.args[0].name.lower() == "nodes" else "rel"
+            return None
+        if not (
+            isinstance(expr, FunctionCall)
+            and expr.name.lower() == "collect"
+            and len(expr.args) == 1
+            and isinstance(expr.args[0], Variable)
+        ):
+            return None
+        name = expr.args[0].name
+        if self._temporal_context()._element_of(name) is None:
+            return None
+        if name in self._path_vars:
+            return "path"
+        if name in self._rel_var_types or name in self._all_rels_rel_vars:
+            return "rel"
+        return "node"
+
+    def _element_list_types(self, expr: CypherExpr) -> list[str]:
+        """The node types the nodes of the list ``expr`` collects are drawn from, which a
+        property read of one of them takes its type from (union_type)."""
+        from provisa.gql.expr_ast import ListComprehension, Slice
+        from provisa.gql.translator_union import union_labels
+
+        if isinstance(expr, Variable):
+            return list(self._element_list_labels.get(expr.name, []))
+        if isinstance(expr, Slice):
+            return self._element_list_types(expr.obj)
+        if isinstance(expr, ListComprehension):
+            return self._element_list_types(expr.source)
+        if not (
+            isinstance(expr, FunctionCall) and expr.args and isinstance(expr.args[0], Variable)
+        ):
+            return []
+        name = expr.args[0].name
+        nm = self._var_table.get(name, (name, None))[1]
+        if nm is not None:
+            return [nm.type_name]
+        if name in self._domain_nodes:
+            return union_labels(self._lm, self._domain_nodes[name])
+        return list(self._all_rels_ends.get(name, []))
+
+    def _lists_union_values(self, projection: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Whether ``projection`` is a list of nodes and relationships a read of every
+        relationship holds as their JSON ([n, r, m] of an unlabelled hop), which the answer
+        decodes as a list of maps."""
+        held = self._all_rels_node_vars | self._all_rels_rel_vars
+        e = projection.this if isinstance(projection, exp.Alias) else projection
+        return (
+            isinstance(e, exp.Array)
+            and bool(e.expressions)
+            and all(isinstance(x, exp.Column) and x.name in held for x in e.expressions)
+        )
 
     def _reconcile_params_with_placeholders(
         self,
@@ -1591,6 +1765,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             )
             self._var_table[uw.variable] = (alias, None)
             self._unwind_aliases.add(alias)
+            held = self._element_list_kind(uw.expression)
+            if held in ("node", "rel"):
+                # A node or relationship of a collected list: its JSON value, read on as a read
+                # of every relationship holds one (its properties, its identity, a later hop).
+                (self._all_rels_node_vars if held == "node" else self._all_rels_rel_vars).add(
+                    uw.variable
+                )
+                self._passthrough_vars.add(uw.variable)
+                self._all_rels_var_alias[uw.variable] = alias
+                self._all_rels_ends[uw.variable] = self._element_list_types(uw.expression)
             element = self._temporal_context().temporal_element_kind(uw.expression)
             if element is not None:
                 self._temporal_kinds[uw.variable] = element
@@ -1767,6 +1951,28 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _lower_where(self, where: WhereClause) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         return self._lower_expr(where.expression).transform(_timestamp_literal)
 
+    def _row_count(self, value: int | CypherExpr, clause: str) -> int | exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """SKIP's or LIMIT's count as SQL: a whole number written, or an expression that reads no
+        variable -- a parameter (bound, so the translation serves any value of its type) or one
+        whose value the engine works out, ``toInteger(rand() * 9)`` (the parser refuses one that
+        reads a variable). openCypher's rule: a count is a whole number of 0 or more; a parameter
+        not one is refused here, and a negative one by the engine when its translation is kept."""
+        if isinstance(value, int):
+            return value
+        if isinstance(value, ExprParameter):
+            given = self._params.get(value.name)
+            if isinstance(given, bool) or not isinstance(given, int):
+                raise CypherTranslateError(
+                    f"{clause} ${value.name} is {given!r}: {clause} takes a whole number of 0 or "
+                    "more"
+                )
+            if given < 0:
+                raise CypherTranslateError(
+                    f"{clause} ${value.name} is {given}: {clause} takes a whole number of 0 or more"
+                )
+            return self._lower_expr(value)
+        return exp.cast(self._lower_expr(value), exp.DataType.build("BIGINT"))
+
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """An expression tree as a SQLGlot expression (REQ-913)."""
         return self._lower_expr(expr)
@@ -1838,16 +2044,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         an engine folds the case of a name, and name and Name are two keys."""
         if not isinstance(expr, MapLiteral):
             return []
+        # Its values are read where the WITH reads, before it names the map: WITH {second:
+        # m.first} AS m reads the m an earlier WITH carries.
+        columns = [
+            exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
+            for n, (_key, value) in enumerate(expr.entries)
+        ]
         self._map_vars[alias] = {key: n for n, (key, _value) in enumerate(expr.entries)}
         self._map_key_maps |= {
             map_key_column(alias, n)
             for n, (_key, value) in enumerate(expr.entries)
             if isinstance(value, MapLiteral)
         }
-        return [
-            exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
-            for n, (_key, value) in enumerate(expr.entries)
-        ]
+        return columns
 
     def _is_graph_element(self, name: str) -> bool:
         """Whether ``name`` is a node, relationship or path of the query."""
@@ -1866,7 +2075,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     nodes[item.alias or expr.name] = meta
                 elif expr.name in self._union_columns:
                     nodes[item.alias or expr.name] = None
-        return nodes if len(nodes) > 1 else {}
+        # A node held in an earlier WITH's rows beside a value this WITH names again (WITH a,
+        # a.num2 % 3 AS x WITH a, a.num + a.num2 AS x): its row's columns hold the old value too,
+        # so it is carried as its own columns, or the new value would meet the old one's name.
+        held = {
+            self._var_table[i.expression.name][0]
+            for i in items
+            if isinstance(i.expression, Variable)
+            and i.expression.name in self._cte_sources
+            and i.expression.name in self._var_table
+        }
+        shadows = any(
+            i.alias
+            and not (isinstance(i.expression, Variable) and i.expression.name == i.alias)
+            and i.alias in self._var_table
+            and self._var_table[i.alias][0] in held
+            and self._var_table[i.alias][1] is None
+            for i in items
+        )
+        return nodes if len(nodes) > 1 or (nodes and shadows) else {}
 
     def _carried_columns(self, items: list[ReturnItem]) -> dict[str, list[str]]:
         """Each node a WITH carries beside another (_carried_nodes), by its key: its columns."""
@@ -1981,14 +2208,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True)
                     )
                     continue
-                tbl_col = exp.Column(
-                    this=exp.Star(),
-                    table=exp.Identifier(this=held_in),
-                )
-                if alias:
-                    exprs.append(exp.alias_(tbl_col, alias))
-                else:
-                    exprs.append(tbl_col)
+                # The node's row goes on as its columns: a new name (WITH a AS b) is the
+                # variable's (_update_var_table_for_with), never an alias of the star, which an
+                # engine reads as one column.
+                exprs.append(exp.Column(this=exp.Star(), table=exp.Identifier(this=held_in)))
             else:
                 parsed = self._parse_expr(expr)
                 if alias:
@@ -2024,14 +2247,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
         carried_paths: set[str] = set()
-        element_lists: dict[str, str] = {}
         union_columns: dict[str, list[str]] = {}
+        element_lists: dict[str, str] = {}
+        element_types: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
             )
-            if name and (element := self._element_list_kind(item.expression)) is not None:
-                element_lists[name] = element
             if name and self._temporal_context().is_text(item.expression):
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
@@ -2058,6 +2280,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
+            held_kind = self._element_list_kind(expr)
+            if held_kind is not None:
+                element_lists[key] = held_kind
+                element_types[key] = self._element_list_types(expr)
             if bare is not None and bare in self._union_columns:
                 union_columns[key] = self._union_columns[bare]
             if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
@@ -2091,8 +2317,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             self._all_rels_var_alias[key] = cte_name
         for path in carried_paths:
             self._path_vars.pop(path, None)
+        for key in new_var_table:
+            # A name the WITH gives a value of its own (WITH [x IN collect(p) | ...] AS p) is no
+            # longer the path that pattern named.
+            if key not in carried_paths:
+                self._path_vars.pop(key, None)
+        # A relationship or node of a union the WITH does not carry is out of scope after it: a
+        # later MATCH naming it binds it anew (MATCH (me)-[r1]->() WITH me MATCH (me)-[r1]->()).
+        self._all_rels_rel_vars &= set(new_var_table)
+        self._all_rels_node_vars &= set(new_var_table)
         self._carried_paths = carried_paths
-        self._element_lists = element_lists
+        self._element_list_vars = element_lists
+        self._element_list_labels = element_types
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
@@ -2221,7 +2457,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
         if self._ast.return_clause:
             items.extend(self._ast.return_clause.items)
-        return any(isinstance(i.expression, Variable) and i.expression.name == var for i in items)
+        if any(isinstance(i.expression, Variable) and i.expression.name == var for i in items):
+            return True
+        # collect(n): a list of the nodes themselves (expr_context._agg_node).
+        return any(
+            isinstance(node, FunctionCall)
+            and node.name.lower() == "collect"
+            and len(node.args) == 1
+            and isinstance(node.args[0], Variable)
+            and node.args[0].name == var
+            for i in items
+            for node in walk(i.expression)
+        )
 
     def _zero_hop_paths(self) -> dict[str, str]:
         """Each path of no hops the statement names (MATCH p = (a)), to its one node's variable."""

@@ -198,6 +198,11 @@ def _node_object(walk: SessionWalk, nm: NodeMapping) -> exp.Expression:  # pyrig
             exp.Literal.string(nm.table_label),
             exp.Literal.string("properties"),
             exp.Anonymous(this="JSON_OBJECT", expressions=props),
+            # Its every label, which a label test or labels() of a hop's node held as this value
+            # reads in the statement (expr_context._session_labels); the answer's own come from
+            # ephemeral.seam.answered.
+            exp.Literal.string("labels"),
+            _labels_of(nm),
             # Its graph identity, which a walk from it reads (_walk_end).
             exp.Literal.string("graphId"),
             graph_identity(walk, nm, None),

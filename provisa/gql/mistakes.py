@@ -626,6 +626,79 @@ def projection_misuse(ast: CypherAST) -> CypherMistake | None:
     return None
 
 
+def _uncovered(node: object, covered: set[str], out: list[str]) -> None:
+    """Each variable ``node`` reads outside every part of it a projection keeps (``covered``,
+    as cypher_text writes them), into ``out``; one a comprehension binds is its own."""
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            _uncovered(item, covered, out)
+        return
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return
+    if isinstance(node, CypherExpr) and cypher_text(node) in covered:
+        return
+    if isinstance(node, Variable):
+        out.append(node.name)
+        return
+    inner: list[str] = []
+    for f in dataclasses.fields(node):
+        _uncovered(getattr(node, f.name), covered, inner)
+    own = getattr(node, "var", None)
+    out.extend(n for n in inner if not (isinstance(own, str) and n == own))
+
+
+def projection_scope_misuse(ast: CypherAST) -> CypherMistake | None:
+    """The refusal of a WITH expression with no name (WITH a, count(*)), and of an ORDER BY after
+    DISTINCT or an aggregation reading what that projection does not keep: its rows are the
+    projection's, so only its columns, or an expression it projects, can order them."""
+    parts, _ = _unions(ast)
+    for part in parts:
+        for w in part.with_clauses:
+            for item in w.items:
+                if item.alias is None and not isinstance(item.expression, Variable):
+                    written = item.name or cypher_text(item.expression) or "an expression"
+                    return CypherMistake(
+                        "cypher.with_needs_alias",
+                        f"WITH carries {written} with no name: a WITH names each expression it "
+                        f"carries on. Name it with AS, e.g. {written} AS value.",
+                        expression=written,
+                    )
+        clauses: list[tuple[str, list, bool, list]] = [
+            ("WITH", w.items, w.distinct, w.order_by) for w in part.with_clauses
+        ]
+        if part.return_clause is not None:
+            ret = part.return_clause
+            clauses.append(("RETURN", ret.items, ret.distinct, part.order_by))
+        for clause, items, distinct, order_by in clauses:
+            if not order_by or not (distinct or any(_aggregates(i.expression) for i in items)):
+                continue
+            kept = {i.alias for i in items if i.alias} | {
+                i.expression.name for i in items if isinstance(i.expression, Variable)
+            }
+            # Each item, and each aggregate an item takes anywhere in it ({count: count(*)}).
+            covered = {
+                t
+                for i in items
+                for e in [i.expression, *(c for c in _aggregates(i.expression))]
+                if (t := cypher_text(e)) is not None
+            }
+            for order in order_by:
+                read: list[str] = []
+                _uncovered(order.expression, covered, read)
+                gone = next((n for n in read if n not in kept), None)
+                if gone is not None:
+                    why = "DISTINCT" if distinct else "aggregation"
+                    return CypherMistake(
+                        "cypher.order_by_not_projected",
+                        f"ORDER BY reads {gone}, which the {clause} with {why} does not keep: its "
+                        f"rows are the {clause}'s, so ORDER BY reads what it projects. Project "
+                        f"{gone} in the {clause}, or order by a column it returns.",
+                        variable=gone,
+                        clause=clause,
+                    )
+    return None
+
+
 def _statement_expressions(ast: CypherAST) -> list[CypherExpr]:
     found: list[CypherExpr] = []
     for step in ast.pipeline:

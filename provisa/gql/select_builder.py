@@ -50,6 +50,10 @@ def _variable_property(expr: CypherExpr) -> tuple[str, str] | None:
 
 
 #: A graph function whose aliased value the assembler reads back as edges or nodes.
+#: The graph kind of each item of a list of graph elements (translator._element_list_kind) whose
+#: items the answer reads as nodes or relationships.
+_ELEMENT_KINDS = {"node": "NODE", "rel": "EDGE"}
+
 _GRAPH_FUNCTIONS = {
     "relationship": "EDGE",
     "relationships": "EDGE",
@@ -186,7 +190,6 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _union_columns: dict[str, list[str]]
     _varlen_rel_vars: dict  # varlen rel variable → outer path variable
     _walk_trails: dict  # session walk's path or rel variable → (its nodes, its relationships)
-    _element_lists: dict  # a WITH's alias of a list of a walk's nodes or relationships → its kind
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         raise NotImplementedError(expr)
@@ -721,6 +724,13 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             if _info and _info[1] and _prop in _info[1].map_properties:
                 # REQ-1991: returned as a map on every engine, whatever form it arrives in.
                 self._graph_vars[(name or _prop).lower()] = GraphVarKind.MAP
+            elif (
+                str(self._temporal_context().property_type(exp.column(_var), _prop) or "").lower()
+                == "json"
+            ):
+                # REQ-2176: a property held as one JSON value (a session label's property written
+                # with values of several kinds): its value, decoded by the answer.
+                self._graph_vars[(name or _prop).lower()] = GraphVarKind.JSON_VALUE
         if alias:
             return exp.alias_(parsed, alias)
         if name:
@@ -759,44 +769,19 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         return exp.alias_(exp.Null(), alias or expr_text)
 
     def _element_list_kind(self, expr: CypherExpr) -> str | None:
-        """``NODE`` or ``EDGE`` for a list of a session walk's nodes or relationships (REQ-751):
-        ``nodes(p)``, ``relationships(p)``, the walk's relationship variable, a WITH's alias of
-        one, and its ``tail``, ``reverse`` or slice; None for any other expression."""
-        from provisa.gql.expr_ast import Paren, Slice
-
-        while isinstance(expr, Paren):
-            expr = expr.inner
-        if isinstance(expr, Variable):
-            if expr.name in self._element_lists:
-                return self._element_lists[expr.name]
-            if expr.name in self._walk_trails and expr.name in self._varlen_rel_vars:
-                return "EDGE"
-            return None
-        if isinstance(expr, Slice):
-            return self._element_list_kind(expr.obj)
-        if not isinstance(expr, FunctionCall) or len(expr.args) != 1:
-            return None
-        arg, name = expr.args[0], expr.name.lower()
-        if name in ("relationships", "nodes"):
-            held = isinstance(arg, Variable) and (
-                arg.name in self._walk_trails or arg.name in getattr(self, "_every_rel_paths", {})
-            )
-            return _GRAPH_FUNCTIONS[name] if held else None
-        if name in ("tail", "reverse"):
-            return self._element_list_kind(arg)
-        return None
+        raise NotImplementedError(expr)
 
     def _trail_kind(self, expr: CypherExpr) -> str | None:
-        """The graph kind of what ``expr`` reads of a session walk's trail: a list of its nodes
-        or relationships (_element_list_kind), and ``head`` or ``last`` of one; None for any
-        other expression."""
+        """The graph kind of a list of nodes or relationships ``expr`` is, each its JSON object
+        (translator._element_list_kind), or of ``head`` or ``last`` of one; None for any other
+        expression."""
         if (
             isinstance(expr, FunctionCall)
             and len(expr.args) == 1
             and expr.name.lower() in ("head", "last")
         ):
-            return self._element_list_kind(expr.args[0])
-        return self._element_list_kind(expr)
+            expr = expr.args[0]
+        return _ELEMENT_KINDS.get(self._element_list_kind(expr) or "")
 
     def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """A node graph functions return (startNode(r), nodes(p)), with the identity every node

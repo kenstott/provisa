@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.cypher.expr_parser import CypherExprParseError, parse_expression
-from provisa.gql.expr_ast import CypherExpr, Variable
+from provisa.gql.expr_ast import CypherExpr, Variable, walk
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -32,6 +32,7 @@ from provisa.gql.mistakes import (
     aggregate_misuse,
     expression_misuse,
     projection_misuse,
+    projection_scope_misuse,
     undefined_variable,
     variable_misuse,
     yield_rebinding,
@@ -469,10 +470,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         self._pos += 1
         return t
 
-    def _row_count(self, clause: str) -> int:
-        """The whole number of rows SKIP or LIMIT takes. REQ-778: anything else -- a fraction, a
-        negative, a string, a name -- is the user's mistake, refused naming what was written and
-        the fix (a fraction was once cut to its whole part without a word)."""
+    def _row_count(self, clause: str) -> int | CypherExpr:
+        """The whole number of rows SKIP or LIMIT takes, or the expression giving it (``$n``,
+        ``toInteger(ceil(1.7))``), whose value the translator holds to the same rule. REQ-778: a
+        fraction, a negative or a string written as the count is the user's mistake, refused
+        naming what was written and the fix (a fraction was once cut to its whole part without a
+        word)."""
         t = self._peek()
         written = t.value if t is not None else ""
         if t is not None and t.type == "MINUS":
@@ -481,6 +484,18 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             written = "-" + (following.value if following is not None else "")
         elif t is not None and t.type == "NUMBER" and t.value.isdigit():
             return int(self._advance().value)
+        elif t is not None and t.type not in ("NUMBER", "STRING"):
+            start = self._pos
+            text = self._parse_where()
+            try:
+                count = parse_expression(text)
+            except CypherExprParseError as exc:
+                raise CypherParseError(f"{clause} {text}: {exc}") from exc
+            if not any(isinstance(n, Variable) for n in walk(count)):
+                return count
+            # A count that reads a variable (SKIP n.count, LIMIT k) is no number of rows.
+            self._pos = start
+            written = text
         raise CypherParseMistake(
             f"cypher.invalid_{clause.lower()}",
             f"{clause} {written} is not a whole number of rows: {clause} takes a count of 0 or "
@@ -527,8 +542,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         current_where: str | None = None  # the WHERE as written, until its match step is built
         return_clause: ReturnClause | None = None
         order_by: list[OrderItem] = []
-        skip: int | None = None
-        limit: int | None = None
+        skip: int | CypherExpr | None = None
+        limit: int | CypherExpr | None = None
         call_subqueries: list[CallSubquery] = []
         union_parts: list[tuple[CypherAST, bool]] = []
 
@@ -1149,11 +1164,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             self._advance()
             self._consume_keyword("BY")
             order_by = self._parse_order_by()
-        skip: int | None = None
+        skip: int | CypherExpr | None = None
         if self._match_keyword("SKIP"):
             self._advance()
             skip = self._row_count("SKIP")
-        limit: int | None = None
+        limit: int | CypherExpr | None = None
         if self._match_keyword("LIMIT"):
             self._advance()
             limit = self._row_count("LIMIT")
@@ -1522,6 +1537,7 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
         yield_rebinding(ast),
         aggregate_misuse(ast),
         projection_misuse(ast),
+        projection_scope_misuse(ast),
         expression_misuse(ast),
     )
     for mistake in mistakes:

@@ -613,8 +613,15 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "COLLECT": "array_agg",
     "STDEV": "stddev_samp",
     "STDEVP": "stddev_pop",
-    "PERCENTILECONT": "approx_percentile",
-    "PERCENTILEDISC": "approx_percentile",
+}
+
+#: Cypher's exact percentiles, percentileCont(x, p) and percentileDisc(x, p): the SQL ordered-set
+#: aggregate of each, PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY x), which each engine writes as its
+#: own (DuckDB's quantile_cont and quantile_disc, which refuse a percentile outside [0, 1] as
+#: openCypher's NumberOutOfRange does).
+_CYPHER_PERCENTILES: dict[str, type[exp.Expression]] = {
+    "PERCENTILECONT": exp.PercentileCont,
+    "PERCENTILEDISC": exp.PercentileDisc,
 }
 
 # Cast functions: Cypher fn (uppercase) → (sql_type, use_try_cast)
@@ -775,6 +782,13 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         if isinstance(arg, exp.Literal) and arg.is_string:
             return exp.Anonymous(this="char_length", expressions=args)
         return exp.Anonymous(this="cardinality", expressions=args)
+
+    if name in _CYPHER_PERCENTILES and len(args) == 2:
+        value, percentile = (a.transform(_rewrite_cypher_fn_node) for a in args)
+        return exp.WithinGroup(
+            this=_CYPHER_PERCENTILES[name](this=percentile),
+            expression=exp.Order(expressions=[exp.Ordered(this=value, nulls_first=False)]),
+        )
 
     if name in _CYPHER_FN_RENAMES:
         # Its arguments first, as the transform does not descend into the node it is handed back

@@ -454,10 +454,11 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
             if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
                 new_v["end"] = id_map[new_v["end"]]
             return new_v
-        if "nodes" in v and "edges" in v:
-            # Path dict — recurse into both lists so node IDs get replaced.
-            return {k: _apply_id_map(val, id_map) for k, val in v.items()}
-        return v
+        if "label" in v and "properties" in v:
+            return v
+        # A path, or a map holding nodes ({node1: n, rel: r}): each value's node IDs are
+        # replaced, so two nodes a map holds are never one id (0) to the client.
+        return {k: _apply_id_map(val, id_map) for k, val in v.items()}
     if isinstance(v, list):
         return [_apply_id_map(item, id_map) for item in v]
     return v

@@ -32,7 +32,7 @@ from provisa.gql.translator_helpers import (
     via_column,
 )
 
-from provisa.gql.translator_types import NODE_COLUMN, CypherTranslateError
+from provisa.gql.translator_types import NODE_COLUMN
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
@@ -538,7 +538,20 @@ class _UnionMixin:  # mixin for _Translator
                 self._all_rels_mappings.append(rm)
 
         if not branches:
-            raise CypherTranslateError("No relationship types found in schema")
+            # No relationship the pattern can be (an empty graph, or none between the ends'
+            # labels): it matches no row -- null under an OPTIONAL MATCH -- never an error
+            # (REQ-347). The read of none, with the columns a read of one has.
+            def _none(name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+                null = exp.Cast(this=exp.Null(), to=exp.DataType.build("JSON"))
+                return exp.alias_(null, name)  # pyright: ignore[reportReturnType]
+
+            nothing = exp.select(
+                _none(src_col),
+                _none(rel_col),
+                _none(tgt_col),
+                _none(edge_properties_column(rel_col)),
+            ).where(exp.false())
+            return exp.alias_(exp.Subquery(this=nothing), alias=alias)  # pyright: ignore[reportReturnType]
 
         union: exp.Expression = branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for b in branches[1:]:

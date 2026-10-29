@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
-from typing import Any, get_args, get_origin, get_type_hints
+from typing import Any, TypeGuard, get_args, get_origin, get_type_hints
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import types
@@ -138,6 +138,16 @@ def resolve(session: TempSession) -> None:
     g.resolved = resolved
 
 
+#: The prefix of an ephemeral node's id (Graph.new_id): ``e:1``, ``e:2``, ...
+NODE_ID_PREFIX = "e"
+
+
+def is_session_node_key(value: object) -> TypeGuard[str]:
+    """Whether ``value`` is an ephemeral node's id (Graph.new_id), as a session node's ``_id``
+    is: the session's own handle on it, which no statement wrote."""
+    return isinstance(value, str) and value.startswith(f"{NODE_ID_PREFIX}:")
+
+
 @dataclass
 class Graph:
     """What the session's graph holds, kept beside its tables so a statement is planned without
@@ -175,7 +185,7 @@ class Graph:
     # the label's anchor table, or ("rel", type, properties) on the type's property table.
     indexes: dict[str, tuple[str, str, tuple[str, ...]]] = field(default_factory=dict)
 
-    def new_id(self, prefix: str = "e") -> str:
+    def new_id(self, prefix: str = NODE_ID_PREFIX) -> str:
         """A new node's or relationship's id, unique in the session."""
         self.last_id += 1
         return f"{prefix}:{self.last_id}"
