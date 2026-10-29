@@ -18,7 +18,7 @@
     "byFile": "Файл",
     "byUrl": "URL",
     "file": "Файл",
-    "fileHelp": "Файл HTML, Markdown или обычный текст.",
+    "fileHelp": "Файл PDF, Word (.docx), HTML, Markdown или обычный текст.",
     "url": "URL",
     "urlHelp": "Адрес http(s). Документ загружается сейчас и повторно при каждом обновлении.",
     "fieldTitle": "Название",

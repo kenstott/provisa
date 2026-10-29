@@ -18,7 +18,7 @@
     "byFile": "檔案",
     "byUrl": "URL",
     "file": "檔案",
-    "fileHelp": "HTML、Markdown 或純文字檔案。",
+    "fileHelp": "PDF、Word（.docx）、HTML、Markdown 或純文字檔案。",
     "url": "URL",
     "urlHelp": "一個 http(s) 位址。文件現在擷取，並於每次重新整理時再次擷取。",
     "fieldTitle": "標題",

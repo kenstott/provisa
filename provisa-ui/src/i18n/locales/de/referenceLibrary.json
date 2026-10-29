@@ -18,7 +18,7 @@
     "byFile": "Datei",
     "byUrl": "URL",
     "file": "Datei",
-    "fileHelp": "Eine HTML-, Markdown- oder Textdatei.",
+    "fileHelp": "Eine PDF-, Word- (.docx), HTML-, Markdown- oder Textdatei.",
     "url": "URL",
     "urlHelp": "Eine http(s)-Adresse. Das Dokument wird jetzt abgerufen und bei jeder Aktualisierung erneut.",
     "fieldTitle": "Titel",

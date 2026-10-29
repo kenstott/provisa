@@ -57,7 +57,7 @@ import { Tip } from "../Tip";
 import { scopeChange, WHOLE_ORG } from "./referenceScope";
 
 /** The files the library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
 
 function when(value: string | null, language: string): string {
   return value ? new Date(value).toLocaleString(language) : "";

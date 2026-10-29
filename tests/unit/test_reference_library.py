@@ -94,6 +94,8 @@ def test_a_document_that_cannot_be_read_is_refused_by_name(content, media, name,
 def test_a_file_is_read_as_its_name_says_and_an_unknown_kind_is_refused():
     assert extract.media_type_of_name("Policy.HTML") == extract.HTML
     assert extract.media_type_of_name("spec.md") == extract.MARKDOWN
+    assert extract.media_type_of_name("contract.PDF") == extract.PDF
+    assert extract.media_type_of_name("standard.docx") == extract.WORD
     with pytest.raises(extract.UnreadableDocument, match="'deck.pptx' is not a document"):
         extract.media_type_of_name("deck.pptx")
 
@@ -109,6 +111,85 @@ def test_a_response_is_read_as_its_content_type_says():
     )
     with pytest.raises(extract.UnreadableDocument, match="serves image/png"):
         extract.media_type_of_response("image/png", "https://x/logo")
+
+
+def _pdf(pages: list[str], title: str) -> bytes:
+    """A PDF of ``pages``, each one line of Helvetica text, with ``title`` in its information."""
+    objects = ["<< /Type /Catalog /Pages 2 0 R >>"]
+    kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(len(pages)))
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>")
+    objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    for i, text in enumerate(pages):
+        stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET"
+        objects.append(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {5 + 2 * i} 0 R >>"
+        )
+        objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
+    objects.append(f"<< /Title ({title}) >>")
+    out = b"%PDF-1.4\n"
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n{body}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R /Info {len(objects)} 0 R >>\n"
+        f"startxref\n{xref}\n%%EOF\n"
+    ).encode()
+    return out
+
+
+def test_a_pdf_is_read_by_its_pages():
+    document = extract.read(
+        _pdf(["A Client holds an account.", "Records are kept seven years."], "Client policy"),
+        extract.PDF,
+        "policy.pdf",
+    )
+    assert document.title == "Client policy"
+    assert [(s.page, s.paragraphs) for s in document.sections] == [
+        (1, ["A Client holds an account."]),
+        (2, ["Records are kept seven years."]),
+    ]
+    assert [(p.page, p.section) for p in cut(document)] == [(1, None), (2, None)]
+
+
+def test_a_word_document_is_read_by_its_headings_with_its_tables_in_place():
+    import io
+
+    import docx
+
+    word = docx.Document()
+    word.add_paragraph("Client policy", style="Title")
+    word.add_heading("Clients", 1)
+    word.add_paragraph("A Client holds an account.")
+    table = word.add_table(rows=1, cols=2)
+    table.rows[0].cells[0].text = "Term"
+    table.rows[0].cells[1].text = "Client"
+    word.add_heading("Retention", 1)
+    word.add_paragraph("Records are kept seven years.")
+    data = io.BytesIO()
+    word.save(data)
+    document = extract.read(data.getvalue(), extract.WORD, "policy.docx")
+    assert document.title == "Client policy"
+    assert [(s.heading, s.paragraphs) for s in document.sections] == [
+        ("Clients", ["A Client holds an account.", "Term | Client"]),
+        ("Retention", ["Records are kept seven years."]),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("media", "name", "says"),
+    [
+        (extract.PDF, "x.pdf", "'x.pdf' is not a PDF that can be read"),
+        (extract.WORD, "x.docx", "'x.docx' is not a Word document that can be read"),
+    ],
+)
+def test_a_pdf_or_word_file_that_is_not_one_is_refused_by_name(media, name, says):
+    with pytest.raises(extract.UnreadableDocument, match=says):
+        extract.read(b"not a document", media, name)
 
 
 def test_passages_keep_to_one_section_and_a_long_paragraph_is_cut_at_its_sentences():

@@ -12,7 +12,8 @@
 
 A section is a run of paragraphs under one heading, or on one page, so a passage cut from it
 cites where it sits. HTML is read by its headings (``h1``-``h6``), markdown by its ``#`` headings,
-plain text as paragraphs. A media type this module does not read is refused by name.
+a Word document by its heading styles (python-docx), a PDF by its pages (pypdf), plain text as
+paragraphs. A media type this module does not read is refused by name.
 """
 
 # Requirements: REQ-2185
@@ -26,6 +27,8 @@ from pathlib import PurePosixPath
 HTML = "text/html"
 MARKDOWN = "text/markdown"
 PLAIN = "text/plain"
+PDF = "application/pdf"
+WORD = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 #: The media types a library document may have, by the file extension that names each.
 EXTENSIONS: dict[str, str] = {
@@ -34,6 +37,8 @@ EXTENSIONS: dict[str, str] = {
     ".md": MARKDOWN,
     ".markdown": MARKDOWN,
     ".txt": PLAIN,
+    ".pdf": PDF,
+    ".docx": WORD,
 }
 
 READABLE: frozenset[str] = frozenset(EXTENSIONS.values())
@@ -112,6 +117,10 @@ def read(content: bytes, media_type: str, name: str, charset: str | None = None)
         document = _read_html(content, name, charset)
     elif media_type == MARKDOWN:
         document = _read_markdown(_text(content, charset, name))
+    elif media_type == PDF:
+        document = _read_pdf(content, name)
+    elif media_type == WORD:
+        document = _read_word(content, name)
     elif media_type == PLAIN:
         document = Document(title=None, sections=[_paragraphs(None, _text(content, charset, name))])
     else:
@@ -200,3 +209,65 @@ def _read_html(content: bytes, name: str, charset: str | None) -> Document:
             if text:
                 sections[-1].paragraphs.append(text)
     return Document(title=title or None, sections=sections)
+
+
+def _read_pdf(content: bytes, name: str) -> Document:
+    """A PDF by its pages: each page a section, its paragraphs the page's blank-line runs."""
+    import io
+
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        if reader.is_encrypted:
+            raise UnreadableDocument(f"{name!r} is an encrypted PDF")
+        pages = [page.extract_text() or "" for page in reader.pages]
+        metadata = reader.metadata
+    except PdfReadError as exc:
+        raise UnreadableDocument(f"{name!r} is not a PDF that can be read: {exc}") from None
+    sections = []
+    for number, text in enumerate(pages, start=1):
+        section = _paragraphs(None, text)
+        section.page = number
+        sections.append(section)
+    title = _clean(metadata.title) if metadata is not None and metadata.title else None
+    return Document(title=title or None, sections=sections)
+
+
+def _read_word(content: bytes, name: str) -> Document:
+    """A Word (.docx) document by its heading styles, its tables where they stand; a ``Title``
+    paragraph titles it when its properties do not."""
+    import io
+    import zipfile
+
+    import docx
+    from docx.opc.exceptions import PackageNotFoundError
+    from docx.table import Table
+
+    try:
+        word = docx.Document(io.BytesIO(content))
+    except (PackageNotFoundError, zipfile.BadZipFile, KeyError, ValueError) as exc:
+        raise UnreadableDocument(
+            f"{name!r} is not a Word document that can be read: {exc}"
+        ) from None
+    title = _clean(word.core_properties.title or "") or None
+    sections: list[Section] = [Section(heading=None, page=None)]
+    for block in word.iter_inner_content():
+        if isinstance(block, Table):
+            for row in block.rows:
+                text = " | ".join(c for c in (_clean(cell.text) for cell in row.cells) if c)
+                if text:
+                    sections[-1].paragraphs.append(text)
+            continue
+        text = _clean(block.text)
+        if not text:
+            continue
+        style = block.style.name if block.style is not None else ""
+        if style == "Title":
+            title = title or text
+        elif style.startswith("Heading"):
+            sections.append(Section(heading=text, page=None))
+        else:
+            sections[-1].paragraphs.append(text)
+    return Document(title=title, sections=sections)

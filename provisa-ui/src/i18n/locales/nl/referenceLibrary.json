@@ -18,7 +18,7 @@
     "byFile": "Bestand",
     "byUrl": "URL",
     "file": "Bestand",
-    "fileHelp": "Een HTML-, Markdown- of tekstbestand.",
+    "fileHelp": "Een PDF-, Word- (.docx), HTML-, Markdown- of tekstbestand.",
     "url": "URL",
     "urlHelp": "Een http(s)-adres. Het document wordt nu opgehaald en opnieuw bij elke vernieuwing.",
     "fieldTitle": "Titel",

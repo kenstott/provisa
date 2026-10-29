@@ -18,7 +18,7 @@
     "byFile": "ファイル",
     "byUrl": "URL",
     "file": "ファイル",
-    "fileHelp": "HTML、Markdown、またはプレーンテキストのファイル。",
+    "fileHelp": "PDF、Word（.docx）、HTML、Markdown、またはプレーンテキストのファイル。",
     "url": "URL",
     "urlHelp": "http(s) アドレス。ドキュメントは今取得され、更新のたびに再取得されます。",
     "fieldTitle": "タイトル",

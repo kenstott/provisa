@@ -18,7 +18,7 @@
     "byFile": "Fichier",
     "byUrl": "URL",
     "file": "Fichier",
-    "fileHelp": "Un fichier HTML, Markdown ou texte brut.",
+    "fileHelp": "Un fichier PDF, Word (.docx), HTML, Markdown ou texte brut.",
     "url": "URL",
     "urlHelp": "Une adresse http(s). Le document est récupéré maintenant, puis à chaque actualisation.",
     "fieldTitle": "Titre",

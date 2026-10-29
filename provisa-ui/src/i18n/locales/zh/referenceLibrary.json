@@ -18,7 +18,7 @@
     "byFile": "文件",
     "byUrl": "URL",
     "file": "文件",
-    "fileHelp": "HTML、Markdown 或纯文本文件。",
+    "fileHelp": "PDF、Word（.docx）、HTML、Markdown 或纯文本文件。",
     "url": "URL",
     "urlHelp": "一个 http(s) 地址。文档现在获取，并在每次刷新时重新获取。",
     "fieldTitle": "标题",

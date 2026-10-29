@@ -18,7 +18,7 @@
     "byFile": "File",
     "byUrl": "URL",
     "file": "File",
-    "fileHelp": "Un file HTML, Markdown o di testo semplice.",
+    "fileHelp": "Un file PDF, Word (.docx), HTML, Markdown o di testo semplice.",
     "url": "URL",
     "urlHelp": "Un indirizzo http(s). Il documento viene recuperato ora e di nuovo a ogni aggiornamento.",
     "fieldTitle": "Titolo",
