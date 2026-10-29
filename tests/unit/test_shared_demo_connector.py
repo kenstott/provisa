@@ -37,7 +37,8 @@ def demo_orgs(monkeypatch):
     monkeypatch.setattr(pr, "_ENDPOINTS", {})
     monkeypatch.setattr(pr, "_ENDPOINT_USERS", {})
     closed: list[tuple[str, str]] = []
-    monkeypatch.setattr(pr.ConnectorReplica, "close", lambda self: closed.append(self._key))
+    # The registry stops a server it forgets by retiring its replica (REQ-1824).
+    monkeypatch.setattr(pr.ConnectorReplica, "retire", lambda self: closed.append(self._key))
     return closed
 
 

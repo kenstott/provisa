@@ -244,7 +244,7 @@ def test_starting_the_server_does_not_wait_for_it_to_listen(monkeypatch):
         def endpoint(self, **kw):
             raise AssertionError("readiness is not asked for")
 
-        def close(self) -> None:
+        def retire(self) -> None:  # the registry's stop (REQ-1824)
             started.remove(self.id)
 
     monkeypatch.setattr(pr, "ConnectorReplica", _Replica)
