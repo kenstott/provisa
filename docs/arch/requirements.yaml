@@ -91285,3 +91285,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   stakeholders:
   - data-steward
 
+- id: REQ-2184
+  value: 'A view over one source can be deployed onto that source as a native view, for the few databases whose DDL Provisa writes.'
+  status: in-progress
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Views (Governed Computed Datasets)
+  feature: views-governed-datasets
+  priority: SHOULD
+  type: behavioral
+  description: 'A Provisa view whose SQL reads one source only can be deployed onto that source (Deploy to DB on the table''s page): Provisa writes CREATE OR REPLACE VIEW with the view''s SQL in the chosen schema of the source, and the source then answers the view natively as Provisa did. This is the only DDL Provisa ever runs on a source, and only on the operator''s request. It is limited to a small set of relational source types whose view DDL Provisa writes (the PostgreSQL family: postgresql, cockroachdb, yugabytedb, greenplum, redshift; and duckdb); a source of any other type is refused by name, with the supported types listed, before any DDL runs. A view reading more than one source is refused naming the sources, and a role without table registration is refused; neither creates anything.'
+  scenario: 'Given a view over one PostgreSQL source and a role with table registration
+    When the role deploys the view to a schema of that source
+    Then the view exists on the source with its SQL and answers the same rows natively as Provisa does
+    And a view over two sources, a source of an unsupported type, or a role without table registration is refused by name and nothing is created'
+  tests:
+  - tests/unit/test_deploy_view_source_types.py
+  - tests/integration/test_deploy_view_to_db_e2e.py
+  related_reqs:
+  - REQ-133
+  - REQ-2183
+  stakeholders:
+  - data-steward

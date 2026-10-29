@@ -26717,3 +26717,15 @@ A feature demo, an internal data marketplace: an organisation offers its data pr
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2184 · Views (Governed Computed Datasets) {#REQ-2184}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+A Provisa view whose SQL reads one source only can be deployed onto that source (Deploy to DB on the table's page): Provisa writes CREATE OR REPLACE VIEW with the view's SQL in the chosen schema of the source, and the source then answers the view natively as Provisa did. This is the only DDL Provisa ever runs on a source, and only on the operator's request. It is limited to a small set of relational source types whose view DDL Provisa writes (the PostgreSQL family: postgresql, cockroachdb, yugabytedb, greenplum, redshift; and duckdb); a source of any other type is refused by name, with the supported types listed, before any DDL runs. A view reading more than one source is refused naming the sources, and a role without table registration is refused; neither creates anything.
+
+**Code:** —
+
+**Tests:** `tests/unit/test_deploy_view_source_types.py`, `tests/integration/test_deploy_view_to_db_e2e.py`
