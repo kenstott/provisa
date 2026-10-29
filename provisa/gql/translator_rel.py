@@ -804,9 +804,10 @@ class _RelJoinMixin:  # mixin for _Translator
             )
             return from_expr, joins, True
 
-        if self._either_end_of_unnamed_ends(rel, src_node, tgt_node) and (i == 0 or joined_hop):
-            # REQ-347: an undirected hop of a type between two node types, its ends unnamed: each
-            # relationship is read from both its ends, never only from its source.
+        if len(nodes) == 2 and self._either_end_of_unnamed_ends(rel, src_node, tgt_node):
+            # REQ-347: an undirected hop of a type between two node types, its ends unnamed and
+            # no other hop of the pattern fixing either: each relationship is read from both its
+            # ends, never only from its source. In a longer pattern the next hop types the node.
             if joined_hop:
                 return every_rel_hop(None, None), joins, True
             from_expr = self._handle_unlabeled_rel_pattern(

@@ -115,3 +115,28 @@ def test_a_property_of_no_node_over_an_empty_model_reads_no_rows(monkeypatch, pr
     assert s.run(f"MATCH (n) RETURN n.{prop}") == []
     s.run("CREATE ({dates: [date('1910-05-06')]})")
     assert len(s.run(f"MATCH (n) RETURN n.{prop}")) == 1
+
+
+def test_a_property_only_some_types_hold_is_null_for_the_others(monkeypatch):
+    # Only A holds b_id: every node is matched, a B reading it as null.
+    rows = _model(monkeypatch).run("MATCH (n) RETURN n.b_id")
+    assert sorted(rows, key=lambda r: r["n.b_id"] or 0) == [
+        {"n.b_id": None},
+        {"n.b_id": None},
+        {"n.b_id": None},
+        {"n.b_id": 10},
+    ]
+
+
+def test_a_where_on_a_property_skips_the_types_lacking_it(monkeypatch):
+    s = _model(monkeypatch)
+    query = "MATCH (n) WHERE n.b_id = 10 RETURN n.name"
+    assert s.run(query) == [{"n.name": "a1"}]
+    # B holds no b_id, so its table is never read.
+    assert '"b"' not in s.sql(query)
+
+
+def test_an_optional_match_where_skips_no_type(monkeypatch):
+    rows = _model(monkeypatch).run("OPTIONAL MATCH (n) WHERE n.b_id = 10 RETURN n.name")
+    assert rows == [{"n.name": "a1"}]
+    assert '"b"' in _model(monkeypatch).sql("OPTIONAL MATCH (n) WHERE n.b_id = 10 RETURN n.name")
