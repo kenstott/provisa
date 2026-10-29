@@ -8839,6 +8839,7 @@
   code:
   - provisa/cypher/
   tests:
+  - tests/integration/test_cypher_router_api.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_cypher_parser.py
@@ -10116,6 +10117,7 @@
   - provisa/core/repositories/table.py
   - provisa/core/repositories/domain.py
   tests:
+  - tests/integration/test_cypher_integration_extra.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
@@ -62942,14 +62944,19 @@
   feature: metrics-and-aggregates-metric-objects
   priority: MUST
   type: ui
-  description: THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DOMAINS FILTER
-    THE SCHEMA TREE DOES. The SchemaBrowser sidebar's SCHEMA section already filtered its table tree by
+  description: 'THE EXPLORE/SQL PAGE''S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DOMAINS FILTER
+    THE SCHEMA TREE DOES. The SchemaBrowser sidebar''s SCHEMA section already filtered its table tree by
     the domain checkboxes at the top of the page, but the Metrics/Facts/Dimensions groups above it read
-    the unfiltered table and metric lists straight from the hooks. Unchecking a domain hid its tables
-    from one panel while its facts, dimensions, and derived metrics kept showing in the other. A metric
-    attributes to the fact table it was derived from (``Metric.fromFact``); a hand-authored metric (``fromFact``
-    null, no ``FROM`` a fact metric reads from) has no domain to filter by and stays visible under every
-    selection, the same way a table with no ``domainId`` does.
+    the unfiltered table and metric lists straight from the hooks. Unchecking a domain hid its tables from
+    one panel while its facts, dimensions, and derived metrics kept showing in the other. A metric attributes
+    to the fact table it was derived from (``Metric.fromFact``); a hand-authored metric (``fromFact`` null,
+    no ``FROM`` a fact metric reads from) has no domain to filter by and stays visible under every selection,
+    the same way a table with no ``domainId`` does. (Amended 2026-10-28, EVERY EXPLORER FOLLOWS THE CHECKED
+    DOMAINS:) Every explorer''s tree (GraphQL, SQL, Cypher, SPARQL, gRPC and the per-domain schema and proto
+    it reads) shows only the checked domains'' fields: their tables, commands, subscriptions and, for meta,
+    its resolver; meta, ops and ontology filter like any domain. In the SPARQL vocabulary panel a glossary
+    term or SKOS concept is shown when one of its domains is checked, and a term with no domain is always
+    shown, as REQ-2163''s readable-term rule reads it.'
   code:
   - provisa-ui/src/pages/SqlPage.tsx
   - provisa-ui/src/pages/sql/SchemaBrowser.tsx

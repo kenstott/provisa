@@ -2864,7 +2864,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
 
 **Docs:** [api-reference.md](../api-reference.md), [cypher.md](../cypher.md), [remote-schemas.md](../remote-schemas.md)
 
@@ -3248,7 +3248,7 @@ Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.prope
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/compiler/naming.py`, `provisa/core/repositories/table.py`, `provisa/core/repositories/domain.py`
 
-**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_table_label_not_a_domain.py`
+**Tests:** `tests/integration/test_cypher_integration_extra.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_table_label_not_a_domain.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -19288,7 +19288,7 @@ THE GROUP-BY NODES PROJECTION'S ``?include=`` RESOLVES A DOT-PATH AT ANY DEPTH, 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
-THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DOMAINS FILTER THE SCHEMA TREE DOES. The SchemaBrowser sidebar's SCHEMA section already filtered its table tree by the domain checkboxes at the top of the page, but the Metrics/Facts/Dimensions groups above it read the unfiltered table and metric lists straight from the hooks. Unchecking a domain hid its tables from one panel while its facts, dimensions, and derived metrics kept showing in the other. A metric attributes to the fact table it was derived from (``Metric.fromFact``); a hand-authored metric (``fromFact`` null, no ``FROM`` a fact metric reads from) has no domain to filter by and stays visible under every selection, the same way a table with no ``domainId`` does.
+THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DOMAINS FILTER THE SCHEMA TREE DOES. The SchemaBrowser sidebar's SCHEMA section already filtered its table tree by the domain checkboxes at the top of the page, but the Metrics/Facts/Dimensions groups above it read the unfiltered table and metric lists straight from the hooks. Unchecking a domain hid its tables from one panel while its facts, dimensions, and derived metrics kept showing in the other. A metric attributes to the fact table it was derived from (``Metric.fromFact``); a hand-authored metric (``fromFact`` null, no ``FROM`` a fact metric reads from) has no domain to filter by and stays visible under every selection, the same way a table with no ``domainId`` does. (Amended 2026-10-28, EVERY EXPLORER FOLLOWS THE CHECKED DOMAINS:) Every explorer's tree (GraphQL, SQL, Cypher, SPARQL, gRPC and the per-domain schema and proto it reads) shows only the checked domains' fields: their tables, commands, subscriptions and, for meta, its resolver; meta, ops and ontology filter like any domain. In the SPARQL vocabulary panel a glossary term or SKOS concept is shown when one of its domains is checked, and a term with no domain is always shown, as [REQ-2163](#REQ-2163)'s readable-term rule reads it.
 
 **Use case:** An analyst scoped to one domain via the domain checkboxes still saw every other domain's fact and dimension tables, and every other domain's derived metrics, in the Explore/SQL sidebar. The checkbox narrowed the raw-SQL schema tree but nothing else on the same page.
 

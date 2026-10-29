@@ -552,6 +552,9 @@ async def _deprecate(client: httpx.AsyncClient, name: str) -> dict:
     terms = await client.get("/admin/glossary/terms")
     assert terms.status_code == 200, terms.text
     (term_id,) = [t["id"] for t in terms.json() if t["name"] == name]
+    # Only an approved term is deprecated (glossary.term_not_approved); a draft is approved first.
+    approved = await client.post(f"/admin/glossary/terms/{term_id}/approve")
+    assert approved.status_code == 200, approved.text
     marked = await client.post(
         f"/admin/glossary/terms/{term_id}/deprecate", json={"reason": "Superseded by party."}
     )
