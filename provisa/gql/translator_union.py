@@ -16,12 +16,12 @@ instantiated alone.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
-from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN
 from provisa.gql.path_walk import graph_identity
 from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
@@ -207,6 +207,8 @@ class _UnionMixin:  # mixin for _Translator
         _all_rels_mappings: list[RelationshipMapping]
         _union_columns: dict[str, list[str]]
         _graph_id_unions: set[str]
+        _labels_unions: set[str]
+        _ast: Any
 
         def _collect_var_props(self, var: str) -> list[str]: ...
 
@@ -620,6 +622,19 @@ class _UnionMixin:  # mixin for _Translator
                     exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID), copy=False
                 )
             self._graph_id_unions.add(var)
+            from provisa.gql.translator import labels_read
+
+            if labels_read(self._ast, var):
+                # REQ-2176: a session node carries every label the session holds for it, which
+                # its relation names (ephemeral.read); a model node its own.
+                for branch, nm in zip(branches, arms):
+                    labels = (
+                        exp.Column(this=exp.Identifier(this=LABELS_COLUMN, quoted=True))
+                        if nm.catalog_name == walk.catalog_name
+                        else exp.Array(expressions=[exp.Literal.string(nm.label)])
+                    )
+                    branch.select(exp.alias_(labels, alias=LABELS_COLUMN), copy=False)
+                self._labels_unions.add(var)
 
         if not branches:
             if not had_resolvable:

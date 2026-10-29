@@ -193,6 +193,9 @@ class RelationshipMapping:
 #: REQ-348: the column a graph session's node relation names a node's graph identity by (``Label|key``
 #: for a model node, an ephemeral node's id), which the session's relationships name their ends by.
 GRAPH_ID = "__graph_id"
+#: REQ-2176: the column a graph session's node relation names every label of its node by, which
+#: labels() of a session node reads.
+LABELS_COLUMN = "__labels"
 
 
 @dataclass(frozen=True)

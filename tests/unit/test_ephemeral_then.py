@@ -59,6 +59,13 @@ def _session(monkeypatch) -> Session:
             "WITH n RETURN n",
             "props",
         ),
+        # A DELETE followed by more (Merge1 [14]: MATCH (a:A) DELETE a MERGE (a2:A) ...).
+        (
+            "MATCH (n:T) DETACH DELETE n RETURN count(*)",
+            "MATCH (n:T) DETACH DELETE n",
+            "RETURN count(*)",
+            "delete",
+        ),
     ],
 )
 def test_a_write_followed_by_more_splits_at_its_end(statement, head, rest, kind):
@@ -73,7 +80,7 @@ def test_a_write_followed_by_more_splits_at_its_end(statement, head, rest, kind)
         "CREATE (n:T)",
         "MATCH (n:T) RETURN n",
         "MATCH (n:T) SET n:X",
-        "MATCH (n:T) DETACH DELETE n RETURN count(*)",
+        "MATCH (n:T) DETACH DELETE n",
     ],
 )
 def test_a_write_ending_its_statement_is_not_split(statement):

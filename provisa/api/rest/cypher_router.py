@@ -717,7 +717,7 @@ async def _session_write(
         assert held is not None, "an ephemeral write is made in the principal's graph session"
         held.wrote = True
     # A write followed by reads answers with the rest's rows (REQ-2176).
-    columns, rows = seam.rows_of(made)
+    columns, rows = seam.rows_of(made, temp)
     return JSONResponse(
         content={
             "type": "cypher",
@@ -1065,6 +1065,9 @@ async def _answer(
         # node ids; a read of the session keeps every node's graph identity.
         await register_node_ids(serializable_rows, state.model_db)
         await register_rel_ids(serializable_rows, state.model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable_rows = seam.answered(serializable_rows, temp)
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"

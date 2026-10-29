@@ -305,6 +305,8 @@ class SetItem:
     property: str | None = None
     value: CypherExpr | None = None
     merge: bool = False
+    #: The value's expression as written (REQ-2176: the graph session reads it as written).
+    value_text: str | None = None
 
 
 @dataclass

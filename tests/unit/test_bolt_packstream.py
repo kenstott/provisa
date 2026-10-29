@@ -88,12 +88,32 @@ def test_pack_node_dict_produces_struct():
     assert data[1] == 0x4E
 
 
-def test_pack_node_dict_string_id_uses_zero():
-    # String IDs (not yet resolved by register_node_ids) fall back to 0
-    node = {"id": "Person|1", "label": "Person", "properties": {}}
-    data = pack(node)
-    assert data[0] == 0xB4
-    assert data[1] == 0x4E
+def test_pack_node_dict_string_id_is_a_stable_element_id_of_its_own():
+    # A string id (a graph session's node is never registered, REQ-2176) packs as an integer
+    # derived from it: the same node the same element, two nodes never one.
+    from provisa.bolt.packstream import unpack
+
+    def element_id(node_id):
+        data = pack({"id": node_id, "label": "Person", "properties": {}})
+        assert data[0] == 0xB4
+        assert data[1] == 0x4E
+        return unpack(data)["_fields"][0]
+
+    first, again, other = element_id("Person|1"), element_id("Person|1"), element_id("e:2")
+    assert first == again
+    assert first != other
+    assert 0 not in (first, other)
+
+
+def test_a_relationship_s_ends_with_string_ids_are_their_nodes_elements():
+    from provisa.bolt.packstream import unpack
+
+    start = {"id": "A|e:1", "label": "A", "properties": {}}
+    end = {"id": "|e:2", "label": "", "properties": {}}
+    rel = {"identity": "r:3", "type": "R", "properties": {}, "startNode": start, "endNode": end}
+    fields = unpack(pack(rel))["_fields"]
+    assert fields[1] == unpack(pack(start))["_fields"][0]
+    assert fields[2] == unpack(pack(end))["_fields"][0]
 
 
 # ── Relationship encoding ──────────────────────────────────────────────────────

@@ -119,13 +119,40 @@ async def delete(
 ) -> Deleted | None:
     """Run ``statement`` when it deletes while the session holds ephemeral objects; None when it
     deletes nothing, the session holds none, or the statement is wholly the governed path's."""
+    done = await delete_bound(statement, params, label_map, session, state, read, governed_write)
+    return None if done is None else done[0]
+
+
+async def delete_bound(
+    statement: str,
+    params: dict[str, Any],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    read: Read,
+    governed_write: Write,
+    keep: tuple[str, ...] | None = None,
+) -> tuple[Deleted, list[dict[str, Any]]] | None:
+    """:func:`delete`, and with ``keep`` (the variables a read after it names) each row's
+    bindings of them (then.Bound): a variable it deleted is null after it."""
+    from provisa.ephemeral.then import bound_value
+
     d = delete_of(statement)
     graph = store.graph(session)
     if d is None or graph.empty:
         return None
+    keep = keep or ()
+    variables = [*d.variables, *(v for v in keep if v not in d.variables)]
     rows = await read(
-        f"{d.prefix} RETURN {', '.join(f'{v} AS _v_{v}' for v in d.variables)}".strip(), params
+        f"{d.prefix} RETURN {', '.join(f'{v} AS _v_{v}' for v in variables)}".strip(), params
     )
+    bound_rows = [
+        {
+            var: None if var in d.variables else bound_value(row[f"_v_{var}"], label_map, graph)
+            for var in keep
+        }
+        for row in rows
+    ]
     session_nodes: set[str] = set()
     session_rels: set[str] = set()
     model_nodes: dict[str, tuple[Any, dict[str, Any]]] = {}  # identity -> (mapping, properties)
@@ -185,7 +212,7 @@ async def delete(
         await store.delete_nodes(state, session, sorted(session_nodes))
     # The session's parts; each model row was counted as the governed path deleted it.
     counters.count(nodes_deleted=len(session_nodes), relationships_deleted=len(rels))
-    return Deleted(len(session_nodes) + len(model_nodes), len(rels))
+    return Deleted(len(session_nodes) + len(model_nodes), len(rels)), bound_rows
 
 
 async def _relationships_of(

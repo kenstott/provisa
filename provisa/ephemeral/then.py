@@ -108,7 +108,7 @@ class Split:
 
     head: str
     rest: str
-    #: The head's write: "create", "merge", "labels" or "props".
+    #: The head's write: "create", "merge", "delete", "labels" or "props".
     kind: str
     #: The variables in scope after the head, in order.
     scope: tuple[str, ...]
@@ -196,10 +196,11 @@ def _paths(steps: list[Any]) -> set[str]:
 
 
 def split_of(statement: str) -> Split | None:
-    """The statement as its first write and the rest after it; None when it writes nothing, its
-    first write ends it, or its first write is a DELETE (delete.py's)."""
+    """The statement as its first write and the rest after it; None when it writes nothing or
+    its first write ends it."""
     from provisa.cypher.parser import parse_cypher_statement, writes_in
-    from provisa.gql.ir import CreateClause, MergeClause, RemoveClause, SetClause
+    from provisa.ephemeral.props import prop_items
+    from provisa.gql.ir import CreateClause, DeleteClause, MergeClause, RemoveClause, SetClause
 
     if not writes_in(statement):
         return None
@@ -217,11 +218,13 @@ def split_of(statement: str) -> Split | None:
         kind = "create"
     elif isinstance(first, MergeClause):
         kind = "merge"
+    elif isinstance(first, DeleteClause):
+        kind = "delete"
     elif isinstance(first, (SetClause, RemoveClause)):
         items = first.items
         if all(i.property is None and not getattr(i, "value", None) for i in items):
             kind = "labels"
-        elif all(i.property is not None for i in items):
+        elif prop_items(items) is not None:
             kind = "props"
         else:
             return None

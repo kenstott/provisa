@@ -473,26 +473,26 @@ def test_the_setup_is_only_the_steps_before_the_query(side_effect_scenario, monk
 
 
 @pytest.mark.parametrize(
-    ("stats", "status", "reason"),
+    ("effects", "status", "reason"),
     [
-        ({"labels-removed": 1}, "passed", tck.IN_A_SESSION),
+        ({"-labels": 1}, "passed", tck.IN_A_SESSION),
         (
-            {"labels-removed": 1, "nodes-created": 1},
+            {"-labels": 1, "+nodes": 1},
             "failed",
             f"side effects differ: +nodes 1, expected 0 {tck.IN_A_SESSION}",
         ),
         ({}, "failed", f"side effects differ: -labels 0, expected 1 {tck.IN_A_SESSION}"),
     ],
 )
-def test_a_session_scenario_s_side_effects_are_its_summary_counters(
-    side_effect_scenario, monkeypatch, stats, status, reason
+def test_a_session_scenario_s_side_effects_are_what_the_tck_observes(
+    side_effect_scenario, monkeypatch, effects, status, reason
 ):
     sent = []
 
     def session(setups, query, params):
         sent.append((list(setups), query))
         rows = [[("node", frozenset({"L1"}), {})]]
-        return 200, {"columns": ["n"], "rows": rows, "stats": stats}
+        return 200, {"columns": ["n"], "rows": rows, "effects": effects}
 
     monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
     monkeypatch.setattr(bolt, "run", session)
@@ -504,18 +504,141 @@ def test_a_session_scenario_s_side_effects_are_its_summary_counters(
 def test_side_effects_are_compared_exactly():
     assert tck.side_effects({}, {}) is None
     assert (
-        tck.side_effects({"+nodes": 2, "+properties": 1}, {"nodes-created": 2, "properties-set": 1})
-        is None
+        tck.side_effects({"+nodes": 2, "+properties": 1}, {"+nodes": 2, "+properties": 1}) is None
     )
-    assert tck.side_effects({"+nodes": 2}, {"nodes-created": 1}) == "+nodes 1, expected 2"
-    assert tck.side_effects({}, {"relationships-deleted": 3}) == "-relationships 3, expected 0"
+    assert tck.side_effects({"+nodes": 2}, {"+nodes": 1}) == "+nodes 1, expected 2"
+    assert tck.side_effects({}, {"-relationships": 3}) == "-relationships 3, expected 0"
+    assert tck.side_effects({"+nodes": 1}, {"+nodes": 1, "-nodes": 0}) is None
+    assert tck.side_effects({"+widgets": 1}, {}) == "+widgets: no such side effect"
 
 
-def test_a_side_effect_the_summary_has_no_counter_for_is_a_failure_naming_it():
-    assert tck.side_effects({"-properties": 1}, {"properties-set": 1}) == (
-        "+properties 1, expected 0; -properties expected 1, the summary has no counter for it"
+def test_a_removed_property_is_a_side_effect_like_any_other():
+    # The TCK's -properties is a triple the graph held before and not after (README), which a
+    # summary's counters have no name for; observed, it is compared as every side effect is.
+    assert tck.side_effects({"+properties": 1, "-properties": 1}, {"+properties": 1}) == (
+        "-properties 0, expected 1"
     )
+    assert tck.side_effects({"-properties": 1}, {"-properties": 1}) is None
     assert tck.side_effects({"-properties": 0}, {}) is None
+
+
+def _observed(nodes=(), rels=(), props=(), labels=()):
+    return bolt.Observed(frozenset(nodes), frozenset(rels), frozenset(props), frozenset(labels))
+
+
+def test_side_effects_are_the_difference_of_two_observations():
+    before = _observed(["n:e:1"], [], [("n:e:1", "name", "'A'")], ["A"])
+    after = _observed(
+        ["n:e:1", "n:e:2"],
+        ["r:7"],
+        [("n:e:1", "name", "'B'"), ("n:e:2", "k", "1")],
+        ["A", "B"],
+    )
+    assert bolt.effects(before, after) == {
+        "+nodes": 1,
+        "-nodes": 0,
+        "+relationships": 1,
+        "-relationships": 0,
+        # A changed value is one property removed and one added (README: an (entity, key,
+        # value) triple).
+        "+properties": 2,
+        "-properties": 1,
+        "+labels": 1,
+        "-labels": 0,
+    }
+
+
+def test_labels_are_observed_as_the_distinct_labels_the_graph_holds():
+    # Create1 [6]: CREATE (:B:A:D), (:B:C), (:D:E:B) adds eight node labels, five labels.
+    before = _observed()
+    after = _observed(["n:e:1", "n:e:2", "n:e:3"], labels=["A", "B", "C", "D", "E"])
+    assert bolt.effects(before, after)["+labels"] == 5
+
+
+class _Node(dict):
+    def __init__(self, labels, props):
+        super().__init__(props)
+        self.labels = frozenset(labels)
+
+
+class _Rel(dict):
+    def __init__(self, element_id, props):
+        super().__init__(props)
+        self.element_id = element_id
+
+
+class _Session:
+    def __init__(self, nodes, rels):
+        self.nodes, self.rels = nodes, rels
+        self.ran = []
+
+    def run(self, query):
+        self.ran.append(query)
+        if "-[r]->" in query:
+            if isinstance(self.rels, Exception):
+                raise self.rels
+            return [{"r": r} for r in self.rels]
+        return [{"id": i, "n": n} for i, n in self.nodes]
+
+
+def test_the_graph_is_observed_by_node_identity_whatever_label_reads_it():
+    # A node with no label in the pattern is read as Label|key, its label whichever of its own
+    # read it: its identity is its key, so a label added to it is no node removed and added.
+    before = bolt.observe(_Session([("A|e:1", _Node(["A"], {"k": 1}))], []))
+    after = bolt.observe(_Session([("Z|e:1", _Node(["A", "Z"], {"k": 1}))], [_Rel("9", {"w": 2})]))
+    assert before.nodes == after.nodes == frozenset({"n:e:1"})
+    assert bolt.effects(before, after) == {
+        "+nodes": 0,
+        "-nodes": 0,
+        "+relationships": 1,
+        "-relationships": 0,
+        "+properties": 1,
+        "-properties": 0,
+        "+labels": 1,
+        "-labels": 0,
+    }
+
+
+def test_a_graph_with_no_relationship_type_is_observed_holding_no_relationship():
+    from neo4j.exceptions import Neo4jError
+
+    refused = Neo4jError._hydrate_neo4j(
+        code="Neo.ClientError.Statement.SyntaxError",
+        message="No relationship types found in schema",
+    )
+    observed = bolt.observe(_Session([("|e:1", _Node([], {}))], refused))
+    assert observed.relationships == frozenset()
+    other = Neo4jError._hydrate_neo4j(
+        code="Neo.ClientError.Statement.SyntaxError", message="something else"
+    )
+    with pytest.raises(Neo4jError):
+        bolt.observe(_Session([], other))
+
+
+_MERGE_ON_EMPTY = '''
+Feature: Merge1 - Merge node
+
+  Scenario: [1] Merge node when no nodes exist
+    Given an empty graph
+    When executing query:
+      """
+      MERGE (a)
+      RETURN count(*) AS n
+      """
+    Then the result should be, in any order:
+      | n |
+      | 1 |
+'''
+
+
+def test_a_merge_on_an_empty_graph_runs_in_an_empty_session(tmp_path, monkeypatch):
+    # A MERGE matches its pattern before it makes it: on the TCK's empty graph it must match the
+    # session's empty graph, never the model's.
+    path = tmp_path / "merge1.feature"
+    path.write_text(_MERGE_ON_EMPTY)
+    (scenario,) = tck.parse_feature(path)
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
 
 
 # --- named TCK graphs ---------------------------------------------------------------------------
@@ -901,3 +1024,65 @@ def test_a_filtered_result_carries_the_filter_and_a_full_one_does_not():
     assert tck.report([outcome], "2024.3", "Merge*")["filter"] == "Merge*"
     assert "filter" not in tck.report([outcome], "2024.3", "")
     assert "filter" not in tck.report([outcome], "2024.3")
+
+
+_CONTROL_FEATURE = '''
+Feature: Merge6 - Merge relationships - on create
+
+  Scenario: [3] Updating one property with ON CREATE
+    Given an empty graph
+    And having executed:
+      """
+      CREATE (:A {name: 'A'}), (:B {name: 'B'})
+      """
+    When executing query:
+      """
+      MATCH (a {name: 'A'}), (b {name: 'B'})
+      MERGE (a)-[r:TYPE]->(b)
+        ON CREATE SET r.name = 'foo'
+      """
+    Then the result should be empty
+    And the side effects should be:
+      | +relationships | 1 |
+      | +properties    | 1 |
+    When executing control query:
+      """
+      MATCH ()-[r:TYPE]->()
+      RETURN [key IN keys(r) | key + '->' + r[key]] AS keyValue
+      """
+    Then the result should be, in any order:
+      | keyValue      |
+      | ['name->foo'] |
+'''
+
+
+@pytest.fixture
+def control_scenario(tmp_path):
+    path = tmp_path / "merge6.feature"
+    path.write_text(_CONTROL_FEATURE)
+    (scenario,) = tck.parse_feature(path)
+    return scenario
+
+
+@pytest.mark.parametrize(
+    ("control_rows", "status"),
+    [([[["name->foo"]]], "passed"), ([[["name->bar"]]], "failed")],
+)
+def test_a_control_query_runs_after_the_query_in_its_session_and_is_checked(
+    control_scenario, monkeypatch, control_rows, status
+):
+    sent = []
+
+    def session(setups, query, params, control=None):
+        sent.append((list(setups), query.split()[0], control))
+        effects = {"+relationships": 1, "+properties": 1}
+        held = {"columns": ["keyValue"], "rows": control_rows}
+        return 200, {"columns": [], "rows": [], "effects": effects, "control": held}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", session)
+    outcome = tck.run(control_scenario, "http://x", "org_admin")
+    [(setups, verb, control)] = sent
+    assert (setups, verb) == (["CREATE (:A {name: 'A'}), (:B {name: 'B'})"], "MATCH")
+    assert control is not None and control.startswith("MATCH ()-[r:TYPE]->()")
+    assert outcome.status == status

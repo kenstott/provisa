@@ -706,6 +706,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     def _write_expression(self, stop_types: frozenset[str] = frozenset({"COMMA"})) -> CypherExpr:
         """The expression up to the next ``stop_types`` token or clause at its own depth."""
+        return parse_expression(self._write_expression_text(stop_types))
+
+    def _write_expression_text(self, stop_types: frozenset[str] = frozenset({"COMMA"})) -> str:
+        """The text of the expression up to the next ``stop_types`` token or clause at its own
+        depth."""
         read: list[Token] = []
         depth = 0
         while t := self._peek():
@@ -727,7 +732,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 if _bad
                 else "Unexpected end of input"
             )
-        return parse_expression(self._raw[read[0].pos : read[-1].end])
+        return self._raw[read[0].pos : read[-1].end]
 
     def _labels(self) -> list[str]:
         labels: list[str] = []
@@ -744,20 +749,35 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         return items
 
     def _set_item(self) -> SetItem:
+        # ``(n).p = e``: a parenthesized variable is the variable.
+        parenthesized = (_p := self._peek()) is not None and _p.type == "LPAREN"
+        if parenthesized:
+            self._advance()
         variable = self._expect("IDENT").value
+        if parenthesized:
+            self._expect("RPAREN")
         t = self._peek()
-        if t is not None and t.type == "COLON":
+        if t is not None and t.type == "COLON" and not parenthesized:
             return SetItem(variable=variable, labels=self._labels())
         if t is not None and t.type == "DOT":
             self._advance()
             prop = self._expect("IDENT").value
             self._expect("EQ")
-            return SetItem(variable=variable, property=prop, value=self._write_expression())
+            text = self._write_expression_text()
+            return SetItem(
+                variable=variable,
+                property=prop,
+                value=parse_expression(text),
+                value_text=text,
+            )
         merge = t is not None and t.type == "PLUS"
         if merge:
             self._advance()
         self._expect("EQ")
-        return SetItem(variable=variable, value=self._write_expression(), merge=merge)
+        text = self._write_expression_text()
+        return SetItem(
+            variable=variable, value=parse_expression(text), merge=merge, value_text=text
+        )
 
     def _remove_items(self) -> list[RemoveItem]:
         items: list[RemoveItem] = []

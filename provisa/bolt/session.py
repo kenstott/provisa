@@ -1687,8 +1687,13 @@ async def _execute_cypher(
     roles: list[str] | None = None,
     deliver: Any = None,
     orgs: list[str] | None = None,
+    internal: bool = False,
 ) -> tuple[list[str], list[list[Any]], dict | None]:
     """Run Cypher through the Provisa pipeline; return (columns, rows-of-values, redirect-handle).
+
+    ``internal``: a read the graph session's own write makes (REQ-2176), whose nodes and
+    relationships keep their graph identities, as a read of a session holding ephemeral objects
+    does: neither is registered in the model's ids.
 
     ``deliver`` (a ``Delivery`` or None) requests the read result be materialized to a sink instead of
     buffered; when it fires the returned rows are empty and the third element is the sink handle. Only
@@ -1792,7 +1797,13 @@ async def _execute_cypher(
 
         async def run_read(query: str, values: dict) -> list[dict]:
             cols, value_rows, _ = await _execute_cypher(
-                query, values, role_id, include_ops=include_ops, roles=roles, orgs=orgs
+                query,
+                values,
+                role_id,
+                include_ops=include_ops,
+                roles=roles,
+                orgs=orgs,
+                internal=True,
             )
             return [dict(zip(cols, row)) for row in value_rows]
 
@@ -1820,7 +1831,7 @@ async def _execute_cypher(
                 )
                 held.wrote = True
             # A write followed by reads answers with the rest's rows (REQ-2176).
-            return (*seam.rows_of(made), None)
+            return (*seam.rows_of(made, temp), None)
     involved = ephemeral_read.involved(temp)
 
     translation = None if involved else kept.cached()
@@ -1924,9 +1935,15 @@ async def _execute_cypher(
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r, keep_values=True) for r in assembled]  # REQ-2173
 
-    _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
-    await register_node_ids(serializable, _model_db)
-    await register_rel_ids(serializable, _model_db)
+    if not (involved or internal):
+        # REQ-2176: an ephemeral node is the session's alone, never registered in the model's
+        # node ids; a read of the session keeps every node's graph identity.
+        _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
+        await register_node_ids(serializable, _model_db)
+        await register_rel_ids(serializable, _model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable = seam.answered(serializable, temp)
 
     columns = list(raw_rows[0].keys()) if raw_rows else []
     rows = [[row.get(col) for col in columns] for row in serializable]

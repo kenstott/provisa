@@ -487,6 +487,23 @@ def _properties_read(node: Any, var: str) -> bool:
     return any(_properties_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
 
 
+def labels_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads ``labels(var)``."""
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "labels"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(labels_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(labels_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
+
+
 def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
     """A pattern after a WITH, read from the node the WITH carries: ``(b)-[:K]->(a)`` with ``a``
     carried is ``(a)<-[:K]-(b)``, which goes on from ``a``'s rows instead of reading ``a`` again
@@ -577,8 +594,21 @@ def _optional_start(
     it matches whole or not at all (_optional_step_matches_whole). After a WITH, the rows the WITH
     carries are where it starts; in a CALL body, the outer row its imported variables are bound to
     (``lateral_bound``)."""
-    if carried is not None or lateral_bound or not matches or not matches[0].optional:
+    if lateral_bound or not matches or not matches[0].optional:
         return from_clause, joins
+    if carried is not None:
+        read = {
+            t.name
+            for part in [from_clause, *(j["table"] for j in joins)]
+            for t in part.find_all(exp.Table)
+            if not t.db
+        }
+        if carried in read:
+            return from_clause, joins  # its pattern goes on from the carried rows already
+        # The rows the WITH carries are where it starts: the pattern is joined to each, so a row
+        # it matches nothing for is kept, its variables null.
+        start = exp.Table(this=exp.Identifier(this=carried))
+        return start, [{"table": from_clause, "on": exp.true(), "join_type": "LEFT"}, *joins]
     one = exp.Subquery(
         this=exp.select(exp.alias_(exp.Literal.number(1), "_one")),
         alias=exp.TableAlias(this=exp.to_identifier(_OPTIONAL_START)),
@@ -765,6 +795,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._walk_trails: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: the node unions that name each node's graph identity (translator_union)
         self._graph_id_unions: set[str] = set()
+        # REQ-2176: each union holding a graph session's nodes that names every label of its
+        # node (``__labels``), read by labels().
+        self._labels_unions: set[str] = set()
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
         self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source

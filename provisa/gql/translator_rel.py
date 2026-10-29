@@ -1158,6 +1158,11 @@ class _RelJoinMixin:  # mixin for _Translator
             # The pattern's first node read as the statement's FROM, all it reads yet: a read of
             # every relationship from it replaces it.
             own_first = None
+            if nodes and not rels and not nodes[0].variable and not nodes[0].labels:
+                # MATCH (): every node, as (n) is, read under a name of its own.
+                anon = f"_anon_node{len(self._var_table)}"
+                nodes = [dataclasses.replace(nodes[0], variable=anon)]
+                self._register_node(nodes[0])
             if from_expr is None and nodes:
                 new_from = self._build_first_node_from(nodes[0])
                 if new_from is not None:
