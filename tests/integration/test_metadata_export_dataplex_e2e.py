@@ -36,6 +36,7 @@ import pytest
 
 from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExport, resource_id
 from provisa.federation.replica_address import export_schema, replica_schema, replica_table_name
+from tests.integration.live_teardown import run_name
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     DOMAIN,
@@ -53,7 +54,9 @@ pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
 ]
 
-ORG = "mdx_dataplex_e2e"
+# The run's own org (REQ-254): its glossary and datasets are named for it, so teardown removes
+# exactly this run's, never another's.
+ORG = run_name("mdx_dataplex_e2e")
 OWNER = "provisa-e2e-owner"
 API = "https://dataplex.googleapis.com/v1"
 _CREDENTIALS = ("GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "BIGQUERY_LOCATION")
@@ -110,38 +113,96 @@ def _glossary_name(parent: str) -> str:
     return f"{parent}/glossaries/{resource_id(f'provisa-{ORG}')}"
 
 
+_OPERATION_TIMEOUT_S = 300.0
+
+
+def _delete(http: httpx.Client, name: str) -> None:
+    """Delete ``name`` and wait out the long-running operation Dataplex answers with; then read it
+    back gone. Absent already (404) is the state the delete was for. Any other answer raises: a
+    catalog entry left behind is a defect (REQ-254), never a log line."""
+    import time
+
+    resp = http.delete(f"{API}/{name}")
+    if resp.status_code != 404:
+        resp.raise_for_status()
+        operation = resp.json() if resp.content else {}
+        deadline = time.monotonic() + _OPERATION_TIMEOUT_S
+        while operation.get("name") and not operation.get("done"):
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"Dataplex delete of {name} not done in {_OPERATION_TIMEOUT_S}s")
+            time.sleep(5)
+            operation = http.get(f"{API}/{operation['name']}").raise_for_status().json()
+        if "error" in operation:
+            raise RuntimeError(f"Dataplex delete of {name} failed: {operation['error']}")
+    left = http.get(f"{API}/{name}")
+    if left.status_code != 404:
+        raise RuntimeError(f"Dataplex {name} still answers {left.status_code} after its delete")
+
+
+def _listed(http: httpx.Client, url: str, key: str, **params) -> list[dict]:
+    """The entries of a Dataplex listing; a parent that is gone (404) holds none."""
+    resp = http.get(url, params=params)
+    if resp.status_code == 404:
+        return []
+    return resp.raise_for_status().json().get(key, [])
+
+
+def _glossary_name(parent: str) -> str:
+    return f"{parent}/glossaries/{resource_id(f'provisa-{ORG}')}"
+
+
 def _remove_glossary(http: httpx.Client, parent: str) -> None:
     """The org's glossary, emptied and removed: its links, terms and categories first."""
     glossary = _glossary_name(parent)
-    terms = http.get(f"{API}/{glossary}/terms").json().get("terms", [])
     numbered = _numbered(http, parent)
-    for term in terms:
+    for term in _listed(http, f"{API}/{glossary}/terms", "terms"):
         entry = DataplexExport._term_entry(numbered, term["name"])
-        links = http.get(f"{API}/{parent}:lookupEntryLinks", params={"entry": entry}).json()
-        for link in links.get("entryLinks", []):
-            http.delete(f"{API}/{link['name']}")
-        http.delete(f"{API}/{glossary}/terms/{term['name'].rsplit('/', 1)[-1]}")
-    for category in http.get(f"{API}/{glossary}/categories").json().get("categories", []):
-        http.delete(f"{API}/{category['name']}")
-    http.delete(f"{API}/{glossary}")
+        for link in _listed(http, f"{API}/{parent}:lookupEntryLinks", "entryLinks", entry=entry):
+            _delete(http, link["name"])
+        _delete(http, f"{glossary}/terms/{term['name'].rsplit('/', 1)[-1]}")
+    for category in _listed(http, f"{API}/{glossary}/categories", "categories"):
+        _delete(http, category["name"])
+    _delete(http, glossary)
 
 
 def _cleanup(project: str, location: str, key: str, product_id: str) -> None:
-    """The run's data product, its assets and the org's datasets, removed."""
+    """The run's data product, its assets, the org's glossary and the org's datasets removed and
+    read back gone; every step attempted, every failure raised (REQ-254)."""
+    from google.api_core.exceptions import NotFound
     from google.cloud import bigquery
 
+    from tests.integration.live_teardown import run_every
+
     headers = {"Authorization": f"Bearer {_token(key)}"}
-    name = f"projects/{project}/locations/{location}/dataProducts/{product_id}"
-    with httpx.Client(headers=headers, timeout=60) as http:
-        listed = http.get(f"{API}/{name}/dataAssets")
-        if listed.status_code == 200:
-            for asset in listed.json().get("dataAssets", []):
-                http.delete(f"{API}/{asset['name']}")
-        http.delete(f"{API}/{name}")
-        _remove_glossary(http, f"projects/{project}/locations/{location}")
+    parent = f"projects/{project}/locations/{location}"
+    name = f"{parent}/dataProducts/{product_id}"
     client = bigquery.Client(project=project)
-    for dataset in (export_schema(ORG), replica_schema(ORG)):
+
+    def remove_dataset(dataset: str) -> None:
         client.delete_dataset(f"{project}.{dataset}", delete_contents=True, not_found_ok=True)
+        try:
+            client.get_dataset(f"{project}.{dataset}")
+        except NotFound:
+            return
+        raise RuntimeError(f"BigQuery dataset {dataset} still exists after its delete")
+
+    with httpx.Client(headers=headers, timeout=60) as http:
+
+        def remove_product() -> None:
+            for asset in _listed(http, f"{API}/{name}/dataAssets", "dataAssets"):
+                _delete(http, asset["name"])
+            _delete(http, name)
+
+        run_every(
+            [
+                (f"delete data product {product_id} and its assets", remove_product),
+                (f"delete glossary of {ORG}", lambda: _remove_glossary(http, parent)),
+            ]
+            + [
+                (f"delete dataset {dataset}", lambda dataset=dataset: remove_dataset(dataset))
+                for dataset in (export_schema(ORG), replica_schema(ORG))
+            ]
+        )
 
 
 @pytest.fixture(scope="module")

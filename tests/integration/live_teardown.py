@@ -19,7 +19,16 @@ raises every failure together.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
+
+
+def _raise_all(failures: list[Exception]) -> None:
+    if failures:
+        raise ExceptionGroup(
+            f"{len(failures)} teardown step(s) failed; the live account may hold what the test "
+            "created",
+            failures,
+        )
 
 
 def run_every(steps: Iterable[tuple[str, Callable[[], object]]]) -> None:
@@ -32,12 +41,7 @@ def run_every(steps: Iterable[tuple[str, Callable[[], object]]]) -> None:
         except Exception as exc:  # noqa: BLE001 -- collected and re-raised below, never dropped
             exc.add_note(f"teardown step: {what}")
             failures.append(exc)
-    if failures:
-        raise ExceptionGroup(
-            f"{len(failures)} teardown step(s) failed; the live account may hold what the test "
-            "created",
-            failures,
-        )
+    _raise_all(failures)
 
 
 def run_name(stem: str, sep: str = "_") -> str:
@@ -56,3 +60,16 @@ def none_remain(what: str, remaining: Iterable[object]) -> None:
     left = list(remaining)
     if left:
         raise AssertionError(f"teardown left {what} in the live account: {left!r}")
+
+
+async def run_every_async(steps: Iterable[tuple[str, Callable[[], Awaitable[object]]]]) -> None:
+    """``run_every`` for coroutine steps: each awaited in order, even after one fails; then every
+    failure raised in one ExceptionGroup."""
+    failures: list[Exception] = []
+    for what, step in steps:
+        try:
+            await step()
+        except Exception as exc:  # noqa: BLE001 -- collected and re-raised below, never dropped
+            exc.add_note(f"teardown step: {what}")
+            failures.append(exc)
+    _raise_all(failures)
