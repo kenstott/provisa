@@ -318,7 +318,12 @@ def _build_grammar() -> pp.ParserElement:
     # pattern comprehension: [ <pattern> [WHERE pred] | projection ]
     # The graph pattern is captured as raw text (up to WHERE or |) for the path translator; SkipTo
     # stops at the first top-level WHERE/| so the predicate is never swallowed into the pattern.
-    pattern_text = pp.SkipTo(pp.CaselessKeyword("WHERE") | pp.Literal("|"))
+    # A ``|`` inside a relationship's brackets, ``[:T|U]``, separates its types and ends nothing:
+    # the text runs over quoted strings and bracketed or parenthesised spans whole.
+    pattern_text = pp.Regex(
+        r"""(?:'[^']*'|"[^"]*"|\[[^\]]*\]|\((?:[^()]|\([^()]*\))*\)"""
+        r"""|(?!(?<!\w)(?i:where)\b)[^|\[\('"])+"""
+    )
     pattern_comp = (
         _LBRK
         + pp.Optional(_ident("pathvar") + pp.Suppress("="))  # optional path binding: [p = (…) | …]
