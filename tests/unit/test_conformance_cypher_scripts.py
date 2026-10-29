@@ -95,6 +95,15 @@ Feature: Literals1 - Booleans
 '''
 
 
+@pytest.fixture(autouse=True)
+def cleared(monkeypatch):
+    """The credentials whose graph session the runner emptied, in turn (none is reached)."""
+    emptied: list[str] = []
+    monkeypatch.setattr(tck, "_clear", lambda _base, authorization: emptied.append(authorization))
+    monkeypatch.setitem(tck._CREDENTIAL, "Authorization", "Bearer admin")
+    return emptied
+
+
 @pytest.fixture
 def scenarios(tmp_path):
     path = tmp_path / "literals.feature"
@@ -314,6 +323,17 @@ def test_a_setup_that_builds_its_graph_runs_with_its_query_in_one_session(scenar
     assert (outcome.status, outcome.reason) == ("passed", tck.IN_A_SESSION)
     doc = tck.report([outcome], "2024.3")
     assert doc["adapted"][0]["group"] == "Setups that build their graph"
+
+
+def test_each_scenario_starts_from_an_empty_graph_session(scenarios, monkeypatch, cleared):
+    # REQ-2176: a principal has one graph session on every client, so what a scenario made is
+    # dropped before the next, over HTTP as the job's user and over Bolt as the TCK session user.
+    monkeypatch.setattr(tck, "_post", lambda *_a: (200, {"columns": ["literal"], "rows": []}))
+    tck.run(scenarios[0], "http://x", "org_admin")
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", lambda *_a: (200, {"columns": ["a"], "rows": []}))
+    tck.run(scenarios[3], "http://x", "org_admin")
+    assert cleared == ["Bearer admin", "Bearer t"]
 
 
 def test_a_setup_waiting_on_a_write_form_is_named_so(scenarios, monkeypatch):

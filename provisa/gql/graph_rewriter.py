@@ -102,6 +102,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 GraphVarKind.JSON_LIST,
                 GraphVarKind.JSON_VALUE,
                 GraphVarKind.DURATION,  # REQ-2173: a duration's parts
+                GraphVarKind.DURATION_LIST,  # REQ-2173: each duration's parts
                 GraphVarKind.ZONED,  # REQ-2173: a date time's instant and zone
                 GraphVarKind.POINT,  # a point's srid and coordinates
                 GraphVarKind.TERM,

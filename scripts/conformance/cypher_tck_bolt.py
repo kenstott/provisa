@@ -14,8 +14,9 @@ REQ-2176), for scripts/conformance/cypher_tck.py.
 A scenario whose setup builds its graph runs its setup's statements and then its query on one
 Bolt connection: the setup's CREATEs make the session's own nodes and relationships, and the query
 reads them. A scenario on an empty graph that matches a pattern runs the same way with no setup.
-Each scenario has a connection of its own (the driver's pool holds one, closed after it), so a
-session's graph is never read by the next. The connection signs in with the TCK session user's
+Each scenario has a connection of its own (the driver's pool holds one, closed after it); the
+user's graph session is the same on every connection, so the runner empties it before each
+scenario and a session's graph is never read by the next. The connection signs in with the TCK session user's
 token and acts as ``tck_empty``, the role that user's name maps to, which reaches no model domain:
 its graph is the session's alone, the TCK's empty graph.
 
@@ -44,6 +45,11 @@ def configure(uri: str, token: str) -> None:
 
 def configured() -> bool:
     return bool(_BOLT)
+
+
+def authorization() -> str:
+    """The TCK session user's credential over HTTP: its session token as a bearer token."""
+    return f"Bearer {_BOLT['token']}"
 
 
 def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:

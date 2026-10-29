@@ -352,6 +352,16 @@ def returned(value: exp.Expression) -> exp.Expression:
     return _let(value, [], exp.Array(expressions=list(parts(_c("_dv")))))
 
 
+def returned_list(value: exp.Expression) -> exp.Expression:
+    """A list of durations as it leaves the engine: each item's three parts (:func:`returned`)."""
+    if isinstance(value, exp.Null):
+        return value
+    each = exp.Array(expressions=list(parts(_c("_de"))))
+    return exp.Transform(
+        this=value, expression=exp.Lambda(this=each, expressions=[exp.to_identifier("_de")])
+    )
+
+
 def _trunc_div(a: int, b: int) -> int:
     q = abs(a) // abs(b)
     return q if (a >= 0) == (b >= 0) else -q

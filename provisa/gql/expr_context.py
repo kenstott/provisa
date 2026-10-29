@@ -430,6 +430,21 @@ class TranslatorExprContext:
             expr, ChainMap(self._t._temporal_kinds, self._t._param_kinds), self._property_kind
         )
 
+    def temporal_list_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind every item of a list has (REQ-2173): a list literal's, or a list
+        column's (a registered ``elem[]``, a session's ``list<elem>``); None for any other."""
+        from provisa.gql import temporal
+        from provisa.gql.expr_ast import Property
+
+        if isinstance(expr, Property) and isinstance(expr.obj, Variable):
+            held = self.property_type(exp.column(expr.obj.name), expr.name) or ""
+            if held.endswith("[]"):
+                return temporal.kind_of_type(held[:-2])
+            if held.startswith("list<") and held.endswith(">"):
+                return temporal.kind_of_type(held[5:-1])
+            return None
+        return self.temporal_element_kind(expr)
+
     def is_text(self, expr: CypherExpr) -> bool:
         """Whether ``expr`` is a string: a string literal, a string function's value, a
         concatenation with a string, a registered text column, or a variable bound to one."""
