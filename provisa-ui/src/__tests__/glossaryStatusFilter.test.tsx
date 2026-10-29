@@ -133,7 +133,7 @@ describe("glossary status and grounding filters", () => {
     const groundedIcon = within(grounded).getByRole("img");
     expect(groundedIcon).toHaveAttribute("data-ground-state", "grounded");
     expect(groundedIcon).toHaveAttribute("aria-label", "Grounded: reaches data in 1 column");
-    expect(screen.getByTestId("glossary-status-2")).toHaveTextContent("Draft");
+    expect(screen.getByTestId("glossary-status-2")).toHaveAccessibleName("Draft");
     // Pending: the same symbol, muted, saying its path awaits approval.
     const pending = screen.getByTestId("glossary-grounding-2");
     expect(pending).toHaveAttribute("data-grounding", "grounded_pending");
