@@ -28,6 +28,7 @@ Mapping:
 from __future__ import annotations
 
 import copy
+import dataclasses
 import re
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -76,6 +77,7 @@ from provisa.gql.translator_helpers import (
     _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    edge_properties_column,
 )
 from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
@@ -86,6 +88,7 @@ from provisa.gql.translator_types import (
     GraphVarKind,
     map_key_column,
 )
+from provisa.gql.translator_every_rel import _EveryRelMixin
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
 
@@ -529,6 +532,31 @@ def _steps_where(
     return WhereClause(joined), optional
 
 
+def _statement_exprs(ast: CypherAST) -> list[CypherExpr]:
+    """The expressions of ``ast``'s WHEREs, WITHs and RETURN, and of each statement embedded in
+    one of them, in the order written."""
+    from provisa.gql.expr_ast import SubqueryExpr, walk
+
+    exprs: list[CypherExpr] = []
+    for step in ast.pipeline:
+        if isinstance(step, MatchStep) and step.where:
+            exprs.append(step.where.expression)
+        elif isinstance(step, WithClause):
+            exprs.extend(i.expression for i in step.items)
+            exprs.extend(o.expression for o in step.order_by)
+            if step.where:
+                exprs.append(step.where.expression)
+    if ast.return_clause:
+        exprs.extend(i.expression for i in ast.return_clause.items)
+    exprs.extend(o.expression for o in ast.order_by)
+    embedded = [
+        node.body for expr in exprs for node in walk(expr) if isinstance(node, SubqueryExpr)
+    ]
+    for body in embedded:
+        exprs.extend(_statement_exprs(body))
+    return exprs
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
@@ -537,6 +565,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     CorrelatedCallMixin,
     GroupByMixin,
     _RelJoinMixin,
+    _EveryRelMixin,
     _UnionMixin,
 ):
     def __init__(
@@ -668,6 +697,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_node_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # A union column -> the subquery, or the WITH, that gives it: a statement may read several
+        # unions of every relationship (translator_every_rel).
+        self._all_rels_var_alias: dict[str, str] = {}
         # The labels each end of a read of every relationship may be, and its relationships
         # (translator_union._build_all_rels_union).
         self._all_rels_ends: dict[str, list[str]] = {}
@@ -676,14 +708,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_src_col: str | None = None
         self._all_rels_rel_col: str | None = None
         self._all_rels_tgt_col: str | None = None
-        # The relationship unions the rows read so far, the last one's far end's column, and the
-        # FROM the current pattern's first node is read in (translator_rel._all_rels_hop).
-        self._all_rels_hops = 0
-        self._all_rels_far_col: str | None = None
-        # The relationships a WITH carries that a union of relationships matched: a later MATCH
-        # naming one is tied to it by the union's edge identity (translator_rel._all_rels_hop).
-        self._all_rels_carried: set[str] = set()
-        self._pattern_first_scan: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # varlen rel variable → outer path variable (e.g. c from [c*..5] → r from MATCH r = ...)
         self._varlen_rel_vars: dict[str, str] = {}
 
@@ -1531,6 +1555,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for r in returned
             if r.alias and isinstance(r.expression, MapLiteral)
         }
+        # A variable the RETURN names anew (RETURN r AS rel): a property of the name is the
+        # variable's own.
+        renamed = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and isinstance(r.expression, Variable)
+            and r.expression.name != r.alias
+            and r.alias not in self._var_table
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
             target = item.expression
@@ -1540,6 +1574,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 and target.name in maps.get(target.obj.name, {})
             ):
                 target = maps[target.obj.name][target.name]
+            elif (
+                isinstance(target, Property)
+                and isinstance(target.obj, Variable)
+                and target.obj.name in renamed
+            ):
+                target = dataclasses.replace(target, obj=renamed[target.obj.name])
             inner = self._parse_expr(target)
             if isinstance(inner, exp.Null):
                 # A key null for every row (a property the label has not) orders nothing, and an
@@ -1638,6 +1678,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     for c in split[key]
                 )
                 continue
+            if bare is not None and self._is_union_value(bare):
+                # A node or an edge a union of every relationship carries is its value column (an
+                # edge's own properties beside it), never a table's row.
+                held_in = (
+                    self._var_table[bare][0]
+                    if bare in self._cte_sources
+                    else self._all_rels_var_alias.get(bare, self._all_rels_alias or "_all_rels")
+                )
+                key = alias or bare
+                exprs.append(exp.alias_(exp.column(bare, table=held_in), key, quoted=True))
+                if bare in self._all_rels_rel_vars:
+                    exprs.append(
+                        exp.alias_(
+                            exp.column(edge_properties_column(bare), table=held_in),
+                            edge_properties_column(key),
+                            quoted=True,
+                        )
+                    )
+                continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
@@ -1713,7 +1772,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
         union_columns: dict[str, list[str]] = {}
-        carried_edges: set[str] = set()
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
@@ -1753,17 +1811,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._map_array_vars.add(key)
             else:
                 new_var_table[key] = (cte_name, None)
-                if bare is not None and (
-                    bare in self._all_rels_rel_vars or bare in self._all_rels_carried
-                ):
-                    carried_edges.add(key)
                 # collect({...}) produces a MAP array — track the alias for UNWIND resolution
                 if _collects_maps(expr) and key:
                     self._map_array_vars.add(key)
+        for item in items:
+            bare = item.expression.name if isinstance(item.expression, Variable) else None
+            if bare is None or not self._is_union_value(bare):
+                continue
+            # Read on from the WITH's rows as the value it carries (translator_every_rel).
+            key = item.alias or bare
+            self._passthrough_vars.add(key)
+            if bare in self._all_rels_rel_vars:
+                self._all_rels_rel_vars.add(key)
+            else:
+                self._all_rels_node_vars.add(key)
+                self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
+            self._all_rels_var_alias[key] = cte_name
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
-        self._all_rels_carried = carried_edges
         self._temporal_kinds = kinds
         self._temporal_zones = zones
         self._text_vars = texts
@@ -1852,20 +1918,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         raise unknown_label(labels[0], self._lm)
 
     def _referenced_var_props(self, var: str) -> list[str]:
-        """The property names referenced as ``var.prop`` in the statement, in order."""
-        exprs: list[CypherExpr] = []
-        for step in self._ast.pipeline:
-            if isinstance(step, MatchStep) and step.where:
-                exprs.append(step.where.expression)
-            elif isinstance(step, WithClause):
-                exprs.extend(i.expression for i in step.items)
-                exprs.extend(o.expression for o in step.order_by)
-                if step.where:
-                    exprs.append(step.where.expression)
-        if self._ast.return_clause:
-            exprs.extend(i.expression for i in self._ast.return_clause.items)
-        exprs.extend(o.expression for o in self._ast.order_by)
-        return _properties_of(var, exprs)
+        """The property names referenced as ``var.prop`` in the statement, in order: in a
+        statement embedded in it (EXISTS { ... }) too, which reads them from this one's row."""
+        return _properties_of(var, _statement_exprs(self._ast))
 
     def _node_as_one_value(self, var: str) -> bool:
         """Whether ``var`` is a domain node the statement returns, or a WITH carries, bare: each

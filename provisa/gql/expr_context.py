@@ -47,6 +47,7 @@ from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
 
 if TYPE_CHECKING:
     from provisa.gql.ir import CypherAST, PathPattern
+    from provisa.gql.label_map import NodeMapping
     from provisa.gql.translator import _Translator
 
 
@@ -149,11 +150,16 @@ def graph_identity(t: "_Translator", var: str) -> exp.Expression | None:
     ``t`` holds no such node."""
     from provisa.gql.select_builder import node_identity
 
-    if var in t._all_rels_node_vars and t._all_rels_alias:
-        return _anon(
-            "JSON_EXTRACT_SCALAR", _col(var, t._all_rels_alias), exp.Literal.string("$.id")
-        )
     alias, nm = t._var_table.get(var, (var, None))
+    if var in t._all_rels_node_vars and nm is None:
+        # The node value a union of every relationship carries: the hop's union that reads it, or
+        # the WITH that carries it on.
+        table = (
+            alias if var in t._cte_sources else t._all_rels_var_alias.get(var, t._all_rels_alias)
+        )
+        if table is None:
+            return None
+        return _anon("JSON_EXTRACT_SCALAR", _col(var, table), exp.Literal.string("$.id"))
     if nm is not None:
         return node_identity(alias, nm)
     if var in t._union_columns or var in t._domain_nodes:
@@ -201,6 +207,23 @@ def _union_leaves(sql: exp.Expression) -> list[exp.Select]:
     if not isinstance(sql, exp.Select):
         raise CypherTranslateError("An inner statement's rows are a select or a union of selects")
     return [sql]
+
+
+def _label_names(nm: "NodeMapping", labels: list[str]) -> bool:
+    """Whether the label test ``labels`` names the node type ``nm``: a bare name or
+    domain:object_type."""
+    identifiers = {nm.label, nm.type_name, nm.table_label, nm.domain_label} - {None}
+    requested = ":".join(labels)
+    single, qualified = 1, 2
+    return (
+        requested in identifiers
+        or (len(labels) == single and labels[0] in {nm.table_label, nm.domain_label})
+        or (
+            len(labels) == qualified
+            and labels[0] == nm.domain_label
+            and labels[1] == nm.table_label
+        )
+    )
 
 
 def _col(name: str, table: str) -> exp.Column:
@@ -253,6 +276,17 @@ class TranslatorExprContext:
         # a computed object) falls through to a quoted member access on the lowered object.
         var = obj.name if isinstance(obj, exp.Column) and not obj.table else None
         t = self._t
+        # A union's node or edge a WITH carries is read as a column of that WITH's rows.
+        carried_in = (
+            obj.table
+            if isinstance(obj, exp.Column)
+            and obj.table
+            and t._all_rels_var_alias.get(obj.name) == obj.table
+            and obj.name in t._cte_sources
+            else None
+        )
+        if carried_in is not None:
+            var = obj.name
         if var is not None:
             if var in t._all_rels_rel_vars:
                 # The edge's own properties, never its JSON: that carries an id built from both
@@ -262,7 +296,7 @@ class TranslatorExprContext:
 
                 value = _anon(
                     "JSON_EXTRACT_SCALAR",
-                    exp.column(edge_properties_column(var)),
+                    exp.column(edge_properties_column(var), table=carried_in),
                     exp.Literal.string(f"$.{name}"),
                 )
                 held = attribute_type(name, t._all_rels_mappings)
@@ -272,7 +306,7 @@ class TranslatorExprContext:
 
                 value = _anon(
                     "JSON_EXTRACT_SCALAR",
-                    exp.column(var),
+                    exp.column(var, table=carried_in),
                     exp.Literal.string(f"$.properties.{name}"),
                 )
                 held = union_type(name, t._all_rels_ends.get(var, []), t._lm)
@@ -752,23 +786,26 @@ class TranslatorExprContext:
         info = self._t._var_table.get(var) if var else None
         nm = info[1] if info else None
         if nm is None:
-            # Domain-only node (no concrete mapping): compare against the resolved domain name.
+            # A node of no one table: its domain's name holds of every row; any other label holds
+            # where the row's own type is one it names (the label a union's row carries).
             domain = self._t._domain_nodes.get(var) if var else None
-            matched = domain is not None and ":".join(labels) in (domain, *labels)
-            return exp.true() if matched else exp.false()
-        identifiers = {nm.label, nm.type_name, nm.table_label, nm.domain_label} - {None}
-        requested = ":".join(labels)
-        single, qualified = 1, 2  # a label is either a bare name or domain:object_type
-        matched = (
-            requested in identifiers
-            or (len(labels) == single and labels[0] in {nm.table_label, nm.domain_label})
-            or (
-                len(labels) == qualified
-                and labels[0] == nm.domain_label
-                and labels[1] == nm.table_label
+            if domain is not None and ":".join(labels) == domain:
+                return exp.true()
+            if var in self._t._all_rels_node_vars:
+                row_label = _anon(
+                    "JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.label")
+                )
+            elif domain is not None and var is not None:
+                row_label = _col("__label", var)
+            else:
+                return exp.false()
+            named = sorted(m.label for m in self._t._lm.nodes.values() if _label_names(m, labels))
+            if not named:
+                return exp.false()
+            return exp.In(
+                this=row_label, expressions=[exp.Literal.string(label) for label in named]
             )
-        )
-        return exp.true() if matched else exp.false()
+        return exp.true() if _label_names(nm, labels) else exp.false()
 
     # -- embedded queries → correlated subqueries (the recursion boundary) - #
 
@@ -824,6 +861,10 @@ class TranslatorExprContext:
             return kind, [node_key(src_alias, src_nm), node_key(tgt_alias, tgt_nm)]
         if name in t._rel_var_types:
             return None
+        if name in t._path_vars:
+            # A path read from unions of every relationship: its nodes and edges, in order.
+            path = t._path_identity(name)
+            return None if path is None else (("path",), [path])
         alias, nm = t._var_table.get(name, (name, None))
         if name in t._union_columns:
             # A node of a union of labels' rows: its graph identity, "Label|key", the union's __id.
@@ -986,7 +1027,11 @@ class TranslatorExprContext:
             v: f"__outer_{v}"
             for v, (_, nm) in outer._var_table.items()
             if nm is None
-            and (v not in outer._cte_sources or v in outer._union_columns)
+            and (
+                v not in outer._cte_sources
+                or v in outer._union_columns
+                or v in outer._all_rels_node_vars
+            )
             and graph_identity(outer, v) is not None
         }
         _rename_variables(inner_ast, drawn)

@@ -67,6 +67,25 @@ class GroupByMixin:  # REQ-653
             )
         return self._parse_expr(expr)
 
+    def _group_by_exprs_for_item(self, expr: CypherExpr) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The keys an item groups by: a node or an edge a union of every relationship carries is
+        its value column, an edge's own properties beside it, as the WITH carries them."""
+        is_union_value = getattr(self, "_is_union_value", None)
+        if isinstance(expr, Variable) and is_union_value is not None and is_union_value(expr.name):
+            from provisa.gql.translator_helpers import edge_properties_column
+
+            var_table = getattr(self, "_var_table", {})
+            held_in = (
+                var_table[expr.name][0]
+                if expr.name in getattr(self, "_cte_sources", set())
+                else getattr(self, "_all_rels_var_alias", {}).get(expr.name, "_all_rels")
+            )
+            keys: list[exp.Expression] = [exp.column(expr.name, table=held_in)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if expr.name in getattr(self, "_all_rels_rel_vars", set()):
+                keys.append(exp.column(edge_properties_column(expr.name), table=held_in))
+            return keys
+        return [self._group_by_expr_for_item(expr)]
+
     def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         if return_clause.group_by is not None:
             # REQ-2135: the keys the statement names.
@@ -75,18 +94,20 @@ class GroupByMixin:  # REQ-653
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._group_by_expr_for_item(key)
+            group_key
             for item in items
             if not _has_aggregate(item.expression)
             for key in _group_keys(item.expression)
+            for group_key in self._group_by_exprs_for_item(key)
         ]
 
     def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._group_by_expr_for_item(key)
+            group_key
             for item in items
             if not _has_aggregate(item.expression)
             for key in _group_keys(item.expression)
+            for group_key in self._group_by_exprs_for_item(key)
         ]
