@@ -70,6 +70,22 @@ def involved(session: TempSession | None) -> bool:
     return session is not None and not store.graph(session).empty
 
 
+def overlaid(label_map: Any) -> tuple[frozenset[str], frozenset[str]]:
+    """The node labels and relationship types ``label_map`` (an :func:`overlay`) reads from the
+    session: what an answer names by them is the session's, never registered in the model's node
+    and relationship ids. Every other label is read as it is without the session, and its nodes
+    are registered as they are then (REQ-394)."""
+    labels = frozenset(
+        nm.label for nm in label_map.nodes.values() if nm.catalog_name == SESSION_CATALOG
+    )
+    types = frozenset(
+        rm.rel_type
+        for rm in label_map.relationships.values()
+        if getattr(rm.via, "catalog_name", None) == SESSION_CATALOG
+    )
+    return labels, types
+
+
 def _model_columns(nm: Any) -> list[tuple[str, str, str]]:
     """A model node's (property, the column its relation names it by, type)."""
     types = dict(nm.property_types)

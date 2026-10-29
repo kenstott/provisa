@@ -397,11 +397,13 @@ def _assemble_with_paths(
     return result
 
 
-def _walk_for_nodes(v: Any, out: dict[str, tuple[str, dict]]) -> None:
+def _walk_for_nodes(
+    v: Any, out: dict[str, tuple[str, dict]], kept_labels: frozenset[str] = frozenset()
+) -> None:
     """Recursively collect node dicts from serialized graph output.
 
     A node dict has 'id' (composite string label|pk), 'label', 'properties',
-    and no 'startNode' key.
+    and no 'startNode' key. One of a label in ``kept_labels`` is not collected.
     """
     if isinstance(v, dict):
         if (
@@ -411,18 +413,19 @@ def _walk_for_nodes(v: Any, out: dict[str, tuple[str, dict]]) -> None:
             and "startNode" not in v
             and isinstance(v["id"], str)
             and "|" in v["id"]
+            and v["label"] not in kept_labels
         ):
             out[v["id"]] = (v["label"], v.get("properties") or {})
         if "startNode" in v:
-            _walk_for_nodes(v["startNode"], out)
+            _walk_for_nodes(v["startNode"], out, kept_labels)
         if "endNode" in v:
-            _walk_for_nodes(v["endNode"], out)
+            _walk_for_nodes(v["endNode"], out, kept_labels)
         for val in v.values():
             if isinstance(val, (dict, list)):
-                _walk_for_nodes(val, out)
+                _walk_for_nodes(val, out, kept_labels)
     elif isinstance(v, list):
         for item in v:
-            _walk_for_nodes(item, out)
+            _walk_for_nodes(item, out, kept_labels)
 
 
 def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
@@ -451,21 +454,35 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
     return v
 
 
-def _walk_for_edges(v: Any, out: dict[str, tuple[str, dict]]) -> None:
+def _walk_for_edges(
+    v: Any,
+    out: dict[str, tuple[str, dict]],
+    kept_types: frozenset[str] = frozenset(),
+    kept_labels: frozenset[str] = frozenset(),
+) -> None:
     """Recursively collect edge dicts from serialized graph output.
 
     An edge dict has 'identity' (composite string "Type:startPk-endPk"), 'type',
-    and 'startNode'.
+    and 'startNode'. One of a type in ``kept_types``, or ending on a node of a label in
+    ``kept_labels``, is not collected.
     """
     if isinstance(v, dict):
-        if "identity" in v and "type" in v and "startNode" in v and isinstance(v["identity"], str):
+        if (
+            "identity" in v
+            and "type" in v
+            and "startNode" in v
+            and isinstance(v["identity"], str)
+            and str(v.get("type", "")) not in kept_types
+            and _end_label(v, "startNode") not in kept_labels
+            and _end_label(v, "endNode") not in kept_labels
+        ):
             out[v["identity"]] = (str(v.get("type", "")), v.get("properties") or {})
         for val in v.values():
             if isinstance(val, (dict, list)):
-                _walk_for_edges(val, out)
+                _walk_for_edges(val, out, kept_types, kept_labels)
     elif isinstance(v, list):
         for item in v:
-            _walk_for_edges(item, out)
+            _walk_for_edges(item, out, kept_types, kept_labels)
 
 
 def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
@@ -484,11 +501,24 @@ def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
     return v
 
 
-async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None:
+def _end_label(edge: dict, end: str) -> Any:
+    node = edge.get(end)
+    return node.get("label") if isinstance(node, dict) else None
+
+
+async def register_rel_ids(
+    serializable_rows: list[dict],
+    model_db: Any,
+    *,
+    kept_types: frozenset[str] = frozenset(),
+    kept_labels: frozenset[str] = frozenset(),
+) -> None:
     """Upsert all graph relationships to rel_ids; replace composite edge identities with ints.
 
     Mutates serializable_rows in place.  No-op if model_db is None or no edges found.
-    Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
+    Mirrors register_node_ids so relationships get durable IDs the same way nodes do. A
+    relationship of a type in ``kept_types``, or ending on a node of a label in ``kept_labels``,
+    keeps its identity: a graph session's own (REQ-2176), never registered.
     """
     if model_db is None:
         return
@@ -496,7 +526,7 @@ async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None
     edges: dict[str, tuple[str, dict]] = {}
     for row in serializable_rows:
         for v in row.values():
-            _walk_for_edges(v, edges)
+            _walk_for_edges(v, edges, kept_types, kept_labels)
 
     if not edges:
         return
@@ -524,10 +554,14 @@ async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None
         serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
 
 
-async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> None:  # REQ-394
+async def register_node_ids(  # REQ-394
+    serializable_rows: list[dict], model_db: Any, *, kept_labels: frozenset[str] = frozenset()
+) -> None:
     """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
 
-    Mutates serializable_rows in place.  No-op if model_db is None or no nodes found.
+    Mutates serializable_rows in place.  No-op if model_db is None or no nodes found. A node of
+    a label in ``kept_labels`` keeps its identity: a label a graph session overlays reads the
+    session's own nodes (REQ-2176), never registered.
     """
     if model_db is None:
         return
@@ -535,7 +569,7 @@ async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> Non
     nodes: dict[str, tuple[str, dict]] = {}
     for row in serializable_rows:
         for v in row.values():
-            _walk_for_nodes(v, nodes)
+            _walk_for_nodes(v, nodes, kept_labels)
 
     if not nodes:
         return

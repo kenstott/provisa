@@ -54,38 +54,43 @@ def test_cypher_endpoint_reachable(client):
     assert resp.status_code != 404, f"Endpoint not found: {resp.text}"
 
 
-def test_unsupported_write_pattern_rejected(client):
-    """Cypher is NOT read-only, but writes are constrained to direct table writes.
+def _clear_session(client) -> None:
+    cleared = client.delete("/data/cypher/session")
+    assert cleared.status_code == 200, cleared.text
 
-    CREATE/DELETE/SET execute through the same write pipeline as any other write
-    (REQ-670). MERGE (upsert), DETACH DELETE (cascade), and REMOVE are not direct
-    table writes and are unsupported — they must be rejected, and the rejection
-    must NOT claim Cypher is read-only.
-    """
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "MERGE (n:Person {name: 'Eve'})"},
-    )
-    assert resp.status_code == 400
+
+def _ephemeral_write(client, query: str) -> httpx.Response:
+    """``query`` answered in an empty graph session, which is cleared again after: the node it
+    makes is the principal's session's (REQ-2176), which every later statement of this principal
+    would read beside the model, on every surface, until the session's retention ran out."""
+    _clear_session(client)
+    try:
+        return client.post("/data/cypher", json={"query": query})
+    finally:
+        _clear_session(client)
+
+
+def test_merge_of_a_free_label_makes_an_ephemeral_node(client):
+    """REQ-818, REQ-2176: MERGE is MATCH, then CREATE under the governing rule. A label the
+    model does not have names no model table, so the CREATE is no governed write: it makes one
+    node in the principal's graph session (no longer refused as an unsupported write), and the
+    answer counts it as Neo4j does (REQ-670)."""
+    resp = _ephemeral_write(client, "MERGE (n:Person {name: 'Eve'})")
+    assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["code"] == "cypher.refused", data
-    err = data["detail"]
-    # Behavior: MERGE is an unsupported write pattern and is rejected by name.
-    assert "MERGE" in err.upper(), err
+    assert data["counters"]["nodes-created"] == 1, data
+    assert data["counters"]["labels-added"] == 1, data
 
 
-def test_supported_write_reaches_write_pipeline(client):
-    """A supported direct write (CREATE) against an unregistered label is routed to
-    the write pipeline (REQ-670) and rejected there for the missing label, NOT with a
-    read-only/write-clause error. Confirms CREATE is executed as a direct table write."""
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "CREATE (n:Person {name: 'Eve'})"},
-    )
-    assert resp.status_code == 400
+def test_create_of_a_free_label_makes_an_ephemeral_node(client):
+    """REQ-2176: a CREATE whose label names no model table is not routed to the governed write
+    (once refused there for the missing label); it makes an ephemeral node, never a read-only or
+    write-clause error."""
+    resp = _ephemeral_write(client, "CREATE (n:Person {name: 'Eve'})")
+    assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert "label" in data["detail"].lower() and "Person" in data["detail"], data
-    assert "read-only" not in data["detail"].lower()
+    assert data["counters"]["nodes-created"] == 1, data
+    assert "read-only" not in resp.text.lower()
 
 
 def test_apoc_rejected(client):
@@ -99,11 +104,12 @@ def test_apoc_rejected(client):
 
 
 def test_parse_error_returns_400(client):
+    # A statement that does not parse (MERGE once stood in for one; it is a write, REQ-2176).
     resp = client.post(
         "/data/cypher",
-        json={"query": "MERGE (n:Person {name: 'Eve'})"},
+        json={"query": "MATCH (n:Person RETURN n"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 400, resp.text
     assert resp.json()["code"] == "cypher.refused"
 
 

@@ -21,9 +21,12 @@ import re as _re
 
 from fastapi.responses import JSONResponse
 
-_PROC_RE = _re.compile(
-    r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
-)
+# REQ-572: the schema procedures answered from the label map, each with the one column it yields.
+_PROCEDURES = {
+    "db.labels": "label",
+    "db.relationshiptypes": "relationshipType",
+    "db.propertykeys": "propertyKey",
+}
 
 # REQ-1156: a command-listing procedure so an HTTP Cypher client discovers registered commands
 # (name/signature) — parity with the Bolt SHOW PROCEDURES surface. dbms.procedures is the Neo4j name.
@@ -40,33 +43,51 @@ def _command_signature(cmd: dict) -> str:
     return f"{cmd['name']}({args}) :: ({ret})"
 
 
+def _procedure_call(query: str):
+    """The schema procedure ``query`` calls, standing alone and taking no arguments, with its
+    YIELD and RETURN (``CALL db.labels() YIELD label RETURN label``); else None."""
+    from provisa.cypher.command_call import CommandCallRefused, read_call
+
+    try:
+        call = read_call(query, {})
+    except CommandCallRefused:
+        return None
+    if call is None or call.values or call.name.lower() not in _PROCEDURES:
+        return None
+    return call
+
+
 def _detect_procedure(query: str) -> str | None:
-    m = _PROC_RE.match(query.strip())
-    return m.group(1).lower() if m else None
+    call = _procedure_call(query)
+    return call.name.lower() if call is not None else None
 
 
-def _handle_procedure(proc: str, label_map) -> JSONResponse:
-    """Return schema-inspection results for Neo4j-compatible CALL procedures."""
+def _procedure_rows(proc: str, label_map) -> list[dict]:
+    """The rows of a Neo4j-compatible schema procedure, from the label map (REQ-572)."""
     if proc == "db.labels":
         all_labels: set[str] = set()
         for nm in label_map.nodes.values():
             if nm.domain_label:
                 all_labels.add(nm.domain_label)
             all_labels.add(nm.table_label)
-        rows = [{"label": lbl} for lbl in sorted(all_labels)]
-        return JSONResponse(content={"columns": ["label"], "rows": rows})
+        return [{"label": lbl} for lbl in sorted(all_labels)]
     if proc == "db.relationshiptypes":
-        rows = [
+        return [
             {"relationshipType": r.rel_type}
             for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)
         ]
-        return JSONResponse(content={"columns": ["relationshipType"], "rows": rows})
     # proc == "db.propertykeys"
     keys: set[str] = set()
     for nm in label_map.nodes.values():
         keys.update(nm.properties.keys())
-    rows = [{"propertyKey": k} for k in sorted(keys)]
-    return JSONResponse(content={"columns": ["propertyKey"], "rows": rows})
+    return [{"propertyKey": k} for k in sorted(keys)]
+
+
+def _handle_procedure(proc: str, label_map) -> JSONResponse:
+    """Return schema-inspection results for Neo4j-compatible CALL procedures."""
+    return JSONResponse(
+        content={"columns": [_PROCEDURES[proc]], "rows": _procedure_rows(proc, label_map)}
+    )
 
 
 async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse | None:
@@ -83,11 +104,19 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
             for c in cmds
         ]
         return JSONResponse(content={"columns": ["name", "description", "signature"], "rows": rows})
-    proc = _detect_procedure(body.query)
-    if proc is not None:
-        return _handle_procedure(proc, label_map)
     from provisa.api.errors import ApiError
     from provisa.cypher.command_call import CommandCallRefused, parse_command_call, project
+
+    procedure = _procedure_call(body.query)
+    if procedure is not None:
+        proc = procedure.name.lower()
+        try:
+            cols, shaped = project(
+                procedure, _procedure_rows(proc, label_map), columns=[_PROCEDURES[proc]]
+            )
+        except CommandCallRefused as exc:
+            raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
+        return JSONResponse(content={"columns": cols, "rows": shaped})
 
     try:
         call = parse_command_call(body.query, body.params or {})

@@ -67,47 +67,45 @@ def client():
         yield _ResilientClient(c)
 
 
-# REQ-750: Cypher CALL db.labels() / db.relationshipTypes() / db.propertyKeys() procedure calls
+# REQ-572: Cypher CALL db.labels() / db.relationshipTypes() / db.propertyKeys() procedure calls,
+# answered from the label map with their YIELD and RETURN applied (once read as no procedure when a
+# YIELD followed, and refused as an unknown command: 404).
+def _procedure_answer(client, query: str, column: str) -> None:
+    resp = client.post("/data/cypher", json={"query": query})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["columns"] == [column], data
+    assert all(set(row) == {column} for row in data["rows"]), data
+
+
 def test_req750_db_labels_procedure(client):
     """
-    # REQ-750
+    # REQ-572
     Verify db.labels() procedure call returns available labels from schema.
     """
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "CALL db.labels() YIELD label RETURN label"},
-    )
-    assert resp.status_code != 404
-    if resp.status_code == 200:
-        data = resp.json()
-        assert "columns" in data
-        assert "rows" in data
+    _procedure_answer(client, "CALL db.labels() YIELD label RETURN label", "label")
 
 
 def test_req750_db_relationshipTypes_procedure(client):
     """
-    # REQ-750
+    # REQ-572
     Verify db.relationshipTypes() procedure call returns available relationship types.
     """
-    resp = client.post(
-        "/data/cypher",
-        json={
-            "query": "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType"
-        },
+    _procedure_answer(
+        client,
+        "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType",
+        "relationshipType",
     )
-    assert resp.status_code != 404
 
 
 def test_req750_db_propertyKeys_procedure(client):
     """
-    # REQ-750
+    # REQ-572
     Verify db.propertyKeys() procedure call returns available property keys.
     """
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey"},
+    _procedure_answer(
+        client, "CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey", "propertyKey"
     )
-    assert resp.status_code != 404
 
 
 # REQ-751: Cypher LIMIT / SKIP clauses translate correctly to SQL LIMIT/OFFSET

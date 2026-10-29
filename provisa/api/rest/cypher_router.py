@@ -1060,11 +1060,17 @@ async def _answer(
     # Register nodes and relationships, replacing composite string IDs with stable integers
     from provisa.gql.assembler import register_node_ids, register_rel_ids
 
-    if not (involved or internal):
+    if not internal:
         # REQ-2176: an ephemeral node is the session's alone, never registered in the model's
-        # node ids; a read of the session keeps every node's graph identity.
-        await register_node_ids(serializable_rows, state.model_db)
-        await register_rel_ids(serializable_rows, state.model_db)
+        # node ids: a label or type the session overlays keeps its graph identities. Every other
+        # label is read as without the session, its nodes registered as then (REQ-394).
+        kept_labels, kept_types = (
+            ephemeral_read.overlaid(label_map) if involved else (frozenset(), frozenset())
+        )
+        await register_node_ids(serializable_rows, state.model_db, kept_labels=kept_labels)
+        await register_rel_ids(
+            serializable_rows, state.model_db, kept_types=kept_types, kept_labels=kept_labels
+        )
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"

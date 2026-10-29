@@ -16,6 +16,8 @@ import json
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 
 # ---------------------------------------------------------------------------
 # Helpers / Stubs
@@ -265,6 +267,70 @@ class TestDetectProcedure:
 
     def test_returns_none_for_partial_procedure_name(self):
         assert self._detect("CALL db.labels") is None
+
+    def test_detects_a_procedure_followed_by_yield_and_return(self):
+        # REQ-572: the form Neo4j clients send; once read as no procedure and refused as an
+        # unknown command (404).
+        assert self._detect("CALL db.labels() YIELD label RETURN label") == "db.labels"
+        assert (
+            self._detect("CALL db.relationshipTypes() YIELD relationshipType")
+            == "db.relationshiptypes"
+        )
+
+    def test_a_procedure_composed_in_a_statement_is_not_answered_here(self):
+        assert self._detect("CALL db.labels() YIELD label WHERE label = 'A' RETURN label") is None
+
+
+class TestProcedureCallShaped:
+    """REQ-572: a schema procedure's YIELD and RETURN shape its answer, as a command call's do."""
+
+    def _label_map(self):
+        nm = _make_node_mapping("Orders", "Orders", domain_label="Sales:Orders")
+        nm.properties = {"id": "id", "amount": "amount"}
+        rel = _make_rel_mapping("PLACED_BY", "Orders", "Customers")
+        return _make_label_map({"Orders": nm}, {"placed_by": rel})
+
+    async def _answer(self, query: str, label_map):
+        from types import SimpleNamespace
+
+        from provisa.api.rest.registered_call import intercept_precompile
+
+        body = SimpleNamespace(query=query, params={})
+        resp = await intercept_precompile(body, _make_state(), "admin", label_map)
+        assert resp is not None, "a schema procedure is answered before compilation"
+        return json.loads(bytes(resp.body))
+
+    async def test_yield_and_return_keep_the_procedure_column(self):
+        body = await self._answer("CALL db.labels() YIELD label RETURN label", self._label_map())
+        assert body["columns"] == ["label"]
+        assert [r["label"] for r in body["rows"]] == ["Orders", "Sales:Orders"]
+
+    async def test_yield_renames_the_column(self):
+        body = await self._answer(
+            "CALL db.relationshipTypes() YIELD relationshipType AS t RETURN t", self._label_map()
+        )
+        assert body == {"columns": ["t"], "rows": [{"t": "PLACED_BY"}]}
+
+    async def test_property_keys_yield(self):
+        body = await self._answer(
+            "CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey", self._label_map()
+        )
+        assert body["columns"] == ["propertyKey"]
+        assert [r["propertyKey"] for r in body["rows"]] == ["amount", "id"]
+
+    async def test_an_empty_answer_keeps_its_column(self):
+        body = await self._answer(
+            "CALL db.labels() YIELD label RETURN label", _make_label_map({}, {})
+        )
+        assert body == {"columns": ["label"], "rows": []}
+
+    async def test_a_column_the_procedure_does_not_yield_is_refused_by_name(self):
+        from provisa.api.errors import ApiError
+
+        with pytest.raises(ApiError) as refused:
+            await self._answer("CALL db.labels() YIELD name RETURN name", _make_label_map({}, {}))
+        assert refused.value.status_code == 400
+        assert "'name' is not a column it returns" in str(refused.value)
 
 
 class TestHandleProcedure:

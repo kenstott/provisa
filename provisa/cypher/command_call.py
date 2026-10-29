@@ -200,13 +200,20 @@ def _items(raw: str, clause: str, name: str) -> list[tuple[str, str]] | None:
 
 def parse_command_call(query: str, params: dict) -> CommandCall | None:
     """The command call ``query`` is, or None when it is no ``CALL <bare name>(…)``."""
+    head = _CALL_HEAD_RE.match(query.strip())
+    if head is None or head.group(1).lower().startswith(_ANSWERED_ELSEWHERE):
+        return None
+    return read_call(query, params)
+
+
+def read_call(query: str, params: dict) -> CommandCall | None:
+    """The standalone call ``query`` is, whatever namespace it names (a Neo4j procedure such as
+    ``db.labels`` included), or None when it is no ``CALL <name>(…)`` standing alone."""
     text = query.strip().rstrip(";").rstrip()
     head = _CALL_HEAD_RE.match(text)
     if head is None:
         return None
     name = head.group(1)
-    if name.lower().startswith(_ANSWERED_ELSEWHERE):
-        return None
     close = _scan_parens(text, head.end())
     rest = text[close + 1 :]
     if _COMPOSED_RE.match(rest):
@@ -233,13 +240,17 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     return CommandCall(name=name, values=values, yields=yields, returns=returns)
 
 
-def project(call: CommandCall, rows: list[dict]) -> tuple[list[str], list[dict]]:
-    """The call's rows as its YIELD and RETURN shape them. A column named that the call did not
-    return is refused by name."""
-    cols = list(rows[0].keys()) if rows else []
+def project(
+    call: CommandCall, rows: list[dict], columns: list[str] | None = None
+) -> tuple[list[str], list[dict]]:
+    """The call's rows as its YIELD and RETURN shape them. ``columns`` are what the call returns
+    when that is known without a row (a procedure's fixed columns). A column named that the call
+    did not return is refused by name."""
+    known = list(rows[0].keys()) if rows else columns
+    cols = list(known or [])
     if call.yields is not None:
-        if rows:
-            missing = [src for src, _ in call.yields if src not in rows[0]]
+        if known is not None:
+            missing = [src for src, _ in call.yields if src not in known]
             if missing:
                 raise CommandCallRefused(
                     f"YIELD after CALL {call.name}: {missing[0]!r} is not a column it returns "
@@ -249,7 +260,7 @@ def project(call: CommandCall, rows: list[dict]) -> tuple[list[str], list[dict]]
         cols = [alias for _, alias in call.yields]
     if call.returns:
         missing = [src for src, _ in call.returns if src not in cols]
-        if missing and (rows or call.yields is not None):
+        if missing and (known is not None or call.yields is not None):
             raise CommandCallRefused(
                 f"RETURN after CALL {call.name}: {missing[0]!r} is not a name the call yields "
                 f"({', '.join(cols)})"
