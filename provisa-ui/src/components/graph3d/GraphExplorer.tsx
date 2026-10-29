@@ -64,6 +64,7 @@ import { OpenAsQuery } from "./OpenAsQuery";
 import { nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
+import { BreakableName } from "../list/BreakableName";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -730,13 +731,14 @@ function GraphDetail({
                 <Link
                   key={e.id}
                   to={nodeHref(otherNode)}
-                  className="p3d-row p3d-row-link"
+                  className="p3d-row p3d-row-compact"
                   onMouseEnter={() => setHover({ kind: "edge", id: e.id })}
                   onMouseLeave={() => setHover(null)}
                   data-testid={`${testId}-link-${e.id}`}
                 >
-                  <span className="p3d-row-name">
-                    {e.a === node.id ? "→" : "←"} {name(other)}
+                  <span className="p3d-row-name is-wrap">
+                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>
                   {(e.paths ?? 1) > 1 && (
@@ -773,9 +775,9 @@ function GraphDetail({
         <div className="p3d-list">
           {counts.map(({ key, type, count }) => (
             <div key={key} className="p3d-row p3d-row-compact">
-              <span className="p3d-row-name">
+              <span className="p3d-row-name is-wrap">
                 <i className={`p3d-dot g3d-sw-${type}`} />
-                {t(key)}
+                <BreakableName name={t(key)} />
               </span>
               <span className="p3d-num">{count}</span>
             </div>

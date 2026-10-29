@@ -302,3 +302,35 @@ describe("what each lane node says (EVERY LANE NODE INFORMS AND LINKS)", () => {
     expect(within(facts).getByText("2")).toBeInTheDocument();
   });
 });
+
+describe("the detail panel's names (NAMES WRAP, NEVER CUT)", () => {
+  it("lists a connection at the row's whole width, breaking after _ | . with no ellipsis", async () => {
+    await explorer();
+    tap("p:c360");
+    const detail = await screen.findByTestId("graph3d-detail");
+    const row = within(detail)
+      .getAllByRole("link")
+      .find((a) => a.classList.contains("p3d-row") && a.textContent?.includes("sales.customers"));
+    expect(row).toBeDefined();
+    const link = row as HTMLElement;
+    // No fixed columns beside the name: it takes the row's width.
+    expect(link).toHaveClass("p3d-row-compact");
+    expect(link).not.toHaveClass("p3d-row-link");
+    const name = link.querySelector(".p3d-row-name") as HTMLElement;
+    expect(name).toHaveClass("is-wrap");
+    expect((name.querySelector(".name-breakable") as HTMLElement).innerHTML).toBe(
+      "sales.<wbr>customers",
+    );
+  });
+
+  it("wraps the names of what is shown the same way", async () => {
+    await explorer();
+    const shown = screen.getByText("Shown").closest("section") as HTMLElement;
+    const names = shown.querySelectorAll(".p3d-row-name");
+    expect(names.length).toBeGreaterThan(0);
+    for (const n of names) {
+      expect(n).toHaveClass("is-wrap");
+      expect(n.querySelector(".name-breakable")).not.toBeNull();
+    }
+  });
+});

@@ -18,7 +18,7 @@
 // up the chain, whatever a focus keeps (a product's neighbourhood ends at its bound terms).
 
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
-import { edgeClass } from "./layeredLayout";
+import { edgeClass, orderLevels } from "./layeredLayout";
 
 export type Lane = "term" | "column" | "table" | "product";
 
@@ -173,6 +173,26 @@ export function laneDiagram(
     ...products,
   ];
   return { graph: { nodes, edges }, lane, more, links, data };
+}
+
+/** Each lane's nodes top to bottom, crossings cut (orderLevels): the term lane in ``termOrder``
+ * as ELK laid it out on its own, the column lane (its "+N columns" nodes too), the tables and the
+ * products ordered to suit it. A term bound to a table passes the column lane through a stand-in;
+ * lines inside the term lane cross nothing outside it. */
+export function laneOrder(d: LaneDiagram, termOrder: string[]): string[][] {
+  const levels: string[][] = LANES.map(() => []);
+  levels[0] = [...termOrder];
+  for (const n of d.graph.nodes) {
+    const l = LANES.indexOf(d.lane.get(n.id) as Lane);
+    if (l > 0) levels[l].push(n.id);
+  }
+  for (const m of d.more) levels[LANES.indexOf("column")].push(m.id);
+  const laneOf = new Map<string, number>();
+  levels.forEach((row, l) => row.forEach((id) => laneOf.set(id, l)));
+  const edges = d.links
+    .filter((k) => laneOf.get(k.from) !== laneOf.get(k.to))
+    .map((k) => [k.from, k.to] as [string, string]);
+  return orderLevels(levels, edges, new Set([0]));
 }
 
 /** The diagram as Mermaid ``flowchart LR`` text, one subgraph per lane drawn. */
