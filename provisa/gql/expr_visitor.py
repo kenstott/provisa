@@ -186,6 +186,11 @@ class ExprContext(Protocol):
         answers), None for any other name."""
         ...
 
+    def resolve_element_properties(self, name: str) -> exp.Expression | None:
+        """A bound node's or relationship's properties as one JSON object, None for any other
+        name."""
+        ...
+
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
         """``EXISTS/COUNT/COLLECT { … }`` — builds the correlated subquery."""
         ...
@@ -1252,6 +1257,19 @@ class ExprLowering:
             )
             read = _anon("JSON_EXTRACT", _anon("TO_JSON", self.lower(node.obj)), path)
             return exp.Paren(this=read)
+        held = (
+            self._ctx.resolve_element_properties(node.obj.name)
+            if isinstance(node.obj, Variable)
+            else None
+        )
+        if held is not None:
+            # n[key] of a node or a relationship: its property of that name, read by the engine
+            # from its properties' JSON (the answer decodes it), the key a value.
+            path = exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string('$."'), expression=self.lower(key)),
+                expression=exp.Literal.string('"'),
+            )
+            return exp.Paren(this=_anon("JSON_EXTRACT", held, path))
         if self._ctx.is_text(node.obj):
             # openCypher's TypeError (InvalidArgumentType): a string has no elements to index.
             raise CypherTranslateError(

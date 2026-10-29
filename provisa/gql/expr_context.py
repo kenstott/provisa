@@ -37,7 +37,12 @@ from provisa.gql.expr_ast import (
     Term,
     Variable,
 )
-from provisa.gql.translator_types import UNION_NODE, CypherTranslateError, map_key_column
+from provisa.gql.translator_types import (
+    NODE_COLUMN,
+    UNION_NODE,
+    CypherTranslateError,
+    map_key_column,
+)
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -702,6 +707,8 @@ class TranslatorExprContext:
             # A node matched with no label: the label of the table its row is from.
             return exp.Array(expressions=[_col("__label", var)]) if var in t._domain_nodes else None
         if name == "keys":
+            if nm is None and var in t._domain_nodes:
+                return self._union_keys(var)
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
                 via_bound = t._rel_var_via.get(var)
@@ -726,6 +733,35 @@ class TranslatorExprContext:
             # Marked with its variable: an extra UNION branch names its own type (_of_branch).
             return _type_literal(var, rel_type)
         return None
+
+    def _union_properties(self, var: str) -> exp.Expression:
+        """The properties of a node of a union of labels: those its row's value holds
+        (NODE_COLUMN), as JSON."""
+        alias = self._t._var_table.get(var, (var, None))[0]
+        return _anon("JSON_EXTRACT", _col(NODE_COLUMN, alias), exp.Literal.string("$.properties"))
+
+    def resolve_element_properties(self, name: str) -> exp.Expression | None:
+        if name in self._t._domain_nodes and self._t._var_table.get(name, (name, None))[1] is None:
+            return self._union_properties(name)
+        return self._properties_object(name)
+
+    def _union_keys(self, var: str) -> exp.Expression:
+        """keys(n) of a node of a union of labels: the keys of the properties its row's value
+        holds (NODE_COLUMN) that are set -- a property null on the row is no property of it."""
+        props = self._union_properties(var)
+        key = exp.to_identifier("_k")
+        path = exp.DPipe(
+            this=exp.DPipe(this=exp.Literal.string('$."'), expression=exp.column("_k")),
+            expression=exp.Literal.string('"'),
+        )
+        is_set = exp.Not(
+            this=exp.Is(
+                this=_anon("JSON_EXTRACT_SCALAR", props.copy(), path), expression=exp.Null()
+            )
+        )
+        return _anon(
+            "filter", _anon("JSON_KEYS", props), exp.Lambda(this=is_set, expressions=[key])
+        )
 
     def _graph_json_fn(self, name: str, var: str) -> exp.Expression | None:
         """Graph functions that build a JSON node/edge object or array: relationships, nodes,

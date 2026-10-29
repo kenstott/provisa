@@ -404,6 +404,42 @@ def _seconds_part(duration: exp.Expression) -> exp.Expression:
     return _times(parts(duration)[2], "microsecond")
 
 
+def _scaled(duration: exp.Expression, factor: exp.Expression, *, divide: bool) -> exp.Expression:
+    """A duration multiplied (or divided) by a number, as openCypher scales one: each part by
+    the number, a fraction of a month carried into days (the average month), a fraction of a day
+    into its time, to the microsecond. An engine's own interval arithmetic carries no fraction
+    of a month, nor of a day."""
+    months, days, micros = parts(_c("_dv"))
+
+    def by(e: exp.Expression) -> exp.Expression:
+        held = exp.Cast(this=e, to=exp.DataType.build("DOUBLE"))
+        return (exp.Div if divide else exp.Mul)(this=held, expression=_c("_f"))
+
+    def whole(e: exp.Expression) -> exp.Expression:
+        return exp.Anonymous(this="TRUNC", expressions=[e])
+
+    def carried(e: exp.Expression, per: object) -> exp.Expression:
+        rest = exp.Paren(this=exp.Sub(this=e, expression=whole(e.copy())))
+        return exp.Mul(this=rest, expression=exp.Literal.number(str(per)))
+
+    steps = [
+        {"_f": exp.Cast(this=exp.Paren(this=factor), to=exp.DataType.build("DOUBLE"))},
+        {"_m": by(months)},
+        {"_d": exp.Add(this=by(days), expression=carried(_c("_m"), float(_DAYS_PER_MONTH)))},
+        {"_us": exp.Add(this=by(micros), expression=carried(_c("_d"), _SECONDS_PER_DAY * _MICROS))},
+    ]
+    scaled = exp.Add(
+        this=exp.Add(
+            this=_times(exp.Cast(this=whole(_c("_m")), to=exp.DataType.build("BIGINT")), "month"),
+            expression=_times(
+                exp.Cast(this=whole(_c("_d")), to=exp.DataType.build("BIGINT")), "day"
+            ),
+        ),
+        expression=_times(exp.Anonymous(this="ROUND", expressions=[_c("_us")]), "microsecond"),
+    )
+    return _let(duration, steps, scaled)
+
+
 def arithmetic(
     op: str,
     left: exp.Expression,
@@ -417,8 +453,11 @@ def arithmetic(
     if DURATION not in (left_kind, right_kind):
         return None
     if op in ("*", "/"):
-        cls = exp.Mul if op == "*" else exp.Div
-        return cls(this=exp.Paren(this=left), expression=exp.Paren(this=right))
+        if left_kind == DURATION:
+            return _scaled(left, right, divide=op == "/")
+        if op == "/":
+            raise CypherTranslateError("a number cannot be divided by a duration")
+        return _scaled(right, left, divide=False)
     left, right = exp.Paren(this=left), exp.Paren(this=right)
     if left_kind == DURATION and right_kind == DURATION:
         return (exp.Add if op == "+" else exp.Sub)(this=left, expression=right)

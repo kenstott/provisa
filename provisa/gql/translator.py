@@ -39,6 +39,8 @@ from provisa.gql import temporal
 from provisa.gql.expr_ast import (
     Binary,
     CypherExpr,
+    FunctionCall,
+    Index,
     Literal as ExprLiteral,
     MapLiteral,
     Parameter as ExprParameter,
@@ -388,6 +390,47 @@ def _of_branch(node: _E, rel_types: dict[str, str]) -> _E:
 
 
 _FLIPPED = {"right": "left", "left": "right", "none": "none"}
+
+
+def _inlined(node: Any, values: dict[str, CypherExpr]) -> Any:
+    """``node`` (an IR tree) with each variable ``values`` holds read as its expression there."""
+    if isinstance(node, Variable) and node.name in values:
+        return copy.deepcopy(values[node.name])
+    if isinstance(node, list):
+        return [_inlined(item, values) for item in node]
+    if isinstance(node, tuple):
+        return tuple(_inlined(item, values) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return node
+    changed = {
+        f.name: _inlined(getattr(node, f.name), values) for f in dataclasses.fields(node) if f.init
+    }
+    return replace(node, **changed)
+
+
+def _properties_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads the variable ``var``'s properties by name at run
+    time: keys(var), or var[key] of a key that is not a literal."""
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "keys"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if (
+        isinstance(node, Index)
+        and isinstance(node.obj, Variable)
+        and node.obj.name == var
+        and not isinstance(node.index, ExprLiteral)
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(_properties_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(_properties_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
 
 
 def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
@@ -1573,9 +1616,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             and r.expression.name != r.alias
             and r.alias not in self._var_table
         }
+        # A name the clause gives a value that a variable already has (RETURN n.num AS n): the
+        # ORDER BY reads the value, not the variable, which the engine would bind it to.
+        shadowing = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and r.alias in self._var_table
+            and not (isinstance(r.expression, Variable) and r.expression.name == r.alias)
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
-            target = item.expression
+            target = _inlined(item.expression, shadowing)
             if (
                 isinstance(target, Property)
                 and isinstance(target.obj, Variable)
@@ -1593,7 +1645,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 # A key null for every row (a property the label has not) orders nothing, and an
                 # engine refuses a literal one.
                 continue
-            if isinstance(target, Variable) and target.name in self._json_value_vars:
+            if (
+                isinstance(item.expression, Variable)
+                and item.expression.name in self._json_value_vars
+            ):
                 # Values of several types, each its JSON, in openCypher's order (json_order_key).
                 inner = exp.Anonymous(this="json_order_key", expressions=[inner])
             # Cypher orders null as the largest value: last ascending, first descending.
@@ -1952,6 +2007,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             return False
         if var in self._zero_hop_paths().values():
             # The one node of a path of no hops (MATCH p = (a)): the path's value is the node's.
+            return True
+        if _properties_read(self._ast, var):
+            # keys(n), n[key]: read from the properties its value holds (expr_context).
             return True
         items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
         if self._ast.return_clause:
