@@ -1688,6 +1688,7 @@ async def _execute_cypher(
     """
     from provisa.api.app import state as app_state
     from provisa.gql.assembler import (
+        answered_columns,
         assemble_rows,
         register_node_ids,
         register_rel_ids,
@@ -1910,7 +1911,8 @@ async def _execute_cypher(
     await register_node_ids(serializable, _model_db)
     await register_rel_ids(serializable, _model_db)
 
-    columns = list(raw_rows[0].keys()) if raw_rows else []
+    # A read of no rows names its columns too, as Cypher over HTTP does (REQ-347).
+    columns = list(raw_rows[0].keys()) if raw_rows else answered_columns(list(result.column_names))
     rows = [[row.get(col) for col in columns] for row in serializable]
     return columns, rows, None
 

@@ -91,6 +91,13 @@ def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
     return out
 
 
+def answered_columns(column_names: list[str]) -> list[str]:
+    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
+    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135). The
+    same on every Cypher surface: what a read of no rows names (Bolt's fields, HTTP's columns)."""
+    return [c for c in column_names if c != CUT_COLUMN]
+
+
 def assemble_rows(  # REQ-349, REQ-350
     raw_rows: list[dict],
     graph_vars: dict[str, GraphVarKind],

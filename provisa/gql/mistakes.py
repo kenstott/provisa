@@ -42,6 +42,7 @@ from provisa.gql.ir import (
     NodePattern,
     PathFunction,
     PathPattern,
+    ProcedureCall,
     UnwindClause,
     WithClause,
 )
@@ -279,6 +280,38 @@ def _names(node: object, bound: set[str], used: list[str]) -> None:
             bound.add(value)
         else:
             _names(value, bound, used)
+
+
+def _carried(item: object) -> str | None:
+    """The variable a WITH item carries on: its alias, or the variable it names unaliased."""
+    alias = getattr(item, "alias", None)
+    expression = getattr(item, "expression", None)
+    return alias or (expression.name if isinstance(expression, Variable) else None)
+
+
+def yield_rebinding(ast: CypherAST) -> CypherMistake | None:  # REQ-2168
+    """The refusal of a CALL whose YIELD binds a variable already in scope (openCypher
+    VariableAlreadyBound): ``WITH 'Hi' AS label CALL test.labels() YIELD label``. A WITH carries
+    on only what it projects, so a variable it drops may be yielded again."""
+    scope: set[str] = set()
+    for step in ast.pipeline:
+        if isinstance(step, WithClause):
+            scope = {carried for item in step.items if (carried := _carried(item))}
+            continue
+        if isinstance(step, ProcedureCall):
+            for _, variable in step.yields:
+                if variable in scope:
+                    return CypherMistake(
+                        "cypher.variable_already_bound",
+                        f"YIELD after CALL {step.name} binds {variable}, which the statement "
+                        f"already binds: yield it under another name (YIELD column AS other).",
+                        variable=variable,
+                        procedure=step.name,
+                    )
+                scope.add(variable)
+            continue
+        _names(step, scope, [])
+    return None
 
 
 def _clause_of(name: str, ast: CypherAST) -> str:

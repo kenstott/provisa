@@ -27,8 +27,10 @@ What is read here and refused by name when it cannot be honoured:
   (string, number, boolean, null, list of these) or a ``$parameter``, bound from the request's
   parameters; a parameter the request does not carry is refused, as is anything else (an
   expression, a name);
-* ``YIELD col [AS alias], …`` or ``YIELD *`` — the columns kept, renamed as written;
-* ``RETURN name [AS alias], …`` or ``RETURN *`` — a projection of what the call yields. A call
+* ``YIELD col [AS alias], …`` or ``YIELD *`` — the columns kept, renamed as written; a variable
+  yielded twice is refused, as is a YIELD (``*`` included) after a VOID command's call;
+* ``RETURN name [AS alias], …`` or ``RETURN *`` — a projection of what the call yields, so a
+  RETURN after a call with no YIELD, or after ``YIELD *``, is refused (openCypher). A call
   followed by any other clause (WHERE, WITH, UNWIND, …) is a call composed in a statement, which
   the Cypher translator reads (REQ-2168), so it is no call read here.
 
@@ -215,6 +217,18 @@ def _items(raw: str, clause: str, name: str) -> list[tuple[str, str]] | None:
     return items
 
 
+def _check_yield_items(name: str, yields: list[tuple[str, str]] | None) -> None:
+    """A YIELD binds each variable once: one named twice (``YIELD a, b AS a``) is refused."""
+    seen: set[str] = set()
+    for _, alias in yields or ():
+        if alias in seen:
+            raise CommandCallRefused(
+                f"YIELD after CALL {name} binds {alias} twice: each column it yields is bound "
+                "to a variable of its own"
+            )
+        seen.add(alias)
+
+
 def parse_command_call(query: str, params: dict) -> CommandCall | None:
     """The command call ``query`` is, or None when it is no ``CALL <bare name>(…)``."""
     text = query.strip().rstrip(";").rstrip()
@@ -247,8 +261,20 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     if m is not None:
         yields = _items(m.group(1), "YIELD", name)
         rest = rest[m.end() :]
+        _check_yield_items(name, yields)
     m = _RETURN_RE.match(rest)
     if m is not None:
+        # openCypher: a RETURN reads what the call's YIELD binds, each by name.
+        if not yields_written:
+            raise CommandCallRefused(
+                f"RETURN after CALL {name} reads what its YIELD binds, and it has no YIELD: "
+                f"CALL {name}(…) YIELD column [AS variable], … RETURN …"
+            )
+        if yields is None:
+            raise CommandCallRefused(
+                f"CALL {name} … YIELD * is read only in a call standing alone; with a RETURN, "
+                "name the columns it yields"
+            )
         returns = _items(m.group(1), "RETURN", name) or []
         rest = ""
     if rest.strip():

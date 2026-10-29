@@ -323,7 +323,7 @@ async def test_a_standalone_yield_of_a_void_command_is_refused_over_http_naming_
 
 
 @pytest.mark.parametrize(
-    "query", ["CALL test.doNothing() YIELD x", "CALL test.doNothing() YIELD * RETURN *"]
+    "query", ["CALL test.doNothing() YIELD x", "CALL test.doNothing() YIELD x RETURN x"]
 )
 async def test_a_standalone_yield_of_a_void_command_is_refused_over_bolt_naming_void(query, state):
     from provisa.cypher.command_call import CommandCallRefused

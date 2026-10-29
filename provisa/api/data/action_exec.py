@@ -337,7 +337,7 @@ def bind_command_args(name: str, values: list | dict, state, role_id: str | None
     command = _admitted(name, state, role_id)
     declared = [a for a in command.get("arguments") or [] if a.get("name")]
     if isinstance(values, ImplicitArguments):
-        return _bind_implicit(name, declared, values)
+        return _of_declared_types(name, declared, _bind_implicit(name, declared, values))
     # REQ-2168: the trailing arguments that declare a default may be left out.
     required = len(declared)
     while required and "default" in declared[required - 1]:
@@ -354,9 +354,47 @@ def bind_command_args(name: str, values: list | dict, state, role_id: str | None
             count=len(declared),
             given=len(values),
         )
-    return {
-        a["name"]: values[i] if i < len(values) else a["default"] for i, a in enumerate(declared)
-    }
+    return _of_declared_types(
+        name,
+        declared,
+        {a["name"]: values[i] if i < len(values) else a["default"] for i, a in enumerate(declared)},
+    )
+
+
+#: The IR types (core/ir_types) whose values a Cypher call passes as one JSON kind, and the
+#: Python kinds each takes: a whole number for an integer, any number for a floating or exact
+#: number (openCypher: an INTEGER is assignable to a FLOAT or NUMBER), true or false for a
+#: boolean. A value of another type (a date, a JSON document) is written in the kinds it is
+#: read from, so it is not checked here.
+_ARGUMENT_KINDS: dict[str, tuple[type, ...]] = {
+    **dict.fromkeys(("smallint", "integer", "bigint"), (int,)),
+    **dict.fromkeys(("float", "double", "numeric"), (int, float)),
+    "boolean": (bool,),
+}
+
+
+def _of_declared_types(name: str, declared: list[dict], bound: dict) -> dict:
+    """``bound``, each value of its argument's declared type or null; one that is not (a boolean
+    for an INTEGER) is refused naming the argument and the signature (openCypher
+    InvalidArgumentType)."""
+    from provisa.core.ir_types import to_ir
+
+    for arg in declared:
+        value = bound[arg["name"]]
+        ir = to_ir(str(arg.get("type") or ""))
+        kinds = _ARGUMENT_KINDS.get(ir)
+        if value is None or kinds is None:
+            continue
+        if isinstance(value, bool) != (bool in kinds) or not isinstance(value, kinds):
+            signature = _signature(name, declared)
+            raise ApiError(
+                400,
+                "functions.argument_type",
+                f"{signature}: argument {arg['name']!r} is {ir}; {value!r} is not",
+                signature=signature,
+                argument=arg["name"],
+            )
+    return bound
 
 
 def _bind_implicit(name: str, declared: list[dict], params: dict) -> dict:
