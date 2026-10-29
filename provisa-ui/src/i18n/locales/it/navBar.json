@@ -77,6 +77,7 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Registri di container",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Cataloghi"
+    "itemCatalogs": "Cataloghi",
+    "itemReferenceLibrary": "Biblioteca di riferimento"
   }
 }

@@ -156,11 +156,6 @@ class BoltSession:
         self._last_qid: int | None = None  # the transaction's last RUN's: what qid -1 names
         self._next_qid: int = 0
         self._set_aside: dict[int, _OpenResult] = {}
-        # REQ-2176, REQ-615: the connection's one temporary-table session, bound around each RUN:
-        # the ephemeral graph its statements make lives in it and ends with the connection.
-        from provisa.compiler.temp_tables import TempSession
-
-        self.temp_tables = TempSession()
 
     # ── Response helpers ───────────────────────────────────────────────────────
 
@@ -635,20 +630,20 @@ class BoltSession:
         whose records were never pulled ends with it — its deadline stops (REQ-1905)."""
         self._end_all_requests()
 
-    async def end_temp_tables(self) -> None:
-        """The connection has ended: its temporary tables, and the ephemeral graph held in them,
-        end with it, dropped from the engine's store in its org (REQ-2176, REQ-615)."""
-        if not self.temp_tables.stored:
-            return
-        from provisa.api.app import state as app_state
-        from provisa.core.request_context import reset_current_org, set_current_org
-        from provisa.pgwire.temp_exec import end
+    def _graph_session(self, app_state: Any, cypher: str) -> Any:
+        """REQ-2176: the principal's graph session, bound for one RUN ``cypher`` -- the one its
+        every other client runs in (provisa.api.graph_session), locked as HTTP locks it. An
+        unsecured connection's is the anonymous principal's, as an unsecured page's is: there the
+        principal a driver names only picks the role. A connection ending leaves it as it was."""
+        from provisa.api import graph_session
+        from provisa.cypher.parser import writes_in
 
-        token = set_current_org(self._bound_org())
-        try:
-            await end(self.temp_tables, app_state)
-        finally:
-            reset_current_org(token)
+        user_id, claims = (
+            (graph_session.ANONYMOUS, [])
+            if self._identity is None
+            else graph_session.principal(app_state, self._identity)
+        )
+        return graph_session.session_for(app_state, user_id, claims, writes=writes_in(cypher))
 
     def handle_reset(self) -> None:
         self._end_all_requests()
@@ -883,13 +878,9 @@ class BoltSession:
             self._end_request()  # a RUN over a result that was never drained ends that request
         shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
-        from provisa.compiler import temp_tables
         from provisa.core.statement_warnings import collecting
         from provisa.cypher.counters import counting
 
-        # REQ-2176, REQ-615: every statement of the connection belongs to its one temporary-table
-        # session.
-        temp_token = temp_tables.bind(self.temp_tables)
         try:
             # REQ-1350: one collector for the RUN; what its statements' answers say about
             # themselves is sent as notifications with the RUN's SUCCESS.
@@ -900,15 +891,26 @@ class BoltSession:
                 collecting() as run_warnings,
                 counting() as counted,
             ):
-                columns, rows, redirect = await _execute_cypher(
-                    cypher,
-                    parameters,
-                    role_id,
-                    include_ops=include_ops,
-                    roles=self.roles,
-                    orgs=member_orgs,
-                    deliver=delivery,
-                )
+                # REQ-2176: the RUN is a statement of the principal's graph session; BEGIN, COMMIT
+                # and ROLLBACK frame none over it -- what a RUN wrote is the session's as it ends.
+                async with self._graph_session(_app_state, cypher):
+                    columns, rows, redirect = await _execute_cypher(
+                        cypher,
+                        parameters,
+                        role_id,
+                        include_ops=include_ops,
+                        roles=self.roles,
+                        orgs=member_orgs,
+                        deliver=delivery,
+                    )
+                    # REQ-2176: an ephemeral node is answered as its statement wrote it, without
+                    # the session's own handle on it (its reads inside the RUN keep it: a write
+                    # finds it by it).
+                    from provisa.compiler import temp_tables
+                    from provisa.ephemeral.read import as_answered, involved
+
+                    if involved(temp_tables.current()):
+                        rows = as_answered(rows)
                 # The result is ready only now: not handed over once the deadline has passed.
                 deadline.check()
                 # A count the write could not make exactly is no counter at all: said instead.
@@ -949,15 +951,10 @@ class BoltSession:
             with shield.lock:  # execution is over: this thread is inside no deadline's scope
                 shield.settle()
                 shield.quiesce()
-            temp_tables.unbind(temp_token)
             reset_current_org(_org_token)
 
-        from provisa.ephemeral.read import as_answered, involved
-
         self._result_columns = columns
-        # REQ-2176: an ephemeral node is answered as its statement wrote it, without the
-        # session's own handle on it (its reads inside the RUN keep it: a write finds it by it).
-        self._result_rows = as_answered(rows) if involved(self.temp_tables) else rows
+        self._result_rows = rows
         self._result_redirect = redirect
         self._result_stats = {} if counted.unknown else counted.stats()
         self._pull_offset = 0
@@ -1790,7 +1787,7 @@ async def _execute_cypher(
         cypher=cypher,
         params=parameters,
     )
-    # REQ-2176: the connection's ephemeral graph. A CREATE the governing rule does not make
+    # REQ-2176: the principal's ephemeral graph. A CREATE the governing rule does not make
     # wholly the governed write is done by the ephemeral layer (its governed parts through the
     # governed write below); a read while the session holds ephemeral objects compiles over the
     # session's overlay and is never kept, its answer being the session's own.
@@ -1820,6 +1817,16 @@ async def _execute_cypher(
             run_write,
         )
         if made is not None:
+            if any(seam.counters(made).values()):
+                # Rows changed in place leave its shapes as they were: its generation is advanced
+                # all the same, as HTTP's write advances it.
+                from provisa.api import graph_session
+
+                held = graph_session.bound()
+                assert held is not None, (
+                    "an ephemeral write is made in the principal's graph session"
+                )
+                held.wrote = True
             # A write followed by reads answers with the rest's rows (REQ-2176).
             return (*seam.rows_of(made), None)
     involved = ephemeral_read.involved(temp)

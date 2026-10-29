@@ -66,8 +66,9 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "product_id": func.product_id,  # REQ-1634
         "return_schema": return_schema,
         # REQ-1159: canonical IR-typed output dataset contract (return_schema is its GraphQL projection).
+        # An empty list declares no outputs (a VOID command, REQ-2001); None declares none.
         "output_columns": [c.model_dump() for c in func.output_columns]
-        if func.output_columns
+        if func.output_columns is not None
         else None,
         # REQ-885: implementation kind + swappable binding (JSON), decoupled from addressing.
         "impl_kind": func.impl_kind,

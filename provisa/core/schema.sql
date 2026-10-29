@@ -1819,6 +1819,49 @@ CREATE TABLE IF NOT EXISTS code_source_vectors (
 );
 
 
+-- REQ-2185: the org's reference library: documents its assistants draw on, each proposed or kept,
+-- with domains (a list, or '*' for the whole org, as a glossary term's). A document's content is
+-- held as its passages, each embedded by the org's vector model; vector is the embedding as a JSON
+-- array of floats (the code_source_vectors pattern). Mirrors schema_org.reference_documents,
+-- reference_document_domains and reference_passages.
+CREATE TABLE IF NOT EXISTS reference_documents (
+    id              SERIAL PRIMARY KEY,
+    title           TEXT NOT NULL,
+    source_kind     TEXT NOT NULL CONSTRAINT reference_documents_kind_check
+                        CHECK (source_kind IN ('file', 'url')),
+    source          TEXT NOT NULL,
+    media_type      TEXT NOT NULL,
+    content_sha256  TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT reference_documents_status_check
+                        CHECK (status IN ('proposed', 'kept')),
+    embedding_model TEXT NOT NULL,
+    added_by        TEXT,
+    added_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    refreshed_at    TIMESTAMPTZ,
+    replaced_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
+
+CREATE TABLE IF NOT EXISTS reference_document_domains (
+    id          SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    domain_id   TEXT NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (document_id, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS reference_passages (
+    id          SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    section     TEXT,
+    page        INTEGER,
+    text        TEXT NOT NULL,
+    vector      TEXT NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (document_id, ordinal)
+);
+
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):
 -- an intervention by a platform_admin must be visible to the org afterward, and the query trail is

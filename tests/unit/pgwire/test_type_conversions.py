@@ -176,3 +176,197 @@ def test_a_cast_is_sent_as_postgresql_sends_it(conn: Any, sql: str):
     b_oid, b_mod, _, b_bin = _run(conn.conn, sql, 1)
     assert (t_oid, t_mod, t_text) == (oid, typmod, text)
     assert (b_oid, b_mod, b_bin) == (oid, typmod, binary)
+
+
+# --- a registered column is sent as its registered type (REQ-1961, amended 2026-10-28) ----------
+#
+# PGWIRE SENDS NUMERIC(P,S); VARCHAR AND CHAR KEEP THEIR TYPE: a registered numeric(p,s) column is
+# described with its typmod, and a column whose native type is varchar, varchar(n), char(n) or
+# bpchar (the hidden attribute registration keeps) with that type's OID and length typmod; the
+# catalog's pg_attribute says the same. The fixture is the conformance job's
+# (scripts/conformance/pgwire_catalog_types.py), registered as registration records it; the
+# values are the PostgreSQL column of the Conformance (pgwire) run 40811310936, except c_numeric's
+# typmod: the unsized numeric registration samples into numeric(38,4) is described as that, by
+# design (by_design/pgwire.yaml).
+
+from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
+
+FIXTURE_TABLE_ID = 1
+
+#: (column, DuckDB type, the value as the source delivers it, registered column)
+_FIXTURE: list[tuple[str, str, str, ColumnMetadata]] = [
+    ("c_text", "VARCHAR", "'text value'", ColumnMetadata("c_text", "text", True)),
+    (
+        "c_numeric",
+        "DECIMAL(38,4)",
+        "12345.6789",
+        ColumnMetadata("c_numeric", "numeric(38,4)", True),
+    ),
+    (
+        "c_numeric_10_2",
+        "DECIMAL(10,2)",
+        "12345.67",
+        ColumnMetadata("c_numeric_10_2", "numeric(10,2)", True),
+    ),
+    (
+        "c_varchar",
+        "VARCHAR",
+        "'varchar value'",
+        ColumnMetadata("c_varchar", "text", True, native_type="character varying"),
+    ),
+    (
+        "c_varchar_20",
+        "VARCHAR",
+        "'bounded'",
+        ColumnMetadata("c_varchar_20", "text", True, native_type="character varying(20)"),
+    ),
+    # PostgreSQL delivers a character(n) value padded to its length.
+    (
+        "c_bpchar_5",
+        "VARCHAR",
+        "'ab   '",
+        ColumnMetadata("c_bpchar_5", "text", True, native_type="character(5)"),
+    ),
+]
+
+#: column -> (type OID, typmod, text, binary hex).
+REGISTERED: dict[str, tuple[int, int, str, str]] = {
+    "c_text": (25, -1, "text value", "text value".encode().hex()),
+    # numeric(38,4): typmod ((38 << 16) | 4) + 4.
+    "c_numeric": (1700, 2490376, "12345.6789", "0003000100000004000109291a85"),
+    # 12345.67 is base-10000 digits 1, 2345, 6700, display scale 2.
+    "c_numeric_10_2": (1700, 655366, "12345.67", "000300010000000200010929" + "1a2c"),
+    "c_varchar": (1043, -1, "varchar value", "varchar value".encode().hex()),
+    "c_varchar_20": (1043, 24, "bounded", "bounded".encode().hex()),
+    "c_bpchar_5": (1042, 9, "ab   ", "6162202020"),
+}
+
+
+def _fixture_ctx() -> Any:
+    from provisa.compiler.sql_types import CompilationContext, TableMeta
+
+    meta = TableMeta(
+        table_id=FIXTURE_TABLE_ID,
+        field_name="types_fixture",
+        type_name="TypesFixture",
+        source_id="conformance-pg",
+        catalog_name="conformance_pg",
+        schema_name="conformance",
+        table_name="types_fixture",
+        domain_id="conformance",
+        source_type="postgresql",
+    )
+    return CompilationContext(tables={"types_fixture": meta})
+
+
+@pytest.fixture
+def registered(pgwire):
+    from provisa.pgwire._pipeline import _kept_result_shape
+    from provisa.pgwire.server import ProvisaSession
+
+    runtime = DuckDBFederationRuntime()
+    runtime._con.execute("CREATE SCHEMA conformance")
+    columns = ", ".join(f"{name} {duck}" for name, duck, _, _ in _FIXTURE)
+    values = ", ".join(value for _, _, value, _ in _FIXTURE)
+    runtime._con.execute(f"CREATE TABLE conformance.types_fixture ({columns})")
+    runtime._con.execute(f"INSERT INTO conformance.types_fixture VALUES ({values})")
+    engine = RuntimeEngine(runtime, "duckdb")
+    ctx = _fixture_ctx()
+    state = with_surfaces(MagicMock())
+    state.contexts = {ROLE: ctx}
+    state.schema_build_cache = {"column_types": {FIXTURE_TABLE_ID: [c for *_, c in _FIXTURE]}}
+    state.auth_config = None
+    state.auth_middleware_active = False
+    state.multitenancy = False
+    state.federation_engine = engine
+    state.engine_conn = None  # the catalog's row-count estimates are not asked of an engine
+    table_map = {"conformance.types_fixture": FIXTURE_TABLE_ID, "types_fixture": FIXTURE_TABLE_ID}
+
+    async def _govern(text, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
+        plan = _engine_plan(transpile_to_duckdb(text))
+        plan.result_shape = _kept_result_shape({}, text, table_map, ctx, state)
+        return plan
+
+    async def _no_cache(plan, st):
+        return None
+
+    with (
+        patch("provisa.api.app.state", state),
+        patch("provisa.pgwire._pipeline.govern_pgwire_plan", _govern),
+        patch("provisa.pgwire._pipeline.prepare_residency_and_check_cache", _no_cache),
+        patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status, **kw: None),
+    ):
+        c = psycopg.connect(
+            host="127.0.0.1",
+            port=pgwire,
+            user=ROLE,
+            password="x",
+            dbname="provisa",
+            autocommit=True,
+        )
+        try:
+            yield c
+        finally:
+            c.close()
+
+
+@pytest.mark.parametrize("column", list(REGISTERED))
+def test_a_registered_column_is_sent_as_its_registered_type(registered: Any, column: str):
+    oid, typmod, text, binary = REGISTERED[column]
+    sql = f"SELECT {column} FROM conformance.types_fixture"
+    t_oid, t_mod, t_text, _ = _run(registered, sql, 0)
+    b_oid, b_mod, _, b_bin = _run(registered, sql, 1)
+    assert (t_oid, t_mod, t_text) == (oid, typmod, text)
+    assert (b_oid, b_mod, b_bin) == (oid, typmod, binary)
+
+
+def test_a_described_registered_column_is_sent_as_its_registered_type():
+    # A statement Described first (Describe(Statement)) is sent by its description: the shape
+    # derived from registered metadata types each column, whatever the engine answers.
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    from provisa.compiler.result_shape import derive_result_shape
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaQueryResult
+
+    columns = list(REGISTERED)
+    sql = f"SELECT {', '.join(columns)} FROM conformance.types_fixture"
+    table_map = {"conformance.types_fixture": FIXTURE_TABLE_ID}
+    column_types = {FIXTURE_TABLE_ID: [c for *_, c in _FIXTURE]}
+    shape = derive_result_shape(sql, table_map, _fixture_ctx(), column_types)
+    engine = QueryResult(
+        rows=[("text value", 12345.6789, 12345.67, "varchar value", "bounded", "ab")],
+        column_names=columns,
+        column_types=["varchar", "double", "double", "varchar", "varchar", "varchar"],
+    )
+    result = ProvisaQueryResult(engine, sql, shape)
+    described = [
+        (
+            result.column_type_oid(i) or BVTYPE_TO_PGTYPE[result.column(i)[1]][0],
+            result.column_typmod(i),
+        )
+        for i in range(len(columns))
+    ]
+    assert described == [(REGISTERED[c][0], REGISTERED[c][1]) for c in columns]
+    # A character(n) value is sent padded to its length, as bpchar's input pads it.
+    assert list(result.rows())[0][-1] == "ab   "
+
+
+def test_the_catalog_lists_a_registered_column_with_its_type_and_typmod(registered: Any):
+    rows = registered.execute(
+        "SELECT a.attname, a.atttypid::int8, a.atttypmod, "
+        "pg_catalog.format_type(a.atttypid, a.atttypmod) "
+        "FROM pg_catalog.pg_attribute a "
+        "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+        "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = 'conformance' AND c.relname = 'types_fixture' AND a.attnum > 0 "
+        "ORDER BY a.attnum"
+    ).fetchall()
+    assert rows == [
+        ("c_text", 25, -1, "text"),
+        ("c_numeric", 1700, 2490376, "numeric(38,4)"),
+        ("c_numeric_10_2", 1700, 655366, "numeric(10,2)"),
+        ("c_varchar", 1043, -1, "character varying"),
+        ("c_varchar_20", 1043, 24, "character varying(20)"),
+        ("c_bpchar_5", 1042, 9, "character(5)"),
+    ]

@@ -13,27 +13,7 @@ name: amd64-only engines
 # _heavy_db_service starts/stops exasol around the single test that needs it.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "tests/integration/test_exasol_*.py"
-      - "tests/integration/connector_source_harness.py"
-      - "tests/conftest.py"
-      - "tests/itest_stack.py"
-      - "docker-compose.core.yml"
-      - "docker-compose.test.yml"
-      - "provisa/federation/**"
-      - ".github/workflows/amd64-engines.yml"
-  pull_request:
-    paths:
-      - "tests/integration/test_exasol_*.py"
-      - "tests/integration/connector_source_harness.py"
-      - "tests/conftest.py"
-      - "tests/itest_stack.py"
-      - "docker-compose.core.yml"
-      - "docker-compose.test.yml"
-      - "provisa/federation/**"
-      - ".github/workflows/amd64-engines.yml"
+  # e2e and integration runs start only on request (maintainer 2026-10-29): pushes run unit tests only.
   workflow_dispatch:
   # Callable: by an orchestrator, and by the proof of the CI's own structure.
   workflow_call:

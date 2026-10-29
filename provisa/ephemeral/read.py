@@ -98,6 +98,17 @@ def _model_columns(nm: Any) -> list[tuple[str, str, str]]:
     return [(prop, alias, str(types.get(prop, "text"))) for prop, alias in nm.properties.items()]
 
 
+def walkable(model: Any) -> Any:
+    """``model`` in a graph session holding no ephemeral object: its own maps, and the session's
+    relationships for a path function with an unlabelled end to walk (REQ-348), none yet. A read
+    that walks none compiles to the very SQL it compiles over ``model``."""
+    from provisa.gql.label_map import SessionWalk
+
+    out = copy.copy(model)
+    out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)
+    return out
+
+
 def overlay(model: Any, session: TempSession) -> Any:
     """``model`` (the role's label map) with each label of session matches, and each type of
     session relationships, mapped to its session relation. ``model`` itself when the session

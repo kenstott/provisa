@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeGuard
 
 Kind = Literal["scalar", "array", "struct", "map", "untyped"]
 
@@ -145,3 +145,11 @@ def parse_native_type(native_type: str) -> NativeType:
             )
         return NativeType("struct", spelling, fields=fields)
     return NativeType("scalar", spelling)
+
+
+def natively_nested(native_type: str | None) -> TypeGuard[str]:
+    """Whether a column whose recorded native type is ``native_type`` is natively an array, a
+    struct or a map (REQ-1965). The same hidden attribute keeps a character column's native type
+    (REQ-1961, VARCHAR AND CHAR KEEP THEIR TYPE), which is none of them; a column with none
+    recorded is none of them either."""
+    return bool(native_type) and parse_native_type(native_type).nested

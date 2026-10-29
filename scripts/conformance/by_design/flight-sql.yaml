@@ -1,9 +1,11 @@
 # The ADBC driver validation suite against Provisa's Flight SQL endpoint (REQ-2167, amended
-# 2026-10-27). scripts/conformance/by_design.py. A case whose setup creates its table is adapted,
-# not excluded: the table is declared in the job's fixture model (flightsql/fixtures.py) and the
-# case runs and counts, marked on the page with what its setup became. A case whose client driver
-# does not send what it needs -- it refuses before any request, or drops what it was given -- is
-# left out of the pass rate, in its own group.
+# 2026-10-27 and 2026-10-28). scripts/conformance/by_design.py. Each case is passed, skipped by
+# design (a group below citing its requirement and decision), or failed. A case whose setup
+# creates its table is adapted, not excluded: the table is declared in the job's fixture model
+# (flightsql/fixtures.py) and the case runs and counts, marked on the page with what its setup
+# became. A case whose client driver never sends what it needs -- it refuses before any request,
+# or drops what it was given -- is skipped by design (REQ-2167, amended), its client group citing
+# the driver's evidence and a workaround.
 
 - kind: adapted
   group: Type cases' tables
@@ -70,34 +72,48 @@
 
 - kind: client
   group: Bind with no Prepare
+  requirement: REQ-2167
+  decision: >-
+    The client refuses before sending any request. ADBC apache-arrow-adbc-24 (adbc-driver-flightsql 1.12.0, Go driver at commit a3f81c6feb11):
+    go/adbc/driver/flightsql/flightsql_statement.go:720-724 (Bind) only stages the values on
+    the statement when no statement is prepared, and :526-531 (ExecuteQuery) and :602-607
+    (ExecuteUpdate) then return INVALID_STATE "[Flight SQL Statement] must set
+    IngestTargetTable before bulk ingestion" for a staged bind with no ingest target, before any
+    RPC. test_ingest_then_query meets the same check: SetSqlQuery (:495) clears the ingest target
+    but keeps the values the ingest staged.
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
     Refuses the Bind: "[Flight SQL Statement] must set IngestTargetTable before bulk ingestion"
     (INVALID_STATE).
   evidence: >-
-    The suite binds parameters to a statement it has not prepared. The driver refuses Bind
-    without Prepare in the client: against a probe Flight SQL server that records every call,
-    the same Bind sends no RPC.
+    flightsql_statement.go:720-724 and :526-531 at apache-arrow-adbc-24; against a probe Flight
+    SQL server that records every call, the same Bind sends no RPC.
   workaround: >-
     Prepare the statement before binding (the DB-API cursor's execute does), as
     tests/unit/test_flightsql_prepared.py does against Provisa.
   reason: "must set IngestTargetTable before"
+  case: "^tests\\.test_query\\.TestQuery::(test_query\\[provisa:flightsql:type/bind/\\w+\\]|test_query_bind_dictionary\\[provisa:flightsql:type/bind/(large_)?string\\]|test_query_bind_stream\\[provisa:flightsql:type/bind/(large_)?string-(single_batch|multiple_batches|multiple_batches_with_empty)\\])$|^tests\\.test_ingest\\.TestIngest::test_ingest_then_query\\[provisa:flightsql:ingest/string\\]$"
 
 - kind: client
   group: Bind before Prepare
+  requirement: REQ-2167
+  decision: >-
+    The client drops the bound values. ADBC apache-arrow-adbc-24 (adbc-driver-flightsql 1.12.0, Go driver at commit a3f81c6feb11):
+    go/adbc/driver/flightsql/flightsql_statement.go:720-724 (Bind) stages values bound before
+    Prepare on the statement; Prepare (:659-687) creates the prepared statement (:686) without
+    them, and ExecuteQuery runs the prepared statement (:555-556); nothing else reads the staged
+    values but bulk ingest (flightsql_bulk_ingest.go:109-152). The server receives no parameters.
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
-    Accepts the Bind and keeps the values, then sends the statement it prepares without them:
-    Prepare never binds what was bound before it (go/adbc/driver/flightsql/flightsql_statement.go,
-    Bind and Prepare, at apache-arrow-adbc-24).
+    Accepts the Bind and keeps the values, then sends the statement it prepares without them.
   evidence: >-
-    Against Provisa's server with the driver at 1.12.0, set_sql_query, bind, prepare and execute
-    send no DoPut: the server runs "SELECT 1 + $1" with no values, and its engine answers
-    "Values were not provided".
+    flightsql_statement.go:720-724, :659-687 and :555-556 at apache-arrow-adbc-24; against
+    Provisa's server, set_sql_query, bind, prepare and execute send no DoPut: the server runs
+    "SELECT 1 + $1" with no values, and its engine answers "Values were not provided".
   workaround: >-
     Bind after Prepare, as the suite's other bind tests do.
   reason: "Values were not provided for the following prepared statement parameter"
-  case: "TestStatement::test_parameter_execute\\["
+  case: "^tests\\.test_statement\\.TestStatement::test_parameter_execute\\[provisa:flightsql\\]$"
 
 - group: Times and timestamps beyond microseconds
   requirement: REQ-1961
@@ -118,34 +134,45 @@
 
 - kind: client
   group: GetStatistics not provided
+  requirement: REQ-2167
+  skipped: true
+  decision: >-
+    The client provides no GetStatistics. ADBC apache-arrow-adbc-24 (adbc-driver-flightsql 1.12.0, Go driver at commit a3f81c6feb11): go/adbc/pkg/flightsql/driver.go:1170-1172
+    answers NOT_IMPLEMENTED "AdbcConnectionGetStatistics: not supported", since the Flight SQL
+    connection does not implement adbc.ConnectionGetStatistics (go/adbc/adbc.go:846); Flight
+    SQL itself defines no statistics command. The suite gates the case on the feature
+    (adbc_drivers_validation/tests/connection.py:1089, requires_features
+    connection_get_statistics, validation at 9f9f441), which no Flight SQL driver can claim.
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
-    Provides no GetStatistics: Flight SQL defines no statistics command, and the driver
-    implements none (go/adbc/driver/flightsql at apache-arrow-adbc-24), so the suite skips the
-    case for every Flight SQL server.
+    Provides no GetStatistics; no request reaches the server.
   evidence: >-
-    The suite gates the case on connection_get_statistics, which a Flight SQL driver cannot
-    claim; no request reaches the server.
+    go/adbc/pkg/flightsql/driver.go:1170-1172 at apache-arrow-adbc-24.
   workaround: >-
     Read a table's row count with a statement (SELECT count(*) ...).
-  case: "TestConnection::test_get_statistics\\["
+  case: "^tests\\.test_connection\\.TestConnection::test_get_statistics\\[provisa:flightsql\\]$"
 
 - kind: client
   group: GetObjects reports no constraints
+  requirement: REQ-2167
+  skipped: true
+  decision: >-
+    The client never fetches a table's keys in GetObjects. ADBC apache-arrow-adbc-24 (adbc-driver-flightsql 1.12.0, Go driver at commit a3f81c6feb11):
+    go/adbc/driver/flightsql/flightsql_connection.go:882 (GetObjectsTables) reads GetTables
+    alone, and :939-943 builds each table from its name, type and schema, with no constraints, so
+    table_constraints is empty whatever the server serves. The suite skips each constraints case
+    for a driver that does not claim it (adbc_drivers_validation/tests/connection.py:91-102,
+    validation at 9f9f441).
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
-    Reports no table constraints in GetObjects: GetObjectsTables builds each table from
-    GetTables alone (name, type, schema) and never fetches its keys, so table_constraints is
-    empty whatever the server serves (go/adbc/driver/flightsql/flightsql_connection.go,
-    GetObjectsTables, at apache-arrow-adbc-24).
+    Reports no table constraints in GetObjects.
   evidence: >-
-    Provisa serves the keys over Flight SQL's key commands -- GetPrimaryKeys, GetImportedKeys,
-    GetExportedKeys and GetCrossReference -- as tests/unit/test_flightsql_catalog.py shows; the
-    driver sends none of them during GetObjects.
+    flightsql_connection.go:882 and :939-943 at apache-arrow-adbc-24; Provisa serves the keys
+    over GetPrimaryKeys, GetImportedKeys, GetExportedKeys and GetCrossReference
+    (tests/unit/test_flightsql_catalog.py), and the driver sends none of them during GetObjects.
   workaround: >-
-    Read the keys with the key commands (the ADBC driver's GetPrimaryKeys and GetImportedKeys
-    equivalents over Flight SQL).
-  case: "TestConnection::test_get_objects_constraints_"
+    Read the keys with the key commands (GetPrimaryKeys and GetImportedKeys over Flight SQL).
+  case: "^tests\\.test_connection\\.TestConnection::test_get_objects_constraints_(check|foreign|primary|unique)\\[provisa:flightsql\\]$"
 
 - group: Nothing defined through a query protocol
   requirement: REQ-1926
@@ -172,19 +199,34 @@
 
 - kind: client
   group: GetObjects reports no xdbc nullability
+  requirement: REQ-2167
+  skipped: true
+  decision: >-
+    The client drops each column's xdbc nullability in GetObjects. ADBC apache-arrow-adbc-24 (adbc-driver-flightsql 1.12.0, Go driver at commit a3f81c6feb11):
+    go/adbc/driver/flightsql/flightsql_connection.go:75-77 (flightSqlMetadata.SetMetadata) keeps
+    a column's metadata for its own fields only and never sets the shared builder's, so
+    go/adbc/driver/internal/shared_utils.go:558-564 (SetXdbcNullable) and :598-602
+    (SetXdbcIsNullable) find no XDBC_NULLABLE or XDBC_IS_NULLABLE and answer null. The suite
+    skips test_not_null for a driver that cannot claim xdbc_nullable
+    (adbc_drivers_validation/tests/ingest.py:586-587, validation at 9f9f441).
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
-    Leaves every xdbc field it reads by metadata key -- xdbc_nullable and xdbc_is_nullable among
-    them -- null in GetObjects: its Flight SQL metadata handler keeps a column's metadata for its
-    own fields (type name, scope, autoincrement) and never hands it to the shared xdbc builder
-    that reads XDBC_NULLABLE and XDBC_IS_NULLABLE (go/adbc/driver/flightsql/
-    flightsql_connection.go, flightSqlMetadata.SetMetadata, at apache-arrow-adbc-24), so the
-    suite skips test_not_null for a driver that cannot claim them.
+    Leaves xdbc_nullable and xdbc_is_nullable null in GetObjects.
   evidence: >-
-    Provisa lists each column nullable or not as its registration records, with XDBC_NULLABLE
-    and XDBC_IS_NULLABLE in the column's metadata of GetTables' table schema, as
-    tests/unit/test_flightsql_catalog.py shows; GetObjects through the driver answers both null.
+    flightsql_connection.go:75-77 and shared_utils.go:558-564 at apache-arrow-adbc-24; Provisa
+    puts XDBC_NULLABLE and XDBC_IS_NULLABLE in each column's metadata of GetTables' table schema
+    (tests/unit/test_flightsql_catalog.py).
   workaround: >-
-    Read nullability from GetTables with include_schema (each field's nullable flag and
-    metadata), or from adbc_get_table_schema.
-  case: "TestIngest::test_not_null\\["
+    Read nullability from GetTables with include_schema, or from adbc_get_table_schema.
+  case: "^tests\\.test_ingest\\.TestIngest::test_not_null\\[provisa:flightsql\\]$"
+
+- group: Status the Flight server library cannot send
+  requirement: REQ-2175
+  decision: >-
+    A bulk ingest that would create a table that already exists, or whose columns do not match
+    the table it appends to, is refused by name with the status INVALID_ARGUMENT, not
+    ALREADY_EXISTS: the Flight server library Provisa serves on (pyarrow) can send no
+    ALREADY_EXISTS status.
+  # Only that status difference is this group's: any other answer stays failed.
+  reason: "INVALID_ARGUMENT: 5> == <AdbcStatusCode.ALREADY_EXISTS: 4>"
+  case: "TestIngest::test_(create_conflict|append_schema_mismatch|createappend_schema_mismatch)\\["

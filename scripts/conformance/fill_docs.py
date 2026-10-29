@@ -12,7 +12,8 @@
 
 The page's **Suite:** and **Pass rate:** lines and its failing cases come from the JSON a
 conformance-<surface> workflow uploads, never typed: download the artifact of a run and point this
-at its JSON.
+at its JSON. Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28), and
+the page gives the three counts and the pass rate, passed over passed plus failed.
 
     .venv/bin/python3 scripts/conformance/fill_docs.py conformance-cypher.json [more.json ...]
 
@@ -37,12 +38,25 @@ BEGIN = "<!-- conformance-results:begin -->"
 END = "<!-- conformance-results:end -->"
 
 
-def _rate(passed: int, ran: int) -> str:
-    return f"{passed / ran:.1%} ({passed} of {ran})" if ran else "no case ran"
+def _rate(doc: dict) -> str:
+    """The pass rate (passed over passed plus failed) and the three counts (REQ-2167, amended
+    2026-10-28): a case skipped by design is never counted as failed."""
+    head = "no case passed or failed" if doc["pass_rate"] is None else f"{doc['pass_rate']:.1%}"
+    return (
+        f"{head}: {doc['passed']} passed, {doc['by_design']} skipped by design, "
+        f"{doc['failed']} failed, of {doc['total']} cases"
+    )
+
+
+def _designed(groups: list[dict]) -> str:
+    """Each by-design group, its count and the decision behind it, and its cases."""
+    return "\n".join(
+        ["## Skipped by design", "", *by_design.table(groups), "", *by_design.cases_lines(groups)]
+    )
 
 
 def _cases(groups: dict[str, list[tuple[str, str]]]) -> str:
-    out = ["## Failing cases", ""]
+    out = ["## Failed cases", ""]
     if not groups:
         return "\n".join([*out, "None."])
     for group, cases in groups.items():
@@ -55,71 +69,32 @@ def _cases(groups: dict[str, list[tuple[str, str]]]) -> str:
 
 
 def read(artifact: dict) -> tuple[str, str, str, str]:
-    """(surface, suite line, pass rate line, failing cases section) for an artifact."""
+    """(surface, suite line, pass rate line, cases sections) for an artifact."""
     if "pgspec" in artifact:
         spec = artifact["pgspec"]
         groups = {
             section: [(c["test"], c["reason"]) for c in cases]
             for section, cases in spec["failed_by_section"].items()
         }
-        ran = spec["passed"] + spec["failed"]
         suite = f"pgspec {spec['version']}, against PostgreSQL {artifact.get('postgres_version')}"
-        return "pgwire", suite, _rate(spec["passed"], ran), _cases(groups)
+        sections = [_designed(spec["by_design_groups"]), _cases(groups)]
+        return "pgwire", suite, _rate(spec), "\n\n".join(sections)
     groups: dict[str, list[tuple[str, str]]] = {}
     for f in artifact["failures"]:
         groups.setdefault(f["feature"], []).append((f["scenario"], f["reason"]))
-    rate = _rate(artifact["passed"], artifact["ran"])
-    if artifact.get("not_runnable"):
-        rate += f"; {artifact['not_runnable']} cases not runnable by design"
-    if artifact.get("client_not_sent"):
-        rate += f"; {artifact['client_not_sent']} not sent by the client"
-    if artifact.get("skipped"):
-        rate += f"; {artifact['skipped']} skipped by the suite"
-    if "recommendations" in artifact:  # the audit's SHOULD and MAY checks, counted apart
-        rate = (
-            f"{rate} of the requirements (MUST); recommendations met "
-            f"{artifact['recommendations_met']} of {artifact['recommendations']}"
-        )
     suite = f"{artifact['suite']} {artifact['version']}"
     if artifact.get("tests"):  # which of the suite's tests ran (a driver's own test directory)
         suite += f" ({artifact['tests']})"
-    # REQ-2167 (amended 2026-10-27): each by-design group, its count and the decision behind it.
-    designed = "\n".join(
-        ["## Not runnable by design", "", *by_design.table(artifact.get("by_design") or [])]
-    )
-    sections = [designed]
-    # REQ-2167 (amended 2026-10-27): cases whose client did not send what they need, in their own
-    # group, and adapted cases marked with what their setup became -- on the surfaces that have any.
-    if "not_sent_by_client" in artifact:
-        sections.append(
-            "\n".join(
-                [
-                    "## Not sent by the client",
-                    "",
-                    *by_design.not_sent_table(artifact["not_sent_by_client"]),
-                ]
-            )
-        )
-    if artifact.get("skipped_cases"):
-        sections.append(
-            "\n".join(
-                [
-                    "## Skipped by the suite",
-                    "",
-                    "| Test | Case | Reason |",
-                    "| --- | --- | --- |",
-                    *(
-                        f"| {c['feature']} | {c['scenario']} | {c['reason'].replace('|', '/')} |"
-                        for c in artifact["skipped_cases"]
-                    ),
-                ]
-            )
-        )
+    # REQ-2167 (amended 2026-10-27 and 2026-10-28): each by-design group, its count and the
+    # decision behind it -- with the driver's or the suite's evidence, and a workaround, for a
+    # client or suite group -- and its cases with their reasons; adapted cases marked with what
+    # their setup became -- on the surfaces that have any.
+    sections = [_designed(artifact["by_design_groups"])]
     if "adapted" in artifact:
         sections.append(
             "\n".join(["## Adapted cases", "", *by_design.adapted_lines(artifact["adapted"])])
         )
-    return artifact["surface"], suite, rate, "\n\n".join([*sections, _cases(groups)])
+    return artifact["surface"], suite, _rate(artifact), "\n\n".join([*sections, _cases(groups)])
 
 
 def fill(page: str, suite: str, rate: str, cases: str) -> str:

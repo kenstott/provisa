@@ -52,6 +52,7 @@ const term: GlossaryTermDetail = {
   ref_count: 1,
   table_count: 1,
   identity_gap: false,
+  related_to: 0,
   export_excluded: false,
   retired: false,
   grounding: "grounded",

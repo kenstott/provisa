@@ -77,6 +77,7 @@
     "itemNotebook": "ノートブック",
     "itemContainerRegistries": "コンテナレジストリ",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "カタログ"
+    "itemCatalogs": "カタログ",
+    "itemReferenceLibrary": "参照ライブラリ"
   }
 }
