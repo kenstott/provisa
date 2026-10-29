@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.cypher.expr_parser import CypherExprParseError, parse_expression
-from provisa.gql.expr_ast import CypherExpr, Variable
+from provisa.gql.expr_ast import CypherExpr, Variable, walk
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -32,6 +32,7 @@ from provisa.gql.mistakes import (
     aggregate_misuse,
     expression_misuse,
     projection_misuse,
+    projection_scope_misuse,
     undefined_variable,
     variable_misuse,
 )
@@ -483,11 +484,17 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         elif t is not None and t.type == "NUMBER" and t.value.isdigit():
             return int(self._advance().value)
         elif t is not None and t.type not in ("NUMBER", "STRING"):
+            start = self._pos
             text = self._parse_where()
             try:
-                return parse_expression(text)
+                count = parse_expression(text)
             except CypherExprParseError as exc:
                 raise CypherParseError(f"{clause} {text}: {exc}") from exc
+            if not any(isinstance(n, Variable) for n in walk(count)):
+                return count
+            # A count that reads a variable (SKIP n.count, LIMIT k) is no number of rows.
+            self._pos = start
+            written = text
         raise CypherParseMistake(
             f"cypher.invalid_{clause.lower()}",
             f"{clause} {written} is not a whole number of rows: {clause} takes a count of 0 or "
@@ -1496,6 +1503,7 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
         variable_misuse(ast),
         aggregate_misuse(ast),
         projection_misuse(ast),
+        projection_scope_misuse(ast),
         expression_misuse(ast),
     )
     for mistake in mistakes:

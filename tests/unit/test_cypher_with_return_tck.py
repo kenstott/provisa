@@ -182,3 +182,73 @@ def test_a_skip_parameter_prints_as_written():
     lm = CypherLabelMap(nodes={"A": model_node("A", {"id": "bigint"})}, relationships={})
     text = print_cypher(parse_cypher("MATCH (a:A) RETURN a.id SKIP $s LIMIT 2", lm))
     assert text.endswith("SKIP $s\nLIMIT 2")
+
+
+# --- a WITH's alias shadowing an earlier one ----------------------------------------------------
+
+
+def test_an_alias_a_with_gives_again_is_its_new_value(monkeypatch):
+    # WithOrderBy4 [7]: the second x is a.num + a.num2, not the first WITH's a.num2 % 3.
+    s = _session(monkeypatch, "CREATE (:A {num: 1, num2: 4}), (:A {num: 5, num2: 2})")
+    rows = s.run(
+        "MATCH (a:A) WITH a, a.num2 % 3 AS x WITH a, a.num + a.num2 AS x ORDER BY x RETURN a.num, x"
+    )
+    assert rows == [{"a.num": 1, "x": 5}, {"a.num": 5, "x": 7}]
+
+
+# --- what a projection keeps --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("query", "code"),
+    [
+        # With4 [5]
+        ("MATCH (a) WITH a, count(*) RETURN a", "with_needs_alias"),
+        # ReturnOrderBy2 [13]
+        ("MATCH (a) RETURN DISTINCT a.name ORDER BY a.age", "order_by_not_projected"),
+        # WithOrderBy4 [14]
+        (
+            "MATCH (a:A) WITH a.num2 % 3 AS mod, min(a.num + a.num2) AS min "
+            "ORDER BY sum(a.num + a.num2) RETURN mod, min",
+            "order_by_not_projected",
+        ),
+    ],
+)
+def test_a_projection_is_read_only_by_what_it_keeps(query, code):
+    from provisa.cypher.parser import CypherParseMistake, parse_cypher
+    from provisa.gql.label_map import CypherLabelMap
+    from tests.unit.ephemeral_harness import model_node
+
+    lm = CypherLabelMap(
+        nodes={"A": model_node("A", {"num": "bigint", "num2": "bigint"})}, relationships={}
+    )
+    with pytest.raises(CypherParseMistake) as caught:
+        parse_cypher(query, lm)
+    assert caught.value.code == f"cypher.{code}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "MATCH (a) RETURN DISTINCT a.name ORDER BY a.name",
+        "MATCH (a) RETURN a.name AS n, count(*) AS c ORDER BY n, c + count(*)",
+        "MATCH (a) WITH a, a.name AS n ORDER BY a.num RETURN n",  # no DISTINCT: a is in scope
+    ],
+)
+def test_a_projection_may_be_ordered_by_what_it_keeps(query):
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.label_map import CypherLabelMap
+
+    parse_cypher(query, CypherLabelMap(nodes={}, relationships={}))
+
+
+def test_an_aggregate_a_returned_map_takes_orders_its_rows():
+    # The GraphQL front's lowered reads order by an aggregate their map item computes.
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.label_map import CypherLabelMap
+
+    parse_cypher(
+        "MATCH (n0) RETURN {k: n0.k} AS key, {count: count(*), avg: avg(n0.s)} AS agg "
+        "ORDER BY count(*) DESC, avg(n0.s) DESC",
+        CypherLabelMap(nodes={}, relationships={}),
+    )

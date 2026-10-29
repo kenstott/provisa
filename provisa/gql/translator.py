@@ -120,19 +120,41 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
 
 @functools.cache
 def _keywords() -> frozenset[str]:
+    """The keywords sqlglot reads back as other than a column (``like``, ``qualify``) when its
+    own SQL text writes them bare."""
+    import sqlglot
     from sqlglot.dialects.postgres import Postgres
+    from sqlglot.errors import SqlglotError
 
-    return frozenset(Postgres.Tokenizer.KEYWORDS)
+    found: set[str] = set()
+    for keyword in Postgres.Tokenizer.KEYWORDS:
+        word = keyword.lower()
+        if not word.isidentifier() or word in found:
+            continue
+        for probe in (f"SELECT {word} FROM t", f"SELECT f({word}, 1), {word}.x FROM t AS {word}"):
+            try:
+                tree = sqlglot.parse_one(probe, read="postgres")
+            except SqlglotError:
+                found.add(word)
+                break
+            names = {n for c in tree.find_all(exp.Column) for n in (c.name, c.table)}
+            if word not in {n.lower() for n in names}:
+                found.add(word)
+                break
+    return frozenset(found)
 
 
 def quote_keywords(tree: exp.Expression) -> Any:
-    """``tree`` with each unquoted identifier that is a SQL keyword quoted: a Cypher variable
+    """``tree`` with each unquoted column name or column table that is a SQL keyword quoted: a Cypher variable
     may be named ``like`` or ``order``, which the SQL text sqlglot writes (it quotes no keyword)
     would read back as the keyword (REQ-347)."""
     keywords = _keywords()
-    for ident in tree.find_all(exp.Identifier):
-        if not ident.quoted and ident.name.upper() in keywords:
-            ident.set("quoted", True)
+    for column in tree.find_all(exp.Column):
+        # A column's name and its table's: an alias (AS like) sqlglot reads back as written.
+        for part in (column.args.get("this"), column.args.get("table")):
+            if isinstance(part, exp.Identifier) and not part.quoted:
+                if part.name.lower() in keywords:
+                    part.set("quoted", True)
     return tree
 
 
@@ -1692,17 +1714,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _row_count(self, value: int | CypherExpr, clause: str) -> int | exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """SKIP's or LIMIT's count as SQL: a whole number written, or an expression that reads no
         variable -- a parameter (bound, so the translation serves any value of its type) or one
-        whose value the engine works out, ``toInteger(rand() * 9)``. openCypher's rule: a count
-        is a whole number of 0 or more; one that reads a variable, or a parameter not an
-        integer, is refused here, and a negative parameter by the engine when one is cached."""
+        whose value the engine works out, ``toInteger(rand() * 9)`` (the parser refuses one that
+        reads a variable). openCypher's rule: a count is a whole number of 0 or more; a parameter
+        not one is refused here, and a negative one by the engine when its translation is kept."""
         if isinstance(value, int):
             return value
-        read = sorted({n.name for n in walk(value) if isinstance(n, Variable)})
-        if read:
-            raise CypherTranslateError(
-                f"{clause} reads {', '.join(read)}: its count is a constant expression, a "
-                f"number or a parameter, e.g. {clause} 10 or {clause} $n"
-            )
         if isinstance(value, ExprParameter):
             given = self._params.get(value.name)
             if isinstance(given, bool) or not isinstance(given, int):
@@ -1816,7 +1832,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     nodes[item.alias or expr.name] = meta
                 elif expr.name in self._union_columns:
                     nodes[item.alias or expr.name] = None
-        return nodes if len(nodes) > 1 else {}
+        # A node held in an earlier WITH's rows beside a value this WITH names again (WITH a,
+        # a.num2 % 3 AS x WITH a, a.num + a.num2 AS x): its row's columns hold the old value too,
+        # so it is carried as its own columns, or the new value would meet the old one's name.
+        held = {
+            self._var_table[i.expression.name][0]
+            for i in items
+            if isinstance(i.expression, Variable)
+            and i.expression.name in self._cte_sources
+            and i.expression.name in self._var_table
+        }
+        shadows = any(
+            i.alias
+            and not (isinstance(i.expression, Variable) and i.expression.name == i.alias)
+            and i.alias in self._var_table
+            and self._var_table[i.alias][0] in held
+            and self._var_table[i.alias][1] is None
+            for i in items
+        )
+        return nodes if len(nodes) > 1 or (nodes and shadows) else {}
 
     def _carried_columns(self, items: list[ReturnItem]) -> dict[str, list[str]]:
         """Each node a WITH carries beside another (_carried_nodes), by its key: its columns."""
