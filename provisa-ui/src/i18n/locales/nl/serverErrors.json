@@ -408,6 +408,7 @@
       "unknown_request_type": "Onbekend verzoektype '{{type}}'",
       "unknown_trigger_kind": "Onbekend triggertype '{{kind}}'",
       "url_sql_exclusive": "url en sql sluiten elkaar uit",
+      "view_deploy_unsupported_type": "Bron '{{source}}' is van type '{{type}}' en kan geen geïmplementeerde view hosten; ondersteunde typen: {{supported}}",
       "view_deployed": "View '{{view}}' geïmplementeerd naar '{{source}}' schema '{{schema}}'",
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",

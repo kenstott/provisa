@@ -408,6 +408,7 @@
       "unknown_request_type": "未知的請求類型「{{type}}」",
       "unknown_trigger_kind": "未知的觸發程序類型「{{kind}}」",
       "url_sql_exclusive": "url 與 sql 不可同時使用",
+      "view_deploy_unsupported_type": "資料來源 '{{source}}' 的類型為 '{{type}}',無法代管已部署的檢視;支援的類型:{{supported}}",
       "view_deployed": "檢視「{{view}}」已部署至「{{source}}」的結構描述「{{schema}}」",
       "view_spans_sources": "檢視橫跨多個數據來源：{{sources}}",
       "webhook_approved": "已批准 Webhook「{{webhook}}」",

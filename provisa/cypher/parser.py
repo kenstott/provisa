@@ -16,6 +16,8 @@ references at parse time. Rejects unbounded variable-length patterns ([*]).
 
 from __future__ import annotations
 
+import dataclasses
+
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -555,7 +557,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 # OPTIONAL MATCH a, b: one pattern, matched whole or not at all (REQ-345).
                 while (_comma := self._peek()) and _comma.type == "COMMA":
                     self._advance()
-                    current_matches.append(self._parse_match(optional=True))
+                    part = self._parse_match(optional=True)
+                    current_matches.append(dataclasses.replace(part, continues=True))
 
             elif kw == "MATCH":
                 self._advance()
@@ -566,7 +569,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 # MATCH a, b: each comma-separated pattern is a clause of the same step.
                 while (_comma := self._peek()) and _comma.type == "COMMA":
                     self._advance()
-                    current_matches.append(self._parse_match(optional=False))
+                    part = self._parse_match(optional=False)
+                    current_matches.append(dataclasses.replace(part, continues=True))
 
             elif kw == "WHERE":
                 self._advance()

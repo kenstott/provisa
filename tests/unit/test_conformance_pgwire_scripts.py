@@ -233,10 +233,12 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
                     "postgres_type": "name",
                     "provisa_type": "text",
                     "differences": ["type oid 25 (text), PostgreSQL 19 (name)"],
+                    "outcome": "failed",
                 }
             ],
             "compared": 1,
             "matching": 0,
+            "by_design": [],
             "differing": 1,
         },
     }
@@ -372,3 +374,84 @@ def test_no_by_design_function_group_names_a_function_a_client_calls():
     for name in called:
         failure = {"feature": "catalog function", "scenario": f"{name}()", "reason": ""}
         assert not [g.group for g in groups if g.matches(failure)], name
+
+
+def _conversion(statement: str, *differences: str) -> dict:
+    return {"statement": statement, "differences": list(differences)}
+
+
+def test_a_conversion_is_passed_by_design_or_failed():
+    """REQ-2167 (amended 2026-10-28): each compared statement is in one outcome; a difference a
+    by-design group names (by_design/pgwire.yaml) is by design only when every difference the
+    statement has is one the group allows."""
+    m = _load("pgwire_catalog_types")
+    fixture = [
+        _conversion("SELECT c_int4 FROM conformance.types_fixture"),
+        _conversion(
+            "SELECT c_int4_array FROM conformance.types_fixture",
+            "type oid 3802 (jsonb), PostgreSQL 1007 (_int4)",
+            "text '[1, 2, 3]', PostgreSQL '{1,2,3}'",
+            "binary 015b312c20322c20335d, PostgreSQL 00000001",
+        ),
+    ]
+    casts = [
+        _conversion(
+            "SELECT current_user AS v",
+            "text 'org_admin', PostgreSQL 'postgres'",
+            "binary 6f72675f61646d696e, PostgreSQL 706f737467726573",
+        ),
+        # The same statement with a difference no decision makes stays a failure.
+        _conversion(
+            "SELECT session_user AS v",
+            "type oid 25 (text), PostgreSQL 19 (name)",
+            "text 'duckdb', PostgreSQL 'postgres'",
+            "binary 6475636b6462, PostgreSQL 706f737467726573",
+        ),
+        _conversion(
+            "SELECT pg_catalog.current_setting('server_version_num') AS v",
+            "text '140000', PostgreSQL '170011'",
+            "binary 313430303030, PostgreSQL 313730303131",
+        ),
+        _conversion("SELECT 'x'::varchar AS v", "type oid 25 (text), PostgreSQL 1043 (varchar)"),
+    ]
+    out = m.conversion_outcomes(fixture, casts)
+    assert (out["compared"], out["matching"], out["differing"]) == (6, 1, 2)
+    assert {g["group"]: g["count"] for g in out["by_design"]} == {
+        "A source's array column is JSON": 1,
+        "The session's role and database": 1,
+        "The server's version": 1,
+    }
+    assert [r["outcome"] for r in fixture + casts] == [
+        "passed",
+        "by_design",
+        "by_design",
+        "failed",
+        "by_design",
+        "failed",
+    ]
+    md = m.markdown(
+        {
+            "postgres_version": "17.11",
+            "catalog_relations": {
+                "postgres_relations": 0,
+                "served": 0,
+                "matching": [],
+                "differing": {},
+                "not_served": {},
+                "served_not_in_postgres": [],
+            },
+            "catalog_functions": {
+                "postgres_functions": 0,
+                "excluded": "pseudo-types",
+                "served": 0,
+                "matching": 0,
+                "differing": {},
+                "not_served": {},
+                "by_design": [],
+            },
+            "type_conversions": out,
+        }
+    )
+    assert "1 identical in type OID, typmod, text and binary encoding; 3 differ by design; " in md
+    assert "| `SELECT session_user AS v` |" in md
+    assert "| `SELECT current_user AS v` |" not in md

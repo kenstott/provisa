@@ -144,6 +144,9 @@ def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright:
 
 #: meta key: the NodeMapping of the variable a ``table.*`` selects (graph_rewriter reads it)
 NODE_OF_STAR = "provisa_node"
+#: meta key: set on a ``table.*`` that selects a node of a union of labels' rows, whose node value
+#: is the table's NODE_COLUMN (graph_rewriter reads it)
+UNION_NODE_OF_STAR = "provisa_union_node"
 
 
 class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
@@ -159,6 +162,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _rel_var_endpoints: dict
     _rel_var_via: dict  # REQ-1586: rel variable → (junction alias, JunctionMapping)
     _domain_nodes: dict[str, str]
+    _union_columns: dict[str, list[str]]
     _varlen_rel_vars: dict  # varlen rel variable → outer path variable
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -267,6 +271,24 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         Recursive CTE paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', hops)
         """
         src_var, tgt_var, is_recursive = self._path_vars[path_var]
+        every_rel_hops = getattr(self, "_every_rel_paths", {}).get(path_var)
+        if every_rel_hops:
+            return self._every_rel_path_json(every_rel_hops)
+        walk_ends = getattr(self, "_walk_paths", {}).get(path_var)
+        if walk_ends is not None:
+            # REQ-348: a session walk's path, from its start to its end, of its hops.
+            start, end = walk_ends
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("start"),
+                    start.copy(),
+                    exp.Literal.string("end"),
+                    end.copy(),
+                    exp.Literal.string("length"),
+                    exp.Column(this=exp.Identifier(this="hops"), table=exp.Identifier(this="_t")),
+                ],
+            )
         path_step_info = getattr(self, "_path_steps", {}).get(path_var)
         if path_step_info is not None:
             step_nodes, step_edges = path_step_info
@@ -455,6 +477,33 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             ],
         )
 
+    def _every_rel_path_json(self, hops: "list[tuple[str, str, str]]") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A path of hops each read from its own union (translator_every_rel): its nodes in the
+        pattern's order and its edges, each the value its union's column carries; null where an
+        OPTIONAL MATCH matched none of it."""
+        aliases = getattr(self, "_all_rels_var_alias", {})
+
+        def col(name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return exp.Column(
+                this=exp.Identifier(this=name), table=exp.Identifier(this=aliases[name])
+            )
+
+        nodes = [col(hops[0][0])] + [col(last) for _, _, last in hops]
+        edges = [col(edge) for _, edge, _ in hops]
+        path = exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("nodes"),
+                exp.Anonymous(this="JSON_ARRAY", expressions=nodes),
+                exp.Literal.string("edges"),
+                exp.Anonymous(this="JSON_ARRAY", expressions=edges),
+            ],
+        )
+        return exp.Case(
+            ifs=[exp.If(this=exp.Is(this=edges[0].copy(), expression=exp.Null()), true=exp.Null())],
+            default=path,
+        )
+
     def _select_passthrough_var(
         self,
         expr_text: str,
@@ -463,7 +512,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         graph_var_kind_passthrough: GraphVarKind,
     ) -> exp.Expr:
         """Emit SELECT expression for a passthrough variable from _all_rels subquery."""
-        all_rels_alias = getattr(self, "_all_rels_alias", "_all_rels")
+        # The union that gives the variable: a statement may read several (translator_every_rel).
+        all_rels_alias = getattr(self, "_all_rels_var_alias", {}).get(
+            expr_text, getattr(self, "_all_rels_alias", "_all_rels")
+        )
         rel_var_types = getattr(self, "_rel_var_types", {})
         if expr_text in rel_var_types:
             self._graph_vars[alias or expr_text] = graph_var_kind_edge
@@ -550,14 +602,18 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 tbl_col.meta[NODE_OF_STAR] = var_info[1]
                 return exp.alias_(tbl_col, alias or expr_text)
             return tbl_col
-        if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
+        if expr_text in getattr(self, "_union_columns", {}):
             self._graph_vars[alias or expr_text] = graph_var_kind_node
+            table_alias = var_info[0]
             tbl_col = exp.Column(
                 this=exp.Star(),
-                table=exp.Identifier(this=expr_text),
+                table=exp.Identifier(this=table_alias),
             )
-            if alias:
-                return exp.alias_(tbl_col, alias)
+            # Its union's columns are a row of its own alias, or of the WITH's CTE carrying them;
+            # its value is the NODE_COLUMN there (graph_rewriter).
+            tbl_col.meta[UNION_NODE_OF_STAR] = True
+            if alias or table_alias != expr_text:
+                return exp.alias_(tbl_col, alias or expr_text)
             return tbl_col
         return None
 
@@ -582,6 +638,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # REQ-2173: a duration leaves the engine as its parts, written as ISO-8601 in the answer.
             parsed = temporal.returned(parsed)
             self._graph_vars[name.lower()] = GraphVarKind.DURATION
+        elif name and self._temporal_context().temporal_list_kind(expr) == temporal.DURATION:
+            # REQ-2173: a list of durations leaves the engine as each item's parts.
+            parsed = temporal.returned_list(parsed)
+            self._graph_vars[name.lower()] = GraphVarKind.DURATION_LIST
         elif name and held == temporal.DATETIME:
             # REQ-2173: a date time the query names a zone for is written in that zone.
             zone = self._temporal_context().temporal_zone(expr)

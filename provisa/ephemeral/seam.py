@@ -29,6 +29,7 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
+from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import read, store, then
 from provisa.ephemeral.delete import Deleted, delete
 from provisa.ephemeral.indexes import Indexed, index_statement
@@ -38,6 +39,7 @@ from provisa.ephemeral.merge import merge, merge_bound
 from provisa.ephemeral.props import Propertied, write_props
 from provisa.ephemeral.then import Answered, counters
 from provisa.ephemeral.write import Created, Read, Write, create, create_bound
+from provisa.pgwire import temp_exec
 
 __all__ = ["Answered", "counters", "expand", "label_map", "rows_of", "write"]
 
@@ -71,7 +73,23 @@ async def write(
 ) -> Created | Deleted | Labelled | Propertied | Indexed | Answered | None:
     """Do ``statement`` when the governing rule does not make it wholly the governed write (its
     governed parts through ``run_write``, the surface's own governed write); else None. A write
-    followed by reads answers with the rest's rows (an Answered)."""
+    followed by reads answers with the rest's rows (an Answered). A write that would take the
+    session past its bounds (REQ-1926) is refused by name."""
+    try:
+        return await _write(statement, params, model, session, state, run_read, run_write)
+    except temp_exec.TempTableLimit as exc:
+        raise CypherParseError(str(exc)) from exc
+
+
+async def _write(
+    statement: str,
+    params: dict[str, Any],
+    model: Any,
+    session: TempSession | None,
+    state: Any,
+    run_read: Read,
+    run_write: Write,
+) -> Created | Deleted | Labelled | Propertied | Indexed | Answered | None:
     if session is None:
         return None
     indexed = await index_statement(statement, model, session, state)

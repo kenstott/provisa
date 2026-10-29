@@ -61,6 +61,11 @@ _FIXED: dict[str, list[tuple[str, str]]] = {
 DEFAULT_ANCHOR = "cypher__anchor"
 
 
+def fixed_columns(table: str) -> list[tuple[str, str]]:
+    """The (name, session type) columns of a fixed table: nodes, node_labels or rels."""
+    return list(_FIXED[table])
+
+
 def anchor_table(label: str) -> str:
     """The anchor table a free label creates for the nodes it anchors."""
     return f"cypher__anchor__{label}"
@@ -122,7 +127,8 @@ def resolve(session: TempSession) -> None:
         anchors = g.label_anchors.get(key, set())
         held: dict[str, str] = {}
         for anchor in sorted(anchors):
-            for name, kind in session.tables[anchor].columns:
+            # An anchor not landed yet holds no column (and no node).
+            for name, kind in session.tables[anchor].columns if anchor in session.tables else ():
                 if name == NODE_ID:
                     continue
                 held[name] = widened_kind(held[name], kind) if name in held else kind

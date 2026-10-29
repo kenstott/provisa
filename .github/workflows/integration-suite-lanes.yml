@@ -553,7 +553,7 @@ jobs:
           mkdir -p lib
           curl -fsSL -o lib/calcite-govdata-all.jar \
             https://github.com/kenstott/calcite/releases/download/engine-v0.123.2/sih-govdata.jar
-          echo "1caf42720188cbfc2f78f7fd80cf3f826bd594be9a71aad35b5b8232523cba8e  lib/calcite-govdata-all.jar" \
+          echo "aa4b284748a1b0a913a8a3bccdda65f1238003885ed2b4d5f570c4f7f372eb48  lib/calcite-govdata-all.jar" \
             | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)

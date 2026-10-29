@@ -5407,6 +5407,7 @@
   "nl/serverErrors.json::serverErrors.schema.unknown_trigger_kind": "Unknown trigger kind '{{kind}}'",
   "nl/serverErrors.json::serverErrors.schema.url_sql_exclusive": "url and sql are mutually exclusive",
   "nl/serverErrors.json::serverErrors.schema.version_log_updated": "Version log '{{mv}}' updated",
+  "nl/serverErrors.json::serverErrors.schema.view_deploy_unsupported_type": "source '{{source}}' is of type '{{type}}', which cannot host a deployed view; supported types: {{supported}}",
   "nl/serverErrors.json::serverErrors.schema.view_deployed": "View '{{view}}' deployed to '{{source}}' schema '{{schema}}'",
   "nl/serverErrors.json::serverErrors.schema.view_spans_sources": "view spans multiple sources: {{sources}}",
   "nl/serverErrors.json::serverErrors.schema.webhook_approved": "Approved webhook '{{webhook}}'",

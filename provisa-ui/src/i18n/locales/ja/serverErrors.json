@@ -408,6 +408,7 @@
       "unknown_request_type": "不明なリクエストタイプ「{{type}}」です",
       "unknown_trigger_kind": "不明なトリガー種別「{{kind}}」です",
       "url_sql_exclusive": "url と sql は同時に指定できません",
+      "view_deploy_unsupported_type": "ソース '{{source}}' のタイプは '{{type}}' で、デプロイされたビューをホストできません。サポートされるタイプ: {{supported}}",
       "view_deployed": "ビュー「{{view}}」を「{{source}}」のスキーマ「{{schema}}」にデプロイしました",
       "view_spans_sources": "ビューが複数のソースにまたがっています：{{sources}}",
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",

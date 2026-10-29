@@ -18,12 +18,16 @@ against ``POST /data/cypher`` and compares its answer with the scenario's expect
   scripts/conformance/fill_docs.py into docs/conformance/cypher.md;
 * the same as Markdown, for the job summary.
 
-A scenario whose setup builds a graph (``having executed`` a CREATE, a named graph, a test
-procedure) cannot run: a Provisa graph's labels and relationship types are the model's, fixed
-when it is declared, not created by a statement. Those are counted apart, as not runnable by
-design, and named with the setup that needs it. Every other scenario passes or fails; a failure
-is data. An error the scenario expects (a SyntaxError, a TypeError, ...) passes when the query is
-refused; the error's type is not compared, since Provisa names its own.
+A scenario whose setup builds a graph (``having executed`` a CREATE, a named graph) runs its
+setup and its query in one Bolt session (cypher_tck_bolt), a named graph's setup being its CREATE
+script from the TCK's graphs directory; one that declares a test procedure has the procedure
+declared as a command of the fixture model (cypher_tck_procedures) and calls it. Without a Bolt
+session such a setup cannot run: a Provisa graph's labels and relationship types are the model's,
+fixed when it is declared, not created by a statement. Every other scenario passes or fails; a
+failure is data. An error the scenario expects (a SyntaxError, a TypeError, ...) passes when the query is
+refused; the error's type is not compared, since Provisa names its own. A scenario run in a Bolt
+session has its side effects (``the side effects should be``, ``no side effects``) compared
+exactly with the summary counters of its query.
 
 The exit status is non-zero only when the suite did not run (no scenario passed or failed).
 
@@ -47,6 +51,7 @@ from typing import Any
 
 import by_design
 import cypher_tck_bolt as bolt
+import cypher_tck_procedures as procedures
 
 # --- the feature files -------------------------------------------------------------------------
 
@@ -365,16 +370,47 @@ def _same(expected: Any, got: Any, ignore_list_order: bool) -> bool:
 # --- running a scenario ------------------------------------------------------------------------
 
 #: A setup that builds a graph: Provisa's graph is the model's, so the scenario cannot run --
-#: unless a Bolt session is configured, in which a setup's statements build the session's own
-#: graph (REQ-2167, amended 2026-10-27).
-_NOT_RUNNABLE = (
-    ("having executed", "builds its graph with a statement"),
-    ("there exists a procedure", "declares a test procedure"),
-)
+#: unless a Bolt session is configured, in which a setup's statements (or a named graph's script)
+#: build the session's own graph (REQ-2167, amended 2026-10-27).
+_NOT_RUNNABLE = (("having executed", "builds its graph with a statement"),)
 
 #: What a session scenario's outcome is marked with, for its adapted group (by_design/cypher.yaml).
 IN_A_SESSION = "[in a session]"
 EMPTY_GRAPH = "[in a session, empty graph]"
+NAMED_GRAPH = "[in a session, named graph]"
+#: What a scenario whose test procedure became a command is marked with, before a session's mark.
+AS_A_COMMAND = "[procedure as a command]"
+
+_PROCEDURE = "there exists a procedure "
+_NAMED = re.compile(r"^the ([\w-]+) graph$")
+
+#: The TCK's graphs directory, beside its features (main sets it): a named graph's CREATE script
+#: is graphs/<name>/<name>.cypher.
+_GRAPHS: dict[str, Path] = {}
+
+
+def named_graph(text: str) -> str | None:
+    """The CREATE script of the named graph a ``the <name> graph`` step names, as a session runs
+    it (its closing semicolon is the script's, no part of the statement); None for any other
+    step."""
+    m = _NAMED.match(text)
+    if m is None:
+        return None
+    if "graphs" not in _GRAPHS:
+        raise ValueError(f"no TCK graphs directory to read the {m.group(1)} graph from")
+    script = _GRAPHS["graphs"] / m.group(1) / f"{m.group(1)}.cypher"
+    if not script.is_file():
+        raise ValueError(f"the TCK has no named graph {m.group(1)} ({script})")
+    return script.read_text().strip().rstrip(";").rstrip()
+
+
+def procedure(scenario: Scenario) -> procedures.Procedure | None:
+    """The test procedure a scenario's setup declares, or None."""
+    for step in _setup_steps(scenario):
+        if step.text.startswith(_PROCEDURE):
+            return procedures.parse(step.text[len(_PROCEDURE) :], step.table, tck_value)
+    return None
+
 
 #: A refusal of a setup's write that waits on another piece of work, named so.
 _WAITS = (
@@ -387,15 +423,62 @@ _WAITS = (
 )
 
 
+def _setup_steps(scenario: Scenario) -> list[Step]:
+    """The Given/And steps before ``executing query``: an ``And`` after it (``And the side effects
+    should be``, ``And no side effects``) checks the query's answer, not its graph."""
+    out: list[Step] = []
+    for step in scenario.steps:
+        if step.text.startswith("executing query"):
+            break
+        if step.keyword in ("Given", "And"):
+            out.append(step)
+    return out
+
+
+#: A TCK side-effect counter and the Bolt summary's counter for it; None for one Bolt's summary
+#: has no counter for (Neo4j counts a removed property as a property set).
+_SIDE_EFFECTS: dict[str, str | None] = {
+    "+nodes": "nodes-created",
+    "-nodes": "nodes-deleted",
+    "+relationships": "relationships-created",
+    "-relationships": "relationships-deleted",
+    "+properties": "properties-set",
+    "-properties": None,
+    "+labels": "labels-added",
+    "-labels": "labels-removed",
+}
+
+
+def side_effects(expected: dict[str, int], stats: dict[str, int]) -> str | None:
+    """None when a query's summary counters are exactly the side effects ``expected`` (each TCK
+    counter not named is zero); else what differs. A Bolt summary leaves out a counter at zero,
+    so an absent Bolt counter reads as zero; a TCK counter with no Bolt counter is a failure
+    when it is expected, naming it."""
+    differs: list[str] = []
+    for counter, key in _SIDE_EFFECTS.items():
+        want = expected.get(counter, 0)
+        if key is None:
+            if want:
+                differs.append(f"{counter} expected {want}, the summary has no counter for it")
+            continue
+        got = stats.get(key, 0)
+        if got != want:
+            differs.append(f"{counter} {got}, expected {want}")
+    unknown = sorted(set(expected) - set(_SIDE_EFFECTS))
+    differs += [f"{counter}: no such side effect" for counter in unknown]
+    return "; ".join(differs) or None
+
+
 def _session_scenario(scenario: Scenario) -> str | None:
-    """How a scenario runs in a Bolt session, when one is configured: IN_A_SESSION for a setup
-    that builds its graph, EMPTY_GRAPH for an empty graph its query matches a pattern on (the
-    session's graph alone is empty); None to run it over HTTP."""
+    """How a scenario runs in a Bolt session, when one is configured: NAMED_GRAPH for a named
+    TCK graph, IN_A_SESSION for a setup that builds its graph, EMPTY_GRAPH for an empty graph its
+    query matches a pattern on (the session's graph alone is empty); None to run it over HTTP. A
+    test procedure is the fixture model's command, called over either."""
     if not bolt.configured():
         return None
-    texts = [s.text for s in scenario.steps if s.keyword in ("Given", "And")]
-    if any(t.startswith("there exists a procedure") or t.startswith("the ") for t in texts):
-        return None
+    texts = [s.text for s in _setup_steps(scenario)]
+    if any(_NAMED.match(t) for t in texts):
+        return NAMED_GRAPH
     if any(t.startswith("having executed") for t in texts):
         return IN_A_SESSION
     query = next((s.doc or "" for s in scenario.steps if s.text.startswith("executing query")), "")
@@ -438,6 +521,17 @@ def _post(base: str, role: str, query: str, params: dict) -> tuple[int, Any]:
         return err.code, json.loads(err.read() or b"null")
 
 
+def _clear(base: str, authorization: str) -> None:
+    """Empty the graph session of the principal ``authorization`` signs in: a principal has one
+    graph session on every client (REQ-2176), so a scenario starts from the TCK's empty graph only
+    once what earlier scenarios made in it is dropped."""
+    req = urllib.request.Request(
+        f"{base}/data/cypher/session", headers={"Authorization": authorization}, method="DELETE"
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        resp.read()
+
+
 def _rows(body: Any) -> tuple[list[str], list[list[Any]]]:
     columns = list(body.get("columns") or [])
     rows = body.get("rows") or []
@@ -447,20 +541,25 @@ def _rows(body: Any) -> tuple[list[str], list[list[Any]]]:
 def run(scenario: Scenario, base: str, role: str) -> Outcome:
     session = _session_scenario(scenario)
     setups: list[str] = []
+    declared = False
 
     def out(status: str, reason: str = "") -> Outcome:
-        if session is None:
-            return Outcome(scenario.feature, scenario.name, status, reason)
-        marked = _waiting(reason) if status == "failed" else reason
-        return Outcome(scenario.feature, scenario.name, status, f"{marked} {session}".strip())
+        marks = [AS_A_COMMAND] if declared else []
+        if session is not None:
+            reason = _waiting(reason) if status == "failed" else reason
+            marks.append(session)
+        return Outcome(scenario.feature, scenario.name, status, " ".join([reason, *marks]).strip())
 
     def ask(query: str, params: dict) -> tuple[int, Any]:
         if session is None:
             return _post(base, role, query, params)
         return bolt.run(setups, query, params)
 
+    _clear(base, _CREDENTIAL["Authorization"] if session is None else bolt.authorization())
     params: dict = {}
     query: str | None = None
+    answer: tuple[int, Any] | None = None
+    checked = False
     for step in scenario.steps:
         text = step.text
         if step.keyword == "Given" or (step.keyword == "And" and query is None):
@@ -468,6 +567,18 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
                 continue
             if session is not None and text.startswith("having executed"):
                 setups.append(step.doc or "")
+                continue
+            if session is not None and (script := named_graph(text)) is not None:
+                setups.append(script)
+                continue
+            if text.startswith(_PROCEDURE):
+                try:
+                    procedures.declare(
+                        procedures.parse(text[len(_PROCEDURE) :], step.table, tck_value)
+                    )
+                except procedures.NotACommand as exc:
+                    return out("failed", f"its test procedure is no command: {exc}")
+                declared = True
                 continue
             if text == "parameters are" and step.table:
                 params = {r[0]: tck_value(r[1]) for r in step.table}
@@ -480,19 +591,35 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
         assert query is not None
         if text.startswith("executing control query"):
             return out("not_runnable", "checks state with a control query")
+        if answer is None:
+            answer = ask(query, params)
+        status, body = answer
         if "should be raised" in text:
-            status, body = ask(query, params)
             if status >= 400:
                 return out("passed")
             return out("failed", f"expected {text.split(' should')[0][2:]}; the query ran")
+        if text == "no side effects" or text.startswith("the side effects should be"):
+            if session is None:
+                # An HTTP answer carries no summary counters; only a Bolt run's are compared.
+                continue
+            if status >= 400:
+                return out("failed", f"refused ({status}): {str(body)[:200]}")
+            expected = {r[0]: int(r[1]) for r in step.table or []}
+            differs = side_effects(expected, body["stats"])
+            if differs:
+                return out("failed", f"side effects differ: {differs}")
+            checked = True
+            continue
         if text.startswith("the result should be"):
-            status, body = ask(query, params)
             if status >= 400:
                 detail = (body or {}).get("detail") if isinstance(body, dict) else body
                 return out("failed", f"refused ({status}): {str(detail)[:200]}")
             columns, rows = _rows(body)
             if text == "the result should be empty":
-                return out("passed") if not rows else out("failed", f"{len(rows)} row(s) returned")
+                if rows:
+                    return out("failed", f"{len(rows)} row(s) returned")
+                checked = True
+                continue
             assert step.table is not None
             header, *expected_raw = step.table
             if columns != header:
@@ -527,12 +654,15 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
                         break
                     rest.pop(hit)
             if good:
-                return out("passed")
+                checked = True
+                continue
             if _below_the_microsecond(header, expected_raw):
                 return out(
                     "failed", f"expects digits below the microsecond; rows differ: got {rows[:3]}"
                 )
             return out("failed", f"rows differ: got {rows[:3]}")
+    if checked:
+        return out("passed")
     return out("failed", "the scenario states no expectation this runner reads")
 
 
@@ -549,6 +679,24 @@ def _below_the_microsecond(header: list[str], rows: list[list[str]]) -> bool:
             if "nanosecond" in column.lower() and cell.lstrip("-").isdigit() and int(cell) % 1000:
                 return True
     return False
+
+
+def in_running_order(scenarios: list[Scenario]) -> list[int]:
+    """The scenarios' indexes in the order they run: every scenario that declares no test
+    procedure first, as read, so one that calls an unknown procedure meets none; then those that
+    do, each procedure's together, so the model is put once per procedure declared."""
+    first: dict[Any, int] = {}
+    keyed: list[tuple[int, int, int]] = []
+    for n, s in enumerate(scenarios):
+        try:
+            proc = procedure(s)
+        except procedures.NotACommand:
+            proc = ("unread", n)  # its run says why, wherever it runs
+        if proc is None:
+            keyed.append((0, n, n))
+        else:
+            keyed.append((1, first.setdefault(proc, n), n))
+    return [n for *_, n in sorted(keyed)]
 
 
 # --- the report --------------------------------------------------------------------------------
@@ -625,18 +773,30 @@ def markdown(doc: dict) -> str:
 def main(argv: list[str]) -> int:
     features, version, base, role, authorization, out_json, out_md = argv
     _CREDENTIAL["Authorization"] = authorization
+    # The named graphs' CREATE scripts, beside the features (tck/graphs).
+    _GRAPHS["graphs"] = Path(features).resolve().parent / "graphs"
     # A Bolt session for the scenarios whose setup builds their graph (REQ-2167, amended
     # 2026-10-27): the job's Bolt endpoint and the TCK session user's token, from the job's env.
     if os.environ.get("CONFORMANCE_BOLT_URI"):
         bolt.configure(os.environ["CONFORMANCE_BOLT_URI"], os.environ["CONFORMANCE_SESSION_TOKEN"])
+    # The fixture model a test procedure is declared in, as a command, and the break-glass
+    # account that puts it (REQ-2167, amended 2026-10-27).
+    if os.environ.get("CONFORMANCE_MODEL"):
+        procedures.configure(
+            base,
+            Path(os.environ["CONFORMANCE_MODEL"]),
+            os.environ["PROVISA_SUPERUSER_USERNAME"],
+            os.environ["PROVISA_SUPERUSER_PASSWORD"],
+        )
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
-    outcomes = []
-    for s in scenarios:
+    outcomes: list[Outcome | None] = [None] * len(scenarios)
+    for n in in_running_order(scenarios):
+        s = scenarios[n]
         try:
-            outcomes.append(run(s, base, role))
+            outcomes[n] = run(s, base, role)
         except (OSError, ValueError, KeyError) as exc:
-            outcomes.append(Outcome(s.feature, s.name, "failed", f"runner: {exc}"))
-    doc = report(outcomes, version)
+            outcomes[n] = Outcome(s.feature, s.name, "failed", f"runner: {exc}")
+    doc = report([o for o in outcomes if o is not None], version)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
     if not doc["ran"]:

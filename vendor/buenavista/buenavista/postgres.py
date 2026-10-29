@@ -233,8 +233,36 @@ def _date_binary(r) -> bytes:
     return int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True)
 
 
+def _pg_offset(offset) -> str:
+    """A UTC offset as PostgreSQL's ISO output writes it: +HH, with :MM and :SS only when not
+    zero (+00, +05:30, -03)."""
+    seconds = int(offset.total_seconds())
+    sign = "-" if seconds < 0 else "+"
+    hours, rest = divmod(abs(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    text = f"{sign}{hours:02d}"
+    if minutes or secs:
+        text += f":{minutes:02d}"
+    if secs:
+        text += f":{secs:02d}"
+    return text
+
+
+def _pg_clock(v) -> str:
+    """A time of day as PostgreSQL writes it: HH:MM:SS, then the fraction of a second with its
+    trailing zeros dropped, and the UTC offset when the value has one."""
+    text = f"{v.hour:02d}:{v.minute:02d}:{v.second:02d}"
+    if v.microsecond:
+        text += f".{v.microsecond:06d}".rstrip("0")
+    offset = v.utcoffset()
+    return text if offset is None else text + _pg_offset(offset)
+
+
 def _timestamp_text(v) -> str:
-    return _infinity_text(v) if _infinity(v) else v.isoformat().replace("T", " ")
+    """timestamp_out / timestamptz_out in the ISO date style."""
+    if _infinity(v):
+        return _infinity_text(v)
+    return f"{v.year:04d}-{v.month:02d}-{v.day:02d} {_pg_clock(v)}"
 
 
 def _timestamp_binary(micros):
@@ -561,7 +589,7 @@ BVTYPE_TO_PGTYPE = {
         lambda r: b"\x01" + (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
     ),
     BVType.TIMESTAMPTZ: (1184, _timestamp_text, _timestamp_binary(_micros_since_2000_utc)),
-    BVType.TIMETZ: (1266, lambda v: v.isoformat(), _timetz_to_pg_binary),
+    BVType.TIMETZ: (1266, _pg_clock, _timetz_to_pg_binary),
     BVType.UUID: (2950, str, _uuid_to_pg_binary),
     BVType.NULL: (-1, lambda *_: None),
     BVType.ARRAY: (
@@ -599,7 +627,7 @@ BVTYPE_TO_PGTYPE = {
     BVType.TEXT: (25, str, lambda r: str(r).encode("utf-8")),
     BVType.TIME: (
         1083,
-        lambda v: v.isoformat(),
+        _pg_clock,
         lambda r: int.to_bytes(_time_to_microseconds(r), 8, "big"),
     ),
     # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
@@ -1324,7 +1352,8 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
                 oid = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
             buf.write_string(name)
             fmt = query_result.result_format[i] if query_result.result_format else 0
-            buf.write_bytes(struct.pack("!ihihih", 0, 0, oid, 0, -1, fmt))
+            typmod = query_result.column_typmod(i)
+            buf.write_bytes(struct.pack("!ihihih", 0, 0, oid, 0, typmod, fmt))
         out = buf.get_value()
         sig = struct.pack(
             "!cih",
