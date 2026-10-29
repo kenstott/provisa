@@ -38,8 +38,8 @@
 # The driver's own suite skips these for every server (REQ-2167, amended 2026-10-29): each is
 # skipped by design, its decision citing the suite's unconditional skip (file and line). The
 # database selection example is not here: its skip (tests/conftest.py:158-164,
-# mark_requires_edition) depends on the edition the job declares, not on every server, so it
-# stays failed.
+# mark_requires_edition) depends on the edition the job declares, not on every server. The job
+# declares enterprise and the example runs (provisa/bolt/databases.py); skipped, it is failed.
 - kind: suite
   group: Encryption examples the suite skips
   requirement: REQ-2167
