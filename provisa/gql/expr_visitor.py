@@ -559,6 +559,13 @@ def _json_string(value: exp.Expression) -> exp.Expression:
     )
 
 
+def _is_json_object(e: exp.Expression) -> bool:
+    """Whether ``e`` builds a JSON value itself (JSON_OBJECT or TO_JSON): a graph element held as
+    any other value (a node a union carries, a path that may be null) is put in a list as its
+    JSON by TO_JSON."""
+    return isinstance(e, exp.Anonymous) and str(e.this).upper() in ("JSON_OBJECT", "TO_JSON")
+
+
 def _json_equals(item: exp.Expression, other: exp.Expression, kind: str) -> exp.Expression:
     """``item`` (an item of a list of several types, its JSON) = ``other`` (a value of ``kind``):
     null where the item is null, false where it is of another kind, else their values compared."""
@@ -1324,7 +1331,9 @@ class ExprLowering:
         # beside them as JSON too: one list of one type.
         return exp.Array(
             expressions=[
-                e if e is not None else _anon("to_json", self.lower(i))
+                _anon("to_json", self.lower(i) if e is None else e)
+                if e is None or not _is_json_object(e)
+                else e
                 for i, e in zip(node.items, elements, strict=True)
             ]
         )

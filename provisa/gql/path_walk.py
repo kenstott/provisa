@@ -487,9 +487,9 @@ class SessionWalkMixin:  # REQ-348
             step = exp.select(
                 _col("rel_id", "_r"),
                 _col("type", "_r"),
-                exp.alias_(_col(near, "_r"), "a", quoted=True),
-                exp.alias_(_col(far, "_r"), "b", quoted=True),
-                exp.alias_(exp.true() if forward else exp.false(), "fwd", quoted=True),
+                exp.alias_(_col(near, "_r"), "__near", quoted=True),
+                exp.alias_(_col(far, "_r"), "__far", quoted=True),
+                exp.alias_(exp.true() if forward else exp.false(), "__fwd", quoted=True),
             ).from_(exp.alias_(relation.copy(), "_r"))
             if types is not None:
                 wanted = sorted({t.upper() for t in types})
@@ -512,10 +512,10 @@ class SessionWalkMixin:  # REQ-348
         src_json, tgt_json = _col(_NODE_OBJECT, ns), _col(_NODE_OBJECT, nt)
         # The edge's own start and end, whichever way the hop reads it.
         start = exp.Case(
-            ifs=[exp.If(this=_col("fwd", h), true=src_json.copy())], default=tgt_json.copy()
+            ifs=[exp.If(this=_col("__fwd", h), true=src_json.copy())], default=tgt_json.copy()
         )
         end = exp.Case(
-            ifs=[exp.If(this=_col("fwd", h), true=tgt_json.copy())], default=src_json.copy()
+            ifs=[exp.If(this=_col("__fwd", h), true=tgt_json.copy())], default=src_json.copy()
         )
         edge = exp.Anonymous(
             this="JSON_OBJECT",
@@ -542,12 +542,12 @@ class SessionWalkMixin:  # REQ-348
             .from_(exp.alias_(exp.Subquery(this=steps), h))
             .join(
                 exp.alias_(self._node_objects(walk, None), ns),
-                on=exp.EQ(this=_col(GRAPH_ID, ns), expression=_col("a", h)),
+                on=exp.EQ(this=_col(GRAPH_ID, ns), expression=_col("__near", h)),
                 join_type="INNER",
             )
             .join(
                 exp.alias_(self._node_objects(walk, None), nt),
-                on=exp.EQ(this=_col(GRAPH_ID, nt), expression=_col("b", h)),
+                on=exp.EQ(this=_col(GRAPH_ID, nt), expression=_col("__far", h)),
                 join_type="INNER",
             )
             .join(
@@ -561,7 +561,7 @@ class SessionWalkMixin:  # REQ-348
             for c in (
                 self._session_end_filter(ns, src_type, src_domain),
                 self._session_end_filter(nt, tgt_type, tgt_domain),
-                exp.EQ(this=_col("a", h), expression=_col("b", h)) if loop else None,
+                exp.EQ(this=_col("__near", h), expression=_col("__far", h)) if loop else None,
             )
             if c is not None
         ]

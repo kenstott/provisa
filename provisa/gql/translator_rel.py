@@ -777,9 +777,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 tgt_nm=tgt_nm,
             )
 
-        if self._session_hop(rel):  # type: ignore[attr-defined]
-            # REQ-2176: a graph session's hop, read from its one relationships relation whatever
-            # its ends' labels and its types (path_walk).
+        ends = (self._named_type(src_node), self._named_type(tgt_node))
+        if self._session_hop(rel) and (  # type: ignore[attr-defined]
+            len(rel.types) != 1
+            or any(nm is None or nm.type_name in self._lm.label_sets for nm in ends)
+        ):
+            # REQ-2176: a graph session's hop of no one type, or from or to a node of no one
+            # label, read from its one relationships relation (path_walk). One of one type
+            # between labelled nodes joins their relations, each filtered first (ephemeral.read).
             return (
                 every_rel_hop(self._named_type(src_node), self._named_type(tgt_node)),
                 joins,

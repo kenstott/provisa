@@ -878,6 +878,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             _order_collects(select_exprs, carried, self._stage_orders.get(carried))
         where_expr = self._build_where(stage_where)
         for step_vars, owned in optional_wheres:
+            step_vars = self._step_aliases(step_vars)
             if owned is not None:
                 joins, kept = _fold_where_into_optional_joins(
                     self._lower_where(owned), step_vars, joins
@@ -1076,6 +1077,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         from_clause, joins = self._expose_split_nodes(from_clause, joins)
         return from_clause, joins, all_matches, stage_where
 
+    def _step_aliases(self, step_vars: set[str]) -> set[str]:
+        """The aliases of the joins an OPTIONAL MATCH introducing ``step_vars`` reads: its
+        variables', and each derived table of a hop read from a union of relationships
+        (translator_every_rel) carrying one of them."""
+        held = getattr(self, "_all_rels_var_alias", {})
+        return set(step_vars) | {alias for col, alias in held.items() if col in step_vars}
+
     def _apply_where_and_fold(
         self,
         stage_where: "_StageWheres",
@@ -1088,6 +1096,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         required, optional_wheres = stage_where
         where_expr = self._build_where(required)
         for step_vars, owned in optional_wheres:
+            step_vars = self._step_aliases(step_vars)
             if owned is not None:
                 joins, kept = _fold_where_into_optional_joins(
                     self._lower_where(owned), step_vars, joins

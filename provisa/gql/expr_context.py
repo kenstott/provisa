@@ -943,6 +943,9 @@ class TranslatorExprContext:
             from provisa.gql.select_builder import node_json
 
             return node_json(alias, nm)
+        if name in t._all_rels_rel_vars or name in t._all_rels_node_vars:
+            # A node or relationship a union of relationships carries: its value, as it is.
+            return exp.column(name, table=t._all_rels_var_alias.get(name))
         return None
 
     def resolve_graph_identity(
@@ -1188,11 +1191,23 @@ class TranslatorExprContext:
             skip=None,
             limit=None,
         )
-        return _anon("ARRAY", self._translate_embedded(body, "COLLECT"))
+        inner, kinds = self._translate_embedded_kinds(body, "COLLECT")
+        rows = inner if isinstance(inner, exp.Select) and not inner.args.get("with_") else None
+        if rows is not None and len(rows.expressions) == 1:
+            (row,) = rows.expressions
+            name = row.alias_or_name
+            if name and name.lower() in kinds and isinstance(row, exp.Alias):
+                # A path, node or relationship each row is: its JSON, which the answer decodes
+                # (GraphVarKind.JSON_LIST), as a one-hop comprehension's is.
+                row.set("this", _anon("to_json", row.this))
+        return _anon("ARRAY", inner)
 
     # -- recursion helper -------------------------------------------------- #
 
     def _translate_embedded(self, body: CypherAST, kind: str) -> exp.Expression:
+        return self._translate_embedded_kinds(body, kind)[0]
+
+    def _translate_embedded_kinds(self, body: CypherAST, kind: str) -> tuple[exp.Expression, dict]:
         """Translate an embedded statement against the correlated outer scope: a fresh
         ``_Translator`` over its own copy, seeded with the outer ``_var_table``, parameters merged
         back; returns the inner SELECT as an AST."""
@@ -1223,7 +1238,7 @@ class TranslatorExprContext:
         # The outer statement's nodes are its row, which the inner statement goes on from (#160),
         # a WITH's carried nodes included.
         inner_tr._lateral_bound = {v for v, (_, nm) in outer._var_table.items() if nm is not None}
-        inner_select, inner_params, _ = inner_tr.translate()
+        inner_select, inner_params, inner_kinds = inner_tr.translate()
         same = [
             exp.EQ(this=inner_id, expression=graph_identity(outer, v))
             for v, w in drawn.items()
@@ -1237,4 +1252,4 @@ class TranslatorExprContext:
             if p not in self._t._param_seen:
                 self._t._param_order.append(p)
                 self._t._param_seen.add(p)
-        return inner_select
+        return inner_select, inner_kinds
