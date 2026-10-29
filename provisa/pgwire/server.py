@@ -523,7 +523,8 @@ _ARRAY_OF: dict[BVType, BVType] = {
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "BOOLEAN": BVType.BOOL,
-    "FLOAT": BVType.FLOAT,
+    # DuckDB's FLOAT is its 4-byte float (REAL is its alias): PostgreSQL's float4.
+    "FLOAT": BVType.REAL,
     "DOUBLE": BVType.FLOAT,
     "DECIMAL": BVType.DECIMAL,
     "TIMESTAMP": BVType.TIMESTAMP,
@@ -854,6 +855,44 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
 }
 
 
+def _describe_casts(
+    sql: str,
+    types: list[BVType],
+    oids: list[int | None],
+    typmods: list[int],
+    coerce: list[Tuple[int, Callable[[Any], Any]]],
+) -> None:  # REQ-2167
+    """A result column that is a cast to a PostgreSQL type is described with the cast's OID and
+    typmod where its value has that type's wire form (cast_types), its value brought to it."""
+    from provisa.pgwire.cast_types import result_casts
+
+    casts = result_casts(sql) if sql else None
+    if casts is None or len(casts) != len(types):
+        return
+    for i, cast_type in enumerate(casts):
+        if cast_type is None or types[i] not in cast_type.served_as:
+            continue
+        types[i], oids[i], typmods[i] = cast_type.bvtype, cast_type.oid, cast_type.typmod
+        if cast_type.coerce is not None:
+            coerce.append((i, cast_type.coerce))
+
+
+def _duckdb_inet(value: Any) -> Any:  # REQ-2167
+    """DuckDB's INET value (its ip_type, address and mask) as the address it is; an IPv6 address
+    is held with its top bit flipped, so it orders as a signed integer."""
+    import ipaddress
+
+    if not isinstance(value, dict):
+        return value
+    if value["ip_type"] == 1:
+        return ipaddress.IPv4Interface((value["address"], value["mask"]))
+    return ipaddress.IPv6Interface((value["address"] + (1 << 127), value["mask"]))
+
+
+#: An engine type whose Python value is not the one its encoder takes, by the engine's type name.
+_ENGINE_VALUES: dict[str, Callable[[Any], Any]] = {"INET": _duckdb_inet}
+
+
 class _StatementDescription(BVQueryResult):  # REQ-589
     """A Describe(Statement)'s answer: the statement's result columns, derived from registered
     metadata, with no rows — nothing ran. ``statement_shape`` is what every Execute of the statement
@@ -864,6 +903,9 @@ class _StatementDescription(BVQueryResult):  # REQ-589
         self.statement_shape = shape
         self.prepared = prepared
         self._types = [_sql_type_to_bvtype(t) for _, t in shape]
+        self._type_oids = [_type_oid(t) for _, t in shape]
+        self._typmods = [-1] * len(shape)
+        _describe_casts(sql, self._types, self._type_oids, self._typmods, [])
         self._status = _tag_from_sql(sql)
 
     def has_results(self) -> bool:
@@ -876,7 +918,10 @@ class _StatementDescription(BVQueryResult):  # REQ-589
         return (self.statement_shape[index][0], self._types[index])
 
     def column_type_oid(self, index: int) -> int | None:
-        return _type_oid(self.statement_shape[index][1])
+        return self._type_oids[index]
+
+    def column_typmod(self, index: int) -> int:
+        return self._typmods[index]
 
     def rows(self) -> Iterator[list]:
         return iter(())
@@ -968,6 +1013,8 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
                 coercer = _SHAPE_COERCERS.get(described)
                 if coercer is not None:
                     self._coerce.append((i, coercer))
+            self._typmods = [-1] * len(self._cols)
+            _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
             return
         # A None entry (or absent types) means the type must be inferred from data, which
         # requires the first batch on hand before RowDescription is sent.
@@ -991,6 +1038,12 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             for i, (_name, declared) in enumerate(read_shape):
                 if declared in SUBTYPES:
                     self._types[i] = _sql_type_to_bvtype(declared)
+        for i, served in enumerate(ctypes or ()):
+            value_of = _ENGINE_VALUES.get(str(served).upper())
+            if value_of is not None:
+                self._coerce.append((i, value_of))
+        self._typmods = [-1] * len(self._cols)
+        _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -1003,6 +1056,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
 
     def column_type_oid(self, index: int) -> int | None:
         return self._type_oids[index]
+
+    def column_typmod(self, index: int) -> int:
+        return self._typmods[index]
 
     def rows(self) -> Iterator[list]:
         # send_data_rows (vendor/buenavista) calls .rows() fresh on EVERY Execute message of a
