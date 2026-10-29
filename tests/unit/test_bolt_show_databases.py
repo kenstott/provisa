@@ -85,13 +85,9 @@ def _held_in_memory():
     held = temp_tables.TempSession(kept=True)
 
     @asynccontextmanager
-    async def bound(_state, cypher: str):
-        from provisa.cypher.parser import writes_in
-
+    async def bound(_state, *, writes: bool):
         token = temp_tables.bind(held)
-        graph = graph_session._bound.set(
-            graph_session.GraphSession("anonymous", held, exclusive=writes_in(cypher))
-        )
+        graph = graph_session._bound.set(graph_session.GraphSession("anonymous", held, writes))
         try:
             yield
         finally:

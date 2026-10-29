@@ -11,11 +11,15 @@ name: Conformance (Flight SQL)
 # Arrow's own Flight SQL integration scenarios (archery) pair a scripted client with a scripted
 # reference server that asserts canned inputs, so they cannot be pointed at a real server.
 #
-# A failing test is data, written to the job summary and to the artifact conformance-flight-sql.json
+# Each test is passed, skipped by design (a group of by_design/flight-sql.yaml citing its
+# requirement and decision) or failed (REQ-2167, amended 2026-10-28); a test whose client driver
+# never sends what it needs is skipped by design in its client group, citing the driver's
+# evidence, and any other test the suite skips is failed unless a by-design group names it. A
+# failing test is data, written to the job summary and to the artifact conformance-flight-sql.json
 # (read by scripts/conformance/fill_docs.py into docs/conformance/flight-sql.md), never a job
 # failure. The job fails only when the Provisa instance did not start or no test ran, until Flight
 # SQL is at its baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a
-# failure no group excludes.
+# failed test.
 
 on:
   workflow_dispatch:

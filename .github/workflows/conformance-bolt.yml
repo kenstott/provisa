@@ -5,11 +5,15 @@ name: Conformance (Bolt)
 # tag, never vendored, installed with its test dependency group in its own virtualenv and run with
 # pytest against Provisa's Bolt port as the examples' own role (bolt_examples).
 #
-# A failing test is data, written to the job summary and to the artifact conformance-bolt.json
-# (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md), never a job failure.
-# The job fails only when the Provisa instance did not start or no test ran, until Bolt is at its
-# baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a failure no
-# group excludes.
+# Each test is passed, skipped by design (a group of by_design/bolt.yaml citing its requirement
+# and decision) or failed (REQ-2167, amended 2026-10-28); a test the driver's suite skips for
+# every server is skipped by design in its suite group, citing the suite's reason, and failed if
+# no group names it. A failing test is data, written to the job summary and to the artifact
+# conformance-bolt.json (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md),
+# never a job failure. pytest's own line in the run step counts by pytest's outcomes; the three
+# counts are the Summarise step's. The job fails only when the Provisa instance did not start or no
+# test ran, until Bolt is at its baseline (scripts/conformance/by_design.py AT_BASELINE,
+# REQ-2167): then also on a failed test.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance), with password
 # auth: the driver signs in as the job user, whom a role mapping rule maps to bolt_examples, a role
@@ -130,7 +134,12 @@ jobs:
           TEST_NEO4J_SCHEME: bolt
           TEST_NEO4J_USER: ${{ env.CONFORMANCE_USER }}
           TEST_NEO4J_PASS: ${{ env.CONFORMANCE_PASSWORD }}
-          TEST_NEO4J_EDITION: community
+          # The edition names the suite's server features, not Provisa's dbms.components answer
+          # (still community): it gates the database selection example alone
+          # (tests/conftest.py:158-164), whose CREATE DATABASE / session(database=...) Provisa
+          # answers (provisa/bolt/databases.py: a created database names the home database,
+          # kept in the principal's graph session, REQ-2176).
+          TEST_NEO4J_EDITION: enterprise
           TEST_NEO4J_VERSION: "5.4"
           TEST_NEO4J_IS_CLUSTER: "false"
         run: |

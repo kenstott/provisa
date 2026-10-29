@@ -153,6 +153,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # REQ-2106: what this environment's code sources cached and indexed for themselves.
         "code_source_cache",
         "code_source_vectors",
+        # REQ-2185: its own reference library, embedded by its own vector models; a document
+        # is added to the environment whose assistants draw on it.
+        "reference_documents",
+        "reference_document_domains",
+        "reference_passages",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's

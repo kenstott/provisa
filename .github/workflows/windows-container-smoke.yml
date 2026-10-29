@@ -9,18 +9,7 @@
 name: windows-container-smoke
 
 on:
-  pull_request:
-    paths:
-      - 'packaging/windows/**'
-      - '.github/workflows/windows-container-smoke.yml'
-      - 'tests/unit/test_file_db_locks.py'
-      - 'provisa/federation/file_locks.py'
-  push:
-    branches: [main]
-    paths:
-      - 'packaging/windows/**'
-      - 'tests/unit/test_file_db_locks.py'
-      - 'provisa/federation/file_locks.py'
+  # e2e and integration runs start only on request (maintainer 2026-10-29): pushes run unit tests only.
   workflow_dispatch:
 
 jobs:
