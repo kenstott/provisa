@@ -349,3 +349,78 @@ def test_a_relationship_a_with_drops_is_bound_anew(monkeypatch):
         "MATCH (me)-[r1:ATE]->()<-[r2:ATE]-(you) RETURN me.name AS me, you.name AS you, r2.t AS t"
     )
     assert rows == [{"me": "M", "you": "Y", "t": 2}]
+
+
+# --- count() counts rows; collect() collects the elements ---------------------------------------
+
+
+def test_count_of_a_node_counts_each_row_it_is_bound_in(monkeypatch):
+    # ReturnOrderBy2 [11]: one A beside two X is two rows, each counting a.
+    s = _session(monkeypatch, "CREATE (:A), (:X), (:X)")
+    rows = s.run("MATCH (a:A), (b:X) RETURN count(a) * 10 + count(b) * 5 AS x ORDER BY x")
+    assert rows == [{"x": 30}]
+    assert s.run("MATCH (a:A), (b:X) RETURN count(DISTINCT a) AS n") == [{"n": 1}]
+
+
+def test_collect_of_nodes_is_the_nodes(monkeypatch):
+    # Return6 [10]
+    s = _session(monkeypatch, "CREATE ()")
+    [row] = s.run("MATCH (n) RETURN count(n), collect(n)")
+    assert row["count(n)"] == 1
+    assert [(v["label"], v["properties"]) for v in row["collect(n)"]] == [("", {})]
+
+
+@pytest.mark.parametrize(
+    ("setup", "query", "expected"),
+    [
+        # Unwind1 [5]
+        (
+            "CREATE ({id: 1}), ({id: 2})",
+            "MATCH (row) WITH collect(row) AS rows UNWIND rows AS node RETURN node.id AS id "
+            "ORDER BY id",
+            [{"id": 1}, {"id": 2}],
+        ),
+        # Unwind1 [12]
+        (
+            "CREATE (s:S), (n), (e:E {k: 3}), (s)-[:X]->(e), (s)-[:Y]->(e), (n)-[:Y]->(e)",
+            "MATCH (a:S)-[:X]->(b1) WITH a, collect(b1) AS bees UNWIND bees AS b2 "
+            "MATCH (a)-[:Y]->(b2) RETURN b2.k AS k",
+            [{"k": 3}],
+        ),
+        # List12 [1] [2]: a comprehension over collected nodes reads their properties.
+        (
+            "CREATE (:Label1 {name: 'original'})",
+            "MATCH (a:Label1) WITH collect(a) AS nodes "
+            "WITH nodes, [x IN nodes | x.name] AS old, [x IN nodes WHERE x.name = 'original'] AS f "
+            "UNWIND nodes AS n RETURN n.name AS n, old, size(f) AS s",
+            [{"n": "original", "old": ["original"], "s": 1}],
+        ),
+    ],
+)
+def test_a_list_of_collected_nodes_holds_the_nodes(monkeypatch, setup, query, expected):
+    s = _session(monkeypatch, setup)
+    assert s.run(query) == expected
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # List12 [4]
+        "MATCH p = (n:A)-->() RETURN [x IN collect(p) | head(nodes(x))] AS p",
+        # List12 [5]: the WITH's p is the list, not the path the pattern names.
+        "MATCH p = (n:A)-->() WITH [x IN collect(p) | head(nodes(x))] AS p, count(n) AS c RETURN p",
+    ],
+)
+def test_the_first_node_of_each_collected_path(monkeypatch, query):
+    s = _session(monkeypatch, "CREATE (a:A) CREATE (a)-[:T]->(:B), (a)-[:T]->(:C)")
+    [row] = s.run(query)
+    assert [v["label"] for v in row["p"]] == ["A", "A"]
+
+
+def test_a_call_bodys_collected_nodes_are_read_as_nodes(monkeypatch):
+    s = _session(monkeypatch, "CREATE (n:P {k: 1})-[:W]->(:C {name: 'c1'})")
+    rows = s.run(
+        "MATCH (n:P) CALL { WITH n MATCH (n)-[:W]->(c:C) RETURN collect(c)[..2] AS cs } "
+        "RETURN [x IN cs | x.name] AS names"
+    )
+    assert rows == [{"names": ["c1"]}]

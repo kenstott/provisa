@@ -133,6 +133,17 @@ class CorrelatedCallMixin:  # REQ-573
         except CypherTranslateError:
             return None
 
+        # A list of graph elements the body returns (collect(c)[..2]) is their JSON values: the
+        # outer statement reads its items as the body's elements (translator._element_list_kind).
+        returned = call.body.return_clause.items if call.body.return_clause else []
+        for item in returned:
+            held = inner_translator._element_list_kind(item.expression)
+            name = item.alias or item.name.strip()
+            if held is not None and name:
+                self._element_list_vars[name] = held  # type: ignore[attr-defined]
+                labels = inner_translator._element_list_types(item.expression)
+                self._element_list_labels[name] = labels  # type: ignore[attr-defined]
+
         # Propagate any new params discovered in inner query
         for p in inner_params:
             if p not in self._param_seen:

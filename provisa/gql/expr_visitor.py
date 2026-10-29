@@ -173,6 +173,16 @@ class ExprContext(Protocol):
         """A function call after its args are lowered (Cypher→engine renames/casts live here)."""
         ...
 
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path" where ``expr`` is a list of collected graph elements (their
+        JSON values), else None."""
+        ...
+
+    def element_property_type(self, expr: CypherExpr, name: str) -> exp.DataType | None:
+        """The one type property ``name`` of the elements the list ``expr`` collects has, where
+        their labels agree; None to read it as text."""
+        ...
+
     def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:
         """A label test ``n:Label`` against the lowered operand."""
         ...
@@ -712,6 +722,11 @@ class ExprLowering:
         #: The variables a comprehension or quantifier binds to an item of a list of JSON-encoded
         #: values ([[1, 2], ['a']]): each item is its JSON.
         self._json_vars: set[str] = set()
+        #: Each comprehension variable bound to the items of a list of collected graph elements
+        #: ("node", "rel" or "path"): its JSON value (translator._element_list_kind).
+        self._element_vars: dict[str, str] = {}
+        #: The list each such variable ranges over, as the statement writes it.
+        self._element_sources: dict[str, CypherExpr] = {}
         #: The kinds of the items a comprehension or quantifier variable is bound to, where its list
         #: is written in the statement ([x IN [1, []] | ...]): _static_kind of each.
         self._item_kinds: dict[str, frozenset[str | None]] = {}
@@ -732,7 +747,17 @@ class ExprLowering:
             self._item_kinds[var] = frozenset(self._static_kind(i) for i in written.items)
         else:
             self._item_kinds.pop(var, None)
+        element = self._ctx.element_list_kind(written)
+        before = self._element_vars.get(var)
+        before_source = self._element_sources.get(var)
+        if element is not None:
+            self._element_vars[var] = element
+            self._element_sources[var] = written
+        else:
+            self._element_vars.pop(var, None)
         try:
+            if element is not None:
+                return self.lower(body)
             if _json_valued(source) != "list":
                 return self.lower(body)
             held = var in self._json_vars
@@ -747,6 +772,13 @@ class ExprLowering:
                 self._item_kinds.pop(var, None)
             else:
                 self._item_kinds[var] = kinds
+            if before is None:
+                self._element_vars.pop(var, None)
+                self._element_sources.pop(var, None)
+            else:
+                self._element_vars[var] = before
+                if before_source is not None:
+                    self._element_sources[var] = before_source
 
     def _json_item(self, node: CypherExpr) -> bool:
         """Whether ``node`` is one value held as its JSON: an item of a list of several types, or
@@ -821,6 +853,19 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, Variable) and self._element_vars.get(node.obj.name) in (
+            "node",
+            "rel",
+        ):
+            # A property of a collected node or relationship: its value in the element's JSON,
+            # of the one type its labels give it, else its text.
+            value = _anon(
+                "JSON_EXTRACT_SCALAR",
+                exp.column(node.obj.name),
+                exp.Literal.string("$.properties." + json.dumps(node.name)),
+            )
+            held = self._ctx.element_property_type(self._element_sources[node.obj.name], node.name)
+            return value if held is None else exp.Cast(this=value, to=held)
         if not isinstance(node.obj, (MapLiteral, Variable)):
             held = self.lower(node.obj)
             if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
@@ -1290,6 +1335,20 @@ class ExprLowering:
     def _lower_call(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if (
+            node.name.lower() in ("nodes", "relationships")
+            and len(node.args) == 1
+            and isinstance(node.args[0], Variable)
+            and self._element_vars.get(node.args[0].name) == "path"
+        ):
+            # A collected path's nodes or relationships: the lists its JSON holds.
+            member = "$.nodes" if node.name.lower() == "nodes" else "$.edges"
+            return exp.Cast(
+                this=_anon(
+                    "JSON_EXTRACT", exp.column(node.args[0].name), exp.Literal.string(member)
+                ),
+                to=exp.DataType.build("JSON[]"),
+            )
         if (
             node.name.lower() in ("max", "min")
             and len(node.args) == 1

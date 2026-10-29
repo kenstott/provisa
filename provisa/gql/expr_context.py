@@ -290,7 +290,7 @@ class TranslatorExprContext:
             if isinstance(obj, exp.Column)
             and obj.table
             and t._all_rels_var_alias.get(obj.name) == obj.table
-            and obj.name in t._cte_sources
+            and (obj.name in t._cte_sources or obj.table in t._unwind_aliases)
             else None
         )
         if carried_in is not None:
@@ -593,6 +593,15 @@ class TranslatorExprContext:
         held = self.property_type(exp.column(expr.obj.name), expr.name)
         return held is not None and held.lower() == "json"
 
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        return self._t._element_list_kind(expr)
+
+    def element_property_type(self, expr: CypherExpr, name: str) -> exp.DataType | None:
+        from provisa.gql.translator_union import union_type
+
+        labels = self._t._element_list_types(expr)
+        return union_type(name, labels, self._t._lm) if labels else None
+
     def is_json_value(self, expr: CypherExpr) -> bool:
         from provisa.gql.expr_ast import Index, Paren
 
@@ -710,26 +719,66 @@ class TranslatorExprContext:
     def _agg_node(
         self, fn: str, arg: exp.Expression, *, distinct: bool = False
     ) -> exp.Expression | None:
-        """COUNT(n)/COLLECT(n) on a node variable → aggregate over its id column (COUNT dedupes, since
-        JOINs can repeat a node); on a relationship variable COUNT(r) → COUNT(*). None if not a var."""
+        """COUNT(x)/COLLECT(x) of a node, relationship or path variable (openCypher): count(x)
+        counts the rows where x is bound (DISTINCT, the distinct elements), each row of a join
+        once -- MATCH (a:A), (b:X) counts a once per X; collect(x) is the list of the elements
+        themselves, as RETURN x answers each, the rows where x is unbound left out. None where
+        ``arg`` is no such variable."""
         var = self._arg_var(arg)
         if var is None:
             return None
+        found = self._element_of(var)
+        if found is None:
+            return None
+        identity, value = found
+        if fn == "count":
+            if identity is None:
+                return exp.Count(this=exp.Star())
+            return exp.Count(this=exp.Distinct(expressions=[identity]) if distinct else identity)
+        if value is None:
+            return None
+        if identity is not None:
+            value = exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.Is(this=identity.copy(), expression=exp.Null()), true=exp.Null()
+                    )
+                ],
+                default=value,
+            )
+        return _anon("collect", exp.Distinct(expressions=[value]) if distinct else value)
+
+    def _element_of(self, var: str) -> tuple[exp.Expression | None, exp.Expression | None] | None:
+        """The graph element ``var`` names in the rows: its identity (null where it is unbound;
+        None where every row binds it) and its value (its JSON, as RETURN answers it); None for
+        a variable that names no node, relationship or path."""
         t = self._t
-        if var in t._rel_var_types or var in t._all_rels_rel_vars:
-            return exp.Count(this=exp.Star()) if fn == "count" else None
+        if var in t._path_vars:
+            return None, t._build_path_object(var)
+        if var in t._all_rels_node_vars or var in t._all_rels_rel_vars:
+            # A node or edge a read of every relationship holds as its value.
+            identity = graph_identity(t, var) if var in t._all_rels_node_vars else None
+            alias = t._var_table.get(var, (var, None))[0]
+            table = (
+                alias
+                if var in t._cte_sources
+                else t._all_rels_var_alias.get(var, t._all_rels_alias)
+            )
+            column = exp.column(var, table=table) if table else exp.column(var)
+            if identity is None:
+                identity = _anon("JSON_EXTRACT_SCALAR", column.copy(), exp.Literal.string("$.id"))
+            return identity, column
+        if var in t._rel_var_types:
+            return None, self.resolve_graph_element(var)
         info = t._var_table.get(var)
-        if info and info[1] is not None:
-            id_ref = _col(info[1].id_column, var)
-            if fn == "count":
-                return exp.Count(this=exp.Distinct(expressions=[id_ref]))
-            return _anon("collect", id_ref)
-        if fn == "count" and (var in t._domain_nodes or var in t._union_columns):
-            # A node of a union of labels' rows is counted by its identity, null where an
-            # OPTIONAL MATCH found none -- never its row, which is a value even then.
+        nm = info[1] if info else None
+        if info and nm is not None:
+            return _col(nm.id_column, info[0]), self.resolve_graph_element(var)
+        if var in t._domain_nodes or var in t._union_columns:
+            # A node of a union of labels' rows: its identity, null where an OPTIONAL MATCH found
+            # none, and its JSON, the union's node column.
             alias = info[0] if info else var
-            ident = _col("__id", alias)
-            return exp.Count(this=exp.Distinct(expressions=[ident]) if distinct else ident)
+            return _col("__id", alias), _col("__node", alias)
         return None
 
     def _graph_fn(self, name: str, args: list[exp.Expression]) -> exp.Expression:

@@ -57,6 +57,9 @@ class _FakeCtx:
     def graph_kind(self, name):
         return None  # no pattern variables in scope here
 
+    def element_list_kind(self, expr):
+        return None  # no list of collected graph elements in scope here
+
     def is_null(self, expr):
         return getattr(expr, "kind", None) == "null"
 
