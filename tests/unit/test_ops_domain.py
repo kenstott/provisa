@@ -263,6 +263,10 @@ _REPORT_VIEW_NAMES = {
     "replica_builds",
     "replica_build_health",
     "service_level",
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT)
+    "ontology_term_quality",
+    "ontology_placeholders",
+    "ontology_quality",
 }
 
 
@@ -399,6 +403,7 @@ async def test_report_views_functional(control_plane):
         tag_assignments,
         user_directory,
     )
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
     from provisa.api.startup_seed import _adapt_view_ddl
 
     db = control_plane.org()
@@ -476,6 +481,10 @@ async def test_report_views_functional(control_plane):
             # (startup_seed.py: _seed_meta_domain then _seed_ops_domain). DuckDB resolves a
             # view's references when it is created, so the order matters here too.
             for ddl in _META_TABLE_VIEWS.values():
+                await conn.execute(_adapt_view_ddl(ddl))
+            # The ontology quality reports read the ontology schema's views, which
+            # _seed_ontology_domain creates before _seed_ops_domain.
+            for ddl in ONTOLOGY_TABLE_VIEWS.values():
                 await conn.execute(_adapt_view_ddl(ddl))
             for ddl in _OPS_REPORT_VIEWS.values():
                 await conn.execute(_adapt_view_ddl(ddl))

@@ -25,6 +25,8 @@ meta tables (their views are registered under it), the view name for the ops rep
 
 from __future__ import annotations
 
+from provisa.api._ontology_quality_views import HUB_MIN_REACHERS
+
 _TENANT = "Owning org — control-plane rows are isolated per tenant by this column"
 
 _META: dict[str, str] = {
@@ -85,6 +87,22 @@ _META: dict[str, str] = {
     "and each term's label and definition",
     "_closure": "Each term with every term it is a kind of, as a class or as a property, "
     "through one or more kind-of relationships, and itself",
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): ops reports over the glossary, so they say
+    # whose metadata they read as the meta tables do.
+    "ontology_quality": "Ontology quality: the glossary measured from the model, one row per "
+    "domain and one per steward -- the grounded share of in-service terms (final and pending "
+    "approval apart), the approved-and-grounded share, the unresolved RELATED_TO placeholders, "
+    "hops to data and paths through broad hub terms, terms a single approval would make final, "
+    "and undefined terms on paths to data",
+    "ontology_term_quality": "Ontology quality by term: one row per in-service term and domain, "
+    "with its status, grounding, RELATED_TO placeholders, hops to data, the broad hub terms its "
+    "paths to data pass through, the terms whose approval alone makes it grounded, and whether "
+    "it is an undefined term on a path to data. A hub is an in-service term that at least "
+    f"{HUB_MIN_REACHERS} distinct terms are directly a kind, part or valid value of; a path "
+    "passes through it when it stands strictly between the term and the term holding the data",
+    "ontology_placeholders": "Ontology quality placeholders: every RELATED_TO edge (once per "
+    "domain of either term) and every in-service term whose only links are RELATED_TO, each "
+    "linked to the term and to its RELATED_TO review",
 }
 
 _OPS: dict[str, str] = {
@@ -921,6 +939,69 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "p95_ms": "Their 95th-percentile duration, in milliseconds",
         "p99_ms": "Their 99th-percentile duration, in milliseconds",
         "availability_pct": "Percent of them answered without a server error",
+    },
+    "ontology_quality": {
+        "id": "The scope and its domain or steward",
+        "scope": "domain, or steward: what the row counts terms by",
+        "scope_id": "The domain id or the steward role; empty for terms with no domain or no "
+        "steward",
+        "in_service_terms": "Draft and approved terms in scope",
+        "grounded_terms": "Of them, grounded: a path to data with no draft term strictly between",
+        "grounded_pct": "Grounded terms as a percent of the in-service terms",
+        "grounded_pending_terms": "Of them, grounded with the path pending approval: every path "
+        "to data passes through a draft term",
+        "grounded_pending_pct": "Pending-approval terms as a percent of the in-service terms",
+        "approved_terms": "Approved terms in scope",
+        "approved_grounded_terms": "Approved terms that reach data, grounded or pending: the "
+        "terms an agent may use",
+        "approved_grounded_pct": "Approved-and-grounded terms as a percent of the in-service terms",
+        "related_to_edges": "RELATED_TO edges with a term in scope, each counted once",
+        "only_related_to_terms": "Terms not grounded whose only links are RELATED_TO",
+        "avg_hops_to_data": "Mean of the grounded terms' hops to data",
+        "max_hops_to_data": "Most hops to data of any grounded term",
+        "hub_paths": "Term-and-hub pairs: a broad hub term standing strictly between a term and "
+        "its data",
+        "only_through_hub_terms": "Grounded terms every path of which passes through a hub",
+        "pending_finalisable_terms": "Pending-approval terms one approval would make grounded",
+        "undefined_on_path_terms": "Terms with no definition on a path to data, which an agent "
+        "traverses as anonymous hops",
+    },
+    "ontology_term_quality": {
+        "id": "The term and its domain",
+        "term_id": "The term; opens it in the Ontology page",
+        "term_name": "The term's name",
+        "domain_id": "A domain the term is scoped to; empty for an unscoped term, * for the "
+        "enterprise",
+        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "status": "draft or approved, set by people",
+        "grounding": "grounded, grounded_pending or not_grounded, computed from the model "
+        "(REQ-1387)",
+        "defined": "True when the term has a definition",
+        "related_to": "RELATED_TO edges the term is on, either end",
+        "only_related_to": "True when the term is not grounded and its only links are RELATED_TO",
+        "hops_to_data": "Fewest kind, part or valid-value steps from the term down to a term "
+        "holding data (synonyms add none); empty when not grounded",
+        "is_hub": "True when the term is a broad hub",
+        "hubs_between": "Hubs standing strictly between the term and its data on some path",
+        "only_through_hub": "True when every path from the term to data passes through a hub",
+        "finalised_by": "For a pending-approval term, the draft terms whose approval alone makes "
+        "it grounded",
+        "undefined_on_path": "True when the term has no definition, reaches data and has a term "
+        "above it, so it lies on a path to data",
+    },
+    "ontology_placeholders": {
+        "id": "The placeholder and its domain",
+        "placeholder": "related_to_edge, or only_related_to for a term whose only links are "
+        "RELATED_TO",
+        "edge_id": "The RELATED_TO edge; empty for a term row",
+        "term_id": "The term (the edge's from end); opens it in the Ontology page",
+        "term_name": "The term's name",
+        "other_term_id": "The edge's other term; opens it in the Ontology page",
+        "other_term_name": "The other term's name",
+        "domain_id": "A domain of either term",
+        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "related_to_review": "The term to review; opens the Ontology page filtered to RELATED_TO "
+        "terms",
     },
     "replica_build_health": {
         "id": "Composite key of the source and the day",
