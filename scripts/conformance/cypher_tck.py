@@ -469,8 +469,8 @@ def side_effects(expected: dict[str, int], measured: dict[str, int]) -> str | No
 def _session_scenario(scenario: Scenario) -> str | None:
     """How a scenario runs in a Bolt session, when one is configured: NAMED_GRAPH for a named
     TCK graph, IN_A_SESSION for a setup that builds its graph, EMPTY_GRAPH for an empty graph its
-    query matches (MATCH) or merges (MERGE) a pattern on (the session's graph alone is empty); None
-    to run it over HTTP. A
+    query or control query matches (MATCH) or merges (MERGE) a pattern on (the session's graph
+    alone is empty); None to run it over HTTP. A
     test procedure is the fixture model's command, called over either."""
     if not bolt.configured():
         return None
@@ -479,9 +479,15 @@ def _session_scenario(scenario: Scenario) -> str | None:
         return NAMED_GRAPH
     if any(t.startswith("having executed") for t in texts):
         return IN_A_SESSION
-    query = next((s.doc or "" for s in scenario.steps if s.text.startswith("executing query")), "")
-    # A MERGE matches its pattern before it creates it: on an empty graph it matches the session's.
-    if "an empty graph" in texts and re.search(r"\b(?:MATCH|MERGE)\b", query, re.I):
+    # The query and its control query: a MERGE matches its pattern before it creates it, and a
+    # control query reads what the query made (Temporal4: CREATE, then MATCH (n)); on an empty
+    # graph either one matches the session's graph, never the model's.
+    read = "\n".join(
+        s.doc or ""
+        for s in scenario.steps
+        if s.text.startswith(("executing query", "executing control query"))
+    )
+    if "an empty graph" in texts and re.search(r"\b(?:MATCH|MERGE)\b", read, re.I):
         return EMPTY_GRAPH
     return None
 

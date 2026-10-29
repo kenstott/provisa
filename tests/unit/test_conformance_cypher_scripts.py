@@ -441,6 +441,19 @@ def test_a_temporal_value_from_bolt_is_written_as_opencypher_writes_it():
     assert bolt.value(time.Duration()) == "PT0S"
 
 
+def test_a_date_time_at_offset_zero_from_bolt_names_no_region():
+    # Temporal4 [9]/[10]: the driver hydrates a DateTime at offset 0 as pytz.utc, whose zone is
+    # named "UTC"; it is written as the offset Z, as the TCK writes it. A region keeps its name.
+    from neo4j._codec.hydration.v2.temporal import hydrate_datetime
+
+    epoch_1912 = -1830384000
+    assert bolt.value(hydrate_datetime(epoch_1912, 0, 0)) == "1912-01-01T00:00Z"
+    assert bolt.value(hydrate_datetime(epoch_1912, 0, 3600)) == "1912-01-01T01:00+01:00"
+    assert bolt.value(hydrate_datetime(1437514832, 142000000, "Europe/Stockholm")) == (
+        "2015-07-21T23:40:32.142+02:00[Europe/Stockholm]"
+    )
+
+
 _SIDE_EFFECTS_FEATURE = '''
 Feature: Remove3 - Removing a label
 
@@ -645,6 +658,40 @@ def test_a_merge_on_an_empty_graph_runs_in_an_empty_session(tmp_path, monkeypatc
     # session's empty graph, never the model's.
     path = tmp_path / "merge1.feature"
     path.write_text(_MERGE_ON_EMPTY)
+    (scenario,) = tck.parse_feature(path)
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
+
+
+_CREATE_THEN_CONTROL = '''
+Feature: Temporal4 - Store Temporal Values
+
+  Scenario: [1] Should store date
+    Given an empty graph
+    When executing query:
+      """
+      CREATE ({created: date({year: 1984, month: 10, day: 11})})
+      """
+    Then the result should be empty
+    And the side effects should be:
+      | +nodes      | 1 |
+      | +properties | 1 |
+    When executing control query:
+      """
+      MATCH (n)
+      RETURN n.created
+      """
+    Then the result should be, in any order:
+      | n.created    |
+      | '1984-10-11' |
+'''
+
+
+def test_a_control_query_on_an_empty_graph_reads_the_empty_session(tmp_path, monkeypatch):
+    # A CREATE whose control query matches what it made: on the TCK's empty graph the control
+    # query reads the session's graph, never the model's every node (Temporal4).
+    path = tmp_path / "temporal4.feature"
+    path.write_text(_CREATE_THEN_CONTROL)
     (scenario,) = tck.parse_feature(path)
     monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
     assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
