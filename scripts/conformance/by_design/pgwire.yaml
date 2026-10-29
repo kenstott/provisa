@@ -88,3 +88,33 @@
     SQL uses the engine's functions; these are not emulated (PGWIRE'S CATALOG FUNCTIONS).
   case: "^catalog function::(cidr|hostmask|macaddr|macaddr8|masklen|network_cmp|network_eq|network_ge|network_gt|network_larger|network_le|network_lt|network_ne|network_overlap|network_smaller|network_sub|network_subeq|network_sup|network_supeq|set_masklen)\\("
 
+
+# Type conversions (pgwire_catalog_types.py, part 3): a statement whose every difference from
+# PostgreSQL is one a design decision makes. Each group names the statements (case) and the only
+# differences they may have (reason): any other difference in the same statement stays a failure.
+
+- group: A source's array column is JSON
+  requirement: REQ-1965
+  decision: >-
+    Semantic SQL has no array type: a source's native array column is registered as JSON, the
+    type every catalog and every wire lists for it, so its value is sent as a JSON array rather
+    than a PostgreSQL array.
+  case: "^type conversion::SELECT c_(int4|text|float8)_array FROM conformance\\.types_fixture$"
+  reason: "^type oid 3802 \\(jsonb\\), PostgreSQL \\d+ \\(_\\w+\\); text '\\[.*\\]', PostgreSQL '\\{.*\\}'; binary 01[0-9a-f]+, PostgreSQL [0-9a-f]+$"
+
+- group: The session's role and database
+  requirement: REQ-588
+  decision: >-
+    current_user and session_user name the role the session acts as, and current_database()
+    the served database (the organization the client named, or provisa): not a PostgreSQL user
+    or database.
+  case: "^type conversion::SELECT (current_user|session_user|current_database\\(\\)) AS v$"
+  reason: "^text '[^']*', PostgreSQL '[^']*'; binary [0-9a-f]*, PostgreSQL [0-9a-f]*$"
+
+- group: The server's version
+  requirement: REQ-579
+  decision: >-
+    The server reports version 14.0.provisa, so a tool that gates features on the version
+    behaves as with PostgreSQL 14: server_version_num is 140000.
+  case: "^type conversion::SELECT pg_catalog\\.current_setting\\('server_version_num'\\) AS v$"
+  reason: "^text '140000', PostgreSQL '\\d+'; binary 313430303030, PostgreSQL [0-9a-f]+$"
