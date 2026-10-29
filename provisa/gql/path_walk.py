@@ -143,9 +143,9 @@ class SessionWalkMixin:  # REQ-348
         graph_id = GRAPH_ID if alias in self._graph_id_unions else "__id"
         return relation, _col(graph_id, alias), _col("__id", alias)
 
-    def _refuse_model_hops(self, walk: SessionWalk, rel: RelPattern | None, error: type) -> None:
-        """Refuse a walk the model's relationships could take a hop of: on the model graph each
-        is its own table, which a walk from an unlabelled end would read as a union of them all."""
+    def _walks_model_hops(self, walk: SessionWalk, rel: RelPattern | None) -> bool:
+        """Whether the model's relationships could take a hop of the walk: on the model graph each
+        is its own table, which a walk from no placed end would read as a union of them all."""
         wanted = {t.upper() for t in rel.types} if rel and rel.types else None
         for r in self._lm.relationships.values():
             if r.via is not None and r.via.catalog_name == walk.catalog_name:
@@ -153,7 +153,14 @@ class SessionWalkMixin:  # REQ-348
             if r.constant_source and wanted is None:
                 continue
             if wanted is None or r.rel_type.upper() in wanted:
-                raise error(f"{UNLABELLED_ENDS} where the model's relationships are walked")
+                return True
+        return False
+
+    def _refuse_model_hops(self, walk: SessionWalk, rel: RelPattern | None, error: type) -> None:
+        """Refuse a walk the model's relationships could take a hop of when neither end places
+        it (REQ-348, ONE END BOUND OR BINDABLE): a walk from a placed end is the model graph's."""
+        if self._walks_model_hops(walk, rel):
+            raise error(f"{UNLABELLED_ENDS} where the model's relationships are walked")
 
     def _translate_session_walk(  # complexity-gate: allow-cc=16 reason="one walk's ends, bounds and path function, each a short branch of the one CTE"
         self,

@@ -333,14 +333,17 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         held = set(self._var_table) if joined is None else joined
         if not src_node.labels or not tgt_node.labels:
             walk = self._lm.session_walk
-            if walk is not None:
+            # REQ-347, REQ-348: a variable an earlier clause bound to a table keeps that table's
+            # label, written bare or not.
+            src_bound, tgt_bound = self._as_bound(src_node, held), self._as_bound(tgt_node, held)
+            on_model = any(self._on_model(n) for n in (src_bound, tgt_bound))
+            if walk is not None and not (on_model and self._walks_model_hops(walk, rel)):  # type: ignore[attr-defined]
                 # A graph session walks its one relationships relation from any end (path_walk).
                 return self._translate_session_walk(  # type: ignore[attr-defined]
                     clause, pf, src_node, tgt_node, rel, walk, held, CypherTranslateError
                 )
-            # REQ-347, REQ-348: on the model graph a variable an earlier clause bound to a table
-            # keeps that table's label, written bare or not.
-            src_node, tgt_node = self._as_bound(src_node, held), self._as_bound(tgt_node, held)
+            # A walk from an end the model places takes the model's relationships (REQ-348).
+            src_node, tgt_node = src_bound, tgt_bound
         if not src_node.labels and not tgt_node.labels:
             # REQ-348: a path search starts from a bound or labelled end; both free is refused.
             raise CypherTranslateError(UNLABELLED_ENDS)
@@ -419,6 +422,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             is_all_paths,
             CypherTranslateError,
         )
+
+    def _on_model(self, node: NodePattern) -> bool:
+        """Whether ``node``'s labels place it on the model graph: a table's, or a domain's."""
+        known = (*self._lm.nodes, *self._lm.domains)
+        return any(self._lm.canonical_label(label) in known for label in node.labels)
 
     def _as_bound(self, node: NodePattern, held: set[str]) -> NodePattern:
         """``node`` labelled with the table an earlier clause bound its variable to (REQ-347: a
