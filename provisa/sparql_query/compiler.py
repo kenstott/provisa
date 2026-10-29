@@ -130,6 +130,16 @@ _OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}Datatype
 _KIND_OF = frozenset({f"{RDFS}subClassOf", f"{RDFS}subPropertyOf"})
 
 
+def _either(a: CypherExpr, b: CypherExpr) -> CypherExpr:
+    """``a`` or ``b``, as one value that no AND beside it can split (an OR is no atom of a list of
+    conditions, which are ANDed unparenthesized)."""
+    return Case(
+        None,
+        [(a, Literal(True, "boolean")), (b, Literal(True, "boolean"))],
+        Literal(False, "boolean"),
+    )
+
+
 def _any_of(value: CypherExpr, ids: list[int]) -> CypherExpr:
     """``value`` is one of ``ids``."""
     out: CypherExpr = Binary("=", value, Literal(ids[0], "number"))
@@ -821,8 +831,7 @@ class _Lowering:
             table_id = Property(Variable(var), "object_table_id")
             tables = self._table_iris()
             conditions.append(
-                Binary(
-                    "OR",
+                _either(
                     IsNull(table_id, negated=False),
                     _any_of(table_id, list(tables)) if tables else Literal(False, "boolean"),
                 )
@@ -883,8 +892,7 @@ class _Lowering:
                 "=", Property(Variable(value.node), "object_iri"), Literal(str(x), "string")
             )
             if table_ids:
-                match = Binary(
-                    "OR",
+                match = _either(
                     match,
                     Binary(
                         "=",

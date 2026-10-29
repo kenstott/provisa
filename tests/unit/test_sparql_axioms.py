@@ -153,6 +153,12 @@ def con() -> duckdb.DuckDBPyConnection:
         c.execute(
             "INSERT INTO pg.public._axioms_ontology VALUES (?, ?, ?, ?, ?, ?, NULL)", [i, *row]
         )
+    # The Class term of each table a column binds "legal name" of is its domain too, as the view says.
+    for i, term in enumerate(("Customer", "Organisation"), start=len(_AXIOMS) + len(_DATA)):
+        c.execute(
+            "INSERT INTO pg.public._axioms_ontology VALUES (?, 'legal name', ?, ?, NULL, NULL, NULL)",
+            [i, f"{RDFS}domain", term],
+        )
     # REQ-2163: a Property term is also the rdfs:domain of each table class a column binds it of.
     for i, label in enumerate(_DATA, start=len(_AXIOMS)):
         c.execute(
@@ -284,7 +290,14 @@ def _table_class(domain: str, table: str) -> str:
 
 def test_a_term_is_the_domain_of_each_table_class_whose_column_binds_it(con):
     rows = _answer(con, "SELECT ?c WHERE { term:legal%20name rdfs:domain ?c }")
-    assert rows == sorted([(_table_class("hr", "persons"),), (_table_class("hr", "companies"),)])
+    assert rows == sorted(
+        [
+            (_table_class("hr", "persons"),),
+            (_table_class("hr", "companies"),),
+            (t("Customer"),),
+            (t("Organisation"),),
+        ]
+    )
 
 
 def test_a_term_bound_class_domain_is_still_answered_with_its_table_classes(con):
@@ -297,7 +310,9 @@ def test_a_role_that_cannot_read_a_table_gets_no_domain_triple_for_its_class(con
     rows = _answer(
         con, "SELECT ?c WHERE { term:legal%20name rdfs:domain ?c }", readable=("Person",)
     )
-    assert rows == [(_table_class("hr", "persons"),)]
+    assert rows == sorted(
+        [(_table_class("hr", "persons"),), (t("Customer"),), (t("Organisation"),)]
+    )
 
 
 def test_a_table_class_asked_by_its_iri_finds_the_terms_bound_to_it(con):
