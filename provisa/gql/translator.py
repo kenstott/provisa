@@ -28,6 +28,7 @@ Mapping:
 from __future__ import annotations
 
 import copy
+import dataclasses
 import re
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -63,6 +64,7 @@ from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.path_expr import PathExprMixin
 from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
+from provisa.gql.path_walk import SessionWalkMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
 from provisa.gql.group_by import GroupByMixin
@@ -76,6 +78,7 @@ from provisa.gql.translator_helpers import (
     _clause_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    edge_properties_column,
 )
 from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
@@ -86,6 +89,7 @@ from provisa.gql.translator_types import (
     GraphVarKind,
     map_key_column,
 )
+from provisa.gql.translator_every_rel import _EveryRelMixin
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
 
@@ -258,6 +262,21 @@ def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:
     if isinstance(expr, Variable):
         return expr.name in json_lists
     return isinstance(expr, ListLiteral) and _mixed_literal_kinds(expr.items)
+
+
+def _lists_mixed_lists(expr: CypherExpr, json_lists: set[str], json_list_lists: set[str]) -> bool:
+    """Whether ``expr`` is a list of lists of several types: a collect() of one, or a variable
+    bound to one."""
+    from provisa.gql.expr_ast import FunctionCall
+
+    if isinstance(expr, Variable):
+        return expr.name in json_list_lists
+    return (
+        isinstance(expr, FunctionCall)
+        and expr.name.lower() == "collect"
+        and len(expr.args) == 1
+        and _is_mixed_list(expr.args[0], json_lists)
+    )
 
 
 def _is_json_list(e: exp.Expression) -> bool:
@@ -514,14 +533,41 @@ def _steps_where(
     return WhereClause(joined), optional
 
 
+def _statement_exprs(ast: CypherAST) -> list[CypherExpr]:
+    """The expressions of ``ast``'s WHEREs, WITHs and RETURN, and of each statement embedded in
+    one of them, in the order written."""
+    from provisa.gql.expr_ast import SubqueryExpr, walk
+
+    exprs: list[CypherExpr] = []
+    for step in ast.pipeline:
+        if isinstance(step, MatchStep) and step.where:
+            exprs.append(step.where.expression)
+        elif isinstance(step, WithClause):
+            exprs.extend(i.expression for i in step.items)
+            exprs.extend(o.expression for o in step.order_by)
+            if step.where:
+                exprs.append(step.where.expression)
+    if ast.return_clause:
+        exprs.extend(i.expression for i in ast.return_clause.items)
+    exprs.extend(o.expression for o in ast.order_by)
+    embedded = [
+        node.body for expr in exprs for node in walk(expr) if isinstance(node, SubqueryExpr)
+    ]
+    for body in embedded:
+        exprs.extend(_statement_exprs(body))
+    return exprs
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
     PathFunctionsMixin,
+    SessionWalkMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
     GroupByMixin,
     _RelJoinMixin,
+    _EveryRelMixin,
     _UnionMixin,
 ):
     def __init__(
@@ -542,6 +588,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._cte_sources: set[str] = set()
         # var → domain_name for nodes resolved via a domain label only
         self._domain_nodes: dict[str, str] = {}
+        # Each variable in scope that is a node of a union of labels' rows (_build_domain_union),
+        # under the name it now has, with its union's columns (__label, __id, __node and the
+        # properties read of it): read where a MATCH draws it, or from a WITH carrying them.
+        self._union_columns: dict[str, list[str]] = {}
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
         # (FROM, joins, path steps by alias, relationship type by variable) of each extra branch
         self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict, dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -586,6 +636,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # A variable a WITH binds to a list of values of several types (each item its JSON), and
         # one an UNWIND or WITH binds to an item of one (its JSON): the answer decodes them.
         self._json_list_vars: set[str] = set()
+        # Variables bound to a list of lists of several types (collect() of one): an UNWIND of
+        # one binds a list of several types.
+        self._json_list_lists: set[str] = set()
         self._json_value_vars: set[str] = set()
         # A variable a WITH binds to null (WITH null AS m): m[k] is null.
         self._null_vars: set[str] = set()
@@ -606,6 +659,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
+        self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: the node unions that name each node's graph identity (translator_union)
+        self._graph_id_unions: set[str] = set()
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
         self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source
@@ -646,6 +703,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_node_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # A union column -> the subquery, or the WITH, that gives it: a statement may read several
+        # unions of every relationship (translator_every_rel).
+        self._all_rels_var_alias: dict[str, str] = {}
         # The labels each end of a read of every relationship may be, and its relationships
         # (translator_union._build_all_rels_union).
         self._all_rels_ends: dict[str, list[str]] = {}
@@ -739,11 +799,21 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.offset(with_clause.skip)
         if with_clause.where is not None:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
-            before = (self._var_table, self._cte_sources, self._split_carried)
+            before = (
+                self._var_table,
+                self._cte_sources,
+                self._split_carried,
+                self._union_columns,
+            )
             self._update_var_table_for_with(with_clause.items, "_inner")
             with_where_expr = self._build_where(with_clause.where)
             exposed = self._split_node_joins()
-            self._var_table, self._cte_sources, self._split_carried = before
+            (
+                self._var_table,
+                self._cte_sources,
+                self._split_carried,
+                self._union_columns,
+            ) = before
             if with_where_expr:
                 # The stage's own columns: a carried node read beside them adds its own (#293).
                 star = (
@@ -1282,6 +1352,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_vars
             ):
                 self._json_value_vars.add(uw.variable)
+            if isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_lists:
+                self._json_list_vars.add(uw.variable)
             # Detect MAP-element arrays: a list holding map literals, or a variable assigned from
             # collect({...}) in a preceding WITH clause.
             source = uw.expression
@@ -1489,6 +1561,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for r in returned
             if r.alias and isinstance(r.expression, MapLiteral)
         }
+        # A variable the RETURN names anew (RETURN r AS rel): a property of the name is the
+        # variable's own.
+        renamed = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and isinstance(r.expression, Variable)
+            and r.expression.name != r.alias
+            and r.alias not in self._var_table
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
             target = item.expression
@@ -1498,6 +1580,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 and target.name in maps.get(target.obj.name, {})
             ):
                 target = maps[target.obj.name][target.name]
+            elif (
+                isinstance(target, Property)
+                and isinstance(target.obj, Variable)
+                and target.obj.name in renamed
+            ):
+                target = dataclasses.replace(target, obj=renamed[target.obj.name])
             inner = self._parse_expr(target)
             if isinstance(inner, exp.Null):
                 # A key null for every row (a property the label has not) orders nothing, and an
@@ -1529,17 +1617,33 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for n, (_key, value) in enumerate(expr.entries)
         ]
 
-    def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping]:
+    def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping | None]:
         """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
-        its own columns, ``<key>.<column>``, so two tables' columns of one name never meet (#293)."""
-        nodes = {}
+        its own columns, ``<key>.<column>``, so two tables' columns of one name never meet (#293).
+        A node of a union of labels has no one mapping (None): its union's columns."""
+        nodes: dict[str, NodeMapping | None] = {}
         for item in items:
             expr = item.expression
             if isinstance(expr, Variable) and expr.name in self._var_table:
                 meta = self._var_table[expr.name][1]
                 if isinstance(meta, NodeMapping):
                     nodes[item.alias or expr.name] = meta
+                elif expr.name in self._union_columns:
+                    nodes[item.alias or expr.name] = None
         return nodes if len(nodes) > 1 else {}
+
+    def _carried_columns(self, items: list[ReturnItem]) -> dict[str, list[str]]:
+        """Each node a WITH carries beside another (_carried_nodes), by its key: its columns."""
+        split = self._carried_nodes(items)
+        names = {
+            i.alias or i.expression.name: i.expression.name
+            for i in items
+            if isinstance(i.expression, Variable)
+        }
+        return {
+            key: self._node_columns(nm) if nm is not None else self._union_columns[names[key]]
+            for key, nm in split.items()
+        }
 
     def _node_columns(self, nm: NodeMapping) -> list[str]:
         """Every column of ``nm``'s table a later clause can read: its properties, its keys and
@@ -1567,7 +1671,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
         exprs: list[exp.Expr] = []
-        split = self._carried_nodes(items)
+        split = self._carried_columns(items)
         for item in items:
             expr = item.expression
             alias = item.alias
@@ -1577,12 +1681,35 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 key = alias or bare
                 exprs.extend(
                     exp.alias_(exp.column(c, table=held_in, quoted=True), f"{key}.{c}", quoted=True)
-                    for c in self._node_columns(split[key])
+                    for c in split[key]
                 )
+                continue
+            if bare is not None and self._is_union_value(bare):
+                # A node or an edge a union of every relationship carries is its value column (an
+                # edge's own properties beside it), never a table's row.
+                held_in = (
+                    self._var_table[bare][0]
+                    if bare in self._cte_sources
+                    else self._all_rels_var_alias.get(bare, self._all_rels_alias or "_all_rels")
+                )
+                key = alias or bare
+                exprs.append(exp.alias_(exp.column(bare, table=held_in), key, quoted=True))
+                if bare in self._all_rels_rel_vars:
+                    exprs.append(
+                        exp.alias_(
+                            exp.column(edge_properties_column(bare), table=held_in),
+                            edge_properties_column(key),
+                            quoted=True,
+                        )
+                    )
                 continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
+                if expr_text in self._union_columns:
+                    # A node of a union of labels goes on as its union's columns, read by name.
+                    exprs.append(exp.Column(this=exp.Star(), table=exp.Identifier(this=held_in)))
+                    continue
                 if expr_text in self._cte_sources and meta is None:
                     # A value an earlier WITH carries: one column of that WITH's rows.
                     carried = exp.column(expr_text, table=held_in, quoted=True)
@@ -1632,6 +1759,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         texts: set[str] = set()
         lists: set[str] = set()
         json_lists: set[str] = set()
+        json_list_lists: set[str] = set()
         json_values: set[str] = set()
         nulls = {
             i.alias
@@ -1648,7 +1776,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             elif isinstance(i.expression, Variable) and i.expression.name in self._param_vars:
                 bound_params[name] = self._param_vars[i.expression.name]
         split = self._carried_nodes(items)
-        self._split_carried = {k: (cte_name, self._node_columns(nm)) for k, nm in split.items()}
+        self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
+        union_columns: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
@@ -1659,11 +1788,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 lists.add(name)
             if name and _is_mixed_list(item.expression, self._json_list_vars):
                 json_lists.add(name)
-            if (
-                name
-                and isinstance(item.expression, Variable)
-                and item.expression.name in self._json_value_vars
+            if name and _lists_mixed_lists(
+                item.expression, self._json_list_vars, self._json_list_lists
             ):
+                json_list_lists.add(name)
+            if name and self._temporal_context().is_json_value(item.expression):
+                # A value an item of a list of several types is: its JSON, as the list holds it.
                 json_values.add(name)
             found = self._temporal_context().temporal_kind(item.expression)
             if name and found is not None:
@@ -1675,6 +1805,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = item.alias
             bare = expr.name if isinstance(expr, Variable) else None
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
+            if bare is not None and bare in self._union_columns:
+                union_columns[key] = self._union_columns[bare]
             if key in split:
                 # Read as its own row of the carried columns, under its own name.
                 new_var_table[key] = (key, split[key])
@@ -1688,13 +1820,28 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 # collect({...}) produces a MAP array — track the alias for UNWIND resolution
                 if _collects_maps(expr) and key:
                     self._map_array_vars.add(key)
+        for item in items:
+            bare = item.expression.name if isinstance(item.expression, Variable) else None
+            if bare is None or not self._is_union_value(bare):
+                continue
+            # Read on from the WITH's rows as the value it carries (translator_every_rel).
+            key = item.alias or bare
+            self._passthrough_vars.add(key)
+            if bare in self._all_rels_rel_vars:
+                self._all_rels_rel_vars.add(key)
+            else:
+                self._all_rels_node_vars.add(key)
+                self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
+            self._all_rels_var_alias[key] = cte_name
         self._var_table = new_var_table
+        self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
         self._temporal_kinds = kinds
         self._temporal_zones = zones
         self._text_vars = texts
         self._list_vars = lists
         self._json_list_vars = json_lists
+        self._json_list_lists = json_list_lists
         self._json_value_vars = json_values
         self._null_vars = nulls
         self._param_vars = bound_params
@@ -1777,30 +1924,21 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         raise unknown_label(labels[0], self._lm)
 
     def _referenced_var_props(self, var: str) -> list[str]:
-        """The property names referenced as ``var.prop`` in the statement, in order."""
-        exprs: list[CypherExpr] = []
-        for step in self._ast.pipeline:
-            if isinstance(step, MatchStep) and step.where:
-                exprs.append(step.where.expression)
-            elif isinstance(step, WithClause):
-                exprs.extend(i.expression for i in step.items)
-                if step.where:
-                    exprs.append(step.where.expression)
-        if self._ast.return_clause:
-            exprs.extend(i.expression for i in self._ast.return_clause.items)
-        return _properties_of(var, exprs)
+        """The property names referenced as ``var.prop`` in the statement, in order: in a
+        statement embedded in it (EXISTS { ... }) too, which reads them from this one's row."""
+        return _properties_of(var, _statement_exprs(self._ast))
 
     def _node_as_one_value(self, var: str) -> bool:
-        """Whether ``var`` is a domain node the statement returns bare and reads no property of:
-        each type's arm of its union then carries the node as one JSON value of its own
-        properties, not a column for every property of every type."""
-        if var not in self._domain_nodes or not self._ast.return_clause:
+        """Whether ``var`` is a domain node the statement returns, or a WITH carries, bare: each
+        type's arm of its union then carries the node as one JSON value of its own properties, not
+        a column for every property of every type -- beside a column for each property the
+        statement reads."""
+        if var not in self._domain_nodes:
             return False
-        is_bare = any(
-            isinstance(item.expression, Variable) and item.expression.name == var
-            for item in self._ast.return_clause.items
-        )
-        return is_bare and not self._referenced_var_props(var)
+        items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
+        if self._ast.return_clause:
+            items.extend(self._ast.return_clause.items)
+        return any(isinstance(i.expression, Variable) and i.expression.name == var for i in items)
 
     def _collect_var_props(self, var: str) -> list[str]:
         """Return ordered list of property names referenced as var.prop in the AST.
@@ -1810,7 +1948,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         included, for a union over its relationships to carry its ends with.
         """
         props = self._referenced_var_props(var)
-        if self._node_as_one_value(var):
+        returned_bare = self._ast.return_clause is not None and any(
+            isinstance(item.expression, Variable) and item.expression.name == var
+            for item in self._ast.return_clause.items
+        )
+        if var in self._domain_nodes and returned_bare and not props:
             domain = self._domain_nodes[var]
             type_labels = (
                 list(self._lm.nodes.keys())

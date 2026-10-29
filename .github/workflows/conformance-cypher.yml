@@ -124,6 +124,9 @@ jobs:
           # A scenario whose setup builds its graph runs it and its query in one ephemeral session
           # over Bolt (REQ-2167, amended 2026-10-27): the instance's Bolt port (API port + 3).
           CONFORMANCE_BOLT_URI: bolt://127.0.0.1:8904
+          # A scenario's test procedure is declared as a command of the fixture model, which the
+          # runner puts (PUT /admin/config) as the break-glass account (cypher_tck_procedures.py).
+          CONFORMANCE_MODEL: ${{ runner.temp }}/provisa/provisa.yaml
         run: |
           for _ in $(seq 1 60); do
             (exec 3<>"/dev/tcp/127.0.0.1/8904") 2>/dev/null && break

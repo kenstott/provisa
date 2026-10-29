@@ -106,7 +106,21 @@ def test_the_nodes_answered_are_each_type_s_own(answer):
 
 
 def test_a_property_the_statement_reads_is_still_its_own_column():
-    # Read by name, the property is a column of every arm, as before.
+    # Read by name, the property is a column of every arm, as before -- beside the node returned
+    # bare as one value, which is the whole node, not only the property read of it (REQ-2167).
     for arm in _arms("MATCH (n) WHERE n.city = 'oslo' RETURN n"):
-        assert "city" in [e.alias for e in arm.expressions]
-        assert "__node" not in [e.alias for e in arm.expressions]
+        assert [e.alias for e in arm.expressions] == ["__label", "__id", "__node", "city"]
+
+
+def test_a_node_a_statement_reads_a_property_of_is_answered_whole(answer):
+    rows = answer("MATCH (n) WHERE n.city = 'oslo' RETURN n")
+    assert [r["n"] for r in rows] == [
+        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo", "id": "7"})
+    ]
+    rows = answer("MATCH (n) RETURN n ORDER BY n.age DESC")
+    assert [r["n"].properties for r in rows] == [
+        # An ORDER BY's property orders the nodes, each answered whole; null sorts first descending.
+        {"city": "oslo", "id": "7"},
+        {"age": "5", "id": "2"},
+        {"age": "3", "id": "1", "name": "rex"},
+    ]

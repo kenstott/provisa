@@ -79,3 +79,18 @@
     the query runs in a fresh ephemeral session over Bolt, acting as a role that reaches no model
     domain: MATCH sees only the session's own nodes, of which there are none.
   reason: "\\[in a session, empty graph\\]$"
+
+- kind: adapted
+  group: Named TCK graphs
+  became: >-
+    the named graph's CREATE script, from the TCK's graphs directory, runs in one ephemeral session
+    over Bolt, acting as a role that reaches no model domain, and the query reads what it made.
+  reason: "\\[in a session, named graph\\]$"
+
+- kind: adapted
+  group: Test procedures
+  became: >-
+    the procedure is a statement command of the fixture model, bound in Cypher to the procedure's
+    name, with the procedure's arguments and outputs, answering the scenario's rows for the
+    arguments given; the query's CALL invokes it.
+  reason: "\\[procedure as a command\\]"

@@ -14,8 +14,9 @@ REQ-2176), for scripts/conformance/cypher_tck.py.
 A scenario whose setup builds its graph runs its setup's statements and then its query on one
 Bolt connection: the setup's CREATEs make the session's own nodes and relationships, and the query
 reads them. A scenario on an empty graph that matches a pattern runs the same way with no setup.
-Each scenario has a connection of its own (the driver's pool holds one, closed after it), so a
-session's graph is never read by the next. The connection signs in with the TCK session user's
+Each scenario has a connection of its own (the driver's pool holds one, closed after it); the
+user's graph session is the same on every connection, so the runner empties it before each
+scenario and a session's graph is never read by the next. The connection signs in with the TCK session user's
 token and acts as ``tck_empty``, the role that user's name maps to, which reaches no model domain:
 its graph is the session's alone, the TCK's empty graph.
 
@@ -46,9 +47,14 @@ def configured() -> bool:
     return bool(_BOLT)
 
 
+def authorization() -> str:
+    """The TCK session user's credential over HTTP: its session token as a bearer token."""
+    return f"Bearer {_BOLT['token']}"
+
+
 def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
-    """The setup's statements and then the query, on one connection: (200, the answer's columns
-    and rows) or (400, the refusal's words)."""
+    """The setup's statements and then the query, on one connection: (200, the answer's columns,
+    rows and the query's summary counters as Bolt sends them) or (400, the refusal's words)."""
     from neo4j import GraphDatabase, bearer_auth
     from neo4j.exceptions import Neo4jError
 
@@ -66,11 +72,14 @@ def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
                 result = session.run(query, params)
                 columns = list(result.keys())
                 rows = [[value(v) for v in record.values()] for record in result]
+                # Bolt sends a summary's "stats" only when the statement changed something, and
+                # only its non-zero counters: an absent map is every counter at zero.
+                stats = dict(result.consume().metadata.get("stats", {}))
             except Neo4jError as exc:
                 return 400, {"detail": exc.message}
     finally:
         driver.close()
-    return 200, {"columns": columns, "rows": rows}
+    return 200, {"columns": columns, "rows": rows, "stats": stats}
 
 
 # --- values as the driver reads them ----------------------------------------------------------

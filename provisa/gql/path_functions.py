@@ -31,6 +31,7 @@ from provisa.gql.label_map import (
     RelationshipMapping,
 )
 from provisa.gql.ir import MatchClause, NodePattern, PathFunction, RelPattern
+from provisa.gql.path_walk import UNLABELLED_ENDS
 from provisa.gql.translator_helpers import _make_junction_joins  # REQ-1586
 
 # Requirements: REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351
@@ -59,10 +60,6 @@ def _extract_path_nodes(
     if rel is not None and rel.direction == "left":
         # (a)<-[...]-(b) is (b)-[...]->(a): the path leaves the node the arrow leaves (#151).
         src_node, tgt_node = tgt_node, src_node
-    if not src_node.labels or not tgt_node.labels:
-        raise CypherTranslateError(
-            "shortestPath/allShortestPaths require labeled source and target nodes"
-        )
     return src_node, tgt_node, rel
 
 
@@ -286,14 +283,27 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
     _path_vars: dict  # path_var → (src_var, tgt_var, is_recursive)
     _cut_checks: list  # list[exp.Expression]: true when a walk was cut at the depth limit
 
-    def _translate_path_function(self, clause: MatchClause) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Entry point: route to flat-JOIN or recursive-CTE path."""
+    def _translate_path_function(
+        self, clause: MatchClause, joined: set[str] | None = None
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Entry point: route to flat-JOIN or recursive-CTE path. ``joined``: the variables the
+        statement holds before this pattern (those the var table holds now, when None)."""
         from provisa.gql.translator_types import (
             CypherTranslateError,
         )  # avoid circular at module level
 
         pf: PathFunction = clause.pattern  # type: ignore[assignment]
         src_node, tgt_node, rel = _extract_path_nodes(pf, CypherTranslateError)
+        if not src_node.labels or not tgt_node.labels:
+            # REQ-348: on the model graph an end's label places it and its hops; a graph
+            # session walks its one relationships relation from any end (path_walk).
+            walk = self._lm.session_walk
+            if walk is None:
+                raise CypherTranslateError(UNLABELLED_ENDS)
+            held = set(self._var_table) if joined is None else joined
+            return self._translate_session_walk(  # type: ignore[attr-defined]
+                clause, pf, src_node, tgt_node, rel, walk, held, CypherTranslateError
+            )
         src_type, tgt_type, src_nm, tgt_nm = self._resolve_path_node_types(
             src_node, tgt_node, CypherTranslateError
         )
