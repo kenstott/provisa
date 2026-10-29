@@ -76,7 +76,31 @@ class Account(Protocol):
     def uc_delete(self, kind: str, item_id: str) -> None: ...
     def assets_over(self, guids: list[str]) -> list[dict]: ...
     def asset_delete(self, asset_id: str) -> None: ...
-    def dm_search(self, type_name: str) -> list[dict]: ...
+    def dm_search(self, type_name: str) -> list[dict]:
+        """Every live Data Map entity of ``type_name`` as {"id", "qualifiedName"}, through Atlas
+        basic search on the same Data Map base the adapter publishes to (``{endpoint}/api/atlas/v2``)."""
+        hits: list[dict] = []
+        offset = 0
+        while True:
+            body = self._ok(
+                self._http.post(
+                    f"{self._atlas}/search/basic",
+                    json={
+                        "typeName": type_name,
+                        "excludeDeletedEntities": True,
+                        "limit": 1000,
+                        "offset": offset,
+                    },
+                )
+            ).json()
+            page = body.get("entities") or []
+            hits.extend(
+                {"id": e["guid"], "qualifiedName": e["attributes"]["qualifiedName"]} for e in page
+            )
+            offset += len(page)
+            if len(page) < 1000:
+                return hits
+
     def dm_entities(self, guids: list[str]) -> list[dict]: ...
     def dm_delete_entities(self, guids: list[str]) -> None: ...
     def dm_glossaries(self) -> list[dict]: ...
