@@ -21,9 +21,9 @@ from typing import TYPE_CHECKING
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
-from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN
 from provisa.gql.path_walk import graph_identity
-from provisa.gql.select_builder import node_identity, node_key_text
+from provisa.gql.select_builder import node_identity, node_key_text, node_labels
 from provisa.gql.translator_helpers import (
     _const_literal,
     _make_junction_joins,
@@ -45,7 +45,11 @@ _NUMBERS = _INTEGERS | {"float", "double", "numeric"}
 def union_labels(lm: "CypherLabelMap", domain_name: str) -> list[str]:
     """The node types a node matched by a domain alone (or by no label, ``__all__``) is drawn
     from."""
-    return list(lm.nodes.keys()) if domain_name == "__all__" else lm.domains[domain_name]
+    if domain_name != "__all__":
+        return lm.domains[domain_name]
+    # A session's relation of several labels' nodes (node_of_all) holds no node its first
+    # label's relation does not.
+    return [key for key in lm.nodes if key not in lm.label_sets]
 
 
 def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType | None:
@@ -192,6 +196,10 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
             this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
         )
     )
+    labels = node_labels(None, nm)
+    if labels is not None:
+        # A graph session's node: every label it has (REQ-2176).
+        kv.append(exp.JSONKeyValue(this=exp.Literal.string("labels"), expression=labels))
     return exp.JSONObject(expressions=kv)
 
 
@@ -616,8 +624,15 @@ class _UnionMixin:  # mixin for _Translator
             # which the session's relationships, and a path function's walk, join it by. A union
             # of the model's nodes alone has it already: __id.
             for branch, nm in zip(branches, arms):
+                # And each node's labels, every one (a model node's, its own).
+                labels = node_labels(None, nm) or exp.Cast(
+                    this=exp.Array(expressions=[exp.Literal.string(nm.label)]),
+                    to=exp.DataType.build("VARCHAR[]", dialect="postgres"),
+                )
                 branch.select(
-                    exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID), copy=False
+                    exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID),
+                    exp.alias_(labels, alias=LABELS_COLUMN),
+                    copy=False,
                 )
             self._graph_id_unions.add(var)
 

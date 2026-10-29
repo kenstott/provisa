@@ -23,7 +23,14 @@ import sqlglot.expressions as exp
 
 from provisa.gql import spatial, temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
-from provisa.gql.label_map import SESSION_CATALOG, CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.label_map import (
+    LABELS_COLUMN,
+    SESSION_KEY_COLUMN,
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    is_session_node,
+)
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields, via_column  # REQ-1586
 from provisa.gql.translator_types import NODE_COLUMN
@@ -97,18 +104,21 @@ def node_identity(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyri
     )
 
 
-def has_key_property(nm: NodeMapping) -> bool:
-    """Whether a node of ``nm`` carries the built-in ``_id`` among its properties: a model node
-    does (its key, REQ-2136); a node of a label only a graph session holds (REQ-2176) has no key
-    of the model's, only the properties it was created with."""
-    return not (nm.catalog_name == SESSION_CATALOG and nm.table_id == -1)
-
-
 def node_key(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """``alias``'s ``_id``: its key column, or for a compound key its identity."""
+    """``alias``'s ``_id``: its key column, or for a compound key its identity. A graph session's
+    node relation names it (SESSION_KEY_COLUMN): a model node's, null for a node the session
+    created, which has only the properties it was created with (REQ-2176)."""
+    if is_session_node(nm):
+        return _key_column(alias, SESSION_KEY_COLUMN)
     if len(nm.key_columns) <= 1:
         return _key_column(alias, nm.id_column)
     return node_identity(alias, nm)
+
+
+def node_labels(alias: str | None, nm: NodeMapping) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The labels of ``alias``'s node, every one, where its relation names them: a graph
+    session's node (LABELS_COLUMN, REQ-2176); None for a model node, whose label is its type's."""
+    return _key_column(alias, LABELS_COLUMN) if is_session_node(nm) else None
 
 
 def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -122,8 +132,7 @@ def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyri
                 this=exp.Identifier(this=col_name, quoted=True), table=exp.Identifier(this=alias)
             )
         )
-    if has_key_property(nm):
-        exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
+    exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
     return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
 
@@ -141,8 +150,14 @@ def node_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
             exp.Literal.string(nm.table_label),
             exp.Literal.string("properties"),
             node_properties_json(alias, nm),
+            *_labels_entry(node_labels(alias, nm)),
         ],
     )
+
+
+def _labels_entry(labels: exp.Expression | None) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A node object's ``labels`` key and value, where its node names its labels (node_labels)."""
+    return [] if labels is None else [exp.Literal.string("labels"), labels]
 
 
 def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

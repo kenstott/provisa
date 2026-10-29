@@ -842,12 +842,49 @@ class TranslatorExprContext:
             return exp.Column(this=exp.Star(), table=exp.to_identifier(node_alias))
         raise NotImplementedError(f"endpoint of {var!r} unresolved")
 
+    def _session_labels(self, var: str | None, info: tuple | None) -> exp.Expression | None:
+        """The labels column of a graph session's node ``var`` (bound as ``info``) reads, every
+        label it has: its node relation's, or a union's holding session nodes; None for a model
+        node, whose labels are its type's."""
+        from provisa.gql.label_map import LABELS_COLUMN, is_session_node
+
+        if var is None or info is None:
+            return None
+        if var in self._t._all_rels_node_vars:
+            if self._t._lm.session_walk is None:
+                return None
+            # A node read as its JSON value: the labels it names, else the one its type is.
+            named = exp.Cast(
+                this=_anon("JSON_EXTRACT", exp.column(var), exp.Literal.string("$.labels")),
+                to=exp.DataType.build("VARCHAR[]", dialect="postgres"),
+            )
+            own = exp.Array(
+                expressions=[
+                    _anon("JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.label"))
+                ]
+            )
+            return exp.Coalesce(this=named, expressions=[own])
+        alias, nm = info
+        if nm is not None:
+            return _col(LABELS_COLUMN, alias) if is_session_node(nm) else None
+        if var in self._t._graph_id_unions:
+            return _col(LABELS_COLUMN, var)
+        return None
+
     def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:
         # Labels are Provisa's fixed types, and a variable's type is fixed by its MATCH binding, so a
         # label test is a compile-time constant: does the bound node's type match the requested label?
         var = operand.name if isinstance(operand, exp.Column) else None
         info = self._t._var_table.get(var) if var else None
         nm = info[1] if info else None
+        held = self._session_labels(var, info)
+        if held is not None:
+            # A graph session's node has the labels its row names, every one (REQ-2176).
+            wanted = [self._t._lm.canonical_label(label) for label in labels]
+            return exp.ArrayContainsAll(
+                this=held,
+                expression=exp.Array(expressions=[exp.Literal.string(w) for w in wanted]),
+            )
         if nm is None:
             # A node of no one table: its domain's name holds of every row; any other label holds
             # where the row's own type is one it names (the label a union's row carries).

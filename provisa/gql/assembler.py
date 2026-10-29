@@ -38,6 +38,9 @@ class Node:  # REQ-350
     label: str
     table_label: str
     properties: dict[str, Any]
+    #: Every label of a graph session's node (REQ-2176); empty for a model node, whose label is
+    #: its type's.
+    labels: tuple[str, ...] = ()
 
 
 @dataclass
@@ -261,11 +264,13 @@ def _parse_node(data: dict) -> Node | None:
         if "properties" in data and isinstance(data["properties"], dict)
         else {k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")}
     )
+    labels = data.get("labels")
     return Node(
         id=str(data.get("id", "")),
         label=str(data.get("label", "")),
         table_label=str(data.get("tableLabel", "")),
         properties={k: v for k, v in raw_props.items() if v is not None},
+        labels=tuple(labels) if isinstance(labels, list) else (),
     )
 
 
@@ -584,6 +589,7 @@ def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, 
             "label": obj.label,
             "tableLabel": obj.table_label,
             "properties": obj.properties,
+            **({"labels": list(obj.labels)} if obj.labels else {}),
         }
     if isinstance(obj, Edge):
         return {

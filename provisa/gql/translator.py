@@ -63,7 +63,15 @@ from provisa.gql.ir import (
     WithClause,
     OrderItem,
 )
-from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.label_map import (
+    GRAPH_ID,
+    LABELS_COLUMN,
+    SESSION_KEY_COLUMN,
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    is_session_node,
+)
 from provisa.gql.path_expr import PathExprMixin
 from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
@@ -1804,6 +1812,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         the join columns of the relationships that reach it."""
         cols = {*nm.properties.values(), *nm.physical_properties.values(), nm.id_column}
         cols.update(nm.pk_columns)
+        if is_session_node(nm):
+            # A graph session's node: its graph identity, its labels and its key (REQ-2176).
+            cols.update((GRAPH_ID, LABELS_COLUMN, SESSION_KEY_COLUMN))
         rels = [
             *self._lm.relationships.values(),
             *(r for rs in self._lm.aliases.values() for r in rs),
@@ -2049,6 +2060,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             table_hits = table_hits or [label for label in labels if label not in self._lm.domains]
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
+            if len(full_type) > 1 and all(is_session_node(self._lm.nodes[t]) for t in full_type):
+                # A graph session's node of several labels: those of its labels' nodes having
+                # them all (REQ-2176).
+                return self._lm.node_of_all(full_type), None
             if len(full_type) > 1:
                 raise CypherTranslateError(
                     f"Ambiguous labels — multiple full type labels: {full_type}"

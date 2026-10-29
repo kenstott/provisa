@@ -171,7 +171,7 @@ def _with_objects(
 def _node_object(nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """A row of ``nm``'s relation as an answer gives the node: its identity, label and
     properties, each of its own type."""
-    from provisa.gql.select_builder import node_identity
+    from provisa.gql.select_builder import _labels_entry, node_identity, node_labels
 
     props: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for prop in sorted(nm.properties):
@@ -189,6 +189,7 @@ def _node_object(nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPr
             exp.Literal.string(nm.table_label),
             exp.Literal.string("properties"),
             exp.Anonymous(this="JSON_OBJECT", expressions=props),
+            *_labels_entry(node_labels(None, nm)),
         ],
     )
 
