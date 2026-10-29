@@ -2307,6 +2307,15 @@ async def _require_org_serves_here(org_id: str) -> None:
         await require_serves_here(conn, org_id, process_region.region())
 
 
+async def _load_build_domains(conn: Any) -> list[dict]:
+    """The domains the schema build names from: id, description and the stored ``graphql_alias``
+    that ``domain_alias_map`` takes as the domain's own (REQ-471)."""
+    rows = await conn.execute_core(
+        select(_domains_t.c.id, _domains_t.c.description, _domains_t.c.graphql_alias)
+    )
+    return [dict(r._mapping) for r in rows.fetchall()]
+
+
 async def _unbound_sources(conn: Any) -> set[str]:
     """The ids of the environment's sources with no connection (REQ-1491, REQ-1942): they get no
     pool, because an empty host is not an absent one. Every other source's connection is the
@@ -3003,12 +3012,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             ).fetchall()
         ]
         state.table_cache = {r["id"]: r["cache_ttl"] for r in cache_rows}
-        domains = [
-            dict(r._mapping)
-            for r in (
-                await conn.execute_core(select(_domains_t.c.id, _domains_t.c.description))
-            ).fetchall()
-        ]
+        domains = await _load_build_domains(conn)
         # REQ-1373/1377: the DB is the source of truth for tags; refresh them into state.config
         # so consumers (metadata export builder) see admin-created tags, not just YAML-boot ones.
         from provisa.core.repositories import tag as _tag_repo
