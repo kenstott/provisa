@@ -296,6 +296,18 @@ class TranslatorExprContext:
         )
         if carried_in is not None:
             var = obj.name
+        if (
+            isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._union_columns
+            and obj.name in t._cte_sources
+            and t._var_table.get(obj.name, (None, None))[0] == obj.table
+        ):
+            # A node of a union of labels' rows a WITH carries: its union's columns are columns
+            # of that WITH's rows, a property no label of it has null (J199).
+            if name in t._union_columns[obj.name]:
+                return _col(name, obj.table)
+            return exp.Null()
         if var is not None:
             if var in t._all_rels_rel_vars:
                 # The edge's own properties, never its JSON: that carries an id built from both
@@ -1057,6 +1069,8 @@ class TranslatorExprContext:
             return self._comprehension_as_collect(node)
         src_var, rel_type, tgt_var, tgt_label = hop
         t = self._t
+        if self._comprehension_reads_several(src_var, rel_type, tgt_label):
+            return self._comprehension_as_collect(node)
         rel = t._lm.relationships.get(rel_type.upper()) if rel_type else None
         if rel is None and rel_type and rel_type not in t._lm.aliases:
             # REQ-603: a type that is not registered is refused, never read as some other
@@ -1168,6 +1182,29 @@ class TranslatorExprContext:
         where = join_cond if pred is None else exp.And(this=join_cond, expression=pred)
         select = exp.select(proj).from_(exp.alias_(tgt_table, tgt_alias)).where(where)
         return _anon("ARRAY", select)
+
+    def _comprehension_reads_several(
+        self, src_var: str, rel_type: str | None, tgt_label: str | None
+    ) -> bool:
+        """Whether a comprehension's one hop reads more than one pair of tables, which the
+        one-hop read does not: from a node of no one table, in a graph session (its one
+        relationships relation, REQ-2176), or of a type reaching several labels from its source
+        (J198). Such a comprehension is read as its embedded statement."""
+        from provisa.gql.label_map import is_session_node
+
+        t = self._t
+        src_nm = (t._var_table.get(src_var) or (None, None))[1]
+        if t._lm.session_walk is not None and (src_nm is None or is_session_node(src_nm)):
+            return True
+        if src_nm is None or rel_type is None:
+            return False
+        reached = {
+            m.target_label
+            for m in t._lm.aliases.get(rel_type.upper(), [])
+            if m.source_label == src_nm.type_name
+            and (tgt_label is None or t._lm.canonical_label(tgt_label) == m.target_label)
+        }
+        return len(reached) > 1
 
     def _comprehension_as_collect(self, node: PatternComprehension) -> exp.Expression:
         """A comprehension the one-hop read does not take (an unnamed end, a named relationship,

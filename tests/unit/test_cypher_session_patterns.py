@@ -75,3 +75,166 @@ def test_a_quantifier_reads_a_property_of_each_relationship_of_a_walk(monkeypatc
         "RETURN length(p) AS l, all(r IN relationships(p) WHERE r.name = 'a') AS result"
     )
     assert _sorted(rows) == [(1, True), (2, False)]
+
+
+# --- a node's labels, every one -----------------------------------------------------------------
+
+
+def test_a_node_of_several_labels_is_matched_by_all_of_them_and_returned_with_each(monkeypatch):
+    # TCK Match1 [3]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A:B:C), (:A:B), (:A:C), (:B:C), (:A), (:B), (:C), ()")
+    rows = s.run("MATCH (a:A:B) RETURN a")
+    assert sorted(r["a"]["labels"] for r in rows) == [["A", "B"], ["A", "B", "C"]]
+
+
+def test_an_optional_end_is_returned_with_every_label(monkeypatch):
+    # TCK Match7 [23]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X), (x:X), (y1:Y), (y2:Y:Z) CREATE (x)-[:REL]->(y1), (x)-[:REL]->(y2)")
+    rows = s.run("MATCH (a:X) OPTIONAL MATCH (a)-->(b:Y) RETURN b")
+    got = sorted(((r["b"] or {}).get("labels") for r in rows), key=repr)
+    assert got == [None, ["Y", "Z"], ["Y"]]
+
+
+def test_a_label_predicate_reads_the_nodes_labels(monkeypatch):
+    # TCK MatchWhere1 [1]: a node a union of labels reads is tested by its own labels.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A {name: 'a'}), (b:B {name: 'b'}) CREATE (a)-[:ADMIN]->(b)")
+    rows = s.run("MATCH (a)-[:ADMIN]-(b) WHERE a:A RETURN a.name, b.name")
+    assert _sorted(rows) == [("a", "b")]
+
+
+# --- one hop of a session's pattern, from its one relationships relation -------------------------
+
+
+def test_a_hop_of_several_types(monkeypatch):
+    # TCK Match2 [6]
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (a {name: 'A'}), (b {name: 'B'}), (c {name: 'C'}), "
+        "(a)-[:KNOWS]->(b), (a)-[:HATES]->(c), (a)-[:WONDERS]->(c)"
+    )
+    rows = s.run("MATCH (n)-[r:KNOWS|HATES]->(x) RETURN type(r) AS t, x.name")
+    assert _sorted(rows) == [("HATES", "C"), ("KNOWS", "B")]
+
+
+def test_a_hop_from_a_labelled_node_reaches_every_label_its_type_reaches(monkeypatch):
+    # J198: an unlabelled end is every node the relationship reaches, not one label's.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A)-[:T]->(:B), (a)-[:T]->(:C), (a)-[:T]->()")
+    assert s.run("MATCH (n:A)-[:T]->(x) RETURN count(*) AS c") == [{"c": 3}]
+
+
+def test_a_hop_in_a_session_holding_no_relationship_matches_nothing(monkeypatch):
+    # TCK Match2 [1]: a pattern no relationship can match answers no rows, never an error.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A)")
+    assert s.run("MATCH ()-[r]->() RETURN r") == []
+
+
+def test_a_path_of_hops_between_unlabelled_nodes_holds_its_every_node(monkeypatch):
+    # TCK Match6 [3]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A {name: 'A'})-[:KNOWS]->(:B {name: 'B'})-[:KNOWS]->(:C {name: 'C'})")
+    rows = s.run("MATCH p = (a {name: 'A'})-[rel1]->(b)-[rel2]->(c) RETURN p")
+    [path] = [r["p"] for r in rows]
+    assert [n["properties"]["name"] for n in path["nodes"]] == ["A", "B", "C"]
+    assert [e["type"] for e in path["edges"]] == ["KNOWS", "KNOWS"]
+
+
+def test_a_path_read_backward_starts_at_its_first_node(monkeypatch):
+    # TCK Match6 [6]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A)-[:T]->(:B)")
+    [path] = [r["p"] for r in s.run("MATCH p = (b)<--(a) RETURN p")]
+    assert [n["labels"] for n in path["nodes"]] == [["B"], ["A"]]
+
+
+def test_a_pattern_comprehension_of_paths_returns_paths(monkeypatch):
+    # TCK Pattern2 [1]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A), (b:B) CREATE (a)-[:T]->(b), (b)-[:T]->(:C)")
+    rows = s.run("MATCH (n) RETURN [p = (n)-->() | p] AS list")
+    got = sorted([[n["labels"] for n in p["nodes"]] for p in r["list"]] for r in rows)
+    assert got == [[], [[["A"], ["B"]]], [[["B"], ["C"]]]]
+
+
+def test_an_optional_matchs_where_conditions_a_hop_read_from_the_relationships(monkeypatch):
+    # TCK MatchWhere6 [2]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (s:Single), (a:A {num: 42}) CREATE (s)-[:REL]->(a)")
+    assert s.run("MATCH (n:Single) OPTIONAL MATCH (n)-[r]-(m) WHERE m:NonExistent RETURN r") == [
+        {"r": None}
+    ]
+
+
+def test_a_list_of_a_hops_elements_orders_by_kind(monkeypatch):
+    # TCK ReturnOrderBy1 [11] over a hop of an unlabelled end.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:N)-[:REL]->()")
+    rows = s.run("MATCH p = (n:N)-[r]->() UNWIND [p, 1.5, n, 'text', r] AS v RETURN v ORDER BY v")
+    kinds = [
+        "path"
+        if isinstance(v, dict) and "edges" in v
+        else "rel"
+        if isinstance(v, dict) and "startNode" in v
+        else "node"
+        if isinstance(v, dict)
+        else v
+        for v in (r["v"] for r in rows)
+    ]
+    assert kinds == ["node", "rel", "path", "text", 1.5]
+
+
+# --- J198, J199 on the model graph --------------------------------------------------------------
+
+_T_REACHES_TWO = {
+    "A": (
+        {"id": "integer", "name": "text", "b_id": "integer", "c_id": "integer"},
+        "(1, 'a1', 1, 1), (2, 'a2', 2, NULL)",
+    ),
+    "B": ({"id": "integer", "name": "text"}, "(1, 'b1'), (2, 'b2')"),
+    "C": ({"id": "integer", "name": "text"}, "(1, 'c1')"),
+}
+
+
+def _two_targets(monkeypatch) -> Session:
+    from provisa.gql.label_map import RelationshipMapping
+
+    rels = [
+        RelationshipMapping("T", "A", "B", "b_id", "id", "t_ab"),
+        RelationshipMapping("T", "A", "C", "c_id", "id", "t_ac"),
+    ]
+    return Session(monkeypatch, _T_REACHES_TWO, relationships=rels)
+
+
+def test_j198_an_unlabelled_target_is_every_label_its_type_reaches(monkeypatch):
+    s = _two_targets(monkeypatch)
+    assert s.run("MATCH (n:A)-[:T]->(x) RETURN count(*) AS c") == [{"c": 3}]
+    rows = s.run("MATCH (x)<-[:T]-(n:A) RETURN n.name, x.name")
+    assert _sorted(rows) == [("a1", "b1"), ("a1", "c1"), ("a2", "b2")]
+    # A labelled target is that label's alone.
+    assert _sorted(s.run("MATCH (n:A)-[:T]->(x:B) RETURN x.name")) == [("b1",), ("b2",)]
+
+
+def test_j198_a_pattern_comprehension_reaches_every_label_its_type_reaches(monkeypatch):
+    s = _two_targets(monkeypatch)
+    rows = s.run("MATCH (n:A) RETURN n.name AS n, [(n)-[:T]->(x) | x.name] AS xs")
+    assert sorted((r["n"], sorted(r["xs"])) for r in rows) == [
+        ("a1", ["b1", "c1"]),
+        ("a2", ["b2"]),
+    ]
+
+
+def test_j199_a_node_of_several_labels_carried_beside_a_value_keeps_its_properties(monkeypatch):
+    s = _two_targets(monkeypatch)
+    rows = s.run("MATCH (n) WITH n, 1 AS d RETURN n.name AS name, d")
+    assert _sorted(rows) == [("a1", 1), ("a2", 1), ("b1", 1), ("b2", 1), ("c1", 1)]
+
+
+def test_j199_in_a_session(monkeypatch):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X {name: 'x'}), ({name: 'y'})")
+    rows = s.run("MATCH (n) WITH n, 1 AS d RETURN n.name AS name, d")
+    assert _sorted(rows) == [("x", 1), ("y", 1)]
