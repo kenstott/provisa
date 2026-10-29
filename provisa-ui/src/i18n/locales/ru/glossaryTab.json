@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "Утверждено терминов: {{count}}",
     "bulkApproveNone": "Нет ожидающих определённых привязанных черновиков.",
     "cancel": "Отмена",
-    "findingFix_path_pending": "Открыть {{term}}"
+    "findingFix_path_pending": "Открыть {{term}}",
+    "groundingReachColumns_one": "Привязан: достигает данных в столбцах: {{count}}",
+    "groundingReachColumns_other": "Привязан: достигает данных в столбцах: {{count}}",
+    "groundingReachTables_one": "Привязан: достигает данных в таблицах: {{count}}",
+    "groundingReachTables_other": "Привязан: достигает данных в таблицах: {{count}}"
   }
 }

@@ -124,11 +124,20 @@ describe("glossary status and grounding filters", () => {
     await screen.findByTestId("glossary-item-1");
     // An approved term is the ordinary case: the list marks only its grounding.
     expect(screen.queryByTestId("glossary-status-1")).toBeNull();
-    expect(screen.getByTestId("glossary-grounding-1")).toHaveTextContent("grounded");
+    // Grounded: the green ground symbol, named by how far it reaches (its one column).
+    const grounded = screen.getByTestId("glossary-grounding-1");
+    expect(grounded).toHaveAttribute("data-grounding", "grounded");
+    expect(grounded).not.toHaveTextContent("grounded");
+    const groundedIcon = within(grounded).getByRole("img");
+    expect(groundedIcon).toHaveAttribute("data-ground-state", "grounded");
+    expect(groundedIcon).toHaveAttribute("aria-label", "Grounded: reaches data in 1 column");
     expect(screen.getByTestId("glossary-status-2")).toHaveTextContent("Draft");
+    // Pending: the same symbol, muted, saying its path awaits approval.
     const pending = screen.getByTestId("glossary-grounding-2");
-    expect(pending).toHaveTextContent("~grounded");
-    expect(pending).toHaveAttribute(
+    expect(pending).toHaveAttribute("data-grounding", "grounded_pending");
+    const pendingIcon = within(pending).getByRole("img");
+    expect(pendingIcon).toHaveAttribute("data-ground-state", "grounded_pending");
+    expect(pendingIcon).toHaveAttribute(
       "aria-label",
       "Reaches data, but only through terms not yet approved",
     );

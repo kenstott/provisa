@@ -99,17 +99,19 @@ Grounding says whether a term reaches data. Nobody sets it: Provisa works it out
 
 A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table: the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
 
-| Grounding | Chip | Meaning |
+| Grounding | Mark | Meaning |
 | --- | --- | --- |
-| **Grounded** | `grounded` | Some path down has no draft term between the term and the data end. |
-| **Grounded · path pending approval** | `~grounded` | Every path down has a draft term in between. Hover the chip: it reads "Reaches data, but only through terms not yet approved". |
+| **Grounded** | green ⏚ icon | Some path down has no draft term between the term and the data end. |
+| **Grounded · path pending approval** | muted ⏚ icon | Every path down has a draft term in between. Hover the icon: it reads "Reaches data, but only through terms not yet approved". |
 | **Not grounded** | none | No path reaches data. |
+
+The icon is the electrical-ground symbol. It sits in the term list beside the column count, on the term's page, before the term's name in the graphs, and in the graph legend. A grounded term's hover text says how far it reaches, for example "Grounded: reaches data in 3 columns"; a screen reader reads the same words.
 
 Some cases follow directly from the rule:
 
 - A draft Concept you are drafting above an approved chain is grounded. Its status chip still says Draft, and the terms below it don't change.
 - A term derived from a column is a draft at the data end. It never makes the chain above it pending.
-- A draft term in the middle of the only path makes every term above it `~grounded`. Approving that one draft grounds them.
+- A draft term in the middle of the only path makes every term above it muted ⏚. Approving that one draft grounds them.
 - A second path that is clean is enough. A draft beside it changes nothing.
 - Deprecated and retired terms break the chain. A term whose only path ran through one stops being grounded, and its chips and filters say so.
 
@@ -257,15 +259,15 @@ What counts is whether the business uses the word. An ETL batch identifier has a
 
 Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, and **To review** narrows it to terms with findings. Click a term to open its panel.
 
-The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A `~grounded` term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
+The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A muted ⏚ term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
 
 ### Stewardship summary
 
-With no term open, the panel shows the stewardship summary. It lists the terms agents can see, the `~grounded` terms each waiting on one approval with the term to approve, and the approved terms that reach no data. **Approve defined, grounded drafts** lists every draft that has a definition and is grounded; untick any whose definition isn't right, and approve the rest together. The clipboard button in the header brings the summary back.
+With no term open, the panel shows the stewardship summary. It lists the terms agents can see, the muted ⏚ terms each waiting on one approval with the term to approve, and the approved terms that reach no data. **Approve defined, grounded drafts** lists every draft that has a definition and is grounded; untick any whose definition isn't right, and approve the rest together. The clipboard button in the header brings the summary back.
 
 ### Seeing the impact first
 
-Approving, retiring and binding a term each change what reaches data. Before any of them, the page shows what the action would change: how many terms become grounded, `~grounded` or not grounded, and how many tables agents gain or lose a path to. For example, "Approving region makes 3 terms grounded and gives agents a path to 2 more tables". **Approve** opens the preview with its confirm button, **Retire** shows it under the successor you pick, and grounding a table in the edit form shows it under the table before you save.
+Approving, retiring and binding a term each change what reaches data. Before any of them, the page shows what the action would change: how many terms become grounded, muted ⏚ or not grounded, and how many tables agents gain or lose a path to. For example, "Approving region makes 3 terms grounded and gives agents a path to 2 more tables". **Approve** opens the preview with its confirm button, **Retire** shows it under the successor you pick, and grounding a table in the edit form shows it under the table before you save.
 
 **Edit** opens the whole term as one form. Save applies every change together.
 
