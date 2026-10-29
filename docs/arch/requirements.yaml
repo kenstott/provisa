@@ -8602,6 +8602,7 @@
   code:
   - provisa/compiler/sql_gen.py
   tests:
+  - tests/integration/test_federation_integration.py
   - tests/integration/test_schema_gen.py
   - tests/unit/test_schema_service.py
   - tests/unit/test_sql_gen.py
@@ -8939,7 +8940,13 @@
     OPENCYPHER CONFORMANCE:) A WHERE that follows an OPTIONAL MATCH is that match''s condition and never
     removes a row, including conjuncts that name only required variables: a row whose optional part fails
     it is kept with the optional variables null. A WHERE after a MATCH filters rows. A MATCH or OPTIONAL
-    MATCH may list several comma-separated patterns, which form one match step as consecutive clauses do.'
+    MATCH may list several comma-separated patterns, which form one match step as consecutive clauses do.
+    (Amended 2026-10-28, A BOUND VARIABLE KEEPS ITS LABELS:) A node variable keeps the labels it was bound
+    with: a later reference to it, in another MATCH or OPTIONAL MATCH, a WITH, a variable-length or shortestPath
+    pattern, or a WHERE pattern predicate, is the same node with the same labels, even when written bare,
+    as in `MATCH (n0:Terms) OPTIONAL MATCH (n0)-[*..2]->(m:Terms)`; it is never treated as an unlabelled
+    node. A pattern that no relationship can match answers no rows (null for an OPTIONAL MATCH), never an
+    error.'
   use_case: Cypher clause mapping enables graph queries to execute as governed SQL via Trino.
   code:
   - provisa/cypher/
@@ -8996,7 +9003,18 @@
     unlabelled endpoint there is refused by name, and conformance cases that need one on the model graph
     are skipped by design under this decision. In a graph session the endpoints need no label: every session
     relationship lives in the session''s one relationships table, indexed on both ends, so an unlabelled
-    shortest path walks the same table a labelled one does, at the same cost.'
+    shortest path walks the same table a labelled one does, at the same cost. (Amended 2026-10-28, LABELLED
+    OR BOUND:) [SUPERSEDED by REQ-348 amendment ONE END BOUND OR BINDABLE, 2026-10-28 -- the rule needs
+    one anchored end, not both. Kept here for history; do not implement against it.] Wherever an endpoint
+    must be labelled (shortestPath, allShortestPaths and variable-length patterns on the model graph), it
+    must be labelled or bound: [END SUPERSEDED BLOCK] a variable an earlier clause bound, as in `MATCH (n0:Terms)
+    OPTIONAL MATCH (n0)-[*..2]->(m:Terms)`, satisfies the rule, written bare or not (REQ-347). (Amended
+    2026-10-28, ONE END BOUND OR BINDABLE:) A path search (shortestPath, allShortestPaths and variable-length
+    patterns on the model graph) must not start from a free node: at least one of its ends must be bound
+    (by an earlier clause) or bindable (labelled, which binds it to its table). The search starts from that
+    end and walks outward, each hop following only the relationships that leave the tables reached so far,
+    so the other end may be free: it is whatever the walk reaches within the hop bound. A pattern with both
+    ends free is refused by name.'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
@@ -18192,7 +18210,10 @@
     Compute it starts or resumes (a warehouse, capacity or cluster) is suspended or stopped again. The names
     it creates carry a per-run prefix, so teardown and a later sweep find exactly its own objects. A shared,
     durable fixture the test only reads stays. Anything left behind is a defect, since external accounts
-    bill for what they hold and process.'
+    bill for what they hold and process. (Amended 2026-10-28, TYPE DEFINITIONS STAY:) The type definitions
+    a target registers for Provisa''s metadata (for example Purview''s provisa_* entity, relationship and
+    classification types) are schema shared by every run and every org, not catalog contents: a test leaves
+    them in place and deletes every catalog object it created.'
   use_case: Integration tests that spin up Docker containers ensure tests validate against real service
     behaviour.
   tests:
@@ -22457,10 +22478,16 @@
   feature: cypher-and-graph-analytics-paths
   priority: MUST
   type: behavioral
-  description: Variable-length relationship patterns `[*1..n]` are compiled to recursive CTEs in Trino
-    SQL. The CTE enforces max-hop bounds and returns edge sequences as JSON arrays. Multiple edge hops
-    are preserved in the array for flat-join paths; recursive paths project NULL (intermediate edges not
-    tracked in CTE).
+  description: '[SUPERSEDED by REQ-751 amendment ANY ENGINE, ONLY WHAT THE START REACHES, 2026-10-28 --
+    the recursive CTE is engine-neutral. Kept here for history; do not implement against it.] Variable-length
+    relationship patterns `[*1..n]` are compiled to recursive CTEs in Trino SQL. [END SUPERSEDED BLOCK]
+    The CTE enforces max-hop bounds and returns edge sequences as JSON arrays. Multiple edge hops are preserved
+    in the array for flat-join paths; recursive paths project NULL (intermediate edges not tracked in CTE).
+    (Amended 2026-10-28, ANY ENGINE, ONLY WHAT THE START REACHES:) Variable-length patterns compile to a
+    recursive CTE in the serving engine''s dialect, not Trino''s alone. `[*..n]` means 1 to n hops. A walk,
+    directed or undirected (`-[*..n]-` and `<-[*..n]->` alike), follows only the relationships its start
+    can reach within the hop bound, never another domain''s relationships it cannot reach, and a start no
+    relationship leaves answers no rows (REQ-347).'
   use_case: Variable-length traversals enable clients to explore multi-hop relationships without writing
     nested joins.
   code:
@@ -89993,7 +90020,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then it receives the role''s governed rows'
 - id: REQ-2167
   value: 'Every protocol surface publishes its conformance pass rate and deliberate differences, so you know what works.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Protocol Conformance
@@ -91272,7 +91299,30 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     are materialized (REQ-159); a same-source path walk is routed to its source and runs there as native
     recursive SQL with the source''s own indexes. The materialization, its edges and their indexes live
     only in Provisa''s MV store (REQ-844, REQ-880); Provisa never writes DDL to a source for them. Unchecked
-    relationships that path queries use often are shown to the owner from the query history.'
+    relationships that path queries use often are shown to the owner from the query history. (Amended 2026-10-28,
+    ONE EDGES TABLE WALKS EVERY PATH:) The materialized relationships'' edge indexes merge into one edges
+    table of (from node, to node, relationship type), each node id carrying its table (Terms:42), refreshed
+    with its relationships and indexed in both directions. Every path search (shortestPath, allShortestPaths,
+    variable-length patterns) whose relationships are all materialized walks that table, whatever its anchors:
+    a bound end seeds the walk with the ids an earlier clause bound, a labelled end with its table''s ids,
+    and with both ends free the walk starts from every node that has an edge, so a both-ends-free path search
+    is allowed over materialized relationships (REQ-348). A label or bound variable on the far end and relationship
+    types in the pattern filter the walk; the hop bound holds and [*] stays refused; the endpoints are joined
+    to their tables once, for the properties the statement returns. A path search that can follow an unmaterialized
+    relationship uses the per-hop joins under REQ-348''s one-end rule, and a both-ends-free one is refused
+    naming the unmaterialized relationships and the Materialize checkbox. A predicate on every node of a
+    path joins those nodes'' tables per hop; a single hop is a plain join; a query needing current data
+    reads the sources, as for any materialization. [SUPERSEDED by REQ-2183 amendment THE ROLE''S ROW RULES
+    FILTER THE EDGES FIRST, 2026-10-28 -- decided: the edges are filtered by the role''s row rules before
+    the walk. Kept here for history; do not implement against it.] How the walk honours each role''s row
+    rules on the nodes it passes through is open, for the maintainer to decide; filtering only the returned
+    endpoints is ruled out, since it reveals that hidden paths exist. [END SUPERSEDED BLOCK] (Amended 2026-10-28,
+    THE ROLE''S ROW RULES FILTER THE EDGES FIRST:) Before a walk, the edges table is filtered once for the
+    querying role: an edge is kept only where its from node and its to node are each among the keys the
+    role''s row rules let it read in their tables, and the role may see the relationship; the walk then
+    runs over the kept edges only, so it never passes through a node the role cannot read and never reveals
+    that a hidden path exists. Each node table is filtered once per statement, on its keys, not at every
+    hop, and nothing is materialized per role.'
   scenario: 'Given a relationship with an edge index and a [*1..4] pattern over it
     When the pattern is compiled
     Then its recursive steps read the edge index, indexed in both directions, and the endpoint tables are joined once
