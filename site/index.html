@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Provisa — Connect your data. Query in 5 minutes.</title>
-  <meta name="description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher, from psql, Tableau, Neo4j Browser or an AI agent. Governance is compiled into every query plan, so there is no way in that goes around it. Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync." />
+  <title>Provisa — a data kernel for your data control plane. Query in 5 minutes.</title>
+  <meta name="description" content="Drift is the enemy, and fragmentation feeds it. Provisa is a data kernel: a compiler and runtime for building your data control plane, one model that every surface reads. Data federation across your sources, queried in SQL, GraphQL or Cypher from psql, Tableau, Neo4j Browser or an AI agent, with governance compiled into every query plan. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 
-  <meta property="og:title" content="Provisa — Connect your data. Query in 5 minutes." />
-  <meta property="og:description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher over nine wire protocols, from psql, Neo4j Browser, Tableau or an AI agent. Governance no one can go around." />
+  <meta property="og:title" content="Provisa — a data kernel for your data control plane" />
+  <meta property="og:description" content="Drift is the enemy. Fragmentation feeds it. A data control plane ends it: one model that every protocol, tool and agent reads, with governance compiled into each. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://provisa.dev" />
   <link rel="canonical" href="https://provisa.dev/" />
@@ -54,15 +54,24 @@
     <section class="hero">
       <div class="container hero-inner">
         <a class="hero-badge" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener"><span class="hero-badge-dot"></span>Try it now in the sandbox</a>
-        <h1 class="hero-hook" aria-live="polite">
+        <h1>Drift is the enemy.<br />Fragmentation feeds it.<br />A data control plane ends it.</h1>
+        <p class="lead">
+          Provisa is a data kernel: a compiler and runtime for building your data control
+          plane. Sources and engines plug in as drivers. You declare your data model once,
+          and every surface reads it, from psql and Tableau to GraphQL, Cypher,
+          REST, gRPC and Arrow Flight. Each one has governance compiled in. Your ontology is
+          grounded to the data, and agents work through it, using only approved terms that
+          reach a table their role can read. Data federation queries each source where it
+          lives, so there is no copy left to drift.
+        </p>
+        <p class="lead hero-hook" aria-live="polite">
           <span class="hook-rotate">
-            <span class="hook-pair is-active" aria-hidden="false"><a class="hook-link" href="/start/ai-access">Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/app-backends">Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/bi-across-sources">Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/data-science">Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</a></span>
+            <span class="hook-pair is-active" aria-hidden="false"><a class="hook-link" href="/start/ai-access"><strong>Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/app-backends"><strong>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/bi-across-sources"><strong>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/data-science"><strong>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</strong></a></span>
           </span>
-        </h1>
-        <p class="lead">Governed from the first query.</p>
+        </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">Try it on your data</a>
           <a class="btn btn-ghost" href="#download">Download</a>
@@ -176,7 +185,8 @@
 
     <section class="positioning" aria-label="What Provisa is">
       <div class="container">
-        <p class="positioning-line">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, <a href="/why/ontology">ontology</a> and governance from one model. Nothing to keep in sync. It borrows from Unix, Terraform and Kubernetes: a few composable primitives, declared once, reconciled continuously.</p>
+        <p class="positioning-line">Federation, metrics, <a href="/why/ontology">ontology</a> and governance from a single model. Nothing to keep in sync.</p>
+        <p class="positioning-note">Built from data architecture and governance in regulated industries, with the methods of devops that run through operating systems, Kubernetes, Terraform and Helm. You declare a small set of primitives and a control plane keeps them true, so a solution is assembled rather than written, and code keeps its place behind contracts.</p>
       </div>
     </section>
 
@@ -262,18 +272,25 @@
     <section class="whatis">
       <div class="container">
         <p>
-          Behind each of those problems sits the same mess: four tools, each holding its own
-          description of the same data &mdash; a query engine, a metrics layer, a catalog, a
-          policy service. When one changes, the others are wrong until someone catches it.
-          <em>The descriptions drift, and nothing keeps them in step.</em>
+          Each of those jobs usually brings its own tool, and each tool keeps its own copy of
+          what your data means. The catalog has a glossary. BI has metric definitions. Every
+          API checks access its own way, and the agent gets its own context. When one copy
+          changes, the rest are wrong until someone catches it.
+          <em>Fragmentation multiplies the copies. Each copy drifts on its own.</em>
         </p>
-        <p class="whatis-name">One model: sources, metrics, <a href="/why/ontology">ontology</a> and governance.</p>
+        <p class="whatis-name">One model for federation, metrics, <a href="/why/ontology">ontology</a> and governance.</p>
         <p class="whatis-def">
-          You describe your data once: sources, tables, relationships, who may see what.
-          Everything else is generated from that one description — the APIs, the legal join
-          paths, the governance, and the audit trail. Keep the catalog and lineage tools
-          you have; Provisa publishes to them. Data catalogs that provide a context layer
-          tell an agent what it should do; Provisa enforces what it can do.
+          You describe your sources, tables, relationships, terms and access rules once.
+          The APIs, the legal join paths, the governance and the audit trail all come from
+          that one description. Your tools discover the live model, so there is no SDK to
+          generate, version or upgrade. You write what you mean, and Provisa owns making it
+          run correctly. If your catalog meets other objectives you have, keep it; Provisa
+          will push to it. Data catalogs that provide a context layer tell an agent what it
+          should do. Provisa enforces what it can do.
+        </p>
+        <p class="whatis-def">
+          IDC has tracked the &ldquo;data control plane&rdquo; as an architecture and a
+          vendor market since 2021 (Market Glance 1Q23, 1Q25).
         </p>
         <a class="more" href="/why/one-model">One model — what each part covers</a>
         <a class="more" href="/why/no-lock-in#promote-config">Every change is versioned, and promoted through environments</a>
@@ -846,8 +863,8 @@
           <details>
             <summary>Is Provisa a database, or does it replace my warehouse?</summary>
             <p>
-              Neither. Provisa is a semantic and governance layer that runs on an engine
-              you choose: Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks,
+              Neither. Provisa is a data kernel that builds your data control plane
+              and runs it on an engine you choose: Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks,
               BigQuery, or the embedded DuckDB engine in the box. Your warehouse becomes
               a replaceable execution engine, not the place your semantics live.
             </p>
@@ -858,7 +875,7 @@
             <summary>How is this different from Starburst or Denodo?</summary>
             <p>
               Starburst is a query engine; Provisa sits above one and can use Starburst as
-              its engine. Denodo is the closest comparison, in the same category: Provisa adds GraphQL and Cypher as peers to SQL, nine wire
+              its engine. Denodo is the closest data federation comparison: Provisa adds GraphQL and Cypher as peers to SQL, nine wire
               protocols including pgwire and Bolt, engine choice, and a deployment that
               starts at one <code>pip install</code>.
             </p>
@@ -977,7 +994,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>

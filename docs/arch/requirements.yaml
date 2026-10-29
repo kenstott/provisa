@@ -8952,6 +8952,8 @@
   code:
   - provisa/cypher/
   tests:
+  - tests/unit/test_cypher_with_where_scope.py
+  - tests/unit/test_cypher_mixed_list_graph_elements.py
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
@@ -88595,7 +88597,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     view draws a node''s properties, with a toggle that draws them as nodes instead; and a SELECT whose
     variables all bind to resources, pairing into subject and object, is offered ''Draw as graph'', its
     rows becoming nodes and edges (the predicate, where the query binds one, naming the edge). A SELECT
-    that cannot pair so, and an ASK, stay a table.'
+    that cannot pair so, and an ASK, stay a table. (Amended 2026-10-28, THE SPARQL EXPLORER AS AN RDF PERSON
+    EXPECTS, BUILT LIKE THE CYPHER EXPLORER:) The SPARQL explorer meets an RDF practitioner''s expectations
+    and otherwise works like the Cypher explorer. Graphs: in a data answer, resources are nodes labelled
+    by their rdf:type class, a property whose value is a resource is an edge, and a property whose value
+    is a literal is a property of its node, never a node; in an answer about the ontology itself, classes
+    are nodes, with rdfs:subClassOf and property domains and ranges as edges. A SELECT shows its results
+    table first, a column per variable, with a graph view when its rows hold triples; a CONSTRUCT or DESCRIBE
+    shows its graph. The query runs exactly as written; its prefixes are shown and editable; DESCRIBE of
+    a resource works; the endpoint''s URL is shown for other tools. IRIs display compacted by the prefixes
+    in every result cell and graph label, the full IRI on hover and copy; literals show a language tag or
+    datatype compactly and plain strings and integers plainly. Like the Cypher explorer: each query is its
+    own frame, with history and stars; a vocabulary pill starts a new frame; expanding or dragging a node
+    runs a DESCRIBE or CONSTRUCT around that resource and merges its triples into the frame. Any graph view,
+    including one drawn from a SELECT''s triples, exports as Turtle or N-Triples, as a CONSTRUCT''s already
+    does.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -90198,7 +90214,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by_design, failed), its pass rate is passed over passed plus failed, and the landing gate and its baselines
     read those counts for every suite alike. (Amended 2026-10-28, THE CATALOG''S BOOTSTRAP OWNER IS PROVISA:)
     The pgwire catalog''s bootstrap role (oid 10) is named provisa, not postgres: pg_get_userbyid(10) and
-    every owner column answer provisa. The pgwire conformance report lists it as skipped by design.'
+    every owner column answer provisa. The pgwire conformance report lists it as skipped by design. (Amended
+    2026-10-29, A CASE THE CLIENT NEVER SENDS OR THE SUITE SKIPS FOR EVERY SERVER IS SKIPPED BY DESIGN:)
+    Maintainer 2026-10-29: a case the client library under test refuses or drops itself, so the request
+    never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
+    GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
+    server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
+    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails

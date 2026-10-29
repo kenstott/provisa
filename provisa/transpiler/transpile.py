@@ -1009,6 +1009,15 @@ def transpile(
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
+    if target_dialect in ("trino", "athena") and pg_sql.lstrip().upper().startswith(
+        ("INSERT", "UPDATE")
+    ):
+        # REQ-1981: Trino's INSERT and UPDATE grammar has no target alias (``UPDATE t AS x SET``
+        # is a syntax error, verified live on Athena); a DIRECT write reaches here with the
+        # pipeline's self-alias on its target.
+        from provisa.compiler.sql_rewrite import unalias_write_target
+
+        pg_sql = unalias_write_target(pg_sql)
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
