@@ -2040,6 +2040,89 @@ reference_passages = Table(
     UniqueConstraint("document_id", "ordinal"),
 )
 
+# REQ-2179: the glossary's scans of reference library documents for terms. A scan keeps the
+# document's title and source as they were, so its citations outlive the document (document_id is
+# cleared when the document is removed, and the citations are then marked as citing a removed
+# document). ``domains`` is the steward's working domains as a JSON list, given to the terms the
+# scan's drafts become; ``summary`` a JSON object of what was read and what was left out, by why.
+glossary_term_scans = Table(
+    "glossary_term_scans",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("document_title", Text, nullable=False),
+    Column("document_source", Text, nullable=False),
+    Column("domains", Text, nullable=False),
+    Column("status", Text, nullable=False),  # running | done | failed
+    Column("error", Text, nullable=True),
+    Column("summary", Text, nullable=True),
+    Column("started_by", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "status IN ('running', 'done', 'failed')", name="glossary_term_scans_status_check"
+    ),
+)
+
+# REQ-2179: the review queue -- each candidate term a scan proposes, as a draft until the steward
+# accepts, merges or rejects it. ``proposal`` is what the scan proposes: a new term, or a merge into
+# the glossary term it duplicates or names again (match_term_id, match_kind). ``payload`` is a JSON
+# object: the candidate's source passages, variants (each proposed as a synonym or not),
+# conflicting explanations side by side, homonyms and every glossary term it matched. ``term_id``
+# is the term an accepted draft became or a merged one was merged into.
+glossary_term_drafts = Table(
+    "glossary_term_drafts",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "scan_id",
+        Integer,
+        ForeignKey("glossary_term_scans.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("category", Text, nullable=False),
+    Column("sense", Text, nullable=False),
+    Column("definition", Text, nullable=True),
+    Column("definition_kind", Text, nullable=False),  # explicit | synthesized | missing
+    Column("proposal", Text, nullable=False),  # new | merge
+    Column(
+        "match_term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("match_kind", Text, nullable=True),  # duplicate | synonym
+    Column("payload", Text, nullable=False),
+    Column("status", Text, nullable=False),  # draft | accepted | merged | rejected
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("decided_by", Text, nullable=True),
+    Column("decided_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("scan_id", "ordinal"),
+    CheckConstraint(
+        "definition_kind IN ('explicit', 'synthesized', 'missing')",
+        name="glossary_term_drafts_definition_check",
+    ),
+    CheckConstraint("proposal IN ('new', 'merge')", name="glossary_term_drafts_proposal_check"),
+    CheckConstraint(
+        "status IN ('draft', 'accepted', 'merged', 'rejected')",
+        name="glossary_term_drafts_status_check",
+    ),
+)
+
 
 admin_audit_log = Table(
     "admin_audit_log",
