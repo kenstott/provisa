@@ -20,6 +20,8 @@ import pytest
 
 from tests.unit.ephemeral_harness import Session
 
+# A read whose nodes' labels a test checks is read as the client is answered (Session.answer).
+
 pytestmark = pytest.mark.unit
 
 
@@ -84,7 +86,7 @@ def test_a_node_of_several_labels_is_matched_by_all_of_them_and_returned_with_ea
     # TCK Match1 [3]
     s = Session(monkeypatch, {})
     s.run("CREATE (:A:B:C), (:A:B), (:A:C), (:B:C), (:A), (:B), (:C), ()")
-    rows = s.run("MATCH (a:A:B) RETURN a")
+    rows = s.answer("MATCH (a:A:B) RETURN a")
     assert sorted(r["a"]["labels"] for r in rows) == [["A", "B"], ["A", "B", "C"]]
 
 
@@ -92,7 +94,7 @@ def test_an_optional_end_is_returned_with_every_label(monkeypatch):
     # TCK Match7 [23]
     s = Session(monkeypatch, {})
     s.run("CREATE (:X), (x:X), (y1:Y), (y2:Y:Z) CREATE (x)-[:REL]->(y1), (x)-[:REL]->(y2)")
-    rows = s.run("MATCH (a:X) OPTIONAL MATCH (a)-->(b:Y) RETURN b")
+    rows = s.answer("MATCH (a:X) OPTIONAL MATCH (a)-->(b:Y) RETURN b")
     got = sorted(((r["b"] or {}).get("labels") for r in rows), key=repr)
     assert got == [None, ["Y", "Z"], ["Y"]]
 
@@ -147,7 +149,7 @@ def test_a_path_read_backward_starts_at_its_first_node(monkeypatch):
     # TCK Match6 [6]
     s = Session(monkeypatch, {})
     s.run("CREATE (:A)-[:T]->(:B)")
-    [path] = [r["p"] for r in s.run("MATCH p = (b)<--(a) RETURN p")]
+    [path] = [r["p"] for r in s.answer("MATCH p = (b)<--(a) RETURN p")]
     assert [n["labels"] for n in path["nodes"]] == [["B"], ["A"]]
 
 
@@ -332,7 +334,7 @@ def test_an_optional_match_from_carried_rows_keeps_each(monkeypatch):
     s = Session(monkeypatch, {})
     assert s.run("OPTIONAL MATCH (a) WITH a OPTIONAL MATCH (a)-->(b) RETURN b") == [{"b": None}]
     s.run("CREATE (:A)-[:T]->(:B)")
-    rows = s.run(
+    rows = s.answer(
         "MATCH (a1)-[r]->() WITH r, a1 LIMIT 1 OPTIONAL MATCH (a1)<-[r]-(b2) RETURN a1, r, b2"
     )
     assert [(r["a1"]["labels"], r["r"]["type"], r["b2"]) for r in rows] == [(["A"], "T", None)]
@@ -352,7 +354,7 @@ def test_nested_existential_subqueries_keep_the_outer_node(monkeypatch):
         "CREATE (a:A {prop: 1})-[:R]->(b:B {prop: 1}), (a)-[:R]->(:C {prop: 2}), "
         "(a)-[:R]->(:D {prop: 3})"
     )
-    rows = s.run(
+    rows = s.answer(
         "MATCH (n) WHERE exists { MATCH (m) WHERE exists { (n)-[]->(m) WHERE n.prop = m.prop } "
         "RETURN true } RETURN n"
     )

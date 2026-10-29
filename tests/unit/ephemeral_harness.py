@@ -249,5 +249,10 @@ class Session:
         )
         if made is not None:
             return made
-        # As a surface answers a read of the session: its own nodes as the session holds them.
-        return seam.answered(asyncio.run(self.read(statement, params)), self.session)
+        return asyncio.run(self.read(statement, params))
+
+    def answer(self, statement: str, **params: Any) -> Any:
+        """A read's rows as a surface answers the client (Bolt, HTTP): the session's own nodes
+        as the session holds them, without their _id (ephemeral.seam.answered). The reads of a
+        statement's own RUN keep it (run): a write finds the node again by it."""
+        return seam.answered(self.run(statement, **params), self.session)

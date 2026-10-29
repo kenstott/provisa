@@ -200,16 +200,17 @@ def test_a_pattern_comprehension_reads_its_own_rows_node(monkeypatch):
 def test_an_ephemeral_node_is_answered_without_the_sessions_handle(monkeypatch):
     # A session's own node is answered with no _id (ephemeral.seam.answered).
     s = _session(monkeypatch, "CREATE (:X {prop: 42}), (:X)")
-    rows = s.run("MATCH (n:X) RETURN n, n.prop IS NULL AS b")
+    rows = s.answer("MATCH (n:X) RETURN n, n.prop IS NULL AS b")
     got = sorted(((r["n"]["properties"], r["b"]) for r in rows), key=repr)
     assert got == sorted([({"prop": 42}, False), ({}, True)], key=repr)
 
 
 def test_a_model_node_keeps_its_key_when_answered(monkeypatch):
-    s = Session(monkeypatch, {"P": ({"id": "bigint", "k": "text"}, "(1, 'v')")})
-    s.run("CREATE (:X {prop: 1})")
-    [row] = s.run("MATCH (n:P) RETURN n")
-    assert row["n"]["properties"] == {"id": 1, "k": "v", "_id": 1}
+    from provisa.ephemeral import seam
+
+    s = _session(monkeypatch, "CREATE (:X)")  # a session holding its own node too
+    node = {"id": "P|1", "label": "P", "tableLabel": "P", "properties": {"_id": 1, "k": "v"}}
+    assert seam.answered([{"n": node, "l": [node]}], s.session) == [{"n": node, "l": [node]}]
 
 
 # -- List12 [3]: a pattern no relationship can be matches nothing ---------------------------- #
