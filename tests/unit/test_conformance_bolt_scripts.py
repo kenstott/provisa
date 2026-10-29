@@ -187,7 +187,7 @@ def test_the_suites_own_skips_are_skipped_by_design_citing_its_reason(tmp_path):
     for every server, are skipped by design, each in its suite group citing REQ-2167 and the
     skip's file and line; a suite group names only a skipped case, so the same example failing
     stays failed. The database selection example's skip depends on the edition the job declares,
-    not on every server: it stays failed."""
+    not on every server: the job declares enterprise so it runs, and skipped it is failed."""
     import json as _json
 
     junit = junit_summary
@@ -236,3 +236,18 @@ def test_the_suites_own_skips_are_skipped_by_design_citing_its_reason(tmp_path):
         }
     ]
     _json.dumps(doc)  # the artifact is JSON
+
+
+def test_the_job_declares_the_edition_the_database_selection_example_runs_under():
+    """REQ-2167: the database selection example is skipped by the suite unless the job declares
+    enterprise (tests/conftest.py:158-164); Provisa answers its CREATE DATABASE and database
+    selection (provisa/bolt/databases.py), so the job declares enterprise and the example runs."""
+    workflow = yaml.safe_load(
+        (CONFORMANCE.parents[1] / ".github/workflows/conformance-bolt.yml").read_text()
+    )
+    run = next(
+        s
+        for s in workflow["jobs"]["bolt"]["steps"]
+        if s.get("name") == "Run the driver's integration tests"
+    )
+    assert run["env"]["TEST_NEO4J_EDITION"] == "enterprise"

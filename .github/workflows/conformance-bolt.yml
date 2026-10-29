@@ -134,7 +134,12 @@ jobs:
           TEST_NEO4J_SCHEME: bolt
           TEST_NEO4J_USER: ${{ env.CONFORMANCE_USER }}
           TEST_NEO4J_PASS: ${{ env.CONFORMANCE_PASSWORD }}
-          TEST_NEO4J_EDITION: community
+          # The edition names the suite's server features, not Provisa's dbms.components answer
+          # (still community): it gates the database selection example alone
+          # (tests/conftest.py:158-164), whose CREATE DATABASE / session(database=...) Provisa
+          # answers (provisa/bolt/databases.py: a created database names the home database,
+          # kept in the principal's graph session, REQ-2176).
+          TEST_NEO4J_EDITION: enterprise
           TEST_NEO4J_VERSION: "5.4"
           TEST_NEO4J_IS_CLUSTER: "false"
         run: |
