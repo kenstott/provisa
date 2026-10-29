@@ -30,8 +30,15 @@ def _session(monkeypatch, setup: str | None = None) -> Session:
     return s
 
 
+def _answered(rows):
+    """The rows as Bolt answers them: a session's own nodes without their _id."""
+    from provisa.ephemeral.read import as_answered
+
+    return as_answered(rows)
+
+
 def _props(rows, column):
-    return [r[column]["properties"] for r in rows]
+    return [r[column]["properties"] for r in _answered(rows)]
 
 
 # --- a node only the session holds carries no _id ----------------------------------------------
@@ -56,6 +63,23 @@ def test_a_session_node_read_by_label_is_still_found_by_a_later_create(monkeypat
     s.run("MATCH (a:A) CREATE (a)-[:R]->(:B {num: 2})")
     rows = s.run("MATCH (a:A)-[:R]->(b:B) RETURN a.num AS a, b.num AS b")
     assert rows == [{"a": 1, "b": 2}]
+
+
+def test_a_session_nodes_reads_keep_its_id_for_the_write_that_finds_it(monkeypatch):
+    # List6 [2], List9 [1]: the server's reads inside a RUN answer a node's id as an integer
+    # (register_node_ids), so a SET or CREATE finds the node by its _id, which only the answer
+    # to the client leaves out.
+    from provisa.ephemeral import store
+    from provisa.ephemeral.write import _identity
+
+    s = _session(monkeypatch, "CREATE (:TheLabel {numbers: [1, 2, 3]})")
+    [row] = s.run("MATCH (n:TheLabel) RETURN n")
+    assert row["n"]["properties"]["_id"] == "e:1"
+    node = {**row["n"], "id": 7}  # as register_node_ids leaves it
+    graph = store.graph(s.session)
+    assert _identity(node, s.model, graph)[0] == "e:1"
+    s.run("MATCH (n:TheLabel) SET n.numbers = [1, 2] RETURN size(n.numbers)")
+    assert s.run("MATCH (n:TheLabel) RETURN size(n.numbers) AS s") == [{"s": 2}]
 
 
 # --- a map of nodes keeps each node apart over Bolt -----------------------------------------
@@ -367,7 +391,7 @@ def test_collect_of_nodes_is_the_nodes(monkeypatch):
     s = _session(monkeypatch, "CREATE ()")
     [row] = s.run("MATCH (n) RETURN count(n), collect(n)")
     assert row["count(n)"] == 1
-    assert [(v["label"], v["properties"]) for v in row["collect(n)"]] == [("", {})]
+    assert [(v["label"], v["properties"]) for v in _answered(row["collect(n)"])] == [("", {})]
 
 
 @pytest.mark.parametrize(

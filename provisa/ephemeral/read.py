@@ -48,6 +48,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import store
 from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.select_builder import NODE_KEY_PROPERTY
 
 SESSION_CATALOG = "__session__"
 SESSION_SCHEMA = "s"
@@ -62,6 +63,27 @@ def _node_relation(key: str) -> str:
 
 def _rel_relation(rel_type: str) -> str:
     return f"rel__{rel_type}"
+
+
+def as_answered(value: Any) -> Any:
+    """A value as a client is answered it (REQ-2176): each ephemeral node without its ``_id``,
+    the session's own handle on it, which the node's statement never wrote -- a node created
+    as ``(:X {prop: 42})`` is answered as that. A model node keeps its ``_id``, its key. The
+    reads of a statement's own RUN keep it: a write finds the node again by it."""
+    if isinstance(value, list):
+        return [as_answered(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    out = {k: as_answered(v) for k, v in value.items()}
+    props = out.get("properties")
+    if (
+        "label" in out
+        and "startNode" not in out
+        and isinstance(props, dict)
+        and store.is_session_node_key(props.get(NODE_KEY_PROPERTY))
+    ):
+        out["properties"] = {k: v for k, v in props.items() if k != NODE_KEY_PROPERTY}
+    return out
 
 
 def involved(session: TempSession | None) -> bool:
@@ -122,9 +144,6 @@ def overlay(model: Any, session: TempSession) -> Any:
             properties=properties,
             physical_properties={prop: alias for prop, alias in properties.items()},
             property_types=tuple((prop, types[alias]) for prop, alias in properties.items()),
-            # A label only the session's own nodes carry has no model key to publish as ``_id``;
-            # a model node it tags is found again by its graph identity there (write.py).
-            key_published=held is not None or any(t != key for t in resolved.tagged),
         )
         if held is None:
             nodes_by_table.setdefault(key, [key])

@@ -952,8 +952,12 @@ class BoltSession:
             temp_tables.unbind(temp_token)
             reset_current_org(_org_token)
 
+        from provisa.ephemeral.read import as_answered, involved
+
         self._result_columns = columns
-        self._result_rows = rows
+        # REQ-2176: an ephemeral node is answered as its statement wrote it, without the
+        # session's own handle on it (its reads inside the RUN keep it: a write finds it by it).
+        self._result_rows = as_answered(rows) if involved(self.temp_tables) else rows
         self._result_redirect = redirect
         self._result_stats = {} if counted.unknown else counted.stats()
         self._pull_offset = 0
