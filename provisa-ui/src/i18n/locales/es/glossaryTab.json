@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} términos aprobados",
     "bulkApproveNone": "No hay borradores definidos y anclados en espera.",
     "cancel": "Cancelar",
-    "findingFix_path_pending": "Abrir {{term}}"
+    "findingFix_path_pending": "Abrir {{term}}",
+    "groundingReachColumns_one": "Anclado: llega a los datos en {{count}} columna",
+    "groundingReachColumns_other": "Anclado: llega a los datos en {{count}} columnas",
+    "groundingReachTables_one": "Anclado: llega a los datos en {{count}} tabla",
+    "groundingReachTables_other": "Anclado: llega a los datos en {{count}} tablas"
   }
 }

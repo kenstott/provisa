@@ -4851,6 +4851,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
 
     import sqlglot.expressions as _sg_exp
 
+    from provisa.compiler import temp_tables
     from provisa.pgwire.governed_plan import PlanSlot
     from provisa.core.request_context import session_vars_for
 
@@ -4861,8 +4862,18 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _session_vars = session_vars_for(state.roles.get(role_id))
     # The validation a plan was kept with depends on whether its joins were the SDL's.
     # A request-level as-of decides which bitemporal views keep their reference.
+    # REQ-615, REQ-2176: as on the raw-SQL stage, a statement compiled in a session holding
+    # temporary tables (a Bolt connection's ephemeral graph) is kept for that session alone, as
+    # its tables stand: its kept engine form names the session's store schema, gone with it.
     _slot = PlanSlot(
-        state, "compiled", role_id, sql, sorted(_session_vars.items()), sdl_joins, as_of or ""
+        state,
+        "compiled",
+        role_id,
+        sql,
+        sorted(_session_vars.items()),
+        sdl_joins,
+        as_of or "",
+        temp_tables.slot_key(),
     )
     # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
     # statement as written: a kept plan outlives the window, and governance expands the view.

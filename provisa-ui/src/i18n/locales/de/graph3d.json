@@ -145,6 +145,8 @@
     "quality_none": "Noch nicht ausgeführt",
     "factOwner": "Eigentümer",
     "factMembers": "Mitgliedstabellen",
-    "factColumns": "Spalten"
+    "factColumns": "Spalten",
+    "grounding_grounded": "Verankert",
+    "grounding_grounded_pending": "Verankert, wartet auf Freigabe"
   }
 }

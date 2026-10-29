@@ -206,6 +206,21 @@ class SessionWalk:
     table_name: str
 
 
+def _used_key(rel: "RelationshipMapping", direction: str) -> tuple:
+    """What find_paths records of a relationship it has walked: the mapping itself (its labels,
+    type and join) and the direction taken, so two mappings of one type name are two edges."""
+    return (
+        rel.source_label,
+        rel.target_label,
+        rel.rel_type,
+        rel.join_source_column,
+        rel.join_target_column,
+        rel.source_expr,
+        rel.target_expr,
+        direction,
+    )
+
+
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
 
@@ -314,9 +329,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         results: list[list[RelationshipMapping]] = []
         # queue: (current_label, path_so_far, used_rel_keys)
         # Cypher path semantics: no repeated relationships within a path.
-        # key = (rel_type, forward|reverse) to avoid traversing the same
-        # physical edge twice in one path regardless of direction.
-        queue: list[tuple[str, list[RelationshipMapping], frozenset[str]]] = [
+        # key = the mapping (source label, target label, type, join) and the direction taken:
+        # one type name may map several relationships (A-[:T]->B-[:T]->C), which are not one
+        # edge, so the type name alone does not tell two of them apart (REQ-348).
+        queue: list[tuple[str, list[RelationshipMapping], frozenset[tuple]]] = [
             (start_label, [], frozenset())
         ]
         while queue:
@@ -337,7 +353,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                     continue
                 # Forward edge
                 if rel.source_label == cur_label:
-                    key = f"{rel.rel_type}:fwd"
+                    key = _used_key(rel, "fwd")
                     if key not in used_rel_keys:
                         tgt_nm = self.nodes.get(rel.target_label)
                         if tgt_nm and tgt_nm.native_filter_columns:
@@ -345,7 +361,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         queue.append((rel.target_label, path + [rel], used_rel_keys | {key}))
                 # Reverse edge (only when bidirectional)
                 if bidirectional and rel.target_label == cur_label:
-                    key = f"{rel.rel_type}:rev"
+                    key = _used_key(rel, "rev")
                     if key not in used_rel_keys:
                         src_nm = self.nodes.get(rel.source_label)
                         if src_nm and src_nm.native_filter_columns:

@@ -145,6 +145,8 @@
     "quality_none": "Nog niet uitgevoerd",
     "factOwner": "Eigenaar",
     "factMembers": "Lidtabellen",
-    "factColumns": "Kolommen"
+    "factColumns": "Kolommen",
+    "grounding_grounded": "Verankerd",
+    "grounding_grounded_pending": "Verankerd, wacht op goedkeuring"
   }
 }

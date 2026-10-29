@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Een leesactie buiten het venster",
-        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent."
+        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent. Binnen het venster geeft ze in plaats daarvan de afsluiting terug."
       },
       "provisioningRest": {
         "title": "De downloads via REST",

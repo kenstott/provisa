@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} 件の用語を承認しました",
     "bulkApproveNone": "承認を待つ定義済み・紐付け済みの下書きはありません。",
     "cancel": "キャンセル",
-    "findingFix_path_pending": "{{term}} を開く"
+    "findingFix_path_pending": "{{term}} を開く",
+    "groundingReachColumns_one": "紐付け済み: {{count}} 列のデータに到達",
+    "groundingReachColumns_other": "紐付け済み: {{count}} 列のデータに到達",
+    "groundingReachTables_one": "紐付け済み: {{count}} テーブルのデータに到達",
+    "groundingReachTables_other": "紐付け済み: {{count}} テーブルのデータに到達"
   }
 }

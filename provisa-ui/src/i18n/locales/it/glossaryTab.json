@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} termini approvati",
     "bulkApproveNone": "Nessuna bozza definita e ancorata in attesa.",
     "cancel": "Annulla",
-    "findingFix_path_pending": "Apri {{term}}"
+    "findingFix_path_pending": "Apri {{term}}",
+    "groundingReachColumns_one": "Ancorato: raggiunge i dati in {{count}} colonna",
+    "groundingReachColumns_other": "Ancorato: raggiunge i dati in {{count}} colonne",
+    "groundingReachTables_one": "Ancorato: raggiunge i dati in {{count}} tabella",
+    "groundingReachTables_other": "Ancorato: raggiunge i dati in {{count}} tabelle"
   }
 }
