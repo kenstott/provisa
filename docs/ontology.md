@@ -180,7 +180,7 @@ Terms relate to other terms through typed edges.
 | `KIND_OF` | The source term is a kind of the target term. |
 | `PART_OF` | The source term is a component of the target term. |
 | `SYNONYM_OF` | The two terms are interchangeable in this domain. |
-| `RELATED_TO` | A loose association, when no stronger claim fits. |
+| `RELATED_TO` | Two distinct topics that go together, when no other type fits. It holds a place and does not ground. |
 | `VALID_VALUE_OF` | The source is an allowed value of the target enumeration or domain. |
 | `DERIVED_FROM` | The source is computed or sourced from the target. |
 | `REPLACES` | The source supersedes the target. Retiring a term writes one from its successor. |
@@ -191,6 +191,92 @@ Terms relate to other terms through typed edges.
 Relationships are directional. The UI shows both outgoing edges (this term → another) and incoming edges (another term → this term), labeling each direction with its own plain-language phrase.
 
 The edges live in an associative table declared as a junction relationship. Its relationship-type column is the discriminator, so each type above is a separate Cypher relationship type between two term nodes. Nothing about it is ontology-specific: it is declared the way you would declare a junction over your own tables, and the same code reads it.
+
+## Building a glossary that grounds
+
+A term helps an agent only when it is grounded, meaning some path of relationships leads from it to a column or a table. Agents see only the terms on such paths, as [What an agent sees](#what-an-agent-sees) describes. A grounded term tells you where its data lives. An ungrounded one names an idea and leaves you to find the data yourself.
+
+The relationship types you choose decide whether that path exists. Grounding runs from a broader term down to a narrower one. `revenue` reaches data because `order amount` is part of it and `order amount` holds a column. It never runs the other way, so `order amount` gains nothing from being part of `revenue`.
+
+### Test each type before you pick it
+
+Read an edge with X as the term it starts from and Y as the term it points to. Then apply the tests in this order and take the first one that passes.
+
+| Type | Test | Example | What it grounds |
+| --- | --- | --- | --- |
+| **Kind of** | Every X is a Y. | Every enterprise customer is a customer. | Y reaches X's data. |
+| **Part of** | A Y has an X. | An order has an order amount. | Y reaches X's data. |
+| **Valid value of** | X is one of Y's allowed values. | Platinum is a customer tier. | Y reaches X's data. |
+| **Synonym of** | X and Y mean the same thing. | Client and customer. | Each reaches the other's data. |
+| **Related to** | X and Y are distinct topics that go together, and neither is a kind, a part or a value of the other. | Cake and candles. | Nothing. |
+
+Derived from, Replaces, Preferred term for, Translation of and Antonym of each record a fact about two terms. None of them grounds.
+
+A property that describes a concept is part of it. Shift start describes a shift, so it is **Part of** shift coverage. It is never merely related to it.
+
+When you add or retype a relationship, the type picker lists Kind of, Part of and Valid value of first, each with its test underneath. Related to comes last, with its test and the reminder that it does not ground. The **Choosing a relationship that grounds** link under the picker opens this section.
+
+### Related to holds a place
+
+Related to is the last resort. Since it doesn't ground, a term whose only links are Related to reaches no data, however many of them it has. Treat each one as a placeholder for a pair you haven't resolved yet.
+
+To work through the placeholders, tick **Related to** above the term list, beside **Deprecated** and **To review**. The list narrows to terms with at least one Related to link, at either end. The book icon beside the box opens this section.
+
+A term that reaches no data and has only Related to links shows a note on its page. The note says the pair may lack a term in between and names the shapes that would resolve it. It is guidance only. Nothing about the term is blocked.
+
+### Resolve a pair with one new term
+
+Most Related to pairs lack a term in between. One new term turns the placeholder into two edges that ground, and five shapes do it. Here they are for cake and candles, tightest first:
+
+| Shape | New term | Edges |
+| --- | --- | --- |
+| **Component type** | cake decoration | candles Kind of cake decoration; cake decoration Part of cake |
+| **Specialisation** | birthday cake | candles Part of birthday cake; birthday cake Kind of cake |
+| **Common whole** | party | cake Part of party; candles Part of party |
+| **Common genus** | party supplies | cake Kind of party supplies; candles Kind of party supplies |
+| **Common enumeration** | party item type | cake Valid value of party item type; candles Valid value of party item type |
+
+Follow the grounding down each row. In the first two shapes, cake reaches the data of candles through the new term. In the last three, the new term is the broader end of both edges, so it reaches the data of both. Neither cake nor candles reaches the other's.
+
+Sometimes the term in between already exists, and you only need to retype the links. The shipped shelter demo has a Concept, `shift coverage`, defined as the window and place a staff member is scheduled to work. Its parts `shift start`, `shift end` and `schedule location` each hold a column. Linked to them by Related to, shift coverage reached no data. With each of the three linked as Part of shift coverage, it is grounded through all three columns. That is a common whole, and the whole was there all along.
+
+### Prefer the tightest shape
+
+The broader the new term, the less its grounding tells a reader. Party connects cake and candles as surely as cake decoration does. But a hub that broad also sits above the guest list, the venue and the music, so its grounding no longer says which data answers a question about candles. Cake decoration gives an agent a short path to the right columns. Party gives it a long path to many.
+
+Start with component type and move down the list only when a tighter shape doesn't fit. Use a common genus or a common enumeration when the pair shares nothing narrower.
+
+### When you choose Related to
+
+Choosing **Related to** for a link you are adding opens a dialog, for example "Link candles and cake with Related to?". Retyping an existing link to Related to opens it too. The interruption is deliberate, because this is the cheapest moment to fix the link.
+
+The dialog first explains why Related to is the least useful edge. It doesn't ground, so the term still can't reach data through it. Below that it draws the five shapes for your two terms, tightest first. Each shape shows a name for the new term, suggested by your organization's AI model, for example candles → cake decoration → cake. If the model suggests no names, the dialog says why, and you type the name yourself.
+
+You then pick one of three actions.
+
+- **Start** beside a shape opens the new-term form. The suggested name is filled in, and **Edges added with it** lists both edges. Rename the term, add a definition and its domains, then click **Create**. Create adds the term. The edge that touches the term you are editing joins your form and is saved with it. The other edge is written at once.
+- **Add Related to anyway** adds the link in one click. It joins the placeholders the **Related to** filter lists.
+- **Cancel** changes nothing.
+
+### How the relationship assistant chooses
+
+**Relationships** in the ✨ menu asks your organization's AI model for relationships across every term in your domains. The model's instructions carry the same tests. It prefers Kind of, Part of and Valid value of wherever one fits, and links a property to the concept it describes with Part of. It proposes Related to only when two terms clearly go together and no other type fits.
+
+The assistant links terms that already exist, and it never adds a term. For every Related to it adds, it names candidate terms for each shape that fits. When it finishes, **Related to links to review** lists each of those pairs with its shapes, tightest first, and the candidates for each. Click either term to open it. Whether a pair needs a new term, and what to call it, is your decision.
+
+### Measure the glossary
+
+The **Ontology quality** report measures the glossary from the model, by domain and by steward. Open it in the [Reports viewer](admin.md#reports-viewer). It reports:
+
+- the share of in-service terms that are grounded, with fully grounded terms and those pending approval counted apart;
+- the share that are approved and grounded, which are the terms an agent may use;
+- unresolved placeholders, meaning Related to links and the terms whose only links are Related to;
+- grounding precision, as the hops from each term to data and the number of paths that pass through a broad hub term;
+- terms grounded only through drafts, each with the term whose approval would ground it fully;
+- undefined terms on paths to data;
+- drift, the terms that lost or gained grounding since the previous period.
+
+Each row links to its term, and each placeholder row links to that term's Related to links for review. Like every report, it reads through the governed pipeline under your role, and you can export it.
 
 ## Concepts
 
@@ -257,7 +343,7 @@ What counts is whether the business uses the word. An ETL batch identifier has a
 
 ## Working with the ontology
 
-Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, and **To review** narrows it to terms with findings. Click a term to open its panel.
+Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, **To review** narrows it to terms with findings, and **Related to** narrows it to terms with a Related to link. Click a term to open its panel.
 
 The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A muted ⏚ term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
 
@@ -281,7 +367,7 @@ Approving, retiring and binding a term each change what reaches data. Before any
 
 Beside Edit, the panel offers the status actions the term allows: **Approve** a defined draft, **Deprecate** an approved term, **Retire** any term in service, and **Restore** a deprecated or retired one.
 
-From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** proposes typed edges across the full term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped.
+From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes.
 
 The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data: relate it to a term that has data.
 
