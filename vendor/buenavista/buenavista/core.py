@@ -88,6 +88,9 @@ class BVType(enum.Enum):
     TSVECTOR = 61
     NAMEARRAY = 62
     REGTYPEARRAY = 63
+    # A relation's and a schema's oid, whose text form is its name: the value carries both.
+    REGCLASS = 64
+    REGNAMESPACE = 65
 
 
 class RawDataRowBytes(bytes):
@@ -124,6 +127,11 @@ class QueryResult:
         PostgreSQL type sent in its base type's wire form, such as name as text); None for the
         BVType's."""
         return None
+
+    def column_typmod(self, index: int) -> int:
+        """The type modifier the column is described with (a varchar's length, a numeric's
+        precision and scale, as PostgreSQL's typmod encodes them); -1 for none."""
+        return -1
 
     def rows(self) -> Iterator[List]:
         raise NotImplementedError
