@@ -181,7 +181,14 @@ def test_a_page_is_filled_from_the_artifact_and_refilled_in_place():
         "failed": 1,
         "pass_rate": 0.75,
         "by_design_groups": [
-            {"group": "G", "requirement": "REQ-1", "decision": "d", "count": 1, "cases": ["x"]}
+            {
+                "group": "G",
+                "kind": "design",
+                "requirement": "REQ-1",
+                "decision": "d",
+                "count": 1,
+                "cases": [{"case": "F::x", "reason": "why"}],
+            }
         ],
         "failures": [{"feature": "Literals1", "scenario": "[2] #2", "reason": "rows differ"}],
     }
@@ -191,6 +198,7 @@ def test_a_page_is_filled_from_the_artifact_and_refilled_in_place():
     assert "**Suite:** openCypher TCK 2024.3." in filled
     assert "**Pass rate:** 75.0%: 3 passed, 1 skipped by design, 1 failed, of 5 cases." in filled
     assert "| G | 1 | d |" in filled
+    assert "| F::x | why |" in filled  # each case skipped by design keeps its reason
     assert "| [2] #2 | rows differ |" in filled
     assert filled.index("conformance-results:begin") < filled.index("## Deliberate")
     again = fill_docs.fill(filled, suite, rate, cases)
@@ -260,12 +268,19 @@ def test_a_failure_a_design_decision_excludes_is_skipped_by_design(tmp_path):
     assert doc["by_design_groups"] == [
         {
             "group": "Digits below the microsecond",
+            "kind": "design",
             "requirement": "REQ-2173",
             "decision": '"Every temporal value, read from a column or built in a query, has '
             "microsecond precision, what the engines and their drivers hold; its nanosecond "
             'property is its microseconds times 1000."',
             "count": 1,
-            "cases": ["tests.integration.examples.test_temporal_types_example::test_time"],
+            "cases": [
+                {
+                    "case": "tests.integration.examples.test_temporal_types_example::test_time",
+                    "reason": "AssertionError: assert '07:47:00.000004000-04:00' == "
+                    "'07:47:00.000004123-04:00'",
+                }
+            ],
         }
     ]
     assert [f["scenario"] for f in doc["failures"]] == ["test_local_time", "test_bookmark"]

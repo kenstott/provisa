@@ -49,8 +49,10 @@ def _rate(doc: dict) -> str:
 
 
 def _designed(groups: list[dict]) -> str:
-    """Each by-design group, its count and the decision behind it."""
-    return "\n".join(["## Skipped by design", "", *by_design.table(groups)])
+    """Each by-design group, its count and the decision behind it, and its cases."""
+    return "\n".join(
+        ["## Skipped by design", "", *by_design.table(groups), "", *by_design.cases_lines(groups)]
+    )
 
 
 def _cases(groups: dict[str, list[tuple[str, str]]]) -> str:
@@ -84,19 +86,10 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     if artifact.get("tests"):  # which of the suite's tests ran (a driver's own test directory)
         suite += f" ({artifact['tests']})"
     # REQ-2167 (amended 2026-10-27 and 2026-10-28): each by-design group, its count and the
-    # decision behind it; failed cases a client group explains, with its workaround; adapted cases
-    # marked with what their setup became -- on the surfaces that have any.
+    # decision behind it -- with the driver's or the suite's evidence, and a workaround, for a
+    # client or suite group -- and its cases with their reasons; adapted cases marked with what
+    # their setup became -- on the surfaces that have any.
     sections = [_designed(artifact["by_design_groups"])]
-    if artifact.get("not_sent_by_client"):
-        sections.append(
-            "\n".join(
-                [
-                    "## Failed: not sent by the client",
-                    "",
-                    *by_design.not_sent_table(artifact["not_sent_by_client"]),
-                ]
-            )
-        )
     if "adapted" in artifact:
         sections.append(
             "\n".join(["## Adapted cases", "", *by_design.adapted_lines(artifact["adapted"])])

@@ -179,7 +179,7 @@ def test_a_failure_a_by_design_group_names_is_skipped_by_design_and_fails_nothin
     assert (group["group"], group["count"], group["cases"]) == (
         "Cancel",
         1,
-        ["TestSimpleQuery::Cancel"],
+        [{"case": "TestSimpleQuery::Cancel", "reason": ""}],
     )
     assert "| Cancel | 1 | REQ-2167 |" in m.markdown(s)
     src, results = tmp_path / "pgspec_test.go", tmp_path / "r.jsonl"
@@ -222,7 +222,10 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         "requirement": "REQ-2167",
         "decision": "d",
         "count": 2,
-        "cases": ["catalog function::point_above()", "catalog function::box()"],
+        "cases": [
+            {"case": "catalog function::point_above()", "reason": "no such function"},
+            {"case": "catalog function::box()", "reason": "no such function"},
+        ],
     }
     report = {
         "postgres_version": "16.4",
@@ -505,7 +508,14 @@ def test_the_pgwire_artifact_sums_each_part_s_three_counts_at_the_top():
     import by_design
 
     m = _load("pgwire_catalog_types")
-    group = {"group": "g", "requirement": "REQ-1", "decision": "d", "count": 1, "cases": ["x"]}
+    group = {
+        "group": "g",
+        "kind": "design",
+        "requirement": "REQ-1",
+        "decision": "d",
+        "count": 1,
+        "cases": [{"case": "x", "reason": "y"}],
+    }
     pgspec = {"suite": "pgspec", **by_design.outcomes(50, [group], [])}
     catalog = {
         "postgres_version": "17.11",

@@ -13,9 +13,10 @@ and 2026-10-28).
 
 A suite's case that cannot pass because of a designed limitation of Provisa is skipped by design,
 in a group that names the design decision (its requirement), and left out of the pass rate; it is
-never counted as failed. Every other case that did not pass -- including one the suite or its
-client could not run -- is failed. The groups are declared per surface in
-``by_design/<surface>.yaml``:
+never counted as failed. So is a case the client library never sends, or one the suite skips for
+every server, each in its own group citing its requirement and the driver's or suite's evidence.
+Every other case that did not pass is failed. Each case skipped by design keeps its recorded
+reason. The groups are declared per surface in ``by_design/<surface>.yaml``:
 
     - group: Unbounded variable-length patterns
       requirement: REQ-348
@@ -25,7 +26,7 @@ client could not run -- is failed. The groups are declared per surface in
 
 A group with no requirement is refused: a case with no design decision behind it stays failed.
 
-Two further kinds are declared in the same file, each with ``kind:`` and a ``reason`` and/or
+Three further kinds are declared in the same file, each with ``kind:`` and a ``reason`` and/or
 ``case`` pattern:
 
     - kind: adapted          # setup that creates objects is adapted, not excluded: the case
@@ -33,16 +34,23 @@ Two further kinds are declared in the same file, each with ``kind:`` and a ``rea
       became: the table is declared in the fixture model, seeded by the case's setup.
       case: "TestQuery::test_query\\["
 
-    - kind: client           # the client driver does not send what the case needs -- it
+    - kind: client           # the client library never sends what the case needs -- it
       group: Bind with no Prepare  # refuses before any request, or drops what it was given:
-      client: adbc-driver-flightsql 1.12 (Go)  # the case stays failed; the group says why
+      requirement: REQ-2167  # skipped by design, citing the driver's evidence
+      client: adbc-driver-flightsql 1.12 (Go)
       behavior: refuses Bind ("must set IngestTargetTable before bulk ingestion")
       evidence: with Bind and no Prepare, the driver sends no RPC.
       workaround: prepare the statement before binding.
       reason: "must set IngestTargetTable"
 
-Neither names a requirement: neither is a design decision of Provisa's, so neither takes a case
-out of passed or failed."""
+    - kind: suite            # the suite skips the case for every server: skipped by design,
+      group: Kerberos example  # citing the suite's own reason; matches only a skipped case
+      requirement: REQ-2167
+      suite: neo4j-python-driver integration tests
+      evidence: the example is marked skip, "Currently no way to test Kerberos auth".
+      case: "test_kerberos_auth_example::test_example$"
+
+An adapted group names no requirement: its cases run and count."""
 
 # Requirements: REQ-2167
 
@@ -85,7 +93,19 @@ def baseline_failed(surface: str, failed: int) -> bool:
 FIELDS = {
     "design": ("requirement", "decision"),
     "adapted": ("became",),
-    "client": ("client", "behavior", "evidence", "workaround"),
+    "client": ("requirement", "client", "behavior", "evidence", "workaround"),
+    "suite": ("requirement", "suite", "evidence"),
+}
+
+#: The kinds whose cases are skipped by design (REQ-2167, amended 2026-10-28), each citing its
+#: requirement: a design decision of Provisa's; a case the client library never sends, citing the
+#: driver's evidence; a case the suite skips for every server, citing the suite's own reason.
+BY_DESIGN = ("design", "client", "suite")
+
+#: The decision a client or suite group stands on; its own fields are the evidence.
+KIND_DECISION = {
+    "client": "The client library never sends what the case needs, whatever the server.",
+    "suite": "The suite skips the case for every server.",
 }
 
 
@@ -98,9 +118,12 @@ class Group:
     details: dict[str, str] = field(default_factory=dict)  # the kind's other fields
     reason: re.Pattern[str] | None = None
     case: re.Pattern[str] | None = None
-    cases: list[str] = field(default_factory=list)
+    cases: list[dict] = field(default_factory=list)  # each case named, with its recorded reason
 
     def matches(self, failure: dict) -> bool:
+        # A suite group names only what the suite itself skipped.
+        if self.kind == "suite" and not failure.get("skipped"):
+            return False
         if self.reason is not None and not self.reason.search(failure["reason"]):
             return False
         named = f"{failure['feature']}::{failure['scenario']}"
@@ -117,7 +140,7 @@ def groups(surface: str) -> list[Group]:
         kind = entry.get("kind", "design")
         if kind not in FIELDS:
             raise ValueError(f"{path.name}: the group {entry.get('group')!r} is of no kind: {kind}")
-        if kind == "design" and not re.fullmatch(
+        if kind in BY_DESIGN and not re.fullmatch(
             r"REQ-\d+(, REQ-\d+)*", str(entry.get("requirement") or "")
         ):
             raise ValueError(
@@ -145,8 +168,8 @@ def groups(surface: str) -> list[Group]:
                 group=entry["group"],
                 kind=kind,
                 requirement=entry.get("requirement", ""),
-                decision=entry.get("decision", ""),
-                details={f: entry[f] for f in FIELDS[kind] if kind != "design"},
+                decision=entry.get("decision") or KIND_DECISION.get(kind, ""),
+                details={f: entry[f] for f in FIELDS[kind] if f not in ("requirement", "decision")},
                 reason=re.compile(entry["reason"]) if entry.get("reason") else None,
                 case=re.compile(entry["case"]) if entry.get("case") else None,
             )
@@ -190,21 +213,29 @@ def counts_line(doc: dict, noun: str = "cases") -> str:
 
 
 def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], list[dict]]:
-    """(the failures no group excludes, each group that excluded any: its name, requirement,
-    decision, count and cases -- the cases skipped by design)."""
-    declared = [g for g in declared if g.kind == "design"]
+    """(the failures no group excludes, each group that excluded any: its name, kind,
+    requirement, decision, the kind's evidence, count and cases -- the cases skipped by design,
+    each with its recorded reason)."""
+    declared = [g for g in declared if g.kind in BY_DESIGN]
     left = []
     for failure in failures:
         hit = next((g for g in declared if g.matches(failure)), None)
         if hit is None:
             left.append(failure)
         else:
-            hit.cases.append(f"{failure['feature']}::{failure['scenario']}")
+            hit.cases.append(
+                {
+                    "case": f"{failure['feature']}::{failure['scenario']}",
+                    "reason": failure["reason"],
+                }
+            )
     excluded = [
         {
             "group": g.group,
+            "kind": g.kind,
             "requirement": g.requirement,
             "decision": g.decision,
+            **g.details,
             "count": len(g.cases),
             "cases": list(g.cases),
         }
@@ -212,22 +243,6 @@ def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], l
         if g.cases
     ]
     return left, excluded
-
-
-def not_sent(failures: list[dict], declared: list[Group]) -> list[dict]:
-    """Each client group that names any of ``failures``: its fields, count and cases. What such a
-    case needs was not sent by the client; with no design decision of Provisa's behind it, it stays
-    failed (REQ-2167, amended 2026-10-28) -- the group only says why, and its workaround."""
-    clients = [g for g in declared if g.kind == "client"]
-    for failure in failures:
-        hit = next((g for g in clients if g.matches(failure)), None)
-        if hit is not None:
-            hit.cases.append(f"{failure['feature']}::{failure['scenario']}")
-    return [
-        {"group": g.group, **g.details, "count": len(g.cases), "cases": list(g.cases)}
-        for g in clients
-        if g.cases
-    ]
 
 
 def adapted(ran: list[dict], declared: list[Group]) -> list[dict]:
@@ -245,6 +260,31 @@ def adapted(ran: list[dict], declared: list[Group]) -> list[dict]:
     return marks
 
 
+def _cited(group: dict) -> str:
+    """A group's decision, with the evidence a client or suite group cites."""
+    said = group["decision"]
+    if group.get("kind") == "client":
+        said += (
+            f" {group['client']}: {group['behavior']} Evidence: {group['evidence']} "
+            f"Workaround: {group['workaround']}"
+        )
+    elif group.get("kind") == "suite":
+        said += f" {group['suite']}: {group['evidence']}"
+    return said.replace("|", "/")
+
+
+def cases_lines(excluded: list[dict]) -> list[str]:
+    """Each case skipped by design with its recorded reason, per group."""
+    out: list[str] = []
+    for g in excluded:
+        out.append(f"<details><summary>{g['group']} ({g['count']})</summary>\n")
+        out.append("| Case | Reason |")
+        out.append("| --- | --- |")
+        out.extend(f"| {c['case']} | {c['reason'].replace('|', '/')} |" for c in g["cases"])
+        out.append("\n</details>\n")
+    return out
+
+
 def table(excluded: list[dict], requirement: bool = False) -> list[str]:
     """The by-design groups as a Markdown table: each with its count and decision, and, for the
     job's own summary (``requirement``), the requirement it cites. A published page names no
@@ -256,34 +296,14 @@ def table(excluded: list[dict], requirement: bool = False) -> list[str]:
             "| Skipped by design | Count | Requirement | Decision |",
             "| --- | --- | --- | --- |",
             *(
-                f"| {g['group']} | {g['count']} | {g['requirement']} "
-                f"| {g['decision'].replace('|', '/')} |"
+                f"| {g['group']} | {g['count']} | {g['requirement']} | {_cited(g)} |"
                 for g in excluded
             ),
         ]
     return [
         "| Skipped by design | Count | Decision |",
         "| --- | --- | --- |",
-        *(f"| {g['group']} | {g['count']} | {g['decision'].replace('|', '/')} |" for g in excluded),
-    ]
-
-
-def not_sent_table(groups: list[dict]) -> list[str]:
-    """The client groups as a Markdown table: why some failed cases failed."""
-    if not groups:
-        return ["None."]
-    return [
-        "| Group | Count | Client | What it does | Evidence | Workaround |",
-        "| --- | --- | --- | --- | --- | --- |",
-        *(
-            "| "
-            + " | ".join(
-                str(g[k]).replace("|", "/")
-                for k in ("group", "count", "client", "behavior", "evidence", "workaround")
-            )
-            + " |"
-            for g in groups
-        ),
+        *(f"| {g['group']} | {g['count']} | {_cited(g)} |" for g in excluded),
     ]
 
 

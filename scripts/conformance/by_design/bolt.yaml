@@ -34,3 +34,41 @@
   # failure.
   reason: "assert '(?P<a>[^']*?)000(?P<z>[^']*)' == '(?P=a)\\d{3}(?P=z)'|assert '(?P<d>P[^']*T\\d+)S' == '(?P=d)\\.\\d{9}S'"
   case: "test_temporal_types_example::test_(datetime|time|local_datetime|local_time|duration_example)$"
+
+# The driver's own suite skips these for every server, whatever it is (REQ-2167, amended): each is
+# skipped by design, citing the suite's own reason.
+- kind: suite
+  group: Encryption examples the suite skips
+  requirement: REQ-2167
+  suite: neo4j-python-driver integration tests
+  evidence: >-
+    The examples are marked skip in the driver's own tests, "re-enable when we can test with
+    encrypted=True on Docker", for every server.
+  case: "examples\\.test_config_(secure|trust)_example::test_example$"
+
+- kind: suite
+  group: Enterprise edition example the suite skips
+  requirement: REQ-2167
+  suite: neo4j-python-driver integration tests
+  evidence: >-
+    The example requires a Neo4j Enterprise server ("requires server edition 'enterprise'"), and
+    the suite skips it on any other.
+  case: "examples\\.test_database_selection_example::test_database_selection_example$"
+
+- kind: suite
+  group: Kerberos example the suite skips
+  requirement: REQ-2167
+  suite: neo4j-python-driver integration tests
+  evidence: >-
+    The example is marked skip in the driver's own tests, "Currently no way to test Kerberos
+    auth", for every server.
+  case: "examples\\.test_kerberos_auth_example::test_example$"
+
+- kind: suite
+  group: Service-unavailable example the suite skips
+  requirement: REQ-2167
+  suite: neo4j-python-driver integration tests
+  evidence: >-
+    The example is marked skip in the driver's own tests, "Fix better error messages for the
+    user. Be able to kill the server.", for every server.
+  case: "examples\\.test_service_unavailable_example::test_example$"

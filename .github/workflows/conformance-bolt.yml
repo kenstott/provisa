@@ -6,8 +6,9 @@ name: Conformance (Bolt)
 # pytest against Provisa's Bolt port as the examples' own role (bolt_examples).
 #
 # Each test is passed, skipped by design (a group of by_design/bolt.yaml citing its requirement
-# and decision) or failed (REQ-2167, amended 2026-10-28); a test the driver's suite skips is failed
-# unless a group names it. A failing test is data, written to the job summary and to the artifact
+# and decision) or failed (REQ-2167, amended 2026-10-28); a test the driver's suite skips for
+# every server is skipped by design in its suite group, citing the suite's reason, and failed if
+# no group names it. A failing test is data, written to the job summary and to the artifact
 # conformance-bolt.json (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md),
 # never a job failure. pytest's own line in the run step counts by pytest's outcomes; the three
 # counts are the Summarise step's. The job fails only when the Provisa instance did not start or no

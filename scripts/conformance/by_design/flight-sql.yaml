@@ -3,8 +3,9 @@
 # design (a group below citing its requirement and decision), or failed. A case whose setup
 # creates its table is adapted, not excluded: the table is declared in the job's fixture model
 # (flightsql/fixtures.py) and the case runs and counts, marked on the page with what its setup
-# became. A case whose client driver does not send what it needs -- it refuses before any
-# request, or drops what it was given -- stays failed: its client group says why.
+# became. A case whose client driver never sends what it needs -- it refuses before any request,
+# or drops what it was given -- is skipped by design (REQ-2167, amended), its client group citing
+# the driver's evidence and a workaround.
 
 - kind: adapted
   group: Type cases' tables
@@ -71,6 +72,7 @@
 
 - kind: client
   group: Bind with no Prepare
+  requirement: REQ-2167
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
     Refuses the Bind: "[Flight SQL Statement] must set IngestTargetTable before bulk ingestion"
@@ -86,6 +88,7 @@
 
 - kind: client
   group: Bind before Prepare
+  requirement: REQ-2167
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
     Accepts the Bind and keeps the values, then sends the statement it prepares without them:
@@ -119,6 +122,7 @@
 
 - kind: client
   group: GetStatistics not provided
+  requirement: REQ-2167
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
     Provides no GetStatistics: Flight SQL defines no statistics command, and the driver
@@ -133,6 +137,7 @@
 
 - kind: client
   group: GetObjects reports no constraints
+  requirement: REQ-2167
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
     Reports no table constraints in GetObjects: GetObjectsTables builds each table from
@@ -173,6 +178,7 @@
 
 - kind: client
   group: GetObjects reports no xdbc nullability
+  requirement: REQ-2167
   client: adbc-driver-flightsql 1.12.0 (the Go driver)
   behavior: >-
     Leaves every xdbc field it reads by metadata key -- xdbc_nullable and xdbc_is_nullable among

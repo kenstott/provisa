@@ -13,8 +13,9 @@
 For a suite run with pytest (``--junitxml``) against a Provisa endpoint -- a driver's own
 integration tests -- writes the JSON the conformance pages are filled from
 (scripts/conformance/fill_docs.py) and the same as Markdown for the job summary. Each test is
-passed, skipped by design or failed (REQ-2167, amended 2026-10-28); a test the suite skips is
-failed unless a by-design group names it. A failing test is data. The exit status is non-zero when
+passed, skipped by design or failed (REQ-2167, amended 2026-10-28); a test the suite skips, or
+whose client never sends what it needs, is skipped by design when a group names it, citing the
+suite's reason or the driver's evidence, and failed otherwise. A failing test is data. The exit status is non-zero when
 the run has no test, and, for a surface at its baseline (by_design.AT_BASELINE), when a test
 failed.
 
@@ -74,28 +75,24 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         if o["outcome"] == "failed"
     ]
     declared = by_design.groups(surface)
-    # REQ-2167 (amended 2026-10-27 and 2026-10-28): every case is passed, skipped by design (a
-    # group of by_design/<surface>.yaml citing its requirement and decision), or failed. A case
-    # the suite skipped did not pass: it is skipped by design when a group names the decision
-    # behind it (matched on the suite's own reason), and failed otherwise, saying the suite
-    # skipped it. A client group says why some failed cases failed -- the driver did not send
-    # what they need -- and they stay failed; an adapted case counts, marked with what its setup
+    # REQ-2167 (amended 2026-10-27 and 2026-10-28): every case is passed, skipped by design or
+    # failed. A case is skipped by design when a group of by_design/<surface>.yaml names it and
+    # cites its requirement: a design decision of Provisa's, a client library that never sends
+    # what the case needs (the driver's evidence), or a suite that skips the case for every server
+    # (its own reason). Each keeps its recorded reason; a case the suite skipped says so. Any
+    # other case that did not pass is failed. An adapted case counts, marked with what its setup
     # became.
-    failures, excluded = by_design.classify(failures + skipped, declared)
-    suite_skipped = {(c["feature"], c["scenario"]) for c in skipped}
-    failures = [
-        {**f, "reason": f"skipped by the suite: {f['reason']}"}
-        if (f["feature"], f["scenario"]) in suite_skipped
-        else f
-        for f in failures
+    unmet = failures + [
+        {**c, "reason": f"skipped by the suite: {c['reason']}", "skipped": True} for c in skipped
     ]
+    left, excluded = by_design.classify(unmet, declared)
+    failures = [{k: f[k] for k in ("feature", "scenario", "reason")} for f in left]
     return {
         "surface": surface,
         "suite": suite,
         "version": version,
         "tests": tests,
         **by_design.outcomes(passed, excluded, failures),
-        "not_sent_by_client": by_design.not_sent(failures, declared),
         "adapted": by_design.adapted(outcomes, declared),
     }
 
@@ -112,9 +109,7 @@ def markdown(doc: dict) -> str:
                 "",
                 *by_design.table(doc["by_design_groups"], requirement=True),
                 "",
-                "### Failed: not sent by the client",
-                "",
-                *by_design.not_sent_table(doc["not_sent_by_client"]),
+                *by_design.cases_lines(doc["by_design_groups"]),
                 "",
                 "### Adapted",
                 "",

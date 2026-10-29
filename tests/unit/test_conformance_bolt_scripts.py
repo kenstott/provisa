@@ -180,3 +180,50 @@ def test_a_run_in_two_calls_is_summarised_as_one(tmp_path):
     doc = junit_summary.summarise(f"{suite},{alone}", "bolt", "suite", "1", "tests")
     assert (doc["passed"], doc["ran"]) == (2, 3)
     assert [f["scenario"] for f in doc["failures"]] == ["test_does_not_leak"]
+
+
+def test_the_suites_own_skips_are_skipped_by_design_citing_its_reason(tmp_path):
+    """REQ-2167 (amended 2026-10-28): the five examples the driver's suite skips for every server
+    are skipped by design, each in its suite group citing REQ-2167 and the suite's own reason; a
+    suite group names only a skipped case, so the same example failing stays failed."""
+    import json as _json
+
+    junit = junit_summary
+    skips = [
+        ("test_config_secure_example", "test_example", "re-enable when we can test with encrypted"),
+        ("test_config_trust_example", "test_example", "re-enable when we can test with encrypted"),
+        (
+            "test_database_selection_example",
+            "test_database_selection_example",
+            "requires server edition 'enterprise', found 'community'",
+        ),
+        ("test_kerberos_auth_example", "test_example", "Currently no way to test Kerberos auth"),
+        ("test_service_unavailable_example", "test_example", "Fix better error messages"),
+    ]
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        "<testsuites><testsuite>"
+        + "".join(
+            f'<testcase classname="tests.integration.examples.{module}" name="{name}">'
+            f'<skipped message="{why}"/></testcase>'
+            for module, name, why in skips
+        )
+        + '<testcase classname="tests.integration.examples.test_kerberos_auth_example" '
+        'name="test_example"><failure message="boom">t</failure></testcase>'
+        "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "tests/integration")
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (6, 0, 5, 1)
+    assert doc["failures"][0]["reason"] == "boom"
+    groups = doc["by_design_groups"]
+    assert {g["kind"] for g in groups} == {"suite"}
+    assert {g["requirement"] for g in groups} == {"REQ-2167"}
+    assert sum(g["count"] for g in groups) == 5
+    kerberos = next(g for g in groups if g["group"] == "Kerberos example the suite skips")
+    assert kerberos["cases"] == [
+        {
+            "case": "tests.integration.examples.test_kerberos_auth_example::test_example",
+            "reason": "skipped by the suite: Currently no way to test Kerberos auth",
+        }
+    ]
+    _json.dumps(doc)  # the artifact is JSON

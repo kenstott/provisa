@@ -749,6 +749,8 @@ def markdown(doc: dict) -> str:
         "",
         *by_design.table(doc["by_design_groups"], requirement=True),
         "",
+        *by_design.cases_lines(doc["by_design_groups"]),
+        "",
         "### Adapted",
         "",
         *by_design.adapted_lines(doc["adapted"]),

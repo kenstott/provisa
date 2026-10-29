@@ -194,6 +194,8 @@ def markdown(summary: dict) -> str:
             "",
             *by_design.table(summary["by_design_groups"], requirement=True),
             "",
+            *by_design.cases_lines(summary["by_design_groups"]),
+            "",
         ]
     for section, failures in summary["failed_by_section"].items():
         lines.append(f"### {section} ({len(failures)} failed)")
