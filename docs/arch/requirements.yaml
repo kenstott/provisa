@@ -8940,7 +8940,13 @@
     OPENCYPHER CONFORMANCE:) A WHERE that follows an OPTIONAL MATCH is that match''s condition and never
     removes a row, including conjuncts that name only required variables: a row whose optional part fails
     it is kept with the optional variables null. A WHERE after a MATCH filters rows. A MATCH or OPTIONAL
-    MATCH may list several comma-separated patterns, which form one match step as consecutive clauses do.'
+    MATCH may list several comma-separated patterns, which form one match step as consecutive clauses do.
+    (Amended 2026-10-28, A BOUND VARIABLE KEEPS ITS LABELS:) A node variable keeps the labels it was bound
+    with: a later reference to it, in another MATCH or OPTIONAL MATCH, a WITH, a variable-length or shortestPath
+    pattern, or a WHERE pattern predicate, is the same node with the same labels, even when written bare,
+    as in `MATCH (n0:Terms) OPTIONAL MATCH (n0)-[*..2]->(m:Terms)`; it is never treated as an unlabelled
+    node. A pattern that no relationship can match answers no rows (null for an OPTIONAL MATCH), never an
+    error.'
   use_case: Cypher clause mapping enables graph queries to execute as governed SQL via Trino.
   code:
   - provisa/cypher/
