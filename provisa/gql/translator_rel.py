@@ -352,6 +352,15 @@ class _RelJoinMixin:  # mixin for _Translator
         )
         src_domain = self._domain_nodes.get(near) if near else None
         tgt_domain = self._domain_nodes.get(far) if far else None
+        # An end a WITH carries is that WITH's node: the union's end is held to it (MATCH (a:A)
+        # WHERE a.k = 1 WITH a MATCH (a)-->(b) reads only that a's relationships).
+        from provisa.gql.expr_context import graph_identity
+
+        carried = {
+            var: graph_identity(self, var)  # type: ignore[arg-type]
+            for var in (src_var, tgt_var)
+            if var is not None and var in self._cte_sources
+        }
         from_expr = self._build_all_rels_union(
             near,
             rel_var,
@@ -376,6 +385,15 @@ class _RelJoinMixin:  # mixin for _Translator
             self._var_table[tgt_var] = (tgt_var, None)
             self._passthrough_vars.add(tgt_var)
             self._all_rels_node_vars.add(tgt_var)
+        union = from_expr.alias_or_name
+        for var, identity in carried.items():
+            if identity is None:
+                continue
+            end = exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[exp.column(var, table=union), exp.Literal.string("$.id")],
+            )
+            self._held_end_conditions.append(exp.EQ(this=end, expression=identity))
         return from_expr
 
     def _resolve_typed_rel_candidates(

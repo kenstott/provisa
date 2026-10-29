@@ -252,3 +252,40 @@ def test_an_aggregate_a_returned_map_takes_orders_its_rows():
         "ORDER BY count(*) DESC, avg(n0.s) DESC",
         CypherLabelMap(nodes={}, relationships={}),
     )
+
+
+# --- a node a WITH carries, read on after it ----------------------------------------------------
+
+
+def test_a_label_test_of_a_node_a_with_carries(monkeypatch):
+    # WithWhere5 [2]
+    s = _session(monkeypatch, "CREATE (:TextNode {var: 'text'}), ({var: 'x'})")
+    rows = s.run("MATCH (i:TextNode) WITH i WHERE i.var > 'te' AND i:TextNode RETURN i.var")
+    assert rows == [{"i.var": "text"}]
+    assert s.run("MATCH (i) WITH i WHERE i:TextNode RETURN i.var") == [{"i.var": "text"}]
+
+
+def test_a_node_a_with_names_anew_is_its_row(monkeypatch):
+    # With1 [6]: WITH a AS a after an OPTIONAL MATCH; WITH i AS j renames it.
+    s = _session(monkeypatch, "CREATE (:A {num: 42}), (:B {num: 46})")
+    assert s.run("MATCH (i:A) WITH i AS j RETURN j.num") == [{"j.num": 42}]
+    rows = s.run("OPTIONAL MATCH (a:A) WITH a AS a MATCH (b:B) RETURN a, b")
+    assert _props(rows, "a") == [{"num": 42}] and _props(rows, "b") == [{"num": 46}]
+
+
+_TWO_A = "CREATE (:A {k: 1})-[:REL]->(:B), (:A {k: 2})-[:REL]->(:B), (:X)"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "MATCH (a:A) WHERE a.k = 1 WITH a MATCH (a)-->(b) RETURN a.k",
+        "MATCH (a:A) WHERE a.k = 1 WITH a MATCH (b)<--(a) RETURN a.k",
+        "MATCH (a:A) WHERE a.k = 1 WITH a MATCH (a)-->(b), (x:X) RETURN a.k",
+        # With1 [2], WithSkipLimit2 [3]: the carried rows are joined before a hop reads them.
+        "MATCH (a:A) WHERE a.k = 1 WITH a MATCH (x:X), (a)-->(b) RETURN a.k",
+    ],
+)
+def test_a_hop_of_no_type_from_a_node_a_with_carries_starts_at_that_node(monkeypatch, query):
+    s = _session(monkeypatch, _TWO_A)
+    assert s.run(query) == [{"a.k": 1}]

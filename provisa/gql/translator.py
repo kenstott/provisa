@@ -1055,7 +1055,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if carried in read:
             return joins
         table = exp.Table(this=exp.Identifier(this=carried))
-        return [*joins, {"table": table, "on": None, "join_type": "CROSS"}]
+        beside = {"table": table, "on": None, "join_type": "CROSS"}
+        # Set before the first join whose condition reads its rows ((x:X), (a)-->(b) with a
+        # carried), which an engine binds only once they are joined.
+        first = next(
+            (
+                n
+                for n, j in enumerate(joins)
+                if j.get("on") is not None
+                and any(c.table == carried for c in j["on"].find_all(exp.Column))
+            ),
+            len(joins),
+        )
+        return [*joins[:first], beside, *joins[first:]]
 
     def _build_final_from(
         self,
@@ -1961,14 +1973,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True)
                     )
                     continue
-                tbl_col = exp.Column(
-                    this=exp.Star(),
-                    table=exp.Identifier(this=held_in),
-                )
-                if alias:
-                    exprs.append(exp.alias_(tbl_col, alias))
-                else:
-                    exprs.append(tbl_col)
+                # The node's row goes on as its columns: a new name (WITH a AS b) is the
+                # variable's (_update_var_table_for_with), never an alias of the star, which an
+                # engine reads as one column.
+                exprs.append(exp.Column(this=exp.Star(), table=exp.Identifier(this=held_in)))
             else:
                 parsed = self._parse_expr(expr)
                 if alias:

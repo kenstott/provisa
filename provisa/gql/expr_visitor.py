@@ -696,7 +696,14 @@ class ExprLowering:
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
-        return self._ctx.resolve_label_predicate(self.lower(node.operand), node.labels)
+        # A variable's label test is resolved by its name, wherever its row is held: lowered, a
+        # node a WITH carries is its CTE's row, which names no variable.
+        operand = (
+            exp.column(node.operand.name)
+            if isinstance(node.operand, Variable)
+            else self.lower(node.operand)
+        )
+        return self._ctx.resolve_label_predicate(operand, node.labels)
 
     # -- operators --------------------------------------------------------- #
 
