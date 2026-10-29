@@ -91473,7 +91473,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     queued. Instead, whenever someone is working in the glossary they can scan any library document again,
     or add and scan a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold
     yet and the ones that match or duplicate existing terms and synonyms, each with its passages, enough
-    to decide whether to change anything. A refreshed URL document is simply scanned from its current content.'
+    to decide whether to change anything. A refreshed URL document is simply scanned from its current content.
+    (Amended 2026-10-28, REFRESH AND NEW VERSIONS:) The Admin Reference library page keeps documents current:
+    Refresh on a URL document fetches it again and replaces its content with what the URL serves now; Upload
+    new version on a file document replaces its content with the uploaded file. The document keeps its place,
+    status and domains, and shows when it was last refreshed or replaced. Earlier content is not kept; citations
+    already made keep their quoted text, and later scans and answers read the current content.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
