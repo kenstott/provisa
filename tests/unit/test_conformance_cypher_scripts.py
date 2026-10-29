@@ -719,9 +719,31 @@ def test_a_procedure_s_statement_answers_its_rows_for_the_arguments(proc, args, 
     assert duckdb.execute(sql, args).fetchall() == rows
 
 
-def test_a_void_procedure_is_no_command(procedure_scenarios):
-    with pytest.raises(procedures.NotACommand, match="VOID"):
-        procedures.command(tck.procedure(procedure_scenarios[3]))
+def test_a_void_procedure_is_a_void_command(procedure_scenarios):
+    # REQ-2001 (amended 2026-10-28): it declares no outputs, so a call answers no columns.
+    import duckdb
+    import sqlglot
+
+    from provisa.core.models import Function
+    from provisa.core.statement_declaration import declared
+    from provisa.core.void_command import is_void
+
+    entry = procedures.command(tck.procedure(procedure_scenarios[3]))
+    assert entry["output_columns"] == []
+    assert entry["language_bindings"] == {"cypher": {"name": "test.doNothing"}}
+    function = Function(**entry)
+    assert function.kind == "query" and is_void(function.model_dump())
+    found = declared(entry["name"], entry["binding"], [])
+    assert duckdb.execute(sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0])
+
+
+def test_a_void_procedure_s_statement_uses_each_argument():
+    from provisa.core.models import Function
+
+    proc = procedures.Procedure("test.doNothing", (("in", "STRING"),), (), ())
+    entry = procedures.command(proc)
+    assert entry["output_columns"] == []
+    Function(**entry)  # every {{name}} is a declared argument and every argument is used
 
 
 def test_a_procedure_scenario_puts_the_model_holding_its_command(
@@ -747,6 +769,7 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
         ),
         "CALL test.my.proc": (400, {"detail": "unknown command"}),
         "CALL test.my.proc(null)": (200, {"columns": ["out"], "rows": [["nix"]]}),
+        "CALL test.doNothing()": (200, {"columns": [], "rows": []}),
         "CALL test.my.proc('Stefan', 2)": (
             200,
             {"columns": ["city", "country_code"], "rows": [["München", 49]]},
@@ -766,23 +789,22 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
         ("passed", tck.AS_A_COMMAND),
         ("passed", ""),
         ("passed", tck.AS_A_COMMAND),
-        (
-            "failed",
-            "its test procedure is no command: the procedure test.doNothing is VOID (it has no "
-            "outputs), which no command expresses: a command answers rows of its columns",
-        ),
+        # REQ-2001: a VOID procedure is a VOID command, its call answering no columns.
+        ("passed", tck.AS_A_COMMAND),
         ("passed", tck.AS_A_COMMAND),
     ]
     # The model is put once per procedure declared, its other blocks as it booted.
     assert [[f["language_bindings"]["cypher"]["name"] for f in m["functions"]] for m in put] == [
         ["test.my.proc"],
         ["test.my.proc"],
+        ["test.doNothing"],
     ]
-    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1]
+    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1, 0]
+    assert put[2]["functions"][0]["output_columns"] == []
     assert all(m["domains"] == [{"id": "tck_empty"}] for m in put)
     doc = tck.report(list(outcomes.values()), "2024.3")
     (group,) = doc["adapted"]
-    assert (group["group"], len(group["cases"])) == ("Test procedures", 3)
+    assert (group["group"], len(group["cases"])) == ("Test procedures", 4)
 
 
 def test_a_procedure_with_no_model_to_declare_it_in_is_a_failure(procedure_scenarios, monkeypatch):
