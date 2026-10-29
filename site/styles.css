@@ -619,6 +619,17 @@ code:not(pre code) {
 
 /* A quick start's commands, in the hero's terminal frame. */
 .doc-body .hero-terminal { margin: 12px 0 28px; max-width: none; box-shadow: none; }
+.doc-aside {
+  margin: 32px 0; padding: 18px 22px; border-radius: var(--radius);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  background: var(--surface);
+}
+.doc-aside-kicker {
+  margin: 0 0 8px !important; font-family: var(--mono); font-size: .72rem;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--accent) !important;
+}
+.doc-body .doc-aside p { font-size: .95rem; }
+.doc-body .doc-aside p:last-child { margin-bottom: 0; }
 .doc-next { margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 14px 28px; }
 
 /* ── Comparison table ──────────────────────────────── */
