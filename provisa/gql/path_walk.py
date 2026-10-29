@@ -18,7 +18,9 @@ of ``(src_id, cur_id, hops, trail)`` over the relation's ``(rel_id, type, from_i
 ends joined by their graph identity; an end with no label is drawn from the union of every
 label's nodes, as a match of any node is. A relationship of the model's would be a hop the
 relation does not hold: a walk the model's relationships can take is refused as on the model
-graph.
+graph. A walk whose path or relationship variable the statement names also carries its trail
+(REQ-751): the nodes it passed and the relationships it took, in order, each as an answer gives
+it, which RETURN p, RETURN r, relationships(p) and nodes(p) read.
 
 Mixed into _Translator beside PathFunctionsMixin, which routes a path function with an
 unlabelled end here.
@@ -28,10 +30,13 @@ unlabelled end here.
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Iterator
 from typing import Any
 
 import sqlglot.expressions as exp
 
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Variable, walk
 from provisa.gql.ir import MatchClause, NodePattern, PathFunction, RelPattern
 from provisa.gql.label_map import GRAPH_ID, CypherLabelMap, NodeMapping, SessionWalk
 
@@ -170,8 +175,9 @@ def _node_object(nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPr
 
     props: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for prop in sorted(nm.properties):
-        phys = nm.physical_properties.get(prop) or nm.properties[prop]
-        props += [exp.Literal.string(prop), _col(phys)]
+        # As a node union's arm reads it (translator_union): its physical column, null with none.
+        phys = nm.physical_properties.get(prop)
+        props += [exp.Literal.string(prop), _col(phys) if phys else exp.null()]
     return exp.Anonymous(
         this="JSON_OBJECT",
         expressions=[
@@ -198,6 +204,40 @@ def _appended(trail: exp.Expression, item: exp.Expression) -> exp.Expression:  #
     return exp.ArrayConcat(this=trail, expressions=[exp.Array(expressions=[item])])
 
 
+def _expressions(value: object) -> Iterator[CypherExpr]:
+    """Every expression a statement's IR holds, at any depth."""
+    if isinstance(value, CypherExpr):
+        yield from walk(value)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        for f in dataclasses.fields(value):
+            yield from _expressions(getattr(value, f.name))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _expressions(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _expressions(item)
+
+
+def reads_trail(statement: object, var: str) -> bool:
+    """Whether ``statement`` reads more of the walk ``var`` names than its length: its nodes or
+    relationships, which only then does the walk carry (a walk's cost is its relationships
+    table's, REQ-348)."""
+    refs = lengths = 0
+    for e in _expressions(statement):
+        if isinstance(e, Variable) and e.name == var:
+            refs += 1
+        elif (
+            isinstance(e, FunctionCall)
+            and e.name.lower() == "length"
+            and len(e.args) == 1
+            and isinstance(e.args[0], Variable)
+            and e.args[0].name == var
+        ):
+            lengths += 1
+    return refs > lengths
+
+
 class SessionWalkMixin:  # REQ-348
     """Mixin for _Translator: a path function with an unlabelled end, walked over the session's
     relationships."""
@@ -212,6 +252,7 @@ class SessionWalkMixin:  # REQ-348
     _cut_checks: list
     _varlen_rel_vars: dict
     _graph_id_unions: set
+    _ast: Any  # the statement translated (gql.ir.CypherAST)
     # path or relationship variable -> its walk's (nodes, relationships) lists, as RETURN names them
     _walk_trails: dict
 
@@ -405,9 +446,12 @@ class SessionWalkMixin:  # REQ-348
 
         cte_name = f"_walk_{src_alias.lower()}"
         bound = max_hops + 1 if by_limit else max_hops
-        # REQ-751: a walk whose relationships or path the statement names carries them, in the
+        # REQ-751: a walk whose relationships or path the statement reads carries them, in the
         # order it took them, with every node it passed.
-        named = bool(clause.variable or (rel is not None and rel.variable))
+        named = any(
+            v is not None and reads_trail(self._ast, v)
+            for v in (clause.variable, rel.variable if rel is not None else None)
+        )
         nodes = self._node_objects(walk, self._start_labels(src_node)) if named else None
         objects = (nodes, self._rel_properties(walk, types)) if nodes is not None else None
         hops = _hops(walk, types, undirected, objects)
@@ -525,14 +569,17 @@ class SessionWalkMixin:  # REQ-348
                 }
             )
 
+        trail = (_col("nodes", "_t"), _col("rels", "_t"))
         if rel is not None and rel.variable:
             # The walk's relationships, in the order it took them (REQ-751).
             self._varlen_rel_vars.setdefault(rel.variable, clause.variable or "")
-            self._walk_trails[rel.variable] = (_col("nodes", "_t"), _col("rels", "_t"))
+            if nodes is not None:
+                self._walk_trails[rel.variable] = trail
         if clause.variable:
             self._path_vars[clause.variable] = (src_node.variable, tgt_node.variable, True)
-            # The path: every node and relationship of the walk's trail.
-            self._walk_trails[clause.variable] = (_col("nodes", "_t"), _col("rels", "_t"))
+            if nodes is not None:
+                # The path: every node and relationship of the walk's trail.
+                self._walk_trails[clause.variable] = trail
         if func != "allpaths":
             self._shortestpath_hops_col = _col("hops", "_t")
         self._shortestpath_is_all = func != "shortestpath"
