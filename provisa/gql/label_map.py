@@ -86,6 +86,10 @@ class NodeMapping:
     #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
     #: and its _id hold every one. Empty for a key of one column (``id_column``).
     key_columns: tuple[str, ...] = ()
+    #: Whether a returned node carries its key as the property ``_id`` (select_builder): a model
+    #: table's row does; a node only a session holds (provisa.ephemeral.read) has no key of the
+    #: model's, and openCypher's node has no such property (REQ-2176).
+    key_published: bool = True
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its

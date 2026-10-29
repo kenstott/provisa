@@ -122,6 +122,9 @@ def overlay(model: Any, session: TempSession) -> Any:
             properties=properties,
             physical_properties={prop: alias for prop, alias in properties.items()},
             property_types=tuple((prop, types[alias]) for prop, alias in properties.items()),
+            # A label only the session's own nodes carry has no model key to publish as ``_id``;
+            # a model node it tags is found again by its graph identity there (write.py).
+            key_published=held is not None or any(t != key for t in resolved.tagged),
         )
         if held is None:
             nodes_by_table.setdefault(key, [key])

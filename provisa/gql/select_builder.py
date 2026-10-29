@@ -106,7 +106,7 @@ def node_key(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: 
 
 def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """The properties of the node ``alias`` reads, as a returned node carries them: each one the
-    label publishes, and its ``_id``."""
+    label publishes, and its ``_id`` when it publishes its key (NodeMapping.key_published)."""
     exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for prop_name, col_name in nm.properties.items():
         exprs.append(exp.Literal.string(prop_name))
@@ -115,7 +115,8 @@ def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyri
                 this=exp.Identifier(this=col_name, quoted=True), table=exp.Identifier(this=alias)
             )
         )
-    exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
+    if nm.key_published:
+        exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
     return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
 
