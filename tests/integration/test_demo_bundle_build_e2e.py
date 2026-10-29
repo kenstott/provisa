@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from provisa.core.demo_bundles import DEMO_FORMAT
 from tests.integration.test_demo_sandboxes_e2e import _demo
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
@@ -109,7 +110,7 @@ def test_a_bundle_holds_its_demo_and_the_seed_landed_from_it(tmp_path):
     assert manifest == {
         "commit": commit,
         "demo": "alpha",
-        "format": 2,
+        "format": DEMO_FORMAT,  # the format this Provisa builds and reads
         "requires_provisa": "0.1.0",
         "version": bundle.name.removeprefix("alpha-").removesuffix(".tar.gz"),
     }
