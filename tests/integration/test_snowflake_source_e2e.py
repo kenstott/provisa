@@ -37,9 +37,22 @@ _SCHEMA = "PUBLIC"
 _TABLE = "WIDGETS"
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warehouse_left_as_found():
+    """The module's statements resume the Snowflake warehouse if it is suspended; it is suspended
+    again after the module however it ends, unless it was running before (REQ-254). Module-scoped
+    autouse: its state is read before, and the suspend runs after, every other fixture here."""
+    from tests.integration.snowflake_warehouse import warehouse_in_use
+
+    with warehouse_in_use(os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")):
+        yield
+
+
 @pytest.fixture
 def seeded():
     import snowflake.connector as sf
+
+    from tests.integration.live_teardown import run_every
 
     conn = sf.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
@@ -47,21 +60,29 @@ def seeded():
         password=os.environ["SNOWFLAKE_PASSWORD"],
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
     )
-    cur = conn.cursor()
-    cur.execute(f"CREATE DATABASE IF NOT EXISTS {_DB}")
-    cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_DB}.{_SCHEMA}")
-    cur.execute(f"CREATE OR REPLACE TABLE {_DB}.{_SCHEMA}.{_TABLE} (id NUMBER, name STRING)")
-    cur.execute(f"INSERT INTO {_DB}.{_SCHEMA}.{_TABLE} VALUES (1,'a'),(2,'b'),(3,'c')")
-    cur.close()
     try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"CREATE DATABASE IF NOT EXISTS {_DB}")
+            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_DB}.{_SCHEMA}")
+            cur.execute(
+                f"CREATE OR REPLACE TABLE {_DB}.{_SCHEMA}.{_TABLE} (id NUMBER, name STRING)"
+            )
+            cur.execute(f"INSERT INTO {_DB}.{_SCHEMA}.{_TABLE} VALUES (1,'a'),(2,'b'),(3,'c')")
+        finally:
+            cur.close()
         yield f"{_DB}.{_SCHEMA}.{_TABLE}"
     finally:
-        cur = conn.cursor()
         # Drop the whole database the fixture created (cascades schema + table) so runs
-        # never leak databases into the account.
-        cur.execute(f"DROP DATABASE IF EXISTS {_DB}")
-        cur.close()
-        conn.close()
+        # never leak databases into the account -- also when the seed itself failed.
+        def drop() -> None:
+            cur = conn.cursor()
+            try:
+                cur.execute(f"DROP DATABASE IF EXISTS {_DB}")
+            finally:
+                cur.close()
+
+        run_every([(f"drop database {_DB}", drop), ("close the connection", conn.close)])
 
 
 @pytest.mark.asyncio

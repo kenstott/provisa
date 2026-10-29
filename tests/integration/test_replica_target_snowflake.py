@@ -60,6 +60,17 @@ def _rows(n: int, tag: str) -> list[dict]:
     ]
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warehouse_left_as_found():
+    """The module's statements resume the Snowflake warehouse if it is suspended; it is suspended
+    again after the module however it ends, unless it was running before (REQ-254). Module-scoped
+    autouse: its state is read before, and the suspend runs after, every other fixture here."""
+    from tests.integration.snowflake_warehouse import warehouse_in_use
+
+    with warehouse_in_use(os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")):
+        yield
+
+
 @pytest.fixture
 def account():
     import snowflake.connector as sf

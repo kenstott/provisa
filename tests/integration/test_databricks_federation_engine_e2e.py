@@ -45,14 +45,18 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context  
 from provisa.core.catalog import _to_catalog_name  # noqa: E402
 from provisa.federation.databricks_runtime import DatabricksFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
+from tests.integration.databricks_warehouse import warehouse_running  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _warehouse_awake():
-    """A suspended serverless warehouse rejects OpenSession outright — wake it first."""
-    ensure_warehouse_running()
+    """A suspended serverless warehouse rejects OpenSession outright -- wake it before anything in
+    this module connects, and stop it again after the module however it ends, if this module
+    started it (REQ-254). Module-scoped autouse: set up before, and torn down after, every other
+    fixture of the module, so the stop never cuts a connection still in use."""
+    with warehouse_running():
+        yield
 
 
 _ADMIN = {

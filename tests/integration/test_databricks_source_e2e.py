@@ -31,13 +31,17 @@ _HAVE_CREDS = all(os.environ.get(v) for v in _ENV)
 pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=f"not set: {unset(*_ENV)}"))
 
 from provisa.executor.pool import SourcePool  # noqa: E402
-from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
+from tests.integration.databricks_warehouse import warehouse_running  # noqa: E402
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _warehouse_awake():
-    """A suspended serverless warehouse rejects OpenSession outright — wake it first."""
-    ensure_warehouse_running()
+    """A suspended serverless warehouse rejects OpenSession outright -- wake it before anything in
+    this module connects, and stop it again after the module however it ends, if this module
+    started it (REQ-254). Module-scoped autouse: set up before, and torn down after, every other
+    fixture of the module, so the stop never cuts a connection still in use."""
+    with warehouse_running():
+        yield
 
 
 _SID = "dbx_src_e2e"

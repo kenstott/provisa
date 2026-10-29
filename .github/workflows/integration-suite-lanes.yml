@@ -515,6 +515,7 @@ jobs:
                    DATABRICKS_TOKEN GOOGLE_CLOUD_PROJECT GOOGLE_APPLICATION_CREDENTIALS_JSON \
                    BIGQUERY_LOCATION BIGQUERY_TEST_GCS_BUCKET GSHEETS_TEST_SHEET_ID \
                    FABRIC_SQL_SERVER FABRIC_DATABASE FABRIC_WORKSPACE_ID \
+                   FABRIC_CAPACITY_NAME FABRIC_RESOURCE_GROUP \
                    REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
                    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
                    SINGLESTORE_HOST SINGLESTORE_PORT SINGLESTORE_USERNAME SINGLESTORE_PASSWORD \
@@ -563,6 +564,18 @@ jobs:
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
+
+      # REQ-254: no run leaves the Fabric capacity (billable compute) running. Each Fabric test
+      # pauses what it resumed in its own teardown, which does not run when the lane dies or the
+      # job is cut short (timeout, cancel). Its state is READ here: paused is done, Active is
+      # suspended, a transition is waited out; only a capacity that does not end paused fails the
+      # step, and it says so. The same as the core UI lane's (scripts/ci/lanes/ui-core-after.sh).
+      - name: Leave the Fabric capacity paused
+        if: always()
+        run: |
+          uv run python -c \
+            "from tests.integration.fabric_capacity import ensure_capacity_paused as p; print('the Fabric capacity is', p())" \
+            || { echo "::error::the Fabric capacity could not be confirmed paused: check it, it may be billing"; exit 1; }
 
       - name: Cache Trino plugins
         if: always()

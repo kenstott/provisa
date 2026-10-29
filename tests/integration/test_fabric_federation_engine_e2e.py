@@ -106,32 +106,44 @@ def _compile(rls=None, schema=_SCH):
 
 @pytest.fixture(scope="module")
 def runtime():
-    rt = MssqlWarehouseRuntime(
-        server=os.environ["FABRIC_SQL_SERVER"], database=_DB, engine_name="fabric"
-    )
-    try:
-        yield rt
-    finally:
-        # Drop the object then the schema land_table/attach auto-created — dropping only
-        # the object would leak the schema. T-SQL requires an empty schema before DROP SCHEMA.
-        from tests.integration.fabric_capacity import suspend_capacity
+    """The Fabric engine on the lane's warehouse, its capacity up; the schemas the tests create
+    dropped and the capacity paused after (REQ-254), however setup or the tests end.
 
+    The runtime resumes the capacity on connect (REQ-1775), so it is built inside
+    ``capacity_resumed()``: a connect that fails still pauses what it resumed."""
+    from tests.integration.fabric_capacity import capacity_resumed
+    from tests.integration.live_teardown import run_every
+
+    with capacity_resumed():
+        rt = MssqlWarehouseRuntime(
+            server=os.environ["FABRIC_SQL_SERVER"], database=_DB, engine_name="fabric"
+        )
         try:
-            for sch, obj in ((_SCH, "TABLE"), ("provisa_ext_it", "VIEW")):
-                cur = rt.connection.cursor()
-                try:
-                    cur.execute(f"DROP {obj} IF EXISTS [{sch}].[orders]")
-                    cur.execute(f"DROP SCHEMA IF EXISTS [{sch}]")
-                    rt.connection.commit()
-                except Exception:  # noqa: BLE001 — best-effort teardown
-                    pass
-                finally:
-                    cur.close()
-            rt.close()
+            yield rt
         finally:
-            # Pause the capacity the engine resumed on connect (REQ-1775) so the test stops
-            # billing — even when the cleanup above fails.
-            suspend_capacity()
+            # Drop the object then the schema land_table/attach auto-created -- dropping only
+            # the object would leak the schema. T-SQL requires an empty schema before DROP SCHEMA.
+            # Every drop is attempted, then any that failed is raised (never swallowed).
+            run_every(
+                [
+                    (f"drop {obj} [{sch}].[orders] and schema [{sch}]", _dropper(rt, sch, obj))
+                    for sch, obj in ((_SCH, "TABLE"), ("provisa_ext_it", "VIEW"))
+                ]
+                + [("close the runtime", rt.close)]
+            )
+
+
+def _dropper(rt, sch: str, obj: str):
+    def drop() -> None:
+        cur = rt.connection.cursor()
+        try:
+            cur.execute(f"DROP {obj} IF EXISTS [{sch}].[orders]")
+            cur.execute(f"DROP SCHEMA IF EXISTS [{sch}]")
+            rt.connection.commit()
+        finally:
+            cur.close()
+
+    return drop
 
 
 @pytest.mark.asyncio

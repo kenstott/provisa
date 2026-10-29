@@ -84,6 +84,17 @@ def _rows(conn, sql: str) -> list[dict]:
         cur.close()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warehouse_left_as_found():
+    """The module's statements resume the Snowflake warehouse if it is suspended; it is suspended
+    again after the module however it ends, unless it was running before (REQ-254). Module-scoped
+    autouse: its state is read before, and the suspend runs after, every other fixture here."""
+    from tests.integration.snowflake_warehouse import warehouse_in_use
+
+    with warehouse_in_use(_credentials()["SNOWFLAKE_WAREHOUSE"]):
+        yield
+
+
 @pytest.fixture(scope="module")
 def engine_database():
     """A database of the run's own for the engine to land in, dropped with what was shared."""
@@ -94,13 +105,20 @@ def engine_database():
         _rows(conn, f"CREATE DATABASE {database}")
         yield creds, database
     finally:
-        for stmt in (
-            f'DROP LISTING IF EXISTS "{LISTING}"',
-            f'DROP SHARE IF EXISTS "{SHARE}"',
-            f"DROP DATABASE IF EXISTS {database}",
-        ):
-            _rows(conn, stmt)
-        conn.close()
+        from tests.integration.live_teardown import run_every
+
+        # Every drop is attempted, then any that failed is raised (REQ-254).
+        run_every(
+            [
+                (stmt, lambda stmt=stmt: _rows(conn, stmt))
+                for stmt in (
+                    f'DROP LISTING IF EXISTS "{LISTING}"',
+                    f'DROP SHARE IF EXISTS "{SHARE}"',
+                    f"DROP DATABASE IF EXISTS {database}",
+                )
+            ]
+            + [("close the connection", conn.close)]
+        )
 
 
 @pytest.fixture(scope="module")

@@ -38,6 +38,7 @@ skip is never reported as a pass.
 from __future__ import annotations
 
 import os
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -164,6 +165,11 @@ class Lane:
     fetch: Callable[[Any, str], list]  # (runtime, sql) -> list[dict|tuple]
     teardown: Callable[[Any], None]
     source_id: str = ""
+    # The billable compute the lane runs on (REQ-254): entered before connect, so connect, seed,
+    # query and teardown all run inside it, and it stops or pauses what it started however they
+    # end. None to manage for the in-process reference and for BigQuery (serverless, nothing runs
+    # between queries).
+    compute: Callable[[], AbstractContextManager[None]] = nullcontext
     catalog: str | None = None
     extra_env: tuple[str, ...] = field(default_factory=tuple)
     # Physical schema the golden rows are seeded into. Warehouses that share a real
@@ -232,6 +238,17 @@ _DUCKDB = Lane(
 
 
 # ---- Snowflake --------------------------------------------------------------
+def _sf_warehouse() -> str:
+    return os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
+
+
+def _sf_compute():
+    from tests.integration.snowflake_warehouse import warehouse_in_use
+
+    # Suspended again after the lane if the lane's statements resumed it (REQ-254).
+    return warehouse_in_use(_sf_warehouse())
+
+
 def _sf_connect():
     from urllib.parse import quote
 
@@ -240,7 +257,7 @@ def _sf_connect():
     acct = os.environ["SNOWFLAKE_ACCOUNT"]
     user = quote(os.environ["SNOWFLAKE_USER"], safe="")
     pw = quote(os.environ["SNOWFLAKE_PASSWORD"], safe="")
-    wh = os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
+    wh = _sf_warehouse()
     cat = "parity_sf"
     return SnowflakeFederationRuntime(
         url=f"snowflake://{user}:{pw}@{acct}/{cat}/{_SCHEMA}?warehouse={wh}"
@@ -264,12 +281,16 @@ def _sf_seed(rt):
 
 
 def _sf_teardown(rt):
-    cur = rt.connection.cursor()
-    try:
-        cur.execute('DROP DATABASE IF EXISTS "parity_sf"')
-    finally:
-        cur.close()
-    rt.close()
+    from tests.integration.live_teardown import run_every
+
+    def drop() -> None:
+        cur = rt.connection.cursor()
+        try:
+            cur.execute('DROP DATABASE IF EXISTS "parity_sf"')
+        finally:
+            cur.close()
+
+    run_every([('drop database "parity_sf"', drop), ("close the runtime", rt.close)])
 
 
 _SNOWFLAKE = Lane(
@@ -285,16 +306,21 @@ _SNOWFLAKE = Lane(
     seed=_sf_seed,
     fetch=lambda rt, sql: rt.run_arrow(sql).to_pylist(),
     teardown=_sf_teardown,
+    compute=_sf_compute,
 )
 
 
 # ---- Databricks -------------------------------------------------------------
+def _dbx_compute():
+    from tests.integration.databricks_warehouse import warehouse_running
+
+    # A suspended serverless warehouse rejects OpenSession outright: woken before connect, and
+    # stopped again after the lane if the lane started it (REQ-254).
+    return warehouse_running()
+
+
 def _dbx_connect():
     from provisa.federation.databricks_runtime import DatabricksFederationRuntime
-    from tests.integration.databricks_warehouse import ensure_warehouse_running
-
-    # A suspended serverless warehouse rejects OpenSession outright; wake it before connecting.
-    ensure_warehouse_running()
 
     return DatabricksFederationRuntime(
         url=(
@@ -319,13 +345,18 @@ async def _dbx_seed(rt):
 
 def _dbx_teardown(rt):
     from provisa.core.catalog import _to_catalog_name
+    from tests.integration.live_teardown import run_every
 
-    cur = rt.connection.cursor()
-    try:
-        cur.execute(f"DROP CATALOG IF EXISTS `{_to_catalog_name('parity-dbx')}` CASCADE")
-    finally:
-        cur.close()
-    rt.close()
+    catalog = _to_catalog_name("parity-dbx")
+
+    def drop() -> None:
+        cur = rt.connection.cursor()
+        try:
+            cur.execute(f"DROP CATALOG IF EXISTS `{catalog}` CASCADE")
+        finally:
+            cur.close()
+
+    run_every([(f"drop catalog {catalog}", drop), ("close the runtime", rt.close)])
 
 
 _DATABRICKS = Lane(
@@ -341,6 +372,7 @@ _DATABRICKS = Lane(
     seed=_dbx_seed,
     fetch=lambda rt, sql: rt.run_arrow(sql).to_pylist(),
     teardown=_dbx_teardown,
+    compute=_dbx_compute,
 )
 
 
@@ -392,6 +424,14 @@ _BIGQUERY = Lane(
 _FAB_SCH = "provisa_parity_it"
 
 
+def _fab_compute():
+    from tests.integration.fabric_capacity import capacity_resumed
+
+    # The runtime resumes the capacity on connect (REQ-1775), so the connect runs inside this:
+    # paused again after the lane, however it ends, if the lane resumed it (REQ-254).
+    return capacity_resumed()
+
+
 def _fab_connect():
     from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
 
@@ -413,9 +453,9 @@ async def _fab_seed(rt):
 
 
 def _fab_teardown(rt):
-    from tests.integration.fabric_capacity import suspend_capacity
+    from tests.integration.live_teardown import run_every
 
-    try:
+    def drop() -> None:
         cur = rt.connection.cursor()
         try:
             cur.execute(f"DROP TABLE IF EXISTS [{_FAB_SCH}].[{_TABLE}]")
@@ -423,11 +463,9 @@ def _fab_teardown(rt):
             rt.connection.commit()
         finally:
             cur.close()
-        rt.close()
-    finally:
-        # Pause the capacity the engine resumed on connect (REQ-1775) so the lane stops billing,
-        # even when the cleanup above fails.
-        suspend_capacity()
+
+    # The capacity is paused by the lane's compute (_fab_compute), after this.
+    run_every([(f"drop schema {_FAB_SCH}", drop), ("close the runtime", rt.close)])
 
 
 _FABRIC = Lane(
@@ -443,6 +481,7 @@ _FABRIC = Lane(
     seed=_fab_seed,
     fetch=lambda rt, sql: rt.run_arrow(sql).to_pylist(),
     teardown=_fab_teardown,
+    compute=_fab_compute,
     schema=_FAB_SCH,  # isolated, droppable schema in the shared Fabric warehouse
 )
 
@@ -451,18 +490,22 @@ _LANES = [_DUCKDB, _SNOWFLAKE, _DATABRICKS, _BIGQUERY, _FABRIC]
 
 
 async def _run_lane(lane: Lane) -> list[tuple]:
-    """Connect -> seed -> execute governed SQL -> return canonicalized rows. Always tears down."""
+    """Connect -> seed -> execute governed SQL -> return canonicalized rows. Always tears down.
+
+    All of it runs inside the lane's compute (REQ-254), so a connect, seed or query that fails
+    still stops or pauses the warehouse or capacity the lane started."""
     import inspect
 
-    rt = lane.connect()
-    try:
-        seeded = lane.seed(rt)
-        if inspect.isawaitable(seeded):
-            await seeded
-        rows = lane.fetch(rt, lane.compile_governed())
-        return sorted(_canon(r) for r in rows)
-    finally:
-        lane.teardown(rt)
+    with lane.compute():
+        rt = lane.connect()
+        try:
+            seeded = lane.seed(rt)
+            if inspect.isawaitable(seeded):
+                await seeded
+            rows = lane.fetch(rt, lane.compile_governed())
+            return sorted(_canon(r) for r in rows)
+        finally:
+            lane.teardown(rt)
 
 
 # --- the parity suite --------------------------------------------------------
