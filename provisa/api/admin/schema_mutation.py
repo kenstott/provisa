@@ -4054,13 +4054,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         raise TableSaveRefused(_glob_refusal)
                     from provisa.api.app import state as _app_state
 
-                    if _app_state.source_types.get(model.source_id) == "athena":
-                        # REQ-1981: its format, from the source, decides the writes it takes.
-                        from provisa.api.admin.introspect import athena_table_format
+                    # REQ-1981: its format, from the source, decides the writes it takes.
+                    from provisa.api.admin.introspect import record_table_format
 
-                        model.table_format = await athena_table_format(
-                            model.source_id, model.schema_name, model.table_name
-                        )
+                    await record_table_format(model, _app_state.source_types.get(model.source_id))
                     if _app_state.source_types.get(model.source_id) == "jira":
                         # REQ-2069: a form's project and issue type, and each column's field, from the
                         # account's form and field lists -- the steward picks a form and its columns.

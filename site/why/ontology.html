@@ -59,13 +59,11 @@
 
       <div class="doc-body">
         <p>
-          An ontology enriches how people and automation understand your data, and how that
-          data connects to the concepts, synonyms, policies, regulations and processes of the
-          business. People read it in the UI and in reports, agents over MCP, and OWL and RDF
-          tools over SPARQL, and each uses it to reason about definitions and data. What
-          reduces variation most, though, is taking the reasoning out of the agent's hands
-          where an answer must be exact: derived views, code resolvers and commands put
-          business logic in the data estate, where every agent gets the same result.
+          An ontology records what your words mean and how they connect to your data. People
+          read it in the UI and in reports, agents over MCP, and OWL and RDF tools over
+          SPARQL. Where an answer must be exact, Provisa goes further and takes the reasoning
+          out of the agent's hands. Derived views, code resolvers and commands put business
+          logic in the data estate, and every agent gets the same result.
         </p>
 
         <h2>The hidden step</h2>
@@ -86,11 +84,10 @@
 
         <h2>Fix the names and descriptions first</h2>
         <p>
-          Since the agent reads names, start with the names. Many sources do a poor job of
-          describing themselves, and some do none at all: a table called
-          <code>tbl_cust_seg</code>, a column called <code>usr_nm</code>, no description
-          anywhere. Provisa lets you correct that without touching the source, and it is often
-          the largest single gain you can make.
+          Since the agent reads names, start with the names. Many sources describe themselves
+          poorly, and some not at all: a table called <code>tbl_cust_seg</code>, a column
+          called <code>usr_nm</code>, no description anywhere. Provisa lets you correct that
+          without touching the source. It is often the largest single gain you can make.
         </p>
         <ul>
           <li><strong>Descriptions.</strong> Give every table and column a description in the
@@ -118,13 +115,13 @@
           Some meaning no name can carry. "Revenue" spans several columns, "client" and
           "customer" are one idea under two words, and "churn" is a rule. Provisa gives your
           organization a place to write down what its words mean and where the data for each
-          one lives, and gives the agent a way to read that before it writes a query.
+          one lives. The agent reads that before it writes a query.
         </p>
 
         <h3>Terms, and the relationships between them</h3>
         <p>
           A term is a word your organization uses, with a definition. You don't start from a
-          blank page: every column name becomes a draft term, so <code>cust_id</code>,
+          blank page. Every column name becomes a draft term, so <code>cust_id</code>,
           <code>customerId</code> and <code>CUSTOMER_KEY</code> all land on
           <code>customer</code>. You add the words no column carries, such as "revenue" or
           "churn". Typed relationships connect terms. "Client" can be a synonym of "customer",
@@ -144,15 +141,19 @@
         <h3>Approval</h3>
         <p>
           People set a term's status. Every term starts as a draft. A steward approves it once
-          it has a definition the organization agrees on. Deprecating and retiring a term are steward decisions too, each
-          with a reason, and a retired term hands its columns to the term that replaces it.
+          it has a definition the organization agrees on. Deprecating and retiring a term are
+          steward decisions too, each with a reason, and a retired term hands its columns to
+          the term that replaces it.
         </p>
 
         <h3>Grounding</h3>
         <p>
-          Grounding is computed, never set. A term is grounded when a path from it leads down
-          to data. Status and grounding sit side by side, so an approved term that reaches
-          nothing stands out. The next section shows how the path is traced.
+          Agents need verified meaning, and grounding is how Provisa verifies it. A term is
+          grounded when its relationships lead to a column or table a role can query. Provisa
+          computes it from the live model, so nobody sets it by hand, and an agent sees only
+          the terms on such paths.
+          <a href="/why/glossary-that-grounds">Building a glossary that grounds</a> shows how
+          the path is traced and how to build terms that reach data.
         </p>
 
         <h3>Two kinds of search</h3>
@@ -164,191 +165,28 @@
           that found it.
         </p>
         <p>
-          Table and column metadata, curated as above, stays the starting point. Terms add meaning and routes
+          Table and column metadata stays the starting point. Terms add meaning and routes
           where the names fall short, and a table no term reaches is as easy to find as it was
           before. Terms never decide who may read data. Grants, row rules and masks do that,
           for an agent exactly as for a person.
         </p>
 
-        <h2>A glossary that reaches the data</h2>
-        <p>
-          A glossary can be complete, approved and well written and still leave an agent
-          guessing, because nothing in it says where the data for each word lives. Provisa
-          measures whether every term reaches data. We call it grounding.
-        </p>
-        <p>
-          A term is grounded when its typed relationships lead to a column or table a role can
-          query. The path runs from a broader term to narrower ones. "Revenue" reaches data
-          through its parts, order amount and refund amount, and the columns they bind to.
-          "Customer" reaches it through "enterprise customer", a kind of customer.
-          "Customer tier" reaches it through "platinum", one of its valid values. A synonym
-          leads both ways, because the two words mean the same thing. A term never borrows a
-          sibling's data by climbing to a shared parent and coming back down, so "invoice"
-          doesn't reach the data of "purchase order" just because both are kinds of document.
-        </p>
-        <p>
-          Provisa computes grounding from the live model. Register a table, rename a column,
-          retire a term or remove a relationship, and every term on the affected paths is
-          traced again. Nobody maintains a status field by hand. When a term stops reaching
-          data, its page says so at once.
-        </p>
-        <p>
-          Grounding is draft or final. A term's chip reads <strong>grounded</strong> when a
-          path reaches data through approved terms only. It reads <strong>~grounded</strong>
-          when every path still passes through a draft, and it turns final the moment a
-          steward approves the draft on its path. A term with no path to data gets no chip.
-        </p>
-        <p>
-          Grounding is what makes the context an agent receives verified. More metadata helps
-          an agent only when the metadata is right. Through Provisa, an agent sees the terms on
-          paths to data, and only on paths an approved term anchors. A term nobody has defined
-          appears to it as an unnamed step along the way. Every term the agent uses has been
-          checked against the data and shown to reach a column or table its role can query,
-          and it's checked again whenever the model changes. That's context an agent can
-          trust.
-        </p>
-
-        <h2>Guidance while you build it</h2>
-        <p>
-          The commonest glossary mistake is easy to make. Two terms obviously belong together,
-          no sharper relationship comes to mind, and they get linked as "related to". Provisa
-          steps in at the moment you choose a relationship, while the fix is still cheap.
-        </p>
-
-        <h3>Each relationship type has a test</h3>
-        <p>
-          The type picker shows each type's test beside it, and the relationship assistant
-          applies the same tests when it proposes links.
-        </p>
-        <ul>
-          <li><strong>Kind of.</strong> Every X is a Y. Every enterprise customer is a
-            customer.</li>
-          <li><strong>Part of.</strong> A Y has an X. An order has an order amount.</li>
-          <li><strong>Valid value of.</strong> X is one of Y's allowed values. Platinum is a
-            customer tier.</li>
-          <li><strong>Synonym.</strong> X and Y mean the same thing. Client and
-            customer.</li>
-          <li><strong>Related to.</strong> X and Y are distinct topics that go together, and
-            neither is a kind, a part or a value of the other. Cake and candles.</li>
-        </ul>
-
-        <h3>"Related to" holds a place</h3>
-        <p>
-          The first four types ground. "Related to" doesn't, so a term linked only by
-          "related to" still can't reach data. Provisa treats it as a placeholder for a pair
-          you haven't resolved yet. When two terms go together and no grounding type fits, the
-          assistant proposes "related to" with a note that the pair may want resolving. A
-          filter on the term list shows every term with a "related to" link, so the
-          placeholders are easy to find and work through. A term that reaches no data and has
-          only "related to" links says so on its page. It's guidance. Nothing blocks you.
-        </p>
-
-        <h3>Choosing "related to" opens the alternatives</h3>
-        <p>
-          Pick "related to" for a link you're adding and Provisa interrupts, briefly. A dialog
-          explains why it's the least useful link you can add, then draws every shape that
-          would ground the pair with one new term, tightest first, each with a suggested name.
-          For cake and candles it offers these.
-        </p>
-        <div class="cmp-wrap">
-          <table class="cmp">
-            <thead>
-              <tr><th>Shape</th><th>New term</th><th>How the pair connects</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th>Component type</th>
-                <td>cake decoration</td>
-                <td>Candles are a kind of cake decoration, and a cake decoration is part of a cake.</td>
-              </tr>
-              <tr>
-                <th>Specialisation</th>
-                <td>birthday cake</td>
-                <td>Candles are part of a birthday cake, and a birthday cake is a kind of cake.</td>
-              </tr>
-              <tr>
-                <th>Common whole</th>
-                <td>party</td>
-                <td>Cake and candles are both parts of a party.</td>
-              </tr>
-              <tr>
-                <th>Common genus</th>
-                <td>party supplies</td>
-                <td>Cake and candles are both kinds of party supplies.</td>
-              </tr>
-              <tr>
-                <th>Common enumeration</th>
-                <td>party item type</td>
-                <td>Cake and candles are both valid values of party item type.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p>
-          Choose a shape and the new-term form opens with the name and both links filled in,
-          for you to confirm or rename. You can still add "related to" in one click, and it
-          joins the placeholders the filter lists. When the assistant proposes links in bulk,
-          each "related to" it proposes carries the same shapes in its note. The assistant
-          proposes the structural types first and never adds a term on its own. Whether a
-          pair needs a new term, and what to call it, is your decision.
-        </p>
-
-        <h3>The broader the new term, the less its grounding tells you</h3>
-        <p>
-          Why tightest first? "Party" grounds candles as surely as "cake decoration" does. A
-          hub that broad leads to everything at a party, though, so its grounding no longer
-          says which data answers a question about candles. A tight term gives the agent a
-          short path to the right columns. A hub gives it a long path to many.
-        </p>
-
-        <h2>Terms from your documents</h2>
-        <p>
-          Most of what a business means by its words is already written down, in policies,
-          processes and regulations. Provisa reads those documents for you. Choose a document
-          from your reference library, or give it a new one as a file or a link, and it
-          proposes the concepts the document defines and uses.
-        </p>
-        <ul>
-          <li><strong>One concept, one term.</strong> "Client", "customer" and "CX" in the
-            same policy become one proposed term, with the other two as synonyms.</li>
-          <li><strong>One word, two meanings, two terms.</strong> A word the document uses one
-            way in Section 2 and another way in Section 9 becomes two candidates, each tied to
-            its own passages.</li>
-          <li><strong>The document's own definition first.</strong> An explicit definition,
-            such as "Client means…", becomes the term's definition. Where the document has
-            none, a definition is drafted, marked as drafted, and lists every passage it drew
-            from. Explanations that disagree are shown side by side, never blended.</li>
-          <li><strong>No duplicates.</strong> A candidate that matches a term or synonym you
-            already have is offered as a merge, not as a second term.</li>
-          <li><strong>Relationships next.</strong> The new terms go straight to the
-            relationship assistant, with the same guidance toward relationships that
-            ground.</li>
-        </ul>
-        <p>
-          Every proposal cites the passage it came from, by document, section or page, and
-          quoted text. Nothing joins the glossary until a steward accepts it.
-        </p>
-
-        <h2>A reference library</h2>
-        <p>
-          The documents you scan don't disappear after the scan. They stay in a reference
-          library: the policies, processes, regulations, contracts and specifications that
-          matter to your work in Provisa. Polly answers from it, agents reach it over MCP, and
-          the glossary draws on it when it drafts a definition or proposes a relationship.
-          Whatever uses a passage cites it.
-        </p>
-        <p>
-          Each document belongs to domains, or to the whole organization, the same as a term.
-          An assistant working for a role reads only the documents that role may read. A
-          document added by a scan arrives as proposed, and the steward decides whether to
-          keep it. Admins maintain the library on its own page: add a document, refresh one
-          from its link, upload a new version, or remove one.
-        </p>
-        <p>
-          Nothing is re-reviewed behind your back when a document changes. Whenever you're
-          improving the glossary, scan a library document again and see what's new and what
-          you already have, with the passages, and decide for yourself.
-        </p>
+        <aside class="doc-aside" aria-label="Borrowed, then measured">
+          <p class="doc-aside-kicker">Borrowed, then measured</p>
+          <p>
+            Typed relationships, written definitions and stewardship are among the best ideas
+            the ontology field has, and Provisa keeps all of them. One class that is a kind of
+            another is <code>rdfs:subClassOf</code> over SPARQL, each definition is a
+            <code>skos:definition</code>, and a steward approves each term. Those ideas were shaped for a person browsing a
+            glossary or a reasoner checking it for consistency. An LLM brings a new reader, one
+            that understands loose language well and then needs an exact route to data.
+          </p>
+          <p>
+            So Provisa adds a test for that reader: does the term reach data? A term without a
+            route still helps, because people can read its definition and find it by its
+            words. It's lossy, though. It carries the meaning and leaves the route to a guess.
+          </p>
+        </aside>
 
         <h2>Turn guesses into deterministic answers</h2>
         <p>
@@ -372,27 +210,39 @@
         </ul>
         <p>
           A derived view and a code resolver's table are tables, so terms bind to them and to
-          their columns like any other. A term can lead straight to the logic that computes
-          it: ground "churn rate" in the view or the resolver that calculates it, and an agent
-          that asks about churn rate reads the calculation your organization agreed, instead
-          of writing its own.
+          their columns like any other. Ground "churn rate" in the view or the resolver that
+          calculates it, and an agent that asks about churn rate reads the calculation your
+          organization agreed. It never writes its own. Each of these lives in the model and
+          is governed like a table, so every agent and every wording of the question gets the
+          same answer.
         </p>
-        <p>
-          Each one lives in the model and is governed like a table, so every agent and every
-          wording of the question gets the same answer.
-        </p>
+
+        <aside class="doc-aside" aria-label="Borrowed, then measured">
+          <p class="doc-aside-kicker">Borrowed, then measured</p>
+          <p>
+            Infrastructure went through this change first. Hand-built servers and scripts gave
+            way to primitives you declare, with a control plane that keeps the running system
+            true to them. Provisa is a data kernel that builds your data control plane in the
+            same way. You declare sources, tables, relationships, roles, terms, metrics and
+            commands. Code goes only where a primitive can't reach, behind a typed contract.
+          </p>
+          <p>
+            A declared answer can be checked. Every agent gets the same calculation, and the
+            citation on each answer shows which one ran.
+          </p>
+        </aside>
 
         <h2>Standard interfaces for two kinds of automation</h2>
         <p>
           People read the ontology on its page in the UI, and in reports, because the
           ontology is a schema you can query like any other. Agents reach the model over MCP.
-          Tools built on OWL and RDF, such as reasoners,
-          ontology editors and RDF pipelines, reach it over SPARQL 1.1. The endpoint takes
-          queries as the SPARQL protocol sends them, answers SELECT, ASK and CONSTRUCT, and
-          writes results as SPARQL JSON, XML, CSV or TSV, and graphs as Turtle, N-Triples or
-          JSON-LD. Your ontology's classes and properties are its vocabulary, and the ontology
-          itself answers in RDFS, OWL and SKOS, so an RDF tool reads it as it reads any OWL
-          ontology. The same governance applies to every SPARQL query.
+          Tools built on OWL and RDF, such as reasoners, ontology editors and RDF pipelines,
+          reach it over SPARQL 1.1. The endpoint takes queries as the SPARQL protocol sends
+          them, answers SELECT, ASK and CONSTRUCT, and writes results as SPARQL JSON, XML, CSV
+          or TSV, and graphs as Turtle, N-Triples or JSON-LD. Your ontology's classes and
+          properties are its vocabulary, and the ontology itself answers in RDFS, OWL and
+          SKOS, so an RDF tool reads it as it reads any OWL ontology. The same governance
+          applies to every SPARQL query.
         </p>
         <p>
           Reasoning works in the other direction too. A SPARQL source can name the HermiT OWL
@@ -438,43 +288,16 @@
             uses it.</li>
           <li><strong>Stewards see the impact before they act.</strong> Before you approve,
             retire or bind a term, the page shows what changes: "Approving Region makes 3 terms
-            grounded and gives agents a path to 2 more tables." A stewardship summary lists the
-            ~grounded terms each waiting on one approval, and the approved terms that reach no
-            data.</li>
+            grounded and gives agents a path to 2 more tables."</li>
+          <li><strong>The glossary is measured.</strong> The Ontology quality report shows,
+            by domain and by steward, how much of the glossary reaches data and where it
+            doesn't.</li>
         </ul>
         <p>
           The primitives are simple on purpose. How much they help your agents depends on how
-          well your stewards use them.
-        </p>
-
-        <h2>Quality you can measure</h2>
-        <p>
-          Glossary work often falls to people who were never taught how to build one. They
-          know the business, and the result can look finished while it sends agents to the
-          wrong data, or to none. The Ontology quality report, one of Provisa's standard
-          reports, shows whether the glossary is any good. It measures the glossary from the
-          model itself, by domain and by steward.
-        </p>
-        <ul>
-          <li><strong>Grounded share.</strong> The terms in service that reach data, with
-            draft and final grounding counted apart.</li>
-          <li><strong>Approved and grounded share.</strong> The terms an agent may use as a
-            route to data.</li>
-          <li><strong>Unresolved placeholders.</strong> The "related to" links, and the terms
-            whose only links are "related to". Each row opens its review.</li>
-          <li><strong>Grounding precision.</strong> How many hops lie between a term and its
-            data, and how many paths pass through a broad hub term.</li>
-          <li><strong>Grounded only through drafts.</strong> Each term that waits on an
-            approval, with the term whose approval makes its grounding final.</li>
-          <li><strong>Undefined terms on paths to data.</strong> Terms an agent passes
-            through with no definition to read.</li>
-          <li><strong>Drift.</strong> The terms that lost or gained grounding since the
-            previous period.</li>
-        </ul>
-        <p>
-          Every row links to its term. You read the report through the same governed pipeline
-          as any other data, as the roles you select, and export it to the BI tool you already
-          use.
+          well your stewards use them, and Provisa guides that work as it happens.
+          <a href="/why/glossary-that-grounds">Building a glossary that grounds</a> covers the
+          guidance and the report.
         </p>
 
         <h2>Keep your catalog</h2>
@@ -503,12 +326,15 @@
       </div>
 
       <div class="doc-next">
+        <a class="more" href="/why/glossary-that-grounds">Building a glossary that grounds</a>
         <a class="more" href="/docs/ontology/">The ontology in the docs</a>
         <a class="more" href="/docs/business-logic/">Business logic in the docs</a>
         <a class="more" href="/docs/code-sources/">How code resolvers work</a>
         <a class="more" href="/why/ai">Governed data for AI</a>
         <a class="more" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">Try it on your data</a>
       </div>
+    </div>
+  </main>
     </div>
   </main>
 
@@ -526,7 +352,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -538,6 +364,7 @@
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
         <a href="/vs/starburst">vs Starburst</a>
         <a href="/vs/denodo">vs Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>

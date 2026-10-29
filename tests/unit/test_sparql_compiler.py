@@ -90,10 +90,14 @@ _TYPES = {
     ("Company", "id"): "INTEGER",
     ("Company", "name"): "VARCHAR",
 }
+#: Person.name and Company.name bound to the Property term "Legal name": published under its IRI,
+#: and no longer under p:name and c:name (REQ-2163).
 _GROUNDING = Grounding(
     class_terms={"Person": "Employee"},
     property_terms={("Person", "name"): ("Legal name",), ("Company", "name"): ("Legal name",)},
 )
+#: The class term alone: every column is published under its own IRI.
+_COLUMNS = Grounding(class_terms={"Person": "Employee"})
 
 
 @pytest.fixture
@@ -131,9 +135,9 @@ def _value(term):
     return term["literal"]
 
 
-def _answer(con, query: str) -> list[dict]:
+def _answer(con, query: str, grounding: Grounding = _COLUMNS) -> list[dict]:
     lm = _model()
-    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
+    vocab = build_vocabulary(lm, BASE, _TYPES, grounding)
     compiled = compile_sparql(PREFIXES + query, vocab, lm)
     if compiled.empty:
         rows = [compiled.empty_row] if compiled.empty_row is not None else []
@@ -168,7 +172,7 @@ def test_a_class_term_types_the_table_it_grounds(con):
 
 
 def test_a_property_term_is_a_predicate_of_every_column_it_grounds(con):
-    rows = _answer(con, "SELECT ?n WHERE { ?s term:Legal%20name ?n }".replace("%20", "%20"))
+    rows = _answer(con, "SELECT ?n WHERE { ?s term:Legal%20name ?n }", _GROUNDING)
     assert sorted(r["n"] for r in rows) == ["Acme", "Ann", "Beta", "Bo", "Corp", "Cy", "Di"]
 
 
@@ -228,7 +232,6 @@ def test_a_subject_named_by_its_iri_and_a_variable_predicate(con):
         ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", PERSON),
         ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", EMPLOYEE),
         (NAME, "Ann"),
-        (FULL_NAME, "Ann"),
         (AGE, 41),
         (KNOWS, bo),
         (WORKS_AT, acme),
@@ -256,7 +259,9 @@ def test_order_by_and_limit(con):
 
 
 def test_order_by_across_two_classes(con):
-    rows = _answer(con, "SELECT ?n WHERE { ?s term:Legal%20name ?n } ORDER BY ?n LIMIT 3")
+    rows = _answer(
+        con, "SELECT ?n WHERE { ?s term:Legal%20name ?n } ORDER BY ?n LIMIT 3", _GROUNDING
+    )
     assert [r["n"] for r in rows] == ["Acme", "Ann", "Beta"]
 
 
@@ -305,7 +310,8 @@ def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
 )
 def test_what_is_not_lowered_is_refused_by_name(query, refusal):
     lm = _model()
-    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
+    # A Property term's IRI is a predicate only where the term binds a column.
+    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING if "term:" in query else _COLUMNS)
     with pytest.raises(SparqlRefused, match=refusal):
         compile_sparql(PREFIXES + query, vocab, lm)
 

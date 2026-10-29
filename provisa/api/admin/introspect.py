@@ -1294,6 +1294,15 @@ async def athena_table_format(source_id: str, schema_name: str, table_name: str)
     return table_format(meta.get("Parameters") or {})
 
 
+async def record_table_format(model: Any, source_type: str | None) -> None:
+    """REQ-1981: record on ``model`` the format its source reports for it (an Athena table's),
+    which decides the writes the table takes; a table of any other source has none."""
+    if source_type == "athena":
+        model.table_format = await athena_table_format(
+            model.source_id, model.schema_name, model.table_name
+        )
+
+
 async def _native_columns_athena(
     source_id: str, schema_name: str, table_name: str
 ) -> list[tuple[str, str]]:
