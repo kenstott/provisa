@@ -174,12 +174,93 @@ def _json_kind(text: exp.Expression) -> exp.Expression:  # pyright: ignore[repor
     )
 
 
+#: Deepest list-in-list nesting json_list_compare compares; a deeper pair is refused by name.
+_LIST_COMPARE_DEPTH = 4
+LIST_COMPARE_TOO_DEEP = "list comparison: lists nested deeper than %d levels" % _LIST_COMPARE_DEPTH
+
+
+def _json_list_compare(
+    left: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    right: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    dialect: str,
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_list_compare(a, b), two JSON lists compared element by element (expr_visitor;
+    openCypher 9, "Comparability and orderability"): -1, 0 or 1, null where the first element
+    pair that differs cannot be compared. The first pair that is not equal decides; with every
+    common pair equal the shorter list is smaller. A pair compares by value where both are
+    numbers, both strings or both booleans, and recurses where both are lists; any other pair
+    (two kinds, a null, a map) is incomparable. Each item is read by its own kind, never by one
+    cast of the whole array. ``dialect`` is "duckdb" or "trino"."""
+    duck = dialect == "duckdb"
+    text = "CAST({} AS VARCHAR)" if duck else "json_format({})"
+    scalar = "json_extract_string({}, '$')" if duck else "json_extract_scalar({}, '$')"
+    items = "CAST({} AS JSON[])" if duck else "CAST({} AS ARRAY(JSON))"
+    refuse = "error" if duck else "fail"
+
+    def kind(value: str) -> str:
+        parsed = sqlglot.parse_one(text.format(value), read=dialect)
+        return _json_kind(parsed).sql(dialect=dialect)  # pyright: ignore[reportArgumentType]
+
+    def sign(a: str, b: str) -> str:
+        return f"CASE WHEN {a} < {b} THEN -1 WHEN {a} > {b} THEN 1 ELSE 0 END"
+
+    def pair(a: str, b: str, depth: int) -> str:
+        """-1, 0, 1, or 2 for a pair that cannot be compared."""
+        ka, kb = kind(a), kind(b)
+        num = [f"CAST({scalar.format(v)} AS DOUBLE)" for v in (a, b)]
+        txt = [scalar.format(v) for v in (a, b)]
+        boo = [f"CAST({scalar.format(v)} AS BOOLEAN)" for v in (a, b)]
+        if depth == 0:
+            # Written over the pair, so the engine does not fold the refusal away before the
+            # branch is reached (DuckDB evaluates a constant error() at plan time).
+            nested = f"{refuse}('{LIST_COMPARE_TOO_DEEP}' || substr({text.format(a)}, 1, 0))"
+        else:
+            nested = lists(a, b, depth)
+        return (
+            f"CASE WHEN {ka} = 'number' AND {kb} = 'number' THEN {sign(*num)} "
+            f"WHEN {ka} = 'string' AND {kb} = 'string' THEN {sign(*txt)} "
+            f"WHEN {ka} = 'boolean' AND {kb} = 'boolean' THEN {sign(*boo)} "
+            f"WHEN {ka} = 'list' AND {kb} = 'list' THEN {nested} ELSE 2 END"
+        )
+
+    def lists(a: str, b: str, depth: int) -> str:
+        arr_a, arr_b = items.format(a), items.format(b)
+        p, c = f"_p{depth}", f"_c{depth}"
+        shorter = (
+            f"CASE WHEN len({arr_a}) < len({arr_b}) THEN -1 "
+            f"WHEN len({arr_a}) > len({arr_b}) THEN 1 ELSE 0 END"
+            if duck
+            else f"CASE WHEN cardinality({arr_a}) < cardinality({arr_b}) THEN -1 "
+            f"WHEN cardinality({arr_a}) > cardinality({arr_b}) THEN 1 ELSE 0 END"
+        )
+        body = pair(f"{p}[1]", f"{p}[2]", depth - 1)
+        if duck:
+            zipped = f"list_zip({arr_a}, {arr_b}, true)"
+            decided = f"list_filter(list_transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+            return f"list_extract(list_append({decided}, {shorter}), 1)"
+        zipped = (
+            f"slice(zip({arr_a}, {arr_b}), 1, least(cardinality({arr_a}), cardinality({arr_b})))"
+        )
+        decided = f"filter(transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+        return f"element_at(concat({decided}, ARRAY[{shorter}]), 1)"
+
+    result = lists(left.sql(dialect=dialect), right.sql(dialect=dialect), _LIST_COMPARE_DEPTH)
+    return sqlglot.parse_one(f"NULLIF({result}, 2)", read=dialect)  # pyright: ignore[reportReturnType]
+
+
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
     if not any(
         name in sql.upper()
-        for name in ("JSON_SIZE", "JSON_ORDER_KEY", "JSON_KIND", "RANGE_STEP", "JSON_KEYS")
+        for name in (
+            "JSON_SIZE",
+            "JSON_ORDER_KEY",
+            "JSON_KIND",
+            "JSON_LIST_COMPARE",
+            "RANGE_STEP",
+            "JSON_KEYS",
+        )
     ):
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
@@ -205,6 +286,9 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_KIND":
             (value,) = node.expressions
             return _json_kind(exp.Anonymous(this="json_format", expressions=[value.copy()]))
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_LIST_COMPARE":
+            left, right = node.expressions
+            return _json_list_compare(left, right, "trino")
         if not (isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_SIZE"):
             return node
         (value,) = node.expressions
@@ -682,6 +766,7 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "JSON_SIZE",
         "JSON_ORDER_KEY",
         "JSON_KIND",
+        "JSON_LIST_COMPARE",
         "RANGE_STEP",
     }
 )
@@ -756,6 +841,9 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
         if name == "JSON_KIND":
             (value,) = args
             return _json_kind(exp.Cast(this=value.copy(), to=exp.DataType.build("VARCHAR")))
+        if name == "JSON_LIST_COMPARE":
+            left, right = args
+            return _json_list_compare(left, right, "duckdb")
         if name == "JSON_SIZE":
             # A JSON value's size: a list's items, a string's characters (expr_visitor).
             (value,) = args

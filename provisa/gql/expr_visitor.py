@@ -806,6 +806,27 @@ class ExprLowering:
                     true=compare(this=sides[0], expression=sides[1]),
                 )
             )
+        if left_json and right_json and not (left_kind or right_kind):
+            # Two lists compare element by element (openCypher 9, "Comparability and
+            # orderability"): json_list_compare is -1, 0 or 1, null where an element pair cannot
+            # be compared.
+            ifs.append(
+                exp.If(
+                    this=exp.and_(
+                        *(
+                            exp.EQ(
+                                this=_anon("json_kind", v.copy()),
+                                expression=exp.Literal.string("list"),
+                            )
+                            for v in (left, right)
+                        )
+                    ),
+                    true=compare(
+                        this=_anon("json_list_compare", left.copy(), right.copy()),
+                        expression=exp.Literal.number(0),
+                    ),
+                )
+            )
         return exp.Case(ifs=ifs, default=exp.Null())
 
     def _value_kind(self, node: CypherExpr) -> str | None:
