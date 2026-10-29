@@ -184,24 +184,28 @@ _JUNIT = (
 )
 
 
-def test_the_flight_sql_page_marks_adapted_cases_and_counts_unsent_ones_apart(tmp_path):
-    """REQ-2167 (amended 2026-10-27): an adapted case runs and counts, marked with what its setup
-    became; a case whose client did not send what it needs -- refusing before any request, or
-    dropping the values it was given -- is left out of the pass rate in its own group, with the
-    client, what it does, the evidence and the workaround; a case a design decision excludes is
-    counted under its requirement; any other failure stays a failure."""
+def test_the_flight_sql_page_marks_adapted_cases_and_explains_unsent_ones(tmp_path):
+    """REQ-2167 (amended 2026-10-27 and 2026-10-28): an adapted case runs and counts, marked with
+    what its setup became; a case whose client did not send what it needs -- refusing before any
+    request, or dropping the values it was given -- is failed, with no design decision of
+    Provisa's behind it, and its client group says why: the client, what it does, the evidence
+    and the workaround; a case a design decision excludes is skipped by design under its
+    requirement; any other failure stays failed."""
     xml = tmp_path / "junit.xml"
     xml.write_text(_JUNIT)
     doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
-    assert (doc["ran"], doc["passed"], doc["failed"]) == (4, 2, 2)
-    assert (doc["not_runnable"], doc["client_not_sent"]) == (1, 2)
-    assert [(g["group"], g["requirement"], g["count"]) for g in doc["by_design"]] == [
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (7, 2, 1, 4)
+    assert doc["pass_rate"] == round(2 / 6, 4)
+    assert [(g["group"], g["requirement"], g["count"]) for g in doc["by_design_groups"]] == [
         ("Times and timestamps beyond microseconds", "REQ-1961", 1)
     ]
     refused, dropped = doc["not_sent_by_client"]
     assert (refused["group"], refused["count"]) == ("Bind with no Prepare", 1)
     assert "sends no RPC" in refused["evidence"]
     assert "Prepare the statement before binding" in refused["workaround"]
+    assert refused["cases"] == [
+        "tests.test_query.TestQuery::test_query[provisa:flightsql:type/bind/int64]"
+    ]
     assert (dropped["group"], dropped["count"]) == ("Bind before Prepare", 1)
     assert "send no DoPut" in dropped["evidence"]
     assert dropped["workaround"] == "Bind after Prepare, as the suite's other bind tests do."
@@ -223,11 +227,13 @@ def test_the_flight_sql_page_marks_adapted_cases_and_counts_unsent_ones_apart(tm
     }
     assert [f["scenario"] for f in doc["failures"]] == [
         "test_query[provisa:flightsql:type/select/timestamp3tz]",
+        "test_query[provisa:flightsql:type/bind/int64]",
         "test_current_catalog[provisa:flightsql]",
+        "test_parameter_execute[provisa:flightsql]",
     ]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == ("50.0% (2 of 4); 1 cases not runnable by design; 2 not sent by the client")
-    assert "## Not sent by the client" in cases
+    assert rate == "33.3%: 2 passed, 1 skipped by design, 4 failed, of 7 cases"
+    assert "## Failed: not sent by the client" in cases
     assert "| Group | Count | Client | What it does | Evidence | Workaround |" in cases
     assert "| Bind before Prepare | 1 | adbc-driver-flightsql 1.12.0 (the Go driver) |" in cases
     assert "| Times and timestamps beyond microseconds | 1 |" in cases
@@ -242,7 +248,7 @@ def test_a_surface_with_no_such_groups_has_no_such_sections(tmp_path):
     xml = tmp_path / "junit.xml"
     xml.write_text(_JUNIT)
     doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "t")
-    assert (doc["adapted"], doc["not_sent_by_client"], doc["client_not_sent"]) == ([], [], 0)
+    assert (doc["adapted"], doc["not_sent_by_client"]) == ([], [])
     assert doc["failed"] == 5
     artifact = {k: v for k, v in doc.items() if k not in ("adapted", "not_sent_by_client")}
     _, _, _, cases = fill_docs.read(artifact)
@@ -298,9 +304,10 @@ def test_a_statement_tests_table_is_declared_writable_by_the_job_user():
     assert "write_grants" not in fixtures._model_table(conn, "test_int32")
 
 
-def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
-    """A skipped case is counted apart and listed on the page by name, with the reason the suite
-    gave, so what it did not run can be decided case by case."""
+def test_each_case_the_suite_skips_is_failed_with_its_reason(tmp_path):
+    """REQ-2167 (amended 2026-10-28): a case the suite skips and no group names is failed -- a
+    case is passed, skipped by design or failed, nothing else -- listed on the page by name with
+    the reason the suite gave, so what it did not run can be decided case by case."""
     xml = tmp_path / "junit.xml"
     xml.write_text(
         '<testsuites><testsuite name="pytest">'
@@ -313,31 +320,32 @@ def test_each_case_the_suite_skips_is_named_with_its_reason(tmp_path):
         "</testcase></testsuite></testsuites>"
     )
     doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
-    assert (doc["ran"], doc["skipped"]) == (1, 2)
-    assert doc["skipped_cases"] == [
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (3, 1, 0, 2)
+    assert "skipped" not in doc and "skipped_cases" not in doc
+    assert doc["failures"] == [
         {
             "feature": "tests.test_connection.TestConnection",
             "scenario": "test_an_unclaimed_feature[p]",
-            "reason": "not implemented",
+            "reason": "skipped by the suite: not implemented",
         },
         {
             "feature": "tests.test_statement.TestStatement",
             "scenario": "test_transaction_toggle[p]",
-            "reason": "Driver does not support transactions",
+            "reason": "skipped by the suite: Driver does not support transactions",
         },
     ]
     _, _, _, cases = fill_docs.read(doc)
-    assert "## Skipped by the suite" in cases
+    assert "## Failed cases" in cases
     assert (
-        "| tests.test_statement.TestStatement | test_transaction_toggle[p] | Driver does not "
-        "support transactions |" in cases
+        "| test_transaction_toggle[p] | skipped by the suite: Driver does not support "
+        "transactions |" in cases
     )
 
 
-def test_a_skip_a_group_names_is_counted_in_that_group(tmp_path, monkeypatch):
-    """A case the suite skips because a feature is not claimed is counted under the design
-    decision or the client behaviour behind it, not as skipped by the suite; a skip no group
-    names stays a skip."""
+def test_a_skip_a_design_group_names_is_skipped_by_design(tmp_path, monkeypatch):
+    """A case the suite skips because a feature is not claimed is skipped by design under the
+    design decision behind it; one a client group names is failed, the group saying why; a skip
+    no group names is failed."""
     (tmp_path / "s.yaml").write_text(
         "- group: Transactions\n  requirement: REQ-883\n  decision: a no-op\n"
         '  case: "test_transaction_toggle"\n'
@@ -358,11 +366,54 @@ def test_a_skip_a_group_names_is_counted_in_that_group(tmp_path, monkeypatch):
         "</testsuite></testsuites>"
     )
     doc = junit.summarise(str(xml), "s", "suite", "1", "t")
-    assert (doc["ran"], doc["passed"], doc["skipped"]) == (1, 1, 1)
-    assert [c["scenario"] for c in doc["skipped_cases"]] == ["test_set_current_catalog"]
-    assert [(g["group"], g["count"]) for g in doc["by_design"]] == [("Transactions", 1)]
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (4, 1, 1, 2)
+    assert [f["scenario"] for f in doc["failures"]] == [
+        "test_get_statistics",
+        "test_set_current_catalog",
+    ]
+    assert [(g["group"], g["count"]) for g in doc["by_design_groups"]] == [("Transactions", 1)]
     assert [(g["group"], g["count"]) for g in doc["not_sent_by_client"]] == [("No statistics", 1)]
-    assert (doc["not_runnable"], doc["client_not_sent"], doc["total"]) == (1, 1, 2)
+
+
+def test_an_ingest_conflict_answered_invalid_argument_is_skipped_by_design(tmp_path):
+    """REQ-2175 (amended 2026-10-28, A CONFLICTING INGEST IS INVALID_ARGUMENT): the Flight server
+    library cannot send ALREADY_EXISTS, so the three cases expecting it are skipped by design in
+    their group (by_design/flight-sql.yaml) when the answer is INVALID_ARGUMENT; any other answer
+    stays failed."""
+    status = (
+        '<failure message="AssertionError: assert &lt;AdbcStatusCode.INVALID_ARGUMENT: 5&gt; == '
+        '&lt;AdbcStatusCode.ALREADY_EXISTS: 4&gt;">t</failure>'
+    )
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        + "".join(
+            f'<testcase classname="tests.test_ingest.TestIngest" '
+            f'name="{case}[provisa:flightsql:ingest/string]">{status}</testcase>'
+            for case in (
+                "test_create_conflict",
+                "test_append_schema_mismatch",
+                "test_createappend_schema_mismatch",
+            )
+        )
+        + '<testcase classname="tests.test_ingest.TestIngest" '
+        'name="test_create_conflict[provisa:flightsql:ingest/int64]">'
+        '<failure message="AssertionError: assert &lt;AdbcStatusCode.INTERNAL: 9&gt; == '
+        '&lt;AdbcStatusCode.ALREADY_EXISTS: 4&gt;">t</failure></testcase>'
+        "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (4, 0, 3, 1)
+    (group,) = doc["by_design_groups"]
+    assert (group["group"], group["requirement"], group["count"]) == (
+        "Status the Flight server library cannot send",
+        "REQ-2175",
+        3,
+    )
+    assert "ALREADY_EXISTS" in group["decision"]
+    assert [f["scenario"] for f in doc["failures"]] == [
+        "test_create_conflict[provisa:flightsql:ingest/int64]"
+    ]
 
 
 @pytest.mark.parametrize(

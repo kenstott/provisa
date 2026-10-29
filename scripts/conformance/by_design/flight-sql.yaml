@@ -1,9 +1,10 @@
 # The ADBC driver validation suite against Provisa's Flight SQL endpoint (REQ-2167, amended
-# 2026-10-27). scripts/conformance/by_design.py. A case whose setup creates its table is adapted,
-# not excluded: the table is declared in the job's fixture model (flightsql/fixtures.py) and the
-# case runs and counts, marked on the page with what its setup became. A case whose client driver
-# does not send what it needs -- it refuses before any request, or drops what it was given -- is
-# left out of the pass rate, in its own group.
+# 2026-10-27 and 2026-10-28). scripts/conformance/by_design.py. Each case is passed, skipped by
+# design (a group below citing its requirement and decision), or failed. A case whose setup
+# creates its table is adapted, not excluded: the table is declared in the job's fixture model
+# (flightsql/fixtures.py) and the case runs and counts, marked on the page with what its setup
+# became. A case whose client driver does not send what it needs -- it refuses before any
+# request, or drops what it was given -- stays failed: its client group says why.
 
 - kind: adapted
   group: Type cases' tables
@@ -188,3 +189,14 @@
     Read nullability from GetTables with include_schema (each field's nullable flag and
     metadata), or from adbc_get_table_schema.
   case: "TestIngest::test_not_null\\["
+
+- group: Status the Flight server library cannot send
+  requirement: REQ-2175
+  decision: >-
+    A bulk ingest that would create a table that already exists, or whose columns do not match
+    the table it appends to, is refused by name with the status INVALID_ARGUMENT, not
+    ALREADY_EXISTS: the Flight server library Provisa serves on (pyarrow) can send no
+    ALREADY_EXISTS status.
+  # Only that status difference is this group's: any other answer stays failed.
+  reason: "INVALID_ARGUMENT: 5> == <AdbcStatusCode.ALREADY_EXISTS: 4>"
+  case: "TestIngest::test_(create_conflict|append_schema_mismatch|createappend_schema_mismatch)\\["

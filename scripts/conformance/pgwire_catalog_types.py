@@ -33,6 +33,10 @@ Usage:
   pgwire_catalog_types.py seed   --pg <dsn>
   pgwire_catalog_types.py config --out <provisa.yaml> --pg-port <port>
   pgwire_catalog_types.py probe  --pg <dsn> --provisa <dsn> --out-json <f> --out-md <f>
+  pgwire_catalog_types.py combine --pgspec <f> [--catalog <f>] --out <f>
+
+Each part's every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28):
+``combine`` writes the run's artifact, the parts with their counts summed at the top.
 """
 
 # Requirements: REQ-2167
@@ -502,7 +506,19 @@ def catalog_relations(pg: Server, provisa: Server, names: dict[int, str]) -> dic
             differing[rel] = diffs
         else:
             matching.append(rel)
+    # REQ-2167 (amended 2026-10-28): each relation is a case -- passed (its columns match),
+    # skipped by design (a group of by_design/pgwire.yaml names it) or failed (it differs, or is
+    # not served).
+    unmet = [
+        {"feature": "catalog relation", "scenario": rel, "reason": "; ".join(diffs)}
+        for rel, diffs in differing.items()
+    ] + [
+        {"feature": "catalog relation", "scenario": rel, "reason": f"not served: {error}"}
+        for rel, error in not_served.items()
+    ]
+    failures, excluded = by_design.classify(unmet, by_design.groups("pgwire"))
     return {
+        **by_design.outcomes(len(matching), excluded, failures),
         "postgres_relations": len(pg_rels),
         "served": len(matching) + len(differing),
         "matching": sorted(matching),
@@ -567,14 +583,21 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         else:
             matching.append(fn["signature"])
     # REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): a function of a family no client calls is not served
-    # by design (by_design/pgwire.yaml), counted in its group rather than as not served.
+    # by design (by_design/pgwire.yaml), skipped by design in its group rather than not served.
+    # Each function probed is a case (amended 2026-10-28): passed (served, its result type
+    # PostgreSQL's), skipped by design, or failed (its result type differs, or it is not served).
     unserved = [
         {"feature": "catalog function", "scenario": signature, "reason": error}
         for signature, error in not_served.items()
     ]
     remaining, excluded = by_design.classify(unserved, by_design.groups("pgwire"))
     left = {f["scenario"]: f["reason"] for f in remaining}
+    failures = [
+        {"feature": "catalog function", "scenario": signature, "reason": why}
+        for signature, why in sorted(differing.items())
+    ] + [{**f, "reason": f"not served: {f['reason']}"} for f in remaining]
     return {
+        **by_design.outcomes(len(matching), excluded, failures),
         "postgres_functions": len(fns) - len(not_probed),
         "excluded": (
             "overloads taking a pseudo-type argument, type I/O (internal, cstring), and calls "
@@ -585,7 +608,6 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         "matching": len(matching),
         "differing": dict(sorted(differing.items())),
         "not_served": dict(sorted(left.items())),
-        "by_design": excluded,
     }
 
 
@@ -675,11 +697,11 @@ def conversion_outcomes(fixture: list[dict], casts: list[dict]) -> dict[str, Any
             else "by_design"
         )
     return {
+        **by_design.outcomes(sum(1 for r in rows if r["outcome"] == "passed"), excluded, remaining),
         "fixture_columns": fixture,
         "casts": casts,
         "compared": len(rows),
         "matching": sum(1 for r in rows if r["outcome"] == "passed"),
-        "by_design": excluded,
         "differing": len(failed),
     }
 
@@ -711,6 +733,25 @@ def markdown(report: dict[str, Any]) -> str:
     fn = report["catalog_functions"]
     ty = report["type_conversions"]
     out = [
+        f"## pgwire catalog and types (PostgreSQL {report['postgres_version']})",
+        "",
+        "| part | cases | passed | skipped by design | failed | pass rate |",
+        "|---|---:|---:|---:|---:|---:|",
+        *(
+            f"| {label} | {part['total']} | {part['passed']} | {part['by_design']} "
+            f"| {part['failed']} | "
+            + ("n/a" if part["pass_rate"] is None else f"{part['pass_rate']:.1%}")
+            + " |"
+            for label, part in (
+                ("catalog relations", rel),
+                ("catalog functions", fn),
+                ("type conversions", ty),
+            )
+        ),
+        "",
+        "Pass rate: passed over passed and failed. A relation or function failed differs from "
+        "PostgreSQL's or is not served.",
+        "",
         f"## pgwire catalog shape (PostgreSQL {report['postgres_version']})",
         "",
         "| | PostgreSQL | served by Provisa | matching | differing |",
@@ -737,10 +778,9 @@ def markdown(report: dict[str, Any]) -> str:
         f"Functions PostgreSQL has that Provisa does not serve ({len(fn['not_served'])})",
         _md_list(list(fn["not_served"]), limit=3000),
     )
-    not_served_by_design = sum(g["count"] for g in fn["by_design"])
     out += _details(
-        f"Functions not served by design ({not_served_by_design})",
-        by_design.table(fn["by_design"]),
+        f"Functions skipped by design ({fn['by_design']})",
+        by_design.table(fn["by_design_groups"], requirement=True),
     )
     out += _details(
         "Catalog relations Provisa serves that PostgreSQL does not have "
@@ -751,15 +791,14 @@ def markdown(report: dict[str, Any]) -> str:
         f"## pgwire type conversions (PostgreSQL {report['postgres_version']})",
         "",
         f"{ty['compared']} statements compared (fixture columns and tool casts): "
-        f"{ty['matching']} identical in type OID, typmod, text and binary encoding; "
-        f"{sum(g['count'] for g in ty['by_design'])} differ by design; "
-        f"{ty['differing']} differ.",
+        f"{ty['passed']} passed (identical in type OID, typmod, text and binary encoding); "
+        f"{ty['by_design']} skipped by design; {ty['failed']} failed.",
         "",
     ]
-    if ty["by_design"]:
+    if ty["by_design_groups"]:
         out += _details(
-            f"Conversions that differ by design ({sum(g['count'] for g in ty['by_design'])})",
-            by_design.table(ty["by_design"]),
+            f"Conversions skipped by design ({ty['by_design']})",
+            by_design.table(ty["by_design_groups"], requirement=True),
         )
     out += [
         "| statement | PostgreSQL type | Provisa type | differences |",
@@ -794,6 +833,33 @@ def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
     print(markdown(report))
 
 
+#: The parts of the pgwire run, each a set of cases with its own three counts.
+PARTS = ("pgspec", "catalog_relations", "catalog_functions", "type_conversions")
+
+
+def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
+    """The pgwire run's artifact: pgspec's summary and the catalog and type comparison's parts,
+    and their three counts summed at the top, in the shape every conformance report has (REQ-2167,
+    amended 2026-10-28). ``catalog`` is None when the comparison did not complete: its parts are
+    null and counted nowhere."""
+    doc: dict[str, Any] = {
+        "surface": "pgwire",
+        "pgspec": pgspec,
+        **{part: (catalog or {}).get(part) for part in PARTS[1:]},
+        "postgres_version": (catalog or {}).get("postgres_version"),
+    }
+    parts = [doc[part] for part in PARTS if doc[part] is not None]
+    groups = [g for part in parts for g in part["by_design_groups"]]
+    failures = [f for part in parts for f in part["failures"]]
+    totals = by_design.outcomes(sum(part["passed"] for part in parts), groups, failures)
+    # The groups and failures stay in their parts; the top gives the counts.
+    return {
+        "surface": "pgwire",
+        **{k: totals[k] for k in ("total", "passed", "by_design", "failed", "ran", "pass_rate")},
+        **{k: v for k, v in doc.items() if k != "surface"},
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -813,6 +879,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--provisa", required=True)
     p.add_argument("--out-json", required=True, type=Path)
     p.add_argument("--out-md", required=True, type=Path)
+    m = sub.add_parser("combine")
+    m.add_argument("--pgspec", required=True, type=Path)
+    m.add_argument("--catalog", type=Path, help="the probe's JSON; absent if it did not complete")
+    m.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv[1:])
     if args.command == "seed":
         seed(args.pg)
@@ -825,6 +895,13 @@ def main(argv: list[str]) -> int:
             args.extra_relationships,
             args.extra_access,
         )
+    elif args.command == "combine":
+        catalog = (
+            json.loads(args.catalog.read_text()) if args.catalog and args.catalog.exists() else None
+        )
+        doc = combined(json.loads(args.pgspec.read_text()), catalog)
+        args.out.write_text(json.dumps(doc, indent=2, default=str) + "\n")
+        print(f"pgwire: {by_design.counts_line(doc)}")
     else:
         probe(args.pg, args.provisa, args.out_json, args.out_md)
     return 0

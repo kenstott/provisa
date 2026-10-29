@@ -112,13 +112,44 @@ def test_cypher_tck_fails_on_a_failure_only_at_baseline(tmp_path, at_baseline, m
     assert m.main(argv) == 1
 
 
-def test_the_graphql_gate_fails_on_a_failed_must_audit_only_at_baseline(tmp_path, at_baseline):
+def test_the_graphql_gate_fails_on_a_failed_audit_only_at_baseline(tmp_path, at_baseline):
     m = _load("baseline_gate")
     report = tmp_path / "conformance-graphql.json"
-    report.write_text(json.dumps({"surface": "graphql", "ran": 47, "passed": 46, "failed": 1}))
+    report.write_text(
+        json.dumps({"surface": "graphql", "total": 60, "passed": 59, "by_design": 0, "failed": 1})
+    )
     at_baseline("graphql", False)
     assert m.main(["graphql", str(report)]) == 0
     at_baseline("graphql", True)
     assert m.main(["graphql", str(report)]) == 1
-    report.write_text(json.dumps({"surface": "graphql", "ran": 47, "passed": 47, "failed": 0}))
+    report.write_text(
+        json.dumps({"surface": "graphql", "total": 60, "passed": 60, "by_design": 0, "failed": 0})
+    )
     assert m.main(["graphql", str(report)]) == 0
+
+
+def test_a_summary_gives_three_counts_and_never_a_by_design_case_as_failed():
+    """REQ-2167 (amended 2026-10-28): every report says passed, skipped by design and failed the
+    same way, and its pass rate is passed over passed plus failed. The line never reads as
+    pytest's "N failed, M passed", which the landing gate reads from the Bolt run's log."""
+    import re
+
+    import by_design
+
+    group = {"group": "g", "requirement": "REQ-1", "decision": "d", "count": 5, "cases": []}
+    doc = by_design.outcomes(285, [group], [{}] * 5)
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"], doc["ran"]) == (
+        295,
+        285,
+        5,
+        5,
+        290,
+    )
+    assert doc["pass_rate"] == round(285 / 290, 4)
+    line = by_design.counts_line(doc)
+    assert line == (
+        "295 cases: 285 passed, 5 skipped by design, 5 failed. Pass rate 98.3% (passed over "
+        "passed and failed)."
+    )
+    assert not re.search(r"[0-9]+ failed, [0-9]+ passed", line)
+    assert by_design.outcomes(0, [group], [])["pass_rate"] is None

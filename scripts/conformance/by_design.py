@@ -8,11 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""By-design exclusions are not failures (REQ-2167, amended 2026-10-27).
+"""Every conformance case is passed, skipped by design, or failed (REQ-2167, amended 2026-10-27
+and 2026-10-28).
 
-A suite's test that fails because of a designed limitation of Provisa is counted as not runnable
-by design, in a group that names the design decision (its requirement), and left out of the pass
-rate. The groups are declared per surface in ``by_design/<surface>.yaml``:
+A suite's case that cannot pass because of a designed limitation of Provisa is skipped by design,
+in a group that names the design decision (its requirement), and left out of the pass rate; it is
+never counted as failed. Every other case that did not pass -- including one the suite or its
+client could not run -- is failed. The groups are declared per surface in
+``by_design/<surface>.yaml``:
 
     - group: Unbounded variable-length patterns
       requirement: REQ-348
@@ -20,8 +23,7 @@ rate. The groups are declared per surface in ``by_design/<surface>.yaml``:
       reason: "Unbounded variable-length pattern"  # a regex the failure's reason matches, and/or
       case: "VarLengthAcceptance"                  # a regex its feature::scenario matches
 
-A group with no requirement is refused: an exclusion with no design decision behind it stays a
-failure.
+A group with no requirement is refused: a case with no design decision behind it stays failed.
 
 Two further kinds are declared in the same file, each with ``kind:`` and a ``reason`` and/or
 ``case`` pattern:
@@ -33,13 +35,14 @@ Two further kinds are declared in the same file, each with ``kind:`` and a ``rea
 
     - kind: client           # the client driver does not send what the case needs -- it
       group: Bind with no Prepare  # refuses before any request, or drops what it was given:
-      client: adbc-driver-flightsql 1.12 (Go)  # left out of the pass rate, in its own group
+      client: adbc-driver-flightsql 1.12 (Go)  # the case stays failed; the group says why
       behavior: refuses Bind ("must set IngestTargetTable before bulk ingestion")
       evidence: with Bind and no Prepare, the driver sends no RPC.
       workaround: prepare the statement before binding.
       reason: "must set IngestTargetTable"
 
-Neither names a requirement: neither is a design decision of Provisa's."""
+Neither names a requirement: neither is a design decision of Provisa's, so neither takes a case
+out of passed or failed."""
 
 # Requirements: REQ-2167
 
@@ -151,9 +154,44 @@ def groups(surface: str) -> list[Group]:
     return out
 
 
+#: REQ-2167 (amended 2026-10-28, EVERY CASE IS PASSED, BY DESIGN OR FAILED): the three outcomes a
+#: case has, each with the label a summary or page gives it. Nothing else.
+OUTCOMES = {"passed": "passed", "by_design": "skipped by design", "failed": "failed"}
+
+
+def outcomes(passed: int, groups: list[dict], failures: list[dict]) -> dict:
+    """A suite's (or a suite part's) three counts, the same in every report (REQ-2167, amended
+    2026-10-28): ``passed``; ``by_design``, the cases skipped by design, each in one of
+    ``by_design_groups`` citing its requirement and decision; and ``failed``, the ``failures``.
+    ``total`` is their sum; the pass rate is passed over passed plus failed, and ``ran`` is that
+    denominator."""
+    skipped = sum(g["count"] for g in groups)
+    ran = passed + len(failures)
+    return {
+        "total": ran + skipped,
+        "passed": passed,
+        "by_design": skipped,
+        "failed": len(failures),
+        "ran": ran,
+        "pass_rate": round(passed / ran, 4) if ran else None,
+        "by_design_groups": groups,
+        "failures": failures,
+    }
+
+
+def counts_line(doc: dict, noun: str = "cases") -> str:
+    """The three counts as a summary says them: never a by-design case as failed."""
+    rate = "n/a" if doc["pass_rate"] is None else f"{doc['pass_rate']:.1%}"
+    return (
+        f"{doc['total']} {noun}: {doc['passed']} {OUTCOMES['passed']}, {doc['by_design']} "
+        f"{OUTCOMES['by_design']}, {doc['failed']} {OUTCOMES['failed']}. Pass rate {rate} "
+        "(passed over passed and failed)."
+    )
+
+
 def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], list[dict]]:
     """(the failures no group excludes, each group that excluded any: its name, requirement,
-    decision and count)."""
+    decision, count and cases -- the cases skipped by design)."""
     declared = [g for g in declared if g.kind == "design"]
     left = []
     for failure in failures:
@@ -168,6 +206,7 @@ def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], l
             "requirement": g.requirement,
             "decision": g.decision,
             "count": len(g.cases),
+            "cases": list(g.cases),
         }
         for g in declared
         if g.cases
@@ -175,30 +214,30 @@ def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], l
     return left, excluded
 
 
-def not_sent(failures: list[dict], declared: list[Group]) -> tuple[list[dict], list[dict]]:
-    """(the failures no client group names, each client group that named any: its fields and
-    count) -- what the case needs was not sent by the client, left out of the pass rate."""
+def not_sent(failures: list[dict], declared: list[Group]) -> list[dict]:
+    """Each client group that names any of ``failures``: its fields, count and cases. What such a
+    case needs was not sent by the client; with no design decision of Provisa's behind it, it stays
+    failed (REQ-2167, amended 2026-10-28) -- the group only says why, and its workaround."""
     clients = [g for g in declared if g.kind == "client"]
-    left = []
     for failure in failures:
         hit = next((g for g in clients if g.matches(failure)), None)
-        if hit is None:
-            left.append(failure)
-        else:
+        if hit is not None:
             hit.cases.append(f"{failure['feature']}::{failure['scenario']}")
-    return left, [
-        {"group": g.group, **g.details, "count": len(g.cases)} for g in clients if g.cases
+    return [
+        {"group": g.group, **g.details, "count": len(g.cases), "cases": list(g.cases)}
+        for g in clients
+        if g.cases
     ]
 
 
-def adapted(outcomes: list[dict], declared: list[Group]) -> list[dict]:
-    """Each adapted group that names any case run (``outcomes``: feature, scenario, reason and
+def adapted(ran: list[dict], declared: list[Group]) -> list[dict]:
+    """Each adapted group that names any case run (``ran``: feature, scenario, reason and
     outcome, "passed" or "failed"): what the cases' setup became and each case's outcome."""
     marks = []
     for group in (g for g in declared if g.kind == "adapted"):
         cases = [
             {"case": f"{o['feature']}::{o['scenario']}", "outcome": o["outcome"]}
-            for o in outcomes
+            for o in ran
             if group.matches(o)
         ]
         if cases:
@@ -206,20 +245,31 @@ def adapted(outcomes: list[dict], declared: list[Group]) -> list[dict]:
     return marks
 
 
-def table(excluded: list[dict]) -> list[str]:
-    """The by-design groups as a Markdown table for a published page: each with its count and
-    decision. The requirement stays in the artifact: a published page names none."""
+def table(excluded: list[dict], requirement: bool = False) -> list[str]:
+    """The by-design groups as a Markdown table: each with its count and decision, and, for the
+    job's own summary (``requirement``), the requirement it cites. A published page names no
+    requirement: there it stays in the artifact."""
     if not excluded:
         return ["None."]
+    if requirement:
+        return [
+            "| Skipped by design | Count | Requirement | Decision |",
+            "| --- | --- | --- | --- |",
+            *(
+                f"| {g['group']} | {g['count']} | {g['requirement']} "
+                f"| {g['decision'].replace('|', '/')} |"
+                for g in excluded
+            ),
+        ]
     return [
-        "| Group | Count | Decision |",
+        "| Skipped by design | Count | Decision |",
         "| --- | --- | --- |",
         *(f"| {g['group']} | {g['count']} | {g['decision'].replace('|', '/')} |" for g in excluded),
     ]
 
 
 def not_sent_table(groups: list[dict]) -> list[str]:
-    """The client groups as a Markdown table."""
+    """The client groups as a Markdown table: why some failed cases failed."""
     if not groups:
         return ["None."]
     return [
