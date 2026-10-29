@@ -408,6 +408,7 @@
       "unknown_request_type": "Tipo de solicitação desconhecido '{{type}}'",
       "unknown_trigger_kind": "Tipo de gatilho desconhecido '{{kind}}'",
       "url_sql_exclusive": "url e sql são mutuamente exclusivos",
+      "view_deploy_unsupported_type": "A origem '{{source}}' é do tipo '{{type}}', que não pode hospedar uma view implantada; tipos compatíveis: {{supported}}",
       "view_deployed": "Exibição '{{view}}' implantada em '{{source}}' esquema '{{schema}}'",
       "view_spans_sources": "a exibição abrange várias fontes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprovado",

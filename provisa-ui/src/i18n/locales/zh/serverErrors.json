@@ -408,6 +408,7 @@
       "unknown_request_type": "未知的请求类型 '{{type}}'",
       "unknown_trigger_kind": "未知的触发器类型 '{{kind}}'",
       "url_sql_exclusive": "url 和 sql 互斥",
+      "view_deploy_unsupported_type": "数据源 '{{source}}' 的类型为 '{{type}}',无法托管已部署的视图;支持的类型:{{supported}}",
       "view_deployed": "视图 '{{view}}' 已部署到 '{{source}}' 的架构 '{{schema}}'",
       "view_spans_sources": "视图跨越多个数据源：{{sources}}",
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
