@@ -2890,7 +2890,7 @@ Cypher clauses map to SQL as follows: `MATCH` → `JOIN`; `OPTIONAL MATCH` → `
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
+**Tests:** `tests/unit/test_cypher_with_where_scope.py`, `tests/unit/test_cypher_mixed_list_graph_elements.py`, `tests/e2e/test_query_pipeline.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
 **Docs:** [cypher.md](../cypher.md)
 

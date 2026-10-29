@@ -8952,6 +8952,8 @@
   code:
   - provisa/cypher/
   tests:
+  - tests/unit/test_cypher_with_where_scope.py
+  - tests/unit/test_cypher_mixed_list_graph_elements.py
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
