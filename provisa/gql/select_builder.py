@@ -23,7 +23,7 @@ import sqlglot.expressions as exp
 
 from provisa.gql import spatial, temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
-from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.label_map import SESSION_CATALOG, CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields, via_column  # REQ-1586
 from provisa.gql.translator_types import NODE_COLUMN
@@ -97,6 +97,13 @@ def node_identity(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyri
     )
 
 
+def has_key_property(nm: NodeMapping) -> bool:
+    """Whether a node of ``nm`` carries the built-in ``_id`` among its properties: a model node
+    does (its key, REQ-2136); a node of a label only a graph session holds (REQ-2176) has no key
+    of the model's, only the properties it was created with."""
+    return not (nm.catalog_name == SESSION_CATALOG and nm.table_id == -1)
+
+
 def node_key(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """``alias``'s ``_id``: its key column, or for a compound key its identity."""
     if len(nm.key_columns) <= 1:
@@ -115,7 +122,8 @@ def node_properties_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyri
                 this=exp.Identifier(this=col_name, quoted=True), table=exp.Identifier(this=alias)
             )
         )
-    exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
+    if has_key_property(nm):
+        exprs += [exp.Literal.string(NODE_KEY_PROPERTY), node_key(alias, nm)]
     return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
 

@@ -198,12 +198,15 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
         )
         for prop_key, col_name in nm.properties.items()
     ]
-    from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY, has_key_property, node_key
 
-    # The node's key, a property every label has (``n._id``).
-    props.append(
-        exp.JSONKeyValue(this=exp.Literal.string(NODE_KEY_PROPERTY), expression=node_key(tbl, nm))
-    )
+    # The node's key, a property every model label has (``n._id``).
+    if has_key_property(nm):
+        props.append(
+            exp.JSONKeyValue(
+                this=exp.Literal.string(NODE_KEY_PROPERTY), expression=node_key(tbl, nm)
+            )
+        )
     kv.append(
         exp.JSONKeyValue(
             this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)

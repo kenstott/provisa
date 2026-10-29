@@ -1720,6 +1720,7 @@ async def _execute_cypher(
         CypherTranslateError,
         cypher_to_sql,
     )
+    from provisa.gql.translator_types import CUT_COLUMN
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
@@ -1925,7 +1926,8 @@ async def _execute_cypher(
     await register_node_ids(serializable, _model_db)
     await register_rel_ids(serializable, _model_db)
 
-    columns = list(raw_rows[0].keys()) if raw_rows else []
+    # The answer's columns are the statement's, so an answer with no rows still names them.
+    columns = [c for c in result.column_names if c.lower() != CUT_COLUMN]
     rows = [[row.get(col) for col in columns] for row in serializable]
     return columns, rows, None
 

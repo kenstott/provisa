@@ -195,6 +195,10 @@ class RelationshipMapping:
 GRAPH_ID = "__graph_id"
 
 
+#: The catalog a graph session's relations are named in (provisa.ephemeral.read, REQ-2176).
+SESSION_CATALOG = "__session__"
+
+
 @dataclass(frozen=True)
 class SessionWalk:
     """REQ-348: a graph session's relationships, every one a row of one relation of
