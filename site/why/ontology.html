@@ -151,10 +151,8 @@
         <h3>Grounding</h3>
         <p>
           Grounding is computed, never set. A term is grounded when a path from it leads down
-          to data. Its chip reads <strong>grounded</strong> when a path gets there without
-          passing through a draft term, and <strong>~grounded</strong> when every path still
-          waits on a term nobody has approved. A term with no path to data gets no chip. Status
-          and grounding sit side by side, so an approved term that reaches nothing stands out.
+          to data. Status and grounding sit side by side, so an approved term that reaches
+          nothing stands out. The next section shows how the path is traced.
         </p>
 
         <h3>Two kinds of search</h3>
@@ -170,6 +168,137 @@
           where the names fall short, and a table no term reaches is as easy to find as it was
           before. Terms never decide who may read data. Grants, row rules and masks do that,
           for an agent exactly as for a person.
+        </p>
+
+        <h2>A glossary that reaches the data</h2>
+        <p>
+          A glossary can be complete, approved and well written and still leave an agent
+          guessing, because nothing in it says where the data for each word lives. Provisa
+          measures whether every term reaches data. We call it grounding.
+        </p>
+        <p>
+          A term is grounded when its typed relationships lead to a column or table a role can
+          query. The path runs from a broader term to narrower ones. "Revenue" reaches data
+          through its parts, order amount and refund amount, and the columns they bind to.
+          "Customer" reaches it through "enterprise customer", a kind of customer.
+          "Customer tier" reaches it through "platinum", one of its valid values. A synonym
+          leads both ways, because the two words mean the same thing. A term never borrows a
+          sibling's data by climbing to a shared parent and coming back down, so "invoice"
+          doesn't reach the data of "purchase order" just because both are kinds of document.
+        </p>
+        <p>
+          Provisa computes grounding from the live model. Register a table, rename a column,
+          retire a term or remove a relationship, and every term on the affected paths is
+          traced again. Nobody maintains a status field by hand. When a term stops reaching
+          data, its page says so at once.
+        </p>
+        <p>
+          Grounding is draft or final. A term's chip reads <strong>grounded</strong> when a
+          path reaches data through approved terms only. It reads <strong>~grounded</strong>
+          when every path still passes through a draft, and it turns final the moment a
+          steward approves the draft on its path. A term with no path to data gets no chip.
+        </p>
+        <p>
+          Grounding is what makes the context an agent receives verified. More metadata helps
+          an agent only when the metadata is right. Through Provisa, an agent sees the terms on
+          paths to data, and only on paths an approved term anchors. A term nobody has defined
+          appears to it as an unnamed step along the way. Every term the agent uses has been
+          checked against the data and shown to reach a column or table its role can query,
+          and it's checked again whenever the model changes. That's context an agent can
+          trust.
+        </p>
+
+        <h2>Guidance while you build it</h2>
+        <p>
+          The commonest glossary mistake is easy to make. Two terms obviously belong together,
+          no sharper relationship comes to mind, and they get linked as "related to". Provisa
+          steps in at the moment you choose a relationship, while the fix is still cheap.
+        </p>
+
+        <h3>Each relationship type has a test</h3>
+        <p>
+          The type picker shows each type's test beside it, and the relationship assistant
+          applies the same tests when it proposes links.
+        </p>
+        <ul>
+          <li><strong>Kind of.</strong> Every X is a Y. Every enterprise customer is a
+            customer.</li>
+          <li><strong>Part of.</strong> A Y has an X. An order has an order amount.</li>
+          <li><strong>Valid value of.</strong> X is one of Y's allowed values. Platinum is a
+            customer tier.</li>
+          <li><strong>Synonym.</strong> X and Y mean the same thing. Client and
+            customer.</li>
+          <li><strong>Related to.</strong> X and Y are distinct topics that go together, and
+            neither is a kind, a part or a value of the other. Cake and candles.</li>
+        </ul>
+
+        <h3>"Related to" holds a place</h3>
+        <p>
+          The first four types ground. "Related to" doesn't, so a term linked only by
+          "related to" still can't reach data. Provisa treats it as a placeholder for a pair
+          you haven't resolved yet. When two terms go together and no grounding type fits, the
+          assistant proposes "related to" with a note that the pair may want resolving. A
+          filter on the term list shows every term with a "related to" link, so the
+          placeholders are easy to find and work through. A term that reaches no data and has
+          only "related to" links says so on its page. It's guidance. Nothing blocks you.
+        </p>
+
+        <h3>Choosing "related to" opens the alternatives</h3>
+        <p>
+          Pick "related to" for a link you're adding and Provisa interrupts, briefly. A dialog
+          explains why it's the least useful link you can add, then draws every shape that
+          would ground the pair with one new term, tightest first, each with a suggested name.
+          For cake and candles it offers these.
+        </p>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>Shape</th><th>New term</th><th>How the pair connects</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Component type</th>
+                <td>cake decoration</td>
+                <td>Candles are a kind of cake decoration, and a cake decoration is part of a cake.</td>
+              </tr>
+              <tr>
+                <th>Specialisation</th>
+                <td>birthday cake</td>
+                <td>Candles are part of a birthday cake, and a birthday cake is a kind of cake.</td>
+              </tr>
+              <tr>
+                <th>Common whole</th>
+                <td>party</td>
+                <td>Cake and candles are both parts of a party.</td>
+              </tr>
+              <tr>
+                <th>Common genus</th>
+                <td>party supplies</td>
+                <td>Cake and candles are both kinds of party supplies.</td>
+              </tr>
+              <tr>
+                <th>Common enumeration</th>
+                <td>party item type</td>
+                <td>Cake and candles are both valid values of party item type.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Choose a shape and the new-term form opens with the name and both links filled in,
+          for you to confirm or rename. You can still add "related to" in one click, and it
+          joins the placeholders the filter lists. When the assistant proposes links in bulk,
+          each "related to" it proposes carries the same shapes in its note. The assistant
+          proposes the structural types first and never adds a term on its own. Whether a
+          pair needs a new term, and what to call it, is your decision.
+        </p>
+
+        <h3>The broader the new term, the less its grounding tells you</h3>
+        <p>
+          Why tightest first? "Party" grounds candles as surely as "cake decoration" does. A
+          hub that broad leads to everything at a party, though, so its grounding no longer
+          says which data answers a question about candles. A tight term gives the agent a
+          short path to the right columns. A hub gives it a long path to many.
         </p>
 
         <h2>Turn guesses into deterministic answers</h2>
@@ -267,6 +396,48 @@
         <p>
           The primitives are simple on purpose. How much they help your agents depends on how
           well your stewards use them.
+        </p>
+
+        <h2>Quality you can measure</h2>
+        <p>
+          Glossary work often falls to people who were never taught how to build one. They
+          know the business, and the result can look finished while it sends agents to the
+          wrong data, or to none. The Ontology quality report, one of Provisa's standard
+          reports, shows whether the glossary is any good. It measures the glossary from the
+          model itself, by domain and by steward.
+        </p>
+        <ul>
+          <li><strong>Grounded share.</strong> The terms in service that reach data, with
+            draft and final grounding counted apart.</li>
+          <li><strong>Approved and grounded share.</strong> The terms an agent may use as a
+            route to data.</li>
+          <li><strong>Unresolved placeholders.</strong> The "related to" links, and the terms
+            whose only links are "related to". Each row opens its review.</li>
+          <li><strong>Grounding precision.</strong> How many hops lie between a term and its
+            data, and how many paths pass through a broad hub term.</li>
+          <li><strong>Grounded only through drafts.</strong> Each term that waits on an
+            approval, with the term whose approval makes its grounding final.</li>
+          <li><strong>Undefined terms on paths to data.</strong> Terms an agent passes
+            through with no definition to read.</li>
+          <li><strong>Drift.</strong> The terms that lost or gained grounding since the
+            previous period.</li>
+        </ul>
+        <p>
+          Every row links to its term. You read the report through the same governed pipeline
+          as any other data, as the roles you select, and export it to the BI tool you already
+          use.
+        </p>
+
+        <h2>Keep your catalog</h2>
+        <p>
+          If your organization already runs a data catalog, keep it. Provisa is the
+          authoritative source for what each term means and where it reaches data, because it
+          computes grounding from the same model that serves the data. The metadata export
+          publishes your approved terms, each with its definition, relationships and
+          grounding, into Collibra, Microsoft Purview, Atlan, DataHub, OpenMetadata, Apache
+          Atlas, Dataplex and Amazon DataZone. Your people keep searching the catalog they
+          know. There is no replacement project, and no second glossary to keep in step by
+          hand.
         </p>
 
         <h2>Start with one word</h2>
