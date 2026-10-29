@@ -253,8 +253,10 @@ class WithClause:
     where: WhereClause | None = None
     # A WITH's own ORDER BY, SKIP and LIMIT pick the rows it carries on, not the statement's.
     order_by: list[OrderItem] = field(default_factory=list)
-    skip: int | None = None
-    limit: int | None = None
+    #: A count of rows as written, or the expression giving it ($n, toInteger(...)): one
+    #: reading no variable, its value a whole number of 0 or more (translator._row_count).
+    skip: int | CypherExpr | None = None
+    limit: int | CypherExpr | None = None
     #: WITH DISTINCT: the rows it carries on are distinct.
     distinct: bool = False
 
@@ -375,8 +377,8 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     pipeline: list["MatchStep | WithClause"]
     return_clause: ReturnClause | None
     order_by: list[OrderItem]
-    skip: int | None
-    limit: int | None
+    skip: int | CypherExpr | None
+    limit: int | CypherExpr | None
     call_subqueries: list[CallSubquery] = field(default_factory=list)
     # UNION / UNION ALL: list of (sub_ast, is_all)
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)

@@ -468,10 +468,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         self._pos += 1
         return t
 
-    def _row_count(self, clause: str) -> int:
-        """The whole number of rows SKIP or LIMIT takes. REQ-778: anything else -- a fraction, a
-        negative, a string, a name -- is the user's mistake, refused naming what was written and
-        the fix (a fraction was once cut to its whole part without a word)."""
+    def _row_count(self, clause: str) -> int | CypherExpr:
+        """The whole number of rows SKIP or LIMIT takes, or the expression giving it (``$n``,
+        ``toInteger(ceil(1.7))``), whose value the translator holds to the same rule. REQ-778: a
+        fraction, a negative or a string written as the count is the user's mistake, refused
+        naming what was written and the fix (a fraction was once cut to its whole part without a
+        word)."""
         t = self._peek()
         written = t.value if t is not None else ""
         if t is not None and t.type == "MINUS":
@@ -480,6 +482,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             written = "-" + (following.value if following is not None else "")
         elif t is not None and t.type == "NUMBER" and t.value.isdigit():
             return int(self._advance().value)
+        elif t is not None and t.type not in ("NUMBER", "STRING"):
+            text = self._parse_where()
+            try:
+                return parse_expression(text)
+            except CypherExprParseError as exc:
+                raise CypherParseError(f"{clause} {text}: {exc}") from exc
         raise CypherParseMistake(
             f"cypher.invalid_{clause.lower()}",
             f"{clause} {written} is not a whole number of rows: {clause} takes a count of 0 or "
@@ -526,8 +534,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         current_where: str | None = None  # the WHERE as written, until its match step is built
         return_clause: ReturnClause | None = None
         order_by: list[OrderItem] = []
-        skip: int | None = None
-        limit: int | None = None
+        skip: int | CypherExpr | None = None
+        limit: int | CypherExpr | None = None
         call_subqueries: list[CallSubquery] = []
         union_parts: list[tuple[CypherAST, bool]] = []
 
@@ -1128,11 +1136,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             self._advance()
             self._consume_keyword("BY")
             order_by = self._parse_order_by()
-        skip: int | None = None
+        skip: int | CypherExpr | None = None
         if self._match_keyword("SKIP"):
             self._advance()
             skip = self._row_count("SKIP")
-        limit: int | None = None
+        limit: int | CypherExpr | None = None
         if self._match_keyword("LIMIT"):
             self._advance()
             limit = self._row_count("LIMIT")

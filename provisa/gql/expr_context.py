@@ -359,6 +359,17 @@ class TranslatorExprContext:
                 # name the label does not give it.
                 return exp.Null()
             return _col(name, info[0] if info else var)
+        if (
+            isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._union_columns
+            and t._var_table.get(obj.name, ("", None))[0] == obj.table
+        ):
+            # A node of a union of labels a WITH carries: its union's columns are that WITH's,
+            # a property one of them; one no label of it has is null.
+            if name not in t._union_columns[obj.name]:
+                return exp.Null()
+            return _col(name, obj.table)
         if isinstance(obj, exp.Column) and obj.table and obj.name in t._map_vars:
             # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
             if name not in t._map_vars[obj.name]:
@@ -849,7 +860,8 @@ class TranslatorExprContext:
                     "JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.label")
                 )
             elif domain is not None and var is not None:
-                row_label = _col("__label", var)
+                # Its union's row, or the WITH's carrying it.
+                row_label = _col("__label", info[0] if info else var)
             else:
                 return exp.false()
             named = sorted(m.label for m in self._t._lm.nodes.values() if _label_names(m, labels))

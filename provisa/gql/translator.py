@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import functools
 import re
 from collections.abc import Callable
 from dataclasses import replace
@@ -113,7 +114,26 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     """
     ast = _null_bound_matches(ast)
     translator = _Translator(ast, label_map, params)
-    return translator.translate()
+    sql_ast, ordered, graph_vars = translator.translate()
+    return quote_keywords(sql_ast), ordered, graph_vars
+
+
+@functools.cache
+def _keywords() -> frozenset[str]:
+    from sqlglot.dialects.postgres import Postgres
+
+    return frozenset(Postgres.Tokenizer.KEYWORDS)
+
+
+def quote_keywords(tree: exp.Expression) -> Any:
+    """``tree`` with each unquoted identifier that is a SQL keyword quoted: a Cypher variable
+    may be named ``like`` or ``order``, which the SQL text sqlglot writes (it quotes no keyword)
+    would read back as the keyword (REQ-347)."""
+    keywords = _keywords()
+    for ident in tree.find_all(exp.Identifier):
+        if not ident.quoted and ident.name.upper() in keywords:
+            ident.set("quoted", True)
+    return tree
 
 
 #: A value's type as a map literal writes it (expr_visitor._literal_kind) -> its engine type.
@@ -916,9 +936,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 *self._build_order_by(with_clause.order_by, with_clause.items)
             )
         if with_clause.limit is not None:
-            stage_query = stage_query.limit(with_clause.limit)
+            stage_query = stage_query.limit(self._row_count(with_clause.limit, "LIMIT"))
         if with_clause.skip is not None:
-            stage_query = stage_query.offset(with_clause.skip)
+            stage_query = stage_query.offset(self._row_count(with_clause.skip, "SKIP"))
         if with_clause.where is not None and not filters_read_rows:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
             before = (
@@ -1235,16 +1255,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if order_exprs:
                 outer = outer.order_by(*order_exprs)
             if self._ast.limit is not None:
-                outer = outer.limit(self._ast.limit)
+                outer = outer.limit(self._row_count(self._ast.limit, "LIMIT"))
             if self._ast.skip is not None:
-                outer = outer.offset(self._ast.skip)
+                outer = outer.offset(self._row_count(self._ast.skip, "SKIP"))
             return outer
         if order_exprs:
             result = result.order_by(*order_exprs)
         if self._ast.limit is not None:
-            result = result.limit(self._ast.limit)
+            result = result.limit(self._row_count(self._ast.limit, "LIMIT"))
         if self._ast.skip is not None:
-            result = result.offset(self._ast.skip)
+            result = result.offset(self._row_count(self._ast.skip, "SKIP"))
         return result
 
     def translate(self) -> tuple[exp.Select | exp.Union, list[str], dict[str, GraphVarKind]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1318,9 +1338,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             and (self._ast.limit is not None or self._ast.skip is not None)
         ):
             if self._ast.limit is not None:
-                result = result.limit(self._ast.limit)
+                result = result.limit(self._row_count(self._ast.limit, "LIMIT"))
             if self._ast.skip is not None:
-                result = result.offset(self._ast.skip)
+                result = result.offset(self._row_count(self._ast.skip, "SKIP"))
             result = exp.select(exp.Star()).from_(
                 exp.alias_(exp.Subquery(this=result), alias="_ub_first")
             )
@@ -1668,6 +1688,34 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _lower_where(self, where: WhereClause) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         return self._lower_expr(where.expression).transform(_timestamp_literal)
+
+    def _row_count(self, value: int | CypherExpr, clause: str) -> int | exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """SKIP's or LIMIT's count as SQL: a whole number written, or an expression that reads no
+        variable -- a parameter (bound, so the translation serves any value of its type) or one
+        whose value the engine works out, ``toInteger(rand() * 9)``. openCypher's rule: a count
+        is a whole number of 0 or more; one that reads a variable, or a parameter not an
+        integer, is refused here, and a negative parameter by the engine when one is cached."""
+        if isinstance(value, int):
+            return value
+        read = sorted({n.name for n in walk(value) if isinstance(n, Variable)})
+        if read:
+            raise CypherTranslateError(
+                f"{clause} reads {', '.join(read)}: its count is a constant expression, a "
+                f"number or a parameter, e.g. {clause} 10 or {clause} $n"
+            )
+        if isinstance(value, ExprParameter):
+            given = self._params.get(value.name)
+            if isinstance(given, bool) or not isinstance(given, int):
+                raise CypherTranslateError(
+                    f"{clause} ${value.name} is {given!r}: {clause} takes a whole number of 0 or "
+                    "more"
+                )
+            if given < 0:
+                raise CypherTranslateError(
+                    f"{clause} ${value.name} is {given}: {clause} takes a whole number of 0 or more"
+                )
+            return self._lower_expr(value)
+        return exp.cast(self._lower_expr(value), exp.DataType.build("BIGINT"))
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """An expression tree as a SQLGlot expression (REQ-913)."""

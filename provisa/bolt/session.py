@@ -1925,9 +1925,19 @@ async def _execute_cypher(
     await register_node_ids(serializable, _model_db)
     await register_rel_ids(serializable, _model_db)
 
-    columns = list(raw_rows[0].keys()) if raw_rows else []
+    columns = _answer_columns(raw_rows, result.column_names)
     rows = [[row.get(col) for col in columns] for row in serializable]
     return columns, rows, None
+
+
+def _answer_columns(raw_rows: list[dict], column_names: list[str]) -> list[str]:
+    """The columns a read answers: its rows', or with no rows (LIMIT 0) the statement's own, the
+    engine's less the depth-limit column, as the HTTP surface answers them."""
+    from provisa.gql.translator_types import CUT_COLUMN
+
+    if raw_rows:
+        return list(raw_rows[0].keys())
+    return [c for c in column_names if c != CUT_COLUMN]
 
 
 async def _execute_write_cypher(

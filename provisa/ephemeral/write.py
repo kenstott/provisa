@@ -22,6 +22,7 @@ relationships once, landed in the session's tables (:mod:`.store`).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -52,19 +53,44 @@ class Created:
 def _items(p: CreatePattern, kind: CreateKind, bound: set[str]) -> list[str]:
     """The read's RETURN items: each new node's and relationship's property values, and each
     node the patterns reach back to."""
-    items = [
-        f"{value} AS _n{c.index}_{k}"
-        for c in kind.created
-        for k, value in p.nodes[c.index].properties
-    ]
+    made: dict[str, dict[str, str]] = {}
+    items: list[str] = []
+    for c in kind.created:
+        node = p.nodes[c.index]
+        values = {k: _made_values(value, made) for k, value in node.properties}
+        items += [f"{value} AS _n{c.index}_{k}" for k, value in values.items()]
+        if node.variable is not None and node.variable not in bound:
+            made[node.variable] = values
     items += [
-        f"{value} AS _r{j}_{k}" for j, rel in enumerate(p.rels) for k, value in rel.properties
+        f"{_made_values(value, made)} AS _r{j}_{k}"
+        for j, rel in enumerate(p.rels)
+        for k, value in rel.properties
     ]
     reached = sorted(
         {n.variable for n in p.nodes if n.variable is not None and n.variable in bound}
     )
     items += [f"{var} AS _v_{var}" for var in reached]
     return items or ["1 AS _one"]
+
+
+#: A string literal, or a variable's property ``v.k`` (not a parameter's or a map's member).
+_MEMBER = re.compile(
+    r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|(?<![\w.$`])([A-Za-z_]\w*)\s*\.\s*(\w+)"""
+)
+
+
+def _made_values(value: str, made: dict[str, dict[str, str]]) -> str:
+    """``value`` with each property of a node the same CREATE makes before it read as the
+    expression that property is made of (``CREATE (a {id: 0}), ({num: a.id})``), or null when
+    the node is made without it: the read evaluating the values binds no such node."""
+
+    def put(m: re.Match[str]) -> str:
+        var, key = m.group(1), m.group(2)
+        if var is None or var not in made:
+            return m.group(0)
+        return f"({made[var][key]})" if key in made[var] else "null"
+
+    return _MEMBER.sub(put, value)
 
 
 def _identity(node: Any, label_map: Any, graph: store.Graph) -> tuple[str, tuple[str, ...]]:
