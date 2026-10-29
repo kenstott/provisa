@@ -26739,3 +26739,15 @@ An org keeps a reference library: documents relevant to its ongoing work in Prov
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2186 · File Sources {#REQ-2186}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-10-29: a file source can read the lists in its HTML pages (ul and ol) as tables, as it reads their tables. It is a source option, off by default. Only lists inside the page's content are read, by the same rule the crawler uses to follow only links within content ([REQ-1960](#REQ-1960)), and a list of fewer than 3 items is not read. A nested list is flattened into its outer list's table: its items are rows of that table, in document order, and every list's table has a level column, 1 for a top-level item and one more for each list it is nested in; a nested list is not a table of its own. A list whose items have no link is a table of one column, value, the item's text. A list in which any item is a link is a table of two columns, value and uri: value is the item's text and uri the link's address made absolute against the page's address, empty for an item with no link. A numbered list (ol) also has a position column, the item's number within its own list from 1. Each list's table is named by the heading above it, as a page's tables are, numbered when two names collide. HTML comes first; Markdown, DOCX and PPTX lists may follow with the same table shapes.
+
+**Code:** —
+
+**Tests:** —
