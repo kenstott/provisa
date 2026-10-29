@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from provisa.compiler.temp_tables import TempSession
+from provisa.cypher import counters
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import store
 from provisa.ephemeral.write import Read, Write, _identity, _model_identity
@@ -182,6 +183,8 @@ async def delete(
         await store.remove_labels(state, session, tags)
     if session_nodes:
         await store.delete_nodes(state, session, sorted(session_nodes))
+    # The session's parts; each model row was counted as the governed path deleted it.
+    counters.count(nodes_deleted=len(session_nodes), relationships_deleted=len(rels))
     return Deleted(len(session_nodes) + len(model_nodes), len(rels))
 
 

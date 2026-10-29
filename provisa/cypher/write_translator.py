@@ -48,6 +48,7 @@ from typing import Any
 
 from provisa.compiler.sql_literals import sql_literal
 from provisa.compiler.sql_types import key_list
+from provisa.cypher.counters import carried_labels, set_values, unknown, written_rows
 from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
@@ -1316,10 +1317,13 @@ class WriteTranslator:
             held[id(rel)] = rel
         return list(held.values())
 
-    def erase(self, ast: WriteAST, columns: list[str], rows: list[list[Any]]) -> list[str]:
+    def erase(
+        self, ast: WriteAST, columns: list[str], rows: list[list[Any]]
+    ) -> list[tuple[str, str]]:
         """The DELETEs an ``erase`` makes of what its read returned (``columns``/``rows``, as
-        :meth:`erase_read` asks): each deleted relationship's junction row, each junction row a
-        detached node is an end of, then each node's row. Every part has an exact target
+        :meth:`erase_read` asks), each with the counter a row it deletes is: each deleted
+        relationship's junction row, each junction row a detached node is an end of, then each
+        node's row. Every part has an exact target
         (REQ-2176): a relationship a foreign key derives is refused by name, deleted or detached,
         before any statement is made."""
         from provisa.gql.assembler import to_serializable
@@ -1397,7 +1401,7 @@ class WriteTranslator:
                         junction_row(
                             rel, [(via.target_columns, keys(nm, props, rel.join_target_column))]
                         )
-        out = []
+        out: list[tuple[str, str]] = []
         for rel, conditions in junction_rows.values():
             via = rel.via
             assert via is not None  # only a junction relationship holds rows here
@@ -1405,7 +1409,9 @@ class WriteTranslator:
             if via.type_column:
                 typed = via.type_value if via.type_value is not None else rel.rel_type
                 where = f"({where}) AND {_q(via.type_column)} = {_write_value(typed)}"
-            out.append(f"DELETE FROM {_junction_table(via)} WHERE {where}")
+            out.append(
+                ("relationships_deleted", f"DELETE FROM {_junction_table(via)} WHERE {where}")
+            )
         tables: dict[str, tuple[NodeMapping, set[str]]] = {}
         for nm, props in nodes.values():
             conditions = [
@@ -1417,7 +1423,10 @@ class WriteTranslator:
             )
         for nm, conditions in tables.values():
             out.append(
-                f"DELETE FROM {self._qualified_table(nm)} WHERE {' OR '.join(sorted(conditions))}"
+                (
+                    "nodes_deleted",
+                    f"DELETE FROM {self._qualified_table(nm)} WHERE {' OR '.join(sorted(conditions))}",
+                )
             )
         return out
 
@@ -1510,13 +1519,17 @@ async def _written_graph(
     between them, then the read answering the RETURN."""
     links = translator.graph_links(ast)
     rows: list[dict[str, Any]] = []
-    for sql in translator.graph_rows(ast, links):
-        columns, answer = await write(*bind_write_params(sql, provided))
+    for node, sql in zip(ast.created, translator.graph_rows(ast, links), strict=True):
+        columns, answer = await written_rows(
+            write, *bind_write_params(sql, provided), **created_node(translator, node, provided)
+        )
         if len(answer) != 1:
             raise CypherWriteParseError(f"a CREATE wrote {len(answer)} rows, where it writes one")
         rows.append(dict(zip(columns, answer[0], strict=True)))
-    for sql in translator.relate_rows(ast, links, rows):
-        await write(*bind_write_params(sql, provided))
+    for link, sql in zip(ast.links, translator.relate_rows(ast, links, rows), strict=True):
+        await written_rows(
+            write, *bind_write_params(sql, provided), **created_link(link.props, provided)
+        )
     if not ast.returns:
         return [], []
     cypher, params = graph_returned(ast, rows)
@@ -1532,7 +1545,9 @@ async def written(
 ) -> tuple[list[str], list[list[Any]]]:
     """Run the write ``ast``: its read of the nodes a relationship joins, its write, and the read
     answering its RETURN. ``read(cypher, params)`` and ``write(sql, bound)`` are the surface's
-    own, each answering (columns, rows) through the one pipeline."""
+    own, answering through the one pipeline: a read its (columns, rows), a write its (columns,
+    rows, the source's row count). Each row written is counted on the statement's counters
+    (:mod:`provisa.cypher.counters`)."""
     if ast.kind == "graph":
         return await _written_graph(ast, translator, provided, read, write)
     if ast.kind == "merge":
@@ -1544,21 +1559,60 @@ async def written(
         # REQ-2176: what the DELETE names is read as every read is, under the role's governance;
         # each DELETE is then admitted as any write (write grant, row rules).
         columns, rows = await read(translator.erase_read(ast), provided)
-        for sql in translator.erase(ast, columns, rows):
-            await write(*bind_write_params(sql, provided))
+        for counter, sql in translator.erase(ast, columns, rows):
+            await written_rows(write, *bind_write_params(sql, provided), **{counter: 1})
         return [], []
     if ast.kind == "relate":
         answers = [(await read(q, p))[1] for q, p in translator.matched_reads(ast, provided)]
         sql = translator.relate(ast, translator.pairs(ast, answers))
         if sql is None:
             return [], []
+        per_row = created_link(ast.props, provided)
+    elif ast.kind == "create":
+        sql = translator.translate(ast)
+        per_row = created_node(translator, ast, provided)
+    elif ast.kind == "update":
+        sql = translator.translate(ast)
+        per_row = properties_set([v for _, v in ast.set_assignments], provided)
     else:
         sql = translator.translate(ast)
-    columns, rows = await write(*bind_write_params(sql, provided))
+        per_row = {"nodes_deleted": 1}
+    columns, rows = await written_rows(write, *bind_write_params(sql, provided), **per_row)
     if ast.returns:
         cypher, params = returned(ast, columns, rows)
         return await read(cypher, {**provided, **params})
     return columns, rows
+
+
+def created_node(
+    translator: "WriteTranslator", node: WriteAST | CreatedNode, provided: dict[str, Any]
+) -> dict[str, int]:
+    """What each model row a CREATE writes counts: a node, the labels it is read with, and each
+    property it is given a value (a null is no property, as Neo4j sets none)."""
+    nm = translator._resolve_mapping(node.label)
+    values = set_values(list(node.props.values()), provided)
+    return {
+        "nodes_created": 1,
+        "labels_added": carried_labels(nm.label),
+        "properties_set": sum(v is not None for v in values),
+    }
+
+
+def created_link(props: dict[str, Any], provided: dict[str, Any]) -> dict[str, int]:
+    """What each junction row a relationship CREATE writes counts: a relationship, and each
+    property it is given a value."""
+    values = set_values(list(props.values()), provided)
+    return {"relationships_created": 1, "properties_set": sum(v is not None for v in values)}
+
+
+def properties_set(values: list[Any], provided: dict[str, Any]) -> dict[str, int]:
+    """What each row a SET writes counts: each property it sets, an unchanged value included, as
+    Neo4j counts it. A SET to null counts only where the row held a value, which the UPDATE
+    does not read: the statement's counters are then unknown."""
+    if any(v is None for v in set_values(values, provided)):
+        unknown("a SET to null counts a property only where the row held one, which is not read")
+        return {}
+    return {"properties_set": len(values)}
 
 
 def bind_write_params(sql: str, provided: dict[str, Any]) -> tuple[str, list[Any]]:
