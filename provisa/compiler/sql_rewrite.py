@@ -732,6 +732,12 @@ def unalias_write_target(sql: str) -> str:  # REQ-910
     # the INSERT's own, so it stays on the target.
     columns = list(alias.args.get("columns") or [])
     target.set("alias", None)
+    if isinstance(tree, exp.Update):
+        # Trino/Athena's UPDATE binds a column by its bare name; the self-alias qualifier goes too.
+        # A column inside a nested SELECT keeps its qualifier: it belongs to that query's scope.
+        for col in list(tree.find_all(exp.Column)):
+            if col.table == target.name and col.find_ancestor(exp.Select) is None:
+                col.set("table", None)
     if columns and isinstance(tree, exp.Insert) and not isinstance(tree.this, exp.Schema):
         tree.set("this", exp.Schema(this=target, expressions=columns))
     return tree.sql(dialect="postgres")

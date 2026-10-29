@@ -297,6 +297,37 @@ async def test_the_compiled_stage_keeps_a_plan_per_role(pipeline):
     assert pipeline.calls["context"] == 2
 
 
+async def test_the_compiled_stage_keeps_a_plan_per_temporary_table_session(pipeline):
+    """REQ-615, REQ-2176: a statement compiled in a session holding temporary tables (a Bolt
+    connection's ephemeral graph) is kept for that session alone, as its tables stand -- the
+    same words read another session's tables at another store address. A plan kept from a
+    connection that has closed, its schema dropped, is never served to the next one."""
+    from provisa.compiler import temp_tables
+    from provisa.compiler.temp_tables import TempSession, TempTable
+
+    def holding(session: TempSession) -> TempSession:
+        session.tables["cypher__node_labels"] = TempTable(
+            "cypher__node_labels", [("node_id", "text"), ("label", "text")]
+        )
+        return session
+
+    first, second = holding(TempSession()), holding(TempSession())
+    token = temp_tables.bind(first)
+    try:
+        await _compiled(pipeline)
+        await _compiled(pipeline)
+        assert pipeline.calls["context"] == 1, "a repeat in one session was governed again"
+        temp_tables.unbind(token)
+        token = temp_tables.bind(second)
+        await _compiled(pipeline)
+        assert pipeline.calls["context"] == 2, "another session was served the first's plan"
+        second.generation += 1  # its tables changed
+        await _compiled(pipeline)
+        assert pipeline.calls["context"] == 3, "a session's changed tables were served its old plan"
+    finally:
+        temp_tables.unbind(token)
+
+
 async def test_the_compiled_stage_applies_rls_per_session_value(pipeline):
     """A plan governed for one session value is never served to another."""
     from provisa.compiler.rls import RLSContext

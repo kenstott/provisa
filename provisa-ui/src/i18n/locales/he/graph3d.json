@@ -145,6 +145,8 @@
     "quality_none": "טרם הורץ",
     "factOwner": "בעלים",
     "factMembers": "טבלאות חברות",
-    "factColumns": "עמודות"
+    "factColumns": "עמודות",
+    "grounding_grounded": "מעוגן",
+    "grounding_grounded_pending": "מעוגן, ממתין לאישור"
   }
 }

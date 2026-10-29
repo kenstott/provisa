@@ -24,6 +24,7 @@ from provisa.sparql_query.vocabulary import (
     build_vocabulary,
     concepts_of,
     superclasses_of,
+    term_domains_of,
     term_iri,
     vocabulary_document,
 )
@@ -43,9 +44,13 @@ from tests.unit.test_sparql_compiler import (
 )
 
 
-def _doc(concepts: list[dict] | None = None, superclasses: dict | None = None) -> dict:
+def _doc(
+    concepts: list[dict] | None = None,
+    superclasses: dict | None = None,
+    term_domains: dict | None = None,
+) -> dict:
     vocab = build_vocabulary(_model(), BASE, _TYPES, _GROUNDING)
-    return vocabulary_document(vocab, concepts or [], superclasses or {})
+    return vocabulary_document(vocab, concepts or [], superclasses or {}, term_domains or {})
 
 
 def test_the_vocabulary_names_its_base_and_prefixes():
@@ -77,6 +82,7 @@ def test_each_class_is_a_tables_own_or_a_class_term_with_the_labels_it_types():
         "kind": "term",
         "labels": ["Person"],
         "superclasses": [],
+        "domains": [],
     }
 
 
@@ -117,13 +123,21 @@ def test_the_agent_visible_concept_terms_are_offered_and_nothing_else_of_the_glo
             "definition": "How long a customer stays.",
             "is_abstract": True,
             "agent_visible": True,
+            "domains": ["hr"],
         },
-        {"name": "draft idea", "definition": None, "is_abstract": True, "agent_visible": False},
+        {
+            "name": "draft idea",
+            "definition": None,
+            "is_abstract": True,
+            "agent_visible": False,
+            "domains": [],
+        },
         {
             "name": "party",
             "definition": "Someone we deal with.",
             "is_abstract": False,
             "agent_visible": True,
+            "domains": [],
         },
     ]
     concepts = concepts_of(BASE, rows)
@@ -132,6 +146,7 @@ def test_the_agent_visible_concept_terms_are_offered_and_nothing_else_of_the_glo
             "iri": term_iri(BASE, "customer lifetime"),
             "name": "customer lifetime",
             "definition": "How long a customer stays.",
+            "domains": ["hr"],
         }
     ]
     assert _doc(concepts)["concepts"] == concepts
@@ -148,3 +163,19 @@ def test_a_class_term_names_the_terms_it_is_a_kind_of_that_the_role_reads():
     assert classes[EMPLOYEE]["superclasses"] == [term_iri(BASE, "Person")]
     # A table's own class has none.
     assert classes[PERSON]["superclasses"] == []
+
+
+def test_a_term_carries_its_domains_and_a_tables_own_class_does_not():
+    # REQ-1723 (EVERY EXPLORER FOLLOWS THE CHECKED DOMAINS): the client shows a term when one of
+    # its domains is checked, so each Class term, Property term and Concept names them.
+    rows = [
+        {"name": "Employee", "domains": ["hr"]},
+        {"name": "Legal name", "domains": []},
+    ]
+    doc = _doc(term_domains=term_domains_of(BASE, rows))
+    classes = {c["iri"]: c for c in doc["classes"]}
+    assert classes[term_iri(BASE, "Employee")]["domains"] == ["hr"]
+    assert "domains" not in classes[PERSON]
+    predicates = {p["iri"]: p for p in doc["predicates"]}
+    assert predicates[FULL_NAME]["domains"] == []
+    assert all("domains" not in p for p in doc["predicates"] if p["kind"] == "column")

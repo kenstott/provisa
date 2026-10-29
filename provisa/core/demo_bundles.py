@@ -87,10 +87,27 @@ class NeedsNewerProvisa(BundleError):
         self.running = running
 
 
+class NewerDemoFormat(BundleError):
+    """The bundle is in a newer demo format than this Provisa reads: it needs a newer Provisa.
+
+    The format travels with the code that reads it, so this refuses where requires_provisa cannot:
+    a build that is no release (a checkout, an app image, a tree deployed over one) reports the
+    unstamped version in pyproject.toml, which every alpha's requires_provisa is older than."""
+
+    def __init__(self, manifest: BundleManifest) -> None:
+        super().__init__(
+            f"demo {manifest.demo} {manifest.version} is in demo format {manifest.format}; this "
+            f"Provisa reads format {DEMO_FORMAT}: it needs a newer Provisa"
+        )
+        self.manifest = manifest
+
+
 #: The demo format this Provisa reads: bumped whenever a demo's files gain something a reader
 #: requires. 2: tour.yaml names its ``landing`` (REQ-2010, the tour's "Where next?"). 3: code
 #: exports take ``inputs`` (REQ-2100) and roles name ``parents`` (REQ-2155); a demo using either
-#: also sets requires_provisa to the release carrying it, which is what an older Provisa refuses by.
+#: also sets requires_provisa to the release carrying it. A release older than that refuses it by
+#: requires_provisa; any build reading an older format (a checkout or app image, whose version is
+#: the unstamped one) refuses it by its format (NewerDemoFormat).
 DEMO_FORMAT = 3
 
 
@@ -148,10 +165,13 @@ def running_provisa() -> str:
 
 
 def check_runs_here(manifest: BundleManifest, running: str) -> None:
-    """Refuse, by name, a bundle that needs a newer Provisa than ``running``, or one in an older
-    demo format than this Provisa reads."""
+    """Refuse, by name, a bundle that needs a newer Provisa than ``running`` -- by its
+    requires_provisa, or by a newer demo format than this Provisa reads -- or one in an older demo
+    format than this Provisa reads."""
     if provisa_version_key(running) < provisa_version_key(manifest.requires_provisa):
         raise NeedsNewerProvisa(manifest, running)
+    if manifest.format > DEMO_FORMAT:
+        raise NewerDemoFormat(manifest)
     if manifest.format < DEMO_FORMAT:
         raise OldDemoFormat(manifest)
 
