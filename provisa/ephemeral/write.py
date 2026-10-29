@@ -105,7 +105,7 @@ def _identity(node: Any, label_map: Any, graph: store.Graph) -> tuple[str, tuple
     else:
         raise CypherParseError("A created relationship's end is a node")
     key = props.get("_id")
-    if isinstance(key, str) and key.startswith("e:"):
+    if store.is_session_node_key(key):
         return key, graph.node_keys[key]
     by_label = {nm.label: nm for nm in label_map.nodes.values()}
     if key is None and isinstance(read_as, str) and "|" in read_as:

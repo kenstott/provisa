@@ -688,6 +688,14 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             if _info and _info[1] and _prop in _info[1].map_properties:
                 # REQ-1991: returned as a map on every engine, whatever form it arrives in.
                 self._graph_vars[(name or _prop).lower()] = GraphVarKind.MAP
+            elif (
+                _info
+                and _info[1]
+                and str(dict(_info[1].property_types).get(_prop, "")).lower() == "json"
+            ):
+                # REQ-2176: a property held as one JSON value (a session label's property written
+                # with values of several kinds): its value, decoded by the answer.
+                self._graph_vars[(name or _prop).lower()] = GraphVarKind.JSON_VALUE
         if alias:
             return exp.alias_(parsed, alias)
         if name:
