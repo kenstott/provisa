@@ -458,7 +458,16 @@ class TestProvisionOrg:
     async def test_deprovision_org_drops_role_and_schema(self):  # REQ-701
         from provisa.core.org_provisioning import deprovision_org
 
+        from provisa.core.org_registry_view import ORG_SCHEMAS_LOCK_KEY
+
         mock_conn = AsyncMock()
+        # The schemas are dropped under the registry view's lock (REQ-1301).
+        mock_conn.advisory_lock = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        )
         mock_pool = MagicMock()
         mock_pool.dialect = "postgresql"  # PG control plane → role drop runs (REQ-889)
         mock_pool.acquire = MagicMock(
@@ -473,6 +482,7 @@ class TestProvisionOrg:
         executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
         assert any("DROP ROLE" in s and "role_acme" in s for s in executed)
         assert any("DROP SCHEMA" in s and "org_acme" in s for s in executed)
+        mock_conn.advisory_lock.assert_called_once_with(ORG_SCHEMAS_LOCK_KEY)
 
     @pytest.mark.asyncio
     async def test_deprovision_org_emits_no_schema_ddl_off_postgres(self):  # REQ-1488

@@ -73,8 +73,11 @@ def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType
 
 
 def _spelled(kind: str) -> str:
-    """A registered type as SQL spells it: a session's ``list<elem>`` an array of ``elem``."""
-    return f"{_spelled(kind[5:-1])}[]" if kind.startswith("list<") else kind
+    """A registered type as SQL spells it: a session's ``list<elem>`` an array of ``elem``, its
+    ``zoned_time`` (a time with its offset) a ``TIMETZ``."""
+    if kind.startswith("list<"):
+        return f"{_spelled(kind[5:-1])}[]"
+    return "TIMETZ" if kind == "zoned_time" else kind
 
 
 def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.DataType | None:
@@ -201,6 +204,8 @@ class _UnionMixin:  # mixin for _Translator
         def _node_as_one_value(self, var: str) -> bool: ...
 
         def _referenced_var_props(self, var: str) -> list[str]: ...
+
+        def _required_var_props(self, var: str) -> list[str]: ...
 
     def _build_all_rels_union(
         self,
@@ -533,6 +538,7 @@ class _UnionMixin:  # mixin for _Translator
         as_one_value = self._node_as_one_value(var)
         props = self._referenced_var_props(var) if as_one_value else self._collect_var_props(var)
 
+        required = [] if as_one_value else self._required_var_props(var)
         held_as = {
             p: union_type(p, type_labels, self._lm) or exp.DataType.build("VARCHAR") for p in props
         }
@@ -553,11 +559,11 @@ class _UnionMixin:  # mixin for _Translator
             if nm.traversal_only:
                 continue
             had_resolvable = True
-            # Metadata-based prune: skip branches where no required property exists.
-            # Those branches can only contribute NULL rows, which a WHERE filter would discard.
-            # This prevents full-table scans across all entity types on the engine.
+            # Metadata-based prune: skip a type lacking a property the MATCH's WHERE filters on,
+            # whose rows that WHERE would discard, so its table is never scanned. A property only
+            # read (RETURN n.p) is null for a type lacking it, never a reason to skip its nodes.
             # A node returned bare is every node's, whichever properties it has.
-            if props and not as_one_value and not any(nm.properties.get(p) for p in props):
+            if required and not all(nm.properties.get(p) for p in required):
                 continue
             select_items: list[exp.Expr] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
