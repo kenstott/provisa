@@ -119,7 +119,7 @@ _TERM, _EITHER, _LITERAL = "term", "either", "literal"
 _AXIOM_OBJECTS = {
     f"{RDFS}subClassOf": _TERM,
     f"{RDFS}subPropertyOf": _TERM,
-    f"{RDFS}domain": _TERM,
+    f"{RDFS}domain": _EITHER,  # a Class term, or a table class a term-bound column is of
     f"{RDFS}range": _EITHER,
     f"{SKOS}prefLabel": _LITERAL,
     f"{SKOS}definition": _LITERAL,
@@ -128,6 +128,14 @@ _OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}Datatype
 
 
 _KIND_OF = frozenset({f"{RDFS}subClassOf", f"{RDFS}subPropertyOf"})
+
+
+def _any_of(value: CypherExpr, ids: list[int]) -> CypherExpr:
+    """``value`` is one of ``ids``."""
+    out: CypherExpr = Binary("=", value, Literal(ids[0], "number"))
+    for i in ids[1:]:
+        out = Binary("OR", out, Binary("=", value, Literal(i, "number")))
+    return out
 
 
 def _closure_path(p: Any) -> tuple[str, bool] | None:
@@ -765,6 +773,15 @@ class _Lowering:
         labels[var] = label
         return var
 
+    def _table_iris(self) -> dict[int, str]:
+        """The class IRI of each table the role reads (the vocabulary's own: its table class
+        first), by table id -- what an rdfs:domain row of a table is answered as (REQ-2163)."""
+        return {
+            self._lm.nodes[label].table_id: iris[0]
+            for label, iris in self.vocab.classes_of.items()
+            if label in self._lm.nodes
+        }
+
     def _term_name(self, iri: str) -> str | None:
         """The name of the term ``iri`` is the vocabulary IRI of; None for any other IRI."""
         root = f"{self.vocab.base}/vocab/term/"
@@ -794,11 +811,22 @@ class _Lowering:
             value: CypherExpr = (
                 TermIri(Property(Variable(var), "object"))
                 if kind == _TERM
-                else AxiomObject(var)
+                else AxiomObject(var, self._table_iris() if iri == f"{RDFS}domain" else {})
                 if kind == _EITHER
                 else Property(Variable(var), "object_literal")
             )
             objects = (value, kind)
+        if iri == f"{RDFS}domain":
+            # A table class is the object of a row of object_table_id, for a table the role reads.
+            table_id = Property(Variable(var), "object_table_id")
+            tables = self._table_iris()
+            conditions.append(
+                Binary(
+                    "OR",
+                    IsNull(table_id, negated=False),
+                    _any_of(table_id, list(tables)) if tables else Literal(False, "boolean"),
+                )
+            )
         conditions += self._axiom_position(
             s, TermIri(Property(Variable(var), "subject")), _TERM, bindings
         )
@@ -850,9 +878,21 @@ class _Lowering:
             if term is not None:
                 return [Binary("=", value, Literal(term, "string"))]
             assert isinstance(value, AxiomObject)
-            return [
-                Binary("=", Property(Variable(value.node), "object_iri"), Literal(str(x), "string"))
-            ]
+            table_ids = [i for i, c in value.table_iris.items() if c == str(x)]
+            match: CypherExpr = Binary(
+                "=", Property(Variable(value.node), "object_iri"), Literal(str(x), "string")
+            )
+            if table_ids:
+                match = Binary(
+                    "OR",
+                    match,
+                    Binary(
+                        "=",
+                        Property(Variable(value.node), "object_table_id"),
+                        Literal(table_ids[0], "number"),
+                    ),
+                )
+            return [match]
         if isinstance(x, RdfLiteral) and kind == _LITERAL:
             return [Binary("=", value, Literal(str(x), "string"))]
         return [Literal(False, "boolean")]
