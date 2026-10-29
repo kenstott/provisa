@@ -8589,5 +8589,11 @@
   "he/dataProductsTab.json::dataProductsTab.contract.summary.customProperties_one": "{{count}} custom property",
   "he/dataProductsTab.json::dataProductsTab.contract.summary.customProperties_other": "{{count}} custom properties",
   "he/dataProductsTab.json::dataProductsTab.contract.summary.tags_one": "{{count}} tag",
-  "he/dataProductsTab.json::dataProductsTab.contract.summary.tags_other": "{{count}} tags"
+  "he/dataProductsTab.json::dataProductsTab.contract.summary.tags_other": "{{count}} tags",
+  "he/glossaryTab.json::glossaryTab.groundingReachColumns_one": "Grounded: reaches data in {{count}} column",
+  "he/glossaryTab.json::glossaryTab.groundingReachColumns_other": "Grounded: reaches data in {{count}} columns",
+  "he/glossaryTab.json::glossaryTab.groundingReachTables_one": "Grounded: reaches data in {{count}} table",
+  "he/glossaryTab.json::glossaryTab.groundingReachTables_other": "Grounded: reaches data in {{count}} tables",
+  "he/graph3d.json::graph3d.grounding_grounded": "Grounded",
+  "he/graph3d.json::graph3d.grounding_grounded_pending": "Grounded, pending approval"
 }

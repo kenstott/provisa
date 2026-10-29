@@ -145,6 +145,8 @@
     "quality_none": "Aún no ejecutada",
     "factOwner": "Propietario",
     "factMembers": "Tablas miembro",
-    "factColumns": "Columnas"
+    "factColumns": "Columnas",
+    "grounding_grounded": "Anclado",
+    "grounding_grounded_pending": "Anclado, pendiente de aprobación"
   }
 }

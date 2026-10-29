@@ -22,7 +22,7 @@ import {
 import { labelFit, loosen, type ViewNode } from "../../pages/tables/profile3d/bestView";
 import { edgeClass } from "./layeredLayout";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
-import { labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
+import { groundClass, labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
 
 export type GraphHover = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
@@ -515,6 +515,7 @@ export class GraphScene extends BaseScene<GraphHover> {
           "p3d-label p3d-node-label",
           `g3d-label-${node.type}`,
           labelClass(node.status),
+          groundClass(node.grounding),
           node.unlinkedTables ? "g3d-label-unlinked" : "",
         ]
           .filter(Boolean)

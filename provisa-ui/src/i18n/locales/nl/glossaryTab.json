@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} termen goedgekeurd",
     "bulkApproveNone": "Er wachten geen gedefinieerde, verankerde ontwerpen.",
     "cancel": "Annuleren",
-    "findingFix_path_pending": "{{term}} openen"
+    "findingFix_path_pending": "{{term}} openen",
+    "groundingReachColumns_one": "Verankerd: bereikt gegevens in {{count}} kolom",
+    "groundingReachColumns_other": "Verankerd: bereikt gegevens in {{count}} kolommen",
+    "groundingReachTables_one": "Verankerd: bereikt gegevens in {{count}} tabel",
+    "groundingReachTables_other": "Verankerd: bereikt gegevens in {{count}} tabellen"
   }
 }

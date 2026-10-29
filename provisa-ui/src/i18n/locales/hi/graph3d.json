@@ -145,6 +145,8 @@
     "quality_none": "अभी तक नहीं चला",
     "factOwner": "स्वामी",
     "factMembers": "सदस्य टेबल",
-    "factColumns": "कॉलम"
+    "factColumns": "कॉलम",
+    "grounding_grounded": "आधारित",
+    "grounding_grounded_pending": "आधारित, स्वीकृति लंबित"
   }
 }
