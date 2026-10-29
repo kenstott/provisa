@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "已批准 {{count}} 個術語",
     "bulkApproveNone": "沒有等待批准的已定義且已錨定的草稿。",
     "cancel": "取消",
-    "findingFix_path_pending": "開啟 {{term}}"
+    "findingFix_path_pending": "開啟 {{term}}",
+    "groundingReachColumns_one": "已錨定：觸及 {{count}} 欄中的資料",
+    "groundingReachColumns_other": "已錨定：觸及 {{count}} 欄中的資料",
+    "groundingReachTables_one": "已錨定：觸及 {{count}} 個表中的資料",
+    "groundingReachTables_other": "已錨定：觸及 {{count}} 個表中的資料"
   }
 }

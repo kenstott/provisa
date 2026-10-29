@@ -145,6 +145,8 @@
     "quality_none": "未実行",
     "factOwner": "オーナー",
     "factMembers": "メンバーテーブル",
-    "factColumns": "列"
+    "factColumns": "列",
+    "grounding_grounded": "紐付け済み",
+    "grounding_grounded_pending": "紐付け済み、承認待ち"
   }
 }

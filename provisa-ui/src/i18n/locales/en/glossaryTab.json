@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} terms approved",
     "bulkApproveNone": "No defined, grounded drafts are waiting.",
     "cancel": "Cancel",
-    "findingFix_path_pending": "Open {{term}}"
+    "findingFix_path_pending": "Open {{term}}",
+    "groundingReachColumns_one": "Grounded: reaches data in {{count}} column",
+    "groundingReachColumns_other": "Grounded: reaches data in {{count}} columns",
+    "groundingReachTables_one": "Grounded: reaches data in {{count}} table",
+    "groundingReachTables_other": "Grounded: reaches data in {{count}} tables"
   }
 }
