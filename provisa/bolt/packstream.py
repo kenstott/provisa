@@ -295,8 +295,17 @@ def _is_path_dict(d: dict) -> bool:
     return "nodes" in d and "edges" in d
 
 
+def _element_id(raw: Any) -> int:
+    """A node's or relationship's Bolt element id: its registered integer id, or one derived from
+    its identity (a graph session's objects are never registered, REQ-2176), so two of them are
+    never one element to the driver."""
+    if isinstance(raw, int):
+        return raw
+    return abs(hash(raw)) & 0x7FFFFFFF if raw else 0
+
+
 def _pack_node_dict(d: dict) -> bytes:
-    element_id = d["id"] if isinstance(d["id"], int) else 0
+    element_id = _element_id(d["id"])
     label = d.get("label", "")
     # "Domain:Table" → two labels [Table, Domain] so both appear in the graph;
     # both are also listed by db.labels().
@@ -314,20 +323,11 @@ def _pack_rel_dict(d: dict) -> bytes:
     # Relationship element_id must be a unique integer; identities are composite strings
     # (e.g. "SUBMITTED_BY:1-1"). Without this, every edge packs as id 0 and the Browser
     # dedups them all to one.
-    if isinstance(raw_id, int):
-        element_id = raw_id
-    elif raw_id:
-        element_id = abs(hash(raw_id)) & 0x7FFFFFFF
-    else:
-        element_id = 0
+    element_id = _element_id(raw_id)
     start = d.get("startNode") or {}
     end = d.get("endNode") or {}
-    start_id = start.get("id", 0) if isinstance(start, dict) else 0
-    end_id = end.get("id", 0) if isinstance(end, dict) else 0
-    if not isinstance(start_id, int):
-        start_id = 0
-    if not isinstance(end_id, int):
-        end_id = 0
+    start_id = _element_id(start.get("id", 0)) if isinstance(start, dict) else 0
+    end_id = _element_id(end.get("id", 0)) if isinstance(end, dict) else 0
     props = {k: v for k, v in (d.get("properties") or {}).items() if v is not None}
     return _rel_ext(element_id, start_id, end_id, d.get("type", ""), props)
 

@@ -27,7 +27,9 @@ fixed when it is declared, not created by a statement. Every other scenario pass
 failure is data. An error the scenario expects (a SyntaxError, a TypeError, ...) passes when the query is
 refused; the error's type is not compared, since Provisa names its own. A scenario run in a Bolt
 session has its side effects (``the side effects should be``, ``no side effects``) compared
-exactly with the summary counters of its query.
+exactly with the side effects of its query as the TCK defines them: the difference between the
+TCK's observation queries run before and after it in the same session (cypher_tck_bolt.effects),
+not a summary's counters, which count what was written rather than what changed.
 
 The exit status is non-zero only when the suite did not run (no scenario passed or failed).
 
@@ -436,44 +438,39 @@ def _setup_steps(scenario: Scenario) -> list[Step]:
     return out
 
 
-#: A TCK side-effect counter and the Bolt summary's counter for it; None for one Bolt's summary
-#: has no counter for (Neo4j counts a removed property as a property set).
-_SIDE_EFFECTS: dict[str, str | None] = {
-    "+nodes": "nodes-created",
-    "-nodes": "nodes-deleted",
-    "+relationships": "relationships-created",
-    "-relationships": "relationships-deleted",
-    "+properties": "properties-set",
-    "-properties": None,
-    "+labels": "labels-added",
-    "-labels": "labels-removed",
-}
+#: The TCK's side effects (tck/README.adoc, "Side effects of executing a query").
+SIDE_EFFECTS = (
+    "+nodes",
+    "-nodes",
+    "+relationships",
+    "-relationships",
+    "+properties",
+    "-properties",
+    "+labels",
+    "-labels",
+)
 
 
-def side_effects(expected: dict[str, int], stats: dict[str, int]) -> str | None:
-    """None when a query's summary counters are exactly the side effects ``expected`` (each TCK
-    counter not named is zero); else what differs. A Bolt summary leaves out a counter at zero,
-    so an absent Bolt counter reads as zero; a TCK counter with no Bolt counter is a failure
-    when it is expected, naming it."""
-    differs: list[str] = []
-    for counter, key in _SIDE_EFFECTS.items():
-        want = expected.get(counter, 0)
-        if key is None:
-            if want:
-                differs.append(f"{counter} expected {want}, the summary has no counter for it")
-            continue
-        got = stats.get(key, 0)
-        if got != want:
-            differs.append(f"{counter} {got}, expected {want}")
-    unknown = sorted(set(expected) - set(_SIDE_EFFECTS))
-    differs += [f"{counter}: no such side effect" for counter in unknown]
+def side_effects(expected: dict[str, int], measured: dict[str, int]) -> str | None:
+    """None when a query's side effects, ``measured`` as the TCK observes them (the difference of
+    its observation queries before and after the query, cypher_tck_bolt.effects), are exactly the
+    ``expected`` ones (each one not named is zero); else what differs."""
+    differs = [
+        f"{name} {measured.get(name, 0)}, expected {expected.get(name, 0)}"
+        for name in SIDE_EFFECTS
+        if measured.get(name, 0) != expected.get(name, 0)
+    ]
+    differs += [
+        f"{name}: no such side effect" for name in sorted(set(expected) - set(SIDE_EFFECTS))
+    ]
     return "; ".join(differs) or None
 
 
 def _session_scenario(scenario: Scenario) -> str | None:
     """How a scenario runs in a Bolt session, when one is configured: NAMED_GRAPH for a named
     TCK graph, IN_A_SESSION for a setup that builds its graph, EMPTY_GRAPH for an empty graph its
-    query matches a pattern on (the session's graph alone is empty); None to run it over HTTP. A
+    query matches (MATCH) or merges (MERGE) a pattern on (the session's graph alone is empty); None
+    to run it over HTTP. A
     test procedure is the fixture model's command, called over either."""
     if not bolt.configured():
         return None
@@ -483,7 +480,8 @@ def _session_scenario(scenario: Scenario) -> str | None:
     if any(t.startswith("having executed") for t in texts):
         return IN_A_SESSION
     query = next((s.doc or "" for s in scenario.steps if s.text.startswith("executing query")), "")
-    if "an empty graph" in texts and re.search(r"\bMATCH\b", query, re.I):
+    # A MERGE matches its pattern before it creates it: on an empty graph it matches the session's.
+    if "an empty graph" in texts and re.search(r"\b(?:MATCH|MERGE)\b", query, re.I):
         return EMPTY_GRAPH
     return None
 
@@ -606,7 +604,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if status >= 400:
                 return out("failed", f"refused ({status}): {str(body)[:200]}")
             expected = {r[0]: int(r[1]) for r in step.table or []}
-            differs = side_effects(expected, body["stats"])
+            differs = side_effects(expected, body["effects"])
             if differs:
                 return out("failed", f"side effects differ: {differs}")
             checked = True

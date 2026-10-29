@@ -30,6 +30,7 @@ writes it."""
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 #: The role a session scenario acts as: it reaches no model domain (pgwire_catalog_types.py).
@@ -54,7 +55,8 @@ def authorization() -> str:
 
 def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
     """The setup's statements and then the query, on one connection: (200, the answer's columns,
-    rows and the query's summary counters as Bolt sends them) or (400, the refusal's words)."""
+    rows and the query's side effects as the TCK observes them, :func:`effects`) or (400, the
+    refusal's words)."""
     from neo4j import GraphDatabase, bearer_auth
     from neo4j.exceptions import Neo4jError
 
@@ -69,17 +71,93 @@ def run(setups: list[str], query: str, params: dict) -> tuple[int, Any]:
                 except Neo4jError as exc:
                     return 400, {"detail": f"setup: {exc.message}"}
             try:
+                before = observe(session)
+            except Neo4jError as exc:
+                return 400, {"detail": f"observing the graph before the query: {exc.message}"}
+            try:
                 result = session.run(query, params)
                 columns = list(result.keys())
                 rows = [[value(v) for v in record.values()] for record in result]
-                # Bolt sends a summary's "stats" only when the statement changed something, and
-                # only its non-zero counters: an absent map is every counter at zero.
-                stats = dict(result.consume().metadata.get("stats", {}))
+                result.consume()
             except Neo4jError as exc:
                 return 400, {"detail": exc.message}
+            try:
+                after = observe(session)
+            except Neo4jError as exc:
+                return 400, {"detail": f"observing the graph after the query: {exc.message}"}
     finally:
         driver.close()
-    return 200, {"columns": columns, "rows": rows, "stats": stats}
+    return 200, {"columns": columns, "rows": rows, "effects": effects(before, after)}
+
+
+# --- side effects, as the TCK observes them ----------------------------------------------------
+
+#: The TCK's observation of a graph (tck/README.adoc, "Observability of side effects"): a side
+#: effect is the difference between what these read before the query and after it. Its nodes
+#: (MATCH (n) RETURN n) and relationships (MATCH ()-[r]->() RETURN r) by their identity; its
+#: properties as (entity, key, value) triples; its labels as the distinct labels nodes carry.
+#: The properties and labels are read off the nodes and relationships themselves, which is what
+#: the README's UNWIND keys(n) / labels(n) queries read.
+_OBSERVE_NODES = "MATCH (n) RETURN id(n) AS id, n"
+_OBSERVE_RELS = "MATCH ()-[r]->() RETURN r"
+#: How Provisa refuses a read of every relationship when the graph has no relationship type.
+_NO_TYPES = "No relationship types found in schema"
+
+
+@dataclass(frozen=True)
+class Observed:
+    """What the TCK's observation queries read of a graph."""
+
+    nodes: frozenset[str]
+    relationships: frozenset[str]
+    properties: frozenset[tuple[str, str, str]]
+    labels: frozenset[str]
+
+
+def node_identity(node_id: Any) -> str:
+    """A node's identity from id(n): Provisa reads a node with no label as ``Label|key``, the
+    label being whichever of its own it was read by, so its identity is its key."""
+    text = str(node_id)
+    return text.split("|", 1)[1] if "|" in text else text
+
+
+def observe(session: Any) -> Observed:
+    """The graph as the TCK observes it, read on ``session``."""
+    from neo4j.exceptions import Neo4jError
+
+    nodes: set[str] = set()
+    properties: set[tuple[str, str, str]] = set()
+    labels: set[str] = set()
+    for record in session.run(_OBSERVE_NODES):
+        identity = "n:" + node_identity(record["id"])
+        nodes.add(identity)
+        labels.update(record["n"].labels)
+        properties.update((identity, k, repr(value(v))) for k, v in record["n"].items())
+    relationships: set[str] = set()
+    try:
+        records = list(session.run(_OBSERVE_RELS))
+    except Neo4jError as exc:
+        # The server's words for a graph that has no relationship type: it holds no relationship.
+        if _NO_TYPES not in (exc.message or ""):
+            raise
+        records = []
+    for record in records:
+        identity = "r:" + str(record["r"].element_id)
+        relationships.add(identity)
+        properties.update((identity, k, repr(value(v))) for k, v in record["r"].items())
+    return Observed(
+        frozenset(nodes), frozenset(relationships), frozenset(properties), frozenset(labels)
+    )
+
+
+def effects(before: Observed, after: Observed) -> dict[str, int]:
+    """Each TCK side effect (+nodes, -properties, ...) between two observations of a graph."""
+    out: dict[str, int] = {}
+    for name in ("nodes", "relationships", "properties", "labels"):
+        was, now = getattr(before, name), getattr(after, name)
+        out[f"+{name}"] = len(now - was)
+        out[f"-{name}"] = len(was - now)
+    return out
 
 
 # --- values as the driver reads them ----------------------------------------------------------
