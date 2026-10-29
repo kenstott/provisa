@@ -48,7 +48,11 @@ def _state(multitenancy: bool):
         "column_types": {
             1: [
                 SimpleNamespace(
-                    column_name="id", data_type="integer", is_nullable=False, subtype=None
+                    column_name="id",
+                    data_type="integer",
+                    is_nullable=False,
+                    subtype=None,
+                    native_type=None,
                 )
             ]
         }

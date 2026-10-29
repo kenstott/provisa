@@ -606,7 +606,9 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     A column that is natively an array, a struct or a map is a JSON column: it is recorded with
     the hidden attributes the source states for it (array depth, element type, native type and
     whose spelling that is), never taken from the caller, and registering it as any other type
-    is refused by name -- a text column over a native array is the failure of issue 195.
+    is refused by name -- a text column over a native array is the failure of issue 195. A
+    column whose native type is a character type (REQ-1961) is no nested one: registered as text,
+    the type it registers as, it records that native type; registered as another type, nothing.
 
     The source is asked only about a column this table does not already store with the type now
     given: a column kept as it was registered was settled then, and keeps its attributes (the

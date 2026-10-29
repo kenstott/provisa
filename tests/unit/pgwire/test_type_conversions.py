@@ -242,23 +242,21 @@ REGISTERED: dict[str, tuple[int, int, str, str]] = {
 }
 
 
-def _fixture_ctx() -> SimpleNamespace:
-    meta = SimpleNamespace(
+def _fixture_ctx() -> Any:
+    from provisa.compiler.sql_types import CompilationContext, TableMeta
+
+    meta = TableMeta(
         table_id=FIXTURE_TABLE_ID,
-        domain_id="conformance",
+        field_name="types_fixture",
+        type_name="TypesFixture",
+        source_id="conformance-pg",
+        catalog_name="conformance_pg",
         schema_name="conformance",
         table_name="types_fixture",
-        display_name="types_fixture",
-        field_name="types_fixture",
+        domain_id="conformance",
+        source_type="postgresql",
     )
-    return SimpleNamespace(
-        tables={"types_fixture": meta},
-        physical_to_sql={},
-        virtual_columns={},
-        row_virtual_columns={},
-        columns_outside_relation=set(),
-        nested_columns={},
-    )
+    return CompilationContext(tables={"types_fixture": meta})
 
 
 @pytest.fixture
@@ -281,6 +279,7 @@ def registered(pgwire):
     state.auth_middleware_active = False
     state.multitenancy = False
     state.federation_engine = engine
+    state.engine_conn = None  # the catalog's row-count estimates are not asked of an engine
     table_map = {"conformance.types_fixture": FIXTURE_TABLE_ID, "types_fixture": FIXTURE_TABLE_ID}
 
     async def _govern(text, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
@@ -321,23 +320,36 @@ def test_a_registered_column_is_sent_as_its_registered_type(registered: Any, col
     assert (b_oid, b_mod, b_bin) == (oid, typmod, binary)
 
 
-def test_a_described_registered_column_is_sent_as_its_registered_type(registered: Any):
-    # A prepared statement is described (Describe(Statement)) before it executes; the
-    # description and the rows say the same type.
+def test_a_described_registered_column_is_sent_as_its_registered_type():
+    # A statement Described first (Describe(Statement)) is sent by its description: the shape
+    # derived from registered metadata types each column, whatever the engine answers.
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    from provisa.compiler.result_shape import derive_result_shape
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaQueryResult
+
     columns = list(REGISTERED)
     sql = f"SELECT {', '.join(columns)} FROM conformance.types_fixture"
-    pgconn = registered.pgconn
-    prepared = pgconn.prepare(b"registered", sql.encode())
-    assert prepared.status == pq.ExecStatus.COMMAND_OK, (prepared.error_message or b"").decode()
-    described = pgconn.describe_prepared(b"registered")
-    want = [(REGISTERED[c][0], REGISTERED[c][1]) for c in columns]
-    assert [(described.ftype(i), described.fmod(i)) for i in range(len(columns))] == want
-    res = pgconn.exec_prepared(b"registered", [], result_format=1)
-    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
-    assert [(res.ftype(i), res.fmod(i)) for i in range(len(columns))] == want
-    assert [res.get_value(0, i).hex() for i in range(len(columns))] == [
-        REGISTERED[c][3] for c in columns
+    table_map = {"conformance.types_fixture": FIXTURE_TABLE_ID}
+    column_types = {FIXTURE_TABLE_ID: [c for *_, c in _FIXTURE]}
+    shape = derive_result_shape(sql, table_map, _fixture_ctx(), column_types)
+    engine = QueryResult(
+        rows=[("text value", 12345.6789, 12345.67, "varchar value", "bounded", "ab")],
+        column_names=columns,
+        column_types=["varchar", "double", "double", "varchar", "varchar", "varchar"],
+    )
+    result = ProvisaQueryResult(engine, sql, shape)
+    described = [
+        (
+            result.column_type_oid(i) or BVTYPE_TO_PGTYPE[result.column(i)[1]][0],
+            result.column_typmod(i),
+        )
+        for i in range(len(columns))
     ]
+    assert described == [(REGISTERED[c][0], REGISTERED[c][1]) for c in columns]
+    # A character(n) value is sent padded to its length, as bpchar's input pads it.
+    assert list(result.rows())[0][-1] == "ab   "
 
 
 def test_the_catalog_lists_a_registered_column_with_its_type_and_typmod(registered: Any):

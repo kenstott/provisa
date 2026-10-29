@@ -350,7 +350,11 @@ def _registered_types(pipeline) -> None:
     ctx = pipeline.state.contexts["analyst"]
     pipeline.state.schema_build_cache = {
         "column_types": {
-            meta.table_id: [SimpleNamespace(column_name="id", data_type="integer", subtype=None)]
+            meta.table_id: [
+                SimpleNamespace(
+                    column_name="id", data_type="integer", subtype=None, native_type=None
+                )
+            ]
             for meta in ctx.tables.values()
         }
     }

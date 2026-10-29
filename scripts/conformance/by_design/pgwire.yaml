@@ -124,7 +124,7 @@
   decision: >-
     A registered numeric(p,s) column is described with its typmod (PGWIRE SENDS NUMERIC(P,S)).
     An unsized source numeric registers as numeric(38,s), s the largest scale among its values
-    (REQ-2167), so an engine that cannot hold an unbounded numeric reads it exactly: it is
+    at registration, so an engine that cannot hold an unbounded numeric reads it exactly: it is
     described as that numeric(38,s), where PostgreSQL describes an unsized numeric.
   case: "^type conversion::SELECT c_numeric FROM conformance\\.types_fixture$"
   reason: "^typmod 2490376, PostgreSQL -1$"
