@@ -208,8 +208,10 @@ def nested_column_graphql_type(column: Mapping) -> GraphQLScalarType | GraphQLLi
     source type. An array of one primitive type is a list, nested to its depth, of the GraphQL
     type of its element; an element may be null, and a decimal element with a declared precision
     is a String. Every other such column is the opaque JSON value. None for a column that is
-    not natively nested."""
-    if not column.get("native_type"):
+    not natively nested (a character column's native type is none, REQ-1961)."""
+    from provisa.core.native_types import natively_nested
+
+    if not natively_nested(column.get("native_type")):
         return None
     depth = column.get("array_depth") or 0
     element = column.get("element_type")

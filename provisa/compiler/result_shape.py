@@ -62,9 +62,28 @@ class RegisteredType(str):
     result column too. A type derived for a computed expression is a plain ``str``: an
     annotation of the expression, not a declaration (SQLGlot's decimal arithmetic, for one,
     does not follow any engine's — ``amount * amount`` over a two-digit scale is four digits
-    on the engine and two in the annotation)."""
+    on the engine and two in the annotation).
+
+    ``native`` is the source's own type the column records as a hidden attribute, or None
+    (REQ-1965, REQ-1961): a surface that describes a column by its source's type -- pgwire, a
+    varchar(20) column registered as text -- reads it there."""
 
     __slots__ = ()
+    native: str | None = None
+
+
+class _NativelyRecorded(RegisteredType):
+    """A :class:`RegisteredType` whose column records its native type (``native``)."""
+
+    def __new__(cls, registered: str, native: str | None = None) -> "_NativelyRecorded":
+        made = super().__new__(cls, registered)
+        made.native = native
+        return made
+
+
+def registered_type(registered: str, native: str | None) -> RegisteredType:
+    """A registered column's result type, carrying the native type the column records."""
+    return RegisteredType(registered) if native is None else _NativelyRecorded(registered, native)
 
 
 class StatedType(str):
@@ -118,9 +137,10 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
             continue  # not visible to this role
         if (table_id, physical) in ctx.columns_outside_relation:
             continue  # registered, but the relation a statement reads does not hold it
-        out[exposed_names.get((table_id, physical)) or apply_sql_name(physical)] = RegisteredType(
+        out[exposed_names.get((table_id, physical)) or apply_sql_name(physical)] = registered_type(
             # REQ-2171: a subtyped column is described as its subtype
-            col.subtype or _described_type(col.data_type, nested.get(physical.lower()))
+            col.subtype or _described_type(col.data_type, nested.get(physical.lower())),
+            col.native_type,
         )
     for virtual in ctx.virtual_columns.get(table_id, {}):
         out[virtual] = RegisteredType("varchar")

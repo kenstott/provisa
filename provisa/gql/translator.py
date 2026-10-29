@@ -788,8 +788,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # A path a WITH carries on: one column of its CTE, its path object (WITH p)
         self._carried_paths: set[str] = set()
-        # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
+        # REQ-348: a model walk's path variable -> its start's and end's identities (path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'
+        # and its relationships' lists (path_walk)
+        self._walk_trails: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: the node unions that name each node's graph identity (translator_union)
         self._graph_id_unions: set[str] = set()
         # REQ-2176: each union holding a graph session's nodes that names every label of its

@@ -320,10 +320,13 @@ async def session_for(
             if after != before or held.wrote:
                 # What a failed statement landed before it failed is the session's too.
                 assert held.exclusive, "a statement with no write clause changed the graph session"
+                # Past every generation the statement passed through: each table it made or
+                # dropped advanced it, and a plan it kept between was keyed by that one.
+                generation = max(row.generation, held.session.generation) + 1
                 await conn.execute_core(
                     update(rows)
                     .where(rows.c.user_id == user_id)
-                    .values(**after, generation=row.generation + 1, used_at=datetime.now(UTC))
+                    .values(**after, generation=generation, used_at=datetime.now(UTC))
                 )
                 held.changed = True
         if failure is not None:

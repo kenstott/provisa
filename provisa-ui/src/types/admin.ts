@@ -248,6 +248,10 @@ export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): str
   return acronym || domain.id[0]?.toLowerCase() || "";
 }
 
+/** Mirror of provisa.compiler.naming.SYSTEM_SCHEMA_GQL_PREFIX (REQ-2163): the SDL prefix of each
+ * system schema's root fields (`on_terms`, `op_queries`), keyed by domain id. */
+export const SYSTEM_SCHEMA_GQL_PREFIX: Record<string, string> = { ontology: "on", ops: "op" };
+
 /** Mirror of provisa.compiler.naming.domain_alias_map (REQ-471): each domain's alias, every one its
  * own. A computed alias another domain's alias also is (ontology's and ops's are both "o") is the
  * domain's own name instead, so no domain's root fields are grouped as another's. */

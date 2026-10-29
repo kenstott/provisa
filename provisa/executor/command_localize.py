@@ -154,6 +154,13 @@ def _output_spec(command: dict, rows: list[dict]) -> tuple[list[str], dict[str, 
     """(ordered column names, {col: ir_type}) for a command's output — from its declared
     ``output_columns`` contract (REQ-1159) when present, else inferred from the first returned row
     (names only, untyped)."""
+    from provisa.core.void_command import is_void
+
+    if is_void(command):
+        raise ValueError(
+            f"command {command.get('name')!r} is VOID (it declares no outputs): a call of it "
+            "answers no columns, so it is no relation a statement reads from"
+        )
     declared = command.get("output_columns")
     if declared:
         cols = [c["name"] for c in declared]
