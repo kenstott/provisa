@@ -30,6 +30,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -256,18 +257,33 @@ def _order_collects(
             agg.set("expressions", [exp.Order(this=value, expressions=keys)])
 
 
-def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:
+def _is_mixed_list(
+    expr: CypherExpr,
+    json_lists: set[str],
+    is_graph_element: Callable[[str], bool] = lambda _name: False,
+) -> bool:
     """Whether ``expr`` is a list of values of several types: a list literal of them, or a
-    variable bound to one."""
+    variable bound to one. A node, relationship or path ([n, r, p, 1, 'a']) is a type beside any
+    other item: the list holds each as its JSON (ExprLowering._lower_ListLiteral)."""
     from provisa.gql.expr_ast import ListLiteral
     from provisa.gql.expr_visitor import _mixed_literal_kinds
 
     if isinstance(expr, Variable):
         return expr.name in json_lists
-    return isinstance(expr, ListLiteral) and _mixed_literal_kinds(expr.items)
+    if not isinstance(expr, ListLiteral):
+        return False
+    graph = [isinstance(i, Variable) and is_graph_element(i.name) for i in expr.items]
+    if any(graph) and not all(graph):
+        return True
+    return _mixed_literal_kinds(expr.items)
 
 
-def _lists_mixed_lists(expr: CypherExpr, json_lists: set[str], json_list_lists: set[str]) -> bool:
+def _lists_mixed_lists(
+    expr: CypherExpr,
+    json_lists: set[str],
+    json_list_lists: set[str],
+    is_graph_element: Callable[[str], bool] = lambda _name: False,
+) -> bool:
     """Whether ``expr`` is a list of lists of several types: a collect() of one, or a variable
     bound to one."""
     from provisa.gql.expr_ast import FunctionCall
@@ -278,7 +294,7 @@ def _lists_mixed_lists(expr: CypherExpr, json_lists: set[str], json_list_lists: 
         isinstance(expr, FunctionCall)
         and expr.name.lower() == "collect"
         and len(expr.args) == 1
-        and _is_mixed_list(expr.args[0], json_lists)
+        and _is_mixed_list(expr.args[0], json_lists, is_graph_element)
     )
 
 
@@ -1735,6 +1751,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for n, (_key, value) in enumerate(expr.entries)
         ]
 
+    def _is_graph_element(self, name: str) -> bool:
+        """Whether ``name`` is a node, relationship or path of the query."""
+        return self._temporal_context().resolve_graph_element(name) is not None
+
     def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping | None]:
         """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
         its own columns, ``<key>.<column>``, so two tables' columns of one name never meet (#293).
@@ -1911,10 +1931,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
                 lists.add(name)
-            if name and _is_mixed_list(item.expression, self._json_list_vars):
+            if name and _is_mixed_list(
+                item.expression, self._json_list_vars, self._is_graph_element
+            ):
                 json_lists.add(name)
             if name and _lists_mixed_lists(
-                item.expression, self._json_list_vars, self._json_list_lists
+                item.expression, self._json_list_vars, self._json_list_lists, self._is_graph_element
             ):
                 json_list_lists.add(name)
             if name and self._temporal_context().is_json_value(item.expression):
