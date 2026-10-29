@@ -153,10 +153,11 @@ def test_a_walk_reads_the_relationships_table_once(monkeypatch):
 # --- refused --------------------------------------------------------------------------------------
 
 
-def test_the_model_graph_refuses_an_unlabelled_end_by_name(monkeypatch):
+def test_the_model_graph_refuses_a_path_with_both_ends_free_by_name(monkeypatch):
+    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end is enough; neither is refused.
     s = Session(monkeypatch, _PEOPLE)
     with pytest.raises(CypherTranslateError, match=UNLABELLED_ENDS):
-        s.run("MATCH p = shortestPath((a:Person)-[*..3]->(b)) RETURN p")
+        s.run("MATCH p = shortestPath((a)-[*..3]->(b)) RETURN p")
 
 
 def test_a_walk_the_models_relationships_could_take_is_refused_by_name(monkeypatch):
