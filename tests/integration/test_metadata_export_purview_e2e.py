@@ -546,15 +546,24 @@ def _left(t: _Teardown, http: httpx.Client, creds: dict[str, str], run: _Run, gu
     return left
 
 
+async def _approve_terms(client: httpx.AsyncClient, names: tuple[str, ...]) -> None:
+    """The run's terms approved, as a steward does: a config-declared term starts as a draft and
+    only an approved term publishes (REQ-1387)."""
+    listed = await client.get("/admin/glossary/terms")
+    assert listed.status_code == 200, listed.text
+    ids = {t["name"]: t["id"] for t in listed.json()}
+    for name in names:
+        approved = await client.post(f"/admin/glossary/terms/{ids[name]}/approve")
+        assert approved.status_code == 200, approved.text
+
+
 async def _deprecate(client: httpx.AsyncClient, name: str) -> dict:
     """Deprecate the org's term ``name`` as a curator does, then publish to the same target; what
     that second publish reports."""
     terms = await client.get("/admin/glossary/terms")
     assert terms.status_code == 200, terms.text
     (term_id,) = [t["id"] for t in terms.json() if t["name"] == name]
-    # Only an approved term is deprecated (glossary.term_not_approved); a draft is approved first.
-    approved = await client.post(f"/admin/glossary/terms/{term_id}/approve")
-    assert approved.status_code == 200, approved.text
+    # Only an approved term is deprecated (glossary.term_not_approved); _approve_terms approved it.
     marked = await client.post(
         f"/admin/glossary/terms/{term_id}/deprecate", json={"reason": "Superseded by party."}
     )
@@ -582,6 +591,7 @@ async def published():
             terms=run.terms,
         ) as client:
             await _hold_owner_role(client, run.org, email)
+            await _approve_terms(client, run.terms)
             result = await publish(
                 client,
                 {
