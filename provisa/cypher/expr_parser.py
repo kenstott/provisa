@@ -365,7 +365,7 @@ def _build_grammar() -> pp.ParserElement:
     pattern_node = r"\(\s*\w*(?:\s*:\s*\w+)*\s*(?:\{[^{}]*\})?\s*\)"
     pattern_rel = r"\s*(?:<-|-)\s*(?:\[[^\[\]]*\])?\s*(?:->|-)\s*"
     pattern_pred = pp.Regex(rf"{pattern_node}(?:{pattern_rel}{pattern_node})+").set_parse_action(
-        lambda t: SubqueryExpr(kind="EXISTS", body=cast(Any, _BodyText(str(t[0]))))
+        lambda t: SubqueryExpr(kind="EXISTS", body=cast(Any, _BodyText(str(t[0]))), predicate=True)
     )
 
     atom = (

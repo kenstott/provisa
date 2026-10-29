@@ -48,7 +48,7 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
-from provisa.compiler.cte_utils import cte_names
+from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
 from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
@@ -160,8 +160,8 @@ def _check_registered_relations(  # REQ-001, REQ-266
                 ValidationViolation("V006", f"Table function {fn!r} is not a governed relation")
             )
             continue
-        if not tbl.db and tbl.name in cte_names_set:
-            continue
+        if not tbl.db and (tbl.name in cte_names_set or names_a_cte_in_scope(tbl)):
+            continue  # a CTE, the statement's own or an embedded statement's (EXISTS, COLLECT)
         if not tbl.db and tbl.name in temp_tables.names():
             continue  # REQ-615: the session's own temporary table, no model object
         # A registered table is named by its semantic/physical name (table_map) or, unqualified, by

@@ -279,3 +279,46 @@ def test_the_path_of_a_pattern_of_walks_holds_every_hop(monkeypatch):
     )
     got = sorted(([n["properties"]["name"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
     assert got == [(["A"], 0), (["A", "B"], 1), (["A", "B", "C"], 2)]
+
+
+# --- an embedded statement's own CTEs (V006) -----------------------------------------------------
+
+
+def test_a_cte_of_an_embedded_statement_names_a_relation_within_it_only():
+    # TCK ExistentialSubquery2 [2], Pattern1 [10]: an EXISTS { } reading a WITH, or a walk, holds
+    # its own WITH inside the outer statement; its CTE is a relation there, nowhere else.
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.cte_utils import names_a_cte_in_scope
+
+    tree = sqlglot.parse_one(
+        "SELECT * FROM t WHERE EXISTS (WITH _w0 AS (SELECT 1 AS x) SELECT x FROM _w0) "
+        "AND EXISTS (SELECT 1 FROM _w0)",
+        read="postgres",
+    )
+    inside, outside = [t for t in tree.find_all(exp.Table) if t.name == "_w0"]
+    assert names_a_cte_in_scope(inside)
+    assert not names_a_cte_in_scope(outside)
+    assert not names_a_cte_in_scope(next(t for t in tree.find_all(exp.Table) if t.name == "t"))
+
+
+# --- a pattern predicate introduces no variable ---------------------------------------------------
+
+
+@pytest.mark.parametrize("pattern", ["()-[r]->()", "()<-[r]-()", "()-[r]-()", "(n)-[r]->(a)"])
+def test_a_pattern_predicate_naming_a_new_variable_is_refused(monkeypatch, pattern):
+    # TCK Pattern1 [10]: UndefinedVariable.
+    from provisa.gql.translator_types import CypherTranslateError
+
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X)-[:T]->()")
+    with pytest.raises(CypherTranslateError, match="introduces no variable"):
+        s.run(f"MATCH (n) WHERE {pattern} RETURN n")
+
+
+def test_a_pattern_predicate_of_bound_variables_is_read(monkeypatch):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:X)-[:T]->(), ()")
+    assert len(s.run("MATCH (n) WHERE (n)-->() RETURN n")) == 1
+    assert len(s.run("MATCH (n)-[r]->(m) WHERE (n)-[r]->(m) RETURN n")) == 1

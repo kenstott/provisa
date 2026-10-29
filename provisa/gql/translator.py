@@ -769,6 +769,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._carried_paths: set[str] = set()
         # A WITH's alias of a list of a session walk's nodes or relationships -> NODE or EDGE
         self._element_lists: dict[str, str] = {}
+        # An embedded statement's names for the outer nodes it matches (expr_context)
+        self._drawn_vars: set[str] = set()
         # REQ-348: a walk's path variable -> its start's and end's identities (path_walk, path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'

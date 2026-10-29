@@ -57,6 +57,9 @@ class _FakeCtx:
     def element_list_kind(self, expr):
         return None  # no graph element lists in scope here
 
+    def is_bound(self, name):
+        return True  # every variable an expression here reads is bound
+
     def given_value(self, expr):
         return False, None
 

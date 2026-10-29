@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import sqlglot.expressions as exp
 
@@ -194,6 +194,11 @@ class ExprContext(Protocol):
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         """A bound node's or relationship's properties as one JSON object, None for any other
         name."""
+        ...
+
+    def is_bound(self, name: str) -> bool:
+        """Whether the statement binds ``name`` where an expression reads it: a node,
+        relationship or path variable, or any other value a clause before it names."""
         ...
 
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
@@ -559,6 +564,24 @@ def _json_string(value: exp.Expression) -> exp.Expression:
     )
 
 
+def _pattern_variables(body: Any) -> list[str]:
+    """The node and relationship variables a pattern predicate's statement names, in order."""
+    from provisa.gql.ir import MatchStep, PathPattern
+
+    found: list[str] = []
+    for step in getattr(body, "pipeline", []):
+        if not isinstance(step, MatchStep):
+            continue
+        for match in step.matches:
+            pattern = match.pattern
+            if not isinstance(pattern, PathPattern):
+                continue
+            for item in [*pattern.nodes, *pattern.rels]:
+                if item.variable and item.variable not in found:
+                    found.append(item.variable)
+    return found
+
+
 def _is_json_object(e: exp.Expression) -> bool:
     """Whether ``e`` builds a JSON value itself (JSON_OBJECT or TO_JSON): a graph element held as
     any other value (a node a union carries, a path that may be null) is put in a list as its
@@ -643,6 +666,8 @@ class ExprLowering:
         self._json_vars: set[str] = set()
         # Lambda variables bound to each graph element of a list (_over)
         self._element_vars: set[str] = set()
+        # Every lambda variable in scope (_over), innermost last
+        self._lambda_vars: list[str] = []
 
     def _given_type(self, node: CypherExpr) -> type | None:
         """The type of the value the client gives ``node`` (a parameter, or a variable bound to
@@ -659,6 +684,19 @@ class ExprLowering:
     ) -> exp.Expression:
         """``body`` lowered with ``var`` bound to each item of ``source`` (``written``, as the
         statement writes it)."""
+        self._lambda_vars.append(var)
+        try:
+            return self._over_items(var, source, body, written)
+        finally:
+            self._lambda_vars.pop()
+
+    def _over_items(
+        self,
+        var: str,
+        source: exp.Expression,
+        body: CypherExpr,
+        written: CypherExpr | None,
+    ) -> exp.Expression:
         if written is not None and self._ctx.element_list_kind(written) is not None:
             # Each item is a node's or relationship's JSON object: its properties are read there.
             held = var in self._element_vars
@@ -1538,6 +1576,18 @@ class ExprLowering:
         return self._ctx.resolve_map_projection(node)
 
     def _lower_SubqueryExpr(self, node: SubqueryExpr) -> exp.Expression:
+        if node.predicate:
+            # openCypher: a pattern predicate introduces no variable (UndefinedVariable).
+            unbound = [
+                v
+                for v in _pattern_variables(node.body)
+                if v not in self._lambda_vars and not self._ctx.is_bound(v)
+            ]
+            if unbound:
+                raise CypherTranslateError(
+                    f"A pattern predicate introduces no variable: {unbound[0]} is not bound "
+                    "before it; match it first, or write EXISTS { MATCH ... }"
+                )
         return self._ctx.resolve_subquery(node)
 
     # -- RDF values (REQ-2135) ---------------------------------------------- #

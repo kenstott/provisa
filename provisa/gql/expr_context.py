@@ -554,6 +554,19 @@ class TranslatorExprContext:
             return expr.kind == "null"
         return isinstance(expr, Variable) and expr.name in self._t._null_vars
 
+    def is_bound(self, name: str) -> bool:
+        t = self._t
+        return (
+            name in t._var_table
+            or name in t._rel_var_types
+            or name in t._all_rels_rel_vars
+            or name in t._path_vars
+            or name in t._varlen_rel_vars
+            or name in t._call_var_to_lateral
+            or name in t._lateral_bound
+            or name in t._drawn_vars
+        )
+
     def element_list_kind(self, expr: CypherExpr) -> str | None:
         return self._t._element_list_kind(expr)
 
@@ -1276,6 +1289,8 @@ class TranslatorExprContext:
         }
         _rename_variables(inner_ast, drawn)
         inner_tr = _Translator(inner_ast, outer._lm, outer._params)
+        # The outer nodes it matches under names of its own are bound where it reads them.
+        inner_tr._drawn_vars = set(drawn.values()) | outer._drawn_vars
         inner_tr._var_table.update({v: b for v, b in outer._var_table.items() if v not in drawn})
         # A node a WITH carries is held in that WITH's rows, under its name there.
         inner_tr._cte_sources = set(outer._cte_sources)
