@@ -58,6 +58,7 @@ import { TermImpactPreview } from "./TermImpactPreview";
 import { StewardshipSummary } from "./StewardshipSummary";
 import { tableNames, toReview } from "./termFindings";
 import { RetireTermDialog } from "./RetireTermDialog";
+import { FindTermsDialog } from "./FindTermsDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
@@ -213,6 +214,8 @@ export function GlossaryTab() {
   // Editable copies of the selected term's name/definition.
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
+  // REQ-2179: Find terms in a document, and the review queue of what it proposes.
+  const [findTermsOpen, setFindTermsOpen] = useState(false);
 
   const [actionError, setActionError] = useState("");
 
@@ -515,9 +518,10 @@ export function GlossaryTab() {
     value: st,
     label: t(`glossaryTab.status_${st}`),
   }));
-  const groundingOptions = (["grounded", "grounded_pending", "not_grounded"] as const).map(
-    (g) => ({ value: g, label: t(`glossaryTab.groundingValue_${g}`) }),
-  );
+  const groundingOptions = (["grounded", "grounded_pending", "not_grounded"] as const).map((g) => ({
+    value: g,
+    label: t(`glossaryTab.groundingValue_${g}`),
+  }));
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -583,6 +587,12 @@ export function GlossaryTab() {
                 </Tip>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Item
+                  onClick={() => setFindTermsOpen(true)}
+                  data-testid="glossary-find-terms-btn"
+                >
+                  {t("findTerms.menuItem")}
+                </Menu.Item>
                 <Menu.Item
                   onClick={() => void handleBulkGenerateRelationships()}
                   data-testid="glossary-bulk-relationships-btn"
@@ -915,7 +925,9 @@ export function GlossaryTab() {
                               return term
                                 ? [
                                     {
-                                      label: t("glossaryTab.findingFix_path_pending", { term: name }),
+                                      label: t("glossaryTab.findingFix_path_pending", {
+                                        term: name,
+                                      }),
                                       run: () => navigateToTerm(term.id),
                                       testId: `glossary-finding-fix-open-${term.id}`,
                                     },
@@ -1032,6 +1044,23 @@ export function GlossaryTab() {
         </FormLayout>
       </Modal>
 
+      {findTermsOpen && (
+        <FindTermsDialog
+          terms={terms}
+          domainOptions={addDomainOptions}
+          domainsEnabled={domainsEnabled}
+          // The domains the steward is working in: the navbar's selection, where one is made.
+          defaultDomains={
+            viewDomains
+              ? [...viewDomains].filter((d) =>
+                  addDomainOptions.some((o) => (typeof o === "string" ? o : o.value) === d),
+                )
+              : []
+          }
+          onClose={() => setFindTermsOpen(false)}
+          onGlossaryChanged={() => void refreshList()}
+        />
+      )}
       {detail && deprecateOpen && (
         <DeprecateTermDialog
           term={detail}
