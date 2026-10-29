@@ -124,7 +124,8 @@ def overlay(model: Any, session: TempSession) -> Any:
         # Each end is a label the overlay maps: an ephemeral end's (its unlabeled nodes' "" among
         # them, store.view_keys), a model end's type name.
         assert source in nodes and target in nodes, (rel_type, source, target)
-        columns = session.tables[store.rel_table(rel_type)].columns
+        held_rel = session.tables.get(store.rel_table(rel_type))
+        columns = held_rel.columns if held_rel else []
         mapping = RelationshipMapping(
             rel_type=rel_type,
             source_label=source,
@@ -182,6 +183,20 @@ def _typed(value: exp.Expression, kind: str) -> exp.Expression:
     return exp.Cast(this=value, to=exp.DataType.build(_spelled(kind), dialect="postgres"))
 
 
+def _session_table(
+    name: str, alias: str, session: TempSession, fixed: list[tuple[str, str]]
+) -> exp.Expr:
+    """The session table ``name`` as ``alias``. A table not created yet is empty by definition
+    (REQ-2176: tables are created as statements write): it reads as no rows of its known columns,
+    ``fixed`` (name, session type), not as an engine error."""
+    if name in session.tables:
+        return exp.alias_(exp.to_table(name, quoted=True), alias)
+    empty = exp.select(
+        *(exp.alias_(_typed(exp.null(), kind), column, quoted=True) for column, kind in fixed)
+    ).where(exp.false())
+    return exp.alias_(exp.Subquery(this=empty), alias)
+
+
 def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expression:
     """The rows of the label ``key``'s session relation (``nm``, its overlay mapping)."""
     from provisa.gql.select_builder import node_identity, node_key_text
@@ -216,7 +231,9 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
 
     def tagged(rows: exp.Select, graph_id: exp.Expression) -> exp.Select:
         return rows.join(
-            exp.alias_(exp.to_table(store.NODE_LABELS, quoted=True), "_l"),
+            _session_table(
+                store.NODE_LABELS, "_l", session, store.fixed_columns(store.NODE_LABELS)
+            ),
             on=exp.and_(
                 exp.EQ(this=_col(store.NODE_ID, "_l"), expression=graph_id),
                 exp.EQ(this=_col("label", "_l"), expression=exp.Literal.string(key)),
@@ -236,19 +253,27 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
     def unlabeled(rows: exp.Select, node_id: exp.Expression) -> exp.Select:
         held_labels = (
             exp.select(_col(store.NODE_ID, "_l"))
-            .from_(exp.alias_(exp.to_table(store.NODE_LABELS, quoted=True), "_l"))
+            .from_(
+                _session_table(
+                    store.NODE_LABELS, "_l", session, store.fixed_columns(store.NODE_LABELS)
+                )
+            )
             .where(exp.EQ(this=_col(store.NODE_ID, "_l"), expression=node_id))
         )
         return rows.where(exp.Not(this=exp.Exists(this=held_labels)))
 
     for anchor in resolved.anchors:
-        anchor_columns = {name for name, _ in session.tables[anchor].columns}
+        held_columns = session.tables[anchor].columns if anchor in session.tables else []
+        anchor_columns = {name for name, _ in held_columns}
         values = {a: _col(a, "_a") for a, _ in columns if a in anchor_columns}
-        rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(
-            exp.alias_(exp.to_table(anchor, quoted=True), "_a")
-        )
+        # An anchor not created yet holds no node: the columns the statement reads, all empty.
+        source = _session_table(anchor, "_a", session, [(store.NODE_ID, "text"), *columns])
+        rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(source)
         node_id = _col(store.NODE_ID, "_a")
         parts.append(unlabeled(rows, node_id) if key == "" else tagged(rows, node_id))
+    if not parts:
+        # A label no node holds now (its nodes all deleted): no rows of the columns it reads.
+        parts.append(select({}, exp.null(), exp.null()).where(exp.false()))
     union: exp.Expression = parts[0]
     for part in parts[1:]:
         union = exp.Union(this=union, expression=part, distinct=False)
@@ -258,7 +283,8 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
 def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
     """The rows of a relationship type's session relation: each relationship's ends and its
     properties."""
-    props = [n for n, _ in session.tables[store.rel_table(rel_type)].columns if n != store.REL_ID]
+    held = session.tables.get(store.rel_table(rel_type))
+    props = [n for n, _ in (held.columns if held else []) if n != store.REL_ID]
     return (
         exp.select(
             _col(store.REL_ID, "_r"),
@@ -268,7 +294,7 @@ def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
         )
         .from_(exp.alias_(exp.to_table(store.RELS, quoted=True), "_r"))
         .join(
-            exp.alias_(exp.to_table(store.rel_table(rel_type), quoted=True), "_p"),
+            _session_table(store.rel_table(rel_type), "_p", session, [(store.REL_ID, "text")]),
             on=exp.EQ(this=_col(store.REL_ID, "_p"), expression=_col(store.REL_ID, "_r")),
             join_type="inner",
         )
