@@ -617,6 +617,99 @@ async def generate_all_definitions(request: Request) -> dict:
     return {"generated": generated}
 
 
+# REQ-1387 (THE SHAPES THAT RESOLVE A RELATED PAIR): the one-term shapes that turn a RELATED_TO
+# pair into grounding edges, tightest first. The broader the new term, the less its grounding tells
+# a reader, so the order is part of the guidance and the response keeps it whatever the model sent.
+RESOLVE_SHAPES = (
+    "component_type",
+    "specialisation",
+    "common_whole",
+    "common_genus",
+    "common_enumeration",
+)
+
+
+def _term_role(term: dict) -> str:
+    # As the UI's termRole: a term grounding a table is a Class, one holding columns a Property,
+    # one holding neither a Concept (REQ-2141).
+    if term.get("table_count"):
+        return "class"
+    return "property" if term.get("ref_count") else "concept"
+
+
+def relationship_prompt(terms: list[dict]) -> str:
+    """The relationship assistant's prompt (REQ-1387, RELATED_TO IS THE LAST RESORT).
+
+    It carries each grounding type's test, prefers KIND_OF, PART_OF and VALID_VALUE_OF wherever
+    one fits, links a concept to its property-role terms with PART_OF, and proposes RELATED_TO only
+    when none fits, with the one-term shapes that would resolve the pair. It never asks for a new
+    term: candidate names come back as suggestions for the curator.
+    """
+    term_lines = "\n".join(
+        f"- {t['name']} [{_term_role(t)}]" + (f": {t['definition']}" if t["definition"] else "")
+        for t in terms
+    )
+    return (
+        "You are a data catalog assistant. Given this ontology term list, propose semantic "
+        "relationships between terms. Each term is marked with its role: [class] grounds tables, "
+        "[property] holds columns, [concept] holds no data and reaches it only through its "
+        "relationships.\n\n"
+        "Grounding types. These connect a term to data, so prefer them wherever one fits. "
+        "Apply each test with the from term as X and the to term as Y:\n"
+        "- KIND_OF: every X is a Y.\n"
+        "- PART_OF: a Y has an X. A property that describes a concept is PART_OF that concept "
+        "(shift start PART_OF shift coverage), never RELATED_TO it.\n"
+        "- VALID_VALUE_OF: X is one of Y's allowed values.\n\n"
+        "Other types, each only when its own meaning holds: SYNONYM_OF (interchangeable terms), "
+        "DERIVED_FROM (X is computed or sourced from Y), REPLACES (X supersedes the deprecated Y), "
+        "PREFERRED_TERM_FOR (X is the preferred term over the discouraged Y), TRANSLATION_OF "
+        "(X is a language or locale translation of Y), ANTONYM_OF (X is the semantic opposite "
+        "of Y).\n\n"
+        "RELATED_TO is the last resort: two distinct topics that go together, neither a kind, "
+        "a part nor a value of the other (cake and candles). It does not ground. Propose it only "
+        "when two terms clearly go together and no type above fits. For every RELATED_TO, add a "
+        '"resolve" object: the pair may want resolving by one new term, and you name candidates '
+        "for it in each shape that fits, tightest first:\n"
+        '- "component_type": X KIND_OF new, new PART_OF Y (candles KIND_OF cake decoration, '
+        "cake decoration PART_OF cake).\n"
+        '- "specialisation": X PART_OF new, new KIND_OF Y (candles PART_OF birthday cake, '
+        "birthday cake KIND_OF cake).\n"
+        '- "common_whole": X and Y both PART_OF new (cake and candles PART_OF party).\n'
+        '- "common_genus": X and Y both KIND_OF new (cake and candles KIND_OF party supplies).\n'
+        '- "common_enumeration": X and Y both VALID_VALUE_OF new (cake and candles VALID_VALUE_OF '
+        "party item type).\n"
+        "Each value is a list of candidate names for the new term; leave out a shape that does "
+        "not fit. Never propose an edge to or from a term that is not in the list below: the new "
+        "term is the user's choice to add, not yours.\n\n"
+        "Only propose relationships you are confident in; fewer, correct edges beat many "
+        "speculative ones.\n\n"
+        f"Terms:\n{term_lines}\n\n"
+        'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
+        '"rel_type": "PART_OF"}, {"from": "term name", "to": "term name", "rel_type": '
+        '"RELATED_TO", "resolve": {"component_type": ["candidate"], "common_whole": '
+        '["candidate"]}}] — no prose, no code fences.'
+    )
+
+
+def resolve_shapes(raw: object) -> list[dict]:
+    """A RELATED_TO proposal's resolving shapes, tightest first, each with its candidate names.
+
+    The model's ``resolve`` is untrusted: an unknown shape, a non-list or a blank name is dropped,
+    and the order is RESOLVE_SHAPES's, never the model's.
+    """
+    if not isinstance(raw, dict):
+        return []
+    shapes = []
+    for shape in RESOLVE_SHAPES:
+        names = raw.get(shape)
+        if not isinstance(names, list):
+            continue
+        candidates = [n.strip() for n in names if isinstance(n, str) and n.strip()]
+        if candidates:
+            shapes.append({"shape": shape, "candidates": candidates})
+    return shapes
+
+
 @router.post("/relationships/generate")
 async def generate_relationships(request: Request) -> dict:
     """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the whole glossary.
@@ -639,28 +732,9 @@ async def generate_relationships(request: Request) -> dict:
             _conn, include_deprecated=False, domains=_authority(request)
         )  # REQ-1591: propose edges only within the caller's own domains
         if len(terms) < 2:
-            return {"added": 0}
+            return {"added": 0, "review": []}
         by_name = {t["name"]: t["id"] for t in terms}
-        term_lines = "\n".join(
-            f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "") for t in terms
-        )
-        prompt = (
-            "You are a data catalog assistant. Given this ontology term list, "
-            "propose semantic relationships between terms. Allowed relationship types: "
-            "KIND_OF (from is a kind of to), PART_OF (from is a part of to), "
-            "SYNONYM_OF (interchangeable terms), RELATED_TO (loosely associated), "
-            "VALID_VALUE_OF (from is an allowed value of the to enumeration/domain), "
-            "DERIVED_FROM (from is computed or sourced from to), "
-            "REPLACES (from supersedes the deprecated to), "
-            "PREFERRED_TERM_FOR (from is the preferred term over the discouraged to), "
-            "TRANSLATION_OF (from is a language/locale translation of to), "
-            "ANTONYM_OF (from is the semantic opposite of to). "
-            "Only propose relationships you are confident in; "
-            "fewer, correct edges beat many speculative ones.\n\n"
-            f"Terms:\n{term_lines}\n\n"
-            'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
-            '"rel_type": "KIND_OF"}] — no prose, no code fences.'
-        )
+        prompt = relationship_prompt(terms)
         raw = await _call_llm(prompt, "glossary_relationships", max_tokens=2048)
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
         try:
@@ -687,6 +761,10 @@ async def generate_relationships(request: Request) -> dict:
             )
 
         added = 0
+        # REQ-1387 (RELATED_TO HOLDS THE PLACE): each RELATED_TO the model adds comes back with the
+        # one-term shapes that would resolve it. They are offered to the curator, never applied:
+        # the assistant adds edges between existing terms only.
+        review: list[dict] = []
         for p in proposals:
             if not isinstance(p, dict):
                 continue
@@ -699,9 +777,19 @@ async def generate_relationships(request: Request) -> dict:
                 continue
             await glossary_repo.add_edge(_conn, from_id, to_id, rel_type)
             added += 1
+            if rel_type == "RELATED_TO":
+                review.append(
+                    {
+                        "from_term_id": from_id,
+                        "from": p["from"],
+                        "to_term_id": to_id,
+                        "to": p["to"],
+                        "resolve": resolve_shapes(p.get("resolve")),
+                    }
+                )
     if added:
         await _notify(org_id, "ontology relationships generated")
-    return {"added": added}
+    return {"added": added, "review": review}
 
 
 @router.post("/refs/move")

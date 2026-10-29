@@ -53,6 +53,8 @@ export interface GlossaryTermSummary {
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
+  // REQ-1387 (RELATED_TO HOLDS THE PLACE): the RELATED_TO edges the term is on, either end.
+  related_to: number;
   // REQ-2130: the tables the term grounds (as a class term).
   table_count: number;
   // REQ-2130/2141: grounded in several tables that same-entity relationships do not all join.
@@ -222,7 +224,59 @@ export async function generateAllGlossaryDefinitions(): Promise<{ generated: num
   return res.json();
 }
 
-export async function generateGlossaryRelationships(): Promise<{ added: number }> {
+// REQ-1387 (THE SHAPES THAT RESOLVE A RELATED PAIR): the one-term shapes, tightest first, that would
+// turn a RELATED_TO pair into grounding edges; the assistant names candidates, the curator chooses.
+export const RESOLVE_SHAPES = [
+  "component_type",
+  "specialisation",
+  "common_whole",
+  "common_genus",
+  "common_enumeration",
+] as const;
+export type ResolveShape = (typeof RESOLVE_SHAPES)[number];
+
+/** A RELATED_TO the assistant added, with the shapes that may resolve it. */
+export interface RelatedToReview {
+  from_term_id: number;
+  from: string;
+  to_term_id: number;
+  to: string;
+  resolve: { shape: ResolveShape; candidates: string[] }[];
+}
+
+// Where the guidance on building a glossary that grounds lives: the type tests, RELATED_TO as the
+// placeholder, and the shapes that resolve a pair. Served by the app's own docs site, so an
+// air-gapped install reaches it too.
+export const GROUNDING_GUIDE_URL = "/docs-site/ontology/#building-a-glossary-that-grounds";
+
+/** The grounding types' order in the picker: these connect a term to data, so they come first. */
+export const GROUNDING_REL_TYPES: readonly GlossaryRelType[] = [
+  "KIND_OF",
+  "PART_OF",
+  "VALID_VALUE_OF",
+];
+
+/** Picker order: the grounding types first, RELATED_TO last, the rest between as declared. */
+export function orderRelTypes(types: readonly GlossaryRelType[]): GlossaryRelType[] {
+  const rank = (rt: GlossaryRelType) =>
+    GROUNDING_REL_TYPES.includes(rt) ? 0 : rt === "RELATED_TO" ? 2 : 1;
+  return [...types].sort((a, b) => rank(a) - rank(b));
+}
+
+/** Only RELATED_TO links, and not grounded: the term may want an intermediate term (REQ-1387). */
+export function onlyRelatedTo(t: GlossaryTermDetail): boolean {
+  const edges = [...t.edges_out, ...t.edges_in];
+  return (
+    t.grounding === "not_grounded" &&
+    edges.length > 0 &&
+    edges.every((e) => e.rel_type === "RELATED_TO")
+  );
+}
+
+export async function generateGlossaryRelationships(): Promise<{
+  added: number;
+  review: RelatedToReview[];
+}> {
   const res = await fetch(`${API_BASE}/admin/glossary/relationships/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

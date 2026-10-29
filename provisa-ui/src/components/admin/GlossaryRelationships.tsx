@@ -16,6 +16,12 @@ import { ActionIcon, Anchor, Button, Group, Select, Table, Text } from "@mantine
 import type { TFunction } from "i18next";
 import { ArrowLeftRight, Trash2 } from "lucide-react";
 import type { GlossaryRelType, GlossaryTermDetail } from "../../api/glossary";
+import { GroundingGuideLink, RelTypeOptionView } from "./relTypeGuide";
+
+// REQ-1387: each option reads its label, then the type's test.
+const renderRelTypeOption = ({ option }: { option: { value: string; label: string } }) => (
+  <RelTypeOptionView value={option.value} label={option.label} />
+);
 
 interface RelTypeOption {
   value: string;
@@ -114,6 +120,8 @@ export function GlossaryRelationships({
                 {canEdit && relEditMode ? (
                   <Select
                     data={relTypeOptions}
+                    renderOption={renderRelTypeOption}
+                    comboboxProps={{ width: 340, position: "bottom-start" }}
                     value={edge.rel_type}
                     onChange={(next) =>
                       next &&
@@ -197,6 +205,8 @@ export function GlossaryRelationships({
                 {canEdit && relEditMode ? (
                   <Select
                     data={relTypeOptions}
+                    renderOption={renderRelTypeOption}
+                    comboboxProps={{ width: 340, position: "bottom-start" }}
                     value={edge.rel_type}
                     onChange={(next) =>
                       next &&
@@ -254,6 +264,8 @@ export function GlossaryRelationships({
           <Select
             label={t("glossaryTab.edgeRelLabel")}
             data={relTypeOptions}
+            renderOption={renderRelTypeOption}
+            comboboxProps={{ width: 340, position: "bottom-start" }}
             value={edgeRelType}
             onChange={setEdgeRelType}
             w={180}
@@ -284,6 +296,8 @@ export function GlossaryRelationships({
           >
             <ArrowLeftRight size={14} />
           </ActionIcon>
+          {/* REQ-1387: how to choose a type that grounds, and what resolves a Related to. */}
+          <GroundingGuideLink testId="glossary-edge-guide" />
         </Group>
       )}
     </>

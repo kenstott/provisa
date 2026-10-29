@@ -381,3 +381,77 @@ async def test_mcp_search_terms_requires_role_and_returns_refs(control_plane, mo
             await tools.search_terms(state, "nobody", "customer")
         with pytest.raises(ValueError):
             await tools.search_terms(state, "analyst", "   ")
+
+
+async def test_relationship_assistant_steers_to_grounding_types(control_plane, monkeypatch):
+    """REQ-1387 (RELATED_TO IS THE LAST RESORT; THE SHAPES THAT RESOLVE A RELATED PAIR): the prompt
+    carries each type's test and the five shapes tightest first; a RELATED_TO the model adds comes
+    back with its shapes in that order, whatever order the model sent, and no term is added."""
+    from provisa.api.admin import schema_helpers
+
+    prompts: list[str] = []
+    reply = (
+        '[{"from": "order date", "to": "customer", "rel_type": "PART_OF"},'
+        ' {"from": "order date", "to": "customer", "rel_type": "RELATED_TO",'
+        '  "resolve": {"common_genus": ["sales fact"], "bogus": ["x"],'
+        '              "component_type": ["  ", "purchase moment"], "common_whole": "party"}}]'
+    )
+
+    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+        prompts.append(prompt)
+        assert operation == "glossary_relationships"
+        return reply
+
+    async def _no_jev(_pool):
+        return None
+
+    from provisa.core import org_secrets
+
+    monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
+    monkeypatch.setattr(org_secrets, "resolve_jev_api_key", _no_jev)
+    async with _surface(control_plane, monkeypatch) as (_db, notified):
+        result = await glossary_router.generate_relationships(_request())
+        prompt = prompts[0]
+        for test in (
+            "KIND_OF: every X is a Y",
+            "PART_OF: a Y has an X",
+            "VALID_VALUE_OF: X is one of Y's allowed values",
+            "RELATED_TO is the last resort",
+            "It does not ground",
+        ):
+            assert test in prompt, test
+        # Tightest first, as the guidance orders them.
+        order = [
+            prompt.index(f'"{s}"')
+            for s in (
+                "component_type",
+                "specialisation",
+                "common_whole",
+                "common_genus",
+                "common_enumeration",
+            )
+        ]
+        assert order == sorted(order)
+        # Each term rides with its role, so a concept's properties can be named as its parts.
+        assert "- customer [property]" in prompt
+        assert result["added"] == 2
+        customer = await _term_id("customer")
+        order_date = await _term_id("order date")
+        assert result["review"] == [
+            {
+                "from_term_id": order_date,
+                "from": "order date",
+                "to_term_id": customer,
+                "to": "customer",
+                "resolve": [
+                    {"shape": "component_type", "candidates": ["purchase moment"]},
+                    {"shape": "common_genus", "candidates": ["sales fact"]},
+                ],
+            }
+        ]
+        terms = await glossary_router.list_terms(_request(), domains=None)
+        # The candidates are suggestions: nothing named in them became a term.
+        assert {t["name"] for t in terms} == {"customer", "order date"}
+        # The list counts each term's RELATED_TO edges, the review filter's input.
+        assert {t["name"]: t["related_to"] for t in terms} == {"customer": 1, "order date": 1}
+        assert notified == ["acme:ontology relationships generated"]
