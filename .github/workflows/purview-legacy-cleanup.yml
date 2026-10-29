@@ -31,11 +31,10 @@ jobs:
       IDS: ${{ inputs.ids }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install provisa
-        run: python -m pip install .
+      # The project's own Python setup (uv, locked deps): a plain `pip install .` cannot resolve the
+      # workspace's sibling packages (provisa-notebook) from PyPI.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
       - name: Require ids for delete
         if: env.MODE == 'delete' && env.IDS == ''
         run: |
@@ -43,7 +42,7 @@ jobs:
           exit 1
       - name: List
         if: env.MODE == 'list'
-        run: python scripts/purview_legacy_cleanup.py list --out purview-legacy-ids.json
+        run: uv run python scripts/purview_legacy_cleanup.py list --out purview-legacy-ids.json
       - name: Upload ids
         if: env.MODE == 'list'
         uses: actions/upload-artifact@v4
@@ -53,4 +52,4 @@ jobs:
           if-no-files-found: error
       - name: Delete
         if: env.MODE == 'delete'
-        run: python scripts/purview_legacy_cleanup.py delete --ids "$IDS"
+        run: uv run python scripts/purview_legacy_cleanup.py delete --ids "$IDS"
