@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { ListOrdered } from "lucide-react";
+import { PageTitle } from "../components/PageTitle";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FormField, FormFooter, FormLayout } from "../components/form/FormLayout";
@@ -23,7 +25,6 @@ import {
   Table,
   Tabs,
   Text,
-  Title,
   VisuallyHidden,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -247,7 +248,7 @@ export function RequestsPage() {
   return (
     <Stack gap="md" className="page">
       <Group justify="space-between" wrap="wrap" align="center">
-        <Title order={2}>{t("requestsPage.title")}</Title>
+        <PageTitle icon={ListOrdered}>{t("requestsPage.title")}</PageTitle>
         <FilterInput
           value={search}
           onChange={(v) => {

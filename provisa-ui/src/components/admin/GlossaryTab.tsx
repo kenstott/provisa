@@ -13,6 +13,7 @@
 // this tab carries the human curation — rename, definitions, ref moves,
 // experts, abstract terms and their typed edges.
 
+import { PageTitle } from "../PageTitle";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -32,7 +33,6 @@ import {
   Text,
   TextInput,
   Textarea,
-  Title,
 } from "@mantine/core";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
@@ -549,15 +549,8 @@ export function GlossaryTab() {
       {/* Same heading row as the other admin tabs: title, filter, actions. The list/detail split
           below it is this tab's own layout. */}
       <Group justify="space-between" wrap="wrap">
-        <Group gap="xs" align="center" wrap="nowrap">
-          <BookOpen size={22} style={{ display: "block", flexShrink: 0 }} />
-          {/* Order 2: AdminPage suppresses its own page title for this tab, so this is the page
-              heading, not a section heading. mb=0 drops the `.page h2` bottom margin, which would
-              otherwise push the text up off the icon's centre line. */}
-          <Title order={2} mb={0} lh={1}>
-            {t("glossaryTab.title")}
-          </Title>
-        </Group>
+        {/* AdminPage suppresses its own page title for this tab, so this is the page heading. */}
+        <PageTitle icon={BookOpen}>{t("glossaryTab.title")}</PageTitle>
         <FilterInput
           value={query}
           onChange={setQuery}

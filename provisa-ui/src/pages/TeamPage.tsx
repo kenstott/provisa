@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { Users } from "lucide-react";
+import { PageTitle } from "../components/PageTitle";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -22,7 +24,6 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -307,7 +308,7 @@ export function TeamPage() {
   return (
     <Stack gap="lg" p="md" data-testid="team-page">
       <div>
-        <Title order={2}>{t("teamPage.title")}</Title>
+        <PageTitle icon={Users}>{t("teamPage.title")}</PageTitle>
         <Text c="dimmed" size="sm">
           {t("teamPage.subtitle")}
         </Text>

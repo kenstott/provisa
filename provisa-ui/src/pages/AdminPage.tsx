@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { useState, useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Settings } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -327,10 +328,10 @@ export function AdminPage() {
   return (
     <div className={fills ? "page page-sticky-head" : "page"}>
       {activeTab !== "Glossary" && (
-        <Title order={2} mb="md">
+        <PageTitle icon={Settings} mb="md">
           {/* Reads as a breadcrumb: the area, then the section within it. */}
           {t("adminPage.title")} — {heading}
-        </Title>
+        </PageTitle>
       )}
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
