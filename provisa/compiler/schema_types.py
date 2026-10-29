@@ -48,6 +48,9 @@ class SchemaInput:
     root_table_ids: set[int] | None = (
         None  # if set, only these tables get root query fields; others are type-defs only
     )
+    # The domains a per-domain schema was asked for (/data/introspection?domain=...): if set, only
+    # their commands, and meta's resolver only when meta is one of them, are root fields.
+    root_domain_ids: set[str] | None = None
     gql_object_columns: dict[str, dict[str, list[str]]] = field(
         default_factory=dict
     )  # {table_name: {col_name: [sub_fields]}}
@@ -66,6 +69,12 @@ class SchemaInput:
     # REQ-1921: tables out of service (draft) — in no schema; named only so a statement naming one
     # is refused as draft rather than as unknown.
     draft_tables: list[dict] = field(default_factory=list)
+
+
+def offers_domain(si: SchemaInput, domain_id: str) -> bool:
+    """Whether ``si``'s root fields include ``domain_id``'s commands (and, for meta, its resolver):
+    every domain in a role's whole schema, only the domains asked for in a per-domain one."""
+    return si.root_domain_ids is None or domain_id in si.root_domain_ids
 
 
 @dataclass

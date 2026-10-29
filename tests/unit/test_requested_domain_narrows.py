@@ -203,3 +203,5 @@ def test_the_domain_schema_is_generated_with_the_roles_own_scope(monkeypatch, he
     assert si.role["domain_access"] == held
     # The requested domain chose the roots; nothing else.
     assert si.root_table_ids == {1}
+    # ...and its commands and meta's resolver are offered only for the domains asked for.
+    assert si.root_domain_ids == {"sales"}
