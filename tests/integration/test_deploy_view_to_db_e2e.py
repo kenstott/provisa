@@ -103,35 +103,62 @@ _VISIBLE = f'visibleTo: ["{_ADMIN}"]'
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def model(client, source_db):
     """Two Postgres sources, a table on each, in one domain, released for reading."""
-    await _ok(client, "createDomain", f'input: {{ id: "{_DOMAIN}", description: "j108" }}')
-    password = os.environ.get("PG_PASSWORD", "provisa")
-    for source_id in (_SRC_A, _SRC_B):
-        await _ok(
-            client,
-            "createSource",
-            f'input: {{id: "{source_id}", type: "postgresql", host: "{_PG_HOST}", port: {_PG_PORT}, '
-            f'database: "{_PG_DB}", username: "provisa", password: "{password}"}}',
-        )
     ids = {}
-    for source_id, schema, table, columns in (
-        (_SRC_A, _SCHEMA_A, "orders", ("id", "amount")),
-        (_SRC_B, _SCHEMA_B, "customers", ("id", "name")),
-    ):
-        cols = ", ".join(
-            f'{{name: "{c}", {_VISIBLE}, dataType: "{"text" if c == "name" else "integer"}"'
-            f"{', isPrimaryKey: true' if c == 'id' else ''}}}"
-            for c in columns
+    try:
+        await _ok(client, "createDomain", f'input: {{ id: "{_DOMAIN}", description: "j108" }}')
+        password = os.environ.get("PG_PASSWORD", "provisa")
+        for source_id in (_SRC_A, _SRC_B):
+            await _ok(
+                client,
+                "createSource",
+                f'input: {{id: "{source_id}", type: "postgresql", host: "{_PG_HOST}", port: {_PG_PORT}, '
+                f'database: "{_PG_DB}", username: "provisa", password: "{password}"}}',
+            )
+        for source_id, schema, table, columns in (
+            (_SRC_A, _SCHEMA_A, "orders", ("id", "amount")),
+            (_SRC_B, _SCHEMA_B, "customers", ("id", "name")),
+        ):
+            cols = ", ".join(
+                f'{{name: "{c}", {_VISIBLE}, dataType: "{"text" if c == "name" else "integer"}"'
+                f"{', isPrimaryKey: true' if c == 'id' else ''}}}"
+                for c in columns
+            )
+            reg = await _ok(
+                client,
+                "registerTable",
+                f'input: {{sourceId: "{source_id}", domainId: "{_DOMAIN}", schemaName: "{schema}", '
+                f'tableName: "{table}", columns: [{cols}]}}',
+            )
+            released = await _admin(client, release_mutation(registered_id(reg["message"])))
+            assert released["setTableDraft"]["success"], released
+            ids[table] = registered_id(reg["message"])
+            _REGISTERED.append(ids[table])
+        yield ids
+    finally:
+        await _tear_down(client)
+
+
+# Every table registered through the admin API by this module (views included), for teardown.
+_REGISTERED: list[int] = []
+
+
+async def _tear_down(client) -> None:
+    """Delete what the module registered, tables first, then the domain and the sources. Every
+    delete is attempted; a refusal is reported once all have run."""
+    refused = []
+    deletes = [f"deleteTable(id: {i})" for i in reversed(_REGISTERED)]
+    deletes.append(f'deleteDomain(id: "{_DOMAIN}")')
+    deletes += [f'deleteSource(id: "{s}")' for s in (_SRC_A, _SRC_B)]
+    for call in deletes:
+        resp = await client.post(
+            "/admin/graphql", json={"query": f"mutation {{ {call} {{ success message }} }}"}
         )
-        reg = await _ok(
-            client,
-            "registerTable",
-            f'input: {{sourceId: "{source_id}", domainId: "{_DOMAIN}", schemaName: "{schema}", '
-            f'tableName: "{table}", columns: [{cols}]}}',
-        )
-        released = await _admin(client, release_mutation(registered_id(reg["message"])))
-        assert released["setTableDraft"]["success"], released
-        ids[table] = registered_id(reg["message"])
-    return ids
+        body = resp.json()
+        result = (body.get("data") or {}).get(call.split("(")[0])
+        if resp.status_code != 200 or not result or not result["success"]:
+            refused.append((call, body))
+    _REGISTERED.clear()
+    assert not refused, refused
 
 
 async def _register_view(client, name: str, sql: str, columns: list[str]) -> int:
@@ -143,6 +170,7 @@ async def _register_view(client, name: str, sql: str, columns: list[str]) -> int
         f'tableName: "{name}", alias: "{name}", viewSql: {json.dumps(sql)}, columns: [{cols}]}}',
     )
     table_id = registered_id(reg["message"])
+    _REGISTERED.append(table_id)
     released = await _admin(client, release_mutation(table_id))
     assert released["setTableDraft"]["success"], released
     return table_id
