@@ -5819,11 +5819,12 @@ def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
         import json
 
         declared = json.loads(declared)
-    if not declared:
+    if declared is None:
         raise UnderivableColumn(
             f"cannot describe a call to {name!r}: it declares no output_columns, so its result "
             "columns are unknown until it runs"
         )
+    # An empty list: a VOID command (REQ-2001), whose call answers no columns.
     return [(c["name"], c["type"]) for c in declared]
 
 
