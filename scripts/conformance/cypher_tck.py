@@ -657,7 +657,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if good:
                 checked = True
                 continue
-            if _below_the_microsecond(header, expected_raw):
+            if _below_the_microsecond(header, expected_raw) or _builds_below_the_microsecond(query):
                 return out(
                     "failed", f"expects digits below the microsecond; rows differ: got {rows[:3]}"
                 )
@@ -680,6 +680,22 @@ def _below_the_microsecond(header: list[str], rows: list[list[str]]) -> bool:
             if "nanosecond" in column.lower() and cell.lstrip("-").isdigit() and int(cell) % 1000:
                 return True
     return False
+
+
+#: A temporal constructor's nanosecond count, or a temporal string's fraction of a second.
+_NANOSECOND_KEY = re.compile(r"\bnanosecond\s*:\s*(\d+)", re.I)
+_SUB_MICROSECOND_STRING = re.compile(r"'[^']*\d:\d\d(?::\d\d)?\.\d{6}\d*[1-9][^']*'")
+
+
+def _builds_below_the_microsecond(query: str) -> bool:
+    """Whether a query builds temporal values that differ below the microsecond (REQ-2173,
+    amended 2026-10-27, NANOSECONDS PRESENTED AS ZERO): a constructor's nanosecond count that is
+    not a whole number of microseconds, or a temporal string with digits past the sixth. Held to
+    microsecond precision, such values are one value, so a scenario ordering or comparing them
+    expects the digits below the microsecond."""
+    if any(int(n) % 1000 for n in _NANOSECOND_KEY.findall(query)):
+        return True
+    return bool(_SUB_MICROSECOND_STRING.search(query))
 
 
 def in_running_order(scenarios: list[Scenario]) -> list[int]:

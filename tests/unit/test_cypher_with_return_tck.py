@@ -323,3 +323,29 @@ def test_a_key_of_a_collected_map_is_its_value(monkeypatch, tail):
         f"MATCH (p:P) WITH p.d AS t, p AS p WITH head(collect({{t: t}})) AS l, p AS p {tail}"
     )
     assert rows == [{"t": 20160614}]
+
+
+# --- lists of graph elements; a variable a WITH drops -------------------------------------------
+
+
+def test_a_list_of_an_unlabelled_hops_elements_is_nodes_and_relationships(monkeypatch):
+    # Return2 [12]: [n, r, m] of a read of every relationship, never their JSON text.
+    s = _session(monkeypatch, "CREATE (:A)-[:T]->(:B)")
+    [row] = s.run("MATCH (n)-[r]->(m) RETURN [n, r, m] AS r")
+    assert [type(v) for v in row["r"]] == [dict, dict, dict]
+    assert [v.get("label") or v.get("type") for v in row["r"]] == ["A", "T", "B"]
+
+
+def test_a_relationship_a_with_drops_is_bound_anew(monkeypatch):
+    # Return6 [16]: r1 and r2 are matched again after a WITH carrying only me and you.
+    s = _session(
+        monkeypatch,
+        "CREATE (m {name: 'M'})-[:ATE {t: 1}]->(f), (y {name: 'Y'})-[:ATE {t: 2}]->(f), "
+        "(z {name: 'Z'})-[:ATE {t: 3}]->()",
+    )
+    rows = s.run(
+        "MATCH (me)-[r1:ATE]->()<-[r2:ATE]-(you) WHERE me.name = 'M' "
+        "WITH me, count(r1) AS h, you "
+        "MATCH (me)-[r1:ATE]->()<-[r2:ATE]-(you) RETURN me.name AS me, you.name AS you, r2.t AS t"
+    )
+    assert rows == [{"me": "M", "you": "Y", "t": 2}]

@@ -1411,10 +1411,22 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 continue
             if _holds_json_maps(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
-            elif _is_json_list(projection):
+            elif _is_json_list(projection) or self._lists_union_values(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
             elif _json_valued(projection, self._json_value_vars) == "value":
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_VALUE
+
+    def _lists_union_values(self, projection: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Whether ``projection`` is a list of nodes and relationships a read of every
+        relationship holds as their JSON ([n, r, m] of an unlabelled hop), which the answer
+        decodes as a list of maps."""
+        held = self._all_rels_node_vars | self._all_rels_rel_vars
+        e = projection.this if isinstance(projection, exp.Alias) else projection
+        return (
+            isinstance(e, exp.Array)
+            and bool(e.expressions)
+            and all(isinstance(x, exp.Column) and x.name in held for x in e.expressions)
+        )
 
     def _reconcile_params_with_placeholders(
         self,
@@ -2082,6 +2094,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             self._all_rels_var_alias[key] = cte_name
         for path in carried_paths:
             self._path_vars.pop(path, None)
+        # A relationship or node of a union the WITH does not carry is out of scope after it: a
+        # later MATCH naming it binds it anew (MATCH (me)-[r1]->() WITH me MATCH (me)-[r1]->()).
+        self._all_rels_rel_vars &= set(new_var_table)
+        self._all_rels_node_vars &= set(new_var_table)
         self._carried_paths = carried_paths
         self._var_table = new_var_table
         self._union_columns = union_columns

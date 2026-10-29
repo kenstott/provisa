@@ -290,6 +290,15 @@ def test_an_expected_value_below_the_microsecond_is_named():
     assert not tck._below_the_microsecond(["d.nanosecond"], [["645876000"]])
 
 
+def test_a_query_building_values_apart_only_below_the_microsecond_is_named():
+    # WithOrderBy1 [45] #7, #8: localtime({..., nanosecond: 645876123}) beside ...124.
+    assert tck._builds_below_the_microsecond("RETURN localtime({hour: 12, nanosecond: 645876123})")
+    assert tck._builds_below_the_microsecond("RETURN time('12:31:14.645876123+01:00')")
+    assert not tck._builds_below_the_microsecond("RETURN time({hour: 1, nanosecond: 645876000})")
+    assert not tck._builds_below_the_microsecond("RETURN localtime('12:31:14.645876')")
+    assert not tck._builds_below_the_microsecond("RETURN '1.5000000001' AS s")
+
+
 def test_a_cell_s_own_escapes_are_undone_before_its_value_is_read():
     # Gherkin's \\ is a backslash and \| a bar in a table cell (Literals6 [5]): the cell
     # 'a\\\\b' is the Cypher string 'a\\b', whose value is a\b.

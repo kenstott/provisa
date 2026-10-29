@@ -231,6 +231,13 @@ class _EveryRelMixin:  # mixin for _Translator
                 return _value_of(col, "id"), col in self._every_rel_clause_cols
             if nm is not None:
                 return node_identity(self._node_alias(node, nm, as_source=as_source), nm), False
+        elif var in self._all_rels_node_vars and var in getattr(self, "_cte_sources", set()):
+            # The node value a WITH carries, read from that WITH's row.
+            held_in = self._var_table.get(var, (var, None))[0]
+            return exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[exp.column(var, table=held_in), exp.Literal.string("$.id")],
+            ), False
         elif var in self._all_rels_node_vars:
             return _value_of(var, "id"), var in self._every_rel_clause_cols
         elif var in self._domain_nodes:
