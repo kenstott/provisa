@@ -618,20 +618,6 @@ jobs:
             "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ['SNOWFLAKE_WAREHOUSE']))" \
             || { echo "::error::the Snowflake warehouse could not be confirmed suspended: check it, it may be billing"; exit 1; }
 
-      # Maintainer 2026-10-29: a monthly credit cap on the CI warehouse (a resource monitor that
-      # suspends it at once at the quota). Creating a resource monitor and assigning it to a
-      # warehouse need Snowflake's ACCOUNTADMIN role: a CI user without it fails this step with
-      # Snowflake's own refusal, which is not caught. Run after the lane, whatever its outcome, so
-      # the refusal never keeps the nightly's tests from running.
-      - name: Cap the Snowflake warehouse's monthly credits
-        if: always()
-        env:
-          CI_CREDIT_MONITOR: PROVISA_CI_MONTHLY
-          CI_MONTHLY_CREDITS: "20"
-        run: |
-          uv run python -c \
-            "import os; from tests.integration.snowflake_warehouse import cap_monthly_credits as c; print('the Snowflake warehouse is under resource monitor', c(os.environ['SNOWFLAKE_WAREHOUSE'], os.environ['CI_CREDIT_MONITOR'], int(os.environ['CI_MONTHLY_CREDITS'])))"
-
       - name: Cache Trino plugins
         if: always()
         uses: ./.github/actions/trino-plugins

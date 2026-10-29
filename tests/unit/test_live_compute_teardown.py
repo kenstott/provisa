@@ -256,6 +256,15 @@ def test_a_running_databricks_warehouse_is_stopped_once_and_waited_for(monkeypat
     assert http.posts == ["https://dbx.example/api/2.0/sql/warehouses/abc123/stop"]
 
 
+def test_a_stop_databricks_accepts_but_never_acts_on_is_sent_again(monkeypatch):
+    """Run 40910302654: the stop was answered 200 with every query finished and no other client
+    on the warehouse, yet the warehouse stayed RUNNING until its own 10-minute auto-stop. A
+    warehouse still RUNNING, never seen STOPPING, is asked again on each poll until it leaves."""
+    http = _dbx_stop(monkeypatch, ["RUNNING", "RUNNING", "RUNNING", "STOPPING", "STOPPED"])
+    databricks_warehouse.stop_warehouse()
+    assert http.posts == ["https://dbx.example/api/2.0/sql/warehouses/abc123/stop"] * 3
+
+
 def test_a_databricks_warehouse_that_never_stops_raises(monkeypatch):
     _dbx_stop(monkeypatch, ["RUNNING", "STOPPING"])
     with pytest.raises(RuntimeError, match="may be billing"):
@@ -279,23 +288,17 @@ def test_a_databricks_warehouse_restarted_while_stopping_raises_at_once_naming_i
 
 class _SettingsCursor:
     """SHOW WAREHOUSES answers with the warehouse's current settings; an ALTER ... SET changes
-    them as Snowflake would, unless the statement is refused."""
+    them as Snowflake would."""
 
-    def __init__(self, *, auto_suspend=600, monitor="null", refuse=None):
-        self.row = {"name": "Wh_X", "state": "SUSPENDED", "auto_suspend": auto_suspend,
-                    "resource_monitor": monitor}  # fmt: skip
-        self.refuse = refuse
+    def __init__(self, *, auto_suspend=600):
+        self.row = {"name": "Wh_X", "state": "SUSPENDED", "auto_suspend": auto_suspend}
         self.statements = []
         self.description = [(k,) for k in self.row]
 
     def execute(self, sql):
         self.statements.append(sql)
-        if self.refuse and sql.startswith(self.refuse):
-            raise RuntimeError("SQL access control error: Insufficient privileges")
         if sql.startswith("ALTER WAREHOUSE") and "AUTO_SUSPEND" in sql:
             self.row["auto_suspend"] = int(sql.rsplit("=", 1)[1])
-        if sql.startswith("ALTER WAREHOUSE") and "RESOURCE_MONITOR" in sql:
-            self.row["resource_monitor"] = sql.rsplit("=", 1)[1].strip().strip('"')
 
     def fetchall(self):
         return [tuple(self.row.values())]
@@ -319,31 +322,3 @@ def test_a_snowflake_auto_suspend_that_does_not_read_back_raises(monkeypatch):
     monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
     with pytest.raises(RuntimeError, match="600s idle after it was set to 60s"):
         snowflake_warehouse.set_auto_suspend("wh_x", 60)
-
-
-def test_the_snowflake_warehouse_is_put_under_a_monthly_credit_cap(monkeypatch):
-    cur = _SettingsCursor()
-    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
-    assert snowflake_warehouse.cap_monthly_credits("wh_x", "provisa_ci", 20) == "PROVISA_CI"
-    assert cur.statements[1] == (
-        'CREATE RESOURCE MONITOR IF NOT EXISTS "PROVISA_CI" WITH CREDIT_QUOTA = 20 '
-        "FREQUENCY = MONTHLY START_TIMESTAMP = IMMEDIATELY "
-        "TRIGGERS ON 100 PERCENT DO SUSPEND_IMMEDIATE"
-    )
-    assert cur.statements[2] == 'ALTER WAREHOUSE "Wh_X" SET RESOURCE_MONITOR = "PROVISA_CI"'
-
-
-def test_a_snowflake_warehouse_already_under_the_cap_is_left_as_it_is(monkeypatch):
-    cur = _SettingsCursor(monitor="PROVISA_CI")
-    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
-    assert snowflake_warehouse.cap_monthly_credits("wh_x", "provisa_ci", 20) == "PROVISA_CI"
-    assert cur.statements == ["SHOW WAREHOUSES LIKE 'wh_x'"]
-
-
-def test_a_user_who_may_not_create_the_credit_cap_gets_snowflakes_refusal(monkeypatch):
-    """Maintainer 2026-10-29: a CI user without the privilege fails the step with Snowflake's own
-    message; nothing catches it."""
-    cur = _SettingsCursor(refuse="CREATE RESOURCE MONITOR")
-    monkeypatch.setattr(snowflake_warehouse, "_connect", lambda: _Conn(cur))
-    with pytest.raises(RuntimeError, match="Insufficient privileges"):
-        snowflake_warehouse.cap_monthly_credits("wh_x", "provisa_ci", 20)

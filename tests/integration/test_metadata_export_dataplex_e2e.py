@@ -34,8 +34,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExport, resource_id
+from provisa.api.metadata_export.dataplex import DataplexExport, resource_id
 from provisa.federation.replica_address import export_schema, replica_schema, replica_table_name
+from tests.integration.dataplex_catalog import API, numbered, remove_glossary, remove_product
 from tests.integration.live_teardown import run_name
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
@@ -59,7 +60,6 @@ pytestmark = [
 # exactly this run's, never another's.
 ORG = run_name("mdx_dataplex_e2e")
 OWNER = "provisa-e2e-owner"
-API = "https://dataplex.googleapis.com/v1"
 _CREDENTIALS = ("GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "BIGQUERY_LOCATION")
 
 
@@ -125,58 +125,6 @@ def _glossary_name(parent: str) -> str:
     return f"{parent}/glossaries/{resource_id(f'provisa-{ORG}')}"
 
 
-_OPERATION_TIMEOUT_S = 300.0
-
-
-def _delete(http: httpx.Client, name: str) -> None:
-    """Delete ``name`` and wait out the long-running operation Dataplex answers with; then read it
-    back gone. Absent already (404) is the state the delete was for. Any other answer raises: a
-    catalog entry left behind is a defect (REQ-254), never a log line."""
-    import time
-
-    resp = http.delete(f"{API}/{name}")
-    if resp.status_code != 404:
-        resp.raise_for_status()
-        operation = resp.json() if resp.content else {}
-        deadline = time.monotonic() + _OPERATION_TIMEOUT_S
-        while operation.get("name") and not operation.get("done"):
-            if time.monotonic() >= deadline:
-                raise RuntimeError(f"Dataplex delete of {name} not done in {_OPERATION_TIMEOUT_S}s")
-            time.sleep(5)
-            operation = http.get(f"{API}/{operation['name']}").raise_for_status().json()
-        if "error" in operation:
-            raise RuntimeError(f"Dataplex delete of {name} failed: {operation['error']}")
-    left = http.get(f"{API}/{name}")
-    if left.status_code != 404:
-        raise RuntimeError(f"Dataplex {name} still answers {left.status_code} after its delete")
-
-
-def _listed(http: httpx.Client, url: str, key: str, **params) -> list[dict]:
-    """The entries of a Dataplex listing; a parent that is gone (404) holds none."""
-    resp = http.get(url, params=params)
-    if resp.status_code == 404:
-        return []
-    return resp.raise_for_status().json().get(key, [])
-
-
-def _glossary_name(parent: str) -> str:
-    return f"{parent}/glossaries/{resource_id(f'provisa-{ORG}')}"
-
-
-def _remove_glossary(http: httpx.Client, parent: str) -> None:
-    """The org's glossary, emptied and removed: its links, terms and categories first."""
-    glossary = _glossary_name(parent)
-    numbered = _numbered(http, parent)
-    for term in _listed(http, f"{API}/{glossary}/terms", "terms"):
-        entry = DataplexExport._term_entry(numbered, term["name"])
-        for link in _listed(http, f"{API}/{parent}:lookupEntryLinks", "entryLinks", entry=entry):
-            _delete(http, link["name"])
-        _delete(http, f"{glossary}/terms/{term['name'].rsplit('/', 1)[-1]}")
-    for category in _listed(http, f"{API}/{glossary}/categories", "categories"):
-        _delete(http, category["name"])
-    _delete(http, glossary)
-
-
 def _cleanup(project: str, location: str, key: str, product_id: str) -> None:
     """The run's data product, its assets, the org's glossary and the org's datasets removed and
     read back gone; every step attempted, every failure raised (REQ-254)."""
@@ -199,16 +147,16 @@ def _cleanup(project: str, location: str, key: str, product_id: str) -> None:
         raise RuntimeError(f"BigQuery dataset {dataset} still exists after its delete")
 
     with httpx.Client(headers=headers, timeout=60) as http:
-
-        def remove_product() -> None:
-            for asset in _listed(http, f"{API}/{name}/dataAssets", "dataAssets"):
-                _delete(http, asset["name"])
-            _delete(http, name)
-
         run_every(
             [
-                (f"delete data product {product_id} and its assets", remove_product),
-                (f"delete glossary of {ORG}", lambda: _remove_glossary(http, parent)),
+                (
+                    f"delete data product {product_id} and its assets",
+                    lambda: remove_product(http, name),
+                ),
+                (
+                    f"delete glossary of {ORG}",
+                    lambda: remove_glossary(http, parent, _glossary_name(parent)),
+                ),
             ]
             + [
                 (f"delete dataset {dataset}", lambda dataset=dataset: remove_dataset(dataset))
@@ -266,7 +214,7 @@ async def published():
                         f"{API}/projects/{project}/locations/{region}:lookupEntryLinks",
                         params={
                             "entry": DataplexExport._term_entry(
-                                _numbered(http, f"projects/{project}/locations/{region}"),
+                                numbered(http, f"projects/{project}/locations/{region}"),
                                 term.json()["name"],
                             ),
                             "entryMode": "TARGET",
@@ -315,14 +263,6 @@ async def test_each_member_is_an_asset_through_its_export_view(published):
         f"{replica_table_name(SOURCE, SCHEMA, table)}"
         for table in ("orders", "customers")
     }
-
-
-def _numbered(http: httpx.Client, parent: str) -> str:
-    """``parent`` with its project named by number, as a term's catalog entry names it."""
-    _, project, _, location = parent.split("/")
-    found = http.get(f"{RESOURCE_MANAGER}/projects/{project}")
-    found.raise_for_status()
-    return f"{found.json()['name']}/locations/{location}"
 
 
 async def test_the_class_term_is_in_classes_and_defines_its_tables_view(published):

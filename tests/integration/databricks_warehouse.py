@@ -130,16 +130,20 @@ def stop_warehouse() -> None:
     """Stop the configured warehouse and block until Databricks reports it STOPPED. A warehouse
     still running when the bound passes may be billing, and that raises.
 
-    The stop is sent once. A warehouse that was STOPPING and then runs again was restarted by a
-    query from someone else -- another run on the same warehouse -- and that raises at once,
-    naming it: stopping it again would fight that user, and waiting would only reach the bound.
-    CI keeps runs off each other's warehouse (the live-cloud-warehouses concurrency group), so
-    this is a user outside it, and the warehouse is left for a person to check."""
+    An accepted stop is not a stop: Databricks can answer it 200 and leave the warehouse RUNNING
+    (run 40910302654: every query finished, no other client on the warehouse, and it ran on to
+    its own 10-minute auto-stop). So the stop is sent again on each poll that still finds the
+    warehouse STARTING or RUNNING, until Databricks reports it STOPPING.
+
+    A warehouse that was STOPPING and then runs again was restarted by a query from someone
+    else -- another run on the same warehouse -- and that raises at once, naming it: stopping it
+    again would fight that user, and waiting would only reach the bound. CI keeps runs off each
+    other's warehouse (the live-cloud-warehouses concurrency group), so this is a user outside
+    it, and the warehouse is left for a person to check."""
     warehouse_id = _warehouse_id()
     with _client() as client:
         state = _state(client, warehouse_id)
         deadline = time.monotonic() + _STOP_TIMEOUT_S
-        stop_sent = False
         seen_stopping = False
         while state != "STOPPED":
             if state in ("DELETED", "DELETING"):
@@ -152,9 +156,8 @@ def stop_warehouse() -> None:
                     "something else restarted it with a query (another run on the same "
                     "warehouse?), not STOPPED: it may be billing"
                 )
-            if state in ("STARTING", "RUNNING") and not stop_sent:
+            if state in ("STARTING", "RUNNING"):
                 client.post(f"{_base()}/{warehouse_id}/stop").raise_for_status()
-                stop_sent = True
             if time.monotonic() >= deadline:
                 raise RuntimeError(
                     f"Databricks warehouse {warehouse_id} is {state} after "

@@ -370,28 +370,22 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
         assert call in step["run"] and "exit 1" in step["run"], name
 
 
-def test_the_warehouse_lane_sets_snowflake_auto_suspend_before_any_test_and_caps_credits():
+def test_the_warehouse_lane_sets_snowflake_auto_suspend_before_any_test():
     """Maintainer 2026-10-29: CI must not run up the warehouse bill. Before any test runs, the
     Snowflake warehouse is set to suspend after 60 idle seconds (a run that dies before its
-    teardown cannot leave it billing); after the lane, whatever its outcome, the warehouse is put
-    under a monthly credit cap, and a refusal (the CI user lacks the privilege) fails the step
-    with Snowflake's own message -- no `||` handler or continue-on-error hides it."""
-    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
-        "jobs"
-    ]["warehouse"]
+    teardown cannot leave it billing). No resource monitor: creating one needs ACCOUNTADMIN, which
+    the CI user lacks (maintainer 2026-10-29), so the lane never tries."""
+    text = (REPO / ".github/workflows/integration-suite-lanes.yml").read_text()
+    job = yaml.safe_load(text)["jobs"]["warehouse"]
     names = [s.get("name") for s in job["steps"]]
     steps = {s.get("name"): s for s in job["steps"]}
     auto = steps["Snowflake warehouse suspends after 60 idle seconds"]
     assert names.index(auto["name"]) < names.index("Run lane")
     assert "if" not in auto
     assert "set_auto_suspend" in auto["run"] and "['SNOWFLAKE_WAREHOUSE'], 60)" in auto["run"]
-    cap = steps["Cap the Snowflake warehouse's monthly credits"]
-    assert names.index(cap["name"]) > names.index("Run lane")
-    assert cap["if"] == "always()"
-    assert "cap_monthly_credits" in cap["run"]
-    assert "||" not in cap["run"] and "continue-on-error" not in cap
+    assert "RESOURCE MONITOR" not in text.upper()
     # The warehouse the steps act on is the secret's, with no default in its place.
-    for name in (auto["name"], cap["name"], "Leave the Snowflake warehouse suspended"):
+    for name in (auto["name"], "Leave the Snowflake warehouse suspended"):
         assert "os.environ['SNOWFLAKE_WAREHOUSE']" in steps[name]["run"], name
         assert "COMPUTE_WH" not in steps[name]["run"], name
 

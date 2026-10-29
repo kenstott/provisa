@@ -128,41 +128,6 @@ def set_auto_suspend(warehouse: str, seconds: int) -> int:
         conn.close()
 
 
-def cap_monthly_credits(warehouse: str, monitor: str, credits: int) -> str:
-    """Put ``warehouse`` under the resource monitor ``monitor``: at most ``credits`` credits a
-    calendar month, then the warehouse is suspended at once (maintainer 2026-10-29: CI must not
-    run up the warehouse bill). A warehouse already under ``monitor`` is left as it is. Creating
-    a resource monitor and assigning one to a warehouse need the ACCOUNTADMIN role; a user
-    without it gets Snowflake's own refusal, raised as it is. Returns the monitor's name."""
-    conn = _connect()
-    try:
-        cur = conn.cursor()
-        try:
-            row = _row(cur, warehouse)
-            if str(row["resource_monitor"]).upper() == monitor.upper():
-                return monitor.upper()
-            cur.execute(
-                f"CREATE RESOURCE MONITOR IF NOT EXISTS {_ident(monitor.upper())} "
-                f"WITH CREDIT_QUOTA = {int(credits)} FREQUENCY = MONTHLY "
-                "START_TIMESTAMP = IMMEDIATELY TRIGGERS ON 100 PERCENT DO SUSPEND_IMMEDIATE"
-            )
-            cur.execute(
-                f"ALTER WAREHOUSE {_ident(str(row['name']))} "
-                f"SET RESOURCE_MONITOR = {_ident(monitor.upper())}"
-            )
-            found = str(_row(cur, warehouse)["resource_monitor"]).upper()
-            if found != monitor.upper():
-                raise RuntimeError(
-                    f"Snowflake warehouse {row['name']!r} is under resource monitor {found!r} "
-                    f"after it was assigned {monitor.upper()!r}"
-                )
-            return found
-        finally:
-            cur.close()
-    finally:
-        conn.close()
-
-
 @contextmanager
 def warehouse_in_use(warehouse: str) -> Generator[None, None, None]:
     """Run the block on ``warehouse`` and suspend it again after, however the block ends --
