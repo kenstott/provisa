@@ -27,11 +27,13 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
+from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import read
 from provisa.ephemeral.labels import Labelled, write_labels
 from provisa.ephemeral.delete import Deleted, delete
 from provisa.ephemeral.merge import merge
 from provisa.ephemeral.write import Created, Read, Write, create
+from provisa.pgwire import temp_exec
 
 
 def label_map(model: Any, session: TempSession | None) -> Any:
@@ -62,14 +64,18 @@ async def write(
     run_write: Write,
 ) -> Created | Deleted | Labelled | None:
     """Do ``statement`` when the governing rule does not make it wholly the governed write (its
-    governed parts through ``run_write``, the surface's own governed write); else None."""
+    governed parts through ``run_write``, the surface's own governed write); else None. A write
+    that would take the session past its bounds (REQ-1926) is refused by name."""
     if session is None:
         return None
-    made = await create(statement, params, model, session, state, run_read, run_write)
-    if made is None:
-        made = await merge(statement, params, model, session, state, run_read, run_write)
-    if made is None:
-        made = await delete(statement, params, model, session, state, run_read, run_write)
-    if made is not None:
-        return made
-    return await write_labels(statement, params, model, session, state, run_read)
+    try:
+        made = await create(statement, params, model, session, state, run_read, run_write)
+        if made is None:
+            made = await merge(statement, params, model, session, state, run_read, run_write)
+        if made is None:
+            made = await delete(statement, params, model, session, state, run_read, run_write)
+        if made is not None:
+            return made
+        return await write_labels(statement, params, model, session, state, run_read)
+    except temp_exec.TempTableLimit as exc:
+        raise CypherParseError(str(exc)) from exc

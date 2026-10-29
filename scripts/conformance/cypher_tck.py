@@ -438,6 +438,17 @@ def _post(base: str, role: str, query: str, params: dict) -> tuple[int, Any]:
         return err.code, json.loads(err.read() or b"null")
 
 
+def _clear(base: str, authorization: str) -> None:
+    """Empty the graph session of the principal ``authorization`` signs in: a principal has one
+    graph session on every client (REQ-2176), so a scenario starts from the TCK's empty graph only
+    once what earlier scenarios made in it is dropped."""
+    req = urllib.request.Request(
+        f"{base}/data/cypher/session", headers={"Authorization": authorization}, method="DELETE"
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        resp.read()
+
+
 def _rows(body: Any) -> tuple[list[str], list[list[Any]]]:
     columns = list(body.get("columns") or [])
     rows = body.get("rows") or []
@@ -459,6 +470,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             return _post(base, role, query, params)
         return bolt.run(setups, query, params)
 
+    _clear(base, _CREDENTIAL["Authorization"] if session is None else bolt.authorization())
     params: dict = {}
     query: str | None = None
     for step in scenario.steps:

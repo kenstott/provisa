@@ -174,6 +174,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
 
         months, days, micros = (int(v) for v in value)
         return Duration(months, days, micros)
+    if kind == GraphVarKind.DURATION_LIST:  # REQ-2173
+        from provisa.gql.temporal import Duration
+
+        # A null item's parts are each null.
+        return [None if item[0] is None else Duration(*(int(v) for v in item)) for item in value]
     if kind == GraphVarKind.POINT:
         from provisa.gql.spatial import returned
 

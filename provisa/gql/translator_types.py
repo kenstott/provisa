@@ -35,6 +35,7 @@ class GraphVarKind(str, Enum):
     # One value read from such a list ([1, 'a'][0]): its JSON; the answer decodes it.
     JSON_VALUE = "JSON_VALUE"
     DURATION = "DURATION"  # REQ-2173: a duration's [months, days, microseconds]
+    DURATION_LIST = "DURATION_LIST"  # REQ-2173: each item's [months, days, microseconds]
     ZONED = "ZONED"  # REQ-2173: a date time's [microseconds since the epoch, the zone it names]
     POINT = "POINT"  # a point's [srid, x, y(, z)] (spatial.py)
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the

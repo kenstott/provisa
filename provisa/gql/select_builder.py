@@ -582,6 +582,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # REQ-2173: a duration leaves the engine as its parts, written as ISO-8601 in the answer.
             parsed = temporal.returned(parsed)
             self._graph_vars[name.lower()] = GraphVarKind.DURATION
+        elif name and self._temporal_context().temporal_list_kind(expr) == temporal.DURATION:
+            # REQ-2173: a list of durations leaves the engine as each item's parts.
+            parsed = temporal.returned_list(parsed)
+            self._graph_vars[name.lower()] = GraphVarKind.DURATION_LIST
         elif name and held == temporal.DATETIME:
             # REQ-2173: a date time the query names a zone for is written in that zone.
             zone = self._temporal_context().temporal_zone(expr)
