@@ -850,6 +850,9 @@ class TranslatorExprContext:
                 is_reversed,
                 t._rel_var_via.get(name),
             )
+        if name in t._path_vars:
+            # A path as a value ([n, r, p], WITH p): its object, as RETURN p answers it.
+            return t._build_path_object(name)
         alias, nm = t._var_table.get(name, (name, None))
         if nm is not None:
             from provisa.gql.select_builder import node_json
@@ -979,19 +982,47 @@ class TranslatorExprContext:
                 f"unresolved target node in pattern comprehension: {src_var}-[{rel_type or ''}]->{tgt_var}"
             )
 
-        # Lower the projection (and predicate) with the target var temporarily in scope.
+        src_alias, src_nm = t._var_table.get(src_var, (src_var, None))
+        # Lower the projection (and predicate) with the target var -- and the path var, of the
+        # source, the one edge and the target -- temporarily in scope.
         saved = t._var_table.get(tgt_var)
         t._var_table[tgt_var] = (tgt_var, tgt_nm)
+        path = node.path_var
+        held_ends = t._path_vars.get(path) if path is not None else None
+        held_steps = t._path_steps.get(path) if path is not None else None
+        if path is not None:
+            if src_nm is None:
+                raise NotImplementedError(
+                    f"a path in a pattern comprehension starts at a node of one label: {src_var}"
+                )
+            via = None if rel.via is None else (via_alias_for(rel, tgt_var), rel.via)
+            edge = (rel.rel_type, src_alias, src_nm, tgt_var, tgt_nm, False, via)
+            t._path_vars[path] = (src_alias, tgt_var, False)
+            t._path_steps[path] = ([(src_alias, src_nm), (tgt_var, tgt_nm)], [edge])
         try:
-            proj = ExprLowering(self).lower(node.projection)
+            # A bare path, node or relationship is its object, as RETURN answers it.
+            bare = node.projection.name if isinstance(node.projection, Variable) else None
+            element = self.resolve_graph_element(bare) if bare else None
+            proj = (
+                ExprLowering(self).lower(node.projection)
+                if element is None
+                # As its JSON: the answer decodes each (GraphVarKind.JSON_LIST).
+                else _anon("to_json", element)
+            )
             pred = ExprLowering(self).lower(node.predicate) if node.predicate is not None else None
         finally:
             if saved is None:
                 t._var_table.pop(tgt_var, None)
             else:
                 t._var_table[tgt_var] = saved
+            if path is not None:
+                t._path_vars.pop(path, None)
+                t._path_steps.pop(path, None)
+                if held_ends is not None:
+                    t._path_vars[path] = held_ends
+                if held_steps is not None:
+                    t._path_steps[path] = held_steps
 
-        src_alias = t._var_table.get(src_var, (src_var, None))[0]
         tgt_table = exp.table_(
             tgt_nm.sql_table_name, db=tgt_nm.schema_name, catalog=tgt_nm.catalog_name, quoted=True
         )

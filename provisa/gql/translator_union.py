@@ -73,8 +73,11 @@ def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType
 
 
 def _spelled(kind: str) -> str:
-    """A registered type as SQL spells it: a session's ``list<elem>`` an array of ``elem``."""
-    return f"{_spelled(kind[5:-1])}[]" if kind.startswith("list<") else kind
+    """A registered type as SQL spells it: a session's ``list<elem>`` an array of ``elem``, its
+    ``zoned_time`` (a time with its offset) a ``TIMETZ``."""
+    if kind.startswith("list<"):
+        return f"{_spelled(kind[5:-1])}[]"
+    return "TIMETZ" if kind == "zoned_time" else kind
 
 
 def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.DataType | None:

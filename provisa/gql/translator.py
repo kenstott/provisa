@@ -659,6 +659,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # A path a WITH carries on: one column of its CTE, its path object (WITH p)
+        self._carried_paths: set[str] = set()
         # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: the node unions that name each node's graph identity (translator_union)
@@ -1703,6 +1705,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         )
                     )
                 continue
+            if bare is not None and bare in self._path_vars and bare not in self._var_table:
+                # A path goes on as its object, as RETURN p answers it: its nodes and edges are
+                # read here, where the pattern that matched them is in scope.
+                path = self._build_path_object(bare)
+                exprs.append(exp.alias_(path, alias or bare, quoted=True))
+                continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
@@ -1777,6 +1785,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 bound_params[name] = self._param_vars[i.expression.name]
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
+        carried_paths: set[str] = set()
         union_columns: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
@@ -1807,6 +1816,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
             if bare is not None and bare in self._union_columns:
                 union_columns[key] = self._union_columns[bare]
+            if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
+                # From here on the path is the column its WITH carries, not its pattern.
+                carried_paths.add(key)
             if key in split:
                 # Read as its own row of the carried columns, under its own name.
                 new_var_table[key] = (key, split[key])
@@ -1833,6 +1845,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 self._all_rels_node_vars.add(key)
                 self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
             self._all_rels_var_alias[key] = cte_name
+        for path in carried_paths:
+            self._path_vars.pop(path, None)
+        self._carried_paths = carried_paths
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
@@ -1935,10 +1950,26 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         statement reads."""
         if var not in self._domain_nodes:
             return False
+        if var in self._zero_hop_paths().values():
+            # The one node of a path of no hops (MATCH p = (a)): the path's value is the node's.
+            return True
         items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
         if self._ast.return_clause:
             items.extend(self._ast.return_clause.items)
         return any(isinstance(i.expression, Variable) and i.expression.name == var for i in items)
+
+    def _zero_hop_paths(self) -> dict[str, str]:
+        """Each path of no hops the statement names (MATCH p = (a)), to its one node's variable."""
+        return {
+            m.variable: m.pattern.nodes[0].variable
+            for s in self._ast.pipeline
+            if isinstance(s, MatchStep)
+            for m in s.matches
+            if m.variable
+            and isinstance(m.pattern, PathPattern)
+            and not m.pattern.rels
+            and m.pattern.nodes[0].variable
+        }
 
     def _collect_var_props(self, var: str) -> list[str]:
         """Return ordered list of property names referenced as var.prop in the AST.
