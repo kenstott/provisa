@@ -604,6 +604,40 @@ def test_a_merge_on_an_empty_graph_runs_in_an_empty_session(tmp_path, monkeypatc
     assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
 
 
+_CREATE_THEN_CONTROL = '''
+Feature: Temporal4 - Store Temporal Values
+
+  Scenario: [1] Should store date
+    Given an empty graph
+    When executing query:
+      """
+      CREATE ({created: date({year: 1984, month: 10, day: 11})})
+      """
+    Then the result should be empty
+    And the side effects should be:
+      | +nodes      | 1 |
+      | +properties | 1 |
+    When executing control query:
+      """
+      MATCH (n)
+      RETURN n.created
+      """
+    Then the result should be, in any order:
+      | n.created    |
+      | '1984-10-11' |
+'''
+
+
+def test_a_control_query_on_an_empty_graph_reads_the_empty_session(tmp_path, monkeypatch):
+    # A CREATE whose control query matches what it made: on the TCK's empty graph the control
+    # query reads the session's graph, never the model's every node (Temporal4).
+    path = tmp_path / "temporal4.feature"
+    path.write_text(_CREATE_THEN_CONTROL)
+    (scenario,) = tck.parse_feature(path)
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
+
+
 # --- named TCK graphs ---------------------------------------------------------------------------
 
 _NAMED_FEATURE = '''
