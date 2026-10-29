@@ -7958,7 +7958,7 @@
   "zh/tour.json::tour.steps.provisioningAsFinance.title": "Run as finance",
   "zh/tour.json::tour.steps.provisioningAsFinanceAgain.description": "Finance again, for the close.",
   "zh/tour.json::tour.steps.provisioningAsFinanceAgain.title": "Back to finance",
-  "zh/tour.json::tour.steps.provisioningClose.description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens.",
+  "zh/tour.json::tour.steps.provisioningClose.description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens. Inside the window it returns the close instead.",
   "zh/tour.json::tour.steps.provisioningClose.title": "A read outside its window",
   "zh/tour.json::tour.steps.provisioningDataScienceView.description": "The same dataset, the same query: cost and margin read 0, and service orders are gone (a row rule). One dataset, two governed views, no copies.",
   "zh/tour.json::tour.steps.provisioningDataScienceView.title": "What data science pulls",

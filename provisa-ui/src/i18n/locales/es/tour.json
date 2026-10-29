@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Una lectura fuera de su ventana",
-        "description": "close_by_category, el cierre de finanzas, solo puede leerse de 02:00 a 02:15 UTC. Fuera de ese horario esta lectura se rechaza, nombrando la vista y cuándo vuelve a abrirse su ventana."
+        "description": "close_by_category, el cierre de finanzas, solo puede leerse de 02:00 a 02:15 UTC. Fuera de ese horario esta lectura se rechaza, nombrando la vista y cuándo vuelve a abrirse su ventana. Dentro de la ventana devuelve el cierre."
       },
       "provisioningRest": {
         "title": "Las descargas por REST",

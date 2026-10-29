@@ -47001,54 +47001,63 @@
   priority: SHOULD
   type: behavioral
   description: 'Management/operations reporting is delivered as defined views in the built-in ops domain,
-    extending the REQ-884 registry mechanism (_OPS_LOG_TABLE_VIEWS + _seed_ops_domain): each report is
-    a view joining query_audit_log to catalog metadata, registered as a first-class ops-domain table so
-    it is queryable through every governed surface (SQL/pgwire, GraphQL, Cypher) under role + domain access
-    control. Report views: (1) usage_ranking — query count and distinct consumers per table, including
-    never-queried tables (deprecation candidates); (2) deprecated_usage — consumption of deprecated tables/elements
-    over time, per consumer, to establish a safe-removal date; (3) pii_access — accesses touching PII-classified
+    extending the REQ-884 registry mechanism (_OPS_LOG_TABLE_VIEWS + _seed_ops_domain): each report is a
+    view joining query_audit_log to catalog metadata, registered as a first-class ops-domain table so it
+    is queryable through every governed surface (SQL/pgwire, GraphQL, Cypher) under role + domain access
+    control. Report views: (1) usage_ranking — query count and distinct consumers per table, including never-queried
+    tables (deprecation candidates); (2) deprecated_usage — consumption of deprecated tables/elements over
+    time, per consumer, to establish a safe-removal date; (3) pii_access — accesses touching PII-classified
     elements: who, role, masked vs unmasked; (4) policy_denials — access attempts blocked by governance
     rules: who, what, which rule; (5) surface_mix — traffic by protocol via the audit-log source column;
     (6) query_health — latency percentiles and error rate by source and table (duration_ms/status_code);
-    (7) stale_metadata — tables/elements missing owner, description, or classification, with coverage
-    percentage per domain; (8) join_hotspots — most-frequent table_ids co-occurrence, informing materialization/caching.
+    (7) stale_metadata — tables/elements missing owner, description, or classification, with coverage percentage
+    per domain; (8) join_hotspots — most-frequent table_ids co-occurrence, informing materialization/caching.
     Decision: the org_admin role is the designated steward of the ops domain, seeded at ops-domain creation,
-    so it never surfaces as a PENDING stewardship gap (REQ-609). Rollup views: because query_audit_log
-    is append-only and grows unbounded, trend-oriented reports (usage_ranking, deprecated_usage, query_health,
+    so it never surfaces as a PENDING stewardship gap (REQ-609). Rollup views: because query_audit_log is
+    append-only and grows unbounded, trend-oriented reports (usage_ranking, deprecated_usage, query_health,
     surface_mix) read from scheduled daily rollup tables (per-day, per-table, per-role aggregates) rather
     than scanning the raw log; point-in-time reports (pii_access, policy_denials, stale_metadata, join_hotspots)
-    remain live views. Implemented so far: all eight views live (seed-time DDL via _OPS_REPORT_VIEWS +
-    ops_table_usage unnest spine, per-dialect only at the seed layer), registration under provisa-admin/ops,
-    org_admin steward seeding. Outstanding prerequisites: element_ids/masking-outcome/denying-rule-id
-    captured at log-write time (query text is encrypted per REQ-689, so these cannot be derived post-hoc; until then the reports are table-level), the daily rollup job, and the deferred resource-usage (metrics
-    sampler) and source-freshness (sync timestamps) views. [AMENDED 2026-10-01: the audit row''s INSERT
-    is off the request path on every transport. The request thread enqueues its finished record at the
-    one audit seam (write_audit / enqueue_audit) and returns; one writer thread per worker process inserts
-    queued records in batches (one prepared INSERT, a parameter set per row, grouped per tenant database),
-    each row stamped with the time its statement finished. No record is lost quietly: the queue is bounded,
-    a full queue makes the enqueue wait for the request''s remaining deadline and then raise; a failed
-    batch insert is logged at error and retried until it lands; shutdown writes what is queued before
-    the control-plane pools close and reports at error any record it could not write. Durability: a hard
-    crash loses the records enqueued within the last batch window (at most the queue''s capacity). The
-    active-hour meter (REQ-1454) rides the same record. Cache invalidation after a write stays synchronous
-    in finalize_audit. /data/graphql — query, plan- or response-cache hit, mutation, normalized read,
-    subscription open — hands one record per request to the same seam; its table ids are resolved on the
-    writer thread from the document and the role''s compilation context.] [AMENDED 2026-10-01 (2): query_audit_log
-    carries `route` (cache | direct | engine; api for an API-source GraphQL field; comma-joined when a
-    GraphQL request''s fields took different routes) and `row_count` (rows the terminal delivered), both
-    NULL for a refused statement, filled on every transport through finalize_audit. A terminal that hands
-    back a stream it has not drained (pgwire, Flight SQL/GraphQL streams, the airport scan) defers the
-    row to the end of the drain (audit_on_drain), where the row count and a mid-stream failure (500) are
-    known; a result released early is recorded with the rows delivered. Every transport is audited with
-    or without authentication: on a deployment with no auth provider HTTP, Flight and gRPC attribute requests
-    to the `anonymous` principal, pgwire to the startup user name, Bolt to the principal the client named
-    or `anonymous`. A GraphQL subscription is audited when it is opened, not per poll. A GraphQL action
-    field is ONE row — its governed statement''s — and the request writes no second row. The audit writer
-    is started by the application lifespan and stopped by it; an enqueue with no running writer raises,
-    and a writer whose thread has ended refuses records and is replaced at the next start.] [NOT RECORDED
-    as of 2026-10-01: `route`/`row_count` are left NULL for a CTAS (the terminal does not know the row
-    count) and for a GraphQL mutation request (its route and affected rows are not noted on the request''s
-    audit outcome).]'
+    remain live views. Implemented so far: all eight views live (seed-time DDL via _OPS_REPORT_VIEWS + ops_table_usage
+    unnest spine, per-dialect only at the seed layer), registration under provisa-admin/ops, org_admin steward
+    seeding. Outstanding prerequisites: element_ids/masking-outcome/denying-rule-id captured at log-write
+    time (query text is encrypted per REQ-689, so these cannot be derived post-hoc; until then the reports
+    are table-level), the daily rollup job, and the deferred resource-usage (metrics sampler) and source-freshness
+    (sync timestamps) views. [AMENDED 2026-10-01: the audit row''s INSERT is off the request path on every
+    transport. The request thread enqueues its finished record at the one audit seam (write_audit / enqueue_audit)
+    and returns; one writer thread per worker process inserts queued records in batches (one prepared INSERT,
+    a parameter set per row, grouped per tenant database), each row stamped with the time its statement
+    finished. No record is lost quietly: the queue is bounded, a full queue makes the enqueue wait for the
+    request''s remaining deadline and then raise; a failed batch insert is logged at error and retried until
+    it lands; shutdown writes what is queued before the control-plane pools close and reports at error any
+    record it could not write. Durability: a hard crash loses the records enqueued within the last batch
+    window (at most the queue''s capacity). The active-hour meter (REQ-1454) rides the same record. Cache
+    invalidation after a write stays synchronous in finalize_audit. /data/graphql — query, plan- or response-cache
+    hit, mutation, normalized read, subscription open — hands one record per request to the same seam; its
+    table ids are resolved on the writer thread from the document and the role''s compilation context.]
+    [AMENDED 2026-10-01 (2): query_audit_log carries `route` (cache | direct | engine; api for an API-source
+    GraphQL field; comma-joined when a GraphQL request''s fields took different routes) and `row_count`
+    (rows the terminal delivered), both NULL for a refused statement, filled on every transport through
+    finalize_audit. A terminal that hands back a stream it has not drained (pgwire, Flight SQL/GraphQL streams,
+    the airport scan) defers the row to the end of the drain (audit_on_drain), where the row count and a
+    mid-stream failure (500) are known; a result released early is recorded with the rows delivered. Every
+    transport is audited with or without authentication: on a deployment with no auth provider HTTP, Flight
+    and gRPC attribute requests to the `anonymous` principal, pgwire to the startup user name, Bolt to the
+    principal the client named or `anonymous`. A GraphQL subscription is audited when it is opened, not
+    per poll. A GraphQL action field is ONE row — its governed statement''s — and the request writes no
+    second row. The audit writer is started by the application lifespan and stopped by it; an enqueue with
+    no running writer raises, and a writer whose thread has ended refuses records and is replaced at the
+    next start.] [NOT RECORDED as of 2026-10-01: `route`/`row_count` are left NULL for a CTAS (the terminal
+    does not know the row count) and for a GraphQL mutation request (its route and affected rows are not
+    noted on the request''s audit outcome).] (Amended 2026-10-28, ONTOLOGY QUALITY IS A STANDARD REPORT:)
+    A seeded standard report, Ontology quality, measures the glossary objectively from the model (REQ-1387
+    grounding), by domain and by steward: grounded share of in-service terms (draft and final apart); approved-and-grounded
+    share (the terms an agent may use); unresolved placeholders (RELATED_TO edges, and terms whose only
+    links are RELATED_TO); grounding precision (hops from a term to data, and how many paths pass through
+    a broad hub term); terms grounded only through drafts, with the term whose approval makes them final;
+    undefined terms on paths to data; and drift, the terms that lost or gained grounding since the previous
+    period, read from the glossary''s retained history. Each row links to the term, and a placeholder row
+    to its RELATED_TO review. Like every report it is an ops-domain view read through the governed pipeline
+    as the selected roles, exportable and access-controlled.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -47336,7 +47345,16 @@
     new term, and the user chooses; the assistant adds nothing unasked. The same guidance (the type tests,
     RELATED_TO as the placeholder, the five shapes and the breadth caution) is a section of the ontology
     documentation, written for the people who build a glossary, who rarely get it, and it is reachable from
-    the type picker and from the RELATED_TO review filter.'
+    the type picker and from the RELATED_TO review filter. (Amended 2026-10-28, CHOOSING RELATED_TO OPENS
+    THE ALTERNATIVES:) Choosing RELATED_TO for an edge a person is adding opens a dialog, an exception to
+    the minimal-modal rule because this choice should interrupt: it says why RELATED_TO is the least useful
+    edge (it does not ground, so the term still cannot reach data), draws the five resolving shapes for
+    the two terms being linked, tightest first, each with a candidate name for the new term (candles ->
+    cake decoration -> cake), and offers to start one, which opens the new-term form prefilled with that
+    name and both edges for the person to confirm or rename; to add RELATED_TO anyway, as a placeholder
+    the review filter lists, in one click; or to cancel. The relationship assistant''s bulk proposals do
+    not open the dialog per edge; each RELATED_TO proposal carries the same shapes in its note where proposals
+    are reviewed.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -91139,7 +91157,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     terms in a document''. The document is given as a file or as an http(s) URL, since many policies and
     regulations are published as web pages; a URL is fetched once and its content treated as the document,
     its source passages citing the URL. A later step, not part of this requirement, may follow links from
-    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960).'
+    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960). (Amended 2026-10-28,
+    FROM THE LIBRARY OR A NEW DOCUMENT:) Find terms in a document offers two ways to choose the document:
+    pick one already in the reference library (REQ-2185), or give a new one as a file or an http(s) URL,
+    which joins the library as a proposed document. Either way the scan is the same and its proposals cite
+    the library''s copy.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document
@@ -91416,5 +91438,55 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-133
   - REQ-2183
+  stakeholders:
+  - data-steward
+- id: REQ-2185
+  value: 'An org keeps a reference library of useful documents, and Polly, MCP and the ontology draw on it, citing what they use.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'An org keeps a reference library: documents relevant to its ongoing work in Provisa (policies,
+    regulations, contracts, specifications, standards), added as a file or an http(s) URL. The library is
+    read by AI assistance: Polly answers from it, MCP serves it to agents, and the ontology uses it when
+    it finds terms in a document (REQ-2179), drafts definitions and proposes relationships. Whatever uses
+    a passage cites it (document, section or page, quoted text). A role reads only the library documents
+    it may read, so an assistant acting for a role draws only on those. The library is built from what exists:
+    a files source holds the documents (REQ-1960) and an embedded search table over their passages serves
+    retrieval; it is not a separate store. (Amended 2026-10-28, MAINTAINED IN ADMIN:) The reference library
+    is maintained in Admin, on a Reference library page: an admin adds a document by file or URL, sees each
+    document''s title, source, when it was added or last fetched and which roles may read it, refreshes
+    a URL document, and removes one. Removing a document stops every assistant drawing on it; terms and
+    definitions that cite it keep their citations, marked as citing a removed document. (Amended 2026-10-28,
+    PROPOSED DOCUMENTS AND THEIR DOMAINS:) A library document has a status, proposed or kept, and domains:
+    a list of domains, or * for the whole org, the same as a glossary term''s. Its domains decide who draws
+    on it: an assistant acting for a role uses a document whose domains the role reads, and every role uses
+    a * document. When a steward has the ontology find terms in a document (REQ-2179), the document is added
+    to the library as proposed, with the domains the steward is working in, which the steward can change;
+    the steward then keeps it or discards it, and a proposed document is listed on the Admin Reference library
+    page until someone does. A document already in the library is not added again; the scan cites the library''s
+    copy. (Amended 2026-10-28, RESCANNED ON DEMAND, NEVER RE-REVIEWED AUTOMATICALLY:) Nothing is re-reviewed
+    automatically when a library document changes or is refreshed; terms are not flagged and no review is
+    queued. Instead, whenever someone is working in the glossary they can scan any library document again,
+    or add and scan a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold
+    yet and the ones that match or duplicate existing terms and synonyms, each with its passages, enough
+    to decide whether to change anything. A refreshed URL document is simply scanned from its current content.
+    (Amended 2026-10-28, REFRESH AND NEW VERSIONS:) The Admin Reference library page keeps documents current:
+    Refresh on a URL document fetches it again and replaces its content with what the URL serves now; Upload
+    new version on a file document replaces its content with the uploaded file. The document keeps its place,
+    status and domains, and shows when it was last refreshed or replaced. Earlier content is not kept; citations
+    already made keep their quoted text, and later scans and answers read the current content.'
+  scenario: 'Given a policy document in the reference library that defines "Client"
+    When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
+    Then the answer is drawn from the policy and cites its passage
+    And a role that may not read the policy gets no passage from it'
+  related_reqs:
+  - REQ-2179
+  - REQ-1387
+  - REQ-1960
+  - REQ-1174
   stakeholders:
   - data-steward
