@@ -10,11 +10,11 @@
 
 """GET /data/sparql/vocabulary (REQ-2135, VOCABULARY ENDPOINT): the caller's role's vocabulary as
 IRIs, for a client to offer as a query is written -- its base and prefixes; each class, a table's
-own or a Class term, with the labels it types; each predicate, a column's own or a Property term,
-with its label, property and datatype; each edge type with its source and target; and the live
-Concept terms."""
+own or a Class term, with the labels it types; each predicate, a column's own with its label,
+property and datatype, or a Property term once with each class that has it (REQ-2163); each edge
+type with its source and target; and the live Concept terms."""
 
-# Requirements: REQ-2135
+# Requirements: REQ-2135, REQ-2163
 
 from __future__ import annotations
 
@@ -89,24 +89,20 @@ def test_each_class_is_a_tables_own_or_a_class_term_with_the_labels_it_types():
 def test_each_predicate_is_a_columns_own_or_a_property_term_with_its_datatype():
     predicates = _doc()["predicates"]
     assert {
-        "iri": NAME,
-        "kind": "column",
-        "label": "Person",
-        "property": "name",
-        "datatype": f"{XSD}string",
-    } in predicates
-    assert {
         "iri": AGE,
         "kind": "column",
         "label": "Person",
         "property": "age",
         "datatype": f"{XSD}integer",
     } in predicates
-    # A Property term is the predicate of every column it grounds.
-    by_term = [p for p in predicates if p["iri"] == FULL_NAME]
-    assert sorted((p["label"], p["property"], p["kind"]) for p in by_term) == [
-        ("Company", "name", "term"),
-        ("Person", "name", "term"),
+    # REQ-2163: a Property term is the predicate of every column it grounds, in place of the
+    # column's own, listed once with the classes that have it.
+    assert NAME not in {p["iri"] for p in predicates}
+    (by_term,) = [p for p in predicates if p["iri"] == FULL_NAME]
+    assert by_term["kind"] == "term"
+    assert sorted((c["label"], c["property"]) for c in by_term["classes"]) == [
+        ("Company", "name"),
+        ("Person", "name"),
     ]
 
 
