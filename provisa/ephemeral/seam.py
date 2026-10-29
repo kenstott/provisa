@@ -29,10 +29,11 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
-from provisa.ephemeral import read, then
+from provisa.ephemeral import read, store, then
 from provisa.ephemeral.delete import Deleted, delete
 from provisa.ephemeral.indexes import Indexed, index_statement
 from provisa.ephemeral.labels import Labelled, write_labels, write_labels_bound
+from provisa.ephemeral.merge import _governed as merge_governed
 from provisa.ephemeral.merge import merge, merge_bound
 from provisa.ephemeral.props import Propertied, write_props
 from provisa.ephemeral.then import Answered, counters
@@ -84,6 +85,10 @@ async def write(
                 split.head, params, model, session, state, run_read, run_write, keep
             )
         if split.kind == "merge":
+            # Whether a MERGE is the governed path's is the whole statement's to say (all its
+            # MERGE clauses), never its first clause's alone.
+            if merge_governed(statement, model, store.graph(session)):
+                return None
             return await merge_bound(
                 split.head, params, model, session, state, run_read, run_write, keep
             )

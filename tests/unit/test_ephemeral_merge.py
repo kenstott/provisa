@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import store
 from provisa.ephemeral.merge import merge_of
 from tests.unit.ephemeral_harness import Session
@@ -119,7 +118,10 @@ def test_a_relationship_merge_between_matched_nodes(monkeypatch):
     assert _values(rows) == [("Ann", "Bo")]
 
 
-def test_a_merge_followed_by_a_clause_is_refused_by_name(monkeypatch):
+def test_a_merge_followed_by_a_clause_is_read_after_it(monkeypatch):
+    # REQ-2176 (amended 2026-10-28): a MERGE of session objects may be followed by reads in the
+    # same statement, which see what it wrote (then.py).
     s = Session(monkeypatch, _PEOPLE)
-    with pytest.raises(CypherParseError, match="followed by RETURN"):
-        s.run("MERGE (n:Temp {k: 1}) RETURN n")
+    made = s.run("MERGE (n:Temp {k: 1}) RETURN n.k AS k")
+    assert (made.columns, made.rows) == (["k"], [{"k": 1}])
+    assert s.run("MERGE (n:Temp {k: 1}) RETURN n.k AS k").counters["nodes"] == 0
