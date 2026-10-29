@@ -238,3 +238,44 @@ def test_j199_in_a_session(monkeypatch):
     s.run("CREATE (:X {name: 'x'}), ({name: 'y'})")
     rows = s.run("MATCH (n) WITH n, 1 AS d RETURN n.name AS name, d")
     assert _sorted(rows) == [("x", 1), ("y", 1)]
+
+
+# --- a pattern of several hops, variable-length ones among them ---------------------------------
+
+
+def test_zero_length_walks_in_the_middle_of_a_pattern(monkeypatch):
+    # TCK Match4 [3]
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (a {name: 'A'}), (b {name: 'B'}), (c {name: 'C'}), ({name: 'D'}), ({name: 'E'}) "
+        "CREATE (a)-[:CONTAINS]->(b), (b)-[:FRIEND]->(c)"
+    )
+    rows = s.run(
+        "MATCH (a {name: 'A'})-[:CONTAINS*0..1]->(b)-[:FRIEND*0..1]->(c) "
+        "RETURN a.name, b.name, c.name"
+    )
+    assert _sorted(rows) == [("A", "A", "A"), ("A", "B", "B"), ("A", "B", "C")]
+
+
+def test_a_pattern_of_walks_and_a_bound_relationship_takes_no_relationship_twice(monkeypatch):
+    # TCK Match4 [7]: relationship uniqueness across the walks and the hop of one pattern.
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (n0:Node), (n1:Node), (n2:Node), (n3:Node), "
+        "(n0)-[:EDGE]->(n1), (n1)-[:EDGE]->(n2), (n2)-[:EDGE]->(n3)"
+    )
+    rows = s.run(
+        "MATCH ()-[r:EDGE]-() MATCH p = (n)-[*0..1]-()-[r]-()-[*0..1]-(m) RETURN count(p) AS c"
+    )
+    assert rows == [{"c": 32}]
+
+
+def test_the_path_of_a_pattern_of_walks_holds_every_hop(monkeypatch):
+    # TCK Match6 [17]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A {name: 'A'})-[:KNOWS]->(b:B {name: 'B'})-[:FRIEND]->(c:C {name: 'C'})")
+    rows = s.run(
+        "MATCH p = (a {name: 'A'})-[:KNOWS*0..1]->(b)-[:FRIEND*0..1]->(c) RETURN p, length(p) AS l"
+    )
+    got = sorted(([n["properties"]["name"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
+    assert got == [(["A"], 0), (["A", "B"], 1), (["A", "B", "C"], 2)]

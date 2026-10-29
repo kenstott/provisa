@@ -1206,6 +1206,21 @@ class _RelJoinMixin:  # mixin for _Translator
                 if j is not None:
                     joins.append(j)
 
+            if self._session_chain(rels):  # type: ignore[attr-defined]
+                # REQ-348, REQ-2176: a session's pattern of several hops, variable-length ones
+                # among them, read hop by hop (path_walk).
+                from_expr = self._translate_session_chain(  # type: ignore[attr-defined]
+                    clause,
+                    nodes,
+                    rels,
+                    joined,
+                    from_expr,
+                    own_first,
+                    joins,
+                    clause_index,
+                    CypherTranslateError,
+                )
+                continue
             for i, rel in enumerate(rels):
                 if i + 1 >= len(nodes):
                     break

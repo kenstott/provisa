@@ -672,6 +672,10 @@ class TranslatorExprContext:
         t = self._t
         if var in t._rel_var_types or var in t._all_rels_rel_vars:
             return exp.Count(this=exp.Star()) if fn == "count" else None
+        if var in t._path_vars and var in t._walk_trails:
+            # A path of a session's walk or of its pattern of several hops: its object.
+            value = t._build_path_object(var)
+            return exp.Count(this=value) if fn == "count" else _anon("collect", value)
         info = t._var_table.get(var)
         if info and info[1] is not None:
             id_ref = _col(info[1].id_column, var)
@@ -709,6 +713,9 @@ class TranslatorExprContext:
         t = self._t
         nm = (t._var_table.get(var) or (None, None))[1]
         if name == "length":
+            if var in t._path_vars and var in t._walk_trails:
+                # A path of a session's pattern of several hops: its relationships, counted.
+                return _anon("cardinality", t._walk_trails[var][1].copy())
             # A recursive walk counts its hops (#309); shortestPath reads the same column.
             recursive = var in t._path_vars and t._path_vars[var][2]
             return (
