@@ -240,10 +240,9 @@ def test_the_flight_sql_page_marks_adapted_cases_and_skips_unsent_ones_by_design
     _, _, rate, cases = fill_docs.read(doc)
     assert rate == "50.0%: 2 passed, 3 skipped by design, 2 failed, of 7 cases"
     assert "## Skipped by design" in cases
-    assert (
-        "| Bind before Prepare | 1 | The client library never sends what the case needs, "
-        "whatever the server. adbc-driver-flightsql 1.12.0 (the Go driver): " in cases
-    )
+    # Each client group's decision cites the driver's source, file and line, at its version.
+    assert "| Bind before Prepare | 1 | The client drops the bound values. ADBC " in cases
+    assert "flightsql_statement.go:720-724" in cases
     assert "Workaround: Bind after Prepare" in cases
     assert "REQ-" not in cases
     md = junit.markdown(doc)
@@ -279,11 +278,11 @@ def test_a_surface_with_no_such_groups_has_no_such_sections(tmp_path):
         (
             "- kind: client\n  group: g\n  requirement: REQ-2167\n  client: c\n  behavior: b\n"
             "  reason: x\n",
-            r"has no \['evidence', 'workaround'\]",
+            r"has no \['decision', 'evidence', 'workaround'\]",
         ),
         (
             "- kind: suite\n  group: g\n  requirement: REQ-2167\n  suite: s\n  case: x\n",
-            r"has no \['evidence'\]",
+            r"has no \['decision', 'evidence'\]",
         ),
         ("- kind: adapted\n  group: g\n  case: x\n", r"has no \['became'\]"),
         ("- kind: other\n  group: g\n  reason: x\n", "is of no kind"),
@@ -373,8 +372,9 @@ def test_a_skip_a_group_names_is_skipped_by_design(tmp_path, monkeypatch):
     (tmp_path / "s.yaml").write_text(
         "- group: Transactions\n  requirement: REQ-883\n  decision: a no-op\n"
         '  case: "test_transaction_toggle"\n'
-        "- kind: client\n  group: No statistics\n  requirement: REQ-2167\n  client: c\n"
-        '  behavior: b\n  evidence: e\n  workaround: w\n  case: "test_get_statistics"\n'
+        "- kind: client\n  group: No statistics\n  requirement: REQ-2167\n  decision: d\n"
+        "  client: c\n  behavior: b\n  evidence: e\n  workaround: w\n  skipped: true\n"
+        '  case: "test_get_statistics"\n'
     )
     monkeypatch.setattr(by_design, "RULES", tmp_path)
     xml = tmp_path / "junit.xml"
@@ -491,3 +491,17 @@ def test_each_ingest_test_has_the_table_it_would_create(tmp_path):
     assert "test_ingest_create_decimal_scale_negative" not in tables
     assert {"test_ingest_append_string", "test_ingest_temporary_string"} <= set(tables)
     assert len(tables["test_ingest_many_columns"]) == 100
+
+
+def test_a_client_group_that_names_only_skips_leaves_a_failure_failed(tmp_path):
+    """A client group the suite reaches only by skipping (``skipped: true``) names the skipped
+    case alone: the same case run and failed has no such evidence behind it, and stays failed."""
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        '<testcase classname="tests.test_connection.TestConnection" '
+        'name="test_get_statistics[provisa:flightsql]"><failure message="boom">t</failure>'
+        "</testcase></testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
+    assert (doc["by_design"], doc["failed"]) == (0, 1)

@@ -36,7 +36,8 @@ Three further kinds are declared in the same file, each with ``kind:`` and a ``r
 
     - kind: client           # the client library never sends what the case needs -- it
       group: Bind with no Prepare  # refuses before any request, or drops what it was given:
-      requirement: REQ-2167  # skipped by design, citing the driver's evidence
+      requirement: REQ-2167  # skipped by design, its decision citing the driver's source
+      decision: "flightsql_statement.go:526-531 (ADBC 1.12.0) refuses before any RPC."
       client: adbc-driver-flightsql 1.12 (Go)
       behavior: refuses Bind ("must set IngestTargetTable before bulk ingestion")
       evidence: with Bind and no Prepare, the driver sends no RPC.
@@ -44,13 +45,16 @@ Three further kinds are declared in the same file, each with ``kind:`` and a ``r
       reason: "must set IngestTargetTable"
 
     - kind: suite            # the suite skips the case for every server: skipped by design,
-      group: Kerberos example  # citing the suite's own reason; matches only a skipped case
+      group: Kerberos example  # citing its skip marker; matches only a skipped case
       requirement: REQ-2167
+      decision: "test_kerberos_auth_example.py:40 calls pytest.skip unconditionally."
       suite: neo4j-python-driver integration tests
       evidence: the example is marked skip, "Currently no way to test Kerberos auth".
       case: "test_kerberos_auth_example::test_example$"
 
-An adapted group names no requirement: its cases run and count."""
+A design or client group may say ``skipped: true`` to name only a case the suite skipped (the suite
+gates it on a feature the client cannot claim). An adapted group names no requirement: its cases
+run and count."""
 
 # Requirements: REQ-2167
 
@@ -93,20 +97,16 @@ def baseline_failed(surface: str, failed: int) -> bool:
 FIELDS = {
     "design": ("requirement", "decision"),
     "adapted": ("became",),
-    "client": ("requirement", "client", "behavior", "evidence", "workaround"),
-    "suite": ("requirement", "suite", "evidence"),
+    "client": ("requirement", "decision", "client", "behavior", "evidence", "workaround"),
+    "suite": ("requirement", "decision", "suite", "evidence"),
 }
 
-#: The kinds whose cases are skipped by design (REQ-2167, amended 2026-10-28), each citing its
-#: requirement: a design decision of Provisa's; a case the client library never sends, citing the
-#: driver's evidence; a case the suite skips for every server, citing the suite's own reason.
+#: The kinds whose cases are skipped by design (REQ-2167, amended 2026-10-28 and 2026-10-29), each
+#: citing its requirement and, in its decision, the evidence itself: a design decision of
+#: Provisa's; a case the client library refuses or drops itself, citing the driver's source (file
+#: and line, at its pinned version); a case the suite skips for every server, citing the suite's
+#: skip marker (file and line). A case with no such evidence stays failed.
 BY_DESIGN = ("design", "client", "suite")
-
-#: The decision a client or suite group stands on; its own fields are the evidence.
-KIND_DECISION = {
-    "client": "The client library never sends what the case needs, whatever the server.",
-    "suite": "The suite skips the case for every server.",
-}
 
 
 @dataclass
@@ -119,10 +119,10 @@ class Group:
     reason: re.Pattern[str] | None = None
     case: re.Pattern[str] | None = None
     cases: list[dict] = field(default_factory=list)  # each case named, with its recorded reason
+    skipped: bool = False  # names only a case the suite skipped (always so for a suite group)
 
     def matches(self, failure: dict) -> bool:
-        # A suite group names only what the suite itself skipped.
-        if self.kind == "suite" and not failure.get("skipped"):
+        if (self.skipped or self.kind == "suite") and not failure.get("skipped"):
             return False
         if self.reason is not None and not self.reason.search(failure["reason"]):
             return False
@@ -168,10 +168,11 @@ def groups(surface: str) -> list[Group]:
                 group=entry["group"],
                 kind=kind,
                 requirement=entry.get("requirement", ""),
-                decision=entry.get("decision") or KIND_DECISION.get(kind, ""),
+                decision=entry.get("decision", ""),
                 details={f: entry[f] for f in FIELDS[kind] if f not in ("requirement", "decision")},
                 reason=re.compile(entry["reason"]) if entry.get("reason") else None,
                 case=re.compile(entry["case"]) if entry.get("case") else None,
+                skipped=bool(entry.get("skipped")),
             )
         )
     return out
@@ -264,12 +265,7 @@ def _cited(group: dict) -> str:
     """A group's decision, with the evidence a client or suite group cites."""
     said = group["decision"]
     if group.get("kind") == "client":
-        said += (
-            f" {group['client']}: {group['behavior']} Evidence: {group['evidence']} "
-            f"Workaround: {group['workaround']}"
-        )
-    elif group.get("kind") == "suite":
-        said += f" {group['suite']}: {group['evidence']}"
+        said += f" Workaround: {group['workaround']}"
     return said.replace("|", "/")
 
 

@@ -35,40 +35,39 @@
   reason: "assert '(?P<a>[^']*?)000(?P<z>[^']*)' == '(?P=a)\\d{3}(?P=z)'|assert '(?P<d>P[^']*T\\d+)S' == '(?P=d)\\.\\d{9}S'"
   case: "test_temporal_types_example::test_(datetime|time|local_datetime|local_time|duration_example)$"
 
-# The driver's own suite skips these for every server, whatever it is (REQ-2167, amended): each is
-# skipped by design, citing the suite's own reason.
+# The driver's own suite skips these for every server (REQ-2167, amended 2026-10-29): each is
+# skipped by design, its decision citing the suite's unconditional skip (file and line). The
+# database selection example is not here: its skip (tests/conftest.py:158-164,
+# mark_requires_edition) depends on the edition the job declares, not on every server, so it
+# stays failed.
 - kind: suite
   group: Encryption examples the suite skips
   requirement: REQ-2167
+  decision: >-
+    neo4j-python-driver 6.2.0 (tag at commit c2454236512448d7b55abc6b10e33e2eaae3b8bf): tests/integration/examples/test_config_secure_example.py:55 and
+    test_config_trust_example.py:53 call pytest.skip("re-enable when we can test with
+    encrypted=True on Docker") first, unconditionally, for every server.
   suite: neo4j-python-driver integration tests
-  evidence: >-
-    The examples are marked skip in the driver's own tests, "re-enable when we can test with
-    encrypted=True on Docker", for every server.
-  case: "examples\\.test_config_(secure|trust)_example::test_example$"
-
-- kind: suite
-  group: Enterprise edition example the suite skips
-  requirement: REQ-2167
-  suite: neo4j-python-driver integration tests
-  evidence: >-
-    The example requires a Neo4j Enterprise server ("requires server edition 'enterprise'"), and
-    the suite skips it on any other.
-  case: "examples\\.test_database_selection_example::test_database_selection_example$"
+  evidence: test_config_secure_example.py:55; test_config_trust_example.py:53.
+  case: "^tests\\.integration\\.examples\\.test_config_(secure|trust)_example::test_example$"
 
 - kind: suite
   group: Kerberos example the suite skips
   requirement: REQ-2167
+  decision: >-
+    neo4j-python-driver 6.2.0 (tag at commit c2454236512448d7b55abc6b10e33e2eaae3b8bf): tests/integration/examples/test_kerberos_auth_example.py:40 calls
+    pytest.skip("Currently no way to test Kerberos auth") unconditionally, for every server.
   suite: neo4j-python-driver integration tests
-  evidence: >-
-    The example is marked skip in the driver's own tests, "Currently no way to test Kerberos
-    auth", for every server.
-  case: "examples\\.test_kerberos_auth_example::test_example$"
+  evidence: test_kerberos_auth_example.py:40.
+  case: "^tests\\.integration\\.examples\\.test_kerberos_auth_example::test_example$"
 
 - kind: suite
   group: Service-unavailable example the suite skips
   requirement: REQ-2167
+  decision: >-
+    neo4j-python-driver 6.2.0 (tag at commit c2454236512448d7b55abc6b10e33e2eaae3b8bf): tests/integration/examples/test_service_unavailable_example.py:56 calls
+    pytest.skip("Fix better error messages for the user. Be able to kill the server.")
+    unconditionally, for every server.
   suite: neo4j-python-driver integration tests
-  evidence: >-
-    The example is marked skip in the driver's own tests, "Fix better error messages for the
-    user. Be able to kill the server.", for every server.
-  case: "examples\\.test_service_unavailable_example::test_example$"
+  evidence: test_service_unavailable_example.py:56.
+  case: "^tests\\.integration\\.examples\\.test_service_unavailable_example::test_example$"

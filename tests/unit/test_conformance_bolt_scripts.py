@@ -183,9 +183,11 @@ def test_a_run_in_two_calls_is_summarised_as_one(tmp_path):
 
 
 def test_the_suites_own_skips_are_skipped_by_design_citing_its_reason(tmp_path):
-    """REQ-2167 (amended 2026-10-28): the five examples the driver's suite skips for every server
-    are skipped by design, each in its suite group citing REQ-2167 and the suite's own reason; a
-    suite group names only a skipped case, so the same example failing stays failed."""
+    """REQ-2167 (amended 2026-10-29): the four examples the driver's suite skips unconditionally,
+    for every server, are skipped by design, each in its suite group citing REQ-2167 and the
+    skip's file and line; a suite group names only a skipped case, so the same example failing
+    stays failed. The database selection example's skip depends on the edition the job declares,
+    not on every server: it stays failed."""
     import json as _json
 
     junit = junit_summary
@@ -213,13 +215,20 @@ def test_the_suites_own_skips_are_skipped_by_design_citing_its_reason(tmp_path):
         "</testsuite></testsuites>"
     )
     doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "tests/integration")
-    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (6, 0, 5, 1)
-    assert doc["failures"][0]["reason"] == "boom"
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (6, 0, 4, 2)
+    assert [(f["scenario"], f["reason"]) for f in doc["failures"]] == [
+        ("test_example", "boom"),
+        (
+            "test_database_selection_example",
+            "skipped by the suite: requires server edition 'enterprise', found 'community'",
+        ),
+    ]
     groups = doc["by_design_groups"]
     assert {g["kind"] for g in groups} == {"suite"}
     assert {g["requirement"] for g in groups} == {"REQ-2167"}
-    assert sum(g["count"] for g in groups) == 5
+    assert sum(g["count"] for g in groups) == 4
     kerberos = next(g for g in groups if g["group"] == "Kerberos example the suite skips")
+    assert "test_kerberos_auth_example.py:40" in kerberos["decision"]
     assert kerberos["cases"] == [
         {
             "case": "tests.integration.examples.test_kerberos_auth_example::test_example",
