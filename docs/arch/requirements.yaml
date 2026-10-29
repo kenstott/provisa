@@ -22478,10 +22478,16 @@
   feature: cypher-and-graph-analytics-paths
   priority: MUST
   type: behavioral
-  description: Variable-length relationship patterns `[*1..n]` are compiled to recursive CTEs in Trino
-    SQL. The CTE enforces max-hop bounds and returns edge sequences as JSON arrays. Multiple edge hops
-    are preserved in the array for flat-join paths; recursive paths project NULL (intermediate edges not
-    tracked in CTE).
+  description: '[SUPERSEDED by REQ-751 amendment ANY ENGINE, ONLY WHAT THE START REACHES, 2026-10-28 --
+    the recursive CTE is engine-neutral. Kept here for history; do not implement against it.] Variable-length
+    relationship patterns `[*1..n]` are compiled to recursive CTEs in Trino SQL. [END SUPERSEDED BLOCK]
+    The CTE enforces max-hop bounds and returns edge sequences as JSON arrays. Multiple edge hops are preserved
+    in the array for flat-join paths; recursive paths project NULL (intermediate edges not tracked in CTE).
+    (Amended 2026-10-28, ANY ENGINE, ONLY WHAT THE START REACHES:) Variable-length patterns compile to a
+    recursive CTE in the serving engine''s dialect, not Trino''s alone. `[*..n]` means 1 to n hops. A walk,
+    directed or undirected (`-[*..n]-` and `<-[*..n]->` alike), follows only the relationships its start
+    can reach within the hop bound, never another domain''s relationships it cannot reach, and a start no
+    relationship leaves answers no rows (REQ-347).'
   use_case: Variable-length traversals enable clients to explore multi-hop relationships without writing
     nested joins.
   code:
