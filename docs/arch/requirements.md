@@ -2864,7 +2864,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
 
 **Docs:** [api-reference.md](../api-reference.md), [cypher.md](../cypher.md), [remote-schemas.md](../remote-schemas.md)
 
@@ -3248,7 +3248,7 @@ Provisa handles CALL db.labels(), CALL db.relationshipTypes(), and CALL db.prope
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/compiler/naming.py`, `provisa/core/repositories/table.py`, `provisa/core/repositories/domain.py`
 
-**Tests:** `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_table_label_not_a_domain.py`
+**Tests:** `tests/integration/test_cypher_integration_extra.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_table_label_not_a_domain.py`
 
 **Docs:** [cypher.md](../cypher.md)
 

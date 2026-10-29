@@ -8839,6 +8839,7 @@
   code:
   - provisa/cypher/
   tests:
+  - tests/integration/test_cypher_router_api.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_cypher_parser.py
@@ -10116,6 +10117,7 @@
   - provisa/core/repositories/table.py
   - provisa/core/repositories/domain.py
   tests:
+  - tests/integration/test_cypher_integration_extra.py
   - tests/integration/test_cypher_endpoint.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
