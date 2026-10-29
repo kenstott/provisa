@@ -376,6 +376,22 @@ def _bind_implicit(name: str, declared: list[dict], params: dict) -> dict:
     return {a["name"]: params[a["name"]] if a["name"] in params else a["default"] for a in declared}
 
 
+async def run_cypher_call(call, state, role_id: str | None) -> tuple[list[str], list[dict]]:
+    """A standalone Cypher ``CALL`` (cypher/command_call.CommandCall), the same for Bolt and
+    Cypher over HTTP (REQ-872, REQ-1156): the command its Cypher binding names (REQ-2168),
+    admitted, a YIELD of a VOID one refused naming VOID (REQ-2001), its arguments bound, run,
+    and its rows shaped by the call's YIELD and RETURN. A refusal of the call as written is a
+    ``CommandCallRefused``."""
+    from provisa.core.void_command import is_void
+    from provisa.cypher.command_call import check_yields, project
+
+    name = command_named(state, role_id, "cypher", call.name)
+    check_yields(call, is_void(_admitted(name, state, role_id)))
+    args = bind_command_args(name, call.values, state, role_id)
+    rows = await invoke_tracked_function(name, args, state, role_id)
+    return project(call, rows)
+
+
 async def invoke_tracked_function(name: str, args: dict, state, role_id: str | None) -> list[dict]:
     """The one path every surface routes through to invoke a registered function.
 

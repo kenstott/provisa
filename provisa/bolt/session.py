@@ -1560,18 +1560,11 @@ def _list_commands(app_state, role_id: str | None) -> list[dict]:
 
 
 def _command_signature(cmd: dict) -> str:
-    """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
-    import json
+    """A Neo4j-style procedure signature for a command (REQ-1156): the one Cypher over HTTP
+    lists too (cypher/command_call.command_signature), ``:: ()`` for a VOID one (REQ-2001)."""
+    from provisa.cypher.command_call import command_signature
 
-    args = ", ".join(
-        f"{a['name']}"
-        # REQ-2168: an argument that declares a default, written as Neo4j writes one.
-        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
-        + f" :: {str(a.get('type', 'String')).upper()}"
-        for a in cmd["arguments"]
-    )
-    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
-    return f"{cmd['name']}({args}) :: ({ret})"
+    return command_signature(cmd)
 
 
 async def _maybe_invoke_command_call(
@@ -1580,21 +1573,13 @@ async def _maybe_invoke_command_call(
     """If *cypher* is ``CALL <command>(args)``, invoke it (REQ-1156): read by the one Cypher
     command-call reader (cypher/command_call.py, shared with Cypher over HTTP), admitted and bound
     by the shared executor, shaped by its YIELD and RETURN. None falls through to Cypher."""
-    from provisa.api.data.action_exec import (
-        bind_command_args,
-        command_named,
-        invoke_tracked_function,
-    )
-    from provisa.cypher.command_call import parse_command_call, project
+    from provisa.api.data.action_exec import run_cypher_call
+    from provisa.cypher.command_call import parse_command_call
 
     call = parse_command_call(cypher, parameters or {})
     if call is None:
         return None
-    # REQ-2168: the name is the command's Cypher command binding.
-    name = command_named(app_state, role_id, "cypher", call.name)
-    args = bind_command_args(name, call.values, app_state, role_id)
-    rows = await invoke_tracked_function(name, args, app_state, role_id)
-    cols, shaped = project(call, rows)
+    cols, shaped = await run_cypher_call(call, app_state, role_id)
     return cols, [[r.get(c) for c in cols] for r in shaped]
 
 

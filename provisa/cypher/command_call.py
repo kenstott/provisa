@@ -78,6 +78,7 @@ class CommandCall:
     values: list[Any] | ImplicitArguments
     yields: list[tuple[str, str]] | None  # (column, alias); None = no YIELD (every column)
     returns: list[tuple[str, str]] | None  # (name, alias); None = no RETURN
+    yields_written: bool  # a YIELD follows the call (``YIELD *`` included)
 
 
 def _scan_parens(text: str, start: int) -> int:
@@ -242,6 +243,7 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     yields: list[tuple[str, str]] | None = None
     returns: list[tuple[str, str]] | None = None
     m = _YIELD_RE.match(rest)
+    yields_written = m is not None
     if m is not None:
         yields = _items(m.group(1), "YIELD", name)
         rest = rest[m.end() :]
@@ -254,7 +256,40 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
             f"CALL {name}: only YIELD and RETURN may follow a command call; not "
             f"{rest.strip().split()[0]!r}"
         )
-    return CommandCall(name=name, values=values, yields=yields, returns=returns)
+    return CommandCall(
+        name=name, values=values, yields=yields, returns=returns, yields_written=yields_written
+    )
+
+
+def command_signature(cmd: dict) -> str:
+    """A listed command's Neo4j-style procedure signature, the same on Bolt and Cypher over HTTP
+    (REQ-1156): ``name(arg [= default] :: TYPE) :: (MAP)``, ``(LIST OF MAP)`` for one answering a
+    table, ``()`` for a VOID one (REQ-2001). ``cmd`` is an entry of
+    ``action_exec.list_visible_commands``."""
+    import json
+
+    args = ", ".join(
+        f"{a['name']}"
+        # REQ-2168: an argument that declares a default, written as Neo4j writes one.
+        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
+        + f" :: {str(a.get('type', 'String')).upper()}"
+        for a in cmd["arguments"]
+    )
+    if cmd["void"]:  # REQ-2001: a VOID command answers nothing
+        return f"{cmd['name']}({args}) :: ()"
+    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
+    return f"{cmd['name']}({args}) :: ({ret})"
+
+
+def check_yields(call: CommandCall, void: bool) -> None:
+    """A standalone call yields what its command answers: a VOID command nothing, so a YIELD
+    after its call, ``YIELD *`` included, is refused naming VOID (REQ-2001), as it is in a
+    statement (api/data/cypher_commands.py)."""
+    if void and call.yields_written:
+        raise CommandCallRefused(
+            f"YIELD after CALL {call.name}: it is VOID (it declares no outputs), so it yields "
+            "nothing"
+        )
 
 
 def project(call: CommandCall, rows: list[dict]) -> tuple[list[str], list[dict]]:
