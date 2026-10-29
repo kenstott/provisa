@@ -31,8 +31,10 @@ def test_no_push_starts_the_suite():
     assert "push" not in _triggers()
 
 
-def test_the_suite_is_dispatched_on_request_and_nightly_for_the_warehouse_lane():
+def test_the_suite_is_dispatched_on_request_only():
+    # Maintainer 2026-10-29: the nightly warehouse-lane schedule is off until the lane suspends the
+    # Snowflake warehouse at teardown.
     triggers = _triggers()
     assert "workflow_dispatch" in triggers
     assert "paths" not in (triggers["workflow_dispatch"] or {})
-    assert triggers["schedule"] == [{"cron": "0 6 * * *"}]
+    assert "schedule" not in triggers
