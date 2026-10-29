@@ -21,6 +21,7 @@ into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlat
 from __future__ import annotations
 
 import copy
+import dataclasses
 from collections import ChainMap
 from typing import TYPE_CHECKING, cast
 
@@ -984,11 +985,26 @@ class TranslatorExprContext:
         # joined back to src — the same "embedded query addressed out as a subquery" shape.
         from provisa.gql.expr_visitor import ExprLowering
 
+        from provisa.gql.ir import PathPattern
+
+        if len(node.pattern.rels) == 1 and len(node.pattern.rels[0].types) > 1:
+            # ``[:T|U]``: the relationships of each type, the one list after the other.
+            arms = [
+                dataclasses.replace(
+                    node,
+                    pattern=PathPattern(
+                        nodes=copy.deepcopy(node.pattern.nodes),
+                        rels=[dataclasses.replace(node.pattern.rels[0], types=[ty])],
+                    ),
+                    projection=copy.deepcopy(node.projection),
+                )
+                for ty in node.pattern.rels[0].types
+            ]
+            lowered = [self.resolve_pattern_comprehension(arm) for arm in arms]
+            return exp.ArrayConcat(this=lowered[0], expressions=lowered[1:])
         hop = _comprehension_hop(node.pattern)
         if hop is None:
-            raise NotImplementedError(
-                "unsupported pattern comprehension: a pattern of one hop, (a)-[:T]->(b), is read"
-            )
+            return self._comprehension_as_collect(node)
         src_var, rel_type, tgt_var, tgt_label = hop
         t = self._t
         rel = t._lm.relationships.get(rel_type.upper()) if rel_type else None
@@ -1102,6 +1118,30 @@ class TranslatorExprContext:
         where = join_cond if pred is None else exp.And(this=join_cond, expression=pred)
         select = exp.select(proj).from_(exp.alias_(tgt_table, tgt_alias)).where(where)
         return _anon("ARRAY", select)
+
+    def _comprehension_as_collect(self, node: PatternComprehension) -> exp.Expression:
+        """A comprehension the one-hop read does not take (an unnamed end, a named relationship,
+        several types, a path variable) is ``COLLECT { MATCH pattern WHERE p RETURN proj }``: the
+        embedded statement the pattern is, correlated to the outer row."""
+        from provisa.gql.ir import (
+            CypherAST,
+            MatchClause,
+            MatchStep,
+            ReturnClause,
+            ReturnItem,
+            WhereClause,
+        )
+
+        match = MatchClause(pattern=node.pattern, variable=node.path_var)
+        where = WhereClause(node.predicate) if node.predicate is not None else None
+        body = CypherAST(
+            pipeline=[MatchStep(matches=[match], where=where)],
+            return_clause=ReturnClause(items=[ReturnItem(expression=node.projection, name="")]),
+            order_by=[],
+            skip=None,
+            limit=None,
+        )
+        return _anon("ARRAY", self._translate_embedded(body, "COLLECT"))
 
     # -- recursion helper -------------------------------------------------- #
 
