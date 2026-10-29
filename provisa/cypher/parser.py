@@ -34,6 +34,7 @@ from provisa.gql.mistakes import (
     projection_misuse,
     undefined_variable,
     variable_misuse,
+    yield_rebinding,
 )
 from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
@@ -1518,6 +1519,7 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
     mistakes = (
         undefined_variable(ast, label_map),
         variable_misuse(ast),
+        yield_rebinding(ast),
         aggregate_misuse(ast),
         projection_misuse(ast),
         expression_misuse(ast),

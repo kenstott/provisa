@@ -480,11 +480,10 @@ def _dict_rows(result: QueryResult) -> list[dict]:
 
 
 def _answered_columns(result: QueryResult) -> list[str]:
-    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
-    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135)."""
-    from provisa.gql.translator_types import CUT_COLUMN
+    """The columns a read answers, rows or none (gql/assembler.answered_columns)."""
+    from provisa.gql.assembler import answered_columns
 
-    return [c for c in result.column_names if c != CUT_COLUMN]
+    return answered_columns(list(result.column_names))
 
 
 def _serialize_rows(

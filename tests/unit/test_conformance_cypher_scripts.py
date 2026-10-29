@@ -779,6 +779,27 @@ Feature: Call2 - Procedure arguments
 '''
 
 
+#: The roles that call a procedure's command: the HTTP runner's and the Bolt session's.
+_ROLES = ("org_admin", "tck_empty")
+
+
+def test_a_procedure_s_command_is_admitted_for_the_roles_that_call_it(procedure_scenarios):
+    """REQ-2153/REQ-2154: an empty visible_to assigns a command to no role, so the command names
+    the runner's role and the session's; each is admitted, any other role finds no command."""
+    from provisa.security.mutation_authz import CommandNotFound, admit_command
+
+    entry = procedures.command(tck.procedure(procedure_scenarios[0]), _ROLES)
+    for role in (
+        {"id": "org_admin", "capabilities": [], "domain_access": ["*"]},
+        {"id": "tck_empty", "capabilities": [], "domain_access": ["tck_empty"]},
+    ):
+        admit_command(entry, role, entry["name"])
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            entry, {"id": "other", "capabilities": [], "domain_access": ["*"]}, entry["name"]
+        )
+
+
 @pytest.fixture
 def procedure_scenarios(tmp_path):
     path = tmp_path / "call2.feature"
@@ -803,13 +824,13 @@ def test_a_procedure_is_a_statement_command_bound_in_cypher_to_its_name(procedur
     from provisa.core.command_bindings import check_names
     from provisa.core.models import Function
 
-    entry = procedures.command(tck.procedure(procedure_scenarios[0]))
+    entry = procedures.command(tck.procedure(procedure_scenarios[0]), _ROLES)
     assert {k: entry[k] for k in ("name", "impl_kind", "kind", "domain_id", "visible_to")} == {
         "name": "tck_test_my_proc",
         "impl_kind": "statement",
         "kind": "query",
         "domain_id": "tck_empty",
-        "visible_to": [],
+        "visible_to": ["org_admin", "tck_empty"],
     }
     assert entry["arguments"] == [
         {"name": "name", "type": "text"},
@@ -873,7 +894,7 @@ def test_a_procedure_s_statement_answers_its_rows_for_the_arguments(proc, args, 
 
     from provisa.core.statement_declaration import declared
 
-    entry = procedures.command(proc)
+    entry = procedures.command(proc, _ROLES)
     found = declared(entry["name"], entry["binding"], [a["name"] for a in entry["arguments"]])
     sql = sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0]
     assert duckdb.execute(sql, args).fetchall() == rows
@@ -888,7 +909,7 @@ def test_a_void_procedure_is_a_void_command(procedure_scenarios):
     from provisa.core.statement_declaration import declared
     from provisa.core.void_command import is_void
 
-    entry = procedures.command(tck.procedure(procedure_scenarios[3]))
+    entry = procedures.command(tck.procedure(procedure_scenarios[3]), _ROLES)
     assert entry["output_columns"] == []
     assert entry["language_bindings"] == {"cypher": {"name": "test.doNothing"}}
     function = Function(**entry)
@@ -901,7 +922,7 @@ def test_a_void_procedure_s_statement_uses_each_argument():
     from provisa.core.models import Function
 
     proc = procedures.Procedure("test.doNothing", (("in", "STRING"),), (), ())
-    entry = procedures.command(proc)
+    entry = procedures.command(proc, _ROLES)
     assert entry["output_columns"] == []
     Function(**entry)  # every {{name}} is a declared argument and every argument is used
 
@@ -914,7 +935,7 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
     model = tmp_path / "provisa.yaml"
     model.write_text(yaml.safe_dump({"domains": [{"id": "tck_empty"}], "tables": []}))
     monkeypatch.setattr(procedures, "_MODEL", {})
-    procedures.configure("http://x", model, "su", "pw")
+    procedures.configure("http://x", model, "su", "pw", _ROLES)
     put = []
 
     def _put(body):
@@ -979,7 +1000,7 @@ def test_a_model_not_applied_is_said(procedure_scenarios, tmp_path, monkeypatch)
     model = tmp_path / "provisa.yaml"
     model.write_text("domains: []\n")
     monkeypatch.setattr(procedures, "_MODEL", {})
-    procedures.configure("http://x", model, "su", "pw")
+    procedures.configure("http://x", model, "su", "pw", _ROLES)
     monkeypatch.setattr(procedures, "_put", lambda _b: {"success": False, "message": "bad"})
     with pytest.raises(ValueError, match="was not applied"):
         procedures.declare(tck.procedure(procedure_scenarios[0]))

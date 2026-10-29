@@ -829,6 +829,8 @@ def main(argv: list[str]) -> int:
             Path(os.environ["CONFORMANCE_MODEL"]),
             os.environ["PROVISA_SUPERUSER_USERNAME"],
             os.environ["PROVISA_SUPERUSER_PASSWORD"],
+            # Its callers: the runner's role over HTTP and the Bolt session's.
+            (role, bolt.EMPTY_ROLE),
         )
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
     # CONFORMANCE_FEATURES: comma-separated feature-name globs; empty runs the whole suite.
