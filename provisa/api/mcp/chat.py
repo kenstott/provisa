@@ -156,6 +156,25 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "search_reference_library",
+        "description": (
+            "Search the org's reference library (its policies, regulations, contracts, "
+            "specifications and standards) for the passages that answer a question. Use it for "
+            "what a term means, what a policy or contract says, or what a standard requires. "
+            "Each passage carries document_title, source, section, page and quote: whenever "
+            "your answer uses a passage, cite it by its document title and section or page, and "
+            "quote it. An empty result means the library holds nothing the user may read on it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string"},
+                "k": {"type": "integer", "description": "max passages (default 5)"},
+            },
+            "required": ["question"],
+        },
+    },
+    {
         "name": "run_sql",
         "description": (
             "Execute SQL through the governed pipeline; returns row-capped JSON rows. Set "
@@ -956,7 +975,11 @@ _SYSTEM = (
     "list_tables and describe_table instead. Prefer search_catalog to "
     "find relevant "
     "datasets, describe_table to confirm structure, and explain_sql before run_sql on non-trivial "
-    "queries. Never invent table, column, or schema names — discover them with the tools. If a "
+    "queries. A question about what a policy, regulation, contract, specification or standard "
+    "says, or what a business term means, is answered from the org's reference library: call "
+    "search_reference_library, answer from the passages it returns and cite each one you use by "
+    "its document title and section or page. "
+    "Never invent table, column, or schema names — discover them with the tools. If a "
     "tool returns an error or empty result, say so plainly. Keep answers concise and lead with the "
     "answer. Never narrate your steps ('Let me look at...', 'I'll check...') before or between "
     "tool calls: call the tools, then write the answer. A large result the user did not ask to "
@@ -1432,6 +1455,10 @@ async def _execute_tool(
         return await mcp_tools.generate_explore_queries(state, role, args["question"])
     if name == "search_catalog":
         return await mcp_tools.search_catalog(state, role, args["query"], k=int(args.get("k", 5)))
+    if name == "search_reference_library":  # REQ-2185
+        return await mcp_tools.search_reference_library(
+            state, role, args["question"], k=int(args.get("k", 5))
+        )
     if name == "run_sql":
         # Polly's SQL runs with every identifier quoted; SQL that does not parse runs as written,
         # and the result says why it was not quoted.

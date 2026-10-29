@@ -77,6 +77,7 @@
     "itemNotebook": "מחברת",
     "itemContainerRegistries": "מאגרי קונטיינרים",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "קטלוגים"
+    "itemCatalogs": "קטלוגים",
+    "itemReferenceLibrary": "ספריית עיון"
   }
 }

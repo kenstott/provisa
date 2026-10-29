@@ -78,6 +78,10 @@ dependencies = [
     # cryptography. Apache-2.0.
     "signxml>=4,<5",
     "lxml",
+    # REQ-2185, REQ-2179: the reference library reads a PDF document by its pages and a Word
+    # document by its headings. pypdf: BSD-3-Clause, pure Python. python-docx: MIT, over lxml.
+    "pypdf>=6,<7",
+    "python-docx>=1.2,<2",
     "motor",
     "elasticsearch>=8,<9",
     # REQ-1982: Azure Cosmos DB for NoSQL, read by its own SDK (no engine has a connector). MIT.

@@ -486,6 +486,7 @@ async def test_build_mcp_server_registers_tools():
         "run_sql",
         "explain_sql",
         "search_catalog",
+        "search_reference_library",  # REQ-2185
         # REQ-1857: the naming/generation tools and the capability-gated write tools are all
         # available on the real MCP server now, not just Polly's in-app chat tool list.
         "graphql_field_names",
