@@ -801,3 +801,44 @@ def test_a_model_not_applied_is_said(procedure_scenarios, tmp_path, monkeypatch)
     monkeypatch.setattr(procedures, "_put", lambda _b: {"success": False, "message": "bad"})
     with pytest.raises(ValueError, match="was not applied"):
         procedures.declare(tck.procedure(procedure_scenarios[0]))
+
+
+# --- the feature filter (REQ-2167) ---------------------------------------------------------------
+
+_FEATURES = [
+    "Merge1 - Merge node",
+    "Merge2 - Merge node onCreate",
+    "Set1 - Set a Property",
+    "Match1 - Match nodes",
+]
+
+
+def _by_feature():
+    return [tck.Scenario(f, f"s of {f}") for f in _FEATURES]
+
+
+def test_a_feature_filter_selects_by_glob_on_the_prefix_and_the_full_name():
+    chosen = tck.select_scenarios(_by_feature(), "Merge*, Set1")
+    assert [s.feature for s in chosen] == _FEATURES[:3]
+    full = tck.select_scenarios(_by_feature(), "Match1 - Match nodes")
+    assert [s.feature for s in full] == [_FEATURES[3]]
+
+
+def test_an_empty_feature_filter_selects_every_scenario():
+    every = _by_feature()
+    assert tck.select_scenarios(every, "") == every
+    assert tck.select_scenarios(every, "  ") == every
+
+
+def test_a_feature_filter_matching_nothing_raises_naming_it():
+    with pytest.raises(ValueError, match=r"Nope\*"):
+        tck.select_scenarios(_by_feature(), "Nope*")
+    with pytest.raises(ValueError, match="names no feature glob"):
+        tck.select_scenarios(_by_feature(), ",")
+
+
+def test_a_filtered_result_carries_the_filter_and_a_full_one_does_not():
+    outcome = tck.Outcome("Merge1 - Merge node", "s", "passed", "")
+    assert tck.report([outcome], "2024.3", "Merge*")["filter"] == "Merge*"
+    assert "filter" not in tck.report([outcome], "2024.3", "")
+    assert "filter" not in tck.report([outcome], "2024.3")
