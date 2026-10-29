@@ -219,11 +219,12 @@ async def served(
             DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product"),
         )
         await apply_config(parse_config_dict(raw), conn)
-        # A derived term publishes only once a curator has defined it (REQ-1387), so the
-        # curation step is part of the fixture: without it the Glossary sheet is empty for a
-        # reason that has nothing to do with the report.
+        # A derived term publishes only once a steward has defined and approved it (REQ-1387,
+        # REQ-2144), so the curation step is part of the fixture: without it the Ontology sheet
+        # is empty for a reason that has nothing to do with the report.
         for term in await glossary_repo.list_terms(conn):
             await glossary_repo.set_definition(conn, term["id"], f"The {term['name']}.")
+            await glossary_repo.approve_term(conn, term["id"], by=None)
         # Each term's axioms are read from the ontology schema's _axioms view (REQ-2163), which
         # startup seeds beside the glossary tables; no startup runs here.
         for ddl in ONTOLOGY_TABLE_VIEWS.values():

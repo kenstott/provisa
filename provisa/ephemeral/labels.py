@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from provisa.compiler.temp_tables import TempSession
+from provisa.cypher import counters
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import store
 from provisa.ephemeral.classify import resolve
@@ -136,6 +137,7 @@ async def write_labels_bound(
         removed = {(n, key) for n, key, _ in given if (n, key) in held}
         if removed:
             await store.remove_labels(state, session, removed)
+        counters.count(labels_removed=len(removed))
         return Labelled(0, len(removed)), bound_rows
     return Labelled(await add_labels(state, session, given, held), 0), bound_rows
 
@@ -187,4 +189,5 @@ async def add_labels(
             writes.tags.append(store.Tag(node_id, model, key))
     if seen:
         await store.write(state, session, writes)
+    counters.count(labels_added=len(seen))
     return len(seen)

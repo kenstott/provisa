@@ -227,11 +227,15 @@ class Session:
             columns = list(rows[0]) if rows else []
             return columns, [[r[c] for c in columns] for r in rows]
 
-        async def send(sql: str, bound: list[Any]) -> tuple[list[str], list[list[Any]]]:
+        async def send(sql: str, bound: list[Any]) -> tuple[list[str], list[list[Any]], int | None]:
             self.sent.append(sql)
             result = self.duck.execute(sql.replace('"memory".', ""), bound)
             columns = [d[0] for d in result.description or []]
-            return columns, [list(r) for r in result.fetchall()] if columns else []
+            rows = [list(r) for r in result.fetchall()] if columns else []
+            if columns == ["Count"] and " RETURNING " not in sql:
+                # DuckDB answers a write with no RETURNING by its row count, as one row.
+                return [], [], int(rows[0][0])
+            return columns, rows, None
 
         await written(
             parse_cypher_write(statement), WriteTranslator(self.model), params, read, send

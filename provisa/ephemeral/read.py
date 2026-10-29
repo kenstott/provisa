@@ -47,11 +47,13 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import store
+from provisa.gql.label_map import GRAPH_ID
 
 SESSION_CATALOG = "__session__"
 SESSION_SCHEMA = "s"
 NODE_ID = "__node_id"
-GRAPH_ID = "__graph_id"
+#: The session relation of every session relationship, which a path function walks (REQ-348).
+WALK_RELATION = "rels"
 
 
 def _node_relation(key: str) -> str:
@@ -78,7 +80,12 @@ def overlay(model: Any, session: TempSession) -> Any:
     """``model`` (the role's label map) with each label of session matches, and each type of
     session relationships, mapped to its session relation. ``model`` itself when the session
     holds nothing."""
-    from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapping
+    from provisa.gql.label_map import (
+        JunctionMapping,
+        NodeMapping,
+        RelationshipMapping,
+        SessionWalk,
+    )
 
     graph = store.graph(session)
     if graph.empty:
@@ -129,7 +136,8 @@ def overlay(model: Any, session: TempSession) -> Any:
         # Each end is a label the overlay maps: an ephemeral end's (its unlabeled nodes' "" among
         # them, store.view_keys), a model end's type name.
         assert source in nodes and target in nodes, (rel_type, source, target)
-        columns = session.tables[store.rel_table(rel_type)].columns
+        held_rel = session.tables.get(store.rel_table(rel_type))
+        columns = held_rel.columns if held_rel else []
         mapping = RelationshipMapping(
             rel_type=rel_type,
             source_label=source,
@@ -167,6 +175,9 @@ def overlay(model: Any, session: TempSession) -> Any:
     out.aliases = aliases
     out._nodes_ci = {k.lower(): k for k in nodes}
     out._nodes_by_table_ci = {k.lower(): k for k in nodes_by_table}
+    # REQ-348: every session relationship in one relation, which a path function with an
+    # unlabelled end walks.
+    out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)
     return out
 
 
@@ -189,6 +200,20 @@ def _spelled(kind: str) -> str:
 def _typed(value: exp.Expression, kind: str) -> exp.Expression:
     """``value`` as a column of ``kind`` (a registered type, or a session type of types.py)."""
     return exp.Cast(this=value, to=exp.DataType.build(_spelled(kind), dialect="postgres"))
+
+
+def _session_table(
+    name: str, alias: str, session: TempSession, fixed: list[tuple[str, str]]
+) -> exp.Expr:
+    """The session table ``name`` as ``alias``. A table not created yet is empty by definition
+    (REQ-2176: tables are created as statements write): it reads as no rows of its known columns,
+    ``fixed`` (name, session type), not as an engine error."""
+    if name in session.tables:
+        return exp.alias_(exp.to_table(name, quoted=True), alias)
+    empty = exp.select(
+        *(exp.alias_(_typed(exp.null(), kind), column, quoted=True) for column, kind in fixed)
+    ).where(exp.false())
+    return exp.alias_(exp.Subquery(this=empty), alias)
 
 
 def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expression:
@@ -225,7 +250,9 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
 
     def tagged(rows: exp.Select, graph_id: exp.Expression) -> exp.Select:
         return rows.join(
-            exp.alias_(exp.to_table(store.NODE_LABELS, quoted=True), "_l"),
+            _session_table(
+                store.NODE_LABELS, "_l", session, store.fixed_columns(store.NODE_LABELS)
+            ),
             on=exp.and_(
                 exp.EQ(this=_col(store.NODE_ID, "_l"), expression=graph_id),
                 exp.EQ(this=_col("label", "_l"), expression=exp.Literal.string(key)),
@@ -245,29 +272,47 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
     def unlabeled(rows: exp.Select, node_id: exp.Expression) -> exp.Select:
         held_labels = (
             exp.select(_col(store.NODE_ID, "_l"))
-            .from_(exp.alias_(exp.to_table(store.NODE_LABELS, quoted=True), "_l"))
+            .from_(
+                _session_table(
+                    store.NODE_LABELS, "_l", session, store.fixed_columns(store.NODE_LABELS)
+                )
+            )
             .where(exp.EQ(this=_col(store.NODE_ID, "_l"), expression=node_id))
         )
         return rows.where(exp.Not(this=exp.Exists(this=held_labels)))
 
     for anchor in resolved.anchors:
-        anchor_columns = {name for name, _ in session.tables[anchor].columns}
+        held_columns = session.tables[anchor].columns if anchor in session.tables else []
+        anchor_columns = {name for name, _ in held_columns}
         values = {a: _col(a, "_a") for a, _ in columns if a in anchor_columns}
-        rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(
-            exp.alias_(exp.to_table(anchor, quoted=True), "_a")
-        )
+        # An anchor not created yet holds no node: the columns the statement reads, all empty.
+        source = _session_table(anchor, "_a", session, [(store.NODE_ID, "text"), *columns])
+        rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(source)
         node_id = _col(store.NODE_ID, "_a")
         parts.append(unlabeled(rows, node_id) if key == "" else tagged(rows, node_id))
+    if not parts:
+        # A label no node holds now (its nodes all deleted): no rows of the columns it reads.
+        parts.append(select({}, exp.null(), exp.null()).where(exp.false()))
     union: exp.Expression = parts[0]
     for part in parts[1:]:
         union = exp.Union(this=union, expression=part, distinct=False)
     return union
 
 
+def _walk_rows(session: TempSession) -> exp.Expression:
+    """The rows of the walk's relation (REQ-348): every session relationship, its type and its
+    ends, read from the relationships table alone, indexed on both ends; none before the session
+    holds a relationship (REQ-2176)."""
+    return exp.select(
+        _col(store.REL_ID, "_r"), _col("type", "_r"), _col("from_id", "_r"), _col("to_id", "_r")
+    ).from_(_session_table(store.RELS, "_r", session, store.fixed_columns(store.RELS)))
+
+
 def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
     """The rows of a relationship type's session relation: each relationship's ends and its
     properties."""
-    props = [n for n, _ in session.tables[store.rel_table(rel_type)].columns if n != store.REL_ID]
+    held = session.tables.get(store.rel_table(rel_type))
+    props = [n for n, _ in (held.columns if held else []) if n != store.REL_ID]
     return (
         exp.select(
             _col(store.REL_ID, "_r"),
@@ -277,7 +322,7 @@ def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
         )
         .from_(exp.alias_(exp.to_table(store.RELS, quoted=True), "_r"))
         .join(
-            exp.alias_(exp.to_table(store.rel_table(rel_type), quoted=True), "_p"),
+            _session_table(store.rel_table(rel_type), "_p", session, [(store.REL_ID, "text")]),
             on=exp.EQ(this=_col(store.REL_ID, "_p"), expression=_col(store.REL_ID, "_r")),
             join_type="inner",
         )
@@ -329,8 +374,10 @@ def _once_per_node(sub: exp.Subquery, arms: list[exp.Select]) -> None:
             if _session_arm(arm)
             else arm.selects[1].this.copy()
         )
+        # A union the compiler already gave its graph identity (a walk's end, REQ-348) keeps it.
+        held = GRAPH_ID in arm.named_selects
         arm.select(
-            exp.alias_(graph_id, GRAPH_ID, quoted=True),
+            *([] if held else [exp.alias_(graph_id, GRAPH_ID, quoted=True)]),
             exp.alias_(exp.Literal.number(i), _ARM, quoted=True),
             copy=False,
         )
@@ -447,6 +494,8 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
                 )
                 _drop_conditions(select, mine)
             name = cte(f"__session_node__{key}", body)
+        elif table.name == WALK_RELATION:
+            name = cte("__session_rels", _walk_rows(session))
         else:
             rel_type = types[table.name]
             name = cte(f"__session_rel__{rel_type}", _rel_rows(rel_type, session))

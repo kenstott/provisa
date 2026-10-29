@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from provisa.compiler.sql_types import key_list
+from provisa.cypher.counters import set_values, written_rows
 from provisa.cypher.write_translator import (
     _KEY_PARAM,
     CypherParam,
@@ -46,6 +47,9 @@ from provisa.cypher.write_translator import (
     _write_value,
     _written_column,
     bind_write_params,
+    created_link,
+    created_node,
+    properties_set,
 )
 from provisa.gql.label_map import NodeMapping, RelationshipMapping
 from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
@@ -216,7 +220,36 @@ async def _set(
             sql = _junction_update(rel, start, end, sets)
         else:
             sql = _node_update(plan.translator, binding[var], sets)
-        await write(*bind_write_params(sql, provided))
+        await written_rows(
+            write,
+            *bind_write_params(sql, provided),
+            **properties_set([v for _, v in sets], provided),
+        )
+
+
+def _made(
+    per_row: dict[str, int],
+    stated: dict[str, Any],
+    part: MergePart,
+    variable: str,
+    provided: dict[str, Any],
+) -> dict[str, int]:
+    """What the row a MERGE makes counts, its pattern's properties and its ON CREATE SET items
+    each set in turn, as Neo4j sets them: ``per_row`` counts the row as written, one value per
+    property. An ON CREATE SET of a property the pattern also states is a second set; one to null
+    sets it only when the pattern gave it a value."""
+    held = {k for k, v in zip(stated, set_values(list(stated.values()), provided)) if v is not None}
+    items = [(p, v) for var, p, v in part.on_create if var == variable]
+    resolved = set_values([v for _, v in items], provided)
+    sets = sum(v is not None for v in set_values(list(stated.values()), provided))
+    for (prop, _), value in zip(items, resolved, strict=True):
+        if value is not None:
+            sets += 1
+            held.add(prop)
+        elif prop in held:
+            sets += 1
+            held.discard(prop)
+    return {**per_row, "properties_set": sets}
 
 
 async def _merge_part(
@@ -280,12 +313,17 @@ async def _merge_part(
             raise CypherWriteParseError(
                 f"the node a MERGE makes, ({n.variable}:{n.label}), has no property"
             )
-        insert = plan.translator._translate_create(
-            WriteAST(kind="create", label=n.label, variable=n.variable, props=props)
-        )
+        create = WriteAST(kind="create", label=n.label, variable=n.variable, props=props)
+        insert = plan.translator._translate_create(create)
         needed = plan.needed.get(n.variable, {})
         sql = f"{insert} RETURNING {_returning(nm, needed)}"
-        columns, answer = await write(*bind_write_params(sql, provided))
+        columns, answer = await written_rows(
+            write,
+            *bind_write_params(sql, provided),
+            **_made(
+                created_node(plan.translator, create, provided), n.props, part, n.variable, provided
+            ),
+        )
         if len(answer) != 1:
             raise CypherWriteParseError(f"a MERGE wrote {len(answer)} rows, where it writes one")
         made[n.variable] = _Bound(nm, dict(zip(columns, answer[0], strict=True)))
@@ -297,7 +335,11 @@ async def _merge_part(
         keys += [end.props[end.mapping.property_of(c)] for c in key_list(rel.join_target_column)]
         props = {**link.props, **{p: v for var, p, v in part.on_create if var == link.variable}}
         sql = plan.translator._junction_insert(rel, link.rel_type, props, [keys])
-        await write(*bind_write_params(sql, provided))
+        await written_rows(
+            write,
+            *bind_write_params(sql, provided),
+            **_made(created_link(props, provided), link.props, part, link.variable, provided),
+        )
         created.add(link.variable)
     # ON CREATE SET of a node the pattern reaches back to: an UPDATE of its row.
     await _set(plan, part, rels, made, part.on_create, created, provided, write)

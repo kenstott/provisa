@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from provisa.compiler.temp_tables import TempSession
+from provisa.cypher import counters
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import pattern, store
 from provisa.ephemeral.classify import CreateKind, classify_create
@@ -290,6 +291,17 @@ async def write_rows(
         if c.anchor is not None:
             graph.anchors.setdefault(c.anchor, store.anchor_table(c.anchor))
     await store.write(state, session, writes)
+    # The session's parts; each governed row was counted as the governed path wrote it.
+    counters.count(
+        nodes_created=len(writes.nodes),
+        relationships_created=len(writes.rels),
+        labels_added=sum(len(n.labels) for n in writes.nodes),
+        properties_set=sum(
+            v is not None
+            for made in (*writes.nodes, *writes.rels)
+            for v in made.properties.values()
+        ),
+    )
     created = Created(
         len(writes.nodes) + rows_written,
         len(writes.rels),

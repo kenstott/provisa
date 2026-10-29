@@ -109,9 +109,10 @@ def _refused(session, writer, probes, role: str) -> None:
 
 class TestDatabaseNotFoundIntegration:
     async def test_run_with_a_db_naming_no_role_sends_database_not_found(self, role_probes):
-        """REQ-808: a db outside the provisa_<role> forms names no role: DatabaseNotFound."""
+        """REQ-808: a db outside the provisa_<role> forms names no role: DatabaseNotFound. (neo4j
+        is no such name: it names the home database, REQ-807.)"""
         session, writer = _make_session(["analyst"])
-        await session.handle_run(["MATCH (n) RETURN n", {}, {"db": "neo4j"}])
+        await session.handle_run(["MATCH (n) RETURN n", {}, {"db": "warehouse"}])
         assert b"DatabaseNotFound" in writer.getvalue()
         assert role_probes == []
 

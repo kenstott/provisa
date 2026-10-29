@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from provisa.compiler.temp_tables import TempSession
+from provisa.cypher import counters
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import read as session_read
 from provisa.ephemeral import store
@@ -176,6 +177,8 @@ async def write_props(
         return None
     if nodes or rels:
         await store.set_properties(state, session, nodes, rels)
+    # Each property a SET writes or a REMOVE clears, as Neo4j's properties-set counts it.
+    counters.count(properties_set=written)
     bound_rows = [
         {var: bound_value(row[f"_v_{var}"], label_map, graph) for var in keep} for row in answer
     ]

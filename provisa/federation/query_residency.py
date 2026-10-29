@@ -1019,6 +1019,30 @@ async def pushdown_row_materialize(
     if not all_joins:
         return set()
 
+    # The probe reads every row-level replica the statement names, the pending ones LEFT-joined:
+    # each must exist before it is read, empty when nothing has landed it yet. On a cold store a
+    # replica reached only through a join had no table at all (ensure_rows_resident creates only
+    # the ones a key predicate binds), and the probe failed with "Table ... does not exist" --
+    # live on the bench, cypher_cross_engine on DuckDB (bench_placed_edge).
+    for name in sorted({t.name for t in tree.find_all(exp.Table)} & set(tables_by_name)):
+        table = tables_by_name[name]
+        source = sources_by_id.get(table.source_id)
+        if source is None:
+            raise LookupError(
+                f"{table.table_name}: row-level replica's source {table.source_id!r} is not registered"
+            )
+        address = backend.replica_address(
+            state, source_id=source.id, schema_name=table.schema_name, table_name=table.table_name
+        )
+        await _ensure_row_cache_table(
+            engine,
+            backend,
+            state,
+            address.schema,
+            address.table,
+            resolve_landing_args_for(source, table, backend.dialect).columns,
+        )
+
     landed_this_call: set[str] = set()
     remaining = set(all_joins)
     loader = SourceRowLoader(

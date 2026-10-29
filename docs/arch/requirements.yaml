@@ -8602,6 +8602,7 @@
   code:
   - provisa/compiler/sql_gen.py
   tests:
+  - tests/integration/test_federation_integration.py
   - tests/integration/test_schema_gen.py
   - tests/unit/test_schema_service.py
   - tests/unit/test_sql_gen.py
@@ -18192,7 +18193,10 @@
     Compute it starts or resumes (a warehouse, capacity or cluster) is suspended or stopped again. The names
     it creates carry a per-run prefix, so teardown and a later sweep find exactly its own objects. A shared,
     durable fixture the test only reads stays. Anything left behind is a defect, since external accounts
-    bill for what they hold and process.'
+    bill for what they hold and process. (Amended 2026-10-28, TYPE DEFINITIONS STAY:) The type definitions
+    a target registers for Provisa''s metadata (for example Purview''s provisa_* entity, relationship and
+    classification types) are schema shared by every run and every org, not catalog contents: a test leaves
+    them in place and deletes every catalog object it created.'
   use_case: Integration tests that spin up Docker containers ensure tests validate against real service
     behaviour.
   tests:
@@ -89993,7 +89997,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then it receives the role''s governed rows'
 - id: REQ-2167
   value: 'Every protocol surface publishes its conformance pass rate and deliberate differences, so you know what works.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Protocol Conformance
