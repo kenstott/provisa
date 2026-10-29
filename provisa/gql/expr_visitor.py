@@ -186,6 +186,11 @@ class ExprContext(Protocol):
         answers), None for any other name."""
         ...
 
+    def graph_kind(self, name: str) -> str | None:
+        """What the pattern variable ``name`` binds -- "node", "relationship", "path", or "list"
+        (a variable-length relationship's relationships) -- else None."""
+        ...
+
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         """A bound node's or relationship's properties as one JSON object, None for any other
         name."""
@@ -531,6 +536,80 @@ _CONVERTED_KIND = {
     "toboolean": "boolean",
 }
 
+#: Cypher's conversions and the kinds of value each refuses with a TypeError (openCypher's
+#: InvalidArgumentValue): a value it cannot convert is no error but null (toInteger('x')); a value
+#: of a kind it takes none of is ([], {}, a node, a relationship, a path; toFloat a boolean,
+#: toBoolean a float). Their *OrNull forms answer null for both.
+_CONVERSION_REFUSES = {
+    "tointeger": frozenset({"list", "map", "node", "relationship", "path"}),
+    "tofloat": frozenset({"boolean", "list", "map", "node", "relationship", "path"}),
+    "toboolean": frozenset({"float", "list", "map", "node", "relationship", "path"}),
+    "tostring": frozenset({"list", "map", "node", "relationship", "path"}),
+}
+
+#: Each kind a value of a list of several types (its JSON) is of, as json_kind names it: a node,
+#: a relationship and a path are each a JSON object, as a map is.
+_JSON_KIND_OF = {
+    "list": "list",
+    "map": "map",
+    "node": "map",
+    "relationship": "map",
+    "path": "map",
+    "boolean": "boolean",
+}
+
+
+def _json_refused(item: exp.Expression, refused: frozenset[str]) -> exp.Expression | None:
+    """Where ``item`` (an item of a list of several types, its JSON) is of a kind in ``refused``,
+    read from it by the engine; None where no such kind can be read so."""
+    kinds = sorted({_JSON_KIND_OF[k] for k in refused if k in _JSON_KIND_OF})
+    tests: list[exp.Expression] = (
+        [
+            exp.In(
+                this=_anon("json_kind", item.copy()),
+                expressions=[exp.Literal.string(k) for k in kinds],
+            )
+        ]
+        if kinds
+        else []
+    )
+    if "float" in refused:
+        # A float is a JSON number written with a fraction or an exponent (1.0, 1e+20).
+        tests.append(
+            exp.And(
+                this=exp.EQ(
+                    this=_anon("json_kind", item.copy()), expression=exp.Literal.string("number")
+                ),
+                expression=exp.RegexpLike(
+                    this=_anon("JSON_EXTRACT_SCALAR", item.copy(), exp.Literal.string("$")),
+                    expression=exp.Literal.string("[.eE]"),
+                ),
+            )
+        )
+    if not tests:
+        return None
+    either = tests[0]
+    for test in tests[1:]:
+        either = exp.Or(this=either, expression=test)
+    return either
+
+
+#: What each conversion takes, as its refusal names it.
+_CONVERSION_TAKES = {
+    "tointeger": "a number, a string or a boolean",
+    "tofloat": "a number or a string",
+    "toboolean": "a boolean, a string or an integer",
+    "tostring": "a number, a string, a boolean or a temporal value",
+}
+
+
+def _conversion_refusal(name: str, kind: str) -> str:
+    return (
+        f"TypeError (InvalidArgumentValue): {name}() takes no {kind}; it converts "
+        f"{_CONVERSION_TAKES[name.lower()]}"
+    )
+
+
 #: A value kind (_value_kind) as json_kind names it, and the type its JSON is read as.
 _JSON_KIND = {
     "number": ("number", "DOUBLE"),
@@ -629,6 +708,9 @@ class ExprLowering:
         #: The variables a comprehension or quantifier binds to an item of a list of JSON-encoded
         #: values ([[1, 2], ['a']]): each item is its JSON.
         self._json_vars: set[str] = set()
+        #: The kinds of the items a comprehension or quantifier variable is bound to, where its list
+        #: is written in the statement ([x IN [1, []] | ...]): _static_kind of each.
+        self._item_kinds: dict[str, frozenset[str | None]] = {}
 
     def _given_type(self, node: CypherExpr) -> type | None:
         """The type of the value the client gives ``node`` (a parameter, or a variable bound to
@@ -636,17 +718,75 @@ class ExprLowering:
         found, value = self._ctx.given_value(node)
         return type(value) if found else None
 
-    def _over(self, var: str, source: exp.Expression, body: CypherExpr) -> exp.Expression:
-        """``body`` lowered with ``var`` bound to each item of ``source``."""
-        if _json_valued(source) != "list":
-            return self.lower(body)
-        held = var in self._json_vars
-        self._json_vars.add(var)
+    def _over(
+        self, var: str, source: exp.Expression, body: CypherExpr, written: CypherExpr
+    ) -> exp.Expression:
+        """``body`` lowered with ``var`` bound to each item of ``source``, the list ``written``
+        lowers to."""
+        kinds = self._item_kinds.get(var)
+        if isinstance(written, ListLiteral):
+            self._item_kinds[var] = frozenset(self._static_kind(i) for i in written.items)
+        else:
+            self._item_kinds.pop(var, None)
         try:
-            return self.lower(body)
+            if _json_valued(source) != "list":
+                return self.lower(body)
+            held = var in self._json_vars
+            self._json_vars.add(var)
+            try:
+                return self.lower(body)
+            finally:
+                if not held:
+                    self._json_vars.discard(var)
         finally:
-            if not held:
-                self._json_vars.discard(var)
+            if kinds is None:
+                self._item_kinds.pop(var, None)
+            else:
+                self._item_kinds[var] = kinds
+
+    def _static_kind(self, node: CypherExpr) -> str | None:
+        """The kind of value ``node`` is, where the statement says it -- "integer", "float",
+        "string", "boolean", "null", "list", "map", "node", "relationship" or "path" -- else None."""
+        if isinstance(node, Paren):
+            return self._static_kind(node.inner)
+        if isinstance(node, Literal):
+            if node.kind == "number":
+                return "float" if isinstance(node.value, float) else "integer"
+            return {"string": "string", "boolean": "boolean", "null": "null"}.get(node.kind)
+        if isinstance(node, ListLiteral):
+            return "list"
+        if isinstance(node, MapLiteral):
+            return "map"
+        if isinstance(node, Variable) and node.name not in self._item_kinds:
+            return self._ctx.graph_kind(node.name)
+        return None
+
+    def _checked_conversion(self, node: FunctionCall) -> exp.Expression | None:
+        """A conversion of a value of a kind it refuses (_CONVERSION_REFUSES): refused when the
+        statement says the value's kind, else -- an item of a list written with an item of such
+        a kind -- the conversion, refused by the engine for each item of a refused kind. None for
+        any other call."""
+        refused = _CONVERSION_REFUSES.get(node.name.lower())
+        if refused is None or len(node.args) != 1:
+            return None
+        given = node.args[0]
+        kind = self._static_kind(given)
+        if kind in refused:
+            raise CypherTranslateError(_conversion_refusal(node.name, kind))
+        if not isinstance(given, Variable):
+            return None
+        held = self._item_kinds.get(given.name, frozenset()) & refused
+        if not held or given.name not in self._json_vars:
+            return None
+        item = self.lower(given)
+        test = _json_refused(item, frozenset(k for k in held if k is not None))
+        if test is None:
+            return None
+        message = _conversion_refusal(node.name, " or ".join(sorted(k for k in held if k)))
+        return exp.Case(
+            ifs=[exp.If(this=test, true=_anon("type_refused", exp.Literal.string(message)))],
+            default=self._lower_call(node),
+        )
 
     def lower(self, node: CypherExpr) -> exp.Expression:
         method = getattr(self, f"_lower_{type(node).__name__}", None)
@@ -1128,6 +1268,10 @@ class ExprLowering:
         return _anon("TO_TIMESTAMP", seconds)
 
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
+        checked = self._checked_conversion(node)
+        return checked if checked is not None else self._lower_call(node)
+
+    def _lower_call(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
         if (
@@ -1276,13 +1420,15 @@ class ExprLowering:
             self._ctx.resolve_graph_element(i.name) if isinstance(i, Variable) else None
             for i in node.items
         ]
-        if all(e is None for e in elements):
+        graph = [isinstance(i, Variable) and self._ctx.graph_kind(i.name) for i in node.items]
+        if all(e is None for e in elements) and (all(graph) or not any(graph)):
             if _mixed_literal_kinds(node.items):
                 # [1, 'a', true]: one engine type only as each value's JSON (GraphVarKind.JSON_LIST).
                 return exp.Array(expressions=[_anon("to_json", self.lower(i)) for i in node.items])
             return exp.Array(expressions=[self.lower(i) for i in node.items])
         # A list of nodes and relationships ([r, m]) holds each as its JSON object, and anything
-        # beside them as JSON too: one list of one type.
+        # beside them as JSON too: one list of one type. So does a list of a value beside a node,
+        # a relationship or a path the read holds as its JSON already ([1, n]).
         return exp.Array(
             expressions=[
                 e if e is not None else _anon("to_json", self.lower(i))
@@ -1426,17 +1572,17 @@ class ExprLowering:
         source = self.lower(node.source)
         result = source
         if node.predicate is not None:
-            predicate = self._over(node.var, source, node.predicate)
+            predicate = self._over(node.var, source, node.predicate, node.source)
             result = _anon("filter", result, _lam(node.var, predicate))
         if node.projection is not None:
-            projection = self._over(node.var, source, node.projection)
+            projection = self._over(node.var, source, node.projection, node.source)
             result = _anon("transform", result, _lam(node.var, projection))
         return result
 
     def _lower_Quantifier(self, node: Quantifier) -> exp.Expression:
         source = self.lower(node.source)
         pred = (
-            _lam(node.var, self._over(node.var, source, node.predicate))
+            _lam(node.var, self._over(node.var, source, node.predicate, node.source))
             if node.predicate is not None
             else None
         )
@@ -1455,7 +1601,7 @@ class ExprLowering:
         unknown = _lam(
             node.var,
             exp.Is(
-                this=exp.Paren(this=self._over(node.var, source, node.predicate)),
+                this=exp.Paren(this=self._over(node.var, source, node.predicate, node.source)),
                 expression=exp.Null(),
             ),
         )

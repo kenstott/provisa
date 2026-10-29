@@ -70,6 +70,13 @@ def _range_step(step: exp.Expression, raise_with: str) -> exp.Expression:  # pyr
     )
 
 
+def _type_refused(message: exp.Expression, raise_with: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """type_refused('...'), a value of a kind a function refuses (expr_visitor: openCypher's
+    TypeError): the engine's own error (``raise_with``: DuckDB's error, Trino's fail) with the
+    message, raised where the branch holding it is reached."""
+    return exp.Anonymous(this=raise_with, expressions=[message.copy()])
+
+
 def _json_has_keys(value: exp.Expression, *keys: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """True where the JSON object ``value`` holds every one of ``keys``."""
     held = [
@@ -259,6 +266,7 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
             "JSON_KIND",
             "JSON_LIST_COMPARE",
             "RANGE_STEP",
+            "TYPE_REFUSED",
             "JSON_KEYS",
         )
     ):
@@ -278,6 +286,9 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
         if isinstance(node, exp.Anonymous) and node.name.upper() == "RANGE_STEP":
             (step,) = node.expressions
             return _range_step(step, "fail")
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "TYPE_REFUSED":
+            (message,) = node.expressions
+            return _type_refused(message, "fail")
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_ORDER_KEY":
             (value,) = node.expressions
             return _json_order_key(
@@ -768,6 +779,7 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "JSON_KIND",
         "JSON_LIST_COMPARE",
         "RANGE_STEP",
+        "TYPE_REFUSED",
     }
 )
 
@@ -833,6 +845,9 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
         if name == "RANGE_STEP":
             (step,) = args
             return _range_step(step, "error")
+        if name == "TYPE_REFUSED":
+            (message,) = args
+            return _type_refused(message, "error")
         if name == "JSON_ORDER_KEY":
             (value,) = args
             return _json_order_key(

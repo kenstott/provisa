@@ -539,6 +539,21 @@ class TranslatorExprContext:
             return expr.kind == "null"
         return isinstance(expr, Variable) and expr.name in self._t._null_vars
 
+    def graph_kind(self, name: str) -> str | None:
+        """What the pattern variable ``name`` binds -- "node", "relationship", "path", or "list"
+        (a variable-length relationship's relationships) -- else None."""
+        t = self._t
+        if name in t._path_vars:
+            return "path"
+        if name in t._varlen_rel_vars:
+            return "list"
+        if name in t._rel_var_types or name in t._all_rels_rel_vars:
+            return "relationship"
+        if name in t._all_rels_node_vars or name in t._union_columns:
+            return "node"
+        _, nm = t._var_table.get(name, (name, None))
+        return "node" if nm is not None else None
+
     def is_json_value(self, expr: CypherExpr) -> bool:
         from provisa.gql.expr_ast import Index, Paren
 
