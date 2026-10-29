@@ -408,6 +408,7 @@
       "unknown_request_type": "Неизвестный тип запроса '{{type}}'",
       "unknown_trigger_kind": "Неизвестный тип триггера '{{kind}}'",
       "url_sql_exclusive": "url и sql взаимно исключают друг друга",
+      "view_deploy_unsupported_type": "Источник '{{source}}' имеет тип '{{type}}', который не может размещать развёрнутое представление; поддерживаемые типы: {{supported}}",
       "view_deployed": "Представление '{{view}}' развернуто в '{{source}}', схема '{{schema}}'",
       "view_spans_sources": "представление охватывает несколько источников: {{sources}}",
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",

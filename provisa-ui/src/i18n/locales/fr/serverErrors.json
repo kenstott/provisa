@@ -408,6 +408,7 @@
       "unknown_request_type": "Type de demande « {{type}} » inconnu",
       "unknown_trigger_kind": "Type de déclencheur « {{kind}} » inconnu",
       "url_sql_exclusive": "url et sql sont mutuellement exclusifs",
+      "view_deploy_unsupported_type": "La source « {{source}} » est de type « {{type}} », qui ne peut pas héberger une vue déployée ; types pris en charge : {{supported}}",
       "view_deployed": "Vue « {{view}} » déployée sur « {{source}} », schéma « {{schema}} »",
       "view_spans_sources": "la vue s'étend sur plusieurs sources : {{sources}}",
       "webhook_approved": "Webhook « {{webhook}} » approuvé",

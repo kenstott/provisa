@@ -408,6 +408,7 @@
       "unknown_request_type": "Tipo de solicitud desconocido: '{{type}}'",
       "unknown_trigger_kind": "Tipo de desencadenador desconocido: '{{kind}}'",
       "url_sql_exclusive": "url y sql son mutuamente excluyentes",
+      "view_deploy_unsupported_type": "El origen '{{source}}' es de tipo '{{type}}', que no puede alojar una vista desplegada; tipos admitidos: {{supported}}",
       "view_deployed": "Vista '{{view}}' implementada en '{{source}}', esquema '{{schema}}'",
       "view_spans_sources": "la vista abarca varios orígenes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
