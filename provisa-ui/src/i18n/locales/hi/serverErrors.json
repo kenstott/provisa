@@ -408,6 +408,7 @@
       "unknown_request_type": "अज्ञात अनुरोध प्रकार '{{type}}'",
       "unknown_trigger_kind": "अज्ञात ट्रिगर प्रकार '{{kind}}'",
       "url_sql_exclusive": "url और sql परस्पर अनन्य हैं",
+      "view_deploy_unsupported_type": "स्रोत '{{source}}' का प्रकार '{{type}}' है, जो परिनियोजित व्यू को होस्ट नहीं कर सकता; समर्थित प्रकार: {{supported}}",
       "view_deployed": "व्यू '{{view}}' को '{{source}}' स्कीमा '{{schema}}' पर डिप्लॉय किया गया",
       "view_spans_sources": "व्यू कई स्रोतों में फैला है: {{sources}}",
       "webhook_approved": "वेबहुक '{{webhook}}' अनुमोदित किया गया",

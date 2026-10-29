@@ -220,6 +220,9 @@ def _as_landed(name: str, landed: str, value: Any) -> Any:
         return value if isinstance(value, str) else json.dumps(value)
     if landed in ("interval", "zoned_time"):
         return _as_text(landed, value)
+    if landed[5:-1] in ("interval", "zoned_time") and landed.startswith("list<"):
+        # A list of them holds each as its text likewise (REQ-2176).
+        return [None if v is None else _as_text(landed[5:-1], v) for v in value]
     if isinstance(value, str) and landed != "text":
         try:
             return _from_copy_text(name, landed, value)
@@ -281,13 +284,17 @@ def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
     return pa.RecordBatch.from_pydict(arrays)
 
 
+class TempTableLimit(ValueError):
+    """A table past a session's bound (REQ-1926): refused by name, on every surface."""
+
+
 def _within_tables(session: TempSession, name: str) -> None:
     """A new table past ``temp_tables.max_per_session`` is refused by name (REQ-1926)."""
     from provisa.core import settings_registry
 
     limit = int(settings_registry.value("temp_tables.max_per_session"))
     if len(session.tables) >= limit:
-        raise ValueError(
+        raise TempTableLimit(
             f"temporary table {name!r}: this session holds {len(session.tables)} temporary "
             f"table(s), the most one may hold (temp_tables.max_per_session = {limit}); drop one "
             f"first"
@@ -301,7 +308,7 @@ def _within_rows(name: str, rows: int) -> None:
 
     limit = int(settings_registry.value("temp_tables.max_rows"))
     if rows > limit:
-        raise ValueError(
+        raise TempTableLimit(
             f"temporary table {name!r} would hold {rows} rows, more than one may "
             f"(temp_tables.max_rows = {limit})"
         )

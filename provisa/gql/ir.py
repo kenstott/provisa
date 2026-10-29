@@ -217,6 +217,9 @@ class MatchClause:
     pattern: PathPattern | PathFunction | TriplePattern
     variable: str | None  # path variable (p = shortestPath(...))
     optional: bool = False
+    #: Written after a comma: a further pattern of the MATCH before it, whose relationships are
+    #: each matched once with its own (openCypher's relationship uniqueness).
+    continues: bool = False
 
 
 @dataclass

@@ -408,6 +408,7 @@
       "unknown_request_type": "סוג בקשה לא מוכר '{{type}}'",
       "unknown_trigger_kind": "סוג טריגר לא מוכר '{{kind}}'",
       "url_sql_exclusive": "url ו-sql מוציאים זה את זה",
+      "view_deploy_unsupported_type": "המקור '{{source}}' הוא מסוג '{{type}}', שאינו יכול לארח תצוגה שנפרסה; סוגים נתמכים: {{supported}}",
       "view_deployed": "התצוגה (View) '{{view}}' נפרסה אל '{{source}}' בסכמה '{{schema}}'",
       "view_spans_sources": "התצוגה (View) משתרעת על פני מספר מקורות: {{sources}}",
       "webhook_approved": "ה-Webhook '{{webhook}}' אושר",

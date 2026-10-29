@@ -961,7 +961,8 @@ def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
 
 
 def test_domain_labeled_target_filters_rels_union():
-    """MATCH (n)-[]-(m:Sales) with two domains — only Sales rels appear, not cross-domain ones."""
+    """MATCH (n)-[]->(m:Sales) with two domains — only Sales rels appear, not cross-domain ones;
+    read undirected, a cross-domain relationship ending at a Sales node is read from that end."""
     # Two domains: Sales=[Person, Company], Other=[Company2].
     # Rel KNOWS: Person→Person (Sales↔Sales), WORKS_AT: Person→Company (Sales→Sales)
     # When m:Sales, the all-rels union must NOT include rels targeting non-Sales nodes.
@@ -1034,13 +1035,29 @@ def test_domain_labeled_target_filters_rels_union():
         relationships={"KNOWS": knows_rel, "OWNS": owns_rel},
         domains={"Sales": ["Sales_Person", "Sales_Company"], "Other": ["Other_Widget"]},
     )
-    ast = parse_cypher("MATCH (n)-[]-(m:Sales) RETURN n, m")
+    ast = parse_cypher("MATCH (n)-[]->(m:Sales) RETURN n, m")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     # Sales rels should appear
     assert "persons" in sql.lower()
     # Other domain table must NOT appear — we constrained target to Sales
     assert "widgets" not in sql.lower()
+    # Undirected, either end of a relationship may be m: OWNS is read from its target, a Widget
+    # as n and its Sales owner as m. m is a Sales node in every branch, never a Widget.
+    import sqlglot.expressions as sx
+
+    sql_ast, _, _ = cypher_to_sql(parse_cypher("MATCH (n)-[]-(m:Sales) RETURN n, m"), lm, {})
+    union = sql_ast.find(sx.Subquery).this
+    branches = [union] if isinstance(union, sx.Select) else list(union.find_all(sx.Select))
+    ends = {
+        (b.selects[0].this.expressions[3].name, b.selects[2].this.expressions[3].name)
+        for b in branches
+        if b.selects and b.selects[0].alias == "n"
+    }
+    assert ends == {
+        ("Sales:Person", "Sales:Person"),
+        ("Other:Widget", "Sales:Person"),
+    }
 
 
 def test_anonymous_nodes_relationship_return_r():

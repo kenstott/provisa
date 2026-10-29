@@ -855,6 +855,32 @@ async def register_table(
     return await _registered_result(input, table_id)
 
 
+# Source types a view can be deployed to: the DDL below is ``CREATE OR REPLACE VIEW "schema"."view"
+# AS <select>`` with ANSI double-quoted identifiers, so only an RDB that takes exactly that form
+# qualifies (Postgres and its wire-compatible relatives, Redshift, DuckDB). Every other type is
+# refused by name before any DDL runs -- MySQL-family needs backticks, SQL Server/Oracle/SQLite
+# have no (or a different) CREATE OR REPLACE VIEW, and warehouses and non-SQL stores differ again.
+VIEW_DEPLOY_SOURCE_TYPES: frozenset[str] = frozenset(
+    {"postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift", "duckdb"}
+)
+
+
+def view_deploy_type_refusal(source_id: str, source_type: str) -> MutationResult | None:
+    """The refusal naming a source whose type cannot host a deployed view, or None if it can."""
+    if source_type in VIEW_DEPLOY_SOURCE_TYPES:
+        return None
+    supported = ", ".join(sorted(VIEW_DEPLOY_SOURCE_TYPES))
+    return MutationResult(
+        success=False,
+        message=(
+            f"source {source_id!r} is of type {source_type!r}, which cannot host a deployed view; "
+            f"supported types: {supported}"
+        ),
+        code="schema.view_deploy_unsupported_type",
+        params={"source": source_id, "type": source_type, "supported": supported},
+    )
+
+
 async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResult:
     """Promote a virtual Provisa view to a real database view on its underlying native source."""
     from provisa.api.admin.capabilities import require_capability
@@ -934,6 +960,7 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
     # Apply replacements (longest virtual_ref first), track which sources are hit
     physical_sql = view_sql
     hit_sources: dict[str, str] = {}  # source_id → schema_name
+    source_types = {t["source_id"]: t["source_type"] for t in all_tables}
     for virtual_ref, physical_ref, source_id, schema_name in sorted(
         replacements, key=lambda x: len(x[0]), reverse=True
     ):
@@ -955,6 +982,10 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
 
     target_source_id = next(iter(hit_sources))
     target_schema = hit_sources[target_source_id]
+
+    refused = view_deploy_type_refusal(target_source_id, source_types[target_source_id])
+    if refused is not None:
+        return refused
 
     if not state.source_pools.has(target_source_id):
         return MutationResult(

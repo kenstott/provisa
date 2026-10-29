@@ -19,6 +19,9 @@ import os
 import pytest
 import httpx
 
+# REQ-531's server: a real masked column (sales.orders.email) and the reader it is masked for.
+from tests.integration.test_view_lowering_e2e import _post, server  # noqa: F401
+
 pytestmark = [pytest.mark.e2e, pytest.mark.requires_provisa_server]
 
 # Never hardcode the dev port: the conftest pins PROVISA_URL to a private ephemeral port so the
@@ -45,54 +48,37 @@ def _headers(token: str = "test-token") -> dict:
 
 
 class TestReq531MaskedColumnsRejected:
-    """REQ-531: Masked columns are rejected from WHERE/HAVING clauses."""
+    """REQ-531: Masked columns are rejected from WHERE/HAVING (V005), before execution.
 
-    def test_sql_masked_column_in_where_rejected(self, client):
-        """SQL query with masked column in WHERE should be rejected at parse time."""
-        # Assuming a registered domain with masked column 'salary'
-        payload = {
-            "sql": "SELECT * FROM employees WHERE salary > 50000",
-            "domain": "hr",
-        }
-        resp = client.post(
-            "/data/sql",
-            json=payload,
-            headers=_headers(),
-        )
-        assert resp.status_code in [400, 403]
+    Over a real masked column: ``sales.orders.email`` of the view-lowering server is masked for
+    ``east_reader`` and unmasked for ``org_admin``, the control."""
 
-    def test_sql_masked_column_in_having_rejected(self, client):
-        """SQL query with masked column in HAVING should be rejected at parse time."""
-        payload = {
-            "sql": "SELECT dept, AVG(salary) FROM employees GROUP BY dept HAVING AVG(salary) > 50000",
-            "domain": "hr",
-        }
-        resp = client.post(
-            "/data/sql",
-            json=payload,
-            headers=_headers(),
-        )
-        assert resp.status_code in [400, 403]
+    def test_sql_masked_column_in_where_rejected(self, server):  # noqa: F811
+        """SQL with a masked column in WHERE is refused by V005 for the masked reader."""
+        by_email = {"sql": "SELECT id FROM sales.orders WHERE email = 'u1@x'"}
+        status, body = _post(server, "east_reader", "/data/sql", by_email)
+        assert status == 403 and "V005" in str(body), body
+        status, body = _post(server, "org_admin", "/data/sql", by_email)
+        assert status == 200 and body["data"]["sql"] == [{"id": 1}], body
 
-    def test_graphql_masked_column_in_filter_rejected(self, client):
-        """GraphQL query filtering on masked column should be rejected."""
-        payload = {
-            "query": """
-            {
-              employees(filter: { salary: { gt: 50000 } }) {
-                id
-                name
-              }
-            }
-            """,
-            "domain": "hr",
+    def test_sql_masked_column_in_having_rejected(self, server):  # noqa: F811
+        """SQL with a masked column in HAVING is refused by V005 for the masked reader."""
+        having = {
+            "sql": "SELECT region, COUNT(*) AS n FROM sales.orders GROUP BY region "
+            "HAVING MAX(email) = 'u3@x'"
         }
-        resp = client.post(
-            "/data/graphql",
-            json=payload,
-            headers=_headers(),
-        )
-        assert resp.status_code in [400, 403]
+        status, body = _post(server, "east_reader", "/data/sql", having)
+        assert status == 403 and "V005" in str(body), body
+        status, body = _post(server, "org_admin", "/data/sql", having)
+        assert status == 200 and body["data"]["sql"] == [{"region": "east", "n": 2}], body
+
+    def test_graphql_masked_column_in_filter_rejected(self, server):  # noqa: F811
+        """A GraphQL filter on a masked column is refused by V005 for the masked reader."""
+        where = {"query": '{ s__orders(where: {email: {eq: "u1@x"}}) { id } }'}
+        status, body = _post(server, "east_reader", "/data/graphql", where)
+        assert status == 403 and "V005" in str(body), body
+        status, body = _post(server, "org_admin", "/data/graphql", where)
+        assert status == 200 and body["data"]["s__orders"] == [{"id": 1}], body
 
 
 # ============================================================================

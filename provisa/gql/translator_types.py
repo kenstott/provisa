@@ -35,6 +35,7 @@ class GraphVarKind(str, Enum):
     # One value read from such a list ([1, 'a'][0]): its JSON; the answer decodes it.
     JSON_VALUE = "JSON_VALUE"
     DURATION = "DURATION"  # REQ-2173: a duration's [months, days, microseconds]
+    DURATION_LIST = "DURATION_LIST"  # REQ-2173: each item's [months, days, microseconds]
     ZONED = "ZONED"  # REQ-2173: a date time's [microseconds since the epoch, the zone it names]
     POINT = "POINT"  # a point's [srid, x, y(, z)] (spatial.py)
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
@@ -108,6 +109,10 @@ class CypherCrossSourceError(CypherTranslateError):
 #: The column a domain union's arm carries a node returned bare in: one JSON value, its id, its
 #: label and its own type's properties (each as text, as a property column is).
 NODE_COLUMN = "__node"
+
+#: The identity kind of a node of a union of labels' rows (ExprContext.resolve_graph_identity):
+#: compared with another node by its graph identity, whatever table each is read from.
+UNION_NODE = ("node", "__union__")
 
 
 def map_key_column(alias: str, place: int) -> str:

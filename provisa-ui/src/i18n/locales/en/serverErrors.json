@@ -408,6 +408,7 @@
       "unknown_request_type": "Unknown request type '{{type}}'",
       "unknown_trigger_kind": "Unknown trigger kind '{{kind}}'",
       "url_sql_exclusive": "url and sql are mutually exclusive",
+      "view_deploy_unsupported_type": "source '{{source}}' is of type '{{type}}', which cannot host a deployed view; supported types: {{supported}}",
       "view_deployed": "View '{{view}}' deployed to '{{source}}' schema '{{schema}}'",
       "view_spans_sources": "view spans multiple sources: {{sources}}",
       "webhook_approved": "Approved webhook '{{webhook}}'",

@@ -470,7 +470,13 @@ async def test_a_cypher_answer_that_wrote_to_it_says_so(dbs, monkeypatch):
         cypher_router.CypherRequest(query="CREATE (:Note {text: 'x'})"), _request(), None, None
     )
     body = _body(answer)
-    assert body["counters"] == {"nodes": 1, "relationships": 0, "labels": 1}
+    # What the write did, as the Bolt summary's stats name it (provisa.cypher.counters).
+    assert body["counters"] == {
+        "nodes-created": 1,
+        "labels-added": 1,
+        "properties-set": 1,
+        "contains-updates": True,
+    }
     assert body["session_changed"] is True
 
 

@@ -233,13 +233,16 @@ def _run_neo4j_export(
     return resp, captured
 
 
+def _data_request(captured: list[dict[str, Any]]) -> dict[str, Any]:
+    """The export's data transaction: always the last request. When edges are sent, the export
+    first posts its own schema transaction (the _provisa_id index its MATCH lookups use)."""
+    assert captured, "Expected an outbound request to Neo4j"
+    return captured[-1]
+
+
 def _statement_strings(captured: list[dict[str, Any]]) -> list[str]:
-    """Extract the flat list of Cypher statement strings from captured requests."""
-    out: list[str] = []
-    for req in captured:
-        for stmt in req["kwargs"]["json"]["statements"]:
-            out.append(stmt["statement"])
-    return out
+    """Extract the Cypher statement strings of the export's data transaction."""
+    return [stmt["statement"] for stmt in _data_request(captured)["kwargs"]["json"]["statements"]]
 
 
 def _captured_statement_strings(shared_data: dict) -> list[str]:
@@ -1220,7 +1223,7 @@ def when_req720_e2e_runs(shared_data: dict) -> None:
         resp, captured = _run_neo4j_export(body)
         assert resp.status_code == 200, f"node batch export failed: {resp.body!r}"
         # Each batch must produce exactly one MERGE per node in the chunk.
-        stmts = captured[0]["kwargs"]["json"]["statements"]
+        stmts = _data_request(captured)["kwargs"]["json"]["statements"]
         assert len(stmts) == len(chunk)
         node_batch_sizes.append(len(chunk))
 
@@ -1236,7 +1239,7 @@ def when_req720_e2e_runs(shared_data: dict) -> None:
         )
         resp, captured = _run_neo4j_export(body)
         assert resp.status_code == 200, f"edge batch export failed: {resp.body!r}"
-        stmts = captured[0]["kwargs"]["json"]["statements"]
+        stmts = _data_request(captured)["kwargs"]["json"]["statements"]
         assert len(stmts) == len(edges)
         edge_batch_sizes.append(len(edges))
 

@@ -144,6 +144,8 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "pg_relation_is_publishable",
         "pg_tablespace_location",
         "quote_ident",
+        "format_type",
+        "pg_table_is_visible",
         "pg_relation_size",
         "pg_total_relation_size",
         "pg_indexes_size",
@@ -191,6 +193,22 @@ def _calls_a_catalog_function_alone(tree) -> bool:
     )
 
 
+#: The types only the catalog has (name, and the object identifier types): a statement reading no
+#: table that casts to one is answered by the catalog (REQ-2167).
+_CATALOG_ONLY_TYPES = frozenset({"name", "regclass", "regtype", "regnamespace"})
+
+
+def _casts_to_a_catalog_type_alone(tree) -> bool:
+    import sqlglot.expressions as exp
+
+    if any(True for _ in tree.find_all(exp.Table)):
+        return False
+    return any(
+        cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.") in _CATALOG_ONLY_TYPES
+        for cast in tree.find_all(exp.Cast)
+    )
+
+
 @functools.lru_cache(maxsize=4096)
 def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     """Return 'INTERCEPT' or 'PASS_THROUGH'. A function of the statement text alone — asked on
@@ -232,10 +250,15 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         for col in tree.find_all(exp.Column):
             if col.name.lower() in _SCALAR_NAMES:
                 return "INTERCEPT"
-        if _calls_a_catalog_function_alone(tree):
+        if _calls_a_catalog_function_alone(tree) or _casts_to_a_catalog_type_alone(tree):
             return "INTERCEPT"
         for node in tree.walk():
-            if type(node).__name__ in ("CurrentUser", "CurrentDatabase", "CurrentSchema"):
+            if type(node).__name__ in (
+                "CurrentUser",
+                "SessionUser",
+                "CurrentDatabase",
+                "CurrentSchema",
+            ):
                 return "INTERCEPT"
     except Exception:
         lower = stripped.lower()

@@ -82,8 +82,12 @@ def test_oid_array_cast_executes(con):
     ],
 )
 def test_reg_casts_stripped_to_operand(con, regtype):
-    # reg* casts drop to the bare operand (the numeric oid / identifier value).
-    assert _scalar(con, f"SELECT n.oid::{regtype} AS rc FROM (SELECT 5 AS oid) n") == 5
+    # In a predicate a reg* cast is its bare operand (the numeric oid / identifier value).
+    assert _scalar(con, f"SELECT n.oid FROM (SELECT 5 AS oid) n WHERE n.oid::{regtype} = 5") == 5
+    if regtype not in ("regclass", "regnamespace"):
+        # A result column of one is its oid too; a regclass or regnamespace result column is its
+        # oid and its name together (REQ-2167, tests/unit/pgwire/test_type_conversions.py).
+        assert _scalar(con, f"SELECT n.oid::{regtype} AS rc FROM (SELECT 5 AS oid) n") == 5
 
 
 def test_name_cast_becomes_varchar(con):
@@ -102,7 +106,8 @@ def test_qualified_regclass_literal_shortened():
 
 
 def test_unqualified_regclass_literal_unchanged(con):
-    assert _scalar(con, "SELECT 'pg_class'::regclass AS c") == "pg_class"
+    # Compared, as pg_description's classoid is: the relation's short name.
+    assert _scalar(con, "SELECT 'pg_class'::regclass = 'pg_class' AS c") is True
 
 
 def test_regclass_oid_chain_maps_to_class_oid(con):

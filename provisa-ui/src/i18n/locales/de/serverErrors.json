@@ -408,6 +408,7 @@
       "unknown_request_type": "Unbekannter Anfragetyp '{{type}}'",
       "unknown_trigger_kind": "Unbekannte Trigger-Art '{{kind}}'",
       "url_sql_exclusive": "url und sql schließen sich gegenseitig aus",
+      "view_deploy_unsupported_type": "Quelle '{{source}}' hat den Typ '{{type}}' und kann keine bereitgestellte Sicht hosten; unterstützte Typen: {{supported}}",
       "view_deployed": "Sicht '{{view}}' in '{{source}}' Schema '{{schema}}' bereitgestellt",
       "view_spans_sources": "Sicht erstreckt sich über mehrere Quellen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
