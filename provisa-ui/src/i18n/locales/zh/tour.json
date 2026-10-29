@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "窗口之外的读取",
-        "description": "close_by_category 是财务的结账汇总，只能在 02:00 到 02:15 UTC 之间读取。在此之外，这次读取会被拒绝，并指出视图名称和窗口下次开放的时间。"
+        "description": "close_by_category 是财务的结账汇总，只能在 02:00 到 02:15 UTC 之间读取。在此之外，这次读取会被拒绝，并指出视图名称和窗口下次开放的时间。在窗口之内，则会返回结账汇总。"
       },
       "provisioningRest": {
         "title": "通过 REST 查看拉取",

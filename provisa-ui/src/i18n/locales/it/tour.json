@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Una lettura fuori dalla sua finestra",
-        "description": "close_by_category, la chiusura della finanza, può essere letta solo dalle 02:00 alle 02:15 UTC. Al di fuori questa lettura viene rifiutata, indicando la vista e quando la sua finestra si riapre."
+        "description": "close_by_category, la chiusura della finanza, può essere letta solo dalle 02:00 alle 02:15 UTC. Al di fuori questa lettura viene rifiutata, indicando la vista e quando la sua finestra si riapre. Dentro la finestra restituisce invece la chiusura."
       },
       "provisioningRest": {
         "title": "I prelievi via REST",
