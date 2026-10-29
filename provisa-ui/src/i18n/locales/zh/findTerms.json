@@ -74,7 +74,7 @@
     "definitionSynthesizedHint": "没有段落明确定义它；此定义取自标记为已使用的段落。",
     "definitionMissing": "未找到定义",
     "synonyms": "同义词",
-    "synonymsHelp": "勾选的名称将作为该术语的同义词添加。",
+    "synonymsHelp": "此处保留的名称将作为该术语的同义词添加。",
     "variantAbbreviation": "缩写",
     "variantAlternativeName": "其他名称",
     "variantForm": "词形",

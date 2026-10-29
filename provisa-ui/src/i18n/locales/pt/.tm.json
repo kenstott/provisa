@@ -1877,7 +1877,7 @@
   "pt/findTerms.json::findTerms.statusRunning": "Scanning",
   "pt/findTerms.json::findTerms.summary": "{{passages}} passages read, {{mentions}} mentions, {{candidates}} candidate terms.",
   "pt/findTerms.json::findTerms.synonyms": "Synonyms",
-  "pt/findTerms.json::findTerms.synonymsHelp": "Checked names are added as synonyms of the term.",
+  "pt/findTerms.json::findTerms.synonymsHelp": "The names kept here are added as synonyms of the term.",
   "pt/findTerms.json::findTerms.title": "Find terms in a document",
   "pt/findTerms.json::findTerms.url": "URL",
   "pt/findTerms.json::findTerms.urlHelp": "A web page or document served over http or https, fetched once.",

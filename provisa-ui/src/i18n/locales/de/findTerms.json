@@ -74,7 +74,7 @@
     "definitionSynthesizedHint": "Keine Passage definiert ihn ausdrücklich; diese Definition stammt aus den als verwendet markierten Passagen.",
     "definitionMissing": "Keine Definition gefunden",
     "synonyms": "Synonyme",
-    "synonymsHelp": "Markierte Namen werden als Synonyme des Begriffs hinzugefügt.",
+    "synonymsHelp": "Die hier behaltenen Namen werden als Synonyme des Begriffs hinzugefügt.",
     "variantAbbreviation": "Abkürzung",
     "variantAlternativeName": "anderer Name",
     "variantForm": "Form",

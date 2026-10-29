@@ -74,7 +74,7 @@
     "definitionSynthesizedHint": "明示的に定義しているパッセージはありません。この定義は、使用済みとしてマークされたパッセージから作成されています。",
     "definitionMissing": "定義が見つかりません",
     "synonyms": "同義語",
-    "synonymsHelp": "チェックした名前が用語の同義語として追加されます。",
+    "synonymsHelp": "ここに残した名前が用語の同義語として追加されます。",
     "variantAbbreviation": "略語",
     "variantAlternativeName": "別名",
     "variantForm": "表記ゆれ",

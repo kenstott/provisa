@@ -1881,7 +1881,7 @@
   "zh/findTerms.json::findTerms.statusRunning": "Scanning",
   "zh/findTerms.json::findTerms.summary": "{{passages}} passages read, {{mentions}} mentions, {{candidates}} candidate terms.",
   "zh/findTerms.json::findTerms.synonyms": "Synonyms",
-  "zh/findTerms.json::findTerms.synonymsHelp": "Checked names are added as synonyms of the term.",
+  "zh/findTerms.json::findTerms.synonymsHelp": "The names kept here are added as synonyms of the term.",
   "zh/findTerms.json::findTerms.title": "Find terms in a document",
   "zh/findTerms.json::findTerms.url": "URL",
   "zh/findTerms.json::findTerms.urlHelp": "A web page or document served over http or https, fetched once.",
