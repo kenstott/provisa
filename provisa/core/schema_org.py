@@ -1979,6 +1979,68 @@ code_source_vectors = Table(
 )
 
 
+# REQ-2185: the org's reference library -- documents its assistants draw on, each with a status
+# (proposed or kept) and domains (a list, or "*" for the whole org, as a glossary term's). A
+# document's content is held as its passages, each embedded by the org's vector model;
+# ``vector`` is the embedding as a JSON array of floats (the code_source_vectors pattern).
+reference_documents = Table(
+    "reference_documents",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("title", Text, nullable=False),
+    Column("source_kind", Text, nullable=False),  # file | url
+    Column("source", Text, nullable=False),  # the file's name, or the URL
+    Column("media_type", Text, nullable=False),
+    Column("content_sha256", Text, nullable=False),
+    Column("status", Text, nullable=False),  # proposed | kept
+    Column("embedding_model", Text, nullable=False),
+    Column("added_by", Text, nullable=True),
+    Column("added_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("refreshed_at", DateTime(timezone=True), nullable=True),
+    Column("replaced_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint("source_kind IN ('file', 'url')", name="reference_documents_kind_check"),
+    CheckConstraint("status IN ('proposed', 'kept')", name="reference_documents_status_check"),
+)
+
+# REQ-2185: a library document's domains; "*" is the whole org and stands alone.
+reference_document_domains = Table(
+    "reference_document_domains",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("domain_id", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("document_id", "domain_id"),
+)
+
+# REQ-2185: a library document's passages, in order, each with where it sits (a section heading,
+# a page) and its embedding.
+reference_passages = Table(
+    "reference_passages",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("section", Text, nullable=True),
+    Column("page", Integer, nullable=True),
+    Column("text", Text, nullable=False),
+    Column("vector", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("document_id", "ordinal"),
+)
+
+
 admin_audit_log = Table(
     "admin_audit_log",
     metadata,

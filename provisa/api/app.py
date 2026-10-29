@@ -4793,6 +4793,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
+    from provisa.api.admin.reference_library_router import (  # REQ-2185
+        router as reference_library_router,
+    )
+
+    app.include_router(reference_library_router)
     from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
 
     app.include_router(model_report_router)
