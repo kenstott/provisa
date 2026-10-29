@@ -16,17 +16,20 @@ vocabulary under ``/vocab/``:
 
 - a table's class, ``{base}/vocab/{domain}/{table}``; every table is a class, its rows its
   instances (the W3C Direct Mapping);
-- a column's predicate, ``{base}/vocab/{domain}/{table}#{column}``;
+- a column's predicate, ``{base}/vocab/{domain}/{table}#{column}``, for a column bound to no
+  property term: two columns of one name need not mean the same thing;
 - a term's class or property, ``{base}/vocab/term/{name}``: a class term types the instances of
   the tables it grounds besides their table class, and a property term is the predicate of the
-  columns it grounds besides their own;
+  columns it grounds, in place of their own (REQ-2163, A TERM-BOUND COLUMN'S PROPERTY IS THE
+  TERM'S): one IRI shared by every class that has it, as a Cypher property key is, its domains
+  (rdfs:domain) those classes;
 - an edge type, ``{base}/vocab/rel/{relationship type}``.
 
 Each segment is percent-encoded as an instance key is. The vocabulary is built for one role, from
 the label map built for it, so a class or predicate the role cannot read is not in it.
 """
 
-# Requirements: REQ-2135, REQ-2141
+# Requirements: REQ-2135, REQ-2141, REQ-2163
 
 from __future__ import annotations
 
@@ -127,6 +130,11 @@ class Vocabulary:
     def labels_of_class(self, iri: str) -> list[str]:
         return self.classes.get(iri, [])
 
+    def property_iri(self, label: str, prop: str) -> str | None:
+        """The predicate ``label``'s property ``prop`` is published under: its first property
+        term's IRI when a term binds it, else its column's own; None when it has none."""
+        return next((iri for iri, cp in self.columns_of.get(label, []) if cp.prop == prop), None)
+
 
 def table_class_iri(base: str, domain: str, table: str) -> str:
     return f"{base}/vocab/{_seg(domain)}/{_seg(table)}"
@@ -174,8 +182,12 @@ def build_vocabulary(
         for prop in nm.properties:
             datatype = xsd_of(column_types.get((label, prop), "varchar"))
             cp = ColumnPredicate(label, prop, datatype)
-            iris = [column_iri(base, nm.domain_id, nm.table_name, prop)]
-            iris += [term_iri(base, t) for t in grounding.property_terms.get((label, prop), ())]
+            terms = grounding.property_terms.get((label, prop), ())
+            iris = (
+                [term_iri(base, t) for t in terms]
+                if terms
+                else [column_iri(base, nm.domain_id, nm.table_name, prop)]
+            )
             for iri in iris:
                 columns[iri].append(cp)
                 columns_of[label].append((iri, cp))
@@ -288,11 +300,13 @@ def vocabulary_document(
 ) -> dict:
     """The vocabulary as GET /data/sparql/vocabulary answers it: its base and prefixes; each class
     (a table's own, or a Class term) with the labels it types and, for a Class term, the terms it
-    is a KIND_OF (:func:`superclasses_of`); each predicate (a column's own, or a Property term) with
-    its label, property and datatype; each edge type with its source and target; and the live
-    Concept terms (:func:`concepts_of`). A Class or Property term, and a Concept, carries its
-    ``domains`` (:func:`term_domains_of`); a term with none is in no domain, and a client shows it
-    under every selection (REQ-1723, REQ-2163)."""
+    is a KIND_OF (:func:`superclasses_of`); each predicate: a column's own once per column, with
+    its label, property and datatype, and a Property term once, with ``classes``, its rdfs:domain
+    per class whose column binds it, each that class's IRI with its label, property and datatype
+    (REQ-2163); each edge type with its source and target; and the live Concept terms
+    (:func:`concepts_of`). A Class or Property term, and a Concept, carries its ``domains``
+    (:func:`term_domains_of`); a term with none is in no domain, and a client shows it under every
+    selection (REQ-1723, REQ-2163)."""
     term_root = f"{vocab.base}/vocab/term/"
 
     def kind(iri: str, own: str) -> str:
@@ -300,6 +314,29 @@ def vocabulary_document(
 
     def terms_part(iri: str) -> dict:
         return {"domains": list(term_domains.get(iri, []))} if iri.startswith(term_root) else {}
+
+    def predicate(iri: str, cps: list[ColumnPredicate]) -> list[dict]:
+        if not iri.startswith(term_root):
+            return [
+                {
+                    "iri": iri,
+                    "kind": "column",
+                    "label": cp.label,
+                    "property": cp.prop,
+                    "datatype": cp.datatype,
+                }
+                for cp in cps
+            ]
+        classes = [
+            {
+                "class": vocab.classes_of[cp.label][0],
+                "label": cp.label,
+                "property": cp.prop,
+                "datatype": cp.datatype,
+            }
+            for cp in cps
+        ]
+        return [{"iri": iri, "kind": "term", "classes": classes, **terms_part(iri)}]
 
     return {
         "base": vocab.base,
@@ -315,16 +352,7 @@ def vocabulary_document(
             for iri, labels in vocab.classes.items()
         ],
         "predicates": [
-            {
-                "iri": iri,
-                "kind": kind(iri, "column"),
-                "label": cp.label,
-                "property": cp.prop,
-                "datatype": cp.datatype,
-                **terms_part(iri),
-            }
-            for iri, cps in vocab.columns.items()
-            for cp in cps
+            entry for iri, cps in vocab.columns.items() for entry in predicate(iri, cps)
         ],
         "edges": [
             {"iri": iri, "type": ep.rel_type, "source": ep.source, "target": ep.target}

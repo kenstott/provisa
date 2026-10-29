@@ -57,6 +57,7 @@ import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
 import { StewardshipSummary } from "./StewardshipSummary";
 import { tableNames, toReview } from "./termFindings";
+import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
@@ -79,7 +80,12 @@ import {
 import { fetchOrgMembers } from "../../api/admin";
 import type { OrgMember } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
-import { ENTERPRISE_DOMAIN } from "../../api/glossary";
+import {
+  ENTERPRISE_DOMAIN,
+  onlyRelatedTo,
+  orderRelTypes,
+  type RelatedToReview,
+} from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import type {
@@ -196,6 +202,17 @@ export function GlossaryTab() {
     setToReviewOnlyState(on);
     writeStoredBool("glossary.toReview", on);
   };
+  // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
+  // links that want review.
+  const [relatedToOnly, setRelatedToOnlyState] = useState(() =>
+    readStoredBool("glossary.relatedTo", false),
+  );
+  const setRelatedToOnly = (on: boolean) => {
+    setRelatedToOnlyState(on);
+    writeStoredBool("glossary.relatedTo", on);
+  };
+  // The RELATED_TO edges the assistant just added, each with the shapes that may resolve it.
+  const [review, setReview] = useState<RelatedToReview[]>([]);
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
@@ -453,11 +470,12 @@ export function GlossaryTab() {
     setBulkGeneratingRelationships(true);
     setActionError("");
     try {
-      const { added } = await generateGlossaryRelationships();
+      const { added, review: toResolve } = await generateGlossaryRelationships();
       notifications.show({
         color: "green",
         message: t("glossaryTab.relationshipsGenerated", { count: added }),
       });
+      setReview(toResolve);
       if (selectedId !== null) await loadDetail(selectedId);
       await refreshList();
     } catch (e) {
@@ -489,7 +507,12 @@ export function GlossaryTab() {
 
   // Kept from render to render: the term graph (REQ-2150) is drawn again only when its words change.
   const relTypeOptions = useMemo(
-    () => GLOSSARY_REL_TYPES.map((rt) => ({ value: rt, label: t(`glossaryTab.rel_${rt}`) })),
+    // REQ-1387: the grounding types first, RELATED_TO last.
+    () =>
+      orderRelTypes(GLOSSARY_REL_TYPES).map((rt) => ({
+        value: rt,
+        label: t(`glossaryTab.rel_${rt}`),
+      })),
     [t],
   );
   const kindOptions = GLOSSARY_EXPERT_KINDS.map((k) => ({
@@ -509,15 +532,17 @@ export function GlossaryTab() {
     (term) =>
       (!statusFilter || term.status === statusFilter) &&
       (!groundingFilter || term.grounding === groundingFilter) &&
-      (!toReviewOnly || toReview(term)),
+      (!toReviewOnly || toReview(term)) &&
+      (!relatedToOnly || term.related_to > 0),
   );
   const statusOptions = (["draft", "approved", "deprecated", "retired"] as const).map((st) => ({
     value: st,
     label: t(`glossaryTab.status_${st}`),
   }));
-  const groundingOptions = (["grounded", "grounded_pending", "not_grounded"] as const).map(
-    (g) => ({ value: g, label: t(`glossaryTab.groundingValue_${g}`) }),
-  );
+  const groundingOptions = (["grounded", "grounded_pending", "not_grounded"] as const).map((g) => ({
+    value: g,
+    label: t(`glossaryTab.groundingValue_${g}`),
+  }));
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -652,6 +677,7 @@ export function GlossaryTab() {
                 styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-to-review-only"
               />
+              <RelatedToFilter checked={relatedToOnly} onChange={setRelatedToOnly} />
             </Group>
             <Group gap={6} px="xs" pb={6} wrap="nowrap" grow>
               <Select
@@ -740,6 +766,9 @@ export function GlossaryTab() {
                       {t("glossaryTab.draftUngrounded")}
                     </Alert>
                   )}
+                {/* REQ-1387 (RELATED_TO IS THE LAST RESORT): held only by RELATED_TO, which does
+                    not ground, so the pair may want a term between. Guidance, never a block. */}
+                {onlyRelatedTo(detail) && <RelatedToHint />}
                 {detail.grounding === "grounded_pending" && detail.pending_on.length > 0 && (
                   <Alert color="yellow" variant="outline" data-testid="glossary-pending-on">
                     {t("glossaryTab.groundingValue_grounded_pending")} —{" "}
@@ -915,7 +944,9 @@ export function GlossaryTab() {
                               return term
                                 ? [
                                     {
-                                      label: t("glossaryTab.findingFix_path_pending", { term: name }),
+                                      label: t("glossaryTab.findingFix_path_pending", {
+                                        term: name,
+                                      }),
                                       run: () => navigateToTerm(term.id),
                                       testId: `glossary-finding-fix-open-${term.id}`,
                                     },
@@ -947,6 +978,7 @@ export function GlossaryTab() {
                     navigateToTerm={navigateToTerm}
                     onSaved={handleSaved}
                     onCancel={() => setEditing(false)}
+                    onTermCreated={() => void refreshList()}
                   />
                 ) : (
                   <TermReadView
@@ -1083,6 +1115,14 @@ export function GlossaryTab() {
           </Stack>
         </Modal>
       )}
+      <RelatedToReviewModal
+        review={review}
+        onClose={() => setReview([])}
+        onShowTerm={(termId) => {
+          setReview([]);
+          navigateToTerm(termId);
+        }}
+      />
     </Stack>
   );
 }

@@ -32131,14 +32131,18 @@
   feature: federation-and-routing-engines
   priority: MUST
   type: behavioral
-  description: 'Databricks SQL warehouse must be supported as a first-class Provisa federation engine
-    with Arrow-native transport capabilities for both READ and WRITE paths. Read-side: Arrow columnar
-    data streaming through the Provisa Arrow Flight server via execute_arrow/execute_stream. Write-side:
-    materialization-store landing, residency reconciliation, and CDC snapshot seed must use Arrow-native
-    columnar bulk writes (via ADBC adbc_ingest() or Parquet -> cloud object stage -> COPY INTO / Delta
-    register), never row-oriented INSERT. End-to-end columnar path avoids row materialization overhead
-    in Python and enables Databricks'' distributed ingest parallelization. Row INSERT acceptable only
-    for tiny writes where per-file staging overhead dominates.'
+  description: 'Databricks SQL warehouse must be supported as a first-class Provisa federation engine with
+    Arrow-native transport capabilities for both READ and WRITE paths. Read-side: Arrow columnar data streaming
+    through the Provisa Arrow Flight server via execute_arrow/execute_stream. Write-side: materialization-store
+    landing, residency reconciliation, and CDC snapshot seed must use Arrow-native columnar bulk writes
+    (via ADBC adbc_ingest() or Parquet -> cloud object stage -> COPY INTO / Delta register), never row-oriented
+    INSERT. End-to-end columnar path avoids row materialization overhead in Python and enables Databricks''
+    distributed ingest parallelization. Row INSERT acceptable only for tiny writes where per-file staging
+    overhead dominates. (Amended 2026-10-29, UNITY CATALOG''S RATE LIMIT IS WAITED OUT:) Maintainer 2026-10-29:
+    when Unity Catalog answers a listing or provisioning call with 429, Provisa waits as it asks (Retry-After,
+    else a short doubling backoff) and tries again a bounded number of times; when the waits run out the
+    call fails naming it. A listing Unity Catalog does not answer is never read as an empty one, and every
+    page of a listing is read. An external location covers a path only when it is a parent folder of it.'
   use_case: Organizations using Databricks SQL warehouses require direct federation capability to Provisa
     without intermediary routing through Trino. Arrow-native transport for both read and write paths avoids
     row materialization overhead and matches Trino's architecture for efficient federated query execution
@@ -88525,12 +88529,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     class or property is {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as
     a key is, since term names are unique and a term''s derived domains change (a renamed term has a new
     IRI); and an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property
-    term has the term''s IRI as its predicate, and its direct predicate stays usable. A class term types
-    the instances of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23,
-    GRAPHQL IS A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL:
-    a GraphQL read lowers to the IR -- a root field to a node pattern with its where, order, skip and limit;
-    a relationship field to a hop on its declared relationship (its direction, a junction''s relationships
-    of the types its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
+    term has the term''s IRI as its predicate, [SUPERSEDED by REQ-2163, 2026-10-29 -- a term-bound column
+    is published only under the term''s property IRI (A TERM-BOUND COLUMN''S PROPERTY IS THE TERM''S, 2026-10-28);
+    only a column bound to no term keeps its per-class IRI. Kept here for history; do not implement against
+    it.] and its direct predicate stays usable. [END SUPERSEDED BLOCK] A class term types the instances
+    of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23, GRAPHQL IS
+    A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL: a GraphQL read
+    lowers to the IR -- a root field to a node pattern with its where, order, skip and limit; a relationship
+    field to a hop on its declared relationship (its direction, a junction''s relationships of the types
+    its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
     cardinality, with the level''s own where, order, skip, limit and distinct_on; a relationship condition
     to EXISTS; an alias to its result name; aggregates and group-by to the IR''s aggregation. The IR''s
     SQL is the canonical semantic SQL (REQ-863), so equivalent GraphQL, Cypher and SPARQL reads compile
@@ -88597,7 +88604,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     view draws a node''s properties, with a toggle that draws them as nodes instead; and a SELECT whose
     variables all bind to resources, pairing into subject and object, is offered ''Draw as graph'', its
     rows becoming nodes and edges (the predicate, where the query binds one, naming the edge). A SELECT
-    that cannot pair so, and an ASK, stay a table.'
+    that cannot pair so, and an ASK, stay a table. (Amended 2026-10-28, THE SPARQL EXPLORER AS AN RDF PERSON
+    EXPECTS, BUILT LIKE THE CYPHER EXPLORER:) The SPARQL explorer meets an RDF practitioner''s expectations
+    and otherwise works like the Cypher explorer. Graphs: in a data answer, resources are nodes labelled
+    by their rdf:type class, a property whose value is a resource is an edge, and a property whose value
+    is a literal is a property of its node, never a node; in an answer about the ontology itself, classes
+    are nodes, with rdfs:subClassOf and property domains and ranges as edges. A SELECT shows its results
+    table first, a column per variable, with a graph view when its rows hold triples; a CONSTRUCT or DESCRIBE
+    shows its graph. The query runs exactly as written; its prefixes are shown and editable; DESCRIBE of
+    a resource works; the endpoint''s URL is shown for other tools. IRIs display compacted by the prefixes
+    in every result cell and graph label, the full IRI on hover and copy; literals show a language tag or
+    datatype compactly and plain strings and integers plainly. Like the Cypher explorer: each query is its
+    own frame, with history and stars; a vocabulary pill starts a new frame; expanding or dragging a node
+    runs a DESCRIBE or CONSTRUCT around that resource and merges its triples into the frame. Any graph view,
+    including one drawn from a SELECT''s triples, exports as Turtle or N-Triples, as a CONSTRUCT''s already
+    does.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -90200,7 +90221,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by_design, failed), its pass rate is passed over passed plus failed, and the landing gate and its baselines
     read those counts for every suite alike. (Amended 2026-10-28, THE CATALOG''S BOOTSTRAP OWNER IS PROVISA:)
     The pgwire catalog''s bootstrap role (oid 10) is named provisa, not postgres: pg_get_userbyid(10) and
-    every owner column answer provisa. The pgwire conformance report lists it as skipped by design.'
+    every owner column answer provisa. The pgwire conformance report lists it as skipped by design. (Amended
+    2026-10-29, A CASE THE CLIENT NEVER SENDS OR THE SUITE SKIPS FOR EVERY SERVER IS SKIPPED BY DESIGN:)
+    Maintainer 2026-10-29: a case the client library under test refuses or drops itself, so the request
+    never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
+    GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
+    server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
+    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -91506,3 +91533,40 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1174
   stakeholders:
   - data-steward
+- id: REQ-2186
+  value: A file source can read the lists on its HTML pages as tables, plain lists as one column and link
+    lists with their addresses.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: File Sources
+  feature: connector-catalog-files-and-lake
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-10-29: a file source can read the lists in its HTML pages (ul and ol)
+    as tables, as it reads their tables. It is a source option, off by default. Only lists inside the
+    page''s content are read, by the same rule the crawler uses to follow only links within content (REQ-1960),
+    and a list of fewer than 3 items is not read. A nested list is flattened into its outer list''s table:
+    its items are rows of that table, in document order, and every list''s table has a level column, 1
+    for a top-level item and one more for each list it is nested in; a nested list is not a table of its
+    own. A list whose items have no link is a table of one column, value, the item''s text. A list in
+    which any item is a link is a table of two columns, value and uri: value is the item''s text and uri
+    the link''s address made absolute against the page''s address, empty for an item with no link. A numbered
+    list (ol) also has a position column, the item''s number within its own list from 1. Each list''s
+    table is named by the heading above it, as a page''s tables are, numbered when two names collide.
+    HTML comes first; Markdown, DOCX and PPTX lists may follow with the same table shapes.'
+  scenario: 'Given a file source over a web page whose content has a heading "Member states" above a numbered
+    list of 27 country names, each a link to the country''s page, and the source''s list option is on
+
+    When the source''s tables are listed
+
+    Then a table named for "Member states" has the columns value, uri, level and position and 27 rows,
+    each at level 1
+
+    And each uri is the absolute address of its country''s page
+
+    And the page''s navigation menu list gives no table'
+  related_reqs:
+  - REQ-1960
+  stakeholders:
+  - data-engineer

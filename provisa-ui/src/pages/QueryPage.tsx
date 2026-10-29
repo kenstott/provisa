@@ -50,7 +50,7 @@ import {
 import { Explorer } from "graphiql-explorer";
 import { useDomains } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
-import { domainAliasMap } from "../types/admin";
+import { domainAliasMap, SYSTEM_SCHEMA_GQL_PREFIX } from "../types/admin";
 import { localizedStreamFrame } from "./streamErrors";
 import { getStored, scopedStorage, setStored, storageKey } from "../lib/browserStorage";
 import { useNamedDemo } from "../context/NamedDemoContext";
@@ -368,6 +368,7 @@ export function SyncedExplorerContent() {
       styles={explorerStyles}
       title=""
       domainLabels={domainLabels}
+      systemSchemaPrefixes={SYSTEM_SCHEMA_GQL_PREFIX}
     />
   );
 }

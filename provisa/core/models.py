@@ -2402,6 +2402,14 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
         return self
 
     @model_validator(mode="after")
+    def _void_names_no_return(self) -> "Function":  # REQ-2001
+        """A command declaring no outputs (``output_columns: []``) is VOID: it names no return."""
+        from provisa.core.void_command import check
+
+        check(self.name, self.output_columns, self.returns, self.return_schema)
+        return self
+
+    @model_validator(mode="after")
     def _builtin_names_a_builtin(self) -> "Function":  # REQ-2168
         if self.impl_kind == "builtin":
             from provisa.core.builtin_commands import check

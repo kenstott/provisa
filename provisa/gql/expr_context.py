@@ -256,6 +256,9 @@ class TranslatorExprContext:
         term = self._t._term_vars.get(name)
         if term is not None:
             return term.copy()
+        # REQ-751: a session walk's relationship variable is the list of relationships it took.
+        if name in self._t._varlen_rel_vars and name in self._t._walk_trails:
+            return self._t._walk_trails[name][1].copy()
         # A CALL-subquery return var is qualified with its CROSS JOIN LATERAL alias; otherwise a bare
         # variable denotes its query-scope alias (CTE-sourced vars keep their mapped alias).
         lateral = self._t._call_var_to_lateral.get(name)
@@ -784,6 +787,10 @@ class TranslatorExprContext:
         """Graph functions that build a JSON node/edge object or array: relationships, nodes,
         startNode, endNode, properties."""
         t = self._t
+        trail = t._walk_trails.get(var)
+        if trail is not None and name in ("relationships", "relationship", "nodes"):
+            # REQ-751: a session walk's path, read from its trail.
+            return (trail[0] if name == "nodes" else trail[1]).copy()
         if name in ("relationships", "relationship"):
             steps = t._path_steps.get(var) or t._path_steps.get(t._varlen_rel_vars.get(var, ""))
             if steps is None:

@@ -51,7 +51,7 @@ from provisa.gql.expr_ast import (
     Variable,
 )
 from provisa.gql.ir import CypherAST, MatchStep, NodePattern, PathPattern, RelPattern
-from provisa.sparql_query.vocabulary import Vocabulary, column_iri, edge_iri, table_class_iri
+from provisa.sparql_query.vocabulary import Vocabulary, edge_iri, table_class_iri
 
 
 class SparqlExportRefused(ValueError):
@@ -205,10 +205,18 @@ class _Printer:
         nm = self.lm.nodes[self.label[var]]
         if name not in nm.properties:
             raise SparqlExportRefused(f"{self.label[var]} has no property {name}")
-        iri = column_iri(self.vocab.base, nm.domain_id, nm.table_name, name)
-        self.prefix(
-            nm.table_name, f"{table_class_iri(self.vocab.base, nm.domain_id, nm.table_name)}#"
-        )
+        # REQ-2163: a term-bound column is written under its term's property, any other under
+        # its column's own.
+        iri = self.vocab.property_iri(self.label[var], name)
+        if iri is None:
+            raise SparqlExportRefused(
+                f"{self.label[var]}'s property {name} has no SPARQL predicate"
+            )
+        own = f"{table_class_iri(self.vocab.base, nm.domain_id, nm.table_name)}#"
+        if iri.startswith(own):
+            self.prefix(nm.table_name, own)
+        else:
+            self.prefix("term", self.vocab.prefixes["term"])
         v = self._fresh(name if (var, name) in self.wanted else f"{var}_{name}")
         triple = f"?{_var_name(var)} {self._iri(iri)} ?{v}"
         if required_in is not None:

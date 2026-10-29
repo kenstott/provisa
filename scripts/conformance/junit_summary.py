@@ -12,9 +12,12 @@
 
 For a suite run with pytest (``--junitxml``) against a Provisa endpoint -- a driver's own
 integration tests -- writes the JSON the conformance pages are filled from
-(scripts/conformance/fill_docs.py) and the same as Markdown for the job summary. A failing test
-is data; a skipped one is counted apart. The exit status is non-zero when no test ran, and, for a
-surface at its baseline (by_design.AT_BASELINE), when a test failed that no group excludes.
+(scripts/conformance/fill_docs.py) and the same as Markdown for the job summary. Each test is
+passed, skipped by design or failed (REQ-2167, amended 2026-10-28); a test the suite skips, or
+whose client never sends what it needs, is skipped by design when a group names it, citing the
+suite's reason or the driver's evidence, and failed otherwise. A failing test is data. The exit status is non-zero when
+the run has no test, and, for a surface at its baseline (by_design.AT_BASELINE), when a test
+failed.
 
 Usage: junit_summary.py <junit.xml>[,<junit.xml>...] <surface> <suite> <version> <tests run> <out.json> <out.md>
 """
@@ -72,59 +75,47 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         if o["outcome"] == "failed"
     ]
     declared = by_design.groups(surface)
-    # REQ-2167 (amended 2026-10-27): a test failed because of a designed limitation is not
-    # runnable by design, in a group naming its decision (by_design/<surface>.yaml); one the
-    # client driver did not send what it needs is left out too, in its own group; an adapted
-    # case counts, marked with what its setup became.
-    # A case the suite skips because a feature is not claimed is classified the same way: under
-    # the design decision or the client behaviour behind it, not as skipped by the suite.
-    tagged = [{**f, "skip": False} for f in failures] + [{**s, "skip": True} for s in skipped]
-    left, excluded = by_design.classify(tagged, declared)
-    left, unsent = by_design.not_sent(left, declared)
-    failures = [{k: c[k] for k in ("feature", "scenario", "reason")} for c in left if not c["skip"]]
-    skipped = [{k: c[k] for k in ("feature", "scenario", "reason")} for c in left if c["skip"]]
-    ran = passed + len(failures)
+    # REQ-2167 (amended 2026-10-27 and 2026-10-28): every case is passed, skipped by design or
+    # failed. A case is skipped by design when a group of by_design/<surface>.yaml names it and
+    # cites its requirement: a design decision of Provisa's, a client library that never sends
+    # what the case needs (the driver's evidence), or a suite that skips the case for every server
+    # (its own reason). Each keeps its recorded reason; a case the suite skipped says so. Any
+    # other case that did not pass is failed. An adapted case counts, marked with what its setup
+    # became.
+    unmet = failures + [
+        {**c, "reason": f"skipped by the suite: {c['reason']}", "skipped": True} for c in skipped
+    ]
+    left, excluded = by_design.classify(unmet, declared)
+    failures = [{k: f[k] for k in ("feature", "scenario", "reason")} for f in left]
     return {
         "surface": surface,
         "suite": suite,
         "version": version,
         "tests": tests,
-        "total": ran + len(skipped),
-        "ran": ran,
-        "passed": passed,
-        "failed": len(failures),
-        "skipped": len(skipped),
-        "skipped_cases": skipped,
-        "not_runnable": sum(g["count"] for g in excluded),
-        "by_design": excluded,
-        "client_not_sent": sum(g["count"] for g in unsent),
-        "not_sent_by_client": unsent,
+        **by_design.outcomes(passed, excluded, failures),
         "adapted": by_design.adapted(outcomes, declared),
-        "pass_rate": round(passed / ran, 4) if ran else None,
-        "failures": failures,
     }
 
 
 def markdown(doc: dict) -> str:
-    rate = "n/a" if doc["pass_rate"] is None else f"{doc['pass_rate']:.1%}"
     return (
         "\n".join(
             [
                 f"## {doc['surface']} conformance: {doc['suite']} {doc['version']}",
                 "",
-                f"Tests: {doc['tests']}. Passed {doc['passed']} of {doc['ran']} ({rate}); "
-                f"{doc['not_runnable']} not runnable by design; {doc['client_not_sent']} not sent "
-                f"by the client; {doc['skipped']} skipped by the suite.",
+                f"Tests: {doc['tests']}. {by_design.counts_line(doc)}",
                 "",
-                *by_design.table(doc["by_design"]),
+                "### Skipped by design",
                 "",
-                "### Not sent by the client",
+                *by_design.table(doc["by_design_groups"], requirement=True),
                 "",
-                *by_design.not_sent_table(doc["not_sent_by_client"]),
+                *by_design.cases_lines(doc["by_design_groups"]),
                 "",
                 "### Adapted",
                 "",
                 *by_design.adapted_lines(doc["adapted"]),
+                "",
+                "### Failed",
                 "",
                 "| Test | Case | Reason |",
                 "| --- | --- | --- |",
@@ -143,9 +134,9 @@ def main(argv: list[str]) -> int:
     doc = summarise(junit, surface, suite, version, tests)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
-    if not doc["ran"]:
+    if not doc["total"]:
         return 1
-    # REQ-2167: at its baseline, a failure no by-design or client group excludes fails the job.
+    # REQ-2167: at its baseline, a failed case fails the job.
     return 1 if by_design.baseline_failed(surface, doc["failed"]) else 0
 
 

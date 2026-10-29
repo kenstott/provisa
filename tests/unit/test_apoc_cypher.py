@@ -200,9 +200,12 @@ async def test_a_yield_naming_a_column_the_command_does_not_return_is_refused(st
         await put_command_rows(sql_ast.sql(dialect="postgres"), "reader", state)
 
 
-async def test_a_composed_call_names_what_it_yields():
-    with pytest.raises(CypherParseError, match="name the columns it returns with YIELD"):
-        parse_cypher("CALL apoc.meta.data({}) RETURN 1")
+async def test_a_composed_call_names_what_it_yields(state):
+    # Read without a YIELD (a VOID command's call takes none, REQ-2001); refused once the command
+    # is known to answer columns.
+    sql_ast, _, _ = cypher_to_sql(parse_cypher("CALL apoc.meta.data({}) RETURN 1"), state.graph, {})
+    with pytest.raises(ApiError, match="name the columns it returns with YIELD"):
+        await put_command_rows(sql_ast.sql(dialect="postgres"), "reader", state)
 
 
 async def test_with_star_carries_every_variable_in_scope():

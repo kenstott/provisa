@@ -35,21 +35,22 @@ glossary_terms:
     \ beyond in-house capability."
   domains:
   - pet-store
-  edges:
-  - to: clinic
-    rel_type: RELATED_TO
-  - to: specialty
-    rel_type: RELATED_TO
 - name: clinic
   approve: true
   definition: "The outside veterinary practice a pet is referred to."
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: specialty
   approve: true
   definition: "The area of veterinary care a referral clinic focuses on."
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: personnel record
   approve: true
   definition: "An employee's role and tenure at the shelter, held for staffing and\
@@ -78,28 +79,30 @@ glossary_terms:
     \ used for weekly coverage and handoff planning."
   domains:
   - shelter
-  edges:
-  - to: shift start
-    rel_type: RELATED_TO
-  - to: shift end
-    rel_type: RELATED_TO
-  - to: schedule location
-    rel_type: RELATED_TO
 - name: shift start
   approve: true
   definition: "The time a scheduled shift begins."
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 - name: shift end
   approve: true
   definition: "The time a scheduled shift ends."
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 - name: schedule location
   approve: true
   definition: "The place a scheduled shift takes place."
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 domains:
 - description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
     \ (PG), and customer inquiries (SQLite) federated into one virtual database"

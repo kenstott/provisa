@@ -28,8 +28,9 @@ removes nothing (REQ-1919), so the command keeps its name from one declaration o
 to the next and is replaced; the runner runs the procedure scenarios after every other one, so a
 scenario calling an unknown procedure meets none.
 
-A procedure with no outputs (VOID) is no command: a command answers rows of its columns. Such a
-scenario is a failure naming that."""
+A procedure with no outputs (VOID) is a VOID command (REQ-2001, amended 2026-10-28): it declares
+no output columns, so a call runs it and answers an empty result with no columns; its statement
+reads each of its arguments and nothing else."""
 
 # Requirements: REQ-2167, REQ-2001
 
@@ -144,14 +145,20 @@ def statement(proc: Procedure) -> str:
     )
 
 
+def void_statement(proc: Procedure) -> str:
+    """The SQL of a VOID procedure's command: one row of its arguments, which its call does not
+    answer (every declared argument is used, REQ-2001)."""
+    items = ['1 AS "_n"'] + [
+        f"CAST({{{{{c}}}}} AS {_TYPES[t][1]}) AS {_quoted(c)}" for c, t in proc.inputs
+    ]
+    return f"SELECT {', '.join(items)}"
+
+
 def command(proc: Procedure) -> dict:
-    """The procedure as a statement command of the fixture model, bound in Cypher to its name."""
-    if not proc.outputs:
-        raise NotACommand(
-            f"the procedure {proc.name} is VOID (it has no outputs), which no command expresses: "
-            "a command answers rows of its columns"
-        )
+    """The procedure as a statement command of the fixture model, bound in Cypher to its name;
+    a VOID procedure as a VOID command, declaring no output columns."""
     name = "tck_" + proc.name.replace(".", "_")
+    void = {"output_columns": []} if not proc.outputs else {}
     return {
         "name": name,
         "function_name": name,
@@ -165,7 +172,8 @@ def command(proc: Procedure) -> dict:
         "visible_to": [],
         "arguments": [{"name": c, "type": _TYPES[t][0]} for c, t in proc.inputs],
         "language_bindings": {"cypher": {"name": proc.name}},
-        "binding": {"sql": statement(proc)},
+        "binding": {"sql": statement(proc) if proc.outputs else void_statement(proc)},
+        **void,
     }
 
 
