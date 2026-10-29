@@ -81,13 +81,49 @@
           It is built the way an operating system is built&#8202;&mdash;&#8202;the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
 
+        <h2 id="lineage">Where the design comes from</h2>
         <p>
-          Three tools it borrows from, one idea each. From Unix: a few small primitives that compose, so a
-          new need is a combination rather than a new subsystem. From Terraform: you declare the state you
-          want, review the diff, and promote it from one environment to the next. From
-          Kubernetes: a controller keeps what is running reconciled to that declaration, so the APIs, the
-          governance and every published copy follow the model instead of drifting from it.
+          Provisa's design comes from two heritages. Devops supplied the method. Data disciplines and regulated industries supplied the problems to solve and the bar the answer has to clear.
         </p>
+        <p>
+          Both point at one goal: the smallest possible set of primitives with which you can define, secure and operate a data estate.
+        </p>
+
+        <h3 id="lineage-devops">The method, from devops</h3>
+        <p>
+          Operating systems, virtual machines, Kubernetes, Terraform and Helm share a habit. Faced with a problem, they first ask which primitives would let the solution be assembled instead of written. Code stays valuable. It keeps its place behind contracts, for the work the primitives can't express.
+        </p>
+        <p>
+          Infrastructure has already made this move. Servers used to be built by hand and kept alive by scripts; today you declare them, and a controller reconciles what runs with what you declared. Data is where infrastructure stood before Kubernetes and Terraform. Each of those tools gave Provisa one idea.
+        </p>
+        <ul>
+          <li>
+            <strong>Operating systems and virtual machines: a small kernel that enforces isolation.</strong>
+            Sources, tables, relationships, roles, rules, terms and commands make up Provisa's kernel. The kernel enforces isolation and permissions, so governance is compiled into every request and no application has to write it again. Sources and engines are drivers. You plug them in, and you can swap one without touching the model above it.
+          </li>
+          <li>
+            <strong>Terraform: declare the desired state, and plan before you apply.</strong>
+            Your model lives in git branches. A change shows up as a diff, with an impact analysis of everything it touches, and it is approved before it moves from one environment to the next.
+          </li>
+          <li>
+            <strong>Kubernetes and Helm: a control plane that reconciles.</strong>
+            What you declared and what is running are kept apart. The model store holds the declaration; the state store holds what the runtime is doing. The runtime keeps converging replicas, freshness and materialized views toward the model, so what you serve follows what you declared.
+          </li>
+        </ul>
+
+        <h3 id="lineage-data">The problems and the bar, from data and regulated industries</h3>
+        <p>
+          Dataops, data management, data architecture and data governance decided which primitives the kernel needed. Years of that work are why governance, lineage and stewardship are part of the kernel itself.
+        </p>
+        <p>
+          Highly regulated industries set the bar. Four of their demands are built in.
+        </p>
+        <ul>
+          <li><strong>Every answer traceable and reproducible.</strong> Citations and run records take you from an answer back to the sources, rules and definitions that produced it.</li>
+          <li><strong>Least privilege by construction.</strong> A role reads only what its grants allow, and the compiler applies those grants to every query in every language.</li>
+          <li><strong>Residency by region.</strong> Tables, sources and materialized views carry a region. Moving one across a border takes a grant of its own.</li>
+          <li><strong>Review before production.</strong> A change reaches production through a merge request, approved by someone other than the person who asked for it.</li>
+        </ul>
 
         <h2 id="one-compiler">Why one compiler can speak every language</h2>
         <p>
