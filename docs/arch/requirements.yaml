@@ -10988,9 +10988,16 @@
   feature: cypher-and-graph-analytics-writes
   priority: SHOULD
   type: behavioral
-  description: Cypher write endpoints return the number of rows affected (rows inserted for CREATE, rows
+  description: 'Cypher write endpoints return the number of rows affected (rows inserted for CREATE, rows
     updated for SET, rows deleted for DELETE). The response includes an `affected_rows` field in the JSON
-    response body.
+    response body. (Amended 2026-10-28, A WRITE''S COUNTERS, AS NEO4J COUNTS THEM:) Every Cypher write,
+    governed or in the graph session, also reports what it did as Neo4j counts it: nodes-created, nodes-deleted,
+    relationships-created, relationships-deleted, properties-set, labels-added and labels-removed, from
+    the rows actually written. Bolt sends them as the summary''s stats (only the non-zero counters, with
+    contains-updates), and the HTTP Cypher answer carries the same map as counters beside affected_rows.
+    A MERGE that matched creates nothing, and an unchanged value set still counts as a property set. A count
+    Provisa cannot know exactly (a governed SET to null, a write whose driver reports no row count) is never
+    guessed: no counters are sent, and the answer carries the count-unknown warning.'
   use_case: Affected-row counts let clients validate mutation success and detect silent failures.
   code:
   - provisa/api/rest/cypher_router.py
