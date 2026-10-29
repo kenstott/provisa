@@ -69,7 +69,7 @@ from provisa.gql.path_functions import PathFunctionsMixin
 from provisa.gql.path_walk import SessionWalkMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
-from provisa.gql.group_by import GroupByMixin
+from provisa.gql.group_by import GroupByMixin, _has_aggregate
 from provisa.gql.translator_helpers import (
     _json_valued,
     _collects_maps,
@@ -406,6 +406,43 @@ def _inlined(node: Any, values: dict[str, CypherExpr]) -> Any:
         f.name: _inlined(getattr(node, f.name), values) for f in dataclasses.fields(node) if f.init
     }
     return replace(node, **changed)
+
+
+def _reads_before_with(with_clause: WithClause) -> set[str]:  # REQ-347
+    """The variables the WITH's WHERE reads that the WITH does not carry: openCypher's WHERE of a
+    WITH sees the scope before the WITH as well as the names it gives (WithWhere7). A name a
+    comprehension, quantifier, reduce or pattern comprehension binds is its own, not read."""
+    from provisa.gql.expr_ast import (
+        ListComprehension,
+        MapProjection,
+        PatternComprehension,
+        Quantifier,
+        Reduce,
+    )
+
+    if with_clause.where is None:
+        return set()
+    read: set[str] = set()
+    bound: set[str] = set()
+    for node in walk(with_clause.where.expression):
+        if isinstance(node, Variable):
+            read.add(node.name)
+        elif isinstance(node, MapProjection):
+            read.add(node.var)
+        elif isinstance(node, (ListComprehension, Quantifier)):
+            bound.add(node.var)
+        elif isinstance(node, Reduce):
+            bound.update((node.var, node.accumulator))
+        elif isinstance(node, PatternComprehension):
+            pattern = node.pattern
+            bound.update(p.variable for p in [*pattern.nodes, *pattern.rels] if p.variable)
+            if node.path_var:
+                bound.add(node.path_var)
+    carried = {
+        i.alias or (i.expression.name if isinstance(i.expression, Variable) else i.name)
+        for i in with_clause.items
+    }
+    return read - bound - carried
 
 
 def _properties_read(node: Any, var: str) -> bool:
@@ -816,6 +853,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 )
                 where_expr = _and(where_expr, kept)
             joins = _optional_step_matches_whole(joins, step_vars)
+        before_with = _reads_before_with(with_clause)
+        aggregates = any(_has_aggregate(i.expression) for i in with_clause.items)
+        filters_read_rows = bool(before_with) and not aggregates
+        if filters_read_rows:
+            assert with_clause.where is not None
+            if with_clause.skip is not None or with_clause.limit is not None:
+                # Its WHERE keeps rows after the SKIP/LIMIT picks them, and reads variables only
+                # the rows before them hold.
+                raise CypherTranslateError(
+                    "A WITH with SKIP or LIMIT whose WHERE reads a variable the WITH does not "
+                    f"carry ({', '.join(sorted(before_with))}) is not supported; carry it"
+                )
+            # The WHERE reads the variables before the WITH, so it filters the rows the WITH
+            # reads, a name the WITH gives read as its value. DISTINCT and ORDER BY then act on
+            # the rows it keeps.
+            given = {
+                i.alias: i.expression
+                for i in with_clause.items
+                if i.alias
+                and not (isinstance(i.expression, Variable) and i.expression.name == i.alias)
+            }
+            read_rows = WhereClause(expression=_inlined(with_clause.where.expression, given))
+            where_expr = _and(where_expr, self._lower_where(read_rows))
 
         stage_query = exp.select(*select_exprs)
         if from_clause is not None:
@@ -842,7 +902,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.limit(with_clause.limit)
         if with_clause.skip is not None:
             stage_query = stage_query.offset(with_clause.skip)
-        if with_clause.where is not None:
+        if with_clause.where is not None and not filters_read_rows:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
             before = (
                 self._var_table,
