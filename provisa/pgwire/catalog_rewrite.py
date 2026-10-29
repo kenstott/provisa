@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import itertools
 
+from typing import cast
+
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -273,10 +275,19 @@ def _rewrite_pg_cast(node, _transform):
     """
     import sqlglot.expressions as exp
 
+    from provisa.pgwire.catalog_regs import reg_name, reg_oid, reg_type_of
+
     dtype = node.args.get("to")
     dtype_str = str(dtype).lower() if dtype else ""
     # A type named in pg_catalog (psql writes ::pg_catalog.regclass) is that type.
     dtype_str = dtype_str.removeprefix("pg_catalog.")
+    inner_reg = reg_type_of(node.this.to) if isinstance(node.this, exp.Cast) else None
+    if inner_reg is not None and dtype_str in _TEXT_CAST_TYPES:
+        # REQ-2167: a reg* value as text is the name of the object it names.
+        return reg_name(inner_reg, _reg_operand(node.this.this, _transform))
+    if dtype_str in ("regtype", "regnamespace"):
+        # REQ-2167: the oid of the type or schema a name names.
+        return reg_oid(dtype_str, _reg_operand(node.this, _transform))
     if dtype_str in _REG_CAST_TYPES:
         # `'[schema.]name'::regclass` → unqualified `'name'`. Provisa's synthetic
         # pg_description stores classoid as the short relation name (e.g.
@@ -299,6 +310,14 @@ def _rewrite_pg_cast(node, _transform):
         # BIGINT covers every real catalog oid (< 2^31) and interops with signed
         # columns.
         inner = node.this
+        if (
+            inner_reg is not None
+            and isinstance(inner.this, exp.Literal)
+            and inner.this.is_string
+            and _CATALOG_CLASS_OIDS.get(inner.this.name.rsplit(".", 1)[-1]) is None
+        ):
+            # REQ-2167: the oid of the object a name names, read from the catalog.
+            return reg_oid(inner_reg, inner.this)
         if isinstance(inner, exp.Cast):
             # Chained cast (e.g. 'pg_extension'::regclass::oid): the transform
             # visits this outer cast before the inner one, and sqlglot's
@@ -307,19 +326,72 @@ def _rewrite_pg_cast(node, _transform):
             # are already fully transformed, so no further transform is needed.
             inner = _rewrite_pg_cast(inner, _transform) or inner.transform(_transform)
         elif isinstance(inner, exp.Literal) and inner.is_string:
-            class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
+            class_oid = _CATALOG_CLASS_OIDS.get(inner.name.rsplit(".", 1)[-1])
             if class_oid is not None:
                 return exp.Literal.number(class_oid)
         else:
             inner = inner.transform(_transform)
         if isinstance(inner, exp.Literal) and inner.is_string:
-            class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
+            class_oid = _CATALOG_CLASS_OIDS.get(inner.name.rsplit(".", 1)[-1])
             if class_oid is not None:
                 return exp.Literal.number(class_oid)
         return exp.cast(inner, "BIGINT")
     if dtype_str == "name":
         return exp.cast(node.this.transform(_transform), "VARCHAR")
     return None
+
+
+#: The text types a reg* value is cast to for its name.
+_TEXT_CAST_TYPES = frozenset({"text", "varchar", "character varying", "name"})
+
+
+def _reg_operand(operand, _transform):
+    """A reg* cast's operand for the catalog: a name as it is written, anything else rewritten."""
+    import sqlglot.expressions as exp
+
+    if isinstance(operand, exp.Literal):
+        return operand
+    return operand.transform(_transform)
+
+
+#: format_type's modifier for a type whose typmod is a length or a precision: the typmod's SQL
+#: (``m``) gives the text after the type's name. A length or a precision and scale is held with
+#: VARHDRSZ (4) added; a time's or a bit string's typmod is the number itself.
+_TYPMOD_TEXT: dict[str, tuple[str, str]] = {
+    "varchar": ("character varying", "'(' || ({m} - 4) || ')'"),
+    "bpchar": ("character", "'(' || ({m} - 4) || ')'"),
+    "numeric": ("numeric", "'(' || (({m} - 4) >> 16) || ',' || (({m} - 4) & 65535) || ')'"),
+    "bit": ("bit", "'(' || {m} || ')'"),
+    "varbit": ("bit varying", "'(' || {m} || ')'"),
+}
+_TIME_TYPMOD_TEXT: dict[str, str] = {
+    "time": "'time(' || {m} || ') without time zone'",
+    "timetz": "'time(' || {m} || ') with time zone'",
+    "timestamp": "'timestamp(' || {m} || ') without time zone'",
+    "timestamptz": "'timestamp(' || {m} || ') with time zone'",
+}
+
+
+def _with_typmod(display_name, typmod):
+    """format_type(type, typmod): the type's name with the modifier its typmod gives (REQ-2167);
+    a negative typmod gives none, except that bpchar is then named bpchar, as PostgreSQL names
+    a character string of no declared length."""
+    import sqlglot
+
+    m = f"({typmod.sql(dialect='duckdb')})"
+    cases = [
+        f"WHEN '{internal}' THEN '{name}' || {suffix.replace('{m}', m)}"
+        for internal, (name, suffix) in _TYPMOD_TEXT.items()
+    ] + [
+        f"WHEN '{internal}' THEN {text.replace('{m}', m)}"
+        for internal, text in _TIME_TYPMOD_TEXT.items()
+    ]
+    shown = display_name.sql(dialect="duckdb")
+    sql = (
+        f"CASE WHEN {m} >= 0 THEN CASE typname {' '.join(cases)} ELSE {shown} END "
+        f"WHEN typname = 'bpchar' THEN 'bpchar' ELSE {shown} END"
+    )
+    return sqlglot.parse_one(sql, read="duckdb")
 
 
 # REQ-2167: the sizes a client asks for, each its PostgreSQL type.
@@ -579,6 +651,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     ],
                     default=exp.column("typname"),
                 )
+                if len(args) > 1 and not isinstance(args[1], exp.Null):
+                    display_name = _with_typmod(display_name, args[1].transform(_transform))
                 subq = (
                     exp.select(display_name)
                     .from_("_pg_type")
@@ -650,8 +724,29 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.cast(exp.null(), _SIZES[fn])
             if "pg_stat_get" in fn:
                 return _emulated(fn, exp.Literal.number(0))
-            if "pg_table_is_visible" in fn or "pg_has_role" in fn:
+            if "pg_table_is_visible" in fn and len(args) == 1:
+                # REQ-2167: every relation the catalog holds is visible; an oid naming none is
+                # NULL, as PostgreSQL answers it.
+                return exp.Subquery(
+                    this=exp.select(exp.true())
+                    .from_("_pg_class")
+                    .where(
+                        exp.EQ(
+                            this=exp.column("oid"),
+                            expression=exp.cast(args[0].transform(_transform), "BIGINT"),
+                        )
+                    )
+                )
+            if "pg_has_role" in fn:
                 return exp.true()
+            if fn == "quote_ident" and len(args) == 1:
+                # REQ-2167: as PostgreSQL quotes an identifier: bare when it needs no quotes.
+                from provisa.pgwire.catalog_macros import quoted_identifier
+
+                name = f"CAST(({args[0].transform(_transform).sql(dialect='duckdb')}) AS VARCHAR)"
+                return cast(
+                    "exp.Expression", sqlglot.parse_one(quoted_identifier(name), read="duckdb")
+                )
             if fn == "encode":
                 # PG encode(bytea, format) → return NULL; our catalog columns are VARCHAR not bytea
                 return exp.null()
@@ -676,7 +771,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 args = node.args.get("expressions", [])
                 key = args[0].name.lower() if args and isinstance(args[0], exp.Literal) else ""
                 return exp.Literal.string(_KNOWN_SETTINGS.get(key, ""))
-        if type(node).__name__ == "CurrentUser":
+        if type(node).__name__ in ("CurrentUser", "SessionUser"):
             return exp.Literal.string(role_id)
         if type(node).__name__ == "CurrentDatabase":
             return exp.Literal.string(database)
@@ -710,7 +805,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         if isinstance(node, exp.Cast):
             rewritten_cast = _rewrite_pg_cast(node, _transform)
             if rewritten_cast is not None:
-                return rewritten_cast
+                return cast("exp.Expression", rewritten_cast)
         if isinstance(node, exp.Column):
             if node.name.lower() in ("xmin", "xmax", "cmin", "cmax", "ctid"):
                 return exp.cast(exp.Literal.number(0), "INTEGER")
@@ -725,6 +820,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.column(node.name, table=tname)
         return node
 
+    from provisa.pgwire.catalog_regs import project_reg_values
+
+    project_reg_values(tree)  # REQ-2167: a result column that is a reg* value
     try:
         rewritten = tree.transform(_transform)
         # Move INNER JOINs before LEFT/RIGHT/FULL JOINs so DuckDB does not reject

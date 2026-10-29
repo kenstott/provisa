@@ -646,13 +646,41 @@ def type_conversions(pg: Server, provisa: Server, names: dict[int, str]) -> dict
             | {"column": col, "declared": typ, "registered_as": model_type[col]}
         )
     casts = [_compare_statement(pg, provisa, f"SELECT {expr} AS v", names) for expr in CASTS]
+    return conversion_outcomes(fixture, casts)
+
+
+def conversion_outcomes(fixture: list[dict], casts: list[dict]) -> dict[str, Any]:
+    """The statements compared, each in one outcome (REQ-2167, amended 2026-10-28): passed (no
+    difference), by design (every difference one a by-design group of by_design/pgwire.yaml
+    names: the statement is its case, ``type conversion::<statement>``, and its differences its
+    reason), or failed."""
     rows = fixture + casts
+    differing = [
+        {
+            "feature": "type conversion",
+            "scenario": r["statement"],
+            "reason": "; ".join(r["differences"]),
+        }
+        for r in rows
+        if r["differences"]
+    ]
+    remaining, excluded = by_design.classify(differing, by_design.groups("pgwire"))
+    failed = {f["scenario"] for f in remaining}
+    for r in rows:
+        r["outcome"] = (
+            "passed"
+            if not r["differences"]
+            else "failed"
+            if r["statement"] in failed
+            else "by_design"
+        )
     return {
         "fixture_columns": fixture,
         "casts": casts,
         "compared": len(rows),
-        "matching": sum(1 for r in rows if not r["differences"]),
-        "differing": sum(1 for r in rows if r["differences"]),
+        "matching": sum(1 for r in rows if r["outcome"] == "passed"),
+        "by_design": excluded,
+        "differing": len(failed),
     }
 
 
@@ -724,13 +752,21 @@ def markdown(report: dict[str, Any]) -> str:
         "",
         f"{ty['compared']} statements compared (fixture columns and tool casts): "
         f"{ty['matching']} identical in type OID, typmod, text and binary encoding; "
+        f"{sum(g['count'] for g in ty['by_design'])} differ by design; "
         f"{ty['differing']} differ.",
         "",
+    ]
+    if ty["by_design"]:
+        out += _details(
+            f"Conversions that differ by design ({sum(g['count'] for g in ty['by_design'])})",
+            by_design.table(ty["by_design"]),
+        )
+    out += [
         "| statement | PostgreSQL type | Provisa type | differences |",
         "|---|---|---|---|",
     ]
     for row in ty["fixture_columns"] + ty["casts"]:
-        if not row["differences"]:
+        if row["outcome"] != "failed":
             continue
         diffs = "; ".join(row["differences"]).replace("|", "\\|").replace("\n", " ")[:600]
         out.append(

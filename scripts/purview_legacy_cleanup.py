@@ -48,9 +48,17 @@ from provisa.api.metadata_export.purview import API_VERSION
 DOMAIN = "provisa-e2e-sales"
 TERM_NAMES = frozenset({"customer", "order"})
 GLOSSARY_QN = f"provisa_glossary.mdx_purview_e2e@{CLUSTER}"
-SOURCE_QN = f"mdx-wh@{CLUSTER}"
-TABLE_QN_PREFIX = "mdx-wh.mdx_e2e."
-DATA_PRODUCT_QN_PREFIX = "data-product."
+# The old Purview e2e (tests/integration/metadata_export_server.py: SOURCE, SCHEMA, PRODUCT and the
+# two member tables' columns) published these fixed names; atlas.py builds each qualifiedName as
+# ``<parts joined by .>@provisa``. Data Map search is not usable on this account, so each name is
+# looked up exactly. The Purview run published no view (with_view=False).
+SOURCE_ID = "mdx-wh"
+SCHEMA = "mdx_e2e"
+TABLE_COLUMNS = {
+    "customers": ("id", "name"),
+    "orders": ("id", "customer_id", "amount", "region", "ssn", "margin"),
+}
+DATA_PRODUCT_IDS = ("customer_360",)
 CREDENTIALS = (
     "PROVISA_E2E_PURVIEW_ENDPOINT",
     "AZURE_TENANT_ID",
@@ -65,6 +73,20 @@ TERM_CATEGORIES = ("DATAASSET", "TERM")
 ID_KINDS = ("products", "terms", "data_assets", "entities", "glossary_terms", "glossaries")
 
 
+class PurviewError(httpx.HTTPError):
+    """A non-2xx answer: the status and the response body (Purview error bodies carry no secrets).
+    Request headers are never part of it."""
+
+
+def check(response: httpx.Response) -> httpx.Response:
+    if not response.is_success:
+        request = response.request
+        raise PurviewError(
+            f"{request.method} {request.url} -> HTTP {response.status_code}: {response.text}"
+        )
+    return response
+
+
 class Account(Protocol):
     """The Purview calls this tool makes; HttpAccount is the live one, tests give a fake."""
 
@@ -76,8 +98,7 @@ class Account(Protocol):
     def uc_delete(self, kind: str, item_id: str) -> None: ...
     def assets_over(self, guids: list[str]) -> list[dict]: ...
     def asset_delete(self, asset_id: str) -> None: ...
-    def dm_search(self, type_name: str) -> list[dict]: ...
-    def dm_entities(self, guids: list[str]) -> list[dict]: ...
+    def dm_lookup(self, type_name: str, qualified_name: str) -> dict | None: ...
     def dm_delete_entities(self, guids: list[str]) -> None: ...
     def dm_glossaries(self) -> list[dict]: ...
     def dm_glossary_terms(self, glossary_guid: str) -> list[dict]: ...
@@ -113,18 +134,19 @@ def _uc_row(kind: str, item: dict) -> Row:
     )
 
 
-def is_legacy_data_map_name(type_name: str, qn: str) -> bool:
-    """A Data Map entity of the old fixed names: the source, its tables and columns
-    (``mdx-wh.mdx_e2e.*``), or a data product entity. Never a type definition."""
-    if not qn.endswith(f"@{CLUSTER}"):
-        return False
-    if type_name == PROVISA_SOURCE_TYPE:
-        return qn == SOURCE_QN
-    if type_name in (PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE):
-        return qn.startswith(TABLE_QN_PREFIX)
-    if type_name == PROVISA_DATA_PRODUCT_TYPE:
-        return qn.startswith(DATA_PRODUCT_QN_PREFIX)
-    return False
+def _qn(*parts: str) -> str:
+    return f"{'.'.join(parts)}@{CLUSTER}"
+
+
+def legacy_data_map_names() -> list[tuple[str, str]]:
+    """Every (type, qualifiedName) the old fixture published: the source, its tables and columns,
+    and the data product. Never a type definition."""
+    names = [(PROVISA_SOURCE_TYPE, _qn(SOURCE_ID))]
+    for table, columns in TABLE_COLUMNS.items():
+        names.append((PROVISA_TABLE_TYPE, _qn(SOURCE_ID, SCHEMA, table)))
+        names += [(PROVISA_COLUMN_TYPE, _qn(SOURCE_ID, SCHEMA, table, c)) for c in columns]
+    names += [(PROVISA_DATA_PRODUCT_TYPE, _qn("data-product", pid)) for pid in DATA_PRODUCT_IDS]
+    return names
 
 
 def _guid_time(entity: dict) -> str:
@@ -161,28 +183,23 @@ def find_legacy(account: Account) -> tuple[list[Row], dict[str, list[str]]]:
                     )
 
     guids: list[str] = []
-    for type_name in (
-        PROVISA_SOURCE_TYPE,
-        PROVISA_TABLE_TYPE,
-        PROVISA_COLUMN_TYPE,
-        PROVISA_DATA_PRODUCT_TYPE,
-    ):
-        for hit in account.dm_search(type_name):
-            if is_legacy_data_map_name(type_name, hit["qualifiedName"]):
-                guids.append(hit["id"])
-    guids = sorted(set(guids))
-    for entity in account.dm_entities(guids) if guids else []:
-        attrs = entity["attributes"]
+    for type_name, qn in legacy_data_map_names():
+        entity = account.dm_lookup(type_name, qn)
+        if entity is None:
+            rows.append(Row(f"data map {type_name}", qn, "-", "absent", "-"))
+            continue
         rows.append(
             Row(
                 f"data map {entity['typeName']}",
-                attrs["qualifiedName"],
+                entity["attributes"]["qualifiedName"],
                 entity["guid"],
                 _cell(entity.get("status")),
                 _guid_time(entity),
             )
         )
-        ids["entities"].append(entity["guid"])
+        guids.append(entity["guid"])
+    guids = sorted(set(guids))
+    ids["entities"] = list(guids)
     for asset in account.assets_over(guids) if guids else []:
         rows.append(
             Row(
@@ -355,7 +372,7 @@ class HttpAccount:
             },
             timeout=60,
         )
-        token.raise_for_status()
+        check(token)
         self._http = httpx.Client(
             headers={"Authorization": f"Bearer {token.json()['access_token']}"}, timeout=60
         )
@@ -370,8 +387,7 @@ class HttpAccount:
         return f"{self._map}/api/atlas/v2"
 
     def _ok(self, response: httpx.Response) -> httpx.Response:
-        response.raise_for_status()
-        return response
+        return check(response)
 
     def _paged(self, url: str, **params: str) -> list[dict]:
         items: list[dict] = []
@@ -440,46 +456,16 @@ class HttpAccount:
             )
         )
 
-    def dm_search(self, type_name: str) -> list[dict]:
-        """Every live Data Map entity of ``type_name`` as {"id", "qualifiedName"}, through Atlas
-        basic search on the same Data Map base the adapter publishes to (``{endpoint}/api/atlas/v2``)."""
-        hits: list[dict] = []
-        offset = 0
-        while True:
-            body = self._ok(
-                self._http.post(
-                    f"{self._atlas}/search/basic",
-                    json={
-                        "typeName": type_name,
-                        "excludeDeletedEntities": True,
-                        "limit": 1000,
-                        "offset": offset,
-                    },
-                )
-            ).json()
-            page = body.get("entities") or []
-            hits.extend(
-                {"id": e["guid"], "qualifiedName": e["attributes"]["qualifiedName"]} for e in page
-            )
-            offset += len(page)
-            if len(page) < 1000:
-                return hits
-
-    def dm_entities(self, guids: list[str]) -> list[dict]:
-        entities: list[dict] = []
-        for start in range(0, len(guids), 50):
-            response = self._ok(
-                self._http.get(
-                    f"{self._atlas}/entity/bulk",
-                    params=[
-                        *[("guid", g) for g in guids[start : start + 50]],
-                        ("minExtInfo", "true"),
-                        ("ignoreRelationships", "true"),
-                    ],
-                )
-            )
-            entities.extend(response.json()["entities"])
-        return entities
+    def dm_lookup(self, type_name: str, qualified_name: str) -> dict | None:
+        """The entity of ``type_name`` with exactly ``qualified_name``, or None when the Data Map
+        answers 404 (not present). Any other non-2xx raises."""
+        response = self._http.get(
+            f"{self._atlas}/entity/uniqueAttribute/type/{type_name}",
+            params={"attr:qualifiedName": qualified_name, "ignoreRelationships": "true"},
+        )
+        if response.status_code == 404:
+            return None
+        return self._ok(response).json()["entity"]
 
     def dm_delete_entities(self, guids: list[str]) -> None:
         self._ok(
