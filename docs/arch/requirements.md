@@ -26729,3 +26729,13 @@ A Provisa view whose SQL reads one source only can be deployed onto that source 
 **Code:** —
 
 **Tests:** `tests/unit/test_deploy_view_source_types.py`, `tests/integration/test_deploy_view_to_db_e2e.py`
+
+### REQ-2185 · Business Glossary & Ontology {#REQ-2185}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An org keeps a reference library: documents relevant to its ongoing work in Provisa (policies, regulations, contracts, specifications, standards), added as a file or an http(s) URL. The library is read by AI assistance: Polly answers from it, MCP serves it to agents, and the ontology uses it when it finds terms in a document ([REQ-2179](#REQ-2179)), drafts definitions and proposes relationships. Whatever uses a passage cites it (document, section or page, quoted text). A role reads only the library documents it may read, so an assistant acting for a role draws only on those. The library is built from what exists: a files source holds the documents ([REQ-1960](#REQ-1960)) and an embedded search table over their passages serves retrieval; it is not a separate store.
+
+**Code:** —
+
+**Tests:** —

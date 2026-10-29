@@ -91436,3 +91436,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2183
   stakeholders:
   - data-steward
+- id: REQ-2185
+  value: 'An org keeps a reference library of useful documents, and Polly, MCP and the ontology draw on it, citing what they use.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'An org keeps a reference library: documents relevant to its ongoing work in Provisa (policies, regulations, contracts, specifications, standards), added as a file or an http(s) URL. The library is read by AI assistance: Polly answers from it, MCP serves it to agents, and the ontology uses it when it finds terms in a document (REQ-2179), drafts definitions and proposes relationships. Whatever uses a passage cites it (document, section or page, quoted text). A role reads only the library documents it may read, so an assistant acting for a role draws only on those. The library is built from what exists: a files source holds the documents (REQ-1960) and an embedded search table over their passages serves retrieval; it is not a separate store.'
+  scenario: 'Given a policy document in the reference library that defines "Client"
+    When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
+    Then the answer is drawn from the policy and cites its passage
+    And a role that may not read the policy gets no passage from it'
+  related_reqs:
+  - REQ-2179
+  - REQ-1387
+  - REQ-1960
+  - REQ-1174
+  stakeholders:
+  - data-steward
