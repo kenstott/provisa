@@ -623,6 +623,7 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     from provisa.api.admin.introspect import SourceNotListable
     from provisa.api.admin.types import MutationResult
     from provisa.core.ir_types import base_type
+    from provisa.core.native_types import natively_nested
     from provisa.core.repositories.table import stored_column_types
 
     if input.query_template:
@@ -655,6 +656,13 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     for c in unsettled:
         listed = by_name.get(c.name)
         if listed is None or not listed.native_type:
+            continue
+        if not natively_nested(listed.native_type):
+            # REQ-1961: a character column's native type describes it while it is text, the
+            # type it registers as; given another type, the column is that type alone.
+            if (c.data_type or "").lower() == (listed.data_type or "").lower():
+                c.native_type = listed.native_type
+                c.native_platform = listed.native_platform
             continue
         if (c.data_type or "").lower() != "json":
             return MutationResult(

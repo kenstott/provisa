@@ -1490,10 +1490,12 @@ class _KeptResultShape:
             self._memo["read_shape"] = await _off_loop(self._derive)
         return self._memo["read_shape"]
 
-    def subtyped(self) -> list[tuple[str, str]] | None:
-        """REQ-2171: the shape of a statement that reads a table with a subtyped column, for one
-        whose columns are otherwise typed by what the engine returned (not described first);
-        None for any other statement, which is not derived. Read on the caller's own thread.
+    def wire_typed(self) -> list[tuple[str, str]] | None:
+        """The shape of a statement that reads a table with a column the wire types by the model
+        -- a subtyped column (REQ-2171), a sized numeric or a column recording a native type
+        (REQ-1961) -- for one whose columns are otherwise typed by what the engine returned (not
+        described first); None for any other statement, which is not derived. Read on the
+        caller's own thread.
 
         The tables are the ones the statement reads, not every table of the role (``table_map``
         maps them all): a statement reading none of the subtyped ones -- a table-less SELECT, as
@@ -1510,9 +1512,19 @@ class _KeptResultShape:
             for table in sqlglot.parse_one(sql, read="postgres").find_all(exp.Table)
             if (table_id := _resolve_table(table, table_map)) is not None
         }
-        if not any(c.subtype for tid in read for c in column_types.get(tid, [])):
+        if not any(_typed_by_model(c) for tid in read for c in column_types.get(tid, [])):
             return None
         return self.now()
+
+
+def _typed_by_model(column: Any) -> bool:
+    """Whether the wire types a registered column by the model rather than by what the engine
+    returned: a subtype (REQ-2171), a sized numeric's typmod or a native type (REQ-1961)."""
+    from provisa.core.numeric_type import numeric_size_of
+
+    return bool(
+        column.subtype or column.native_type or numeric_size_of(column.data_type) is not None
+    )
 
 
 def _kept_result_shape(

@@ -1396,6 +1396,7 @@ def _pg_column_typing(
     or domain (text)."""
     from provisa.core.ir_types import (
         ColumnTyping,
+        character_typing,
         column_typing,
         composite_typing,
         subtype_of,
@@ -1418,6 +1419,9 @@ def _pg_column_typing(
     subtype = subtype_of(data_type, kind)
     if subtype is not None:
         return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
+    character = character_typing(formatted or udt_name, kind)
+    if character is not None:
+        return character  # text, keeping its native type and length (REQ-1961)
     return ColumnTyping(to_ir(data_type))
 
 

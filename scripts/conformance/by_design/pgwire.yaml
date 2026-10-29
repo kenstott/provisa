@@ -118,3 +118,22 @@
     behaves as with PostgreSQL 14: server_version_num is 140000.
   case: "^type conversion::SELECT pg_catalog\\.current_setting\\('server_version_num'\\) AS v$"
   reason: "^text '140000', PostgreSQL '\\d+'; binary 313430303030, PostgreSQL [0-9a-f]+$"
+
+- group: An unsized source numeric is the numeric(38,s) registration samples
+  requirement: REQ-1961
+  decision: >-
+    A registered numeric(p,s) column is described with its typmod (PGWIRE SENDS NUMERIC(P,S)).
+    An unsized source numeric registers as numeric(38,s), s the largest scale among its values
+    (REQ-2167), so an engine that cannot hold an unbounded numeric reads it exactly: it is
+    described as that numeric(38,s), where PostgreSQL describes an unsized numeric.
+  case: "^type conversion::SELECT c_numeric FROM conformance\\.types_fixture$"
+  reason: "^typmod 2490376, PostgreSQL -1$"
+
+- group: The catalog's bootstrap owner is provisa
+  requirement: REQ-2167
+  decision: >-
+    The pgwire catalog's bootstrap role (oid 10) is named provisa, not postgres:
+    pg_get_userbyid(10) and every owner column answer provisa (THE CATALOG'S BOOTSTRAP OWNER IS
+    PROVISA).
+  case: "^type conversion::SELECT pg_catalog\\.pg_get_userbyid\\(10\\) AS v$"
+  reason: "^text 'provisa', PostgreSQL 'postgres'; binary 70726f76697361, PostgreSQL 706f737467726573$"

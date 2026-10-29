@@ -42,6 +42,7 @@ from provisa.compiler.type_map import (
 )
 from provisa.compiler.schema_types import _TableInfo
 from provisa.core.modeling_tags import column_comment
+from provisa.core.native_types import natively_nested
 from provisa.compiler.schema_directives import (
     GraphQLBoolean,
     GraphQLFloat,
@@ -202,7 +203,7 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
         if "." in pg_name:
             pg_name = pg_name.rsplit(".", 1)[1]
         enum_filter = _enum_filters.get(pg_name)
-        if col.get("native_type"):
+        if natively_nested(col.get("native_type")):
             # REQ-1965: a natively nested column is filtered with the JSON operations, not with
             # a scalar comparison of its element type.
             continue

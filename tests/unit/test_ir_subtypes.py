@@ -412,17 +412,17 @@ def _kept(table_map, sql="SELECT id, ip FROM net.hosts"):
 
 
 def test_only_a_statement_reading_a_subtyped_column_derives_its_shape_for_the_wire():
-    assert _kept({"net.hosts": 1}).subtyped() == _SHAPE
-    assert _kept({"net.ids": 2}).subtyped() is None
+    assert _kept({"net.hosts": 1}).wire_typed() == _SHAPE
+    assert _kept({"net.ids": 2}).wire_typed() is None
 
 
 def test_a_statement_reading_no_subtyped_table_derives_no_shape_where_the_role_has_one():
     # The role's tables include net.hosts (subtyped); the statement reads none of them, as the
     # SELECT a column-list CREATE TEMP TABLE is planned as (temp_tables._NOTHING) reads none.
     roles_tables = {"net.hosts": 1, "net.ids": 2}
-    assert _kept(roles_tables, "SELECT 1 AS n WHERE FALSE").subtyped() is None
-    assert _kept(roles_tables, "SELECT id FROM net.ids").subtyped() is None
-    assert _kept(roles_tables).subtyped() == _SHAPE
+    assert _kept(roles_tables, "SELECT 1 AS n WHERE FALSE").wire_typed() is None
+    assert _kept(roles_tables, "SELECT id FROM net.ids").wire_typed() is None
+    assert _kept(roles_tables).wire_typed() == _SHAPE
 
 
 def test_a_temporary_table_statement_answers_its_command_not_its_selects_rows():

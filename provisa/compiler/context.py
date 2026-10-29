@@ -576,14 +576,15 @@ def _nested_columns(
     not only the role's visible ones: what a column is at its source is a fact of the table."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.compiler.schema_gen import SchemaInput
+    from provisa.core.native_types import natively_nested
 
     assert isinstance(si, SchemaInput)
     out: NestedColumns = {}
     for td in si.tables:
         for col in td.get("columns") or []:
             native = col.get("native_type")
-            if not native:
-                continue
+            if not natively_nested(native):
+                continue  # none recorded, or a character column's (REQ-1961)
             key = (
                 td["schema_name"].lower(),
                 (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
