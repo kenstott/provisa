@@ -47304,7 +47304,19 @@
     it by PART_OF, not RELATED_TO, so the concept is grounded through the properties that reach data. The
     glossary''s Generate Relationships action proposes PART_OF when it links a concept to one of its property-role
     terms, and keeps RELATED_TO for loose associations, which conduct no grounding. Demo and shipped vocabularies
-    follow the same rule.'
+    follow the same rule. (Amended 2026-10-28, RELATED_TO IS THE LAST RESORT:) RELATED_TO links two distinct
+    topics that go together where neither is a kind of the other, part of it, or a value of it (cake and
+    candles); it does not ground. Every place that proposes or picks a relationship type steers to the grounding
+    types first: the type picker shows each type''s test (KIND_OF: every X is a Y; PART_OF: a Y has an X;
+    VALID_VALUE_OF: X is one of Y''s allowed values; RELATED_TO: distinct topics that go together, neither
+    a kind, part or value of the other, and does not ground); the relationship assistant''s prompt carries
+    the same tests, prefers KIND_OF, PART_OF and VALID_VALUE_OF wherever one fits, proposes RELATED_TO only
+    when none does, and leaves an edge out rather than default to RELATED_TO (a pair that seems related
+    with no structural type may lack an intermediate term, as candles are part of a birthday cake, a kind
+    of cake; adding that term is the user''s call, never the assistant''s); and a term whose only links
+    are RELATED_TO and which is not grounded says so on its page with that question, as guidance, never
+    a block. The shipped seed models a concept''s properties with PART_OF (shift start, shift end and schedule
+    location are PART_OF shift coverage), not RELATED_TO.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
