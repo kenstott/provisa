@@ -364,30 +364,26 @@ function DocumentDetail({
           },
         ]}
       />
-      <Group align="flex-end" gap="xs" wrap="nowrap">
-        <MultiSelect
-          style={{ flex: 1 }}
-          label={t("referenceLibrary.fieldDomains")}
-          data-testid="reflib-domains"
-          data={options}
-          value={domains}
-          onChange={(v) => setDomains(scopeChange(domains, v))}
-          searchable
+      <FormLayout>
+        <FormField help={t("referenceLibrary.domainsHelp")} size="long">
+          <MultiSelect
+            label={t("referenceLibrary.fieldDomains")}
+            data-testid="reflib-domains"
+            data={options}
+            value={domains}
+            onChange={(v) => setDomains(scopeChange(domains, v))}
+            searchable
+          />
+        </FormField>
+        <FormFooter
+          saving={busy === "domains"}
+          onSave={() => act("domains", () => setLibraryDomains(doc.id, domains))}
+          saveProps={{
+            "data-testid": "reflib-domains-save",
+            disabled: !domainsChanged || domains.length === 0,
+          }}
         />
-        <Button
-          size="sm"
-          variant="default"
-          disabled={!domainsChanged || domains.length === 0}
-          loading={busy === "domains"}
-          data-testid="reflib-domains-save"
-          onClick={() => act("domains", () => setLibraryDomains(doc.id, domains))}
-        >
-          {t("referenceLibrary.saveDomains")}
-        </Button>
-      </Group>
-      <Text size="xs" c="dimmed" mt={-6}>
-        {t("referenceLibrary.domainsHelp")}
-      </Text>
+      </FormLayout>
       <Title order={6} mt="sm">
         {t("referenceLibrary.passagesHeading")}
       </Title>
