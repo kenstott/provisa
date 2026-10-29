@@ -692,9 +692,7 @@ class _SyncedStore:
         into its own connection before a query that references it, and re-copies only once
         ``canary()`` no longer matches (some process wrote the store since)."""
         return self._run(
-            lambda con: con.execute(
-                f'SELECT * FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
-            ).fetch_arrow_table(),
+            lambda con: zoned_times_as_text(con, f'{_MAT_STORE_ALIAS}."{schema}"."{table}"'),
             read_only=True,
             canary=True,
         )
@@ -702,6 +700,41 @@ class _SyncedStore:
     def canary(self) -> StoreCanary:
         """The store's current canary (no lock: a stat is atomic, and a mismatch only re-copies)."""
         return store_canary(self._db_path)
+
+
+#: The Arrow field metadata naming a column :func:`zoned_times_as_text` sent as its text: its
+#: DuckDB type, which the copy casts it back to.
+ZONED_TIME_TYPE = b"provisa.duckdb_type"
+
+
+def zoned_times_as_text(con: Any, relation: str) -> Any:
+    """``SELECT *`` of ``relation`` as Arrow, a time with its offset (TIMETZ, or a list of them)
+    sent as its text and its field marked with its type (:data:`ZONED_TIME_TYPE`): Arrow has no
+    time with a zone, and DuckDB hands one over as a time64, its wall clock without its offset
+    (REQ-2173, REQ-2176)."""
+    import pyarrow as pa
+
+    zoned = {
+        name: kind
+        for name, kind, *_ in con.execute(f"DESCRIBE {relation}").fetchall()
+        if kind in ("TIME WITH TIME ZONE", "TIME WITH TIME ZONE[]")
+    }
+    if not zoned:
+        return con.execute(f"SELECT * FROM {relation}").fetch_arrow_table()
+
+    def quoted(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    as_text = ", ".join(
+        f"CAST({quoted(n)} AS {'VARCHAR[]' if k.endswith('[]') else 'VARCHAR'}) AS {quoted(n)}"
+        for n, k in zoned.items()
+    )
+    table = con.execute(f"SELECT * REPLACE ({as_text}) FROM {relation}").fetch_arrow_table()
+    fields = [
+        f.with_metadata({ZONED_TIME_TYPE: zoned[f.name].encode()}) if f.name in zoned else f
+        for f in table.schema
+    ]
+    return table.cast(pa.schema(fields))
 
 
 class EngineAttachedStore(_SyncedStore):
