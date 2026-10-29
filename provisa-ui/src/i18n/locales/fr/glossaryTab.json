@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} termes approuvés",
     "bulkApproveNone": "Aucun brouillon défini et ancré n'est en attente.",
     "cancel": "Annuler",
-    "findingFix_path_pending": "Ouvrir {{term}}"
+    "findingFix_path_pending": "Ouvrir {{term}}",
+    "groundingReachColumns_one": "Ancré : atteint les données dans {{count}} colonne",
+    "groundingReachColumns_other": "Ancré : atteint les données dans {{count}} colonnes",
+    "groundingReachTables_one": "Ancré : atteint les données dans {{count}} table",
+    "groundingReachTables_other": "Ancré : atteint les données dans {{count}} tables"
   }
 }

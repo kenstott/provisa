@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} शब्द स्वीकृत हुए",
     "bulkApproveNone": "कोई परिभाषित, आधारित ड्राफ़्ट प्रतीक्षा में नहीं है।",
     "cancel": "रद्द करें",
-    "findingFix_path_pending": "{{term}} खोलें"
+    "findingFix_path_pending": "{{term}} खोलें",
+    "groundingReachColumns_one": "आधारित: {{count}} कॉलम में डेटा तक पहुँचता है",
+    "groundingReachColumns_other": "आधारित: {{count}} कॉलम में डेटा तक पहुँचता है",
+    "groundingReachTables_one": "आधारित: {{count}} तालिका में डेटा तक पहुँचता है",
+    "groundingReachTables_other": "आधारित: {{count}} तालिकाओं में डेटा तक पहुँचता है"
   }
 }

@@ -110,7 +110,11 @@ export function TermReadView({
             label: t("glossaryTab.groundingLabel"),
             value: (
               <Group gap={6} data-testid="glossary-detail-grounding">
-                <TermGroundingChip grounding={term.grounding} />
+                <TermGroundingChip
+                  grounding={term.grounding}
+                  columns={term.ref_count}
+                  tables={term.table_count}
+                />
                 <Text size="sm">{t(`glossaryTab.groundingValue_${term.grounding}`)}</Text>
               </Group>
             ),

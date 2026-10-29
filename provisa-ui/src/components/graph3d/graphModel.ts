@@ -13,7 +13,7 @@
 // Filters by domain, tag, sensitivity and a focus node apply to every layer; a preset is a named
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
-import type { TermRole } from "../../api/glossary";
+import type { TermGrounding, TermRole } from "../../api/glossary";
 import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 import { layeredFit, layeredLayout } from "./layeredLayout";
@@ -90,6 +90,9 @@ export interface GraphNode {
   parent?: string;
   /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
   status?: TermStatus;
+  /** REQ-1387: whether a term reaches data (the ground symbol before its name); absent for any
+   * other node, and for a term the graph does not read it of. */
+  grounding?: TermGrounding;
   /** REQ-2130: a term's role -- Class (tables), Property (columns), Concept (neither) -- coloured
    * apart (nodeLook); absent where the graph does not read it. */
   role?: TermRole;

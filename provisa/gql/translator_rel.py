@@ -234,6 +234,28 @@ class _RelJoinMixin:  # mixin for _Translator
         mappings = self._lm.aliases.get(rel.types[0].upper(), [])
         return any(m.directed for m in mappings)
 
+    def _either_end_of_unnamed_ends(
+        self, rel: "RelPattern", src_node: "NodePattern", tgt_node: "NodePattern"
+    ) -> bool:
+        """Whether ``rel`` is one undirected hop of a type joining two different node types,
+        between two nodes it names no type of (REQ-347): each node is either end, so neither
+        takes the type of one end, as a self-referential type's two orientations would."""
+        if len(rel.types) != 1 or rel.variable_length or rel.direction != "none":
+            return False
+        if src_node.labels or tgt_node.labels:
+            return False
+        for node in (src_node, tgt_node):
+            if node.variable and (
+                self._var_table.get(node.variable, (None, None))[1] is not None
+                or self._domain_nodes.get(node.variable, "__all__") != "__all__"
+            ):
+                return False
+        rel_type = rel.types[0].upper()
+        mappings = self._lm.aliases.get(rel_type) or [
+            m for m in (self._lm.relationships.get(rel_type),) if m is not None
+        ]
+        return any(m.source_label != m.target_label for m in mappings)
+
     def _directed_from(
         self,
         m: "RelationshipMapping",
@@ -449,6 +471,7 @@ class _RelJoinMixin:  # mixin for _Translator
         rel_mapping: "RelationshipMapping | None",
         from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         backward: bool,
+        undirected: bool,
     ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Resolve src_nm, tgt_nm, explicitness flags, and updated from_expr.
 
@@ -485,6 +508,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 if backward
                 else (rel_mapping.source_label, rel_mapping.target_label)
             )
+            if undirected and (src_nm is None) != (tgt_nm is None):
+                # REQ-347: undirected, the unnamed end is the one across from the named end,
+                # whichever end of the relationship that is ((n:B)-[:T]-(m), T from A to B: m is A).
+                named = (src_nm or tgt_nm).type_name  # type: ignore[union-attr]
+                ends = (rel_mapping.source_label, rel_mapping.target_label)
+                if named in ends:
+                    across = ends[1] if named == ends[0] else ends[0]
+                    first, last = (named, across) if src_nm is not None else (across, named)
             if src_nm is None:
                 src_nm, from_expr = self._infer_src_from_rel(first, src_var, from_expr)
             if tgt_nm is None:
@@ -773,9 +804,25 @@ class _RelJoinMixin:  # mixin for _Translator
             )
             return from_expr, joins, True
 
+        if len(nodes) == 2 and self._either_end_of_unnamed_ends(rel, src_node, tgt_node):
+            # REQ-347: an undirected hop of a type between two node types, its ends unnamed and
+            # no other hop of the pattern fixing either: each relationship is read from both its
+            # ends, never only from its source. In a longer pattern the next hop types the node.
+            if joined_hop:
+                return every_rel_hop(None, None), joins, True
+            from_expr = self._handle_unlabeled_rel_pattern(
+                src_var, rel.variable, tgt_var, rel_type=rel.types[0].upper(), direction="none"
+            )
+            return from_expr, joins, True
+
         rel_mapping = self._resolve_early_rel_mapping(rel, src_node, tgt_node)
         src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
-            src_node, tgt_node, rel_mapping, from_expr, backward=rel.direction == "left"
+            src_node,
+            tgt_node,
+            rel_mapping,
+            from_expr,
+            backward=rel.direction == "left",
+            undirected=rel.direction == "none",
         )
 
         # A node the outer statement holds is the outer row (#160): this statement reads its hop's

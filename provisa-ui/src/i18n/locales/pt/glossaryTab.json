@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} termos aprovados",
     "bulkApproveNone": "Não há rascunhos definidos e ancorados à espera.",
     "cancel": "Cancelar",
-    "findingFix_path_pending": "Abrir {{term}}"
+    "findingFix_path_pending": "Abrir {{term}}",
+    "groundingReachColumns_one": "Ancorado: alcança dados em {{count}} coluna",
+    "groundingReachColumns_other": "Ancorado: alcança dados em {{count}} colunas",
+    "groundingReachTables_one": "Ancorado: alcança dados em {{count}} tabela",
+    "groundingReachTables_other": "Ancorado: alcança dados em {{count}} tabelas"
   }
 }

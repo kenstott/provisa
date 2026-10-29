@@ -145,6 +145,8 @@
     "quality_none": "尚未執行",
     "factOwner": "擁有者",
     "factMembers": "成員表",
-    "factColumns": "欄位"
+    "factColumns": "欄位",
+    "grounding_grounded": "已錨定",
+    "grounding_grounded_pending": "已錨定，待批准"
   }
 }

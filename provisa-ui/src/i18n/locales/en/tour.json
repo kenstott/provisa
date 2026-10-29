@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "A read outside its window",
-        "description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens."
+        "description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens. Inside the window it returns the close instead."
       },
       "provisioningRest": {
         "title": "The pulls over REST",

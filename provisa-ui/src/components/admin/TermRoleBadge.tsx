@@ -21,6 +21,7 @@ import {
   type TermStatus,
 } from "../../api/glossary";
 import { Tip } from "../Tip";
+import { GroundIcon } from "../GroundIcon";
 import { toReview } from "./termFindings";
 import { StatusBadge } from "../lifecycle/StatusBadge";
 
@@ -39,32 +40,41 @@ export function TermStatusBadge({ status, testId }: { status: TermStatus; testId
   );
 }
 
-/** A term's grounding, computed (REQ-1387): 'grounded', or '~grounded' when it reaches data only
- * through terms not yet approved; no chip when it reaches no data. */
+/** A term's grounding, computed (REQ-1387): the ground symbol, green when it reaches data through
+ * approved terms, muted when only through terms not yet approved; nothing when it reaches no data.
+ * Its tip and accessible name say how far it reaches. */
 export function TermGroundingChip({
   grounding,
+  columns = 0,
+  tables = 0,
   testId,
 }: {
   grounding: TermGrounding;
+  /** The columns the term names. */
+  columns?: number;
+  /** The tables the term names. */
+  tables?: number;
   testId?: string;
 }) {
   const { t } = useTranslation();
   if (grounding === "not_grounded") return null;
   const pending = grounding === "grounded_pending";
-  const help = pending ? t("glossaryTab.groundingPendingHelp") : t("glossaryTab.groundingGroundedHelp");
+  const help = pending
+    ? t("glossaryTab.groundingPendingHelp")
+    : columns > 0
+      ? t("glossaryTab.groundingReachColumns", { count: columns })
+      : tables > 0
+        ? t("glossaryTab.groundingReachTables", { count: tables })
+        : t("glossaryTab.groundingGroundedHelp");
   return (
-    <Tip text={help} named={pending}>
-      <Badge
-        size="xs"
-        variant={pending ? "outline" : "light"}
-        color={pending ? "yellow" : "teal"}
-        tt="none"
-        aria-label={pending ? help : undefined}
+    <Tip text={help} named>
+      <span
+        style={{ display: "inline-flex", alignItems: "center" }}
         data-testid={testId}
         data-grounding={grounding}
       >
-        {t(`glossaryTab.grounding_${grounding}`)}
-      </Badge>
+        <GroundIcon state={grounding} size={16} label={help} />
+      </span>
     </Tip>
   );
 }
@@ -117,7 +127,12 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
       {term.status !== "approved" && (
         <TermStatusBadge status={term.status} testId={`glossary-status-${term.id}`} />
       )}
-      <TermGroundingChip grounding={term.grounding} testId={`glossary-grounding-${term.id}`} />
+      <TermGroundingChip
+        grounding={term.grounding}
+        columns={term.ref_count}
+        tables={term.table_count}
+        testId={`glossary-grounding-${term.id}`}
+      />
       {termRole(term) === "property" && (
         <Badge size="xs" variant="default">
           {term.ref_count}

@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} מונחים אושרו",
     "bulkApproveNone": "אין טיוטות מוגדרות ומעוגנות שממתינות.",
     "cancel": "ביטול",
-    "findingFix_path_pending": "פתיחת {{term}}"
+    "findingFix_path_pending": "פתיחת {{term}}",
+    "groundingReachColumns_one": "מעוגן: מגיע לנתונים ב-{{count}} עמודות",
+    "groundingReachColumns_other": "מעוגן: מגיע לנתונים ב-{{count}} עמודות",
+    "groundingReachTables_one": "מעוגן: מגיע לנתונים ב-{{count}} טבלאות",
+    "groundingReachTables_other": "מעוגן: מגיע לנתונים ב-{{count}} טבלאות"
   }
 }

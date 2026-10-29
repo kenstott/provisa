@@ -28,6 +28,8 @@ from provisa.compiler.schema_gen import (
     _build_visible_tables,
     _can_see_relationship,
 )
+from provisa.compiler.schema_types import offers_domain
+from provisa.security.rights import META_DOMAIN_ID
 
 if TYPE_CHECKING:
     from provisa.grpc.field_numbering import FieldNumberAllocator
@@ -319,6 +321,9 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
             continue
         if not command_reachable(fn, si.role) or binding_name(fn, "graphql") is None:
             continue
+        # A per-domain proto offers only the commands of the domains it was asked for.
+        if not offers_domain(si, fn.get("domain_id") or ""):
+            continue
         seen.add(name)
         out.append(fn)
     return sorted(out, key=lambda f: f["name"])
@@ -575,17 +580,20 @@ def generate_proto(
     lines.append("")
 
     # --- resolve(uri, as_of, as_recorded) (REQ-1365, REQ-1163): the GraphQL field's arguments; the answer, whose shape
-    # is the addressed row's, as JSON (as a command's rows are).
-    lines.append(f"message {RESOLVE_RPC}AddressRequest {{")
-    lines.append("  string uri = 1;")
-    lines.append("  string as_of = 2;")
-    lines.append("  string as_recorded = 3;")
-    lines.append("}")
-    lines.append("")
-    lines.append(f"message {RESOLVE_RPC}AddressResponse {{")
-    lines.append("  string result_json = 1;")
-    lines.append("}")
-    lines.append("")
+    # is the addressed row's, as JSON (as a command's rows are). It is meta's, so a per-domain
+    # proto has it only when meta is asked for, as the GraphQL schema has meta's resolve field.
+    offers_resolve = offers_domain(si, META_DOMAIN_ID)
+    if offers_resolve:
+        lines.append(f"message {RESOLVE_RPC}AddressRequest {{")
+        lines.append("  string uri = 1;")
+        lines.append("  string as_of = 2;")
+        lines.append("  string as_recorded = 3;")
+        lines.append("}")
+        lines.append("")
+        lines.append(f"message {RESOLVE_RPC}AddressResponse {{")
+        lines.append("  string result_json = 1;")
+        lines.append("}")
+        lines.append("")
 
     # --- Per-command request messages (REQ-1156) ---
     # Beyond the generic CallCommand, every command visible to the role gets a typed request message
@@ -610,9 +618,10 @@ def generate_proto(
     # --- Service ---
     lines.append("service ProvisaService {")
     lines.append("  rpc CallCommand(CommandRequest) returns (CommandResponse);")
-    lines.append(
-        f"  rpc {RESOLVE_RPC}({RESOLVE_RPC}AddressRequest) returns ({RESOLVE_RPC}AddressResponse);"
-    )
+    if offers_resolve:
+        lines.append(
+            f"  rpc {RESOLVE_RPC}({RESOLVE_RPC}AddressRequest) returns ({RESOLVE_RPC}AddressResponse);"
+        )
     for fn in commands:
         cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         resp = "MutationResponse" if fn.get("kind") == "mutation" else "CommandResponse"

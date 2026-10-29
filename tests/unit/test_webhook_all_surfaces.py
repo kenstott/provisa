@@ -227,6 +227,7 @@ def test_grpc_proto_gen_emits_webhook_rpc():
         role={"id": "admin", "domain_access": ["*"]},
         functions=[],
         webhooks=[_webhook()],
+        root_domain_ids=None,  # the role's whole proto, no domain asked for
     )
     assert {c["name"] for c in _visible_commands(si)} == {"add_pet"}
 
@@ -257,6 +258,7 @@ def test_callable_field_applies_naming_convention(convention, expected):
             functions=[],
             webhooks=[_webhook()],
             domain_prefix=True,
+            root_domain_ids=None,  # the role's whole schema, no domain asked for
         )
         _query, mutation = _build_action_fields(si, {}, [], domain_alias_map={"pet-store": "ps"})
         assert expected in mutation

@@ -32,7 +32,7 @@ from graphql import (
 from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
 from provisa.compiler.type_map import JSONScalar
 from provisa.security.mutation_authz import command_assigned
-from provisa.compiler.schema_types import SchemaInput, _TableInfo  # noqa: F401  (annotations)
+from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain  # noqa: F401  (annotations)
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
@@ -195,6 +195,9 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # domains it reaches. One that names no domain — saving it is refused; a stored row
             # can still carry none — is in no domain any role reaches, so no role is shown it.
             if not domain_id or (not all_access and domain_id not in accessible):
+                continue
+            # A per-domain schema offers only the commands of the domains it was asked for.
+            if not offers_domain(si, domain_id):
                 continue
 
             gql_return, args = resolve_return_and_args(item)

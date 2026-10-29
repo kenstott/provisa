@@ -23,7 +23,14 @@ export interface SparqlVocabulary {
   prefixes: Record<string, string>;
   /** A table's own class ("table") or a Class term's ("term"), with the labels it types and, for a
    * Class term, the terms it is a KIND_OF. */
-  classes: { iri: string; kind: "table" | "term"; labels: string[]; superclasses: string[] }[];
+  classes: {
+    iri: string;
+    kind: "table" | "term";
+    labels: string[];
+    superclasses: string[];
+    /** A Class term's domains (REQ-1723); none for a table's own class. */
+    domains?: string[];
+  }[];
   /** A column's predicate ("column") or a Property term's ("term"). */
   predicates: {
     iri: string;
@@ -31,11 +38,13 @@ export interface SparqlVocabulary {
     label: string;
     property: string;
     datatype: string;
+    /** A Property term's domains (REQ-1723); none for a column's own predicate. */
+    domains?: string[];
   }[];
   /** An edge type's predicate, from its source label's class to its target's. */
   edges: { iri: string; type: string; source: string; target: string }[];
   /** The live Concept terms (the SKOS vocabulary). */
-  concepts: { iri: string; name: string; definition: string | null }[];
+  concepts: { iri: string; name: string; definition: string | null; domains: string[] }[];
 }
 
 /** A term's name, read back from its IRI under the ``term`` prefix; null for any other IRI. */
