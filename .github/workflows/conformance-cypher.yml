@@ -16,11 +16,22 @@ name: Conformance (Cypher)
 # with password auth. The runner presents the job user's token and names org_admin in the
 # x-provisa-role header.
 
+# The optional features input (comma-separated TCK feature-name globs, e.g. "Merge*,Set1*") runs
+# only the matching features, so a fix can be iterated in minutes; empty runs the whole suite. A
+# glob matches a feature's full name ("Merge1 - Merge node") or its prefix ("Merge1"). A filter that
+# matches no feature fails the run. A filtered result JSON carries "filter" and totals for the
+# selected features only.
+run-name: ${{ inputs.features && format('Conformance (Cypher) [{0}]', inputs.features) || 'Conformance (Cypher)' }}
+
 on:
   workflow_dispatch:
     inputs:
       ref:
         description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+      features:
+        description: "TCK feature-name globs, comma-separated (e.g. Merge*,Set1*); empty runs all"
         required: false
         default: ""
 
@@ -127,6 +138,7 @@ jobs:
           # A scenario's test procedure is declared as a command of the fixture model, which the
           # runner puts (PUT /admin/config) as the break-glass account (cypher_tck_procedures.py).
           CONFORMANCE_MODEL: ${{ runner.temp }}/provisa/provisa.yaml
+          CONFORMANCE_FEATURES: ${{ inputs.features }}
         run: |
           for _ in $(seq 1 60); do
             (exec 3<>"/dev/tcp/127.0.0.1/8904") 2>/dev/null && break

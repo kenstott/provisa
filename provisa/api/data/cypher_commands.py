@@ -150,6 +150,28 @@ def _relation(command: dict, rows: list[dict], yields: list[str], alias: exp.Tab
     return exp.Values(expressions=tuples, alias=alias)
 
 
+def _check_yields(called: str, command: dict, yields: list[str]) -> None:
+    """A call in a statement yields what its command answers: a VOID command nothing, so a YIELD
+    after it is refused; a command with outputs names the columns it yields (REQ-2001)."""
+    from provisa.core.void_command import is_void
+
+    if is_void(command) and yields:
+        raise ApiError(
+            400,
+            "cypher.command_call_refused",
+            f"YIELD after CALL {called}: it is VOID (it declares no outputs), so it yields nothing",
+            reason="yield_of_void",
+        )
+    if not is_void(command) and not yields:
+        raise ApiError(
+            400,
+            "cypher.command_call_refused",
+            f"CALL {called}: name the columns it returns with YIELD: "
+            f"CALL {called}(…) YIELD column [AS variable], …",
+            reason="yield_missing",
+        )
+
+
 async def put_command_rows(sql: str, role_id: str, state: Any) -> str:
     """``sql`` with each composed command call replaced by the command's rows, the command run
     once per call through the one executor as ``role_id``."""
@@ -168,7 +190,15 @@ async def put_command_rows(sql: str, role_id: str, state: Any) -> str:
         yields: list[str] = json.loads(yields_json)
         name = command_named(state, role_id, "cypher", called)
         args = bind_command_args(name, json.loads(values_json), state, role_id)
+        command = state.tracked_functions.get(name) or state.tracked_webhooks[name]
+        _check_yields(called, command, yields)
         rows = await invoke_tracked_function(name, args, state, role_id)
+        if not yields:
+            # REQ-2001: a VOID command's call yields nothing and keeps every row: one row of
+            # no column the statement reads.
+            keep = exp.select(exp.alias_(exp.Literal.number(1), "_void"))
+            table.replace(exp.Subquery(this=keep, alias=exp.TableAlias(this=table.alias_or_name)))
+            continue
         returned = set(rows[0]) if rows else set(yields)
         missing = [c for c in yields if c not in returned]
         if missing:
@@ -179,6 +209,5 @@ async def put_command_rows(sql: str, role_id: str, state: Any) -> str:
                 f"({', '.join(sorted(returned))})",
                 reason="yield_not_returned",
             )
-        command = state.tracked_functions.get(name) or state.tracked_webhooks[name]
         table.replace(_relation(command, rows, yields, table.args["alias"].copy()))
     return tree.sql(dialect="postgres")

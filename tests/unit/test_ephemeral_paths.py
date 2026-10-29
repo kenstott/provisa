@@ -20,8 +20,11 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.cypher.parser import parse_cypher
+from provisa.ephemeral import seam
 from provisa.gql.label_map import RelationshipMapping
 from provisa.gql.path_walk import UNLABELLED_ENDS
+from provisa.gql.translator import cypher_to_sql
 from provisa.gql.translator_types import CypherTranslateError
 from tests.unit.ephemeral_harness import Session
 
@@ -73,8 +76,10 @@ def test_tck_match6_a_named_variable_length_path(monkeypatch):
         "CREATE (a:A {name: 'A'})-[:KNOWS {num: 1}]->(b:B {name: 'B'})-[:KNOWS]->(c:C {name: 'C'})"
     )
     rows = s.run("MATCH p = (n {name: 'A'})-[:KNOWS*1..2]->(x) RETURN p, length(p) AS l")
-    ends = sorted(([n["id"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
-    assert ends == [(["A|e:1", "B|e:2"], 1), (["A|e:1", "C|e:3"], 2)]
+    # REQ-751: the path is every node the walk passed, not its two ends alone.
+    nodes = sorted(([n["id"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
+    assert nodes == [(["A|e:1", "B|e:2"], 1), (["A|e:1", "B|e:2", "C|e:3"], 2)]
+    assert [len(r["p"]["edges"]) for r in sorted(rows, key=lambda r: r["l"])] == [1, 2]
 
 
 def test_tck_match4_an_undirected_walk_takes_no_relationship_twice(monkeypatch):
@@ -139,7 +144,7 @@ def test_a_walk_reaches_a_model_node_by_a_session_relationship(monkeypatch):
         "MATCH p = shortestPath((a)-[*..5]-(c)) RETURN length(p) AS l, p"
     )
     assert [r["l"] for r in rows] == [2]
-    assert [n["id"] for n in rows[0]["p"]["nodes"]] == ["Person|1", "Robot|e:2"]
+    assert [n["id"] for n in rows[0]["p"]["nodes"]] == ["Person|1", "Robot|e:1", "Robot|e:2"]
 
 
 def test_a_walk_reads_the_relationships_table_once(monkeypatch):
@@ -154,10 +159,14 @@ def test_a_walk_reads_the_relationships_table_once(monkeypatch):
 
 
 def test_the_model_graph_refuses_a_path_with_both_ends_free_by_name(monkeypatch):
-    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end is enough; neither is refused.
+    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end is enough; neither is refused. The
+    # model graph is a read outside any graph session (an empty session walks its own, REQ-2176).
     s = Session(monkeypatch, _PEOPLE)
+    query = "MATCH p = shortestPath((a)-[*..3]->(b)) RETURN p"
+    on_model = seam.label_map(s.model, None)
+    assert on_model is s.model
     with pytest.raises(CypherTranslateError, match=UNLABELLED_ENDS):
-        s.run("MATCH p = shortestPath((a)-[*..3]->(b)) RETURN p")
+        cypher_to_sql(parse_cypher(query, on_model), on_model, {})
 
 
 def test_a_walk_the_models_relationships_could_take_is_refused_by_name(monkeypatch):

@@ -756,9 +756,31 @@ def test_a_procedure_s_statement_answers_its_rows_for_the_arguments(proc, args, 
     assert duckdb.execute(sql, args).fetchall() == rows
 
 
-def test_a_void_procedure_is_no_command(procedure_scenarios):
-    with pytest.raises(procedures.NotACommand, match="VOID"):
-        procedures.command(tck.procedure(procedure_scenarios[3]))
+def test_a_void_procedure_is_a_void_command(procedure_scenarios):
+    # REQ-2001 (amended 2026-10-28): it declares no outputs, so a call answers no columns.
+    import duckdb
+    import sqlglot
+
+    from provisa.core.models import Function
+    from provisa.core.statement_declaration import declared
+    from provisa.core.void_command import is_void
+
+    entry = procedures.command(tck.procedure(procedure_scenarios[3]))
+    assert entry["output_columns"] == []
+    assert entry["language_bindings"] == {"cypher": {"name": "test.doNothing"}}
+    function = Function(**entry)
+    assert function.kind == "query" and is_void(function.model_dump())
+    found = declared(entry["name"], entry["binding"], [])
+    assert duckdb.execute(sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0])
+
+
+def test_a_void_procedure_s_statement_uses_each_argument():
+    from provisa.core.models import Function
+
+    proc = procedures.Procedure("test.doNothing", (("in", "STRING"),), (), ())
+    entry = procedures.command(proc)
+    assert entry["output_columns"] == []
+    Function(**entry)  # every {{name}} is a declared argument and every argument is used
 
 
 def test_a_procedure_scenario_puts_the_model_holding_its_command(
@@ -784,6 +806,7 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
         ),
         "CALL test.my.proc": (400, {"detail": "unknown command"}),
         "CALL test.my.proc(null)": (200, {"columns": ["out"], "rows": [["nix"]]}),
+        "CALL test.doNothing()": (200, {"columns": [], "rows": []}),
         "CALL test.my.proc('Stefan', 2)": (
             200,
             {"columns": ["city", "country_code"], "rows": [["München", 49]]},
@@ -803,23 +826,22 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
         ("passed", tck.AS_A_COMMAND),
         ("passed", ""),
         ("passed", tck.AS_A_COMMAND),
-        (
-            "failed",
-            "its test procedure is no command: the procedure test.doNothing is VOID (it has no "
-            "outputs), which no command expresses: a command answers rows of its columns",
-        ),
+        # REQ-2001: a VOID procedure is a VOID command, its call answering no columns.
+        ("passed", tck.AS_A_COMMAND),
         ("passed", tck.AS_A_COMMAND),
     ]
     # The model is put once per procedure declared, its other blocks as it booted.
     assert [[f["language_bindings"]["cypher"]["name"] for f in m["functions"]] for m in put] == [
         ["test.my.proc"],
         ["test.my.proc"],
+        ["test.doNothing"],
     ]
-    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1]
+    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1, 0]
+    assert put[2]["functions"][0]["output_columns"] == []
     assert all(m["domains"] == [{"id": "tck_empty"}] for m in put)
     doc = tck.report(list(outcomes.values()), "2024.3")
     (group,) = doc["adapted"]
-    assert (group["group"], len(group["cases"])) == ("Test procedures", 3)
+    assert (group["group"], len(group["cases"])) == ("Test procedures", 4)
 
 
 def test_a_procedure_with_no_model_to_declare_it_in_is_a_failure(procedure_scenarios, monkeypatch):
@@ -838,3 +860,44 @@ def test_a_model_not_applied_is_said(procedure_scenarios, tmp_path, monkeypatch)
     monkeypatch.setattr(procedures, "_put", lambda _b: {"success": False, "message": "bad"})
     with pytest.raises(ValueError, match="was not applied"):
         procedures.declare(tck.procedure(procedure_scenarios[0]))
+
+
+# --- the feature filter (REQ-2167) ---------------------------------------------------------------
+
+_FEATURES = [
+    "Merge1 - Merge node",
+    "Merge2 - Merge node onCreate",
+    "Set1 - Set a Property",
+    "Match1 - Match nodes",
+]
+
+
+def _by_feature():
+    return [tck.Scenario(f, f"s of {f}") for f in _FEATURES]
+
+
+def test_a_feature_filter_selects_by_glob_on_the_prefix_and_the_full_name():
+    chosen = tck.select_scenarios(_by_feature(), "Merge*, Set1")
+    assert [s.feature for s in chosen] == _FEATURES[:3]
+    full = tck.select_scenarios(_by_feature(), "Match1 - Match nodes")
+    assert [s.feature for s in full] == [_FEATURES[3]]
+
+
+def test_an_empty_feature_filter_selects_every_scenario():
+    every = _by_feature()
+    assert tck.select_scenarios(every, "") == every
+    assert tck.select_scenarios(every, "  ") == every
+
+
+def test_a_feature_filter_matching_nothing_raises_naming_it():
+    with pytest.raises(ValueError, match=r"Nope\*"):
+        tck.select_scenarios(_by_feature(), "Nope*")
+    with pytest.raises(ValueError, match="names no feature glob"):
+        tck.select_scenarios(_by_feature(), ",")
+
+
+def test_a_filtered_result_carries_the_filter_and_a_full_one_does_not():
+    outcome = tck.Outcome("Merge1 - Merge node", "s", "passed", "")
+    assert tck.report([outcome], "2024.3", "Merge*")["filter"] == "Merge*"
+    assert "filter" not in tck.report([outcome], "2024.3", "")
+    assert "filter" not in tck.report([outcome], "2024.3")

@@ -24,7 +24,7 @@ import {
   SandboxRefused,
   type OpenedSandbox,
 } from "../../api/demoSandbox";
-import { AssemblingCube } from "../../components/AssemblingCube";
+import { SandboxLoader } from "../../components/SandboxLoader";
 import { orgOrigin } from "../../lib/authHost";
 import { sandboxDestination } from "../../lib/sandboxSession";
 
@@ -102,7 +102,7 @@ export function DemoOpenPage() {
         <Title order={2}>{t("demoOpenPage.title")}</Title>
         {refusal === null ? (
           <>
-            <AssemblingCube size={88} label={waiting} testId="demo-open-loading" />
+            <SandboxLoader size={88} label={waiting} testId="demo-open-loading" />
             <Text c="dimmed" ta="center" data-testid={`demo-open-${phase}`}>
               {waiting}
             </Text>

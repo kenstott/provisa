@@ -235,18 +235,19 @@ def seed(pg_dsn: str) -> None:
 def registered_typing(pg_type: str) -> dict[str, Any]:
     """How a PostgreSQL source column of ``pg_type`` registers, decided as registration decides
     it (provisa/api/admin/introspect.py ``_pg_column_typing``): an array by ``column_typing``
-    (JSON with its depth, element type and native spelling, REQ-1965), a sized decimal or a
+    (JSON with its depth, element type and native spelling, REQ-1965), a character type as text
+    keeping its native type (``character_typing``, REQ-1961), a sized decimal or a
     timestamp declaring its precision keeping it (REQ-1961), a subtype as itself (REQ-2171: money
     is not sampled as an unsized numeric), any other scalar by ``to_ir``. The column fields,
     ``data_type`` first."""
-    from provisa.core.ir_types import column_typing, subtype_of, to_ir
+    from provisa.core.ir_types import character_typing, column_typing, subtype_of, to_ir
     from provisa.core.numeric_type import numeric_size_of
     from provisa.core.temporal_type import sized_time, sized_timestamp
 
     subtype = subtype_of(pg_type, "postgresql")
     if subtype is not None:
         return {"data_type": subtype}
-    typing = column_typing(pg_type, "postgresql")
+    typing = character_typing(pg_type, "postgresql") or column_typing(pg_type, "postgresql")
     if typing.native_type:
         return {
             "data_type": typing.data_type,

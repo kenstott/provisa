@@ -38,6 +38,7 @@ Usage: cypher_tck.py <features dir> <version> <base url> <role> <out.json> <out.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import math
 import os
@@ -702,7 +703,31 @@ def in_running_order(scenarios: list[Scenario]) -> list[int]:
 # --- the report --------------------------------------------------------------------------------
 
 
-def report(outcomes: list[Outcome], version: str) -> dict:
+def select_scenarios(scenarios: list[Scenario], spec: str) -> list[Scenario]:
+    """The scenarios of the features a comma-separated list of globs selects (REQ-2167). A glob
+    matches a feature by its full name ("Merge1 - Merge node") or by its prefix before " - "
+    ("Merge1"), case-sensitively. An empty spec selects every scenario; a spec that selects no
+    feature is an error naming it."""
+    globs = [g.strip() for g in spec.split(",") if g.strip()]
+    if not spec.strip():
+        return scenarios
+    if not globs:
+        raise ValueError(f"feature filter {spec!r} names no feature glob")
+    chosen = [
+        s
+        for s in scenarios
+        if any(
+            fnmatch.fnmatchcase(s.feature, g)
+            or fnmatch.fnmatchcase(s.feature.split(" - ", 1)[0], g)
+            for g in globs
+        )
+    ]
+    if not chosen:
+        raise ValueError(f"feature filter {spec!r} matches no TCK feature")
+    return chosen
+
+
+def report(outcomes: list[Outcome], version: str, filter: str = "") -> dict:
     """The run as the conformance page reads it (REQ-2167, amended 2026-10-27 and 2026-10-28):
     each scenario is passed, skipped by design or failed. One not run, or failed, because of a
     designed limitation is skipped by design in a group that names its decision
@@ -730,19 +755,23 @@ def report(outcomes: list[Outcome], version: str) -> dict:
         ],
         declared,
     )
-    return {
+    doc = {
         "surface": "cypher",
         "suite": "openCypher TCK",
         "version": version,
         **by_design.outcomes(passed, excluded, failures),
         "adapted": adapted,
     }
+    if filter.strip():
+        doc["filter"] = filter
+    return doc
 
 
 def markdown(doc: dict) -> str:
     lines = [
         f"## Cypher conformance: {doc['suite']} {doc['version']}",
         "",
+        *([f"Filtered to features: `{doc['filter']}`", ""] if "filter" in doc else []),
         by_design.counts_line(doc, "scenarios"),
         "",
         "### Skipped by design",
@@ -786,6 +815,9 @@ def main(argv: list[str]) -> int:
             os.environ["PROVISA_SUPERUSER_PASSWORD"],
         )
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
+    # CONFORMANCE_FEATURES: comma-separated feature-name globs; empty runs the whole suite.
+    spec = os.environ.get("CONFORMANCE_FEATURES", "")
+    scenarios = select_scenarios(scenarios, spec)
     outcomes: list[Outcome | None] = [None] * len(scenarios)
     for n in in_running_order(scenarios):
         s = scenarios[n]
@@ -793,7 +825,7 @@ def main(argv: list[str]) -> int:
             outcomes[n] = run(s, base, role)
         except (OSError, ValueError, KeyError) as exc:
             outcomes[n] = Outcome(s.feature, s.name, "failed", f"runner: {exc}")
-    doc = report([o for o in outcomes if o is not None], version)
+    doc = report([o for o in outcomes if o is not None], version, spec)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
     if not doc["total"]:

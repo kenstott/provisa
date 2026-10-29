@@ -27,6 +27,7 @@ from typing import Any
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
+from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.pgwire.catalog_pg17_tables import (
     populate_client_relations,
     populate_unqueried_relations,
@@ -91,6 +92,11 @@ def _physical_to_pg_name(column_type: str) -> str:
     return {
         "varchar": "character varying",
         "char": "character",
+        # REQ-1961: a text column recording a character native type is listed as that type.
+        "character varying": "character varying",
+        "character": "character",
+        "bpchar": "character",
+        "numeric": "numeric",
         "integer": "integer",
         "int": "integer",
         "bigint": "bigint",
@@ -118,6 +124,10 @@ def _physical_to_pg_oid(column_type: str) -> int:
     return {
         "varchar": 1043,
         "char": 18,
+        "character varying": 1043,  # REQ-1961
+        "character": 1042,
+        "bpchar": 1042,
+        "numeric": 1700,
         "integer": 23,
         "int": 23,
         "bigint": 20,
@@ -220,8 +230,9 @@ def _build_catalog_index(
             if (tm.table_id, phys) in ctx.columns_outside_relation:
                 continue  # registered, but the relation a statement reads does not hold it
             exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys)
-            # REQ-2171: a subtyped column is listed as its subtype's PostgreSQL type.
-            listed_type = col.subtype or col.data_type
+            # REQ-2171: a subtyped column is listed as its subtype's PostgreSQL type; REQ-1961: a
+            # text column recording a character native type as that type.
+            listed_type = col.subtype or registered_spelling(col.data_type, col.native_type)
             idx.all_cols.append((toid, exposed, listed_type, col.is_nullable, i))
             idx.col_attnum[(toid, exposed)] = i
             idx.attnum_to_col[(toid, i)] = exposed
@@ -608,6 +619,9 @@ def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
         attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
             pg_oid, (-1, False, "i", "x")
         )
+        # REQ-1961: a sized numeric's typmod and a character type's length, as pgwire sends them.
+        described = described_type(col_type)
+        typmod = described.typmod if described is not None and described.oid == pg_oid else -1
         attr_rows.append(
             (
                 toid,
@@ -618,7 +632,7 @@ def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
                 ordinal,
                 0,
                 -1,
-                -1,
+                typmod,
                 attbyval,
                 attalign,
                 attstorage,

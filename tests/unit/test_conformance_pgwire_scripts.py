@@ -345,6 +345,17 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         "c_money": "money",
     }
     assert set(sampled) == {"c_numeric"}
+    # REQ-1961 (VARCHAR AND CHAR KEEP THEIR TYPE): a character column is text, its native type
+    # kept as a hidden attribute.
+    assert {
+        n: (arrays[n].data_type, arrays[n].native_type, arrays[n].native_platform)
+        for n in ("c_text", "c_varchar", "c_varchar_20", "c_bpchar_5")
+    } == {
+        "c_text": ("text", None, None),
+        "c_varchar": ("text", "character varying", "postgresql"),
+        "c_varchar_20": ("text", "character varying(20)", "postgresql"),
+        "c_bpchar_5": ("text", "character(5)", "postgresql"),
+    }
     assert cfg.sources[0].port == 55432
 
 
@@ -531,3 +542,40 @@ def test_the_pgwire_artifact_sums_each_part_s_three_counts_at_the_top():
     alone = m.combined(pgspec, None)
     assert (alone["total"], alone["passed"], alone["by_design"], alone["failed"]) == (51, 50, 1, 0)
     assert alone["catalog_functions"] is None
+
+
+def test_the_sampled_numerics_size_and_the_bootstrap_owner_are_by_design():
+    """REQ-1961 (PGWIRE SENDS NUMERIC(P,S)): the unsized numeric registration samples into
+    numeric(38,4) is described as that, a typmod PostgreSQL's unsized numeric does not have.
+    REQ-2167 (THE CATALOG'S BOOTSTRAP OWNER IS PROVISA): pg_get_userbyid(10) is provisa. Only
+    those statements and those differences."""
+    m = _load("pgwire_catalog_types")
+    numeric_typmod = "typmod 2490376, PostgreSQL -1"
+    owner = (
+        "text 'provisa', PostgreSQL 'postgres'",
+        "binary 70726f76697361, PostgreSQL 706f737467726573",
+    )
+    fixture = [
+        _conversion("SELECT c_numeric FROM conformance.types_fixture", numeric_typmod),
+        # Another column with a typmod difference, or the same column with another difference,
+        # stays a failure.
+        _conversion("SELECT c_numeric_10_2 FROM conformance.types_fixture", numeric_typmod),
+    ]
+    casts = [
+        _conversion("SELECT pg_catalog.pg_get_userbyid(10) AS v", *owner),
+        _conversion("SELECT pg_catalog.pg_get_userbyid(11) AS v", *owner),
+    ]
+    out = m.conversion_outcomes(fixture, casts)
+    assert [r["outcome"] for r in fixture + casts] == ["by_design", "failed", "by_design", "failed"]
+    assert {g["group"]: g["count"] for g in out["by_design_groups"]} == {
+        "An unsized source numeric is the numeric(38,s) registration samples": 1,
+        "The catalog's bootstrap owner is provisa": 1,
+    }
+    other = [
+        _conversion(
+            "SELECT c_numeric FROM conformance.types_fixture",
+            numeric_typmod,
+            "text '12345.6789', PostgreSQL '12345.67890'",
+        )
+    ]
+    assert m.conversion_outcomes(other, [])["fixture_columns"][0]["outcome"] == "failed"

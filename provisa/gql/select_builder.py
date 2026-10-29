@@ -164,6 +164,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _domain_nodes: dict[str, str]
     _union_columns: dict[str, list[str]]
     _varlen_rel_vars: dict  # varlen rel variable → outer path variable
+    _walk_trails: dict  # session walk's path or rel variable → (its nodes, its relationships)
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         raise NotImplementedError(expr)
@@ -274,6 +275,19 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         every_rel_hops = getattr(self, "_every_rel_paths", {}).get(path_var)
         if every_rel_hops:
             return self._every_rel_path_json(every_rel_hops)
+        trail = self._walk_trails.get(path_var)
+        if trail is not None:
+            # REQ-751: a session walk's path, every node and relationship of its trail.
+            nodes, rels = trail
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("nodes"),
+                    nodes.copy(),
+                    exp.Literal.string("edges"),
+                    rels.copy(),
+                ],
+            )
         walk_ends = getattr(self, "_walk_paths", {}).get(path_var)
         if walk_ends is not None:
             # REQ-348: a session walk's path, from its start to its end, of its hops.
@@ -670,11 +684,16 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         """Emit SELECT expression for a variable-length relationship variable (e.g. c from [c*..5]).
 
         Flat-join paths: JSON_ARRAY of edge objects from the resolved schema path steps.
-        Recursive CTE paths: NULL (intermediate edges are not projected by the recursive CTE).
+        A session walk: the relationships of its trail (path_walk).
+        Other recursive CTE paths: NULL (intermediate edges are not projected by the recursive CTE).
         """
         path_var = self._varlen_rel_vars[expr_text]
         path_step_info = getattr(self, "_path_steps", {}).get(path_var)
         self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        trail = self._walk_trails.get(expr_text)
+        if trail is not None:
+            # REQ-751: a session walk's relationships, in the order it took them.
+            return exp.alias_(trail[1].copy(), alias or expr_text)
         if path_step_info is not None:
             _, step_edges = path_step_info
             edges_array = exp.Anonymous(
@@ -686,6 +705,20 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             )
             return exp.alias_(edges_array, alias or expr_text)
         return exp.alias_(exp.Null(), alias or expr_text)
+
+    def _trail_kind(self, expr: CypherExpr) -> str | None:
+        """The graph kind of what ``expr`` reads of a session walk's trail: ``relationships(p)``,
+        ``nodes(p)``, and ``head(r)`` or ``last(r)`` of its relationship variable; None for any
+        other expression."""
+        if not isinstance(expr, FunctionCall) or len(expr.args) != 1:
+            return None
+        arg = expr.args[0]
+        if not (isinstance(arg, Variable) and arg.name in self._walk_trails):
+            return None
+        name = expr.name.lower()
+        if name in ("head", "last"):
+            return "EDGE" if arg.name in self._varlen_rel_vars else None
+        return _GRAPH_FUNCTIONS.get(name) if name in ("relationships", "nodes") else None
 
     def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """A node graph functions return (startNode(r), nodes(p)), with the identity every node
@@ -756,6 +789,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 kind = _GRAPH_FUNCTIONS.get(expr.name.lower())
                 if kind is not None:
                     self._graph_vars[alias.lower()] = GraphVarKind[kind]
+            trail_kind = self._trail_kind(expr)
+            if trail_kind is not None:
+                # REQ-751: a session walk's nodes or relationships, or one relationship of them.
+                self._graph_vars[(alias or item.name.strip()).lower()] = GraphVarKind[trail_kind]
 
             # Property access or expression
             exprs.append(self._select_prop_expr(expr, alias, item.name.strip()))
