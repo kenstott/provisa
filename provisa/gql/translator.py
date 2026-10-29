@@ -72,6 +72,7 @@ from provisa.gql.translator_helpers import (
     _json_valued,
     _collects_maps,
     _properties_of,
+    _required_properties,
     _fold_where_into_optional_joins,
     _optional_step_matches_whole,
     _node_table_expr,
@@ -1927,6 +1928,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         """The property names referenced as ``var.prop`` in the statement, in order: in a
         statement embedded in it (EXISTS { ... }) too, which reads them from this one's row."""
         return _properties_of(var, _statement_exprs(self._ast))
+
+    def _required_var_props(self, var: str) -> list[str]:
+        """The properties of ``var`` a MATCH's WHERE filters its rows on (_required_properties):
+        a node of a type lacking one of them is never matched. An OPTIONAL MATCH's WHERE removes
+        no row (REQ-347), so it requires none."""
+        wheres = [
+            step.where.expression
+            for step in self._ast.pipeline
+            if isinstance(step, MatchStep)
+            and step.where
+            and not any(m.optional for m in step.matches)
+        ]
+        return _required_properties(var, wheres)
 
     def _node_as_one_value(self, var: str) -> bool:
         """Whether ``var`` is a domain node the statement returns, or a WITH carries, bare: each

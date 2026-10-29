@@ -210,6 +210,10 @@
     "bulkApproveDone_other": "{{count}} Begriffe freigegeben",
     "bulkApproveNone": "Keine definierten, verankerten Entwürfe warten.",
     "cancel": "Abbrechen",
-    "findingFix_path_pending": "{{term}} öffnen"
+    "findingFix_path_pending": "{{term}} öffnen",
+    "groundingReachColumns_one": "Verankert: erreicht Daten in {{count}} Spalte",
+    "groundingReachColumns_other": "Verankert: erreicht Daten in {{count}} Spalten",
+    "groundingReachTables_one": "Verankert: erreicht Daten in {{count}} Tabelle",
+    "groundingReachTables_other": "Verankert: erreicht Daten in {{count}} Tabellen"
   }
 }

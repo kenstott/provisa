@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Uma leitura fora da janela",
-        "description": "close_by_category, o fechamento de finanças, só pode ser lido das 02:00 às 02:15 UTC. Fora disso, esta leitura é recusada, nomeando a view e quando sua janela abre de novo."
+        "description": "close_by_category, o fechamento de finanças, só pode ser lido das 02:00 às 02:15 UTC. Fora disso, esta leitura é recusada, nomeando a view e quando sua janela abre de novo. Dentro da janela, ela devolve o fechamento."
       },
       "provisioningRest": {
         "title": "As extrações via REST",
