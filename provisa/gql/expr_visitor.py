@@ -766,6 +766,48 @@ class ExprLowering:
             if mistake is not None:
                 raise mistake
 
+    def _json_ordered(  # REQ-345
+        self, node: Binary, left_kind: str | None, right_kind: str | None
+    ) -> exp.Expression | None:
+        """``<``, ``<=``, ``>`` or ``>=`` of an item of a list of several types (its JSON) and an
+        item or a value of a known kind: their values compared where both are numbers, strings
+        or booleans, else null -- openCypher orders no values of two kinds, nor null. Never their
+        JSON text (3.14 < 10). None where neither side is such an item."""
+        left_json = self._ctx.is_json_value(node.left)
+        right_json = self._ctx.is_json_value(node.right)
+        if not (left_json or right_json):
+            return None
+        if (not left_json and left_kind is None) or (not right_json and right_kind is None):
+            return None
+        compare = _BINARY_CMP[node.op]
+        left, right = self.lower(node.left), self.lower(node.right)
+        kinds = [k for k in (left_kind, right_kind) if k] or list(_JSON_KIND)
+        ifs: list[exp.If] = []
+        for kind in kinds:
+            named, typed = _JSON_KIND[kind]
+            tests: list[exp.Expression] = []
+            sides: list[exp.Expression] = []
+            for value, is_json in ((left, left_json), (right, right_json)):
+                if is_json:
+                    tests.append(
+                        exp.EQ(
+                            this=_anon("json_kind", value.copy()),
+                            expression=exp.Literal.string(named),
+                        )
+                    )
+                    value = exp.Cast(
+                        this=_anon("JSON_EXTRACT_SCALAR", value.copy(), exp.Literal.string("$")),
+                        to=exp.DataType.build(typed),
+                    )
+                sides.append(value)
+            ifs.append(
+                exp.If(
+                    this=exp.and_(*tests),
+                    true=compare(this=sides[0], expression=sides[1]),
+                )
+            )
+        return exp.Case(ifs=ifs, default=exp.Null())
+
     def _value_kind(self, node: CypherExpr) -> str | None:
         """A value's kind as the statement writes it -- "number", "text" or "boolean" -- where it
         is known when the query is read, else None."""
@@ -826,6 +868,10 @@ class ExprLowering:
                     if kind and self._ctx.is_json_value(item):
                         same = _json_equals(self.lower(item), self.lower(other), kind)
                         return same if op == "=" else exp.Not(this=exp.Paren(this=same))
+            else:
+                ordered = self._json_ordered(node, left_kind, right_kind)
+                if ordered is not None:
+                    return ordered
         left = self.lower(node.left)
         right = self.lower(node.right)
         # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
