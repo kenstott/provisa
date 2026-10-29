@@ -82504,7 +82504,10 @@
     outputs (a VOID command): calling it runs it and answers an empty result with no columns, as a Cypher
     VOID procedure does, on every surface that calls commands. In Cypher, a standalone CALL may omit its
     parentheses (CALL name): each argument is then bound from the statement parameter of the same name,
-    and a missing parameter is refused by name.'
+    and a missing parameter is refused by name. (Amended 2026-10-28, AN IMPLICIT CALL TAKES DECLARED DEFAULTS:)
+    In an implicit-argument CALL (CALL name, no parentheses), an argument that declares a default takes
+    it when no same-named $parameter is given, as in a positional call (REQ-2168); only an argument with
+    no default and no parameter is refused by name.'
   scenario: 'Given a statement command embed_tickets(since timestamp) whose statement is INSERT INTO kb.docs (id, title, body_vec) SELECT ticket_id, subject, embed(''text-embedding-3-small'', subject) FROM support.tickets WHERE updated_at > {{since}} ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, body_vec = EXCLUDED.body_vec
 
     When a steward runs it with since set to yesterday
