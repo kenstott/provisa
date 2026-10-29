@@ -178,6 +178,10 @@ def overlay(model: Any, session: TempSession) -> Any:
         aliases.setdefault(rel_type.upper(), []).append(mapping)
     # A copy of the model's map with its node, table and relationship maps replaced; everything
     # else it holds is the model's own.
+    if then.rel_ids_read(session) and "" in nodes:
+        # While a read after a write runs, the session's nodes with no label are read by a name
+        # of their own (then.UNLABELED), which no model label ever unions with.
+        nodes[then.UNLABELED] = nodes[""]
     out = copy.copy(model)
     out.nodes = nodes
     out.nodes_by_table = nodes_by_table

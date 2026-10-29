@@ -57,6 +57,10 @@ ROW = "__b"
 #: the rest finds it again by; it is taken out of the answer's values.
 REL_ID = SESSION_REL_ID
 _FLAG = "cypher.bound"
+#: While the rest runs, the label the session's nodes with no label are read by (read.overlay):
+#: a node the write gave no label is found again among them alone, never in a union of every
+#: label the role reads.
+UNLABELED = "__session_unlabeled"
 
 _CLAUSES = frozenset(
     {
@@ -389,9 +393,11 @@ def rest_read(
             ids = [b[1] for b in held if b is not None]
             ephemeral = [i for i in ids if i in graph.node_keys]
             firsts = {graph.node_keys[i][0] for i in ephemeral}
-            if len(ephemeral) == len(ids) and len(firsts) == 1 and "" not in firsts:
+            if len(ephemeral) == len(ids) and len(firsts) == 1:
                 [label] = firsts
-                matches.append(f"MATCH ({name}:{_quoted(label)}) WHERE id({name}) = {field}")
+                matches.append(
+                    f"MATCH ({name}:{_quoted(label or UNLABELED)}) WHERE id({name}) = {field}"
+                )
                 fields_of[var] = [var]
             else:
                 # Read with no label, a node's id is ``Label|key`` -- a session node's label

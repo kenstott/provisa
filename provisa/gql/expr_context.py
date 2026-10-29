@@ -662,7 +662,7 @@ class TranslatorExprContext:
         ):
             # collect() of relationships or paths: the list of each one's JSON object, as a list
             # literal holds one (openCypher: the elements themselves).
-            element = self.resolve_graph_element(var)
+            element = self.resolve_element_value(var)
             return None if element is None else _anon("collect", element)
         if var in t._rel_var_types or var in t._all_rels_rel_vars:
             return exp.Count(this=exp.Star()) if fn == "count" else None
@@ -992,16 +992,25 @@ class TranslatorExprContext:
         if name in t._path_vars:
             # A path as a value ([n, r, p], WITH p): its object, as RETURN p answers it.
             return t._build_path_object(name)
-        if name in t._all_rels_rel_vars:
-            # A relationship of a read of every relationship: the JSON its row holds.
-            return _anon("to_json", exp.column(name))
         alias, nm = t._var_table.get(name, (name, None))
         if nm is not None:
             from provisa.gql.select_builder import node_json
 
             return node_json(alias, nm)
+        return None
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:
+        """The JSON object of the node, relationship or path ``name`` as a list, a map or
+        collect() holds it: resolve_graph_element's, or the JSON value the row of a union of
+        labels or of a read of every relationship holds; None for any other variable."""
+        held = self.resolve_graph_element(name)
+        if held is not None:
+            return held
+        t = self._t
+        if name in t._all_rels_rel_vars:
+            return _anon("to_json", exp.column(name))
         if name in t._domain_nodes:
-            # A node of a union of labels: the JSON value its row holds (NODE_COLUMN).
+            alias = t._var_table.get(name, (name, None))[0]
             return _anon("to_json", _col(NODE_COLUMN, alias))
         return None
 

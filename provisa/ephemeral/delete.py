@@ -33,6 +33,7 @@ path's, unchanged.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -176,8 +177,9 @@ async def delete_bound(
         return None  # no ephemeral involvement: the governed path's, unchanged
     keep = keep or ()
     targets = [f"{t} AS _d{i}" for i, t in enumerate(d.targets)]
+    held = list(dict.fromkeys([*keep, *d.variables]))
     rows = await read(
-        f"{d.prefix} RETURN {', '.join([*targets, *(f'{v} AS _v_{v}' for v in keep)])}".strip(),
+        f"{d.prefix} RETURN {', '.join([*targets, *(f'{v} AS _v_{v}' for v in held)])}".strip(),
         params,
     )
     session_nodes: set[str] = set()
@@ -197,6 +199,11 @@ async def delete_bound(
                     return None  # a model relationship: the governed path's whole statement
     if graph.empty and model_nodes:
         return None  # no ephemeral involvement: the governed path's, unchanged
+    if whole is not None and whole.startswith(statement):
+        _refuse_deleted_access(
+            whole[len(statement) :],
+            [v for v in d.variables if any(row[f"_v_{v}"] is not None for row in rows)],
+        )
     bound_rows = [
         {
             var: None if var in d.variables else bound_value(row[f"_v_{var}"], label_map, graph)
@@ -245,6 +252,27 @@ async def delete_bound(
     # The session's parts; each model row was counted as the governed path deleted it.
     counters.count(nodes_deleted=len(session_nodes), relationships_deleted=len(rels))
     return Deleted(len(session_nodes) + len(model_nodes), len(rels)), bound_rows
+
+
+def _refuse_deleted_access(rest: str, deleted: list[str]) -> None:
+    """Refuse a read after the DELETE of a property, the labels or the keys of a node or
+    relationship it deleted (openCypher's DeletedEntityAccess): they are no longer there to
+    read. Its id, its type and the variable itself still are."""
+    from provisa.ephemeral.then import _STRING
+
+    text = _STRING.sub("''", rest)
+    for var in deleted:
+        name = re.escape(var)
+        if re.search(
+            rf"(?<![\w.$]){name}\s*(?:\.\s*[A-Za-z_`]|\[)"
+            rf"|\b(?:labels|keys|properties)\s*\(\s*{name}\s*\)",
+            text,
+            re.I,
+        ):
+            raise CypherParseError(
+                f"{var} was deleted by this statement: its properties and labels are no longer "
+                f"there to read (DeletedEntityAccess). Read them before the DELETE"
+            )
 
 
 def _governed_form(statement: str) -> bool:

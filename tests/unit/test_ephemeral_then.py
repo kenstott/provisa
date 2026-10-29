@@ -258,3 +258,10 @@ def test_a_label_set_on_a_model_node_then_a_read(monkeypatch):
     assert made.rows == [{"name": "Bo"}]
     assert made.counters["added"] == 1
     assert s.run("MATCH (v:Vip) RETURN v.name AS name") == [{"name": "Bo"}]
+
+
+def test_a_node_created_with_no_label_is_read_after_among_the_sessions_alone(monkeypatch):
+    # The model's tables type ``id`` as text: a union of every label would read 12 as '12'.
+    s = Session(monkeypatch, {"Person": ({"id": "text", "name": "text"}, "('p1', 'Ann')")})
+    made = s.run("CREATE (n {id: 12, name: 'foo'}) RETURN n.id AS id, n.name AS p")
+    assert made.rows == [{"id": 12, "p": "foo"}]

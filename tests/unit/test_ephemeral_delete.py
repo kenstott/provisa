@@ -219,3 +219,21 @@ def test_paths_a_map_holds_are_deleted_with_their_nodes_and_relationships(monkey
     s.run("CREATE (a:User), (b:User) CREATE (a)-[:R]->(b) CREATE (b)-[:R]->(a)")
     s.run("MATCH p = (:User)-[r]->(:User) WITH {key: collect(p)} AS pc DELETE pc.key[0], pc.key[1]")
     assert s.run("MATCH (n) RETURN n") == []
+
+
+@pytest.mark.parametrize(
+    "rest", ["RETURN n.num", "RETURN labels(n)", "WITH n RETURN n['num']", "RETURN keys(n)"]
+)
+def test_reading_what_a_statement_deleted_is_refused_and_nothing_is_written(monkeypatch, rest):
+    s = Session(monkeypatch, {})
+    s.run("CREATE ({num: 0})")
+    with pytest.raises(CypherParseError, match="DeletedEntityAccess"):
+        s.run(f"MATCH (n) DELETE n {rest}")
+    assert len(s.run("MATCH (n) RETURN n")) == 1
+
+
+def test_a_deleted_variable_null_before_the_delete_is_read_as_null(monkeypatch):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:T)")
+    made = s.run("OPTIONAL MATCH (n:T) WHERE n.k = 1 DELETE n RETURN n.k AS k")
+    assert made.rows == [{"k": None}]

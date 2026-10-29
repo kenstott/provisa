@@ -228,6 +228,11 @@ class ExprContext(Protocol):
         answers), None for any other name."""
         ...
 
+    def resolve_element_value(self, name: str) -> exp.Expression | None:
+        """A bound node, relationship or path as the JSON object a list, a map or collect()
+        holds, None for any other name."""
+        ...
+
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         """A bound node's or relationship's properties as one JSON object, None for any other
         name."""
@@ -1331,7 +1336,7 @@ class ExprLowering:
         if deep is not None:
             return deep
         elements = [
-            self._ctx.resolve_graph_element(i.name) if isinstance(i, Variable) else None
+            self._ctx.resolve_element_value(i.name) if isinstance(i, Variable) else None
             for i in node.items
         ]
         if all(e is None for e in elements):
@@ -1359,7 +1364,7 @@ class ExprLowering:
         keys = [exp.Literal.string(k) for k, _ in node.entries]
         # A node, relationship or path is its JSON object, as a list literal holds one.
         elements = [
-            self._ctx.resolve_graph_element(v.name) if isinstance(v, Variable) else None
+            self._ctx.resolve_element_value(v.name) if isinstance(v, Variable) else None
             for _, v in node.entries
         ]
         values = [

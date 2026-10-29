@@ -1812,14 +1812,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         """A map's value a WITH carries: a node, relationship or path as its JSON object (as
         the map holds it), any other value as it is."""
         if isinstance(value, Variable):
-            element = self._temporal_context().resolve_graph_element(value.name)
+            element = self._temporal_context().resolve_element_value(value.name)
             if element is not None:
                 return element
         return self._lower_expr(value)
 
     def _is_graph_element(self, name: str) -> bool:
         """Whether ``name`` is a node, relationship or path of the query."""
-        return self._temporal_context().resolve_graph_element(name) is not None
+        return self._temporal_context().resolve_element_value(name) is not None
 
     def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping | None]:
         """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
@@ -1945,14 +1945,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True)
                     )
                     continue
-                tbl_col = exp.Column(
-                    this=exp.Star(),
-                    table=exp.Identifier(this=held_in),
-                )
-                if alias:
-                    exprs.append(exp.alias_(tbl_col, alias))
-                else:
-                    exprs.append(tbl_col)
+                # The node's row goes on as its columns: a new name (WITH a AS b) is the
+                # variable's (_update_var_table_for_with), never an alias of the star, which an
+                # engine reads as one column.
+                exprs.append(exp.Column(this=exp.Star(), table=exp.Identifier(this=held_in)))
             else:
                 parsed = self._parse_expr(expr)
                 if alias:
