@@ -243,3 +243,21 @@ def test_an_anonymous_node_matches_every_node(monkeypatch):
     s.run("CREATE (), ()")
     assert s.run("MATCH () RETURN count(*) AS c") == [{"c": 2}]
     assert s.run("MATCH (), () RETURN count(*) AS c") == [{"c": 4}]
+
+
+def test_keys_of_a_relationship_read_with_any_ends_are_the_properties_it_holds(monkeypatch):
+    # Merge6 [3]'s control query: keys(r) and r[key] of every relationship of a type.
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T {name: 'foo', n: 1}]->(), ()-[:T]->()")
+    s.run("MATCH ()-[r:T]->() WHERE r.n = 1 SET r.gone = null")
+    rows = s.run("MATCH ()-[r:T]->() RETURN [key IN keys(r) | key + '->' + r[key]] AS kv")
+    assert sorted(sorted(r["kv"]) for r in rows) == [[], ["n->1", "name->foo"]]
+
+
+def test_a_string_joined_with_a_property_read_by_key_takes_its_text(monkeypatch):
+    # 'k->' + n[k]: the value's own text, never its JSON (a string's quotes).
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A {name: 'x', on: true})")
+    rows = s.run("MATCH (n:A) RETURN [key IN keys(n) | key + '=' + n[key]] AS kv")
+    assert sorted(rows[0]["kv"]) == ["name=x", "on=true"]
+    assert s.run("MATCH (n:A) RETURN n['name'] AS v") == [{"v": "x"}]

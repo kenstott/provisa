@@ -108,6 +108,16 @@ _XSD_NUMBERS = {
 _XSD_CASTS = {f"{_XSD}date": "DATE", f"{_XSD}dateTime": "TIMESTAMP", f"{_XSD}time": "TIME"}
 
 
+def _as_text(value: exp.Expression) -> exp.Expression:
+    """``value`` as the text a string + it joins: a property read by a key that is a value
+    (``n[key]``, its JSON) as its scalar's text, not its JSON (a string's quotes); any other as
+    it is."""
+    inner = value.this if isinstance(value, exp.Paren) else value
+    if isinstance(inner, exp.Anonymous) and str(inner.this).upper() == "JSON_EXTRACT":
+        return exp.Paren(this=_anon("JSON_EXTRACT_SCALAR", *(e.copy() for e in inner.expressions)))
+    return value
+
+
 class ExprContext(Protocol):
     """Translator-supplied resolution for the context-dependent leaves of an expression."""
 
@@ -915,7 +925,7 @@ class ExprLowering:
             if op == "+" and (self._ctx.is_text(node.left) or self._ctx.is_text(node.right)):
                 if not (self._ctx.is_list(node.left) or self._ctx.is_list(node.right)):
                     # A string + a value is the two as one string (SQL's + adds numbers alone).
-                    return exp.DPipe(this=left, expression=right)
+                    return exp.DPipe(this=_as_text(left), expression=_as_text(right))
             if op == "+" and self._ctx.is_list(node.left) != self._ctx.is_list(node.right):
                 # A list + an element appends it, an element + a list prepends it (SQL's + of a
                 # list and a value is no operator).

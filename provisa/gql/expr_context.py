@@ -718,6 +718,9 @@ class TranslatorExprContext:
         if name == "keys":
             if nm is None and var in t._domain_nodes:
                 return self._union_keys(var)
+            if nm is None and var in t._all_rels_rel_vars:
+                # A relationship of a read of every relationship: the properties it holds set.
+                return self._set_keys(exp.column(edge_properties_column(var)))
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
                 via_bound = t._rel_var_via.get(var)
@@ -752,12 +755,19 @@ class TranslatorExprContext:
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         if name in self._t._domain_nodes and self._t._var_table.get(name, (name, None))[1] is None:
             return self._union_properties(name)
+        if name in self._t._all_rels_rel_vars:
+            # A relationship of a read of every relationship: its own properties, held beside
+            # its JSON (translator_union._build_all_rels_union).
+            return exp.column(edge_properties_column(name))
         return self._properties_object(name)
 
     def _union_keys(self, var: str) -> exp.Expression:
         """keys(n) of a node of a union of labels: the keys of the properties its row's value
         holds (NODE_COLUMN) that are set -- a property null on the row is no property of it."""
-        props = self._union_properties(var)
+        return self._set_keys(self._union_properties(var))
+
+    def _set_keys(self, props: exp.Expression) -> exp.Expression:
+        """The keys of a properties JSON object whose values are set (not null)."""
         key = exp.to_identifier("_k")
         path = exp.DPipe(
             this=exp.DPipe(this=exp.Literal.string('$."'), expression=exp.column("_k")),
