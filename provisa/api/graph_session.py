@@ -37,6 +37,7 @@ import contextvars
 import hashlib
 import json
 import logging
+import time
 from collections import Counter
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -232,10 +233,20 @@ def _held(session: TempSession) -> dict[str, Any]:
     }
 
 
-def _empty_row(user_id: str, claims: list[str], assigned: list[str], fingerprint: str) -> dict:
+def _first_generation(after: int = -1) -> int:
+    """The generation a session begins at: the clock in microseconds, so one begun after a clear,
+    a retention sweep or a change of rights (the row gone, or replaced) never repeats a generation
+    its principal's earlier session had -- the session id is fixed, so ``id:generation`` keys what
+    is kept for it. Never at or below ``after``, the generation a replaced row held."""
+    return max(time.time_ns() // 1000, after + 1)
+
+
+def _empty_row(
+    user_id: str, claims: list[str], assigned: list[str], fingerprint: str, after: int = -1
+) -> dict:
     return {
         "user_id": user_id,
-        "generation": 0,
+        "generation": _first_generation(after),
         "used_at": datetime.now(UTC),
         "roles": sorted(claims),
         "assigned": assigned,
@@ -289,7 +300,9 @@ async def session_for(
                     await conn.execute_core(
                         update(rows)
                         .where(rows.c.user_id == user_id)
-                        .values(**_empty_row(user_id, claims, assigned, fingerprint))
+                        .values(
+                            **_empty_row(user_id, claims, assigned, fingerprint, row.generation)
+                        )
                     )
                     row = (await conn.execute_core(locking)).one()
             held = GraphSession(user_id, _session_of(user_id, row), exclusive=writes)

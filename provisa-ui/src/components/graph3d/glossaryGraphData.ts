@@ -582,6 +582,7 @@ export function glossaryGraph(
       type: "term",
       label: t.name,
       status,
+      ...(t.grounding === "not_grounded" ? {} : { grounding: t.grounding }),
       role: termRole({ table_count: (t.tables ?? []).length, ref_count: t.ref_count }),
       // For the side panel only; a proposal with none has nothing said there.
       ...(t.definition ? { definition: t.definition } : {}),

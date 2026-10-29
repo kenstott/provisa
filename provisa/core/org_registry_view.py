@@ -49,6 +49,15 @@ VIEW_COLUMNS = (
 )
 
 
+# The view names every org's schema, so its rebuild and the drop of an org's schema must not overlap:
+# a drop between the rebuild's check that a schema exists and its CREATE VIEW fails the rebuild with
+# UndefinedTable, and with it whatever asked for it -- a demo sandbox opening while another one is
+# reaped. Both hold this advisory lock on the tenant control plane. Every request runs on a thread
+# and event loop of its own, so only a lock on the server serializes them (as the sandbox opening
+# lock does), across processes too.
+ORG_SCHEMAS_LOCK_KEY = 0x50524F5649534137
+
+
 class RegistryViewUnavailable(RuntimeError):
     """The org registry cannot be exposed as a view on this deployment.
 
@@ -139,11 +148,12 @@ async def refresh_org_registry_view(*, model_db: "Database", admin_db: "Database
     admin_schema = await _admin_schema_name(admin_db)
     root_schema = root_schema_name(model_db)
 
-    async with admin_db.acquire() as conn:
-        rows = await conn.fetch("SELECT id FROM orgs")
-    org_ids = [r[0] for r in rows]
-
-    async with model_db.acquire() as conn:
+    async with model_db.acquire() as conn, conn.advisory_lock(ORG_SCHEMAS_LOCK_KEY):
+        # The orgs are read under the lock: an org deleted before it is taken is not named, and one
+        # deleted after keeps its schema until this rebuild is done.
+        async with admin_db.acquire() as admin_conn:
+            rows = await admin_conn.fetch("SELECT id FROM orgs")
+        org_ids = [r[0] for r in rows]
         visible = await conn.fetchval(f"SELECT to_regclass('{admin_schema}.orgs')")
         if visible is None:
             raise RegistryViewUnavailable(

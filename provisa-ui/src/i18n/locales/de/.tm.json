@@ -7953,7 +7953,7 @@
   "de/tour.json::tour.steps.provisioningAsFinance.title": "Run as finance",
   "de/tour.json::tour.steps.provisioningAsFinanceAgain.description": "Finance again, for the close.",
   "de/tour.json::tour.steps.provisioningAsFinanceAgain.title": "Back to finance",
-  "de/tour.json::tour.steps.provisioningClose.description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens.",
+  "de/tour.json::tour.steps.provisioningClose.description": "close_by_category, finance's close, may be read only from 02:00 to 02:15 UTC. Outside it this read is refused, naming the view and when its window next opens. Inside the window it returns the close instead.",
   "de/tour.json::tour.steps.provisioningClose.title": "A read outside its window",
   "de/tour.json::tour.steps.provisioningDataScienceView.description": "The same dataset, the same query: cost and margin read 0, and service orders are gone (a row rule). One dataset, two governed views, no copies.",
   "de/tour.json::tour.steps.provisioningDataScienceView.title": "What data science pulls",
@@ -8589,5 +8589,11 @@
   "de/dataProductsTab.json::dataProductsTab.contract.summary.customProperties_one": "{{count}} custom property",
   "de/dataProductsTab.json::dataProductsTab.contract.summary.customProperties_other": "{{count}} custom properties",
   "de/dataProductsTab.json::dataProductsTab.contract.summary.tags_one": "{{count}} tag",
-  "de/dataProductsTab.json::dataProductsTab.contract.summary.tags_other": "{{count}} tags"
+  "de/dataProductsTab.json::dataProductsTab.contract.summary.tags_other": "{{count}} tags",
+  "de/glossaryTab.json::glossaryTab.groundingReachColumns_one": "Grounded: reaches data in {{count}} column",
+  "de/glossaryTab.json::glossaryTab.groundingReachColumns_other": "Grounded: reaches data in {{count}} columns",
+  "de/glossaryTab.json::glossaryTab.groundingReachTables_one": "Grounded: reaches data in {{count}} table",
+  "de/glossaryTab.json::glossaryTab.groundingReachTables_other": "Grounded: reaches data in {{count}} tables",
+  "de/graph3d.json::graph3d.grounding_grounded": "Grounded",
+  "de/graph3d.json::graph3d.grounding_grounded_pending": "Grounded, pending approval"
 }

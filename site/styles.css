@@ -693,3 +693,7 @@ code:not(pre code) {
 .demo-chip:hover, .demo-chip.is-active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .demo-group { margin-top: 48px; scroll-margin-top: 80px; }
 .demo-group-head { font-size: 1.4rem; font-weight: 700; margin: 0 0 20px; letter-spacing: -0.02em; }
+.positioning-note {
+  max-width: 720px; margin: 14px auto 0; text-align: center;
+  font-size: 1rem; line-height: 1.65; color: var(--text-muted);
+}

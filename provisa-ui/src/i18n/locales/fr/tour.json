@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Une lecture hors de sa fenêtre",
-        "description": "close_by_category, la clôture de la finance, ne peut être lue que de 02:00 à 02:15 UTC. En dehors, cette lecture est refusée, en nommant la vue et l'heure de réouverture de sa fenêtre."
+        "description": "close_by_category, la clôture de la finance, ne peut être lue que de 02:00 à 02:15 UTC. En dehors, cette lecture est refusée, en nommant la vue et l'heure de réouverture de sa fenêtre. Dans la fenêtre, elle renvoie la clôture."
       },
       "provisioningRest": {
         "title": "Les extractions via REST",

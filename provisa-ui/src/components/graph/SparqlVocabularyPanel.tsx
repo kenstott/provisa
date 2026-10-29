@@ -97,6 +97,13 @@ export function SparqlVocabularyPanel({
       (ns === null || iri.startsWith(ns)) &&
       (allowed === null || allowed.some((a) => iri.startsWith(a)));
     const c = (iri: string) => compactIri(iri, p);
+    // REQ-1723, REQ-2163: a term or concept is shown when one of its domains is checked (or it is
+    // enterprise-wide, "*"), and one with no domain always; none checked is every domain.
+    const termVisible = (domains: readonly string[] | undefined) =>
+      checkedDomains.size === 0 ||
+      domains === undefined ||
+      domains.length === 0 ||
+      domains.some((d) => d === "*" || checkedDomains.has(d));
     // An edge is between two labels; it is in a domain where either label's table class is.
     const labelInDomain = (label: string) =>
       vocabulary.classes.some(
@@ -111,7 +118,9 @@ export function SparqlVocabularyPanel({
     ];
     return {
       classes: byName(
-        vocabulary.classes.filter((x) => inDomain(x.iri) || x.kind === "term"),
+        vocabulary.classes.filter((x) =>
+          x.kind === "term" ? termVisible(x.domains) : inDomain(x.iri),
+        ),
         (x) => c(x.iri),
       ).map((x) => ({
         ...x,
@@ -120,7 +129,11 @@ export function SparqlVocabularyPanel({
         parents: x.superclasses.map(c),
       })),
       predicates: byName(
-        oncePerIri(vocabulary.predicates.filter((x) => inDomain(x.iri) || x.kind === "term")),
+        oncePerIri(
+          vocabulary.predicates.filter((x) =>
+            x.kind === "term" ? termVisible(x.domains) : inDomain(x.iri),
+          ),
+        ),
         (x) => c(x.iri),
       ).map((x) => {
         const iri = c(x.iri);
@@ -137,7 +150,10 @@ export function SparqlVocabularyPanel({
         ),
         (e) => c(e.iri),
       ).map((e) => ({ ...e, shown: c(e.iri) })),
-      concepts: byName(vocabulary.concepts, (x) => x.name).map((x) => ({ ...x, shown: c(x.iri) })),
+      concepts: byName(
+        vocabulary.concepts.filter((x) => termVisible(x.domains)),
+        (x) => x.name,
+      ).map((x) => ({ ...x, shown: c(x.iri) })),
     };
   }, [vocabulary, domain, checkedDomains]);
 

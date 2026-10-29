@@ -42,6 +42,53 @@ def _properties_of(var: str, exprs: "list[CypherExpr]") -> list[str]:
     return list(seen)
 
 
+#: The comparisons that are null, and so filter the row out, when an operand is null.
+_NULL_REJECTING = {
+    "=",
+    "<>",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "IN",
+    "STARTS WITH",
+    "ENDS WITH",
+    "CONTAINS",
+    "=~",
+}
+
+
+def _required_properties(var: str, wheres: "list[CypherExpr]") -> list[str]:
+    """The properties of ``var`` without which a row fails one of ``wheres`` (REQ-347): each is
+    an operand of a comparison, or of an IS NOT NULL, that is one of the WHERE's top-level AND
+    conjuncts. A node lacking one of them is filtered out; any other property it lacks it reads
+    as null, and is still matched."""
+    from provisa.gql.expr_ast import Binary, IsNull, Paren, Property, Variable
+
+    def of_var(e: "CypherExpr") -> "str | None":
+        while isinstance(e, Paren):
+            e = e.inner
+        if isinstance(e, Property) and isinstance(e.obj, Variable) and e.obj.name == var:
+            return e.name
+        return None
+
+    seen: dict[str, None] = {}
+    pending = list(wheres)
+    while pending:
+        e = pending.pop(0)
+        if isinstance(e, Paren):
+            pending.insert(0, e.inner)
+        elif isinstance(e, Binary) and e.op == "AND":
+            pending[:0] = [e.left, e.right]
+        elif isinstance(e, Binary) and e.op in _NULL_REJECTING:
+            for p in (of_var(e.left), of_var(e.right)):
+                if p is not None:
+                    seen.setdefault(p, None)
+        elif isinstance(e, IsNull) and e.negated and (p := of_var(e.operand)) is not None:
+            seen.setdefault(p, None)
+    return list(seen)
+
+
 def _collects_maps(expr: "CypherExpr") -> bool:
     """Whether ``expr`` collects map literals (``collect({...})``): its value is a list of maps."""
     from provisa.gql.expr_ast import FunctionCall, MapLiteral, walk

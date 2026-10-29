@@ -1078,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Ein Lesezugriff außerhalb des Fensters",
-        "description": "close_by_category, der Abschluss von Finance, darf nur von 02:00 bis 02:15 UTC gelesen werden. Außerhalb davon wird dieser Lesezugriff abgelehnt, mit dem Namen der View und dem Zeitpunkt, zu dem ihr Fenster wieder öffnet."
+        "description": "close_by_category, der Abschluss von Finance, darf nur von 02:00 bis 02:15 UTC gelesen werden. Außerhalb davon wird dieser Lesezugriff abgelehnt, mit dem Namen der View und dem Zeitpunkt, zu dem ihr Fenster wieder öffnet. Innerhalb des Fensters liefert er stattdessen den Abschluss."
       },
       "provisioningRest": {
         "title": "Die Abrufe über REST",

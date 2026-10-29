@@ -145,6 +145,8 @@
     "quality_none": "Ещё не запускалась",
     "factOwner": "Владелец",
     "factMembers": "Таблицы-участники",
-    "factColumns": "Столбцы"
+    "factColumns": "Столбцы",
+    "grounding_grounded": "Привязан",
+    "grounding_grounded_pending": "Привязан, ожидает утверждения"
   }
 }

@@ -108,6 +108,11 @@ describe("the Ontology View's terms", () => {
     expect(node("term:2")?.unlinkedTables).toBeUndefined();
   });
 
+  it("carries a term's grounding on its node, and none for a term that reaches no data", () => {
+    expect(node(G, "term:1")?.grounding).toBe("grounded");
+    expect(node(G, "term:4")?.grounding).toBeUndefined();
+  });
+
   it("names a draft term by its title, its standing marked by style alone", () => {
     expect(node(G, "term:3")).toMatchObject({ status: "draft", label: "Loyalty tier" });
     expect(node(G, "term:4")).toMatchObject({ status: "draft", label: "Concept" });

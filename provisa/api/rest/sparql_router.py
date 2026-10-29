@@ -258,6 +258,7 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
     from provisa.sparql_query.vocabulary import (
         concepts_of,
         superclasses_of,
+        term_domains_of,
         vocabulary_document,
     )
 
@@ -286,5 +287,6 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
             concepts_of(vocab.base, terms),
             # A Class term's superclasses, among the terms the role reads (REQ-2135).
             superclasses_of(vocab.base, terms, edges),
+            term_domains_of(vocab.base, terms),
         )
     )
