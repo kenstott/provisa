@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A Bolt connection's ephemeral graph (REQ-2176): one temporary-table session per connection,
-bound around each of its RUNs and ended with it; a CREATE the governing rule does not make wholly
+"""A Bolt connection's ephemeral graph (REQ-2176): each RUN is a statement of its principal's
+graph session, which outlives the connection; a CREATE the governing rule does not make wholly
 the governed write is the ephemeral layer's, its governed parts through Bolt's governed write;
 a read while the session holds ephemeral objects is never served from, nor kept in, the
 translations a role's reads share."""
@@ -36,24 +36,42 @@ async def _run(session, cypher: str) -> None:
     session._end_all_requests()
 
 
-async def test_each_run_of_a_connection_belongs_to_its_one_temporary_session():
+async def test_each_run_of_a_connection_belongs_to_its_principals_graph_session(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from provisa.api import graph_session
     from tests.unit.test_bolt_show_databases import _make_session
 
-    session, _writer = _make_session(["analyst"])
+    session, _writer = _make_session(["analyst"], graph_session=True)
+    held = temp_tables.TempSession(kept=True)
+    opened: list[tuple] = []
     seen: list[object] = []
+
+    @asynccontextmanager
+    async def session_for(_state, user_id, claims, *, writes):
+        opened.append((user_id, claims, writes))
+        token = temp_tables.bind(held)
+        try:
+            yield graph_session.GraphSession(user_id, held, exclusive=writes)
+        finally:
+            temp_tables.unbind(token)
 
     async def execute(*_args, **_kwargs):
         seen.append(temp_tables.current())
         return ["id"], [[1]], None
 
+    monkeypatch.setattr(graph_session, "session_for", session_for)
     with patch("provisa.bolt.session._execute_cypher", execute):
         await _run(session, "MATCH (p:Pets) RETURN p.id AS id")
-        await _run(session, "MATCH (p:Pets) RETURN p.id AS id")
-    assert seen == [session.temp_tables, session.temp_tables]
+        await _run(session, "CREATE (:Temp {k: 1})")
+    # Unsecured, the connection is the anonymous principal's, as an unsecured page is; a
+    # statement with a write clause takes the session's exclusive lock.
+    assert opened == [(graph_session.ANONYMOUS, [], False), (graph_session.ANONYMOUS, [], True)]
+    assert seen == [held, held]
     assert temp_tables.current() is None
 
 
-async def test_the_connection_ending_ends_its_temporary_tables(monkeypatch):
+async def test_the_connection_ending_drops_nothing_of_the_graph_session(monkeypatch):
     import asyncio
 
     from provisa.bolt import server
@@ -70,7 +88,6 @@ async def test_the_connection_ending_ends_its_temporary_tables(monkeypatch):
 
     async def _loop(session, _reader, _writer):
         session.org_id = "org"
-        session.temp_tables.stored = True
         sessions.append(session)
 
     monkeypatch.setattr(server, "_serve", _loop)
@@ -85,8 +102,8 @@ async def test_the_connection_ending_ends_its_temporary_tables(monkeypatch):
     reader = asyncio.StreamReader()
     reader.feed_data(MAGIC + bytes([0, 0, 4, 5]) + bytes(12))  # proposes Bolt 5.4
     await server._bolt_handshake_and_serve(reader, _Writer())  # type: ignore[arg-type]
-    [session] = sessions
-    assert ended == [session.temp_tables]  # type: ignore[attr-defined]
+    assert len(sessions) == 1
+    assert ended == []
 
 
 class _Kept:
@@ -134,8 +151,12 @@ async def test_an_ephemeral_create_is_the_ephemeral_layers_its_governed_parts_bo
         written.append((statement, values))
         return [], []
 
-    held = temp_tables.TempSession()
+    from provisa.api import graph_session
+
+    held = temp_tables.TempSession(kept=True)
+    bound = graph_session.GraphSession("ada", held, exclusive=True)
     token = temp_tables.bind(held)
+    bound_token = graph_session._bound.set(bound)
     try:
         with ExitStack() as stack:
             for p in _patched(
@@ -145,8 +166,11 @@ async def test_an_ephemeral_create_is_the_ephemeral_layers_its_governed_parts_bo
                 stack.enter_context(p)
             answer = await _execute_cypher("CREATE (:Temp {k: 1})", {}, "analyst")
     finally:
+        graph_session._bound.reset(bound_token)
         temp_tables.unbind(token)
     assert answer == ([], [], None)
+    # A write to the graph session advances its generation, whatever shapes it changed.
+    assert bound.wrote
     assert asked == [("CREATE (:Temp {k: 1})", "model", held)]
     assert written == [("CREATE (n:Person {id: $id})", {"id": 1})]
 
