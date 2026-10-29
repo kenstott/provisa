@@ -91293,7 +91293,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     are materialized (REQ-159); a same-source path walk is routed to its source and runs there as native
     recursive SQL with the source''s own indexes. The materialization, its edges and their indexes live
     only in Provisa''s MV store (REQ-844, REQ-880); Provisa never writes DDL to a source for them. Unchecked
-    relationships that path queries use often are shown to the owner from the query history.'
+    relationships that path queries use often are shown to the owner from the query history. (Amended 2026-10-28,
+    ONE EDGES TABLE WALKS EVERY PATH:) The materialized relationships'' edge indexes merge into one edges
+    table of (from node, to node, relationship type), each node id carrying its table (Terms:42), refreshed
+    with its relationships and indexed in both directions. Every path search (shortestPath, allShortestPaths,
+    variable-length patterns) whose relationships are all materialized walks that table, whatever its anchors:
+    a bound end seeds the walk with the ids an earlier clause bound, a labelled end with its table''s ids,
+    and with both ends free the walk starts from every node that has an edge, so a both-ends-free path search
+    is allowed over materialized relationships (REQ-348). A label or bound variable on the far end and relationship
+    types in the pattern filter the walk; the hop bound holds and [*] stays refused; the endpoints are joined
+    to their tables once, for the properties the statement returns. A path search that can follow an unmaterialized
+    relationship uses the per-hop joins under REQ-348''s one-end rule, and a both-ends-free one is refused
+    naming the unmaterialized relationships and the Materialize checkbox. A predicate on every node of a
+    path joins those nodes'' tables per hop; a single hop is a plain join; a query needing current data
+    reads the sources, as for any materialization. How the walk honours each role''s row rules on the nodes
+    it passes through is open, for the maintainer to decide; filtering only the returned endpoints is ruled
+    out, since it reveals that hidden paths exist.'
   scenario: 'Given a relationship with an edge index and a [*1..4] pattern over it
     When the pattern is compiled
     Then its recursive steps read the edge index, indexed in both directions, and the endpoint tables are joined once
