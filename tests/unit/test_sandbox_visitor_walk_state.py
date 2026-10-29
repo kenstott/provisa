@@ -129,3 +129,24 @@ def test_a_refusal_for_a_view_the_step_does_not_read_fails_it():
 def test_a_refusal_off_the_sql_explorer_fails_the_step():
     with pytest.raises(AssertionError):
         walk_module._answered("close (graphql)", _refused("view_close_by_category"))
+
+
+def test_the_agentdata_tour_runs_a_step_the_walk_can_send(monkeypatch):
+    """The publish gate (demo-bundles.yml) refused agentdata, whose tour is pages and live agent
+    questions: "agentdata's tour runs nothing". Its Connect step opens the explorer's panel, which
+    reads the MCP server's status -- the one request of the tour the walk sends, as the page does."""
+    sent: list[tuple[str, str]] = []
+
+    def answer(method, url, **kwargs):
+        sent.append((method, url))
+        return httpx.Response(200, json={"enabled": True}, request=httpx.Request(method, url))
+
+    monkeypatch.setattr(httpx, "request", answer)
+    walk = _walk()
+    walk.tier = type("Tier", (), {"base_url": "http://tier"})()
+    from pathlib import Path
+
+    directory = Path(walk_module.__file__).resolve().parents[2] / "demo" / "named" / "agentdata"
+    walked = walk.run(directory)
+    assert ("GET", "http://tier/admin/mcp-server") in sent
+    assert any(line.startswith("agentdataConnect ") for line in walked), walked
