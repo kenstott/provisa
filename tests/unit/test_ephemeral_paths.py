@@ -76,9 +76,10 @@ def test_tck_match6_a_named_variable_length_path(monkeypatch):
         "CREATE (a:A {name: 'A'})-[:KNOWS {num: 1}]->(b:B {name: 'B'})-[:KNOWS]->(c:C {name: 'C'})"
     )
     rows = s.run("MATCH p = (n {name: 'A'})-[:KNOWS*1..2]->(x) RETURN p, length(p) AS l")
-    # REQ-751: the path is every node the walk passed, not its two ends alone.
+    # REQ-751: the path is every node the walk passed, not its two ends alone; each a session
+    # node, answered by its id within the session (seam.answered, REQ-2176).
     nodes = sorted(([n["id"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
-    assert nodes == [(["A|e:1", "B|e:2"], 1), (["A|e:1", "B|e:2", "C|e:3"], 2)]
+    assert nodes == [(["e:1", "e:2"], 1), (["e:1", "e:2", "e:3"], 2)]
     assert [len(r["p"]["edges"]) for r in sorted(rows, key=lambda r: r["l"])] == [1, 2]
 
 
@@ -144,7 +145,8 @@ def test_a_walk_reaches_a_model_node_by_a_session_relationship(monkeypatch):
         "MATCH p = shortestPath((a)-[*..5]-(c)) RETURN length(p) AS l, p"
     )
     assert [r["l"] for r in rows] == [2]
-    assert [n["id"] for n in rows[0]["p"]["nodes"]] == ["Person|1", "Robot|e:1", "Robot|e:2"]
+    # A model node as the model answers it; a session node by its id within the session.
+    assert [n["id"] for n in rows[0]["p"]["nodes"]] == ["Person|1", "e:1", "e:2"]
 
 
 def test_a_walk_reads_the_relationships_table_once(monkeypatch):

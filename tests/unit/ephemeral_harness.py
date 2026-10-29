@@ -249,4 +249,5 @@ class Session:
         )
         if made is not None:
             return made
-        return asyncio.run(self.read(statement, params))
+        # As a surface answers a read of the session: its own nodes as the session holds them.
+        return seam.answered(asyncio.run(self.read(statement, params)), self.session)

@@ -219,6 +219,28 @@ class _RelJoinMixin:  # mixin for _Translator
             _early_matches = along or _early_matches
         return _early_matches[0] if _early_matches else None
 
+    def _reaches_several_labels(
+        self, rel: "RelPattern", src_nm: "NodeMapping | None", tgt_nm: "NodeMapping | None"
+    ) -> bool:
+        """Whether ``rel``, of one type, from the end the pattern names a type of reaches nodes of
+        several labels at its other end, which the pattern names none of (J198)."""
+        if len(rel.types) != 1 or (src_nm is None) == (tgt_nm is None):
+            return False
+        held = src_nm if src_nm is not None else tgt_nm
+        assert held is not None
+        # The labelled end is the relationship's source read forward from the source, its target
+        # read backward; undirected, either.
+        forward = (src_nm is not None) == (rel.direction != "left")
+        ways = (True, False) if rel.direction == "none" else (forward,)
+        mappings = self._lm.aliases.get(rel.types[0].upper(), [])
+        far = {
+            (m.target_label if way else m.source_label)
+            for m in mappings
+            for way in ways
+            if (m.source_label if way else m.target_label) == held.type_name
+        }
+        return len(far) > 1
+
     def _stored_edges_of_unnamed_ends(
         self, rel: "RelPattern", src_node: "NodePattern", tgt_node: "NodePattern"
     ) -> bool:
@@ -777,6 +799,25 @@ class _RelJoinMixin:  # mixin for _Translator
                 tgt_nm=tgt_nm,
             )
 
+        ends = (self._named_type(src_node), self._named_type(tgt_node))
+        if self._session_hop(rel) and (  # type: ignore[attr-defined]
+            len(rel.types) != 1
+            or clause.optional
+            or any(nm is None or nm.type_name in self._lm.label_sets for nm in ends)
+        ):
+            # REQ-2176: a graph session's hop of no one type, from or to a node of no one label,
+            # or of an OPTIONAL MATCH (one join, which its WHERE conditions), read from its one
+            # relationships relation (path_walk). One of one type between labelled nodes joins
+            # their relations, each filtered first (ephemeral.read).
+            return (
+                every_rel_hop(self._named_type(src_node), self._named_type(tgt_node)),
+                joins,
+                True,
+            )
+        if not rel.variable_length and self._reaches_several_labels(rel, *ends):
+            # J198: a type that from the one labelled end reaches nodes of several labels, its
+            # other end of none: every relationship of it, of each pair of labels it joins.
+            return every_rel_hop(*ends), joins, True
         if any(
             held and self._is_value_node(node)
             for node, held in ((src_node, held_source), (tgt_node, held_target))
@@ -1172,6 +1213,21 @@ class _RelJoinMixin:  # mixin for _Translator
                 if j is not None:
                     joins.append(j)
 
+            if self._session_chain(rels):  # type: ignore[attr-defined]
+                # REQ-348, REQ-2176: a session's pattern of several hops, variable-length ones
+                # among them, read hop by hop (path_walk).
+                from_expr = self._translate_session_chain(  # type: ignore[attr-defined]
+                    clause,
+                    nodes,
+                    rels,
+                    joined,
+                    from_expr,
+                    own_first,
+                    joins,
+                    clause_index,
+                    CypherTranslateError,
+                )
+                continue
             for i, rel in enumerate(rels):
                 if i + 1 >= len(nodes):
                     break

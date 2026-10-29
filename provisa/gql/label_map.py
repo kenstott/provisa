@@ -198,6 +198,20 @@ GRAPH_ID = "__graph_id"
 LABELS_COLUMN = "__labels"
 
 
+#: The catalog a graph session's relations are named in (provisa.ephemeral.read, REQ-2176).
+SESSION_CATALOG = "__session__"
+#: The column of a graph session's node relation holding each node's identity in an answer, the
+#: same under whichever label it is read: a model node's ``Label|key``, a node the session created
+#: ``Label|id`` after the first of its labels in name order (``|id`` with none) (REQ-2176).
+IDENTITY_COLUMN = "__identity"
+
+
+def is_session_node(nm: "NodeMapping") -> bool:
+    """Whether ``nm`` is a graph session's node relation (provisa.ephemeral.read), whose rows
+    carry each node's identity (IDENTITY_COLUMN)."""
+    return nm.catalog_name == SESSION_CATALOG
+
+
 @dataclass(frozen=True)
 class SessionWalk:
     """REQ-348: a graph session's relationships, every one a row of one relation of
@@ -230,6 +244,9 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     #: REQ-348: set on a graph session's label map (provisa.ephemeral.read.overlay); None on the
     #: model graph, where a path function's ends are labelled.
     session_walk: SessionWalk | None = None
+    #: A graph session's node relations of several labels (node_of_all): each one's table name ->
+    #: the labels its nodes all have, and its type name -> the same (REQ-2176).
+    label_sets: dict[str, tuple[str, ...]] = {}
 
     def __init__(
         self,
@@ -296,6 +313,36 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         if len(self.nodes_by_table.get(nm.table_label, [])) > 1:
             return nm.label
         return nm.table_label
+
+    def node_of_all(self, keys: list[str]) -> str:
+        """The type name of the nodes of a graph session having every label of ``keys`` (each a
+        session label's type name, REQ-2176): one relation, of the first label's nodes that have
+        the rest too, with every property any of them publishes. Made once per label map."""
+        import dataclasses
+
+        held = sorted(set(keys))
+        name = "&".join(held)
+        if name in self.nodes:
+            return name
+        first = self.nodes[held[0]]
+        properties: dict[str, str] = {}
+        types: dict[str, str] = {}
+        for key in held:
+            nm = self.nodes[key]
+            properties.update(nm.properties)
+            types.update(dict(nm.property_types))
+        table = f"nodes_all__{name}"
+        combined = dataclasses.replace(
+            first,
+            type_name=name,
+            table_name=table,
+            properties=properties,
+            physical_properties=dict(properties),
+            property_types=tuple((p, types[p]) for p in properties if p in types),
+        )
+        self.nodes = {**self.nodes, name: combined}
+        self.label_sets = {**self.label_sets, table: tuple(held), name: tuple(held)}
+        return name
 
     def canonical_label(self, label: str) -> str:  # REQ-572
         """Return the canonical-cased label, falling back to input if not found."""

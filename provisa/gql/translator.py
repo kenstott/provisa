@@ -63,7 +63,15 @@ from provisa.gql.ir import (
     WithClause,
     OrderItem,
 )
-from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.label_map import (
+    GRAPH_ID,
+    IDENTITY_COLUMN,
+    LABELS_COLUMN,
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    is_session_node,
+)
 from provisa.gql.path_expr import PathExprMixin
 from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
@@ -298,6 +306,19 @@ def _lists_mixed_lists(
     )
 
 
+def _comprehends_elements(expr: CypherExpr) -> bool:
+    """Whether ``expr`` is a pattern comprehension of paths, nodes or relationships of its
+    pattern: a list each item of which is its JSON (expr_context.resolve_pattern_comprehension)."""
+    from provisa.gql.expr_ast import PatternComprehension
+
+    if not isinstance(expr, PatternComprehension) or not isinstance(expr.projection, Variable):
+        return False
+    named = {expr.path_var} | {
+        item.variable for item in [*expr.pattern.nodes, *expr.pattern.rels] if item.variable
+    }
+    return expr.projection.name in named
+
+
 def _is_json_list(e: exp.Expression) -> bool:
     """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
     them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
@@ -488,13 +509,22 @@ def _properties_read(node: Any, var: str) -> bool:
 
 
 def labels_read(node: Any, var: str) -> bool:
-    """Whether ``node`` (an IR tree) reads ``labels(var)``."""
+    """Whether ``node`` (an IR tree) reads the labels of ``var``: ``labels(var)``, or a label
+    test of it (``var:L``)."""
+    from provisa.gql.expr_ast import LabelPredicate
+
     if (
         isinstance(node, FunctionCall)
         and node.name.lower() == "labels"
         and len(node.args) == 1
         and isinstance(node.args[0], Variable)
         and node.args[0].name == var
+    ):
+        return True
+    if (
+        isinstance(node, LabelPredicate)
+        and isinstance(node.operand, Variable)
+        and node.operand.name == var
     ):
         return True
     if isinstance(node, (list, tuple)):
@@ -788,7 +818,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # A path a WITH carries on: one column of its CTE, its path object (WITH p)
         self._carried_paths: set[str] = set()
-        # REQ-348: a model walk's path variable -> its start's and end's identities (path_functions)
+        # A WITH's alias of a list of a session walk's nodes or relationships -> NODE or EDGE
+        self._element_lists: dict[str, str] = {}
+        # An embedded statement's names for the outer nodes it matches (expr_context), and each
+        # one's identity in the outer statement it is tied to
+        self._drawn_vars: set[str] = set()
+        # The comprehensions read one row per item so far (expr_context.resolve_element_rows)
+        self._element_row_count = 0
+        self._outer_identities: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: a walk's path variable -> its start's and end's identities (path_walk, path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'
         # and its relationships' lists (path_walk)
@@ -900,6 +938,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             _order_collects(select_exprs, carried, self._stage_orders.get(carried))
         where_expr = self._build_where(stage_where)
         for step_vars, owned in optional_wheres:
+            step_vars = self._step_aliases(step_vars)
             if owned is not None:
                 joins, kept = _fold_where_into_optional_joins(
                     self._lower_where(owned), step_vars, joins
@@ -1098,6 +1137,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         from_clause, joins = self._expose_split_nodes(from_clause, joins)
         return from_clause, joins, all_matches, stage_where
 
+    def _step_aliases(self, step_vars: set[str]) -> set[str]:
+        """The aliases of the joins an OPTIONAL MATCH introducing ``step_vars`` reads: its
+        variables', and each derived table of a hop read from a union of relationships
+        (translator_every_rel) carrying one of them."""
+        held = getattr(self, "_all_rels_var_alias", {})
+        return set(step_vars) | {alias for col, alias in held.items() if col in step_vars}
+
     def _apply_where_and_fold(
         self,
         stage_where: "_StageWheres",
@@ -1110,6 +1156,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         required, optional_wheres = stage_where
         where_expr = self._build_where(required)
         for step_vars, owned in optional_wheres:
+            step_vars = self._step_aliases(step_vars)
             if owned is not None:
                 joins, kept = _fold_where_into_optional_joins(
                     self._lower_where(owned), step_vars, joins
@@ -1293,6 +1340,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         refuse_unregistered_relationship_types(self._ast, self._lm)
         segments = self._group_pipeline()
         cte_defs: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # How many recursive CTEs the statement holds once each stage is built: a stage reads the
+        # walks it made, so each is defined ahead of it.
+        walks_by_stage: list[int] = []
 
         for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
             assert with_clause is not None
@@ -1300,6 +1350,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 n, match_steps, unwinds, with_clause, cte_defs[-1][0] if cte_defs else None
             )
             cte_defs.append((cte_name, stage_query))
+            walks_by_stage.append(len(self._recursive_ctes))
             self._update_var_table_for_with(with_clause.items, cte_name)
 
         final_match_steps, final_unwinds, _ = segments[-1]
@@ -1340,10 +1391,17 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
             result = self._apply_extra_branches(query, select_exprs, where_expr)
 
-        for cte_name, cte_query in cte_defs:
+        defined = 0
+        for (cte_name, cte_query), made in zip(cte_defs, walks_by_stage, strict=True):
+            for walk_name, walk_expr in self._recursive_ctes[defined:made]:
+                result = result.with_(walk_name, as_=walk_expr, recursive=True)
+            defined = made
             result = result.with_(cte_name, as_=cte_query)
-        for cte_name, cte_expr in self._recursive_ctes:
+        for cte_name, cte_expr in self._recursive_ctes[defined:]:
             result = result.with_(cte_name, as_=cte_expr, recursive=True)
+        if self._recursive_ctes:
+            # The statement's WITH is recursive, whichever of its CTEs came first.
+            result.args["with_"].set("recursive", True)
 
         # If this is the first branch of a UNION ALL and has a per-branch LIMIT/SKIP,
         # apply it to just this branch before folding the union. Without this the limit
@@ -1387,8 +1445,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             name = projection.alias_or_name
             if not name or name.lower() in self._graph_vars:
                 continue
+            held = projection.this if isinstance(projection, exp.Alias) else projection
             if _holds_json_maps(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
+            elif isinstance(held, exp.Column) and held.name in self._json_list_vars:
+                # A list of several types a WITH carries: each item its JSON.
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
             elif _is_json_list(projection):
                 self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
             elif _json_valued(projection, self._json_value_vars) == "value":
@@ -1824,6 +1886,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         the join columns of the relationships that reach it."""
         cols = {*nm.properties.values(), *nm.physical_properties.values(), nm.id_column}
         cols.update(nm.pk_columns)
+        if is_session_node(nm):
+            # A graph session's node: its graph identity, its identity in an answer and its
+            # labels (REQ-2176).
+            cols.update((GRAPH_ID, IDENTITY_COLUMN, LABELS_COLUMN))
         rels = [
             *self._lm.relationships.values(),
             *(r for rs in self._lm.aliases.values() for r in rs),
@@ -1958,17 +2024,21 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
         carried_paths: set[str] = set()
+        element_lists: dict[str, str] = {}
         union_columns: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
             )
+            if name and (element := self._element_list_kind(item.expression)) is not None:
+                element_lists[name] = element
             if name and self._temporal_context().is_text(item.expression):
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
                 lists.add(name)
-            if name and _is_mixed_list(
-                item.expression, self._json_list_vars, self._is_graph_element
+            if name and (
+                _is_mixed_list(item.expression, self._json_list_vars, self._is_graph_element)
+                or _comprehends_elements(item.expression)
             ):
                 json_lists.add(name)
             if name and _lists_mixed_lists(
@@ -2022,6 +2092,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         for path in carried_paths:
             self._path_vars.pop(path, None)
         self._carried_paths = carried_paths
+        self._element_lists = element_lists
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
@@ -2065,6 +2136,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             table_hits = table_hits or [label for label in labels if label not in self._lm.domains]
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
+            if len(full_type) > 1 and all(is_session_node(self._lm.nodes[t]) for t in full_type):
+                # A graph session's node of several labels: those of its labels' nodes having
+                # them all (REQ-2176).
+                return self._lm.node_of_all(full_type), None
             if len(full_type) > 1:
                 raise CypherTranslateError(
                     f"Ambiguous labels — multiple full type labels: {full_type}"

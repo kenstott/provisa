@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import sqlglot.expressions as exp
 
@@ -167,6 +167,11 @@ class ExprContext(Protocol):
         """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
         ...
 
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        """``NODE`` or ``EDGE`` where ``expr`` is a list of graph elements, each its JSON object
+        (a session walk's nodes or relationships, REQ-751); else None."""
+        ...
+
     def given_value(self, expr: CypherExpr) -> tuple[bool, object]:
         """(True, the value) of a parameter the client gives, or of a variable a WITH binds to
         one; (False, None) of anything else. Only its type may shape the SQL: a translation is
@@ -204,6 +209,18 @@ class ExprContext(Protocol):
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         """A bound node's or relationship's properties as one JSON object, None for any other
         name."""
+        ...
+
+    def resolve_element_rows(
+        self, node: ListComprehension, source: exp.Expression
+    ) -> exp.Expression:
+        """``node`` over ``source``, a list of graph elements, read one row per item in order:
+        a comprehension whose body reads a subquery, which no lambda holds."""
+        ...
+
+    def is_bound(self, name: str) -> bool:
+        """Whether the statement binds ``name`` where an expression reads it: a node,
+        relationship or path variable, or any other value a clause before it names."""
         ...
 
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
@@ -643,6 +660,31 @@ def _json_string(value: exp.Expression) -> exp.Expression:
     )
 
 
+def _pattern_variables(body: Any) -> list[str]:
+    """The node and relationship variables a pattern predicate's statement names, in order."""
+    from provisa.gql.ir import MatchStep, PathPattern
+
+    found: list[str] = []
+    for step in getattr(body, "pipeline", []):
+        if not isinstance(step, MatchStep):
+            continue
+        for match in step.matches:
+            pattern = match.pattern
+            if not isinstance(pattern, PathPattern):
+                continue
+            for item in [*pattern.nodes, *pattern.rels]:
+                if item.variable and item.variable not in found:
+                    found.append(item.variable)
+    return found
+
+
+def _is_json_object(e: exp.Expression) -> bool:
+    """Whether ``e`` builds a JSON value itself (JSON_OBJECT or TO_JSON): a graph element held as
+    any other value (a node a union carries, a path that may be null) is put in a list as its
+    JSON by TO_JSON."""
+    return isinstance(e, exp.Anonymous) and str(e.this).upper() in ("JSON_OBJECT", "TO_JSON")
+
+
 def _json_equals(item: exp.Expression, other: exp.Expression, kind: str) -> exp.Expression:
     """``item`` (an item of a list of several types, its JSON) = ``other`` (a value of ``kind``):
     null where the item is null, false where it is of another kind, else their values compared."""
@@ -721,6 +763,10 @@ class ExprLowering:
         #: The kinds of the items a comprehension or quantifier variable is bound to, where its list
         #: is written in the statement ([x IN [1, []] | ...]): _static_kind of each.
         self._item_kinds: dict[str, frozenset[str | None]] = {}
+        # Lambda variables bound to each graph element of a list (_over)
+        self._element_vars: set[str] = set()
+        # Every lambda variable in scope (_over), innermost last
+        self._lambda_vars: list[str] = []
 
     def _given_type(self, node: CypherExpr) -> type | None:
         """The type of the value the client gives ``node`` (a parameter, or a variable bound to
@@ -729,30 +775,54 @@ class ExprLowering:
         return type(value) if found else None
 
     def _over(
-        self, var: str, source: exp.Expression, body: CypherExpr, written: CypherExpr
+        self,
+        var: str,
+        source: exp.Expression,
+        body: CypherExpr,
+        written: CypherExpr,
     ) -> exp.Expression:
-        """``body`` lowered with ``var`` bound to each item of ``source``, the list ``written``
-        lowers to."""
+        """``body`` lowered with ``var`` bound to each item of ``source`` (``written``, as the
+        statement writes it)."""
         kinds = self._item_kinds.get(var)
         if isinstance(written, ListLiteral):
             self._item_kinds[var] = frozenset(self._static_kind(i) for i in written.items)
         else:
             self._item_kinds.pop(var, None)
+        self._lambda_vars.append(var)
         try:
-            if _json_valued(source) != "list":
-                return self.lower(body)
-            held = var in self._json_vars
-            self._json_vars.add(var)
-            try:
-                return self.lower(body)
-            finally:
-                if not held:
-                    self._json_vars.discard(var)
+            return self._over_items(var, source, body, written)
         finally:
+            self._lambda_vars.pop()
             if kinds is None:
                 self._item_kinds.pop(var, None)
             else:
                 self._item_kinds[var] = kinds
+
+    def _over_items(
+        self,
+        var: str,
+        source: exp.Expression,
+        body: CypherExpr,
+        written: CypherExpr,
+    ) -> exp.Expression:
+        if self._ctx.element_list_kind(written) is not None:
+            # Each item is a node's or relationship's JSON object: its properties are read there.
+            held = var in self._element_vars
+            self._element_vars.add(var)
+            try:
+                return self.lower(body)
+            finally:
+                if not held:
+                    self._element_vars.discard(var)
+        if _json_valued(source) != "list":
+            return self.lower(body)
+        held = var in self._json_vars
+        self._json_vars.add(var)
+        try:
+            return self.lower(body)
+        finally:
+            if not held:
+                self._json_vars.discard(var)
 
     def _static_kind(self, node: CypherExpr) -> str | None:
         """The kind of value ``node`` is, where the statement says it -- "integer", "float",
@@ -798,6 +868,17 @@ class ExprLowering:
             default=self._lower_call(node),
         )
 
+    def _is_json_value(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is read as JSON: an item of a list of several types (the context's),
+        or a property of a graph element a lambda variable is bound to (_over)."""
+        if (
+            isinstance(expr, Property)
+            and isinstance(expr.obj, Variable)
+            and expr.obj.name in self._element_vars
+        ):
+            return True
+        return self._ctx.is_json_value(expr)
+
     def lower(self, node: CypherExpr) -> exp.Expression:
         method = getattr(self, f"_lower_{type(node).__name__}", None)
         if method is None:
@@ -822,9 +903,14 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, Variable) and node.obj.name in self._element_vars:
+            # A graph element's JSON object: its property, read as JSON (null where it has none).
+            path = "$.properties." + json.dumps(node.name)
+            held = self.lower(node.obj)
+            return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
         if not isinstance(node.obj, (MapLiteral, Variable)):
             held = self.lower(node.obj)
-            if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
+            if _json_valued(held) == "value" or self._is_json_value(node.obj):
                 # A map read from a list of several types is its JSON: its key, read as JSON
                 # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
                 path = "$." + json.dumps(node.name)
@@ -923,8 +1009,8 @@ class ExprLowering:
         item or a value of a known kind: their values compared where both are numbers, strings
         or booleans, else null -- openCypher orders no values of two kinds, nor null. Never their
         JSON text (3.14 < 10). None where neither side is such an item."""
-        left_json = self._ctx.is_json_value(node.left)
-        right_json = self._ctx.is_json_value(node.right)
+        left_json = self._is_json_value(node.left)
+        right_json = self._is_json_value(node.right)
         if not (left_json or right_json):
             return None
         if (not left_json and left_kind is None) or (not right_json and right_kind is None):
@@ -1036,7 +1122,7 @@ class ExprLowering:
                     (node.left, node.right, right_kind),
                     (node.right, node.left, left_kind),
                 ):
-                    if kind and self._ctx.is_json_value(item):
+                    if kind and self._is_json_value(item):
                         same = _json_equals(self.lower(item), self.lower(other), kind)
                         return same if op == "=" else exp.Not(this=exp.Paren(this=same))
             else:
@@ -1140,9 +1226,9 @@ class ExprLowering:
         if op in ("STARTS WITH", "ENDS WITH", "CONTAINS"):
             # An item of a list of several types is a string only where its JSON is one: any
             # other is no string, and the predicate of it null (openCypher).
-            if self._ctx.is_json_value(node.left):
+            if self._is_json_value(node.left):
                 left = _json_string(left)
-            if self._ctx.is_json_value(node.right):
+            if self._is_json_value(node.right):
                 right = _json_string(right)
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
@@ -1288,7 +1374,7 @@ class ExprLowering:
             node.name.lower() in ("max", "min")
             and len(node.args) == 1
             and not node.distinct
-            and self._ctx.is_json_value(node.args[0])
+            and self._is_json_value(node.args[0])
         ):
             # Values of several types, each its JSON, in openCypher's order (lists before
             # strings before booleans before numbers), never the order of their text.
@@ -1304,7 +1390,7 @@ class ExprLowering:
             given = node.args[0]
             if (
                 isinstance(given, Variable) and given.name in self._json_vars
-            ) or self._ctx.is_json_value(given):
+            ) or self._is_json_value(given):
                 # An item of a list of several types is its JSON: a string is its own text, never
                 # its quoted JSON ('apa', not '"apa"').
                 # Bracketed: DuckDB writes it x ->> '$', which in a lambda reads as (x -> x) ->> '$'.
@@ -1441,7 +1527,9 @@ class ExprLowering:
         # a relationship or a path the read holds as its JSON already ([1, n]).
         return exp.Array(
             expressions=[
-                e if e is not None else _anon("to_json", self.lower(i))
+                _anon("to_json", self.lower(i) if e is None else e)
+                if e is None or not _is_json_object(e)
+                else e
                 for i, e in zip(node.items, elements, strict=True)
             ]
         )
@@ -1580,6 +1668,14 @@ class ExprLowering:
 
     def _lower_ListComprehension(self, node: ListComprehension) -> exp.Expression:
         source = self.lower(node.source)
+        if self._ctx.element_list_kind(node.source) is not None and any(
+            isinstance(e, (SubqueryExpr, PatternComprehension))
+            for part in (node.predicate, node.projection)
+            if part is not None
+            for e in walk(part)
+        ):
+            # An engine reads no subquery inside a lambda: each item a row of its own instead.
+            return self._ctx.resolve_element_rows(node, source)
         result = source
         if node.predicate is not None:
             predicate = self._over(node.var, source, node.predicate, node.source)
@@ -1646,6 +1742,18 @@ class ExprLowering:
         return self._ctx.resolve_map_projection(node)
 
     def _lower_SubqueryExpr(self, node: SubqueryExpr) -> exp.Expression:
+        if node.predicate:
+            # openCypher: a pattern predicate introduces no variable (UndefinedVariable).
+            unbound = [
+                v
+                for v in _pattern_variables(node.body)
+                if v not in self._lambda_vars and not self._ctx.is_bound(v)
+            ]
+            if unbound:
+                raise CypherTranslateError(
+                    f"A pattern predicate introduces no variable: {unbound[0]} is not bound "
+                    "before it; match it first, or write EXISTS { MATCH ... }"
+                )
         return self._ctx.resolve_subquery(node)
 
     # -- RDF values (REQ-2135) ---------------------------------------------- #

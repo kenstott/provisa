@@ -45,7 +45,11 @@ _NUMBERS = _INTEGERS | {"float", "double", "numeric"}
 def union_labels(lm: "CypherLabelMap", domain_name: str) -> list[str]:
     """The node types a node matched by a domain alone (or by no label, ``__all__``) is drawn
     from."""
-    return list(lm.nodes.keys()) if domain_name == "__all__" else lm.domains[domain_name]
+    if domain_name != "__all__":
+        return lm.domains[domain_name]
+    # A session's relation of several labels' nodes (node_of_all) holds no node its first
+    # label's relation does not.
+    return [key for key in lm.nodes if key not in lm.label_sets]
 
 
 def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType | None:
