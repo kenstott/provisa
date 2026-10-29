@@ -102,7 +102,7 @@ ORDER BY kcu.constraint_name, kcu.ordinal_position
 
 
 def _info_schema_reader(dialect: str, paired: str) -> Reader:
-    """The keys from the standard ``information_schema`` (PostgreSQL, SQL Server)."""
+    """The keys from the standard ``information_schema`` (CockroachDB, SQL Server)."""
 
     async def read(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
         args = {"schema": sql_literal(schema, dialect), "table": sql_literal(table, dialect)}
@@ -119,6 +119,51 @@ def _info_schema_reader(dialect: str, paired: str) -> Reader:
         )
 
     return read
+
+
+# PostgreSQL's own catalog, found by the schema's and table's names. Its information_schema views
+# compute every constraint in the database before the table's name narrows them: on a database
+# holding tens of thousands of tables (a control plane with an org schema per organization, which
+# a PostgreSQL source may be) one foreign-key read took seconds, and a boot that read the keys of
+# each registered table never answered (REQ-2170). The catalog also names the keys of a table its
+# reader may only SELECT, which information_schema hides from it.
+_PG_CATALOG_KEYS = """
+SELECT CASE c.contype WHEN 'p' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END, c.conname, a.attname
+FROM pg_catalog.pg_constraint AS c
+JOIN pg_catalog.pg_class AS t ON t.oid = c.conrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, pos)
+JOIN pg_catalog.pg_attribute AS a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+WHERE n.nspname = {schema} AND t.relname = {table} AND c.contype IN ('p', 'u')
+ORDER BY c.conname, k.pos
+"""
+
+# conkey and confkey list a foreign key's columns and the columns they reference pair by pair.
+_PG_CATALOG_FOREIGN = """
+SELECT a.attname, rt.relname, ra.attname
+FROM pg_catalog.pg_constraint AS c
+JOIN pg_catalog.pg_class AS t ON t.oid = c.conrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+JOIN pg_catalog.pg_class AS rt ON rt.oid = c.confrelid
+CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(attnum, refnum, pos)
+JOIN pg_catalog.pg_attribute AS a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+JOIN pg_catalog.pg_attribute AS ra ON ra.attrelid = c.confrelid AND ra.attnum = k.refnum
+WHERE n.nspname = {schema} AND t.relname = {table} AND c.contype = 'f'
+ORDER BY c.conname, k.pos
+"""
+
+
+async def _pg_catalog(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
+    args = {"schema": sql_literal(schema, "postgres"), "table": sql_literal(table, "postgres")}
+    keys = await pool.execute(source_id, _PG_CATALOG_KEYS.format(**args), [])
+    primary = [(name, col) for kind, name, col in keys.rows if kind == "PRIMARY KEY"]
+    unique = [(name, col) for kind, name, col in keys.rows if kind == "UNIQUE"]
+    foreign = await pool.execute(source_id, _PG_CATALOG_FOREIGN.format(**args), [])
+    return DeclaredKeys(
+        primary_key=tuple(col for _name, col in primary),
+        unique=_grouped(unique),
+        foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+    )
 
 
 # --- MySQL and the systems that speak its catalog ------------------------------------------------
@@ -225,14 +270,11 @@ async def _duckdb(pool: Any, source_id: str, schema: str, table: str) -> Declare
     return DeclaredKeys(primary_key=primary, unique=tuple(unique), foreign=tuple(foreign))
 
 
-_POSTGRES = _info_schema_reader("postgres", "position_in_unique_constraint")
-
 #: The source kinds whose catalog is read here, by the reader that reads it.
 READERS: dict[str, Reader] = {
-    **{
-        kind: _POSTGRES
-        for kind in ("postgresql", "postgres", "cockroachdb", "yugabytedb", "greenplum")
-    },
+    **{kind: _pg_catalog for kind in ("postgresql", "postgres", "yugabytedb", "greenplum")},
+    # CockroachDB's information_schema is its own virtual table, not PostgreSQL's view.
+    "cockroachdb": _info_schema_reader("postgres", "position_in_unique_constraint"),
     "sqlserver": _info_schema_reader("tsql", "ordinal_position"),
     **{kind: _mysql for kind in ("mysql", "mariadb", "singlestore", "tidb")},
     "sqlite": _sqlite,
