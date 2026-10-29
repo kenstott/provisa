@@ -64,12 +64,11 @@ def test_a_waiting_run_is_never_cancelled_by_another_branchs_run():
     assert "cancel-in-progress" not in concurrency
 
 
-def test_the_suite_runs_on_demand_only_never_on_a_push():
-    # During alpha the full suite runs only on request (maintainer 2026-10-15); the nightly
-    # warehouse-lane schedule is off until the lane suspends the Snowflake warehouse (2026-10-29).
+def test_the_suite_runs_nightly_and_on_demand_never_on_a_push():
+    # During alpha the full suite runs only on request (maintainer 2026-10-15).
     triggers = _caller()[True]  # YAML reads the key `on` as a boolean
     assert "push" not in triggers
-    assert "schedule" not in triggers and "workflow_dispatch" in triggers
+    assert "schedule" in triggers and "workflow_dispatch" in triggers
 
 
 def test_a_short_sha_is_resolved_to_the_full_commit_the_lanes_check_out():

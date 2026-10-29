@@ -17,8 +17,11 @@ name: Integration suite (containers)
 
 on:
   # During alpha the full suite runs only on request (maintainer 2026-10-15): no run on push.
-  # The nightly warehouse-lane schedule is off until the lane suspends the Snowflake warehouse at
-  # teardown (maintainer 2026-10-29: October's Snowflake bill came from warehouse-lane runs).
+  # The nightly below is the warehouse lane only.
+  schedule:
+    # Nightly, for the warehouse lane only (06:00 UTC). A scheduled run uses the default branch's
+    # copy of this file and tests that same commit: main.
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       ref:
