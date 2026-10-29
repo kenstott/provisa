@@ -992,18 +992,21 @@ SELECT count(*) AS sandbox_orgs_left FROM public.orgs WHERE id LIKE 'sbx%';
 SQL
   run_sql "$STAGE/reset_sandbox.sql" reset-sandbox
   # The regions tier's stores (first-launch.sh: region-pg-eu, region-pg-us) hold each region's
-  # schemas of its orgs, a database per region: eu and ledger in region-pg-eu, us and warehouse in
-  # region-pg-us.
+  # schemas of its orgs, a database per region. Which databases a store holds is the store's own
+  # answer, not this script's: the VM's compose comes from its installed release (terraform's
+  # provisa_version), which a deploy never rewrites, and a release before REQ-2107's has neither
+  # ledger nor warehouse (first-launch.sh's REGION_PG_ALSO).
   cat > "$STAGE/reset_sandbox_store.sql" <<'SQL'
 SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
   FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
 SQL
   local b64 store
   b64="$(base64 < "$STAGE/reset_sandbox_store.sql" | tr -d '\n')"
-  local db database
+  local databases database
   for store in $(ssh_node "sudo docker ps --format '{{.Names}}'" | tr -d '\r' | grep -E 'region-pg-(eu|us)'); do
-    case "$store" in *region-pg-eu*) db=ledger ;; *) db=warehouse ;; esac
-    for database in provisa "$db"; do
+    databases="$(ssh_node "sudo docker exec $store psql -U provisa -d provisa -tAc 'SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname'" | tr -d '\r')"
+    [ -n "$databases" ] || { echo "sandbox VM: $store lists no database" >&2; exit 1; }
+    for database in $databases; do
       ssh_node "set -e; echo $b64 | base64 -d | sudo docker exec -i $store psql -U provisa -d $database -v ON_ERROR_STOP=1 -q -f -"
       echo "   $store/$database: sandbox schemas dropped"
     done
