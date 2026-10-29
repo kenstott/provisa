@@ -91157,7 +91157,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     terms in a document''. The document is given as a file or as an http(s) URL, since many policies and
     regulations are published as web pages; a URL is fetched once and its content treated as the document,
     its source passages citing the URL. A later step, not part of this requirement, may follow links from
-    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960).'
+    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960). (Amended 2026-10-28,
+    FROM THE LIBRARY OR A NEW DOCUMENT:) Find terms in a document offers two ways to choose the document:
+    pick one already in the reference library (REQ-2185), or give a new one as a file or an http(s) URL,
+    which joins the library as a proposed document. Either way the scan is the same and its proposals cite
+    the library''s copy.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document
