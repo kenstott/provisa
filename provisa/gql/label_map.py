@@ -202,6 +202,10 @@ LABELS_COLUMN = "__labels"
 #: The column of a graph session's node relation holding a model node's key, its ``_id``; null
 #: for a node the session created, which has no key of the model's (REQ-2176).
 SESSION_KEY_COLUMN = "__key"
+#: The column of a graph session's node relation holding each node's identity in an answer, the
+#: same under whichever label it is read: a model node's ``Label|key``, a node the session created
+#: ``Label|id`` after the first of its labels in name order (``|id`` with none) (REQ-2176).
+IDENTITY_COLUMN = "__identity"
 
 
 def is_session_node(nm: "NodeMapping") -> bool:

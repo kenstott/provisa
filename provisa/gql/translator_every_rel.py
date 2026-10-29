@@ -267,7 +267,8 @@ class _EveryRelMixin:  # mixin for _Translator
                 "A variable-length relationship from or to a node the statement already holds is "
                 "read between labelled nodes"
             )
-        if len(rel.types) > 1:
+        session = self._session_hop(rel)  # type: ignore[attr-defined]
+        if len(rel.types) > 1 and not session:
             raise CypherTranslateError(
                 "A relationship of several types between nodes the pattern names no type of is "
                 "read one type at a time"
@@ -298,7 +299,10 @@ class _EveryRelMixin:  # mixin for _Translator
             if held or (loop and side == "t") or var is None:
                 col = f"_{alias}_{side}"
                 props_of.append(var)
-                held_row = self._held_row(node, nm, as_source=as_source) if held else None
+                # A graph session's hop reads each end as its node value, held by its identity.
+                held_row = (
+                    self._held_row(node, nm, as_source=as_source) if held and not session else None
+                )
                 if held_row is not None:
                     # A node of one table the statement holds: joined on that table's key, as a
                     # second read of its row (REQ-603), never on a value built from it.
@@ -350,23 +354,39 @@ class _EveryRelMixin:  # mixin for _Translator
             (inner if of_clause == clause_index else outer).append(distinct)
         self._every_rel_edges.append((rel_col, clause_index))
 
-        union = self._build_all_rels_union(
-            cols[0],
-            rel_col,
-            cols[1],
-            domains[0],
-            domains[1],
-            src_type=types[0],
-            tgt_type=types[1],
-            rel_type=rel.types[0].upper() if rel.types else None,
-            alias=alias,
-            undirected=rel.direction == "none",
-            src_props_of=props_of[0],
-            tgt_props_of=props_of[1],
-            loop=loop,
-            src_keys=keyed[0],
-            tgt_keys=keyed[1],
-        )
+        if session:
+            # A graph session's relationships, every one a row of its one relation (path_walk).
+            union = self._build_session_hop(  # type: ignore[attr-defined]
+                cols[0],
+                rel_col,
+                cols[1],
+                types=list(rel.types) or None,
+                src_type=types[0],
+                tgt_type=types[1],
+                src_domain=domains[0],
+                tgt_domain=domains[1],
+                alias=alias,
+                undirected=rel.direction == "none",
+                loop=loop,
+            )
+        else:
+            union = self._build_all_rels_union(
+                cols[0],
+                rel_col,
+                cols[1],
+                domains[0],
+                domains[1],
+                src_type=types[0],
+                tgt_type=types[1],
+                rel_type=rel.types[0].upper() if rel.types else None,
+                alias=alias,
+                undirected=rel.direction == "none",
+                src_props_of=props_of[0],
+                tgt_props_of=props_of[1],
+                loop=loop,
+                src_keys=keyed[0],
+                tgt_keys=keyed[1],
+            )
         for var in new_vars:
             self._domain_nodes.pop(var, None)
             self._var_table[var] = (var, None)

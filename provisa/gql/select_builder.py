@@ -24,6 +24,7 @@ import sqlglot.expressions as exp
 from provisa.gql import spatial, temporal
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
 from provisa.gql.label_map import (
+    IDENTITY_COLUMN,
     LABELS_COLUMN,
     SESSION_KEY_COLUMN,
     CypherLabelMap,
@@ -97,7 +98,10 @@ def node_key_text(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyri
 
 
 def node_identity(alias: str | None, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """The node's identity in the graph: ``label|key`` (node_key_text)."""
+    """The node's identity in the graph: ``label|key`` (node_key_text). A graph session's node
+    relation names it, the same under each of its labels (IDENTITY_COLUMN)."""
+    if is_session_node(nm):
+        return _key_column(alias, IDENTITY_COLUMN)
     return exp.DPipe(
         this=exp.DPipe(this=exp.Literal.string(nm.label), expression=exp.Literal.string("|")),
         expression=node_key_text(alias, nm),

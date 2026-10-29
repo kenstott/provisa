@@ -47,7 +47,13 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import store
-from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN, SESSION_CATALOG, SESSION_KEY_COLUMN
+from provisa.gql.label_map import (
+    GRAPH_ID,
+    IDENTITY_COLUMN,
+    LABELS_COLUMN,
+    SESSION_CATALOG,
+    SESSION_KEY_COLUMN,
+)
 
 SESSION_SCHEMA = "s"
 NODE_ID = "__node_id"
@@ -266,18 +272,42 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
         mine = exp.Array(expressions=[exp.Literal.string(label) for label in own])
         return exp.ArraySort(this=exp.ArrayConcat(this=mine, expressions=[held]))
 
+    def created_identity(node_id: exp.Expression) -> exp.Expression:
+        # A node the session created: the first of its labels in name order, and its id.
+        first = (
+            exp.select(exp.Min(this=_col("label", "_lf")))
+            .from_(
+                _session_table(
+                    store.NODE_LABELS, "_lf", session, store.fixed_columns(store.NODE_LABELS)
+                )
+            )
+            .where(exp.EQ(this=_col(store.NODE_ID, "_lf"), expression=node_id.copy()))
+        )
+        named = exp.Coalesce(this=exp.Subquery(this=first), expressions=[exp.Literal.string("")])
+        return exp.DPipe(
+            this=exp.DPipe(this=named, expression=exp.Literal.string("|")),
+            expression=node_id.copy(),
+        )
+
     def select(
         values: Mapping[str, exp.Expression],
         node_id: exp.Expression,
         graph_id: exp.Expression,
         own: list[str],
         key: exp.Expression | None = None,
+        identity: exp.Expression | None = None,
     ) -> exp.Select:
         # ``key``: a model node's _id (its key read under its own label, its graph identity under
-        # a tag); a node the session created has none.
+        # a tag); a node the session created has none. ``identity``: a model node's (its graph
+        # identity); else a created node's (created_identity).
         return exp.select(
             exp.alias_(node_id, NODE_ID, quoted=True),
             exp.alias_(graph_id, GRAPH_ID, quoted=True),
+            exp.alias_(
+                created_identity(graph_id) if identity is None else identity.copy(),
+                IDENTITY_COLUMN,
+                quoted=True,
+            ),
             exp.alias_(labels(graph_id, own), LABELS_COLUMN, quoted=True),
             exp.alias_(
                 _typed(exp.null() if key is None else key.copy(), "text"),
@@ -299,7 +329,7 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
         values = {a: _col(a, alias) for _, a, _ in _model_columns(model_nm)}
         identity = node_identity(alias, model_nm)
         node_id = node_key_text(alias, model_nm) if own else identity
-        return select(values, node_id, identity, [model_nm.label], node_id).from_(
+        return select(values, node_id, identity, [model_nm.label], node_id, identity).from_(
             _node_table_expr(model_nm, alias)
         )
 

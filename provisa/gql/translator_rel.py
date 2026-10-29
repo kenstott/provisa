@@ -777,6 +777,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 tgt_nm=tgt_nm,
             )
 
+        if self._session_hop(rel):  # type: ignore[attr-defined]
+            # REQ-2176: a graph session's hop, read from its one relationships relation whatever
+            # its ends' labels and its types (path_walk).
+            return (
+                every_rel_hop(self._named_type(src_node), self._named_type(tgt_node)),
+                joins,
+                True,
+            )
         if any(
             held and self._is_value_node(node)
             for node, held in ((src_node, held_source), (tgt_node, held_target))

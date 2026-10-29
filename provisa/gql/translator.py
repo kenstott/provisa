@@ -65,6 +65,7 @@ from provisa.gql.ir import (
 )
 from provisa.gql.label_map import (
     GRAPH_ID,
+    IDENTITY_COLUMN,
     LABELS_COLUMN,
     SESSION_KEY_COLUMN,
     CypherLabelMap,
@@ -1814,7 +1815,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         cols.update(nm.pk_columns)
         if is_session_node(nm):
             # A graph session's node: its graph identity, its labels and its key (REQ-2176).
-            cols.update((GRAPH_ID, LABELS_COLUMN, SESSION_KEY_COLUMN))
+            cols.update((GRAPH_ID, IDENTITY_COLUMN, LABELS_COLUMN, SESSION_KEY_COLUMN))
         rels = [
             *self._lm.relationships.values(),
             *(r for rs in self._lm.aliases.values() for r in rs),
