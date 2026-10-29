@@ -789,7 +789,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             return None
         arg, name = expr.args[0], expr.name.lower()
         if name in ("relationships", "nodes"):
-            held = isinstance(arg, Variable) and arg.name in self._walk_trails
+            held = isinstance(arg, Variable) and (
+                arg.name in self._walk_trails or arg.name in getattr(self, "_every_rel_paths", {})
+            )
             return _GRAPH_FUNCTIONS[name] if held else None
         if name in ("tail", "reverse"):
             return self._element_list_kind(arg)

@@ -52,6 +52,7 @@ from provisa.gql.translator_helpers import (  # REQ-1586
 from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
 
 if TYPE_CHECKING:
+    from provisa.gql.expr_ast import ListComprehension
     from provisa.gql.ir import CypherAST, PathPattern
     from provisa.gql.label_map import NodeMapping
     from provisa.gql.translator import _Translator
@@ -554,6 +555,59 @@ class TranslatorExprContext:
             return expr.kind == "null"
         return isinstance(expr, Variable) and expr.name in self._t._null_vars
 
+    def resolve_element_rows(
+        self, node: "ListComprehension", source: exp.Expression
+    ) -> exp.Expression:
+        """``[x IN source WHERE p | e]`` over a list of graph elements whose ``p`` or ``e`` reads
+        a subquery (a pattern comprehension of ``x``): one row per item, in the list's order,
+        ``x`` its node as a value a statement embedded in ``e`` is tied to by its identity."""
+        from provisa.gql.expr_visitor import ExprLowering
+
+        t = self._t
+        t._element_row_count += 1
+        alias = f"_lc{t._element_row_count}"
+        var = node.var
+        held = (t._var_table.get(var), var in t._cte_sources, var in t._all_rels_node_vars)
+        t._var_table[var] = (alias, None)
+        t._cte_sources.add(var)
+        t._all_rels_node_vars.add(var)
+        try:
+            lowering = ExprLowering(self)
+            lowering._element_vars.add(var)
+            pred = lowering.lower(node.predicate) if node.predicate is not None else None
+            proj = (
+                lowering.lower(node.projection) if node.projection is not None else _col(var, alias)
+            )
+        finally:
+            before, was_source, was_value = held
+            if before is None:
+                t._var_table.pop(var, None)
+            else:
+                t._var_table[var] = before
+            if not was_source:
+                t._cte_sources.discard(var)
+            if not was_value:
+                t._all_rels_node_vars.discard(var)
+        at = exp.column("_o", table="_g")
+        items = exp.select(
+            exp.alias_(_anon("list_extract", source.copy(), at), var, quoted=True),
+            exp.alias_(at.copy(), "_o"),
+        ).from_(
+            exp.Table(
+                this=_anon(
+                    "generate_series", exp.Literal.number(1), _anon("cardinality", source.copy())
+                ),
+                alias=exp.TableAlias(
+                    this=exp.to_identifier("_g"), columns=[exp.to_identifier("_o")]
+                ),
+            )
+        )
+        rows = exp.select(proj).from_(exp.alias_(exp.Subquery(this=items), alias))
+        if pred is not None:
+            rows = rows.where(pred)
+        rows = rows.order_by(exp.column("_o", table=alias))
+        return _anon("ARRAY", rows)
+
     def is_bound(self, name: str) -> bool:
         t = self._t
         return (
@@ -811,6 +865,18 @@ class TranslatorExprContext:
         if trail is not None and name in ("relationships", "relationship", "nodes"):
             # REQ-751: a session walk's path, read from its trail.
             return (trail[0] if name == "nodes" else trail[1]).copy()
+        hops = t._every_rel_paths.get(var) if hasattr(t, "_every_rel_paths") else None
+        if hops and name in ("relationships", "relationship", "nodes"):
+            # A path of hops read from unions of relationships: its nodes or edges, in order.
+            from provisa.gql.path_walk import _json_list
+
+            aliases = t._all_rels_var_alias
+            cols = (
+                [hops[0][0], *(last for _, _, last in hops)]
+                if name == "nodes"
+                else [edge for _, edge, _ in hops]
+            )
+            return _json_list([exp.column(c, table=aliases[c]) for c in cols])
         if name in ("relationships", "relationship"):
             steps = t._path_steps.get(var) or t._path_steps.get(t._varlen_rel_vars.get(var, ""))
             if steps is None:

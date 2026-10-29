@@ -196,6 +196,13 @@ class ExprContext(Protocol):
         name."""
         ...
 
+    def resolve_element_rows(
+        self, node: ListComprehension, source: exp.Expression
+    ) -> exp.Expression:
+        """``node`` over ``source``, a list of graph elements, read one row per item in order:
+        a comprehension whose body reads a subquery, which no lambda holds."""
+        ...
+
     def is_bound(self, name: str) -> bool:
         """Whether the statement binds ``name`` where an expression reads it: a node,
         relationship or path variable, or any other value a clause before it names."""
@@ -1510,6 +1517,14 @@ class ExprLowering:
 
     def _lower_ListComprehension(self, node: ListComprehension) -> exp.Expression:
         source = self.lower(node.source)
+        if self._ctx.element_list_kind(node.source) is not None and any(
+            isinstance(e, (SubqueryExpr, PatternComprehension))
+            for part in (node.predicate, node.projection)
+            if part is not None
+            for e in walk(part)
+        ):
+            # An engine reads no subquery inside a lambda: each item a row of its own instead.
+            return self._ctx.resolve_element_rows(node, source)
         result = source
         if node.predicate is not None:
             predicate = self._over(node.var, source, node.predicate, node.source)

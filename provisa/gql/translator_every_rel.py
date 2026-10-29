@@ -409,6 +409,19 @@ class _EveryRelMixin:  # mixin for _Translator
             first, last = (cols[1], cols[0]) if backward else (cols[0], cols[1])
             self._every_rel_paths.setdefault(clause.variable, []).append((first, rel_col, last))
 
+        sources = getattr(self, "_cte_sources", set())
+        held_vars = [node.variable for node, held, _, _ in ends if held and node.variable]
+        if rel_bound and rel.variable:
+            held_vars.append(rel.variable)
+        carried = next(
+            (self._var_table[v][0] for v in held_vars if v in sources and v in self._var_table),
+            None,
+        )
+        if replaceable and clause.optional and carried is not None:
+            # An OPTIONAL MATCH from a node a WITH carries: that WITH's rows, each kept whether
+            # or not the hop matches from it (REQ-347).
+            from_expr = exp.Table(this=exp.to_identifier(carried))
+            replaceable = False
         if replaceable:
             self._held_end_conditions.extend(inner + outer)
             return union

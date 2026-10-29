@@ -322,3 +322,58 @@ def test_a_pattern_predicate_of_bound_variables_is_read(monkeypatch):
     s.run("CREATE (:X)-[:T]->(), ()")
     assert len(s.run("MATCH (n) WHERE (n)-->() RETURN n")) == 1
     assert len(s.run("MATCH (n)-[r]->(m) WHERE (n)-[r]->(m) RETURN n")) == 1
+
+
+# --- OPTIONAL MATCH after a WITH; nested statements; comprehensions -------------------------------
+
+
+def test_an_optional_match_from_carried_rows_keeps_each(monkeypatch):
+    # TCK Match7 [10], Match7 [4], MatchWhere6 [5]
+    s = Session(monkeypatch, {})
+    assert s.run("OPTIONAL MATCH (a) WITH a OPTIONAL MATCH (a)-->(b) RETURN b") == [{"b": None}]
+    s.run("CREATE (:A)-[:T]->(:B)")
+    rows = s.run(
+        "MATCH (a1)-[r]->() WITH r, a1 LIMIT 1 OPTIONAL MATCH (a1)<-[r]-(b2) RETURN a1, r, b2"
+    )
+    assert [(r["a1"]["labels"], r["r"]["type"], r["b2"]) for r in rows] == [(["A"], "T", None)]
+
+
+def test_a_held_node_a_later_pattern_labels_has_that_label(monkeypatch):
+    # TCK Match3 [25]
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T]->()")
+    assert s.run("MATCH (a1)-[r]->() WITH r, a1 MATCH (a1:X)-[r]->(b2) RETURN a1, r, b2") == []
+
+
+def test_nested_existential_subqueries_keep_the_outer_node(monkeypatch):
+    # TCK ExistentialSubquery3 [1]
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (a:A {prop: 1})-[:R]->(b:B {prop: 1}), (a)-[:R]->(:C {prop: 2}), "
+        "(a)-[:R]->(:D {prop: 3})"
+    )
+    rows = s.run(
+        "MATCH (n) WHERE exists { MATCH (m) WHERE exists { (n)-[]->(m) WHERE n.prop = m.prop } "
+        "RETURN true } RETURN n"
+    )
+    assert [r["n"]["labels"] for r in rows] == [["A"]]
+
+
+def test_a_pattern_comprehension_of_each_node_of_a_path(monkeypatch):
+    # TCK Pattern2 [7]
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (n1:X {n: 1}), (m1:Y), (i1:Y), (i2:Y) "
+        "CREATE (n1)-[:T]->(m1), (m1)-[:T]->(i1), (m1)-[:T]->(i2)"
+    )
+    rows = s.run("MATCH p = (n:X)-->() RETURN [x IN nodes(p) | size([(x)-->(:Y) | 1])] AS list")
+    assert rows == [{"list": [1, 2]}]
+
+
+def test_a_pattern_comprehension_carried_by_a_with_is_its_paths(monkeypatch):
+    # TCK Pattern2 [8]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A), (b:B) CREATE (a)-[:T]->(b), (b)-[:T]->(:C)")
+    rows = s.run("MATCH (n)-->(b) WITH [p = (n)-->() | p] AS ps, count(b) AS c RETURN ps, c")
+    got = sorted([[n["labels"] for n in p["nodes"]] for p in r["ps"]] for r in rows)
+    assert got == [[[["A"], ["B"]]], [[["B"], ["C"]]]]

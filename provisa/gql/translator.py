@@ -785,6 +785,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # An embedded statement's names for the outer nodes it matches (expr_context), and each
         # one's identity in the outer statement it is tied to
         self._drawn_vars: set[str] = set()
+        # The comprehensions read one row per item so far (expr_context.resolve_element_rows)
+        self._element_row_count = 0
         self._outer_identities: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: a walk's path variable -> its start's and end's identities (path_walk, path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
