@@ -453,7 +453,12 @@ def test_sdl_is_the_declared_roles_visibility(provisa_sdl):
 
 def test_only_the_declared_role_is_served_as_the_subgraph(provisa):
     resp = _graphql(provisa, "org_admin", "query { _service { sdl } }")
-    assert resp.status_code == 400, resp.text
+    # Another role's schema has no _service: the document does not validate, answered with its
+    # errors and no data -- 200 under application/json (REQ-2167).
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "data" not in body, body
+    assert any("'_service'" in e["message"] for e in body["errors"]), body
 
 
 def test_entities_hold_the_declared_roles_row_rule_and_mask(provisa, order_type):
