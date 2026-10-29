@@ -1925,9 +1925,18 @@ async def _execute_cypher(
     await register_node_ids(serializable, _model_db)
     await register_rel_ids(serializable, _model_db)
 
-    columns = list(raw_rows[0].keys()) if raw_rows else []
+    # The columns the statement names, rows or none (a read matching nothing still answers them).
+    columns = list(raw_rows[0].keys()) if raw_rows else _answered_columns(result.column_names)
     rows = [[row.get(col) for col in columns] for row in serializable]
     return columns, rows, None
+
+
+def _answered_columns(column_names: list[str]) -> list[str]:
+    """The columns a read answers where it has no rows: the engine's, less the depth-limit column
+    (REQ-2135), which take_cut drops from each row."""
+    from provisa.gql.translator_types import CUT_COLUMN
+
+    return [c for c in column_names if c.lower() != CUT_COLUMN]
 
 
 async def _execute_write_cypher(

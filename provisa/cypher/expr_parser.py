@@ -444,6 +444,18 @@ def _build_grammar() -> pp.ParserElement:
             i += 2
         return node
 
+    def _fold_comparison(t):
+        # openCypher chains comparisons (oC_ComparisonExpression): a < b = c is a < b AND b = c,
+        # never (a < b) = c.
+        seq = list(t[0])
+        node: CypherExpr | None = None
+        for i in range(1, len(seq), 2):
+            # The operand two comparisons share is each one's own copy.
+            left = seq[i - 1] if i == 1 else copy.deepcopy(seq[i - 1])
+            step = Binary(op=str(seq[i]).upper(), left=left, right=seq[i + 1])
+            node = step if node is None else Binary(op="AND", left=node, right=step)
+        return node
+
     def _fold_unary(t):
         op, operand = t[0][0], t[0][1]
         return Unary(op=str(op).upper(), operand=operand)
@@ -505,7 +517,7 @@ def _build_grammar() -> pp.ParserElement:
             (pp.one_of("+ -"), 2, pp.OpAssoc.LEFT, _fold_binary),
             (string_list_op, 2, pp.OpAssoc.LEFT, _fold_binary),
             (is_null_op, 1, pp.OpAssoc.LEFT, _fold_is_null),
-            (cmp_op, 2, pp.OpAssoc.LEFT, _fold_binary),
+            (cmp_op, 2, pp.OpAssoc.LEFT, _fold_comparison),
             (pp.CaselessKeyword("NOT"), 1, pp.OpAssoc.RIGHT, _fold_unary),
             (pp.CaselessKeyword("AND"), 2, pp.OpAssoc.LEFT, _fold_binary),
             (pp.CaselessKeyword("XOR"), 2, pp.OpAssoc.LEFT, _fold_binary),
