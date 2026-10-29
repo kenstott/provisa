@@ -136,7 +136,13 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                     else _find_node_meta(graph_var, table_ref, label_map)
                 )
             )
-            if node_meta is not None:
+            if inner.meta.get("provisa_union_node"):  # select_builder.UNION_NODE_OF_STAR
+                # A union node a WITH carries: its value is the union's own, carried with it.
+                rewritten = exp.Column(
+                    this=exp.Identifier(this=NODE_COLUMN, quoted=True),
+                    table=exp.Identifier(this=tbl),
+                )
+            elif node_meta is not None:
                 rewritten = _build_row_cast(tbl, node_meta)
             else:
                 domain_props = _extract_domain_props_from_union(sql_ast, tbl)
@@ -146,7 +152,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                         this=exp.Identifier(this=NODE_COLUMN, quoted=True),
                         table=exp.Identifier(this=tbl),
                     )
-                    if domain_props == [NODE_COLUMN]
+                    if NODE_COLUMN in domain_props
                     else _build_domain_json(tbl, domain_props)
                 )
             new_expressions.append(cast(exp.Expression, exp.alias_(rewritten, out_alias)))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

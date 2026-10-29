@@ -37,7 +37,7 @@ from provisa.gql.expr_ast import (
     Term,
     Variable,
 )
-from provisa.gql.translator_types import CypherTranslateError, map_key_column
+from provisa.gql.translator_types import UNION_NODE, CypherTranslateError, map_key_column
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -110,6 +110,13 @@ _LIST_FUNCTIONS = frozenset(
 def is_text_type(registered: str) -> bool:
     """Whether a registered column type holds text (varchar(64), character varying, ...)."""
     return registered.strip().lower().startswith(_TEXT_TYPES)
+
+
+def is_list_type(registered: str) -> bool:
+    """Whether a registered column type holds a list: an array (bigint[]), or a session's
+    ``list<elem>`` (REQ-2176)."""
+    spelled = registered.strip().lower()
+    return spelled.endswith("[]") or spelled.startswith("list<")
 
 
 # Graph-aware functions resolve against traversal state (var → id column, rel type, JSON shape, …).
@@ -361,7 +368,7 @@ class TranslatorExprContext:
     def is_list(self, expr: CypherExpr) -> bool:
         """Whether ``expr`` is a list as the query writes it: a list literal, a comprehension, a
         slice, a function answering a list, a list + anything, a CASE every branch of which is a
-        list, or a variable bound to one."""
+        list, a registered list column, or a variable bound to one."""
         from provisa.gql.expr_ast import (
             Binary,
             Case,
@@ -378,6 +385,11 @@ class TranslatorExprContext:
             return True
         if isinstance(expr, Variable):
             return expr.name in self._t._list_vars
+        if isinstance(expr, Property):
+            if not isinstance(expr.obj, Variable):
+                return False
+            registered = self.property_type(exp.column(expr.obj.name), expr.name)
+            return registered is not None and is_list_type(registered)
         if isinstance(expr, Parameter):
             # The value the client gives it, a list.
             return expr.name in self._t._params and isinstance(self._t._params[expr.name], list)
@@ -753,10 +765,23 @@ class TranslatorExprContext:
         if name in t._rel_var_types:
             return None
         alias, nm = t._var_table.get(name, (name, None))
+        if name in t._union_columns:
+            # A node of a union of labels' rows: its graph identity, "Label|key", the union's __id.
+            return UNION_NODE, [_col("__id", alias)]
         if nm is None:
             return None
         kind = ("node", nm.catalog_name, nm.schema_name, nm.table_name)
         return kind, [node_key(alias, nm)]
+
+    def resolve_node_graph_identity(self, name: str) -> exp.Expression | None:
+        """A node variable's graph identity, "Label|key" (as a union of labels' __id is), for a
+        comparison with a node of such a union; None for anything else."""
+        from provisa.gql.select_builder import node_identity
+
+        alias, nm = self._t._var_table.get(name, (name, None))
+        if name in self._t._union_columns:
+            return _col("__id", alias)
+        return node_identity(alias, nm) if nm is not None else None
 
     def resolve_graph_absent(self, name: str) -> exp.Expression | None:
         t = self._t
@@ -894,11 +919,29 @@ class TranslatorExprContext:
         """Translate an embedded statement against the correlated outer scope: a fresh
         ``_Translator`` over its own copy, seeded with the outer ``_var_table``, parameters merged
         back; returns the inner SELECT as an AST."""
+        from provisa.gql.ir import MatchStep, PathFunction, PathPattern
         from provisa.gql.translator import _Translator
 
         inner_ast = copy.deepcopy(body)
+        # A node of a union of labels the outer statement holds is no one table's row a pattern
+        # can go on from: refused, never matched afresh beside the outer row.
+        for step in inner_ast.pipeline:
+            for clause in step.matches if isinstance(step, MatchStep) else []:
+                path = clause.pattern
+                path = path.pattern if isinstance(path, PathFunction) else path
+                held = [
+                    n.variable
+                    for n in (path.nodes if isinstance(path, PathPattern) else [])
+                    if n.variable in self._t._union_columns
+                ]
+                if held:
+                    raise CypherTranslateError(
+                        f"A pattern inside a subquery or pattern predicate cannot go on from "
+                        f"{held[0]}, a node of several labels; give {held[0]} a label"
+                    )
         inner_tr = _Translator(inner_ast, self._t._lm, self._t._params)
         inner_tr._var_table.update(self._t._var_table)
+        inner_tr._union_columns.update(self._t._union_columns)
         # A node a WITH carries is held in that WITH's rows, under its name there.
         inner_tr._cte_sources = set(self._t._cte_sources)
         # The outer statement's nodes are its row, which the inner statement goes on from (#160),
