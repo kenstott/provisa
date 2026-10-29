@@ -23,7 +23,9 @@ procedure) cannot run: a Provisa graph's labels and relationship types are the m
 when it is declared, not created by a statement. Those are counted apart, as not runnable by
 design, and named with the setup that needs it. Every other scenario passes or fails; a failure
 is data. An error the scenario expects (a SyntaxError, a TypeError, ...) passes when the query is
-refused; the error's type is not compared, since Provisa names its own.
+refused; the error's type is not compared, since Provisa names its own. A scenario run in a Bolt
+session has its side effects (``the side effects should be``, ``no side effects``) compared
+exactly with the summary counters of its query.
 
 The exit status is non-zero only when the suite did not run (no scenario passed or failed).
 
@@ -387,13 +389,59 @@ _WAITS = (
 )
 
 
+def _setup_steps(scenario: Scenario) -> list[Step]:
+    """The Given/And steps before ``executing query``: an ``And`` after it (``And the side effects
+    should be``, ``And no side effects``) checks the query's answer, not its graph."""
+    out: list[Step] = []
+    for step in scenario.steps:
+        if step.text.startswith("executing query"):
+            break
+        if step.keyword in ("Given", "And"):
+            out.append(step)
+    return out
+
+
+#: A TCK side-effect counter and the Bolt summary's counter for it; None for one Bolt's summary
+#: has no counter for (Neo4j counts a removed property as a property set).
+_SIDE_EFFECTS: dict[str, str | None] = {
+    "+nodes": "nodes-created",
+    "-nodes": "nodes-deleted",
+    "+relationships": "relationships-created",
+    "-relationships": "relationships-deleted",
+    "+properties": "properties-set",
+    "-properties": None,
+    "+labels": "labels-added",
+    "-labels": "labels-removed",
+}
+
+
+def side_effects(expected: dict[str, int], stats: dict[str, int]) -> str | None:
+    """None when a query's summary counters are exactly the side effects ``expected`` (each TCK
+    counter not named is zero); else what differs. A Bolt summary leaves out a counter at zero,
+    so an absent Bolt counter reads as zero; a TCK counter with no Bolt counter is a failure
+    when it is expected, naming it."""
+    differs: list[str] = []
+    for counter, key in _SIDE_EFFECTS.items():
+        want = expected.get(counter, 0)
+        if key is None:
+            if want:
+                differs.append(f"{counter} expected {want}, the summary has no counter for it")
+            continue
+        got = stats.get(key, 0)
+        if got != want:
+            differs.append(f"{counter} {got}, expected {want}")
+    unknown = sorted(set(expected) - set(_SIDE_EFFECTS))
+    differs += [f"{counter}: no such side effect" for counter in unknown]
+    return "; ".join(differs) or None
+
+
 def _session_scenario(scenario: Scenario) -> str | None:
     """How a scenario runs in a Bolt session, when one is configured: IN_A_SESSION for a setup
     that builds its graph, EMPTY_GRAPH for an empty graph its query matches a pattern on (the
     session's graph alone is empty); None to run it over HTTP."""
     if not bolt.configured():
         return None
-    texts = [s.text for s in scenario.steps if s.keyword in ("Given", "And")]
+    texts = [s.text for s in _setup_steps(scenario)]
     if any(t.startswith("there exists a procedure") or t.startswith("the ") for t in texts):
         return None
     if any(t.startswith("having executed") for t in texts):
@@ -461,6 +509,8 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
 
     params: dict = {}
     query: str | None = None
+    answer: tuple[int, Any] | None = None
+    checked = False
     for step in scenario.steps:
         text = step.text
         if step.keyword == "Given" or (step.keyword == "And" and query is None):
@@ -480,19 +530,35 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
         assert query is not None
         if text.startswith("executing control query"):
             return out("not_runnable", "checks state with a control query")
+        if answer is None:
+            answer = ask(query, params)
+        status, body = answer
         if "should be raised" in text:
-            status, body = ask(query, params)
             if status >= 400:
                 return out("passed")
             return out("failed", f"expected {text.split(' should')[0][2:]}; the query ran")
+        if text == "no side effects" or text.startswith("the side effects should be"):
+            if session is None:
+                # An HTTP answer carries no summary counters; only a Bolt run's are compared.
+                continue
+            if status >= 400:
+                return out("failed", f"refused ({status}): {str(body)[:200]}")
+            expected = {r[0]: int(r[1]) for r in step.table or []}
+            differs = side_effects(expected, body["stats"])
+            if differs:
+                return out("failed", f"side effects differ: {differs}")
+            checked = True
+            continue
         if text.startswith("the result should be"):
-            status, body = ask(query, params)
             if status >= 400:
                 detail = (body or {}).get("detail") if isinstance(body, dict) else body
                 return out("failed", f"refused ({status}): {str(detail)[:200]}")
             columns, rows = _rows(body)
             if text == "the result should be empty":
-                return out("passed") if not rows else out("failed", f"{len(rows)} row(s) returned")
+                if rows:
+                    return out("failed", f"{len(rows)} row(s) returned")
+                checked = True
+                continue
             assert step.table is not None
             header, *expected_raw = step.table
             if columns != header:
@@ -527,12 +593,15 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
                         break
                     rest.pop(hit)
             if good:
-                return out("passed")
+                checked = True
+                continue
             if _below_the_microsecond(header, expected_raw):
                 return out(
                     "failed", f"expects digits below the microsecond; rows differ: got {rows[:3]}"
                 )
             return out("failed", f"rows differ: got {rows[:3]}")
+    if checked:
+        return out("passed")
     return out("failed", "the scenario states no expectation this runner reads")
 
 
