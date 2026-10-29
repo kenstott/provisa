@@ -174,7 +174,7 @@ def provisa(postgres, tmp_path_factory):
                         "visible_to": both,
                         "masks": [
                             {"to": ["org_admin"], "mask": None},
-                            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                            {"mask": {"type": "constant", "value": "***"}},  # every other reader
                         ],
                     },
                     {"name": "internal_note", "data_type": "varchar", "visible_to": ["org_admin"]},
