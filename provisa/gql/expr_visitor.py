@@ -157,6 +157,11 @@ class ExprContext(Protocol):
         """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
         ...
 
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        """``NODE`` or ``EDGE`` where ``expr`` is a list of graph elements, each its JSON object
+        (a session walk's nodes or relationships, REQ-751); else None."""
+        ...
+
     def given_value(self, expr: CypherExpr) -> tuple[bool, object]:
         """(True, the value) of a parameter the client gives, or of a variable a WITH binds to
         one; (False, None) of anything else. Only its type may shape the SQL: a translation is
@@ -629,6 +634,8 @@ class ExprLowering:
         #: The variables a comprehension or quantifier binds to an item of a list of JSON-encoded
         #: values ([[1, 2], ['a']]): each item is its JSON.
         self._json_vars: set[str] = set()
+        # Lambda variables bound to each graph element of a list (_over)
+        self._element_vars: set[str] = set()
 
     def _given_type(self, node: CypherExpr) -> type | None:
         """The type of the value the client gives ``node`` (a parameter, or a variable bound to
@@ -636,8 +643,24 @@ class ExprLowering:
         found, value = self._ctx.given_value(node)
         return type(value) if found else None
 
-    def _over(self, var: str, source: exp.Expression, body: CypherExpr) -> exp.Expression:
-        """``body`` lowered with ``var`` bound to each item of ``source``."""
+    def _over(
+        self,
+        var: str,
+        source: exp.Expression,
+        body: CypherExpr,
+        written: CypherExpr | None = None,
+    ) -> exp.Expression:
+        """``body`` lowered with ``var`` bound to each item of ``source`` (``written``, as the
+        statement writes it)."""
+        if written is not None and self._ctx.element_list_kind(written) is not None:
+            # Each item is a node's or relationship's JSON object: its properties are read there.
+            held = var in self._element_vars
+            self._element_vars.add(var)
+            try:
+                return self.lower(body)
+            finally:
+                if not held:
+                    self._element_vars.discard(var)
         if _json_valued(source) != "list":
             return self.lower(body)
         held = var in self._json_vars
@@ -647,6 +670,17 @@ class ExprLowering:
         finally:
             if not held:
                 self._json_vars.discard(var)
+
+    def _is_json_value(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is read as JSON: an item of a list of several types (the context's),
+        or a property of a graph element a lambda variable is bound to (_over)."""
+        if (
+            isinstance(expr, Property)
+            and isinstance(expr.obj, Variable)
+            and expr.obj.name in self._element_vars
+        ):
+            return True
+        return self._ctx.is_json_value(expr)
 
     def lower(self, node: CypherExpr) -> exp.Expression:
         method = getattr(self, f"_lower_{type(node).__name__}", None)
@@ -672,9 +706,14 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, Variable) and node.obj.name in self._element_vars:
+            # A graph element's JSON object: its property, read as JSON (null where it has none).
+            path = "$.properties." + json.dumps(node.name)
+            held = self.lower(node.obj)
+            return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
         if not isinstance(node.obj, (MapLiteral, Variable)):
             held = self.lower(node.obj)
-            if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
+            if _json_valued(held) == "value" or self._is_json_value(node.obj):
                 # A map read from a list of several types is its JSON: its key, read as JSON
                 # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
                 path = "$." + json.dumps(node.name)
@@ -773,8 +812,8 @@ class ExprLowering:
         item or a value of a known kind: their values compared where both are numbers, strings
         or booleans, else null -- openCypher orders no values of two kinds, nor null. Never their
         JSON text (3.14 < 10). None where neither side is such an item."""
-        left_json = self._ctx.is_json_value(node.left)
-        right_json = self._ctx.is_json_value(node.right)
+        left_json = self._is_json_value(node.left)
+        right_json = self._is_json_value(node.right)
         if not (left_json or right_json):
             return None
         if (not left_json and left_kind is None) or (not right_json and right_kind is None):
@@ -886,7 +925,7 @@ class ExprLowering:
                     (node.left, node.right, right_kind),
                     (node.right, node.left, left_kind),
                 ):
-                    if kind and self._ctx.is_json_value(item):
+                    if kind and self._is_json_value(item):
                         same = _json_equals(self.lower(item), self.lower(other), kind)
                         return same if op == "=" else exp.Not(this=exp.Paren(this=same))
             else:
@@ -990,9 +1029,9 @@ class ExprLowering:
         if op in ("STARTS WITH", "ENDS WITH", "CONTAINS"):
             # An item of a list of several types is a string only where its JSON is one: any
             # other is no string, and the predicate of it null (openCypher).
-            if self._ctx.is_json_value(node.left):
+            if self._is_json_value(node.left):
                 left = _json_string(left)
-            if self._ctx.is_json_value(node.right):
+            if self._is_json_value(node.right):
                 right = _json_string(right)
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
@@ -1134,7 +1173,7 @@ class ExprLowering:
             node.name.lower() in ("max", "min")
             and len(node.args) == 1
             and not node.distinct
-            and self._ctx.is_json_value(node.args[0])
+            and self._is_json_value(node.args[0])
         ):
             # Values of several types, each its JSON, in openCypher's order (lists before
             # strings before booleans before numbers), never the order of their text.
@@ -1150,7 +1189,7 @@ class ExprLowering:
             given = node.args[0]
             if (
                 isinstance(given, Variable) and given.name in self._json_vars
-            ) or self._ctx.is_json_value(given):
+            ) or self._is_json_value(given):
                 # An item of a list of several types is its JSON: a string is its own text, never
                 # its quoted JSON ('apa', not '"apa"').
                 # Bracketed: DuckDB writes it x ->> '$', which in a lambda reads as (x -> x) ->> '$'.
@@ -1426,17 +1465,17 @@ class ExprLowering:
         source = self.lower(node.source)
         result = source
         if node.predicate is not None:
-            predicate = self._over(node.var, source, node.predicate)
+            predicate = self._over(node.var, source, node.predicate, node.source)
             result = _anon("filter", result, _lam(node.var, predicate))
         if node.projection is not None:
-            projection = self._over(node.var, source, node.projection)
+            projection = self._over(node.var, source, node.projection, node.source)
             result = _anon("transform", result, _lam(node.var, projection))
         return result
 
     def _lower_Quantifier(self, node: Quantifier) -> exp.Expression:
         source = self.lower(node.source)
         pred = (
-            _lam(node.var, self._over(node.var, source, node.predicate))
+            _lam(node.var, self._over(node.var, source, node.predicate, node.source))
             if node.predicate is not None
             else None
         )
@@ -1455,7 +1494,7 @@ class ExprLowering:
         unknown = _lam(
             node.var,
             exp.Is(
-                this=exp.Paren(this=self._over(node.var, source, node.predicate)),
+                this=exp.Paren(this=self._over(node.var, source, node.predicate, node.source)),
                 expression=exp.Null(),
             ),
         )

@@ -758,6 +758,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # A path a WITH carries on: one column of its CTE, its path object (WITH p)
         self._carried_paths: set[str] = set()
+        # A WITH's alias of a list of a session walk's nodes or relationships -> NODE or EDGE
+        self._element_lists: dict[str, str] = {}
         # REQ-348: a walk's path variable -> its start's and end's identities (path_walk, path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'
@@ -1260,6 +1262,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         refuse_unregistered_relationship_types(self._ast, self._lm)
         segments = self._group_pipeline()
         cte_defs: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # How many recursive CTEs the statement holds once each stage is built: a stage reads the
+        # walks it made, so each is defined ahead of it.
+        walks_by_stage: list[int] = []
 
         for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
             assert with_clause is not None
@@ -1267,6 +1272,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 n, match_steps, unwinds, with_clause, cte_defs[-1][0] if cte_defs else None
             )
             cte_defs.append((cte_name, stage_query))
+            walks_by_stage.append(len(self._recursive_ctes))
             self._update_var_table_for_with(with_clause.items, cte_name)
 
         final_match_steps, final_unwinds, _ = segments[-1]
@@ -1307,10 +1313,17 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
             result = self._apply_extra_branches(query, select_exprs, where_expr)
 
-        for cte_name, cte_query in cte_defs:
+        defined = 0
+        for (cte_name, cte_query), made in zip(cte_defs, walks_by_stage, strict=True):
+            for walk_name, walk_expr in self._recursive_ctes[defined:made]:
+                result = result.with_(walk_name, as_=walk_expr, recursive=True)
+            defined = made
             result = result.with_(cte_name, as_=cte_query)
-        for cte_name, cte_expr in self._recursive_ctes:
+        for cte_name, cte_expr in self._recursive_ctes[defined:]:
             result = result.with_(cte_name, as_=cte_expr, recursive=True)
+        if self._recursive_ctes:
+            # The statement's WITH is recursive, whichever of its CTEs came first.
+            result.args["with_"].set("recursive", True)
 
         # If this is the first branch of a UNION ALL and has a per-branch LIMIT/SKIP,
         # apply it to just this branch before folding the union. Without this the limit
@@ -1925,11 +1938,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
         carried_paths: set[str] = set()
+        element_lists: dict[str, str] = {}
         union_columns: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
             )
+            if name and (element := self._element_list_kind(item.expression)) is not None:
+                element_lists[name] = element
             if name and self._temporal_context().is_text(item.expression):
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
@@ -1989,6 +2005,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         for path in carried_paths:
             self._path_vars.pop(path, None)
         self._carried_paths = carried_paths
+        self._element_lists = element_lists
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())

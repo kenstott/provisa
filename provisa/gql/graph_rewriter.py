@@ -113,6 +113,9 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             # NODE expressions already containing pre-built JSON (from _rewrite_graph_fns for
             # startNode/endNode/nodes) pass through — they must not be rebuilt from raw columns.
             # JSON_OBJECT parses to exp.JSONObject; JSON_ARRAY parses to exp.Anonymous("JSON_ARRAY").
+            if inner.meta.get("provisa_elements_built"):  # select_builder.ELEMENTS_BUILT
+                new_expressions.append(sel_expr)
+                continue
             if kind == GraphVarKind.NODE and isinstance(inner, (exp.JSONObject, exp.JSONArray)):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 new_expressions.append(sel_expr)
                 continue

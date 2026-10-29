@@ -542,6 +542,9 @@ class TranslatorExprContext:
             return expr.kind == "null"
         return isinstance(expr, Variable) and expr.name in self._t._null_vars
 
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        return self._t._element_list_kind(expr)
+
     def is_json_value(self, expr: CypherExpr) -> bool:
         from provisa.gql.expr_ast import Index, Paren
 

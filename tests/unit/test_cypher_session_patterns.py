@@ -37,3 +37,41 @@ def test_a_session_node_returned_by_its_label_carries_no_key_property(monkeypatc
     s.run("CREATE (root:Root {name: 'x'})-[:T]->(:TextNode {var: 'text'})")
     rows = s.run("MATCH (:Root {name: 'x'})-->(i:TextNode) RETURN i")
     assert [r["i"]["properties"] for r in rows] == [{"var": "text"}]
+
+
+# --- a walk read in a WITH ------------------------------------------------------------------------
+
+
+def test_a_walk_read_by_a_with_is_defined_ahead_of_it(monkeypatch):
+    # TCK Quantifier1 [8]: the walk's recursive CTE comes before the WITH stage that reads it.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:SNodes)-[:RA]->(:A {name: 'a'})-[:RB]->(:B {name: 'b'})")
+    rows = s.run(
+        "MATCH p = (:SNodes)-[*0..2]->(x) WITH tail(nodes(p)) AS nodes "
+        "RETURN size(nodes) AS n, none(x IN nodes WHERE x.name = 'b') AS result"
+    )
+    assert _sorted(rows) == [(0, True), (1, True), (2, False)]
+
+
+def test_a_walks_node_list_carried_by_a_with_is_its_nodes(monkeypatch):
+    # TCK Quantifier1 [8]: tail(nodes(p)) carried by a WITH is a list of nodes, each property of
+    # which a quantifier reads, and RETURN gives those nodes.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:SNodes)-[:RA]->(:A {name: 'a'})")
+    rows = s.run(
+        "MATCH p = (:SNodes)-[*0..1]->(x) WITH tail(nodes(p)) AS nodes "
+        "RETURN nodes, any(x IN nodes WHERE x.name = 'a') AS result"
+    )
+    got = sorted(([n["properties"] for n in r["nodes"]], r["result"]) for r in rows)
+    assert got == [([], False), ([{"name": "a"}], True)]
+
+
+def test_a_quantifier_reads_a_property_of_each_relationship_of_a_walk(monkeypatch):
+    # TCK Quantifier3 [9]
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:S)-[:RA {name: 'a'}]->()-[:RB {name: 'b'}]->()")
+    rows = s.run(
+        "MATCH p = (:S)-[*1..2]->(x) "
+        "RETURN length(p) AS l, all(r IN relationships(p) WHERE r.name = 'a') AS result"
+    )
+    assert _sorted(rows) == [(1, True), (2, False)]
