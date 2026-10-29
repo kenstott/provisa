@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_identity, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
     MapProjection,
@@ -754,10 +754,11 @@ class TranslatorExprContext:
             this=exp.DPipe(this=exp.Literal.string('$."'), expression=exp.column("_k")),
             expression=exp.Literal.string('"'),
         )
-        is_set = exp.Not(
-            this=exp.Is(
-                this=_anon("JSON_EXTRACT_SCALAR", props.copy(), path), expression=exp.Null()
-            )
+        # Set: a value of any kind but null (each property keeps its type, a list one included,
+        # which no engine reads as a scalar).
+        is_set = exp.NEQ(
+            this=_anon("JSON_KIND", _anon("JSON_EXTRACT", props.copy(), path)),
+            expression=exp.Literal.string("null"),
         )
         return _anon(
             "filter", _anon("JSON_KEYS", props), exp.Lambda(this=is_set, expressions=[key])
@@ -1022,7 +1023,15 @@ class TranslatorExprContext:
         # Lower the projection (and predicate) with the target var -- and the path var, of the
         # source, the one edge and the target -- temporarily in scope.
         saved = t._var_table.get(tgt_var)
-        t._var_table[tgt_var] = (tgt_var, tgt_nm)
+        # A target the statement already binds is that node: the comprehension reads its table
+        # under a name of its own, tied to the bound node by its graph identity.
+        bound_id = graph_identity(t, tgt_var) if saved is not None else None
+        if saved is not None and bound_id is None:
+            raise NotImplementedError(
+                f"a pattern comprehension's target is bound to no node: {tgt_var}"
+            )
+        tgt_alias = tgt_var if saved is None else f"__comp_{tgt_var}"
+        t._var_table[tgt_var] = (tgt_alias, tgt_nm)
         path = node.path_var
         held_ends = t._path_vars.get(path) if path is not None else None
         held_steps = t._path_steps.get(path) if path is not None else None
@@ -1031,10 +1040,10 @@ class TranslatorExprContext:
                 raise NotImplementedError(
                     f"a path in a pattern comprehension starts at a node of one label: {src_var}"
                 )
-            via = None if rel.via is None else (via_alias_for(rel, tgt_var), rel.via)
-            edge = (rel.rel_type, src_alias, src_nm, tgt_var, tgt_nm, False, via)
-            t._path_vars[path] = (src_alias, tgt_var, False)
-            t._path_steps[path] = ([(src_alias, src_nm), (tgt_var, tgt_nm)], [edge])
+            via = None if rel.via is None else (via_alias_for(rel, tgt_alias), rel.via)
+            edge = (rel.rel_type, src_alias, src_nm, tgt_alias, tgt_nm, False, via)
+            t._path_vars[path] = (src_alias, tgt_alias, False)
+            t._path_steps[path] = ([(src_alias, src_nm), (tgt_alias, tgt_nm)], [edge])
         try:
             # A bare path, node or relationship is its object, as RETURN answers it.
             bare = node.projection.name if isinstance(node.projection, Variable) else None
@@ -1046,6 +1055,9 @@ class TranslatorExprContext:
                 else _anon("to_json", element)
             )
             pred = ExprLowering(self).lower(node.predicate) if node.predicate is not None else None
+            if bound_id is not None:
+                same = exp.EQ(this=node_identity(tgt_alias, tgt_nm), expression=bound_id)
+                pred = same if pred is None else exp.And(this=same, expression=pred)
         finally:
             if saved is None:
                 t._var_table.pop(tgt_var, None)
@@ -1067,7 +1079,7 @@ class TranslatorExprContext:
             # the junction scan is the FROM, its correlation to the outer source (with the
             # discriminator) is the WHERE, and the target joins onto it.
             via_join, tgt_join = _make_junction_joins(
-                rel, False, tgt_nm, tgt_var, src_alias, "INNER", via_alias_for(rel, tgt_var)
+                rel, False, tgt_nm, tgt_alias, src_alias, "INNER", via_alias_for(rel, tgt_alias)
             )
             where: exp.Expression = (
                 via_join["on"] if pred is None else exp.And(this=via_join["on"], expression=pred)
@@ -1085,10 +1097,10 @@ class TranslatorExprContext:
             src_ref = _col(rel.join_source_column, src_alias)
         join_cond: exp.Expression = exp.EQ(
             this=src_ref,
-            expression=_col(rel.join_target_column, tgt_var),
+            expression=_col(rel.join_target_column, tgt_alias),
         )
         where = join_cond if pred is None else exp.And(this=join_cond, expression=pred)
-        select = exp.select(proj).from_(exp.alias_(tgt_table, tgt_var)).where(where)
+        select = exp.select(proj).from_(exp.alias_(tgt_table, tgt_alias)).where(where)
         return _anon("ARRAY", select)
 
     # -- recursion helper -------------------------------------------------- #
