@@ -88525,12 +88525,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     class or property is {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as
     a key is, since term names are unique and a term''s derived domains change (a renamed term has a new
     IRI); and an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property
-    term has the term''s IRI as its predicate, and its direct predicate stays usable. A class term types
-    the instances of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23,
-    GRAPHQL IS A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL:
-    a GraphQL read lowers to the IR -- a root field to a node pattern with its where, order, skip and limit;
-    a relationship field to a hop on its declared relationship (its direction, a junction''s relationships
-    of the types its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
+    term has the term''s IRI as its predicate, [SUPERSEDED by REQ-2163, 2026-10-29 -- a term-bound column
+    is published only under the term''s property IRI (A TERM-BOUND COLUMN''S PROPERTY IS THE TERM''S, 2026-10-28);
+    only a column bound to no term keeps its per-class IRI. Kept here for history; do not implement against
+    it.] and its direct predicate stays usable. [END SUPERSEDED BLOCK] A class term types the instances
+    of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23, GRAPHQL IS
+    A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL: a GraphQL read
+    lowers to the IR -- a root field to a node pattern with its where, order, skip and limit; a relationship
+    field to a hop on its declared relationship (its direction, a junction''s relationships of the types
+    its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
     cardinality, with the level''s own where, order, skip, limit and distinct_on; a relationship condition
     to EXISTS; an alias to its result name; aggregates and group-by to the IR''s aggregation. The IR''s
     SQL is the canonical semantic SQL (REQ-863), so equivalent GraphQL, Cypher and SPARQL reads compile
@@ -91526,3 +91529,40 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1174
   stakeholders:
   - data-steward
+- id: REQ-2186
+  value: A file source can read the lists on its HTML pages as tables, plain lists as one column and link
+    lists with their addresses.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: File Sources
+  feature: connector-catalog-files-and-lake
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-10-29: a file source can read the lists in its HTML pages (ul and ol)
+    as tables, as it reads their tables. It is a source option, off by default. Only lists inside the
+    page''s content are read, by the same rule the crawler uses to follow only links within content (REQ-1960),
+    and a list of fewer than 3 items is not read. A nested list is flattened into its outer list''s table:
+    its items are rows of that table, in document order, and every list''s table has a level column, 1
+    for a top-level item and one more for each list it is nested in; a nested list is not a table of its
+    own. A list whose items have no link is a table of one column, value, the item''s text. A list in
+    which any item is a link is a table of two columns, value and uri: value is the item''s text and uri
+    the link''s address made absolute against the page''s address, empty for an item with no link. A numbered
+    list (ol) also has a position column, the item''s number within its own list from 1. Each list''s
+    table is named by the heading above it, as a page''s tables are, numbered when two names collide.
+    HTML comes first; Markdown, DOCX and PPTX lists may follow with the same table shapes.'
+  scenario: 'Given a file source over a web page whose content has a heading "Member states" above a numbered
+    list of 27 country names, each a link to the country''s page, and the source''s list option is on
+
+    When the source''s tables are listed
+
+    Then a table named for "Member states" has the columns value, uri, level and position and 27 rows,
+    each at level 1
+
+    And each uri is the absolute address of its country''s page
+
+    And the page''s navigation menu list gives no table'
+  related_reqs:
+  - REQ-1960
+  stakeholders:
+  - data-engineer
