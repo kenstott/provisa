@@ -399,6 +399,18 @@ jobs:
     name: warehouse (live cloud warehouses)
     needs: plan
     if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)) && needs.plan.outputs.warehouse == 'true'
+    # REQ-254: one run at a time on the live compute every run shares (the Databricks SQL
+    # warehouse, the Snowflake warehouse, the Fabric capacity). This job wakes them and stops them
+    # again at its end; so does the core UI lane's cloud-warehouse job (ui-e2e-core.yml
+    # playwright). Run side by side, one run's stop took the warehouse from under the other's
+    # tests, and the other's queries restarted it, so the stop never took (run 40861830409:
+    # "RUNNING after 600s, not STOPPED", while run 40861827715's warehouse lane was using it).
+    # The group is repo-wide and shared by both jobs: a run waits for the other to finish, and is
+    # never cancelled by it; `queue: max` keeps every waiting run (the default keeps one and
+    # cancels the rest).
+    concurrency:
+      group: live-cloud-warehouses
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:

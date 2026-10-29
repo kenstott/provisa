@@ -353,6 +353,57 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
         assert call in step["run"] and "exit 1" in step["run"], name
 
 
+# The calls that stop the live compute every run shares (tests/integration/databricks_warehouse.py,
+# snowflake_warehouse.py, fabric_capacity.py), and the credentials that reach it.
+_SHARED_COMPUTE_STOPS = ("stop_warehouse", "suspend_warehouse", "ensure_capacity_paused")
+_SHARED_COMPUTE_SECRETS = ("DATABRICKS_TOKEN", "SNOWFLAKE_PASSWORD", "FABRIC_CAPACITY_NAME")
+
+
+def _stops_shared_compute(body: dict) -> bool:
+    """A job that stops the shared live compute: in a step of its own, or through the `after`
+    script of the lane workflow it calls, when it is passed the credentials that reach it."""
+    if any(
+        call in (step.get("run") or "")
+        for step in body.get("steps") or []
+        for call in _SHARED_COMPUTE_STOPS
+    ):
+        return True
+    after = (body.get("with") or {}).get("after") or ""
+    script = re.search(r"scripts/ci/lanes/[\w.-]+\.sh", after)
+    if script is None:
+        return False
+    stops = any(call in (REPO / script.group(0)).read_text() for call in _SHARED_COMPUTE_STOPS)
+    passed = body.get("secrets") or {}
+    return stops and any(passed.get(name) for name in _SHARED_COMPUTE_SECRETS)
+
+
+def test_jobs_that_stop_shared_live_compute_never_run_side_by_side():
+    """REQ-254. Two runs on the same live warehouse fought: one run's stop took it from under the
+    other's tests, and the other's queries restarted it, so the stop failed (run 40861830409's
+    after-script: "RUNNING after 600s, not STOPPED" while run 40861827715's warehouse lane used
+    it). Every job that stops the shared compute takes one repo-wide concurrency group that waits
+    and never cancels (a cancelled run would still hold the compute it woke until its own stop),
+    and keeps every waiting run."""
+    stoppers = {
+        f"{workflow}:{job}": body for workflow, job, body in _jobs() if _stops_shared_compute(body)
+    }
+    assert set(stoppers) == {
+        "integration-suite-lanes.yml:warehouse",
+        "ui-e2e-core.yml:playwright",
+    }
+    for where, body in stoppers.items():
+        group = body.get("concurrency")
+        assert isinstance(group, dict), f"{where} takes no concurrency group"
+        assert group.get("group") == "live-cloud-warehouses", where
+        assert group.get("cancel-in-progress") in (None, False), where
+        assert group.get("queue") == "max", where
+    # The core UI lane's provisioning job runs the same after-script, but is passed none of the
+    # compute's credentials, so it stops nothing and runs beside the others.
+    core = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
+    assert "ui-core-after.sh" in core["provisioning"]["with"]["after"]
+    assert not _stops_shared_compute(core["provisioning"])
+
+
 def test_no_two_lanes_share_a_name_or_an_artifact():
     names = [b["with"]["name"] for _w, _j, b in _lane_callers()]
     assert len(names) == len(set(names)), names

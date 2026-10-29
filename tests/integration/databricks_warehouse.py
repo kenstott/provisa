@@ -128,15 +128,30 @@ def ensure_warehouse_running() -> None:
 
 def stop_warehouse() -> None:
     """Stop the configured warehouse and block until Databricks reports it STOPPED. A warehouse
-    still running when the bound passes may be billing, and that raises."""
+    still running when the bound passes may be billing, and that raises.
+
+    The stop is sent once. A warehouse that was STOPPING and then runs again was restarted by a
+    query from someone else -- another run on the same warehouse -- and that raises at once,
+    naming it: stopping it again would fight that user, and waiting would only reach the bound.
+    CI keeps runs off each other's warehouse (the live-cloud-warehouses concurrency group), so
+    this is a user outside it, and the warehouse is left for a person to check."""
     warehouse_id = _warehouse_id()
     with _client() as client:
         state = _state(client, warehouse_id)
         deadline = time.monotonic() + _STOP_TIMEOUT_S
         stop_sent = False
+        seen_stopping = False
         while state != "STOPPED":
             if state in ("DELETED", "DELETING"):
                 raise RuntimeError(f"Databricks warehouse {warehouse_id} is {state}, not STOPPED")
+            if state == "STOPPING":
+                seen_stopping = True
+            if state in ("STARTING", "RUNNING") and seen_stopping:
+                raise RuntimeError(
+                    f"Databricks warehouse {warehouse_id} is {state} again after it was stopping: "
+                    "something else restarted it with a query (another run on the same "
+                    "warehouse?), not STOPPED: it may be billing"
+                )
             if state in ("STARTING", "RUNNING") and not stop_sent:
                 client.post(f"{_base()}/{warehouse_id}/stop").raise_for_status()
                 stop_sent = True

@@ -260,3 +260,15 @@ def test_a_databricks_warehouse_that_never_stops_raises(monkeypatch):
     _dbx_stop(monkeypatch, ["RUNNING", "STOPPING"])
     with pytest.raises(RuntimeError, match="may be billing"):
         databricks_warehouse.stop_warehouse()
+
+
+def test_a_databricks_warehouse_restarted_while_stopping_raises_at_once_naming_it(monkeypatch):
+    """Run 40861830409: another run's queries restarted the warehouse this stop had sent STOPPING,
+    and the stop waited 600s for a STOPPED that never came. A restart is named at once, and the
+    stop is not sent again (it would take the warehouse from under that user)."""
+    http = _dbx_stop(monkeypatch, ["RUNNING", "STOPPING", "STARTING", "RUNNING"])
+    with pytest.raises(RuntimeError, match="something else restarted it") as raised:
+        databricks_warehouse.stop_warehouse()
+    assert "may be billing" in str(raised.value)
+    assert http.posts == ["https://dbx.example/api/2.0/sql/warehouses/abc123/stop"]
+    assert databricks_warehouse.time.monotonic() < databricks_warehouse._STOP_TIMEOUT_S

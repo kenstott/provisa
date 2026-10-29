@@ -120,6 +120,15 @@ jobs:
   # PROVISIONING_SPECS).
   playwright:
     name: Playwright core lane
+    # REQ-254: this job's cloud-warehouse spec wakes the live compute every run shares (the
+    # Databricks SQL warehouse, the Snowflake warehouse, the Fabric capacity) and its after-script
+    # stops it. The integration suite's warehouse lane (integration-suite-lanes.yml warehouse)
+    # does the same, so both take one repo-wide group: one waits for the other, neither cancels
+    # the other (run 40861830409's stop failed while run 40861827715's lane was using the
+    # warehouse). The provisioning job is passed none of those credentials and stops nothing.
+    concurrency:
+      group: live-cloud-warehouses
+      queue: max
     uses: ./.github/workflows/lane.yml
     with:
       name: ui-core

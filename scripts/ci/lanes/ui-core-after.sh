@@ -21,7 +21,10 @@
 #    same reason: the cloud-warehouse spec's seed wakes the Databricks warehouse and its statements
 #    resume Snowflake's, and nothing in the spec stops either (other workers may still be reading
 #    when one finishes). A warehouse that does not end stopped or suspended fails the step
-#    (REQ-254: compute a test starts or resumes is stopped again).
+#    (REQ-254: compute a test starts or resumes is stopped again). No other run uses this
+#    compute meanwhile: the job holds the live-cloud-warehouses concurrency group, which the
+#    integration suite's warehouse lane holds too (ui-e2e-core.yml), so a stop here never takes
+#    the compute from under another run, and another run's queries never restart it.
 # 4. Removes the credential files the prepare script wrote.
 # Each step runs even when an earlier one failed; the script fails if any did.
 set -euo pipefail

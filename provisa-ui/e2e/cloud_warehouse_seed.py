@@ -112,7 +112,8 @@ def _databricks(action: str) -> None:
 
         # The schema (its table with it) dropped and read back gone, then the connection closed.
         # The warehouse "up" woke is stopped by the lane's after-script (ui-core-after.sh): other
-        # workers of the run may still be reading it here (REQ-254).
+        # workers of the run may still be reading it here (REQ-254). No other run is: the job
+        # holds the live-cloud-warehouses concurrency group (ui-e2e-core.yml).
         run_every(
             [
                 (
