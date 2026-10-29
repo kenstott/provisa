@@ -47,11 +47,13 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import store
+from provisa.gql.label_map import GRAPH_ID
 
 SESSION_CATALOG = "__session__"
 SESSION_SCHEMA = "s"
 NODE_ID = "__node_id"
-GRAPH_ID = "__graph_id"
+#: The session relation of every session relationship, which a path function walks (REQ-348).
+WALK_RELATION = "rels"
 
 
 def _node_relation(key: str) -> str:
@@ -78,7 +80,12 @@ def overlay(model: Any, session: TempSession) -> Any:
     """``model`` (the role's label map) with each label of session matches, and each type of
     session relationships, mapped to its session relation. ``model`` itself when the session
     holds nothing."""
-    from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapping
+    from provisa.gql.label_map import (
+        JunctionMapping,
+        NodeMapping,
+        RelationshipMapping,
+        SessionWalk,
+    )
 
     graph = store.graph(session)
     if graph.empty:
@@ -158,6 +165,9 @@ def overlay(model: Any, session: TempSession) -> Any:
     out.aliases = aliases
     out._nodes_ci = {k.lower(): k for k in nodes}
     out._nodes_by_table_ci = {k.lower(): k for k in nodes_by_table}
+    # REQ-348: every session relationship in one relation, which a path function with an
+    # unlabelled end walks.
+    out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)
     return out
 
 
@@ -255,6 +265,14 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
     return union
 
 
+def _walk_rows() -> exp.Expression:
+    """The rows of the walk's relation (REQ-348): every session relationship, its type and its
+    ends, read from the relationships table alone, indexed on both ends."""
+    return exp.select(
+        _col(store.REL_ID, "_r"), _col("type", "_r"), _col("from_id", "_r"), _col("to_id", "_r")
+    ).from_(exp.alias_(exp.to_table(store.RELS, quoted=True), "_r"))
+
+
 def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
     """The rows of a relationship type's session relation: each relationship's ends and its
     properties."""
@@ -320,8 +338,10 @@ def _once_per_node(sub: exp.Subquery, arms: list[exp.Select]) -> None:
             if _session_arm(arm)
             else arm.selects[1].this.copy()
         )
+        # A union the compiler already gave its graph identity (a walk's end, REQ-348) keeps it.
+        held = GRAPH_ID in arm.named_selects
         arm.select(
-            exp.alias_(graph_id, GRAPH_ID, quoted=True),
+            *([] if held else [exp.alias_(graph_id, GRAPH_ID, quoted=True)]),
             exp.alias_(exp.Literal.number(i), _ARM, quoted=True),
             copy=False,
         )
@@ -438,6 +458,8 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
                 )
                 _drop_conditions(select, mine)
             name = cte(f"__session_node__{key}", body)
+        elif table.name == WALK_RELATION:
+            name = cte("__session_rels", _walk_rows())
         else:
             rel_type = types[table.name]
             name = cte(f"__session_rel__{rel_type}", _rel_rows(rel_type, session))

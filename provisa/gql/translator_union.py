@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
+from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.path_walk import graph_identity
 from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
     _const_literal,
@@ -192,6 +194,7 @@ class _UnionMixin:  # mixin for _Translator
         _all_rels_ends: dict[str, list[str]]
         _all_rels_mappings: list[RelationshipMapping]
         _union_columns: dict[str, list[str]]
+        _graph_id_unions: set[str]
 
         def _collect_var_props(self, var: str) -> list[str]: ...
 
@@ -535,6 +538,8 @@ class _UnionMixin:  # mixin for _Translator
         }
         branches: list[exp.Select] = []
         had_resolvable = False
+        walk = self._lm.session_walk
+        arms: list[NodeMapping] = []
         for label in type_labels:
             nm = self._lm.nodes.get(label)
             if nm is None:
@@ -585,6 +590,17 @@ class _UnionMixin:  # mixin for _Translator
                 )
             )
             branches.append(branch)
+            arms.append(nm)
+
+        if walk is not None and any(nm.catalog_name == walk.catalog_name for nm in arms):
+            # REQ-348: a union holding a graph session's nodes names each one's graph identity,
+            # which the session's relationships, and a path function's walk, join it by. A union
+            # of the model's nodes alone has it already: __id.
+            for branch, nm in zip(branches, arms):
+                branch.select(
+                    exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID), copy=False
+                )
+            self._graph_id_unions.add(var)
 
         if not branches:
             if not had_resolvable:

@@ -190,8 +190,28 @@ class RelationshipMapping:
         )
 
 
+#: REQ-348: the column a graph session's node relation names a node's graph identity by (``Label|key``
+#: for a model node, an ephemeral node's id), which the session's relationships name their ends by.
+GRAPH_ID = "__graph_id"
+
+
+@dataclass(frozen=True)
+class SessionWalk:
+    """REQ-348: a graph session's relationships, every one a row of one relation of
+    ``(rel_id, type, from_id, to_id)``, its ends graph identities (GRAPH_ID): what a path
+    function with an unlabelled end walks."""
+
+    catalog_name: str
+    schema_name: str
+    table_name: str
+
+
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
+
+    #: REQ-348: set on a graph session's label map (provisa.ephemeral.read.overlay); None on the
+    #: model graph, where a path function's ends are labelled.
+    session_walk: SessionWalk | None = None
 
     def __init__(
         self,
