@@ -18,6 +18,7 @@ from urllib.parse import quote
 import pyarrow as pa
 import pytest
 
+from tests.integration.live_teardown import run_every, run_name  # noqa: E402
 from provisa.federation.replica_address import replica_schema
 from provisa.federation.replica_target import build_table_name
 from provisa.federation.replica_target_warehouse import SnowflakeStoreTarget, snowflake_adbc_connect
@@ -31,7 +32,7 @@ pytestmark = [
     pytest.mark.requires_warehouse,
 ]
 
-_DB = f"PROVISA_REPLICA_TARGET_{os.getpid()}"
+_DB = run_name("PROVISA_REPLICA_TARGET").upper()  # the run's own (REQ-254)
 _SCHEMA = replica_schema("swaptest")
 _TABLE = "src__public__orders"
 _COLUMNS = [
@@ -81,12 +82,18 @@ def account():
         password=os.environ["SNOWFLAKE_PASSWORD"],
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
     )
-    conn.cursor().execute(f"CREATE DATABASE {_DB}")
     try:
+        conn.cursor().execute(f"CREATE DATABASE {_DB}")
         yield conn
     finally:
-        conn.cursor().execute(f"DROP DATABASE IF EXISTS {_DB}")
-        conn.close()
+        from tests.integration.snowflake_warehouse import drop_database
+
+        run_every(
+            [
+                (f"drop database {_DB}", lambda: drop_database(conn, _DB)),
+                ("close the connection", conn.close),
+            ]
+        )
 
 
 def _target() -> SnowflakeStoreTarget:

@@ -19,6 +19,7 @@ import pytest
 
 pytest.importorskip("databricks.sql", reason="databricks-sql-connector required")
 
+from tests.integration.live_teardown import run_every, run_name  # noqa: E402
 from provisa.federation.replica_address import replica_schema  # noqa: E402
 from provisa.federation.replica_target import build_table_name  # noqa: E402
 from provisa.federation.replica_target_warehouse import (  # noqa: E402
@@ -37,7 +38,7 @@ pytestmark = [
 ]
 
 _CATALOG = "workspace"
-_SCHEMA = replica_schema(f"swaptest{os.getpid()}")
+_SCHEMA = replica_schema(run_name("swaptest"))  # the run's own (REQ-254)
 _TABLE = "src__public__orders"
 _REPLICA = f"`{_CATALOG}`.`{_SCHEMA}`.`{_TABLE}`"
 _COLUMNS = [
@@ -95,10 +96,14 @@ def warehouse():
     try:
         yield conn
     finally:
-        cur = conn.cursor()
-        cur.execute(f"DROP SCHEMA IF EXISTS `{_CATALOG}`.`{_SCHEMA}` CASCADE")
-        cur.close()
-        conn.close()
+        from tests.integration.databricks_uc import drop_schema
+
+        run_every(
+            [
+                (f"drop schema {_CATALOG}.{_SCHEMA}", lambda: drop_schema(conn, _CATALOG, _SCHEMA)),
+                ("close the connection", conn.close),
+            ]
+        )
 
 
 def _query(conn, sql: str) -> list:

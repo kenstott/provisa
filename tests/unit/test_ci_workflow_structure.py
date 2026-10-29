@@ -325,10 +325,32 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     # The Fabric capacity is left paused whatever the lane's outcome -- by reading its state,
     # not by a bare suspend, which is refused in every state but Active (run 38050265191).
     assert "ensure_capacity_paused" in after and "suspend_capacity()" not in after
+    # REQ-254: the warehouses the cloud-warehouse spec wakes are stopped again, whatever happened.
+    assert "stop_warehouse" in after and "suspend_warehouse" in after
     assert "it may be billing" in after
     lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())["jobs"]["lane"]
     after_step = next(s for s in lane["steps"] if s.get("name") == "After the lane")
     assert "always()" in after_step["if"]
+
+
+def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happened():
+    """REQ-254: a test stops what it started, which does not run when the lane dies or the job is
+    cut short -- so the warehouse job itself pauses or stops every billable compute it runs on,
+    in steps that run whatever the outcome, and fails when one does not end stopped."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse"]
+    steps = {s.get("name"): s for s in job["steps"]}
+    run_lane = [s.get("name") for s in job["steps"]].index("Run lane")
+    for name, call in (
+        ("Leave the Fabric capacity paused", "ensure_capacity_paused"),
+        ("Leave the Databricks warehouse stopped", "stop_warehouse"),
+        ("Leave the Snowflake warehouse suspended", "suspend_warehouse"),
+    ):
+        step = steps[name]
+        assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
+        assert step["if"] == "always()", name
+        assert call in step["run"] and "exit 1" in step["run"], name
 
 
 def test_no_two_lanes_share_a_name_or_an_artifact():

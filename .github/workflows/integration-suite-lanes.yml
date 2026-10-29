@@ -577,6 +577,24 @@ jobs:
             "from tests.integration.fabric_capacity import ensure_capacity_paused as p; print('the Fabric capacity is', p())" \
             || { echo "::error::the Fabric capacity could not be confirmed paused: check it, it may be billing"; exit 1; }
 
+      # The Databricks SQL warehouse and the Snowflake warehouse, likewise: each test stops what it
+      # started (tests/integration/databricks_warehouse.py, snowflake_warehouse.py), which does not
+      # run when a test dies or the job is cut short. Stopped / suspended here whatever happened;
+      # one that does not end so fails the step, and says so (REQ-254).
+      - name: Leave the Databricks warehouse stopped
+        if: always()
+        run: |
+          uv run python -c \
+            "from tests.integration.databricks_warehouse import stop_warehouse as s, warehouse_state as w; s(); print('the Databricks warehouse is', w())" \
+            || { echo "::error::the Databricks warehouse could not be confirmed stopped: check it, it may be billing"; exit 1; }
+
+      - name: Leave the Snowflake warehouse suspended
+        if: always()
+        run: |
+          uv run python -c \
+            "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ.get('SNOWFLAKE_WAREHOUSE', 'COMPUTE_WH')))" \
+            || { echo "::error::the Snowflake warehouse could not be confirmed suspended: check it, it may be billing"; exit 1; }
+
       - name: Cache Trino plugins
         if: always()
         uses: ./.github/actions/trino-plugins
