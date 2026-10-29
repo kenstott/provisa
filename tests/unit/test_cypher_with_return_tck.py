@@ -289,3 +289,37 @@ _TWO_A = "CREATE (:A {k: 1})-[:REL]->(:B), (:A {k: 2})-[:REL]->(:B), (:X)"
 def test_a_hop_of_no_type_from_a_node_a_with_carries_starts_at_that_node(monkeypatch, query):
     s = _session(monkeypatch, _TWO_A)
     assert s.run(query) == [{"a.k": 1}]
+
+
+def test_a_with_ordered_only_by_a_property_no_row_has(monkeypatch):
+    # WithSkipLimit2 [1]: ORDER BY a.name, a property A has not, orders nothing.
+    s = _session(monkeypatch, "CREATE (a:A), (), (), (), (a)-[:REL]->()")
+    rows = s.run("MATCH (a:A) WITH a ORDER BY a.name LIMIT 1 MATCH (a)-->(b) RETURN a")
+    assert _props(rows, "a") == [{}]
+
+
+# --- maps a WITH carries ------------------------------------------------------------------------
+
+
+def test_a_map_a_with_builds_reads_the_map_an_earlier_with_carries(monkeypatch):
+    # With4 [7]: WITH {second: m.first} AS m reads the m before it.
+    s = _session(monkeypatch, "CREATE ({id: 0})")
+    q = "MATCH (m) WITH {first: m.id} AS m WITH {second: m.first} AS m RETURN m.second"
+    assert s.run(q) == [{"m.second": 0}]
+    q = "WITH {first: 0} AS m WITH {second: m.first} AS m RETURN m.second"
+    assert s.run(q) == [{"m.second": 0}]
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "RETURN l.t AS t",  # Return4 [11]
+        "WITH l.t AS t ORDER BY t RETURN t",  # With4 [6]
+    ],
+)
+def test_a_key_of_a_collected_map_is_its_value(monkeypatch, tail):
+    s = _session(monkeypatch, "CREATE (:P {d: 20160614})")
+    rows = s.run(
+        f"MATCH (p:P) WITH p.d AS t, p AS p WITH head(collect({{t: t}})) AS l, p AS p {tail}"
+    )
+    assert rows == [{"t": 20160614}]

@@ -20,6 +20,8 @@ into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlat
 
 from __future__ import annotations
 
+import json
+
 import copy
 import dataclasses
 from collections import ChainMap
@@ -384,6 +386,19 @@ class TranslatorExprContext:
                 to=exp.DataType.build("json"),
             )
             return _anon("JSON_EXTRACT_SCALAR", cast, exp.Literal.string("$"))
+        if (
+            isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._map_array_vars
+            and obj.name in t._cte_sources
+        ):
+            # A map a WITH carries out of collected maps (head(collect({k: v}))): its values are
+            # JSON-encoded, so its key is read as JSON, which the answer decodes (null where it
+            # has none).
+            path = "$." + json.dumps(name)
+            return exp.Paren(
+                this=_anon("JSON_EXTRACT", _anon("TO_JSON", obj.copy()), exp.Literal.string(path))
+            )
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)
@@ -558,6 +573,14 @@ class TranslatorExprContext:
         if isinstance(expr, Index):
             # An item of a variable bound to a list of several types.
             return isinstance(expr.obj, Variable) and expr.obj.name in self._t._json_list_vars
+        if (
+            isinstance(expr, Property)
+            and isinstance(expr.obj, Variable)
+            and expr.obj.name in self._t._map_array_vars
+            and expr.obj.name in self._t._cte_sources
+        ):
+            # A key of a map a WITH carries out of collected maps (resolve_property): its JSON.
+            return True
         return isinstance(expr, Variable) and expr.name in self._t._json_value_vars
 
     def holds_list_items(self, expr: CypherExpr) -> bool:

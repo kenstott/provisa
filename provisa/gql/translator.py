@@ -953,10 +953,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
         # The WITH's ORDER BY, SKIP and LIMIT pick the rows it carries on, before its WHERE.
-        if with_clause.order_by:
-            stage_query = stage_query.order_by(
-                *self._build_order_by(with_clause.order_by, with_clause.items)
-            )
+        # Each key that orders nothing (a property no row has, null) is dropped: none may be left.
+        with_orders = (
+            self._build_order_by(with_clause.order_by, with_clause.items)
+            if with_clause.order_by
+            else []
+        )
+        if with_orders:
+            stage_query = stage_query.order_by(*with_orders)
         if with_clause.limit is not None:
             stage_query = stage_query.limit(self._row_count(with_clause.limit, "LIMIT"))
         if with_clause.skip is not None:
@@ -1816,16 +1820,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         an engine folds the case of a name, and name and Name are two keys."""
         if not isinstance(expr, MapLiteral):
             return []
+        # Its values are read where the WITH reads, before it names the map: WITH {second:
+        # m.first} AS m reads the m an earlier WITH carries.
+        columns = [
+            exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
+            for n, (_key, value) in enumerate(expr.entries)
+        ]
         self._map_vars[alias] = {key: n for n, (key, _value) in enumerate(expr.entries)}
         self._map_key_maps |= {
             map_key_column(alias, n)
             for n, (_key, value) in enumerate(expr.entries)
             if isinstance(value, MapLiteral)
         }
-        return [
-            exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
-            for n, (_key, value) in enumerate(expr.entries)
-        ]
+        return columns
 
     def _is_graph_element(self, name: str) -> bool:
         """Whether ``name`` is a node, relationship or path of the query."""
