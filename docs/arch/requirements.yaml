@@ -47336,7 +47336,16 @@
     new term, and the user chooses; the assistant adds nothing unasked. The same guidance (the type tests,
     RELATED_TO as the placeholder, the five shapes and the breadth caution) is a section of the ontology
     documentation, written for the people who build a glossary, who rarely get it, and it is reachable from
-    the type picker and from the RELATED_TO review filter.'
+    the type picker and from the RELATED_TO review filter. (Amended 2026-10-28, CHOOSING RELATED_TO OPENS
+    THE ALTERNATIVES:) Choosing RELATED_TO for an edge a person is adding opens a dialog, an exception to
+    the minimal-modal rule because this choice should interrupt: it says why RELATED_TO is the least useful
+    edge (it does not ground, so the term still cannot reach data), draws the five resolving shapes for
+    the two terms being linked, tightest first, each with a candidate name for the new term (candles ->
+    cake decoration -> cake), and offers to start one, which opens the new-term form prefilled with that
+    name and both edges for the person to confirm or rename; to add RELATED_TO anyway, as a placeholder
+    the review filter lists, in one click; or to cancel. The relationship assistant''s bulk proposals do
+    not open the dialog per edge; each RELATED_TO proposal carries the same shapes in its note where proposals
+    are reviewed.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
