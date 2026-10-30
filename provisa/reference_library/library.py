@@ -81,6 +81,13 @@ class FetchFailed(LibraryRefused):
     status = 502
 
 
+class EmbeddingFailed(LibraryRefused):
+    """The vector model could not embed a document's passages; the document is as it was."""
+
+    code = "reference_library.embed_failed"
+    status = 502
+
+
 @dataclass(frozen=True)
 class Embedder:
     """The org's vector model: its id and the call that embeds texts with it."""
@@ -182,14 +189,10 @@ class _Read:
     passages: list[store.StoredPassage]
 
 
-async def _read(content: Content, embedder: Embedder) -> _Read:
-    document = _readable(
-        lambda: extract.read(content.data, content.media_type, content.name, content.charset)
-    )
-    cuts = cut(document)
+async def _embed_texts(texts: Sequence[str], embedder: Embedder) -> list[list[float]]:
     vectors: list[list[float]] = []
-    for start in range(0, len(cuts), EMBED_BATCH):
-        batch = [p.text for p in cuts[start : start + EMBED_BATCH]]
+    for start in range(0, len(texts), EMBED_BATCH):
+        batch = list(texts[start : start + EMBED_BATCH])
         embedded = await embedder.embed(batch)
         if len(embedded) != len(batch):
             raise LibraryRefused(
@@ -197,6 +200,15 @@ async def _read(content: Content, embedder: Embedder) -> _Read:
                 f"for {len(batch)} passages"
             )
         vectors.extend(embedded)
+    return vectors
+
+
+async def _read(content: Content, embedder: Embedder) -> _Read:
+    document = _readable(
+        lambda: extract.read(content.data, content.media_type, content.name, content.charset)
+    )
+    cuts = cut(document)
+    vectors = await _embed_texts([p.text for p in cuts], embedder)
     return _Read(
         title=document.title,
         sha256=hashlib.sha256(content.data).hexdigest(),
@@ -311,6 +323,60 @@ async def new_version(
             source=content.name,
             refreshed=False,
         )
+
+
+@dataclass(frozen=True)
+class FailedDocument:
+    """A document whose re-embedding failed, and why; it is as it was."""
+
+    document_id: int
+    title: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ReembedOutcome:
+    reembedded: list[int]
+    failed: list[FailedDocument]
+
+
+async def needing_re_embedding(conn: Connection, embedder: Embedder) -> list[store.DocumentRow]:
+    """The documents embedded by a model other than the org's current one."""
+    return [d for d in await store.documents(conn) if d.embedding_model != embedder.model]
+
+
+async def reembed(conn: Connection, document_id: int, embedder: Embedder) -> None:
+    """Re-embed a document's stored passage text with the org's current model. The file is not read
+    again and the URL is not fetched; nothing but the embeddings (and the model they name) changes.
+    A document the model cannot embed is left as it was (:class:`EmbeddingFailed`)."""
+    held = await _held(conn, document_id)
+    texts = [text for _, _, _, text in await store.passages(conn, document_id)]
+    try:
+        vectors = await _embed_texts(texts, embedder)
+    except Exception as exc:
+        raise EmbeddingFailed(
+            f"document {document_id} ({held.title!r}) could not be re-embedded with "
+            f"{embedder.model!r}: {exc}"
+        ) from exc
+    async with conn.transaction():
+        await store.replace_vectors(
+            conn, document_id, embedding_model=embedder.model, vectors=vectors
+        )
+
+
+async def reembed_all(conn: Connection, embedder: Embedder) -> ReembedOutcome:
+    """Re-embed every document embedded by an earlier model. A document that fails is reported by
+    name with its reason and left as it was; the others are still re-embedded."""
+    done: list[int] = []
+    failed: list[FailedDocument] = []
+    for held in sorted(await needing_re_embedding(conn, embedder), key=lambda d: d.id):
+        try:
+            await reembed(conn, held.id, embedder)
+        except EmbeddingFailed as exc:
+            failed.append(FailedDocument(held.id, held.title, str(exc.__cause__ or exc)))
+        else:
+            done.append(held.id)
+    return ReembedOutcome(done, failed)
 
 
 async def keep(conn: Connection, document_id: int) -> None:
