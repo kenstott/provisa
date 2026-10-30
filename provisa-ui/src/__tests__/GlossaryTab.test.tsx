@@ -374,8 +374,8 @@ describe("GlossaryTab", () => {
 
     // A concept names no column: its role says so, and no count is shown.
     const churn = screen.getByTestId("glossary-item-2");
-    expect(within(churn).getByTestId("glossary-role-2")).toHaveTextContent(
-      t("glossaryTab.role_concept"),
+    expect(within(churn).getByRole("img", { name: t("glossaryTab.role_concept") })).toBe(
+      within(churn).getByTestId("glossary-role-2"),
     );
     expect(within(churn).queryByText("Abstract")).toBeNull();
 
@@ -390,7 +390,7 @@ describe("GlossaryTab", () => {
   it("badges a draft term Draft in the list", async () => {
     mockList.mockResolvedValue([REVENUE, DANGLING]);
     render(<GlossaryTab />);
-    expect(await screen.findByTestId("glossary-status-4")).toHaveTextContent(
+    expect(await screen.findByTestId("glossary-status-4")).toHaveAccessibleName(
       t("glossaryTab.status_draft"),
     );
   });
@@ -471,7 +471,7 @@ describe("GlossaryTab", () => {
     const orphan = screen.getByTestId("glossary-item-4");
     const badge = within(orphan).getByTestId("glossary-role-4");
     expect(badge).toHaveAttribute("data-dangling", "true");
-    expect(badge).toHaveTextContent(t("glossaryTab.role_concept"));
+    expect(badge).toHaveAccessibleName(t("glossaryTab.role_concept"));
   });
 
   it("explains what the glossary is for next to the add button", async () => {
@@ -522,7 +522,7 @@ describe("GlossaryTab", () => {
     mockList.mockResolvedValue([{ ...REVENUE, findings: 1 }, CHURN]);
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-2");
-    expect(screen.getByTestId("glossary-review-1")).toHaveTextContent(t("glossaryTab.toReview"));
+    expect(screen.getByTestId("glossary-review-1")).toHaveAccessibleName(t("glossaryTab.toReview"));
     fireEvent.click(screen.getByTestId("glossary-to-review-only"));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();

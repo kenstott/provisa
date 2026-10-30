@@ -45,6 +45,7 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  #
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.bigquery_runtime import BigQueryFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.integration.live_teardown import none_remain, run_every, run_name  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 _PROJ = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
@@ -55,7 +56,10 @@ _ADMIN = {
     "domain_access": ["*"],
 }
 _SRC = "bq-e2e"
-_DS = "provisa_e2e_it"
+# The run's own datasets and GCS prefix (REQ-254): teardown removes exactly these.
+_DS = run_name("provisa_e2e_it")
+_EXT_DS = run_name("provisa_ext_it_ds")
+_GCS_PREFIX = run_name("provisa_ext_it") + "/"
 
 
 def _col(n, d="varchar", nl=True):
@@ -111,10 +115,17 @@ def runtime():
     finally:
         # Drop the whole per-source datasets (CASCADE takes their tables) — dropping only the
         # table would leak the dataset land_table auto-created. Covers both the landed
-        # dataset and the external-link dataset.
-        for ds in (_DS, "provisa_ext_it_ds"):
-            rt.connection.query(f"DROP SCHEMA IF EXISTS `{_PROJ}`.`{ds}` CASCADE").result()
-        rt.close()
+        # dataset and the external-link dataset; each read back gone, every step attempted.
+        run_every(
+            [(f"drop dataset {ds}", lambda ds=ds: _drop_dataset(rt, ds)) for ds in (_DS, _EXT_DS)]
+            + [("close the runtime", rt.close)]
+        )
+
+
+def _drop_dataset(rt, ds: str) -> None:
+    rt.connection.query(f"DROP SCHEMA IF EXISTS `{_PROJ}`.`{ds}` CASCADE").result()
+    left = [d.dataset_id for d in rt.connection.list_datasets(_PROJ) if d.dataset_id == ds]
+    none_remain("BigQuery datasets", left)
 
 
 @pytest.mark.asyncio
@@ -161,11 +172,11 @@ async def test_bigquery_gcs_external_link_is_zero_copy(runtime):
         ),
         buf,
     )
-    blob = storage.Client(project=_PROJ).bucket(bucket).blob("provisa_ext_it/orders.parquet")
-    blob.upload_from_string(buf.getvalue())
-    uri = f"gs://{bucket}/provisa_ext_it/orders.parquet"
-    ext_ds = "provisa_ext_it_ds"
+    gcs = storage.Client(project=_PROJ).bucket(bucket)
+    uri = f"gs://{bucket}/{_GCS_PREFIX}orders.parquet"
+    ext_ds = _EXT_DS
     try:
+        gcs.blob(f"{_GCS_PREFIX}orders.parquet").upload_from_string(buf.getvalue())
         src = SimpleNamespace(
             id="bq-ext",
             type=SourceType.parquet,
@@ -186,10 +197,16 @@ async def test_bigquery_gcs_external_link_is_zero_copy(runtime):
         )
         assert rows and rows[0][0] == "EXTERNAL"  # a link, not a copy
     finally:
-        runtime.connection.query(
-            f"DROP EXTERNAL TABLE IF EXISTS `{_PROJ}`.`{ext_ds}`.`orders`"
-        ).result()
+        # The external table goes with the run's dataset in the fixture; the run's objects here.
+        run_every([(f"delete gs://{bucket}/{_GCS_PREFIX}", lambda: _remove_prefix(gcs))])
+
+
+def _remove_prefix(gcs) -> None:
+    for blob in gcs.list_blobs(prefix=_GCS_PREFIX):
         blob.delete()
+    none_remain(
+        f"GCS objects under {_GCS_PREFIX}", [b.name for b in gcs.list_blobs(prefix=_GCS_PREFIX)]
+    )
 
 
 if __name__ == "__main__":

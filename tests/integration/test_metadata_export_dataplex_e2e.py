@@ -34,11 +34,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExport, resource_id
+from provisa.api.metadata_export.dataplex import DataplexExport, resource_id
 from provisa.federation.replica_address import export_schema, replica_schema, replica_table_name
+from tests.integration.dataplex_catalog import API, numbered, remove_glossary, remove_product
+from tests.integration.live_teardown import run_name
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     DOMAIN,
+    GLOSSARY_TERM,
     PRODUCT_FIELDS,
     SCHEMA,
     SOURCE,
@@ -53,9 +56,10 @@ pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
 ]
 
-ORG = "mdx_dataplex_e2e"
+# The run's own org (REQ-254): its glossary and datasets are named for it, so teardown removes
+# exactly this run's, never another's.
+ORG = run_name("mdx_dataplex_e2e")
 OWNER = "provisa-e2e-owner"
-API = "https://dataplex.googleapis.com/v1"
 _CREDENTIALS = ("GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "BIGQUERY_LOCATION")
 
 
@@ -75,6 +79,17 @@ def _token(key: str) -> str:
     )
     credentials.refresh(Request())
     return credentials.token
+
+
+async def _approve_terms(client: httpx.AsyncClient) -> None:
+    """The org's two terms approved, as a steward does: only an approved term publishes
+    (REQ-1387), and a config-declared term starts as a draft."""
+    listed = await client.get("/admin/glossary/terms")
+    assert listed.status_code == 200, listed.text
+    ids = {t["name"]: t["id"] for t in listed.json()}
+    for name in (GLOSSARY_TERM, CLASS_TERM):
+        approved = await client.post(f"/admin/glossary/terms/{ids[name]}/approve")
+        assert approved.status_code == 200, approved.text
 
 
 async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
@@ -110,38 +125,44 @@ def _glossary_name(parent: str) -> str:
     return f"{parent}/glossaries/{resource_id(f'provisa-{ORG}')}"
 
 
-def _remove_glossary(http: httpx.Client, parent: str) -> None:
-    """The org's glossary, emptied and removed: its links, terms and categories first."""
-    glossary = _glossary_name(parent)
-    terms = http.get(f"{API}/{glossary}/terms").json().get("terms", [])
-    numbered = _numbered(http, parent)
-    for term in terms:
-        entry = DataplexExport._term_entry(numbered, term["name"])
-        links = http.get(f"{API}/{parent}:lookupEntryLinks", params={"entry": entry}).json()
-        for link in links.get("entryLinks", []):
-            http.delete(f"{API}/{link['name']}")
-        http.delete(f"{API}/{glossary}/terms/{term['name'].rsplit('/', 1)[-1]}")
-    for category in http.get(f"{API}/{glossary}/categories").json().get("categories", []):
-        http.delete(f"{API}/{category['name']}")
-    http.delete(f"{API}/{glossary}")
-
-
 def _cleanup(project: str, location: str, key: str, product_id: str) -> None:
-    """The run's data product, its assets and the org's datasets, removed."""
+    """The run's data product, its assets, the org's glossary and the org's datasets removed and
+    read back gone; every step attempted, every failure raised (REQ-254)."""
+    from google.api_core.exceptions import NotFound
     from google.cloud import bigquery
 
+    from tests.integration.live_teardown import run_every
+
     headers = {"Authorization": f"Bearer {_token(key)}"}
-    name = f"projects/{project}/locations/{location}/dataProducts/{product_id}"
-    with httpx.Client(headers=headers, timeout=60) as http:
-        listed = http.get(f"{API}/{name}/dataAssets")
-        if listed.status_code == 200:
-            for asset in listed.json().get("dataAssets", []):
-                http.delete(f"{API}/{asset['name']}")
-        http.delete(f"{API}/{name}")
-        _remove_glossary(http, f"projects/{project}/locations/{location}")
+    parent = f"projects/{project}/locations/{location}"
+    name = f"{parent}/dataProducts/{product_id}"
     client = bigquery.Client(project=project)
-    for dataset in (export_schema(ORG), replica_schema(ORG)):
+
+    def remove_dataset(dataset: str) -> None:
         client.delete_dataset(f"{project}.{dataset}", delete_contents=True, not_found_ok=True)
+        try:
+            client.get_dataset(f"{project}.{dataset}")
+        except NotFound:
+            return
+        raise RuntimeError(f"BigQuery dataset {dataset} still exists after its delete")
+
+    with httpx.Client(headers=headers, timeout=60) as http:
+        run_every(
+            [
+                (
+                    f"delete data product {product_id} and its assets",
+                    lambda: remove_product(http, name),
+                ),
+                (
+                    f"delete glossary of {ORG}",
+                    lambda: remove_glossary(http, parent, _glossary_name(parent)),
+                ),
+            ]
+            + [
+                (f"delete dataset {dataset}", lambda dataset=dataset: remove_dataset(dataset))
+                for dataset in (export_schema(ORG), replica_schema(ORG))
+            ]
+        )
 
 
 @pytest.fixture(scope="module")
@@ -168,6 +189,7 @@ async def published():
                 assert read.status_code == 200, read.text
             owner_email = json.loads(key)["client_email"]
             await _hold_owner_role(client, owner_email)
+            await _approve_terms(client)
             result = await publish(
                 client,
                 {
@@ -192,7 +214,7 @@ async def published():
                         f"{API}/projects/{project}/locations/{region}:lookupEntryLinks",
                         params={
                             "entry": DataplexExport._term_entry(
-                                _numbered(http, f"projects/{project}/locations/{region}"),
+                                numbered(http, f"projects/{project}/locations/{region}"),
                                 term.json()["name"],
                             ),
                             "entryMode": "TARGET",
@@ -241,14 +263,6 @@ async def test_each_member_is_an_asset_through_its_export_view(published):
         f"{replica_table_name(SOURCE, SCHEMA, table)}"
         for table in ("orders", "customers")
     }
-
-
-def _numbered(http: httpx.Client, parent: str) -> str:
-    """``parent`` with its project named by number, as a term's catalog entry names it."""
-    _, project, _, location = parent.split("/")
-    found = http.get(f"{RESOURCE_MANAGER}/projects/{project}")
-    found.raise_for_status()
-    return f"{found.json()['name']}/locations/{location}"
 
 
 async def test_the_class_term_is_in_classes_and_defines_its_tables_view(published):

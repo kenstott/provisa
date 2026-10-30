@@ -19,6 +19,14 @@ suite's reason or the driver's evidence, and failed otherwise. A failing test is
 the run has no test, and, for a surface at its baseline (by_design.AT_BASELINE), when a test
 failed.
 
+Log lines (by_design.log_lines), printed to stdout after the files are written, so the result is
+readable from the job log without the artifact; names escape backslash, newline, CR and colon with
+a backslash:
+
+    CONFORMANCE-COUNTS surface=<surface> passed=<n> by_design=<n> failed=<n> total=<n>
+    CONFORMANCE-GROUP <group name>                  (one per skipped-by-design group)
+    CONFORMANCE-FAILURE <feature> :: <scenario>     (one per failed case)
+
 Usage: junit_summary.py <junit.xml>[,<junit.xml>...] <surface> <suite> <version> <tests run> <out.json> <out.md>
 """
 
@@ -134,6 +142,7 @@ def main(argv: list[str]) -> int:
     doc = summarise(junit, surface, suite, version, tests)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
+    print("\n".join(by_design.log_lines(doc)), flush=True)
     if not doc["total"]:
         return 1
     # REQ-2167: at its baseline, a failed case fails the job.

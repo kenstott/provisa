@@ -192,3 +192,9 @@
   flex-wrap: wrap;
   gap: 2px 8px;
 }
+/* The detail panel's names (connections, what is shown) take the row's whole width and wrap at
+   their break points (BreakableName), never cut with an ellipsis. */
+.p3d-row-name.is-wrap {
+  white-space: normal;
+  text-overflow: clip;
+}

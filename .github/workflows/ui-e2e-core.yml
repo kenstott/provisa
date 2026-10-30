@@ -41,50 +41,19 @@ on:
         required: false
         default: ""
   # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
-  # jobs read, by name; the caller passes each one and nothing is inherited.
+  # jobs read, by name; the caller passes each one and nothing is inherited. No live cloud
+  # warehouse's (Snowflake, Databricks, BigQuery, Fabric, Google Sheets): maintainer 2026-10-29,
+  # this lane never touches a live warehouse; the specs that do are the Playwright project
+  # "warehouse", run only by the nightly warehouse lane (integration-suite-lanes.yml warehouse-ui).
   workflow_call:
     secrets:
       ANTHROPIC_API_KEY:
         required: false
       OPENROUTER_API_KEY:
         required: false
-      AZURE_CLIENT_ID:
-        required: false
-      AZURE_CLIENT_SECRET:
-        required: false
-      AZURE_TENANT_ID:
-        required: false
-      DATABRICKS_HTTP_PATH:
-        required: false
-      DATABRICKS_SERVER_HOSTNAME:
-        required: false
-      DATABRICKS_TOKEN:
-        required: false
-      FABRIC_CAPACITY_NAME:
-        required: false
-      FABRIC_DATABASE:
-        required: false
-      FABRIC_RESOURCE_GROUP:
-        required: false
-      FABRIC_SQL_SERVER:
-        required: false
       FREE_ASKAMERICA_KEY:
         required: false
-      GOOGLE_APPLICATION_CREDENTIALS_JSON:
-        required: false
-      GOOGLE_CLOUD_PROJECT:
-        required: false
-      GSHEETS_TEST_SHEET_ID:
-        required: false
       KAGGLE_API_TOKEN:
-        required: false
-      SNOWFLAKE_ACCOUNT:
-        required: false
-      SNOWFLAKE_PASSWORD:
-        required: false
-      SNOWFLAKE_USER:
-        required: false
-      SNOWFLAKE_WAREHOUSE:
         required: false
       SP_CERT_P12_BASE64:
         required: false
@@ -120,12 +89,13 @@ jobs:
   # PROVISIONING_SPECS).
   playwright:
     name: Playwright core lane
+    # Maintainer 2026-10-29: no live cloud warehouse is touched here (no credentials are passed),
+    # so this job neither wakes nor stops the shared compute and holds no live-cloud-warehouses
+    # group; the warehouse specs run in integration-suite-lanes.yml warehouse-ui.
     uses: ./.github/workflows/lane.yml
     with:
       name: ui-core
       timeout: 120
-      # Fabric's SQL endpoint (the cloud-warehouse spec) is reached through ODBC Driver 18.
-      odbc: true
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
       # environment must be a real repo-root .venv. `cassandra` and `saphana` are their demo
       # primers' own dependencies (demo/sources/*/prime.py); `gx` and `soda` are the two
@@ -182,25 +152,6 @@ jobs:
       # the secret never reaches a fork's code.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      # The live sources this job's specs register: Snowflake, Databricks, BigQuery, Google
-      # Sheets and Fabric (source-to-query-cloud-warehouse / -special-cases). Passed by name.
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
-      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
-      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
-      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
-      GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
-      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
-      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
-      FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
-      FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
       # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
       # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
