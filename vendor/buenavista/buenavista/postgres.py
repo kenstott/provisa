@@ -16,6 +16,7 @@ import uuid as _uuid_mod
 import io
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -474,9 +475,19 @@ def _wkb_not_sent(r):
 
 
 def _float8_text(x):
-    """float8out: the shortest exact form, with no trailing .0."""
-    text = repr(float(x))
-    return text[:-2] if text.endswith(".0") else text
+    """float8out: the shortest exact form, with no trailing .0, an exponent from 1e+15 (Python's
+    from 1e+16), and PostgreSQL's spellings of the values that are no number."""
+    value = float(x)
+    if math.isinf(value):
+        return "Infinity" if value > 0 else "-Infinity"
+    if math.isnan(value):
+        return "NaN"
+    text = repr(value)
+    if 1e15 <= abs(value) < 1e16:  # noqa: PLR2004
+        digits = text.removesuffix(".0").lstrip("-").rstrip("0")
+        mantissa = digits[0] + (f".{digits[1:]}" if len(digits) > 1 else "")
+        return f"{'-' if value < 0 else ''}{mantissa}e+15"
+    return text.removesuffix(".0")
 
 
 def _point_parts(v):
@@ -607,7 +618,7 @@ BVTYPE_TO_PGTYPE = {
     BVType.BYTES: (17, lambda v: "\\x" + v.hex(), lambda r: r),
     BVType.DATE: (1082, _date_text, _date_binary),
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
-    BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
+    BVType.FLOAT: (701, _float8_text, lambda r: struct.pack("!d", r)),
     BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
     BVType.OID: (26, str, lambda r: r.to_bytes(4, "big", signed=False)),
     BVType.INTERVAL: (

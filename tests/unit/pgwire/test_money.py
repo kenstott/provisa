@@ -51,7 +51,6 @@ from tests.unit.pgwire.test_type_conversions import ROLE, conn, pgwire  # noqa: 
 import sqlglot
 
 _TABLE_ID = 1
-_FLOAT8 = 701
 
 
 def _rows(res: Any) -> list[Any]:
@@ -77,8 +76,6 @@ def _problem(connection: Any, sql: str, shown: str, expected: tuple) -> str | No
     if (text.ftype(0), binary.ftype(0)) != (oid, oid):
         return f"type {text.ftype(0)}/{binary.ftype(0)}, PostgreSQL {oid}"
     got = _rows(text)
-    if oid == _FLOAT8:  # the wire's digits are a known gap of their own: the value is compared
-        got, rows = [v and float(v) for v in got], [v and float(v) for v in rows]
     if got != rows:
         return f"rows {got}, PostgreSQL {rows}"
     raw = binary.get_value(0, 0) if binary.ntuples else None
@@ -243,6 +240,31 @@ def test_a_described_money_expression_is_sent_as_it_was_described():
     encoder = BVTYPE_TO_PGTYPE[result.column(0)[1]]
     assert encoder[1](Decimal("2469.1200")) == "$2,469.12"
     assert encoder[2](Decimal("2469.1200")).hex() == "000000000003c480"
+
+
+def test_a_dollar_amount_in_a_literal_is_no_placeholder():
+    from provisa.pgwire.parameters import placeholder_oids
+
+    assert placeholder_oids("SELECT '$10'::money / 3") == []
+    assert placeholder_oids("SELECT $1::text, 'a''$2'") == [25]
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (1.0, "1"),
+        (1e14, "100000000000000"),
+        (1e15, "1e+15"),
+        (-1234567890123456.0, "-1.234567890123456e+15"),
+        (float("inf"), "Infinity"),
+        (float("nan"), "NaN"),
+    ],
+)
+def test_a_double_is_sent_in_postgresqls_text(value: float, text: str):
+    from buenavista.core import BVType
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    assert BVTYPE_TO_PGTYPE[BVType.FLOAT][1](value) == text
 
 
 def test_a_bound_parameter_is_read_as_moneys_input():

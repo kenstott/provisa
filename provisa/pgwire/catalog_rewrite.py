@@ -41,7 +41,8 @@ from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
-_TXID_COUNTER = itertools.count(1)
+#: PostgreSQL's FirstNormalTransactionId: xids 1 and 2 are the bootstrap's, always past.
+_TXID_COUNTER = itertools.count(3)
 
 
 def next_txid() -> int:
