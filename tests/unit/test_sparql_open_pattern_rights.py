@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: bc4a5ded-2c74-460e-aa80-d3a11dade246
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -37,7 +38,13 @@ from provisa.sparql_query.compiler import compile_sparql
 from provisa.sparql_query.vocabulary import Grounding, build_vocabulary, column_types_of
 
 BASE = "https://data.example.com"
-ROLE = {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]}
+#: Holds ignore_relationships, as the reported role must: its refusal named columns alone, and the
+#: subject join of a variable predicate is V002 for a role without it.
+ROLE = {
+    "id": "analyst",
+    "capabilities": ["query_development", "ignore_relationships"],
+    "domain_access": ["*"],
+}
 OPEN = "SELECT * WHERE { ?s ?p ?o } LIMIT 25"
 SECRET = "Secret Customer Name"
 
@@ -139,7 +146,13 @@ class Model:
         return [
             v.message
             for v in validate_sql(
-                sql, self.ctx, self.gov, ROLE, self.tables, bypass_uncovered_relationships=True
+                sql,
+                self.ctx,
+                self.gov,
+                ROLE,
+                self.tables,
+                bypass_relationship_guard=True,
+                bypass_uncovered_relationships=True,
             )
         ]
 
