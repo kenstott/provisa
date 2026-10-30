@@ -24,8 +24,13 @@
     "downloadPng": "Download PNG",
     "downloadJpeg": "Download JPEG",
     "downloadJson": "Download the diagram as JSON (tables, columns, relationships)",
-    "close": "Close",
     "hint": "Click a domain group to collapse / expand · dashed lines connect collapsed domains",
-    "resizeHandle": "Resize domain box ({{corner}})"
+    "resizeHandle": "Resize domain box ({{corner}})",
+    "focus": "Focus",
+    "addToFocus": "Add to focus",
+    "focusDomains": "Domains: {{names}}",
+    "focusTables": "Tables: {{names}}",
+    "focusMissing": "Not found: {{names}}",
+    "showAll": "Show all"
   }
 }

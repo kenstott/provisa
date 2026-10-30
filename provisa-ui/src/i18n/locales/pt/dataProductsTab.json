@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Abrir {{successor}}",
     "contract": {
       "label": "Contratos de dados",
-      "hint": "O contrato de cada porta de saída: o que promete, com versão própria",
+      "hint": "O contrato de cada porta de saída: o que declara, com versão própria",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Proposto",
@@ -177,8 +177,8 @@
       "versionLabel": "Versão do contrato",
       "statusLabel": "Status do contrato",
       "descriptionLabel": "Para que serve",
-      "columnsLabel": "Colunas prometidas",
-      "columnsHelp": "Deixar de prometer uma coluna, ou mudar seu tipo, exige uma nova versão.",
+      "columnsLabel": "Colunas",
+      "columnsHelp": "Remover uma coluna, ou mudar seu tipo, exige uma nova versão.",
       "requiredLabel": "Nunca nulo",
       "slaLabel": "Níveis de serviço",
       "slaProperty": "Propriedade",
@@ -187,6 +187,28 @@
       "slaRemove": "Remover nível de serviço",
       "slaAdd": "Adicionar nível de serviço",
       "notDeclared": "Não declarado",
+      "breakingWarning": "Alteração incompatível em v{{version}}, ainda não vigente",
+      "breaking": "Incompatível",
+      "savedBy": "Guardado {{when}} por {{who}}",
+      "savedBySystem": "o sistema",
+      "noChanges": "Primeira versão: nada com que comparar",
+      "change": {
+        "field_added": "Campo {{subject}} adicionado, {{after}}",
+        "field_removed": "Campo {{subject}} removido, era {{before}}",
+        "field_renamed": "Campo {{subject}} renomeado para {{after}}",
+        "field_type_changed": "Campo {{subject}} alterado de {{before}} para {{after}}",
+        "field_required": "Campo {{subject}} tornado obrigatório",
+        "field_optional": "Campo {{subject}} deixou de ser obrigatório",
+        "field_described": "Campo {{subject}} descrito de outra forma",
+        "sla_added": "Nível de serviço {{subject}} adicionado, {{after}}",
+        "sla_removed": "Nível de serviço {{subject}} removido, era {{before}}",
+        "sla_changed": "Nível de serviço {{subject}} alterado de {{before}} para {{after}}",
+        "check_added": "Verificação de qualidade {{subject}} adicionada",
+        "check_removed": "Verificação de qualidade {{subject}} removida",
+        "check_changed": "Verificação de qualidade {{subject}} alterada",
+        "description_changed": "Descrição alterada",
+        "terms_changed": "Termos alterados: {{subject}}"
+      },
       "loadError": "Não foi possível ler os contratos: {{error}}",
       "notExported": "{{member}} não tem contrato exportado",
       "section": {
@@ -226,9 +248,9 @@
       "draftWarning": "Rascunho: ainda não vigente",
       "card": {
         "details": "Detalhes",
-        "fields": "Campos prometidos",
+        "fields": "Colunas",
         "sla": "SLAs e atualidade",
-        "quality": "Promessas de qualidade",
+        "quality": "Promessas",
         "consumers": "Consumidores",
         "versions": "Versões e alterações"
       }

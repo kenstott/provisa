@@ -64,6 +64,7 @@
     "edge_owns": "בבעלות",
     "loadError": "לא ניתן היה לקרוא את הגרף: {{error}}",
     "zoomTo": "התקרבות",
+    "openInErd": "פתיחה ב-ERD",
     "edge_column_lineage": "מזין עמודה",
     "preset_taxonomy": "טקסונומיה",
     "layer_domains": "תחומים",

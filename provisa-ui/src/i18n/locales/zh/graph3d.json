@@ -64,6 +64,7 @@
     "edge_owns": "拥有",
     "loadError": "无法读取图：{{error}}",
     "zoomTo": "缩放到此",
+    "openInErd": "在 ERD 中打开",
     "edge_column_lineage": "供数给列",
     "preset_taxonomy": "分类体系",
     "layer_domains": "域",

@@ -64,6 +64,7 @@
     "edge_owns": "posee",
     "loadError": "No se pudo leer el grafo: {{error}}",
     "zoomTo": "Acercar",
+    "openInErd": "Abrir en el ERD",
     "edge_column_lineage": "alimenta la columna",
     "preset_taxonomy": "Taxonomía",
     "layer_domains": "Dominios",

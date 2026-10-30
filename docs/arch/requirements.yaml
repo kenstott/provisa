@@ -47068,7 +47068,12 @@
     version history: the glossary as it stood at the start of the previous period is graded with the same
     grounding computation as today''s and the two are compared; it is computed by Provisa rather than read
     from a view, and shown with the report. A broad hub term is one with at least five terms directly beneath
-    it on grounding edges; the report states the rule.'
+    it on grounding edges; the report states the rule. (Amended 2026-10-29, WHAT THE PREVIOUS PERIOD IS:)
+    Maintainer 2026-10-30: drift''s previous period is the last full calendar month, so it compares the
+    model now with the model at the first of last month, UTC: the latest commit on the environment''s branch
+    at or before that time. A term is matched by name, so a renamed term shows as one lost and one gained,
+    and the report says so. A branch with no commit at or before that time shows no history, not zero, and
+    a term absent then counts as new.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -80635,7 +80640,10 @@
     and nothing more: no check anywhere tests a role''s name; every check asks whether the caller holds
     the right in the domain of what changes, so a copy with another name, or a role an organisation composes
     with the same rights, behaves identically. (Amended 2026-10-25, A STANDARD ROLE:) data_steward is one
-    of the standard roles of REQ-2155 and is defined there.'
+    of the standard roles of REQ-2155 and is defined there. (Amended 2026-10-29, A STEWARD DOES NOT EDIT
+    DATA PRODUCTS BY DEFAULT:) Maintainer 2026-10-30: data_product_rw leaves the standard data_steward role
+    (REQ-2188). An org admin who wants stewards to edit products gives a role of its own RW and a row rule
+    on domain.'
   use_case: The sales data steward sets the row rules, masks and sensitive tags on the sales tables, curates the
     sales glossary and data products, and audits sales data with full results, while having no say over marketing's
     governance and no access to sources, environments or users.
@@ -89844,7 +89852,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     its differences from the one before it, and a difference that can break a consumer (a field removed
     or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
     is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
-    in force, and its Versions and changes card lists the versions and shows each one''s differences.'
+    in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
+    2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
+    change is not yet in force while its version''s status is proposed or draft, meaning every version after
+    the last one in neither status. Who saved a version is visible to anyone who can read the data product.
+    (Amended 2026-10-29, A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise
+    means a data quality check a product makes on its output ports, and nothing else. Columns are never
+    called promised, and fields is not a second name for them: a contract declares its columns. The contract
+    view''s card and the contract editor''s field are both Columns, and the quality card is Promises. (Amended
+    2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
+    reference to a product''s expectations, the data quality checks on its input ports. They belong to the
+    consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
+    by ODPS outputPorts inputContracts.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -89908,7 +89927,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     checks, input ports, downstream consumers and contract editing. Every other part of the panel (fields,
     Graph, terms, tags, related tables, commands, promises, lineage, support) is shown to owner and consumer
     alike, capped by the reader''s read rights. The owner is a reader whose acting roles include the product''s
-    owner or team role.'
+    owner or team role. (Amended 2026-10-29, INPUT PORTS AND CONSUMERS ARE ALWAYS SHOWN:) Maintainer 2026-10-30:
+    a product''s Input Ports and Consumers cards always appear. The owner or team sees the list, or None
+    when there is nothing. Any other reader sees that the list is visible to the product''s owner, never
+    None, because the product may have entries that reader cannot see. What a non-owner may read does not
+    change.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
@@ -90255,7 +90278,38 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
     GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
     server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
-    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.'
+    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.
+    (Amended 2026-10-29, CLIENT-CALLED SERVER FUNCTIONS ANSWER LIKE POSTGRESQL:) Maintainer 2026-10-30:
+    pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are called by
+    clients, so they are served, not refused. Each answers as a PostgreSQL server with no such file or sequence
+    would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise PostgreSQL''s own
+    error. None reads a server file or changes anything. (Amended 2026-10-29, WHAT IS SERVED AND WHAT WAITS
+    ON A TYPE:) Maintainer 2026-10-30: pg_catalog functions are served, including those no known client
+    calls: the functions behind operators, casts spelled as functions, wire format functions and ordinary
+    functions. That no client calls one is not a reason to skip it. Functions over a type the engine does
+    not hold stay skipped by design: geometric, text search, range and multirange, XML and money. The reason
+    recorded for each group names the missing type. (Amended 2026-10-29, EACH MISSING TYPE IS DECIDED ONE
+    BY ONE:) Maintainer 2026-10-30, replacing the skip in WHAT IS SERVED AND WHAT WAITS ON A TYPE: geometric,
+    text search, range and multirange, XML and money are not settled. The maintainer reviews each type and
+    decides; until then they stay open, not skipped by design. Everything else in that amendment stands.
+    (Amended 2026-10-29, LOCKS, FLOATS AND SERVER ANSWERS:) Maintainer 2026-10-30: advisory locks are real
+    locks held per process for now, and the docs say two Provisa processes do not exclude each other. float8
+    text form matches PostgreSQL: 2, not 2.0, and NaN, not nan. Server functions with nothing to act on
+    answer as PostgreSQL does on a server so configured: pg_create_restore_point and pg_backup_start as
+    wal_level minimal, slot and origin creation as max_replication_slots 0, lo_create as a read-only transaction,
+    pg_read_file as a role without pg_read_server_files. (Amended 2026-10-29, FUNCTIONS ARE COMPILER PUSHDOWN:)
+    Maintainer 2026-10-30: pgwire function support is an improvement to compiler pushdown. A function is
+    expressed in the compiler and transpiler through the semantic IR, as SQL for each dialect, so every
+    transport and every engine that can run it gets it. A UDF is never implemented within the pgwire module.
+    Wire encoding stays in the encoder. (Amended 2026-10-29, XML AND MONEY ARE SERVED:) Maintainer 2026-10-30,
+    replacing the earlier skip of XML and money: both are served with real results. XML generation is per-dialect
+    macros in the transpiler and reaches every transport. XML parsing and xpath are engine functions on
+    DuckDB, native where a dialect has them, and refused by name elsewhere; nothing reaches a source to
+    fail there. query_to_xml and its kin read through the governed pipeline and take constant arguments
+    only. (Amended 2026-10-29, A FUNCTION WITH NO FORM ON A SOURCE:) Maintainer 2026-10-30: functions are
+    one macro table in the transpiler. On a direct route to a source with no form for a function, the statement
+    goes to the federation engine, and it is refused by name only when no engine can run it. A source''s
+    own function sharing a name in the table stays refused until a source can declare its functions.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90524,7 +90578,31 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
     refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
     over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
-    emulation if one exists.'
+    emulation if one exists. (Amended 2026-10-29, RANGES ARE EMULATED ON EVERY ENGINE:) Maintainer 2026-10-30:
+    a range type works on every federation engine, not only DuckDB and Trino, whose emulations are the template.
+    Native on PostgreSQL, emulated on every other engine, for all six range types, never refused by name
+    for want of an emulation. Bounds compare as the range''s element type, not as text. (Amended 2026-10-29,
+    TSVECTOR AND SHAPES ARE NATIVE TO POSTGRESQL:) Maintainer 2026-10-30: tsvector and PostgreSQL''s shapes
+    are supported where the statement routes to a dialect with a native form, today PostgreSQL. A table
+    homed to a PostgreSQL store is how a model gets them. Elsewhere an operation on one is refused by name,
+    saying it needs PostgreSQL, and a read of the column as a value still works in its text form. They are
+    not emulated. This settles the types left open in REQ-2167: money and xml are served, ranges emulated
+    everywhere, tsvector and shapes native to PostgreSQL. (Amended 2026-10-29, THE FUNCTIONS ARE LIMITED,
+    NOT THE TYPES:) Maintainer 2026-10-30, correcting TSVECTOR AND SHAPES ARE NATIVE TO POSTGRESQL: tsvector
+    and the shapes are supported on every engine as types: stored, read, returned and carried through the
+    pipeline. Only their functions and operators are limited: those run where the statement routes to a
+    dialect with a native form, today PostgreSQL, and elsewhere a call is refused by name, saying it needs
+    PostgreSQL. (Amended 2026-10-29, SHAPE FUNCTIONS MAP TO THE GEOMETRY FUNCTIONS:) Maintainer 2026-10-30:
+    Provisa already has geometry functions, so a shape function maps to one wherever it can: a shape converts
+    to its geometry form and the existing function answers, on every dialect geometry is native to. A shape
+    function with no such mapping is limited as tsvector''s functions are: it runs on PostgreSQL and is
+    refused by name elsewhere. Shapes get no parallel set of functions. (Amended 2026-10-29, HOW THE LIMITS
+    ARE TESTED:) Maintainer 2026-10-30: conformance runs on two engines, the default and PostgreSQL, because
+    running every engine is not practical. A compile-only test covers every function on every dialect: each
+    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
+    (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
+    base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
+    binary wire forms. It is native on PostgreSQL and emulated elsewhere.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -90730,7 +90808,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node''s full name stays
     in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the
     layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
-    the 2D views may still move a crowded pair apart.'
+    the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
+    Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
+    between 9px and 10px, replacing 11.5px and 20px.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -91607,5 +91687,169 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And the page''s navigation menu list gives no table'
   related_reqs:
   - REQ-1960
+  stakeholders:
+  - data-engineer
+- id: REQ-2187
+  value: The ERD is a view of the Tables page, and a link or a table's panel can focus it on chosen domains
+    and tables.
+  status: accepted
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with the list
+    in place by an icon in the page''s toolbar, filled while on, the way the Ontology view is; it is no
+    longer a modal. The Relationships page''s ERD icon goes to that view. Clicking a table in the ERD opens
+    the Tables page''s own right-hand detail panel, and the diagram narrows beside it. The panel''s head
+    has a Focus action, and while a focus is on an Add to focus action. Focus restricts the ERD to that
+    table''s domain and highlights the table; Add to focus adds the table, and its domain if new. A focus
+    is a deep link: /tables?view=erd&domains=a,b&objects=x,y, where domains are the only domains shown and
+    objects the tables highlighted and fitted into view. Only objects given: their own domains are shown.
+    Only domains given: nothing is highlighted. The link never changes the page''s domain filter. The URL
+    always states the focus, so a view can be copied and shared. A bar names the focus and has Show all,
+    which clears both lists. A domain or table the link names that does not exist is named in the bar and
+    the rest of the link still works. The Ontology''s Open in ERD opens this view focused on its table with
+    the table''s panel open. (Amended 2026-10-29, ONE ERD VIEW ON BOTH PAGES, EACH WITH ITS OWN PANEL:)
+    Maintainer 2026-10-30, replacing the ERD on Tables only and the Relationships icon going there: the
+    ERD is one view hosted in place on both the Tables and the Relationships page, each swapping it with
+    its list by the same toolbar icon, and it is a modal on neither. The pages differ only in the detail
+    panel. On Tables a click on a table opens the table panel, which has Focus and Add to focus. On Relationships
+    a click on a relationship line opens the relationship panel. A click on the other kind of item goes
+    to the other page''s ERD with that item''s panel open: a line clicked on Tables goes to the Relationships
+    ERD, a table clicked on Relationships goes to the Tables ERD. The focus carries across, because both
+    pages read the same view, domains and objects parameters. (Amended 2026-10-29, THE PAGE FILTER WORKS
+    ON THE ERD:) Maintainer 2026-10-30: the page''s filter box applies to the ERD, as a search focuses the
+    Ontology graph. Typing highlights what matches and dims the rest, with nothing moved or rebuilt, and
+    clearing it restores everything. It is not part of the link: a focus is what is saved or shared. On
+    Relationships it matches lines by source or target.'
+  scenario: 'Given the Tables page with the domain filter on one domain
+
+    When the ERD icon is clicked
+
+    Then the ERD replaces the list in place and no modal opens
+
+    When a table is clicked and Focus chosen in its panel
+
+    Then only that table''s domain is shown, the table is highlighted, and the URL names the domain and
+    the table
+
+    And opening that URL afresh shows the same view
+
+    When Show all is clicked
+
+    Then the focus clears and the page''s domain filter still stands'
+  related_reqs:
+  - REQ-518
+  - REQ-1387
+  stakeholders:
+  - data-engineer
+- id: REQ-2188
+  value: A row rule narrows read, update or delete, one rule for each per role and model, and also governs
+    writes to semantic objects.
+  status: accepted
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: row-security-and-masking-row-rules
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-10-30: a role is given R or RW on a model, and that is the ceiling of what
+    it may do; RW includes create, which has no row to narrow. A row rule has a right, R, U or D, the three
+    things that can be done to an existing row, with at most one rule for each right per role and model.
+    A rule only narrows: it never gives a right the role does not hold, and U or D on a role with only R
+    does nothing. A role with no rule for a right does that to every row its grant allows. Today''s rules
+    are R rules. Semantic objects are models too: the model store applies a role''s U and D rules to every
+    write of one, whatever route the write came by. So a data product is edited only by an org admin, who
+    holds RW with no U or D rule, or by a role holding RW with U and D rules naming the product''s owner
+    role. data_product_owned_rw and its hand-written owner check go away. Every role other than org_admin
+    that holds data_product_rw carries those rules. (Amended 2026-10-29, THE OWNER FIELD DRIVES IT; AN ORG
+    ADMIN MAY WIDEN IT:) Maintainer 2026-10-30: nobody writes a rule to own a product. Naming a role in
+    a product''s Owner field gives that role RW on data products with the generated U and D rules naming
+    the product''s owner role; those rules are not edited in Security, the Owner field is how they change.
+    A role that no longer owns any product loses that grant. Org admin or named owner is the default, not
+    a limit: an org admin may still give a role of its own a grant and row rules, for example a data product
+    administrator with RW and no rules, or one narrowed to a domain. data_product_rw leaves the standard
+    data_steward role, and the sandbox keeps it as its own. (Amended 2026-10-29, ONE RULE MAY CARRY SEVERAL
+    RIGHTS:) Maintainer 2026-10-30, replacing one rule for each right: a rule holds one predicate and a
+    set of rights, any of R, U and D, so a predicate shared by U and D is written once. Each right appears
+    in at most one rule per role and model, so every right still resolves to exactly one plain predicate,
+    which keeps reads pushed down as plain filters, and a save that puts a right in a second rule is refused.
+    The rule editor shows the rights as three checkboxes. (Amended 2026-10-29, A METRIC HAS A DOMAIN AND
+    AN OWNER:) Maintainer 2026-10-30: metrics are a model table, meta.metric_definitions, the name that
+    does not collide with ops metrics. A metric belongs to a domain and names an owner role, as a data product
+    does, so the same rule applies: an org admin or the named owner edits it.'
+  scenario: 'Given data products owned by role pets_team and role sales_team
+
+    And pets_team holds RW on data_products with U and D rules naming the product''s owner role
+
+    When a member of pets_team updates its own product
+
+    Then the update succeeds
+
+    When that member updates the sales_team product
+
+    Then the update is refused and the product is unchanged
+
+    When an org_admin, with no U or D rule, updates either product
+
+    Then the update succeeds
+
+    When a role with R only and a U rule updates a product
+
+    Then the update is refused'
+  related_reqs:
+  - REQ-041
+  - REQ-2074
+  - REQ-1919
+  - REQ-2160
+  - REQ-2155
+  stakeholders:
+  - compliance
+  - data-engineer
+- id: REQ-2189
+  value: An ERD arrangement can be saved as a named layout, reloaded and revised, while its content stays
+    live from the model.
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd
+  priority: MAY
+  type: behavioral
+  description: 'Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building a high quality
+    diagram that can keep being revised. It holds the selection (domains and objects, as the focus link
+    does), each table''s and domain''s position and size, and the display options (column detail, edge style,
+    what is collapsed). The ERD''s command bar has a Layout menu with Save, Save as and Delete. Automatic
+    is the generated layout: it always exists and cannot be deleted. Editing a layout marks it unsaved.
+    Only the arrangement is saved: columns and relationships always come from the live model, and positions
+    are held by object id, so a rename keeps its place. A deleted table disappears with no error. A new
+    table in a selected domain is not placed automatically: it waits in a ''new since saved'' tray. A layout
+    is stored in the model, so it versions with the environment, and read rights still apply, so a reader
+    sees a shared layout without what they cannot read. A layout can be named in the URL, as ?view=erd&layout=<name>.
+    (Amended 2026-10-29, EVERY OPTION IN THE BAR IS PART OF A LAYOUT:) Maintainer 2026-10-30: a layout saves
+    every option in the ERD''s bar: columns shown (keys only or all), edge style, snap, and whether orphans
+    show, as well as what is collapsed.'
+  scenario: 'Given an ERD arranged by hand and saved as layout Sales overview
+
+    When the page is reloaded and Sales overview is chosen
+
+    Then every table is where it was saved
+
+    When a table in the layout is renamed in the model
+
+    Then it keeps its position under its new name
+
+    When a new table is registered in a selected domain
+
+    Then the layout is unchanged and the table waits in the new since saved tray
+
+    When Automatic is chosen
+
+    Then the generated layout is shown, and Delete is unavailable'
+  related_reqs:
+  - REQ-2187
+  - REQ-518
   stakeholders:
   - data-engineer

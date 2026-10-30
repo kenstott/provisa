@@ -308,8 +308,14 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     expect(screen.queryByTestId("data-product-detail-dq-expectations-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-related-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-c360-orphan-15")).toBeNull();
-    expect(screen.queryByTestId("data-product-card-inputPorts-c360")).toBeNull();
-    expect(screen.queryByTestId("data-product-card-consumers-c360")).toBeNull();
+    // REQ-2160: the two cards are shown, holding no list (the owner's) and no "None".
+    for (const [card, list] of [
+      ["inputPorts", "inputs"],
+      ["consumers", "consumers"],
+    ]) {
+      expect(screen.getByTestId(`data-product-card-${card}-c360`)).toBeInTheDocument();
+      expect(screen.queryByTestId(`data-product-detail-${list}-c360`)).toBeNull();
+    }
     // Its promises on its output ports, as the owner sees them.
     expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
   });

@@ -47,9 +47,13 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import store
-from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.label_map import (
+    GRAPH_ID,
+    IDENTITY_COLUMN,
+    LABELS_COLUMN,
+    SESSION_CATALOG,
+)
 
-SESSION_CATALOG = "__session__"
 SESSION_SCHEMA = "s"
 NODE_ID = "__node_id"
 #: The session relation of every session relationship, which a path function walks (REQ-348).
@@ -133,6 +137,7 @@ def overlay(model: Any, session: TempSession) -> Any:
             properties=properties,
             physical_properties={prop: alias for prop, alias in properties.items()},
             property_types=tuple((prop, types[alias]) for prop, alias in properties.items()),
+            property_zones=store.column_zones(graph, resolved.anchors),
         )
         if held is None:
             nodes_by_table.setdefault(key, [key])
@@ -176,16 +181,18 @@ def overlay(model: Any, session: TempSession) -> Any:
             ),
         )
         relationships[mapping.field_name] = mapping
-        aliases.setdefault(rel_type.upper(), []).append(mapping)
+        aliases.setdefault(rel_type, []).append(mapping)
     # A copy of the model's map with its node, table and relationship maps replaced; everything
     # else it holds is the model's own.
+    if then.rel_ids_read(session) and "" in nodes:
+        # While a read after a write runs, the session's nodes with no label are read by a name
+        # of their own (then.UNLABELED), which no model label ever unions with.
+        nodes[then.UNLABELED] = nodes[""]
     out = copy.copy(model)
     out.nodes = nodes
     out.nodes_by_table = nodes_by_table
     out.relationships = relationships
     out.aliases = aliases
-    out._nodes_ci = {k.lower(): k for k in nodes}
-    out._nodes_by_table_ci = {k.lower(): k for k in nodes_by_table}
     # REQ-348: every session relationship in one relation, which a path function with an
     # unlabelled end walks.
     out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)
@@ -227,8 +234,27 @@ def _session_table(
     return exp.alias_(exp.Subquery(this=empty), alias)
 
 
-def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expression:
-    """The rows of the label ``key``'s session relation (``nm``, its overlay mapping)."""
+def _labels_of(graph_id: exp.Expression, session: TempSession) -> exp.Expression:
+    """Every label the session holds for the node ``graph_id`` names (node_labels), as a list:
+    empty for none."""
+    held = (
+        exp.select(exp.ArrayAgg(this=_col("label", "_ll")))
+        .from_(
+            _session_table(
+                store.NODE_LABELS, "_ll", session, store.fixed_columns(store.NODE_LABELS)
+            )
+        )
+        .where(exp.EQ(this=_col(store.NODE_ID, "_ll"), expression=graph_id))
+    )
+    empty = exp.Cast(this=exp.Array(expressions=[]), to=exp.DataType.build("TEXT[]"))
+    return exp.Coalesce(this=exp.Subquery(this=held), expressions=[empty])
+
+
+def _node_rows(
+    key: str, nm: Any, model: Any, session: TempSession, labels: bool = False
+) -> exp.Expression:
+    """The rows of the label ``key``'s session relation (``nm``, its overlay mapping); with
+    ``labels``, each node's every label too (LABELS_COLUMN), which labels() reads."""
     from provisa.gql.select_builder import node_identity, node_key_text
 
     graph = store.graph(session)
@@ -236,16 +262,52 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
     columns = [(alias, dict(nm.property_types)[prop]) for prop, alias in nm.properties.items()]
     parts: list[exp.Select] = []
 
+    def created_identity(node_id: exp.Expression) -> exp.Expression:
+        # A node the session created: the first of its labels in name order, and its id.
+        first = (
+            exp.select(exp.Min(this=_col("label", "_lf")))
+            .from_(
+                _session_table(
+                    store.NODE_LABELS, "_lf", session, store.fixed_columns(store.NODE_LABELS)
+                )
+            )
+            .where(exp.EQ(this=_col(store.NODE_ID, "_lf"), expression=node_id.copy()))
+        )
+        named = exp.Coalesce(this=exp.Subquery(this=first), expressions=[exp.Literal.string("")])
+        return exp.DPipe(
+            this=exp.DPipe(this=named, expression=exp.Literal.string("|")),
+            expression=node_id.copy(),
+        )
+
     def select(
-        values: Mapping[str, exp.Expression], node_id: exp.Expression, graph_id: exp.Expression
+        values: Mapping[str, exp.Expression],
+        node_id: exp.Expression,
+        graph_id: exp.Expression,
+        identity: exp.Expression,
+        node_labels: exp.Expression | None = None,
     ) -> exp.Select:
+        # ``identity``: the node's identity in an answer, the same under whichever label reads
+        # it (IDENTITY_COLUMN): a model node's graph identity, a created node's created_identity.
+        listed = (
+            [
+                exp.alias_(
+                    node_labels if node_labels is not None else _labels_of(graph_id, session),
+                    LABELS_COLUMN,
+                    quoted=True,
+                )
+            ]
+            if labels
+            else []
+        )
         return exp.select(
             exp.alias_(node_id, NODE_ID, quoted=True),
             exp.alias_(graph_id, GRAPH_ID, quoted=True),
+            exp.alias_(identity, IDENTITY_COLUMN, quoted=True),
             *(
                 exp.alias_(_typed(values.get(alias, exp.null()), kind), alias, quoted=True)
                 for alias, kind in columns
             ),
+            *listed,
         )
 
     def model_rows(model_nm: Any, alias: str, own: bool) -> exp.Select:
@@ -257,7 +319,15 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
         values = {a: _col(a, alias) for _, a, _ in _model_columns(model_nm)}
         identity = node_identity(alias, model_nm)
         node_id = node_key_text(alias, model_nm) if own else identity
-        return select(values, node_id, identity).from_(_node_table_expr(model_nm, alias))
+        # A model node's labels are its own and the tags the session gives it (node_labels, by
+        # its graph identity), which a label set's every label is matched against too.
+        own_labels = exp.ArrayConcat(
+            this=exp.Array(expressions=[exp.Literal.string(model_nm.label)]),
+            expressions=[_labels_of(identity.copy(), session)],
+        )
+        return select(values, node_id, identity, identity.copy(), own_labels).from_(
+            _node_table_expr(model_nm, alias)
+        )
 
     def tagged(rows: exp.Select, graph_id: exp.Expression) -> exp.Select:
         return rows.join(
@@ -298,12 +368,20 @@ def _node_rows(key: str, nm: Any, model: Any, session: TempSession) -> exp.Expre
         values = {a: _col(a, "_a") for a, _ in columns if a in anchor_columns}
         # An anchor not created yet holds no node: the columns the statement reads, all empty.
         source = _session_table(anchor, "_a", session, [(store.NODE_ID, "text"), *columns])
-        rows = select(values, _col(store.NODE_ID, "_a"), _col(store.NODE_ID, "_a")).from_(source)
+        rows = select(
+            values,
+            _col(store.NODE_ID, "_a"),
+            _col(store.NODE_ID, "_a"),
+            created_identity(_col(store.NODE_ID, "_a")),
+        ).from_(source)
         node_id = _col(store.NODE_ID, "_a")
         parts.append(unlabeled(rows, node_id) if key == "" else tagged(rows, node_id))
     if not parts:
         # A label no node holds now (its nodes all deleted): no rows of the columns it reads.
-        parts.append(select({}, exp.null(), exp.null()).where(exp.false()))
+        none = exp.Cast(this=exp.null(), to=exp.DataType.build("TEXT[]"))
+        parts.append(
+            select({}, exp.null(), exp.null(), _typed(exp.null(), "text"), none).where(exp.false())
+        )
     union: exp.Expression = parts[0]
     for part in parts[1:]:
         union = exp.Union(this=union, expression=part, distinct=False)
@@ -469,6 +547,8 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         if arms is not None and any(_session_arm(arm) for arm in arms):
             _once_per_node(sub, arms)
     graph = store.graph(session)
+    # Each node's every label only where a statement reads them (labels()).
+    labels_read = any(c.name == LABELS_COLUMN for c in sql.find_all(exp.Column))
     by_name = {_node_relation(key): key for key in graph.resolved if key in overlaid.nodes}
     types = {_rel_relation(t): t for t in graph.types}
     defined: dict[str, str] = {}  # a CTE's definition (its SQL) -> its name
@@ -477,7 +557,9 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
     def cte(stem: str, body: exp.Expression) -> str:
         text = body.sql(dialect="postgres")
         if text not in defined:
-            name = stem if stem not in {c.alias for c in ctes} else f"{stem}__{len(ctes)}"
+            # Engines name CTEs regardless of case: types T2 and t2 are two names, two CTEs.
+            taken = {c.alias.lower() for c in ctes}
+            name = stem if stem.lower() not in taken else f"{stem}__{len(ctes)}"
             defined[text] = name
             ctes.append(
                 exp.CTE(this=body, alias=exp.TableAlias(this=exp.to_identifier(name, quoted=True)))
@@ -488,9 +570,31 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         if table.catalog != SESSION_CATALOG:
             continue
         alias = table.alias or table.name
-        if table.name in by_name:
-            key = by_name[table.name]
-            body: exp.Expression = _node_rows(key, overlaid.nodes[key], model, session)
+        if table.name in by_name or table.name in overlaid.label_sets:
+            if table.name in by_name:
+                key = by_name[table.name]
+                body: exp.Expression = _node_rows(
+                    key, overlaid.nodes[key], model, session, labels_read
+                )
+            else:
+                # The nodes having every label of a set (label_map.node_of_all): its first
+                # label's, those having the rest too, read by their every label (LABELS_COLUMN).
+                held = overlaid.label_sets[table.name]
+                key = "&".join(held)
+                every = exp.Array(expressions=[exp.Literal.string(label) for label in held])
+                body = (
+                    exp.select("*")
+                    .from_(
+                        exp.alias_(
+                            exp.Subquery(
+                                this=_node_rows(held[0], overlaid.nodes[key], model, session, True)
+                            ),
+                            "_all",
+                            quoted=True,
+                        )
+                    )
+                    .where(exp.ArrayContainsAll(this=_col(LABELS_COLUMN), expression=every))
+                )
             pushed = _pushable(table)
             if pushed is not None and pushed[1]:
                 select, mine = pushed

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.cypher.expr_parser import CypherExprParseError, parse_expression
-from provisa.gql.expr_ast import CypherExpr, Variable
+from provisa.gql.expr_ast import CypherExpr, Variable, walk
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -32,8 +32,10 @@ from provisa.gql.mistakes import (
     aggregate_misuse,
     expression_misuse,
     projection_misuse,
+    projection_scope_misuse,
     undefined_variable,
     variable_misuse,
+    yield_rebinding,
 )
 from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
@@ -468,10 +470,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         self._pos += 1
         return t
 
-    def _row_count(self, clause: str) -> int:
-        """The whole number of rows SKIP or LIMIT takes. REQ-778: anything else -- a fraction, a
-        negative, a string, a name -- is the user's mistake, refused naming what was written and
-        the fix (a fraction was once cut to its whole part without a word)."""
+    def _row_count(self, clause: str) -> int | CypherExpr:
+        """The whole number of rows SKIP or LIMIT takes, or the expression giving it (``$n``,
+        ``toInteger(ceil(1.7))``), whose value the translator holds to the same rule. REQ-778: a
+        fraction, a negative or a string written as the count is the user's mistake, refused
+        naming what was written and the fix (a fraction was once cut to its whole part without a
+        word)."""
         t = self._peek()
         written = t.value if t is not None else ""
         if t is not None and t.type == "MINUS":
@@ -480,6 +484,18 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             written = "-" + (following.value if following is not None else "")
         elif t is not None and t.type == "NUMBER" and t.value.isdigit():
             return int(self._advance().value)
+        elif t is not None and t.type not in ("NUMBER", "STRING"):
+            start = self._pos
+            text = self._parse_where()
+            try:
+                count = parse_expression(text)
+            except CypherExprParseError as exc:
+                raise CypherParseError(f"{clause} {text}: {exc}") from exc
+            if not any(isinstance(n, Variable) for n in walk(count)):
+                return count
+            # A count that reads a variable (SKIP n.count, LIMIT k) is no number of rows.
+            self._pos = start
+            written = text
         raise CypherParseMistake(
             f"cypher.invalid_{clause.lower()}",
             f"{clause} {written} is not a whole number of rows: {clause} takes a count of 0 or "
@@ -526,8 +542,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         current_where: str | None = None  # the WHERE as written, until its match step is built
         return_clause: ReturnClause | None = None
         order_by: list[OrderItem] = []
-        skip: int | None = None
-        limit: int | None = None
+        skip: int | CypherExpr | None = None
+        limit: int | CypherExpr | None = None
         call_subqueries: list[CallSubquery] = []
         union_parts: list[tuple[CypherAST, bool]] = []
 
@@ -675,7 +691,27 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 patterns.append(self._parse_write_pattern())
             return CreateClause(patterns=patterns, start=start)
         if kw == "MERGE":
-            merge = MergeClause(pattern=self._parse_write_pattern(), start=start)
+            path_variable = None
+            _name = self._peek()
+            if (
+                _name is not None
+                and _name.type == "IDENT"
+                and self._pos + 1 < len(self._tokens)
+                and self._tokens[self._pos + 1].type == "EQ"
+            ):
+                # MERGE p = (a)-[:R]->(b): the path is bound to p.
+                path_variable = self._advance().value
+                self._advance()
+            merge = MergeClause(
+                pattern=self._parse_write_pattern(), start=start, path_variable=path_variable
+            )
+            if path_variable is not None:
+                # Each element of a bound path is named, so a read after the MERGE finds the
+                # path again by them (ephemeral.then).
+                for i, node in enumerate(merge.pattern.nodes):
+                    node.variable = node.variable or f"_{path_variable}_n{i}"
+                for j, rel in enumerate(merge.pattern.rels):
+                    rel.variable = rel.variable or f"_{path_variable}_r{j}"
             while self._match_keyword("ON"):
                 self._advance()
                 on_create = self._opt_keyword("CREATE")
@@ -691,11 +727,12 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         detach = kw == "DETACH"
         if detach:
             self._consume_keyword("DELETE")
-        deleted = [self._write_expression()]
+        texts = [self._write_expression_text()]
         while (_c := self._peek()) and _c.type == "COMMA":
             self._advance()
-            deleted.append(self._write_expression())
-        return DeleteClause(expressions=deleted, detach=detach, start=start)
+            texts.append(self._write_expression_text())
+        deleted = [parse_expression(text) for text in texts]
+        return DeleteClause(expressions=deleted, detach=detach, start=start, texts=texts)
 
     def _parse_write_pattern(self) -> PathPattern:
         self._write_pattern = True
@@ -706,6 +743,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     def _write_expression(self, stop_types: frozenset[str] = frozenset({"COMMA"})) -> CypherExpr:
         """The expression up to the next ``stop_types`` token or clause at its own depth."""
+        return parse_expression(self._write_expression_text(stop_types))
+
+    def _write_expression_text(self, stop_types: frozenset[str] = frozenset({"COMMA"})) -> str:
+        """The text of the expression up to the next ``stop_types`` token or clause at its own
+        depth."""
         read: list[Token] = []
         depth = 0
         while t := self._peek():
@@ -727,7 +769,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 if _bad
                 else "Unexpected end of input"
             )
-        return parse_expression(self._raw[read[0].pos : read[-1].end])
+        return self._raw[read[0].pos : read[-1].end]
 
     def _labels(self) -> list[str]:
         labels: list[str] = []
@@ -744,20 +786,35 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         return items
 
     def _set_item(self) -> SetItem:
+        # ``(n).p = e``: a parenthesized variable is the variable.
+        parenthesized = (_p := self._peek()) is not None and _p.type == "LPAREN"
+        if parenthesized:
+            self._advance()
         variable = self._expect("IDENT").value
+        if parenthesized:
+            self._expect("RPAREN")
         t = self._peek()
-        if t is not None and t.type == "COLON":
+        if t is not None and t.type == "COLON" and not parenthesized:
             return SetItem(variable=variable, labels=self._labels())
         if t is not None and t.type == "DOT":
             self._advance()
             prop = self._expect("IDENT").value
             self._expect("EQ")
-            return SetItem(variable=variable, property=prop, value=self._write_expression())
+            text = self._write_expression_text()
+            return SetItem(
+                variable=variable,
+                property=prop,
+                value=parse_expression(text),
+                value_text=text,
+            )
         merge = t is not None and t.type == "PLUS"
         if merge:
             self._advance()
         self._expect("EQ")
-        return SetItem(variable=variable, value=self._write_expression(), merge=merge)
+        text = self._write_expression_text()
+        return SetItem(
+            variable=variable, value=parse_expression(text), merge=merge, value_text=text
+        )
 
     def _remove_items(self) -> list[RemoveItem]:
         items: list[RemoveItem] = []
@@ -884,7 +941,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 label_alternation = True
 
         text: dict[str, str] = {}
-        if (_tnlb := self._peek()) and _tnlb.type == "LBRACE":
+        has_map = bool((_tnlb := self._peek()) and _tnlb.type == "LBRACE")
+        if has_map:
             props, text = self._parse_map_literal()
             if variable is None and not self._write_pattern:
                 variable = self._inline_variable()
@@ -896,6 +954,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             properties=props,
             label_alternation=label_alternation,
             property_text=text,
+            has_map=has_map,
         )
 
     def _parse_rel_and_node(self) -> tuple[RelPattern, NodePattern]:
@@ -1045,6 +1104,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 props[key] = self._write_expression(frozenset({"COMMA", "RBRACE"}))
                 if written is not None:
                     text[key] = self._raw[written.pos : self._tokens[self._pos - 1].end]
+            elif written is not None and not self._is_literal_value(written):
+                # A read's map value of any other expression (UNWIND $events AS event MATCH
+                # (y {year: event.year})): its text, the equality with_inline_conditions reads.
+                props[key] = self._write_expression(frozenset({"COMMA", "RBRACE"}))
+                text[key] = self._raw[written.pos : self._tokens[self._pos - 1].end]
             else:
                 props[key] = self._parse_value()
                 if written is not None:
@@ -1059,6 +1123,14 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         can name it. No statement writes it: the tokenizer gives no identifier this prefix."""
         self._inline += 1
         return f"{INLINE_PREFIX}{self._inline}"
+
+    @staticmethod
+    def _is_literal_value(t: Token) -> bool:
+        """Whether ``t`` is a value _parse_value reads: a number, a string, a parameter, true,
+        false or null."""
+        return t.type in ("NUMBER", "STRING", "PARAM") or (
+            t.type == "IDENT" and t.value.upper() in ("TRUE", "FALSE", "NULL")
+        )
 
     def _parse_value(self) -> Any:
         t = self._peek()
@@ -1128,11 +1200,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             self._advance()
             self._consume_keyword("BY")
             order_by = self._parse_order_by()
-        skip: int | None = None
+        skip: int | CypherExpr | None = None
         if self._match_keyword("SKIP"):
             self._advance()
             skip = self._row_count("SKIP")
-        limit: int | None = None
+        limit: int | CypherExpr | None = None
         if self._match_keyword("LIMIT"):
             self._advance()
             limit = self._row_count("LIMIT")
@@ -1498,8 +1570,10 @@ def parse_cypher(  # REQ-345, REQ-346, REQ-571
     mistakes = (
         undefined_variable(ast, label_map),
         variable_misuse(ast),
+        yield_rebinding(ast),
         aggregate_misuse(ast),
         projection_misuse(ast),
+        projection_scope_misuse(ast),
         expression_misuse(ast),
     )
     for mistake in mistakes:

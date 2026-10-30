@@ -64,6 +64,7 @@
     "edge_owns": "owns",
     "loadError": "The graph could not be read: {{error}}",
     "zoomTo": "Zoom to it",
+    "openInErd": "Open in ERD",
     "edge_column_lineage": "feeds column",
     "preset_taxonomy": "Taxonomy",
     "layer_domains": "Domains",

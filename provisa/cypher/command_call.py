@@ -27,8 +27,10 @@ What is read here and refused by name when it cannot be honoured:
   (string, number, boolean, null, list of these) or a ``$parameter``, bound from the request's
   parameters; a parameter the request does not carry is refused, as is anything else (an
   expression, a name);
-* ``YIELD col [AS alias], …`` or ``YIELD *`` — the columns kept, renamed as written;
-* ``RETURN name [AS alias], …`` or ``RETURN *`` — a projection of what the call yields. A call
+* ``YIELD col [AS alias], …`` or ``YIELD *`` — the columns kept, renamed as written; a variable
+  yielded twice is refused, as is a YIELD (``*`` included) after a VOID command's call;
+* ``RETURN name [AS alias], …`` or ``RETURN *`` — a projection of what the call yields, so a
+  RETURN after a call with no YIELD, or after ``YIELD *``, is refused (openCypher). A call
   followed by any other clause (WHERE, WITH, UNWIND, …) is a call composed in a statement, which
   the Cypher translator reads (REQ-2168), so it is no call read here.
 
@@ -78,6 +80,7 @@ class CommandCall:
     values: list[Any] | ImplicitArguments
     yields: list[tuple[str, str]] | None  # (column, alias); None = no YIELD (every column)
     returns: list[tuple[str, str]] | None  # (name, alias); None = no RETURN
+    yields_written: bool  # a YIELD follows the call (``YIELD *`` included)
 
 
 def _scan_parens(text: str, start: int) -> int:
@@ -214,6 +217,18 @@ def _items(raw: str, clause: str, name: str) -> list[tuple[str, str]] | None:
     return items
 
 
+def _check_yield_items(name: str, yields: list[tuple[str, str]] | None) -> None:
+    """A YIELD binds each variable once: one named twice (``YIELD a, b AS a``) is refused."""
+    seen: set[str] = set()
+    for _, alias in yields or ():
+        if alias in seen:
+            raise CommandCallRefused(
+                f"YIELD after CALL {name} binds {alias} twice: each column it yields is bound "
+                "to a variable of its own"
+            )
+        seen.add(alias)
+
+
 def parse_command_call(query: str, params: dict) -> CommandCall | None:
     """The command call ``query`` is, or None when it is no ``CALL <bare name>(…)``."""
     text = query.strip().rstrip(";").rstrip()
@@ -242,11 +257,24 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     yields: list[tuple[str, str]] | None = None
     returns: list[tuple[str, str]] | None = None
     m = _YIELD_RE.match(rest)
+    yields_written = m is not None
     if m is not None:
         yields = _items(m.group(1), "YIELD", name)
         rest = rest[m.end() :]
+        _check_yield_items(name, yields)
     m = _RETURN_RE.match(rest)
     if m is not None:
+        # openCypher: a RETURN reads what the call's YIELD binds, each by name.
+        if not yields_written:
+            raise CommandCallRefused(
+                f"RETURN after CALL {name} reads what its YIELD binds, and it has no YIELD: "
+                f"CALL {name}(…) YIELD column [AS variable], … RETURN …"
+            )
+        if yields is None:
+            raise CommandCallRefused(
+                f"CALL {name} … YIELD * is read only in a call standing alone; with a RETURN, "
+                "name the columns it yields"
+            )
         returns = _items(m.group(1), "RETURN", name) or []
         rest = ""
     if rest.strip():
@@ -254,7 +282,40 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
             f"CALL {name}: only YIELD and RETURN may follow a command call; not "
             f"{rest.strip().split()[0]!r}"
         )
-    return CommandCall(name=name, values=values, yields=yields, returns=returns)
+    return CommandCall(
+        name=name, values=values, yields=yields, returns=returns, yields_written=yields_written
+    )
+
+
+def command_signature(cmd: dict) -> str:
+    """A listed command's Neo4j-style procedure signature, the same on Bolt and Cypher over HTTP
+    (REQ-1156): ``name(arg [= default] :: TYPE) :: (MAP)``, ``(LIST OF MAP)`` for one answering a
+    table, ``()`` for a VOID one (REQ-2001). ``cmd`` is an entry of
+    ``action_exec.list_visible_commands``."""
+    import json
+
+    args = ", ".join(
+        f"{a['name']}"
+        # REQ-2168: an argument that declares a default, written as Neo4j writes one.
+        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
+        + f" :: {str(a.get('type', 'String')).upper()}"
+        for a in cmd["arguments"]
+    )
+    if cmd["void"]:  # REQ-2001: a VOID command answers nothing
+        return f"{cmd['name']}({args}) :: ()"
+    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
+    return f"{cmd['name']}({args}) :: ({ret})"
+
+
+def check_yields(call: CommandCall, void: bool) -> None:
+    """A standalone call yields what its command answers: a VOID command nothing, so a YIELD
+    after its call, ``YIELD *`` included, is refused naming VOID (REQ-2001), as it is in a
+    statement (api/data/cypher_commands.py)."""
+    if void and call.yields_written:
+        raise CommandCallRefused(
+            f"YIELD after CALL {call.name}: it is VOID (it declares no outputs), so it yields "
+            "nothing"
+        )
 
 
 def project(call: CommandCall, rows: list[dict]) -> tuple[list[str], list[dict]]:

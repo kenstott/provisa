@@ -47,6 +47,13 @@
     "removeTitle": "Remove this document?",
     "removeConsequence": "No assistant draws on \"{{title}}\" from now on. Terms and definitions that cite it keep their citations.",
     "discardTitle": "Discard this proposed document?",
-    "discardConsequence": "\"{{title}}\" leaves the library and no assistant draws on it."
+    "discardConsequence": "\"{{title}}\" leaves the library and no assistant draws on it.",
+    "reembed": "Re-embed",
+    "reembedAll": "Re-embed all ({{n}})",
+    "needsReembedding": "Needs re-embedding",
+    "needsReembeddingHelp": "Embedded with {{model}}, not the organization's current vector model.",
+    "reembedDone": "Documents re-embedded: {{n}}",
+    "reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

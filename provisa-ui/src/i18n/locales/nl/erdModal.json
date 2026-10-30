@@ -24,8 +24,13 @@
     "downloadPng": "PNG downloaden",
     "downloadJpeg": "JPEG downloaden",
     "downloadJson": "Diagram downloaden als JSON (tabellen, kolommen, relaties)",
-    "close": "Sluiten",
     "hint": "Klik op een domeingroep om samen of uit te vouwen · stippellijnen verbinden samengevouwen domeinen",
-    "resizeHandle": "Domeinvak vergroten/verkleinen ({{corner}})"
+    "resizeHandle": "Domeinvak vergroten/verkleinen ({{corner}})",
+    "focus": "Focussen",
+    "addToFocus": "Aan focus toevoegen",
+    "focusDomains": "Domeinen: {{names}}",
+    "focusTables": "Tabellen: {{names}}",
+    "focusMissing": "Niet gevonden: {{names}}",
+    "showAll": "Alles tonen"
   }
 }

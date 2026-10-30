@@ -18,7 +18,7 @@ Covers untested catalog tables and rewrite functions:
 - pg_catalog.pg_auth_members (empty stub)
 - pg_catalog.pg_tables (populated from context)
 - pg_catalog.pg_stat_user_tables (empty stub)
-- pg_catalog.pg_statio_user_tables (same internal table, empty)
+- pg_catalog.pg_statio_user_tables (its own columns, empty)
 - pg_table_is_visible() rewrite → TRUE
 - pg_has_role() rewrite → TRUE
 - current_setting() function

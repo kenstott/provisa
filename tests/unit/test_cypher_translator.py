@@ -1437,24 +1437,30 @@ def test_compound_label_domain_only():
     assert "n" in graph_vars
 
 
-def test_compound_label_case_insensitive_table():
-    """MATCH (n:Support:Supporttickets) — wrong case on table label — should still resolve."""
+def test_compound_label_case_sensitive_table():
+    """Labels are case-sensitive (openCypher): MATCH (n:Support:Supporttickets) names no table,
+    and is refused by name, offering the declared label; :Support:SupportTickets resolves."""
+    from provisa.gql.translator_types import CypherMistake
+
     lm = _make_label_map_compound()
-    ast = parse_cypher("MATCH (n:Support:Supporttickets) RETURN n LIMIT 25")
+    with pytest.raises(
+        CypherMistake, match=r"There is no label :Supporttickets\..*:SupportTickets"
+    ):
+        cypher_to_sql(parse_cypher("MATCH (n:Support:Supporttickets) RETURN n LIMIT 25"), lm, {})
+    ast = parse_cypher("MATCH (n:Support:SupportTickets) RETURN n LIMIT 25")
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "support_tickets" in sql.lower()
+    assert "support_tickets" in sql_ast.sql(dialect="trino").lower()
     assert "n" in graph_vars
 
 
-def test_compound_label_case_insensitive_domain():
-    """MATCH (n:support:SupportTickets) — wrong case on domain label — should still resolve."""
+def test_compound_label_case_sensitive_domain():
+    """Labels are case-sensitive (openCypher): MATCH (n:support:SupportTickets) names no domain,
+    and is refused by name, offering the declared :Support."""
+    from provisa.gql.translator_types import CypherMistake
+
     lm = _make_label_map_compound()
-    ast = parse_cypher("MATCH (n:support:SupportTickets) RETURN n LIMIT 25")
-    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "support_tickets" in sql.lower()
-    assert "n" in graph_vars
+    with pytest.raises(CypherMistake, match=r"There is no label :support\..*:Support"):
+        cypher_to_sql(parse_cypher("MATCH (n:support:SupportTickets) RETURN n LIMIT 25"), lm, {})
 
 
 def test_from_schema_table_label_from_field_name():

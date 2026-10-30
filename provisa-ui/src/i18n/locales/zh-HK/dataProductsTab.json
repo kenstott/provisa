@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "開啟 {{successor}}",
     "contract": {
       "label": "數據契約",
-      "hint": "每個輸出端口的契約：以其自身版本承諾的內容",
+      "hint": "每個輸出端口的契約：以其自身版本聲明的內容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "已提議",
@@ -177,8 +177,8 @@
       "versionLabel": "契約版本",
       "statusLabel": "契約狀態",
       "descriptionLabel": "用途說明",
-      "columnsLabel": "承諾的欄",
-      "columnsHelp": "不再承諾某欄或更改其類型，需要新版本。",
+      "columnsLabel": "欄",
+      "columnsHelp": "移除某欄或更改其類型，需要新版本。",
       "requiredLabel": "從不為空",
       "slaLabel": "服務級別",
       "slaProperty": "屬性",
@@ -187,6 +187,28 @@
       "slaRemove": "移除服務級別",
       "slaAdd": "新增服務級別",
       "notDeclared": "未聲明",
+      "breakingWarning": "v{{version}} 中有破壞性變更，尚未生效",
+      "breaking": "破壞性",
+      "savedBy": "由 {{who}} 於 {{when}} 儲存",
+      "savedBySystem": "系統",
+      "noChanges": "第一個版本：沒有可比較的內容",
+      "change": {
+        "field_added": "已新增欄位 {{subject}}，{{after}}",
+        "field_removed": "已移除欄位 {{subject}}，原為 {{before}}",
+        "field_renamed": "欄位 {{subject}} 已重新命名為 {{after}}",
+        "field_type_changed": "欄位 {{subject}} 已由 {{before}} 改為 {{after}}",
+        "field_required": "欄位 {{subject}} 已設為必填",
+        "field_optional": "欄位 {{subject}} 不再必填",
+        "field_described": "欄位 {{subject}} 的描述已更改",
+        "sla_added": "已新增服務級別 {{subject}}，{{after}}",
+        "sla_removed": "已移除服務級別 {{subject}}，原為 {{before}}",
+        "sla_changed": "服務級別 {{subject}} 已由 {{before}} 改為 {{after}}",
+        "check_added": "已新增質素檢查 {{subject}}",
+        "check_removed": "已移除質素檢查 {{subject}}",
+        "check_changed": "質素檢查 {{subject}} 已更改",
+        "description_changed": "描述已更改",
+        "terms_changed": "條款已更改：{{subject}}"
+      },
       "loadError": "無法讀取契約：{{error}}",
       "notExported": "{{member}} 沒有已匯出的契約",
       "section": {
@@ -226,9 +248,9 @@
       "draftWarning": "草稿：尚未生效",
       "card": {
         "details": "詳情",
-        "fields": "承諾的欄位",
+        "fields": "欄",
         "sla": "SLA 與新鮮度",
-        "quality": "質素承諾",
+        "quality": "承諾",
         "consumers": "消費方",
         "versions": "版本與變更"
       }

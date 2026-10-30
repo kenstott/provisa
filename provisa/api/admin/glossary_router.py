@@ -18,6 +18,8 @@ queues a metadata publish after every mutation because the term graph exports.
 
 # Requirements: REQ-1387, REQ-1590, REQ-1591, REQ-2130
 
+import asyncio
+
 from provisa.core.repositories.identity import TableInIdentity
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1346,6 +1348,48 @@ async def stewardship(request: Request) -> dict:
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         return await _named_readable(_conn, request, await glossary_repo.stewardship_summary(_conn))
+
+
+async def _term_ids_by_name(conn: "Connection") -> dict[str, int]:
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import glossary_terms as gt
+
+    rows = (await conn.execute_core(select(gt.c.id, gt.c.name))).fetchall()
+    return {r.name: r.id for r in rows}
+
+
+@router.get("/drift")
+async def ontology_drift(request: Request) -> dict:
+    """The Ontology quality report's drift (REQ-1386): the terms that lost or gained grounding
+    since the previous period, computed from the environment's repository. Narrowed to the terms
+    the caller reads, counts included. A term that no longer exists has no domains to read it by:
+    only a caller limited to no domains is told of it."""
+    from provisa.core import term_drift
+    from provisa.core.environments import PROD
+    from provisa.core.glossary import readable_term
+    from provisa.core.request_context import current_env
+
+    _require_glossary_read(request)
+    org_id = require_active_org_id(request)
+    env = current_env.get() or PROD
+    found = await asyncio.to_thread(term_drift.drift, org_id, env)
+    if not found["has_history"]:
+        return found
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        ids = await _term_ids_by_name(_conn)
+        scopes = await glossary_repo.term_domains(_conn)
+    allowed = _authority(request)
+
+    def told(name: str) -> bool:
+        if name not in ids:
+            return allowed is None
+        return readable_term(allowed, scopes.get(ids[name], set()))
+
+    rows = [{**t, "term_id": ids.get(t["name"])} for t in found["terms"] if told(t["name"])]
+    return {**found, "terms": rows, "counts": term_drift.counted(rows)}
 
 
 @router.post("/terms/{term_id}/deprecate")

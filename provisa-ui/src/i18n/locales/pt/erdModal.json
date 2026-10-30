@@ -24,8 +24,13 @@
     "downloadPng": "Baixar PNG",
     "downloadJpeg": "Baixar JPEG",
     "downloadJson": "Baixar o diagrama como JSON (tabelas, colunas, relacionamentos)",
-    "close": "Fechar",
     "hint": "Clique em um grupo de domínio para recolher / expandir · linhas tracejadas conectam domínios recolhidos",
-    "resizeHandle": "Redimensionar caixa do domínio ({{corner}})"
+    "resizeHandle": "Redimensionar caixa do domínio ({{corner}})",
+    "focus": "Focar",
+    "addToFocus": "Adicionar ao foco",
+    "focusDomains": "Domínios: {{names}}",
+    "focusTables": "Tabelas: {{names}}",
+    "focusMissing": "Não encontrado: {{names}}",
+    "showAll": "Mostrar tudo"
   }
 }

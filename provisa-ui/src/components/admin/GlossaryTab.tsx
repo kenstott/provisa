@@ -58,6 +58,7 @@ import { TermImpactPreview } from "./TermImpactPreview";
 import { StewardshipSummary } from "./StewardshipSummary";
 import { defaultFindDomains, tableNames, toReview } from "./termFindings";
 import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
+import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
@@ -203,8 +204,9 @@ export function GlossaryTab() {
   };
   // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
   // links that want review.
-  const [relatedToOnly, setRelatedToOnlyState] = useState(() =>
-    readStoredBool("glossary.relatedTo", false),
+  // A report's placeholder row opens the list with it on (REQ-1386: ?relatedTo=1).
+  const [relatedToOnly, setRelatedToOnlyState] = useState(
+    () => searchParams.get(RELATED_TO_PARAM) === "1" || readStoredBool("glossary.relatedTo", false),
   );
   const setRelatedToOnly = (on: boolean) => {
     setRelatedToOnlyState(on);

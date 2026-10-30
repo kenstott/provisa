@@ -86,6 +86,9 @@ class NodeMapping:
     #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
     #: and its _id hold every one. Empty for a key of one column (``id_column``).
     key_columns: tuple[str, ...] = ()
+    #: A graph session's date time properties, each with the zone its values were written in
+    #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
+    property_zones: tuple[tuple[str, str], ...] = ()
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -193,6 +196,26 @@ class RelationshipMapping:
 #: REQ-348: the column a graph session's node relation names a node's graph identity by (``Label|key``
 #: for a model node, an ephemeral node's id), which the session's relationships name their ends by.
 GRAPH_ID = "__graph_id"
+#: REQ-2176: the column a graph session's node relation names every label of its node by, which
+#: labels() of a session node reads.
+LABELS_COLUMN = "__labels"
+#: While a read after a write runs (provisa.ephemeral.then), a session relationship's id is read
+#: as this property, which the read finds it again by; it is none of the relationship's keys.
+SESSION_REL_ID = "__rel_id"
+
+
+#: The catalog a graph session's relations are named in (provisa.ephemeral.read, REQ-2176).
+SESSION_CATALOG = "__session__"
+#: The column of a graph session's node relation holding each node's identity in an answer, the
+#: same under whichever label it is read: a model node's ``Label|key``, a node the session created
+#: ``Label|id`` after the first of its labels in name order (``|id`` with none) (REQ-2176).
+IDENTITY_COLUMN = "__identity"
+
+
+def is_session_node(nm: "NodeMapping") -> bool:
+    """Whether ``nm`` is a graph session's node relation (provisa.ephemeral.read), whose rows
+    carry each node's identity (IDENTITY_COLUMN)."""
+    return nm.catalog_name == SESSION_CATALOG
 
 
 @dataclass(frozen=True)
@@ -227,6 +250,9 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     #: REQ-348: set on a graph session's label map (provisa.ephemeral.read.overlay); None on the
     #: model graph, where a path function's ends are labelled.
     session_walk: SessionWalk | None = None
+    #: A graph session's node relations of several labels (node_of_all): each one's table name ->
+    #: the labels its nodes all have, and its type name -> the same (REQ-2176).
+    label_sets: dict[str, tuple[str, ...]] = {}
 
     def __init__(
         self,
@@ -258,10 +284,6 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
         # rel_type → all RelationshipMappings with that type (supports UNION fan-out)
         self.aliases: dict[str, list[RelationshipMapping]] = aliases or {}
-        # case-insensitive lookup indexes: lowercase → canonical key
-        self._nodes_ci: dict[str, str] = {k.lower(): k for k in self.nodes}
-        self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
-        self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
 
     def with_sql_only(self) -> "CypherLabelMap":
         """This map with the SQL-only tables' nodes in it, for SPARQL's lowering of its
@@ -294,14 +316,40 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             return nm.label
         return nm.table_label
 
-    def canonical_label(self, label: str) -> str:  # REQ-572
-        """Return the canonical-cased label, falling back to input if not found."""
-        return (
-            self._nodes_ci.get(label.lower())
-            or self._domains_ci.get(label.lower())
-            or self._nodes_by_table_ci.get(label.lower())
-            or label
+    def node_of_all(self, keys: list[str]) -> str:
+        """The type name of the nodes of a graph session having every label of ``keys`` (each a
+        session label's type name, REQ-2176): one relation, of the first label's nodes that have
+        the rest too, with every property any of them publishes. Made once per label map."""
+        import dataclasses
+
+        held = sorted(set(keys))
+        name = "&".join(held)
+        if name in self.nodes:
+            return name
+        first = self.nodes[held[0]]
+        properties: dict[str, str] = {}
+        types: dict[str, str] = {}
+        for key in held:
+            nm = self.nodes[key]
+            properties.update(nm.properties)
+            types.update(dict(nm.property_types))
+        table = f"nodes_all__{name}"
+        combined = dataclasses.replace(
+            first,
+            type_name=name,
+            table_name=table,
+            properties=properties,
+            physical_properties=dict(properties),
+            property_types=tuple((p, types[p]) for p in properties if p in types),
         )
+        self.nodes = {**self.nodes, name: combined}
+        self.label_sets = {**self.label_sets, table: tuple(held), name: tuple(held)}
+        return name
+
+    def canonical_label(self, label: str) -> str:  # REQ-572
+        """The label as written: labels are case-sensitive (openCypher), so ``A`` and ``a`` are
+        two labels, each found by its exact name."""
+        return label
 
     def node(self, label: str) -> NodeMapping:  # REQ-572
         try:

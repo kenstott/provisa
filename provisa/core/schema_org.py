@@ -808,6 +808,9 @@ mv_build_state = Table(
     Column("materialized_definition_version", Text),
     Column("materialized_input_version", Text),
     Column("snapshot_id", Text),
+    # REQ-2015: the indexes the view's standing landing asked for and how each stands, as a
+    # replica's are (``replica_state.index_state``): {"for", "table", "wanted", "built", "failed"}.
+    Column("index_state", JSON(none_as_null=True)),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
         name="mv_build_state_status_check",

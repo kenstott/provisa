@@ -21,7 +21,8 @@ from provisa.api.admin import data_product_documents_router as router
 from provisa.api.errors import ApiError
 from provisa.api.metadata_export import build_snapshot
 from provisa.control_plane.entitlements import EntitlementError, Tier
-from provisa.core.models import DataProduct
+from provisa.core.contract_versions import recorded
+from provisa.core.models import ContractColumn, DataContract, DataProduct
 from tests.integration.metadata_export_fixture import ORG_ID, governed_config
 
 
@@ -71,5 +72,76 @@ def test_a_rows_contract_is_read_alone_without_the_export(org):
 def test_a_port_with_no_contract_names_the_ports_there_are(org):
     with pytest.raises(ApiError) as missing:
         asyncio.run(router.data_product_contract_json("prod", "wh.public.nope", object()))
+    assert missing.value.status_code == 404
+    assert "wh.public.orders" in missing.value.detail
+
+
+class _Plane:
+    """The model store's one read of this route: the product's member contracts."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    def acquire(self):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def versions_of(org, monkeypatch):
+    def contract(version: str, *columns: str) -> DataContract:
+        return DataContract(
+            version=version, columns=[ContractColumn(name=c, type="integer") for c in columns]
+        )
+
+    one = recorded(None, contract("1.0.0", "id", "note"), [])
+    two = recorded(one, contract("2.0.0", "id"), [])
+    row = {
+        "id": 1,
+        "product_id": "prod",
+        "source_id": "wh",
+        "schema_name": "public",
+        "table_name": "orders",
+        "contract": two.model_dump(mode="json"),
+    }
+
+    async def member_contracts(conn, product_id):
+        org.append(f"members:{product_id}")
+        return [row]
+
+    monkeypatch.setattr("provisa.api.app.state.model_db", _Plane([row]))
+    monkeypatch.setattr("provisa.core.repositories.data_product.member_contracts", member_contracts)
+    return org
+
+
+def test_a_rows_versions_are_read_with_when_and_by_whom_and_their_differences(versions_of):
+    versions = asyncio.run(
+        router.data_product_contract_versions("prod", "wh.public.orders", object())
+    )
+    assert [v["contract"]["version"] for v in versions] == ["1.0.0", "2.0.0"]
+    assert versions[0]["changes"] == []
+    assert versions[1]["changes"] == [
+        {
+            "kind": "field_removed",
+            "subject": "note",
+            "before": "integer",
+            "after": None,
+            "breaking": True,
+        }
+    ]
+    assert versions[1]["saved_at"] is not None and versions[1]["saved_by"] is None
+    # A version is its own document, not a copy of the history before it.
+    assert "versions" not in versions[1]["contract"]
+    assert versions_of == ["data_product_read", "members:prod"]
+
+
+def test_a_port_with_no_contract_has_no_versions(versions_of):
+    with pytest.raises(ApiError) as missing:
+        asyncio.run(router.data_product_contract_versions("prod", "wh.public.nope", object()))
     assert missing.value.status_code == 404
     assert "wh.public.orders" in missing.value.detail

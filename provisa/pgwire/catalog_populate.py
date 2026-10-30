@@ -28,15 +28,17 @@ from typing import Any
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.pgwire.cast_types import described_type, registered_spelling
+from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_tables import (
+    create_relation,
     populate_client_relations,
     populate_unqueried_relations,
 )
+from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_macros import populate_catalog_macros
 from provisa.security.rights import Capability, has_capability
 from provisa.pgwire.catalog_privileges import populate_privilege_macros, populate_table_privileges
-from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
 from provisa.pgwire.catalog_data import (
     UNQUERIED_RELATIONS,
     _TABLE_MAP,
@@ -58,10 +60,13 @@ from provisa.pgwire.catalog_constraints import (
 log = logging.getLogger(__name__)
 
 
-# Stable OID assignments for system objects surfaced in pg_class/pg_attribute.
-# 8001+ for pg_catalog tables, 9001+ for information_schema views.
+# Stable OID assignments for system objects surfaced in pg_class/pg_attribute: PostgreSQL's own for
+# the catalogs other relations name by oid (a comment's classoid, a 'pg_type'::regclass), else 8001+
+# for pg_catalog tables, 9001+ for information_schema views.
 _PG_CAT_TABLE_NAMES: list[str] = sorted(k[1] for k in _TABLE_MAP if k[0] == "pg_catalog")
-_PG_CAT_TABLE_OIDS: dict[str, int] = {n: 8001 + i for i, n in enumerate(_PG_CAT_TABLE_NAMES)}
+_PG_CAT_TABLE_OIDS: dict[str, int] = {
+    n: _CATALOG_CLASS_OIDS.get(n, 8001 + i) for i, n in enumerate(_PG_CAT_TABLE_NAMES)
+}
 
 _IS_VIEW_NAMES: list[str] = [
     "schemata",
@@ -81,10 +86,6 @@ _IS_VIEW_NAMES: list[str] = [
     "applicable_roles",
 ]
 _IS_VIEW_OIDS: dict[str, int] = {n: 9001 + i for i, n in enumerate(_IS_VIEW_NAMES)}
-
-# Column definitions sourced from the live PostgreSQL 16 instance (information_schema.columns).
-# Keys: information_schema view name OR pg_catalog table name.
-# Values: ordered list of (column_name, pg_data_type).
 
 
 def _physical_to_pg_name(column_type: str) -> str:
@@ -437,7 +438,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
             )
         )
     for vname, oid in _IS_VIEW_OIDS.items():
-        natts = len(_SYSTEM_TABLE_COLUMNS.get(vname, []))
+        natts = len(RELATIONS[("information_schema", vname)])
         pg_class_rows.append(
             (
                 oid,
@@ -476,7 +477,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
             )
         )
     for tname, oid in _PG_CAT_TABLE_OIDS.items():
-        natts = len(_SYSTEM_TABLE_COLUMNS.get(tname, []))
+        natts = len(RELATIONS[("pg_catalog", tname)])
         pg_class_rows.append(
             (
                 oid,
@@ -580,16 +581,16 @@ def _populate_pg_description(
             continue
         ns_oid = idx.ns_map.get(domain_to_sql_name(_did))
         if ns_oid is not None:
-            desc_rows.append((ns_oid, "pg_namespace", 0, _ddesc))
+            desc_rows.append((ns_oid, _CATALOG_CLASS_OIDS["pg_namespace"], 0, _ddesc))
 
     for _, _, _, table_id, toid in idx.tables:
         tdesc = tid_desc.get(table_id)
         if tdesc:
-            desc_rows.append((toid, "pg_class", 0, tdesc))
+            desc_rows.append((toid, _CATALOG_CLASS_OIDS["pg_class"], 0, tdesc))
         for cname, cdesc_val in (tid_col_desc.get(table_id) or {}).items():
             attnum = idx.col_attnum.get((toid, cname))
             if attnum is not None:
-                desc_rows.append((toid, "pg_class", attnum, cdesc_val))
+                desc_rows.append((toid, _CATALOG_CLASS_OIDS["pg_class"], attnum, cdesc_val))
 
     # REQ-1319: metric relation descriptions — description, else ai_context (the definition
     # text written for AI consumers; the design mandates this fallback so an AI-documented
@@ -598,168 +599,143 @@ def _populate_pg_description(
         m_toid = idx.metric_oids.get(m.name)
         text = m.description or m.ai_context
         if m_toid is not None and text:
-            desc_rows.append((m_toid, "pg_class", 0, text))
+            desc_rows.append((m_toid, _CATALOG_CLASS_OIDS["pg_class"], 0, text))
 
     if desc_rows:
         db.executemany("INSERT INTO _pg_description VALUES (?,?,?,?)", desc_rows)
 
 
+def _attribute_row(
+    attrelid: int,
+    attname: str,
+    atttypid: int,
+    attnum: int,
+    storage: tuple[int, bool, str, str],
+    atttypmod: int = -1,
+    attnotnull: bool = False,
+) -> tuple:
+    """One _pg_attribute row, in PostgreSQL 17's order, of a plain column: no compression method
+    (attcompression is the empty "char"), no statistics target set (attstattarget is NULL since
+    PostgreSQL 17), no value stored for rows older than the column (attmissingval)."""
+    attlen, attbyval, attalign, attstorage = storage
+    return (
+        attrelid,
+        attname,
+        atttypid,
+        attlen,
+        attnum,
+        -1,  # attcacheoff
+        atttypmod,
+        0,  # attndims
+        attbyval,
+        attalign,
+        attstorage,
+        "",  # attcompression
+        attnotnull,
+        False,  # atthasdef
+        False,  # atthasmissing
+        "",  # attidentity
+        "",  # attgenerated
+        False,  # attisdropped
+        True,  # attislocal
+        0,  # attinhcount
+        0,  # attcollation
+        None,  # attstattarget
+        None,  # attacl
+        None,  # attoptions
+        None,  # attfdwoptions
+        None,  # attmissingval
+    )
+
+
+_PG_ATTRIBUTE_WIDTH = len(RELATIONS[("pg_catalog", "pg_attribute")])
+_ATTRIBUTE_BATCH = 1000
+
+
+def _insert_attributes(db, rows: list[tuple]) -> None:
+    """One statement per batch: a row at a time, the system relations' columns alone were most of
+    the time a catalog build took (REQ-2167: DBeaver waits on the build when it connects)."""
+    row = f"({','.join(['?'] * _PG_ATTRIBUTE_WIDTH)})"
+    for at in range(0, len(rows), _ATTRIBUTE_BATCH):
+        batch = rows[at : at + _ATTRIBUTE_BATCH]
+        db.execute(
+            f"INSERT INTO _pg_attribute VALUES {','.join([row] * len(batch))}",
+            [value for values in batch for value in values],
+        )
+
+
 def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
-    db.execute("""CREATE TABLE _pg_attribute (
-        attrelid INTEGER, attname VARCHAR, atttypid INTEGER, attstattarget INTEGER,
-        attlen SMALLINT, attnum SMALLINT, attndims INTEGER, attcacheoff INTEGER,
-        atttypmod INTEGER, attbyval BOOLEAN, attalign VARCHAR, attstorage VARCHAR,
-        attnotnull BOOLEAN, atthasdef BOOLEAN, atthasmissing BOOLEAN,
-        attidentity VARCHAR, attgenerated VARCHAR, attisdropped BOOLEAN,
-        attislocal BOOLEAN, attinhcount INTEGER, attcollation INTEGER,
-        attacl VARCHAR[], attoptions VARCHAR[], attfdwoptions VARCHAR[])""")
+    create_relation(db, "pg_catalog", "pg_attribute")
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
         pg_oid = _physical_to_pg_oid(col_type)
-        attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
-            pg_oid, (-1, False, "i", "x")
-        )
         # REQ-1961: a sized numeric's typmod and a character type's length, as pgwire sends them.
         described = described_type(col_type)
         typmod = described.typmod if described is not None and described.oid == pg_oid else -1
+        storage = _PG_OID_ATTR_META.get(pg_oid, (-1, False, "i", "x"))
         attr_rows.append(
-            (
-                toid,
-                col_name,
-                pg_oid,
-                -1,
-                attlen,
-                ordinal,
-                0,
-                -1,
-                typmod,
-                attbyval,
-                attalign,
-                attstorage,
-                not is_nullable,
-                False,
-                False,
-                "",
-                "",
-                False,
-                True,
-                0,
-                0,
-                None,
-                None,
-                None,
-            )
+            _attribute_row(toid, col_name, pg_oid, ordinal, storage, typmod, not is_nullable)
         )
-    if attr_rows:
-        db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?'] * 24)})", attr_rows)
+    _insert_attributes(db, attr_rows)
 
 
-def _populate_system_attributes(db) -> None:
-    """Add pg_attribute rows for pg_catalog and information_schema system objects."""
-    _type_to_oid = {
-        "varchar": 1043,
-        "name": 25,
-        "text": 25,
-        "oid": 23,
-        "integer": 23,
-        "smallint": 21,
-        "bigint": 20,
-        "boolean": 16,
-        "real": 700,
-        "double": 701,
-        "double precision": 701,
-        "xid": 23,
-        "array": 25,
-        "char": 18,
-        "timestamp with time zone": 1184,
-        "timestamp": 1114,
-    }
-    attr_rows = []
-    for is_name, oid in _IS_VIEW_OIDS.items():
-        for attnum, (col_name, col_type) in enumerate(_SYSTEM_TABLE_COLUMNS.get(is_name, []), 1):
-            pg_oid = _type_to_oid.get(col_type.lower().split("(")[0].strip(), 25)
-            attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
-                pg_oid, (-1, False, "i", "x")
+def _type_storage(type_oid: int) -> tuple[int, bool, str, str]:
+    """A PostgreSQL 17 type's (typlen, typbyval, typalign, typstorage)."""
+    _ns, _name, length, _kind, _category, _notnull, _base, byval, align, storage, *_ = TYPES[
+        type_oid
+    ]
+    return length, byval, align, storage
+
+
+def _populate_system_attributes(db) -> None:  # REQ-2167
+    """Each pg_catalog and information_schema relation's columns, as PostgreSQL 17 declares them
+    (what SELECT * from one sends), so a client describing one is told what it will read."""
+    _insert_attributes(
+        db,
+        [
+            _attribute_row(relid, column, type_oid, attnum, _type_storage(type_oid))
+            for schema, relations in (
+                ("information_schema", _IS_VIEW_OIDS),
+                ("pg_catalog", _PG_CAT_TABLE_OIDS),
             )
-            attr_rows.append(
-                (
-                    oid,
-                    col_name,
-                    pg_oid,
-                    -1,
-                    attlen,
-                    attnum,
-                    0,
-                    -1,
-                    -1,
-                    attbyval,
-                    attalign,
-                    attstorage,
-                    False,
-                    False,
-                    False,
-                    "",
-                    "",
-                    False,
-                    True,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                )
-            )
-    for pg_name, oid in _PG_CAT_TABLE_OIDS.items():
-        for attnum, (col_name, col_type) in enumerate(_SYSTEM_TABLE_COLUMNS.get(pg_name, []), 1):
-            pg_oid = _type_to_oid.get(col_type.lower().split("(")[0].strip(), 25)
-            attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
-                pg_oid, (-1, False, "i", "x")
-            )
-            attr_rows.append(
-                (
-                    oid,
-                    col_name,
-                    pg_oid,
-                    -1,
-                    attlen,
-                    attnum,
-                    0,
-                    -1,
-                    -1,
-                    attbyval,
-                    attalign,
-                    attstorage,
-                    False,
-                    False,
-                    False,
-                    "",
-                    "",
-                    False,
-                    True,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                )
-            )
-    if attr_rows:
-        db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?'] * 24)})", attr_rows)
+            for name, relid in relations.items()
+            for attnum, (column, _, type_oid) in enumerate(RELATIONS[(schema, name)], 1)
+        ],
+    )
+
+
+# PostgreSQL 17's subscripting functions (pg_type.dat's typsubscript): an array's, a fixed-length
+# type's that subscripts as an array of its parts, and jsonb's.
+_ARRAY_SUBSCRIPT_HANDLER = 6179
+_RAW_ARRAY_SUBSCRIPT_HANDLER = 6180
+_JSONB_SUBSCRIPT_HANDLER = 6098
+_JSONB_OID = 3802
+#: name, point, lseg, box and line.
+_RAW_ARRAY_TYPES = frozenset({19, 600, 601, 603, 628})
+
+
+def _subscript_handler(oid: int, category: str, base: int) -> int:
+    """pg_type.typsubscript: 0 (written "-") for a type that takes no subscript. A domain
+    subscripts as its base type does."""
+    subscripted = base or oid
+    if subscripted == _JSONB_OID:
+        return _JSONB_SUBSCRIPT_HANDLER
+    if subscripted in _RAW_ARRAY_TYPES:
+        return _RAW_ARRAY_SUBSCRIPT_HANDLER
+    return _ARRAY_SUBSCRIPT_HANDLER if category == "A" else 0
+
+
+def _element_type(oid: int) -> int:
+    """pg_type.typelem: the element type of an array type (oidvector and int2vector too), as
+    PostgreSQL 17 records it; 0 for any other type."""
+    entry = TYPES.get(oid)
+    return 0 if entry is None or entry[4] != "A" else entry[10]
 
 
 def _populate_pg_type(db) -> None:
-    db.execute("""CREATE TABLE _pg_type (
-        oid INTEGER, typname VARCHAR, typnamespace INTEGER, typowner INTEGER,
-        typlen SMALLINT, typbyval BOOLEAN, typtype VARCHAR, typcategory VARCHAR,
-        typispreferred BOOLEAN, typisdefined BOOLEAN, typdelim VARCHAR,
-        typrelid INTEGER, typelem INTEGER, typarray INTEGER,
-        typinput INTEGER, typoutput INTEGER, typreceive INTEGER, typsend INTEGER,
-        typmodin INTEGER, typmodout INTEGER, typanalyze INTEGER,
-        typalign VARCHAR, typstorage VARCHAR, typnotnull BOOLEAN,
-        typbasetype INTEGER, typtypmod INTEGER, typndims INTEGER, typcollation INTEGER,
-        typdefaultbin VARCHAR, typdefault VARCHAR, typacl VARCHAR[])""")
+    create_relation(db, "pg_catalog", "pg_type")
     db.executemany(
-        f"INSERT INTO _pg_type VALUES ({','.join(['?'] * 31)})",
+        f"INSERT INTO _pg_type VALUES ({','.join(['?'] * len(RELATIONS[('pg_catalog', 'pg_type')]))})",
         [
             (
                 oid,
@@ -774,7 +750,8 @@ def _populate_pg_type(db) -> None:
                 True,
                 ",",
                 0,
-                0,
+                _subscript_handler(oid, cat, base),
+                _element_type(oid),
                 0,
                 # regproc: no I/O functions are listed (0, whose text form is "-").
                 0,
@@ -819,12 +796,12 @@ def served_database_name(state) -> str:  # REQ-1235
     return DEFAULT_DATABASE
 
 
+#: What pg_roles shows of every role's password, whatever it is.
+_MASKED = "********"
+
+
 def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
-    db.execute("""CREATE TABLE _pg_roles (
-        oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
-        rolcreaterole BOOLEAN, rolcreatedb BOOLEAN, rolcanlogin BOOLEAN,
-        rolreplication BOOLEAN, rolconnlimit INTEGER, rolpassword VARCHAR,
-        rolvaliduntil TIMESTAMPTZ, rolbypassrls BOOLEAN, rolconfig VARCHAR[])""")
+    create_relation(db, "pg_catalog", "pg_roles")
 
     rows: list[tuple] = []
     seen_names: set[str] = set()
@@ -838,38 +815,39 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         seen_names.add(rname)
         roid = 10 + i
         rows.append(
-            (roid, rname, False, True, False, False, True, False, -1, None, None, False, None)
+            (roid, rname, False, True, False, False, True, False, -1, _MASKED, None, False, None)
         )
     # Ensure the connected role is present even if state.roles is empty
     if role_id not in seen_names:
         rows.append(
-            (10, role_id, False, True, False, False, True, False, -1, None, None, False, None)
+            (10, role_id, False, True, False, False, True, False, -1, _MASKED, None, False, None)
         )
         seen_names.add(role_id)
     # Standard PG system roles
     for oid, name, sup, inh, crrole, crdb, login, repl, conn, byp in _PG_SYSTEM_ROLES:
         if name not in seen_names:
             rows.append(
-                (oid, name, sup, inh, crrole, crdb, login, repl, conn, None, None, byp, None)
+                (oid, name, sup, inh, crrole, crdb, login, repl, conn, _MASKED, None, byp, None)
             )
             seen_names.add(name)
 
-    db.executemany("INSERT INTO _pg_roles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
-    db.execute("""CREATE TABLE _pg_user AS
-        SELECT oid AS usesysid, rolname AS usename,
-               rolcreatedb AS usecreatedb, rolsuper AS usesuper,
-               rolreplication AS userepl, rolbypassrls AS usebypassrls,
-               '********' AS passwd, rolvaliduntil AS valuntil,
-               rolconfig AS useconfig
-        FROM _pg_roles WHERE rolcanlogin""")
-    db.execute("""CREATE TABLE _pg_database (
-        oid INTEGER, datname VARCHAR, datdba INTEGER, encoding INTEGER,
-        datlocprovider VARCHAR, datistemplate BOOLEAN, datallowconn BOOLEAN,
-        datconnlimit INTEGER, datfrozenxid INTEGER, datminmxid INTEGER,
-        dattablespace INTEGER, datcollate VARCHAR, datctype VARCHAR, datacl VARCHAR[])""")
+    db.executemany(
+        "INSERT INTO _pg_roles (oid, rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, "
+        "rolcanlogin, rolreplication, rolconnlimit, rolpassword, rolvaliduntil, rolbypassrls, "
+        "rolconfig) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        rows,
+    )
+    create_relation(db, "pg_catalog", "pg_user")
     db.execute(
-        "INSERT INTO _pg_database VALUES "
-        "(16384,?,10,6,'c',FALSE,TRUE,-1,726,1,1663,'en_US.UTF-8','en_US.UTF-8',NULL)",
+        "INSERT INTO _pg_user SELECT rolname, oid, rolcreatedb, rolsuper, rolreplication, "
+        "rolbypassrls, rolpassword, rolvaliduntil, rolconfig FROM _pg_roles WHERE rolcanlogin"
+    )
+    create_relation(db, "pg_catalog", "pg_database")
+    # A libc-provider database (datlocale and daticurules are NULL) with no login event trigger
+    # (dathasloginevt) and no recorded collation version.
+    db.execute(
+        "INSERT INTO _pg_database VALUES (16384,?,10,6,'c',FALSE,TRUE,FALSE,-1,726,1,1663,"
+        "'en_US.UTF-8','en_US.UTF-8',NULL,NULL,NULL,NULL)",
         [served_database_name(state)],
     )
 

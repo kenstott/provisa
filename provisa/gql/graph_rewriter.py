@@ -101,6 +101,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 GraphVarKind.JSON_MAP,
                 GraphVarKind.JSON_LIST,
                 GraphVarKind.JSON_VALUE,
+                GraphVarKind.PROPERTIES,  # properties(): its JSON object
                 GraphVarKind.DURATION,  # REQ-2173: a duration's parts
                 GraphVarKind.DURATION_LIST,  # REQ-2173: each duration's parts
                 GraphVarKind.ZONED,  # REQ-2173: a date time's instant and zone
@@ -113,6 +114,9 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             # NODE expressions already containing pre-built JSON (from _rewrite_graph_fns for
             # startNode/endNode/nodes) pass through — they must not be rebuilt from raw columns.
             # JSON_OBJECT parses to exp.JSONObject; JSON_ARRAY parses to exp.Anonymous("JSON_ARRAY").
+            if inner.meta.get("provisa_elements_built"):  # select_builder.ELEMENTS_BUILT
+                new_expressions.append(sel_expr)
+                continue
             if kind == GraphVarKind.NODE and isinstance(inner, (exp.JSONObject, exp.JSONArray)):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 new_expressions.append(sel_expr)
                 continue

@@ -64,6 +64,7 @@
     "edge_owns": "владеет",
     "loadError": "Не удалось прочитать граф: {{error}}",
     "zoomTo": "Приблизить",
+    "openInErd": "Открыть в ERD",
     "edge_column_lineage": "питает столбец",
     "preset_taxonomy": "Таксономия",
     "layer_domains": "Домены",

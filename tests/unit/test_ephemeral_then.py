@@ -59,6 +59,13 @@ def _session(monkeypatch) -> Session:
             "WITH n RETURN n",
             "props",
         ),
+        # A DELETE followed by more (Merge1 [14]: MATCH (a:A) DELETE a MERGE (a2:A) ...).
+        (
+            "MATCH (n:T) DETACH DELETE n RETURN count(*)",
+            "MATCH (n:T) DETACH DELETE n",
+            "RETURN count(*)",
+            "delete",
+        ),
     ],
 )
 def test_a_write_followed_by_more_splits_at_its_end(statement, head, rest, kind):
@@ -73,7 +80,7 @@ def test_a_write_followed_by_more_splits_at_its_end(statement, head, rest, kind)
         "CREATE (n:T)",
         "MATCH (n:T) RETURN n",
         "MATCH (n:T) SET n:X",
-        "MATCH (n:T) DETACH DELETE n RETURN count(*)",
+        "MATCH (n:T) DETACH DELETE n",
     ],
 )
 def test_a_write_ending_its_statement_is_not_split(statement):
@@ -251,3 +258,20 @@ def test_a_label_set_on_a_model_node_then_a_read(monkeypatch):
     assert made.rows == [{"name": "Bo"}]
     assert made.counters["added"] == 1
     assert s.run("MATCH (v:Vip) RETURN v.name AS name") == [{"name": "Bo"}]
+
+
+def test_a_node_created_with_no_label_is_read_after_among_the_sessions_alone(monkeypatch):
+    # The model's tables type ``id`` as text: a union of every label would read 12 as '12'.
+    s = Session(monkeypatch, {"Person": ({"id": "text", "name": "text"}, "('p1', 'Ann')")})
+    made = s.run("CREATE (n {id: 12, name: 'foo'}) RETURN n.id AS id, n.name AS p")
+    assert made.rows == [{"id": 12, "p": "foo"}]
+
+
+def test_a_with_star_after_a_write_carries_every_variable_on(monkeypatch):
+    # TCK Match8 [2]: WITH * after the MERGE is what finding a and b again already is; kept, it
+    # carried the found nodes as tables of their own ("Alias already used: a").
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A), (b:B) CREATE (a)-[:T1]->(b), (b)-[:T2]->(a)")
+    made = s.run("MATCH (a) MERGE (b) WITH * OPTIONAL MATCH (a)--(b) RETURN count(*)")
+    assert made.rows == [{"count(*)": 6}]
+    assert made.counters["nodes"] == 0 and made.counters["relationships"] == 0

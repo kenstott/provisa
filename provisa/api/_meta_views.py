@@ -31,6 +31,7 @@ from provisa.dq.contract import CHECKERS
 import json as _json
 
 from provisa.compiler.sql_literals import sql_literal
+from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
 
 
 def _system_tag_rows_sql() -> str:
@@ -479,6 +480,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # provisa.lineage.inputs. Registered in no catalog.
     "table_inputs": _table_inputs_sql(),
     "data_product_edges": _data_product_edges_sql(),
+    # REQ-2188: the governed metrics, named metric_definitions because ops already has a "metrics"
+    # table (OTel points) and the catalog's descriptions are keyed by table name. The role list
+    # (visible_to) is a governance column, so a reader without view_governance does not see it.
+    "metric_definitions": """
+        CREATE OR REPLACE VIEW metric_definitions AS
+        SELECT name, expression, datatype, description, ai_context, visible_to, from_fact
+        FROM metrics
+    """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
@@ -1040,4 +1049,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         WHERE q.logged_at >= now() - INTERVAL '1 hour'
         HAVING COUNT(*) > 0
     """,
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): the glossary measured from the model, by
+    # domain and by steward. They read the ontology schema's views, which the seed creates first.
+    **ONTOLOGY_QUALITY_VIEWS,
 }

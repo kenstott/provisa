@@ -188,6 +188,21 @@
        }
       },
       {
+       "name": "m__metricDefinitions",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__MetricDefinitions"
+         }
+        }
+       }
+      },
+      {
        "name": "m__registeredTables",
        "type": {
         "kind": "LIST",
@@ -3717,6 +3732,75 @@
     {
      "fields": [
       {
+       "name": "aiContext",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "datatype",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "expression",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "fromFact",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__MetricDefinitions"
+    },
+    {
+     "fields": [
+      {
        "name": "accessedDomainId",
        "type": {
         "kind": "SCALAR",
@@ -4123,6 +4207,11 @@
    "domain_id": "meta",
    "graphql_field": "m__listedNames",
    "table_name": "listed_names"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__metricDefinitions",
+   "table_name": "metric_definitions"
   },
   {
    "domain_id": "meta",

@@ -10,6 +10,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # verification calls it (verify-surface.yml).
+  workflow_call:
 
 permissions:
   contents: read
@@ -59,7 +61,7 @@ jobs:
           SHARD: ${{ matrix.shard }}/4
         run: |
           mapfile -t files < <(python3 scripts/ci/unit_shard.py files "$SHARD")
-          uv run pytest -p unit_shard "${files[@]}" --no-cov -q -n auto -o faulthandler_timeout=300
+          uv run pytest -p unit_shard "${files[@]}" --no-cov -q -n auto -o faulthandler_timeout=300 --junitxml=unit-junit.xml
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -67,6 +69,14 @@ jobs:
           name: unit-ids-${{ matrix.shard }}
           path: ids.txt
           if-no-files-found: error
+
+      # A failing test by name, for the summary of a verification (scripts/ci/verify_summary.py).
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-junit-${{ matrix.shard }}
+          path: unit-junit.xml
+          if-no-files-found: warn
 
   # The full collection of tests/unit the check compares the shards with, beside the shards.
   collect:

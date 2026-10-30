@@ -47,6 +47,13 @@
     "removeTitle": "このドキュメントを削除しますか？",
     "removeConsequence": "今後、アシスタントは「{{title}}」を参照しません。これを引用している用語と定義は引用を保持します。",
     "discardTitle": "この提案中のドキュメントを破棄しますか？",
-    "discardConsequence": "「{{title}}」はライブラリから外れ、アシスタントは参照しません。"
+    "discardConsequence": "「{{title}}」はライブラリから外れ、アシスタントは参照しません。",
+    "reembed": "再埋め込み",
+    "reembedAll": "すべて再埋め込み（{{n}}）",
+    "needsReembedding": "再埋め込みが必要",
+    "needsReembeddingHelp": "{{model}} で埋め込み済みです。組織の現在のベクトルモデルではありません。",
+    "reembedDone": "再埋め込みしたドキュメント: {{n}}",
+    "reembedFailedHeading": "次のドキュメントは再埋め込みできず、変更されていません:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

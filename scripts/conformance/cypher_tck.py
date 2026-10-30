@@ -27,7 +27,9 @@ fixed when it is declared, not created by a statement. Every other scenario pass
 failure is data. An error the scenario expects (a SyntaxError, a TypeError, ...) passes when the query is
 refused; the error's type is not compared, since Provisa names its own. A scenario run in a Bolt
 session has its side effects (``the side effects should be``, ``no side effects``) compared
-exactly with the summary counters of its query.
+exactly with the side effects of its query as the TCK defines them: the difference between the
+TCK's observation queries run before and after it in the same session (cypher_tck_bolt.effects),
+not a summary's counters, which count what was written rather than what changed.
 
 Log lines (by_design.log_lines), printed to stdout after the files are written, so the result is
 readable from the job log without the artifact; names escape backslash, newline, CR and colon with
@@ -444,44 +446,39 @@ def _setup_steps(scenario: Scenario) -> list[Step]:
     return out
 
 
-#: A TCK side-effect counter and the Bolt summary's counter for it; None for one Bolt's summary
-#: has no counter for (Neo4j counts a removed property as a property set).
-_SIDE_EFFECTS: dict[str, str | None] = {
-    "+nodes": "nodes-created",
-    "-nodes": "nodes-deleted",
-    "+relationships": "relationships-created",
-    "-relationships": "relationships-deleted",
-    "+properties": "properties-set",
-    "-properties": None,
-    "+labels": "labels-added",
-    "-labels": "labels-removed",
-}
+#: The TCK's side effects (tck/README.adoc, "Side effects of executing a query").
+SIDE_EFFECTS = (
+    "+nodes",
+    "-nodes",
+    "+relationships",
+    "-relationships",
+    "+properties",
+    "-properties",
+    "+labels",
+    "-labels",
+)
 
 
-def side_effects(expected: dict[str, int], stats: dict[str, int]) -> str | None:
-    """None when a query's summary counters are exactly the side effects ``expected`` (each TCK
-    counter not named is zero); else what differs. A Bolt summary leaves out a counter at zero,
-    so an absent Bolt counter reads as zero; a TCK counter with no Bolt counter is a failure
-    when it is expected, naming it."""
-    differs: list[str] = []
-    for counter, key in _SIDE_EFFECTS.items():
-        want = expected.get(counter, 0)
-        if key is None:
-            if want:
-                differs.append(f"{counter} expected {want}, the summary has no counter for it")
-            continue
-        got = stats.get(key, 0)
-        if got != want:
-            differs.append(f"{counter} {got}, expected {want}")
-    unknown = sorted(set(expected) - set(_SIDE_EFFECTS))
-    differs += [f"{counter}: no such side effect" for counter in unknown]
+def side_effects(expected: dict[str, int], measured: dict[str, int]) -> str | None:
+    """None when a query's side effects, ``measured`` as the TCK observes them (the difference of
+    its observation queries before and after the query, cypher_tck_bolt.effects), are exactly the
+    ``expected`` ones (each one not named is zero); else what differs."""
+    differs = [
+        f"{name} {measured.get(name, 0)}, expected {expected.get(name, 0)}"
+        for name in SIDE_EFFECTS
+        if measured.get(name, 0) != expected.get(name, 0)
+    ]
+    differs += [
+        f"{name}: no such side effect" for name in sorted(set(expected) - set(SIDE_EFFECTS))
+    ]
     return "; ".join(differs) or None
 
 
 def _session_scenario(scenario: Scenario) -> str | None:
     """How a scenario runs in a Bolt session, when one is configured: NAMED_GRAPH for a named
     TCK graph, IN_A_SESSION for a setup that builds its graph, EMPTY_GRAPH for an empty graph its
-    query matches a pattern on (the session's graph alone is empty); None to run it over HTTP. A
+    query or control query matches (MATCH) or merges (MERGE) a pattern on (the session's graph
+    alone is empty); None to run it over HTTP. A
     test procedure is the fixture model's command, called over either."""
     if not bolt.configured():
         return None
@@ -490,8 +487,15 @@ def _session_scenario(scenario: Scenario) -> str | None:
         return NAMED_GRAPH
     if any(t.startswith("having executed") for t in texts):
         return IN_A_SESSION
-    query = next((s.doc or "" for s in scenario.steps if s.text.startswith("executing query")), "")
-    if "an empty graph" in texts and re.search(r"\bMATCH\b", query, re.I):
+    # The query and its control query: a MERGE matches its pattern before it creates it, and a
+    # control query reads what the query made (Temporal4: CREATE, then MATCH (n)); on an empty
+    # graph either one matches the session's graph, never the model's.
+    read = "\n".join(
+        s.doc or ""
+        for s in scenario.steps
+        if s.text.startswith(("executing query", "executing control query"))
+    )
+    if "an empty graph" in texts and re.search(r"\b(?:MATCH|MERGE)\b", read, re.I):
         return EMPTY_GRAPH
     return None
 
@@ -559,10 +563,21 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             marks.append(session)
         return Outcome(scenario.feature, scenario.name, status, " ".join([reason, *marks]).strip())
 
+    # The scenario's control query: run after its query, in the same graph session, its answer
+    # what the steps after it check.
+    control = next(
+        (s.doc or "" for s in scenario.steps if s.text.startswith("executing control query")), None
+    )
+
     def ask(query: str, params: dict) -> tuple[int, Any]:
         if session is None:
-            return _post(base, role, query, params)
-        return bolt.run(setups, query, params)
+            asked = _post(base, role, query, params)
+            if control is not None and asked[0] < 400 and isinstance(asked[1], dict):
+                asked[1]["control"] = _post(base, role, control, {})
+            return asked
+        if control is None:
+            return bolt.run(setups, query, params)
+        return bolt.run(setups, query, params, control)
 
     _clear(base, _CREDENTIAL["Authorization"] if session is None else bolt.authorization())
     params: dict = {}
@@ -598,10 +613,17 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             query = step.doc or ""
             continue
         assert query is not None
-        if text.startswith("executing control query"):
-            return out("not_run", "checks state with a control query")
         if answer is None:
             answer = ask(query, params)
+        if text.startswith("executing control query"):
+            status, body = answer
+            if status >= 400:
+                detail = (body or {}).get("detail") if isinstance(body, dict) else body
+                return out("failed", f"refused ({status}): {str(detail)[:200]}")
+            # An HTTP control answer is its own (status, body); a session's is its rows.
+            held = body["control"]
+            answer = held if isinstance(held, tuple) else (200, held)
+            continue
         status, body = answer
         if "should be raised" in text:
             if status >= 400:
@@ -614,7 +636,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if status >= 400:
                 return out("failed", f"refused ({status}): {str(body)[:200]}")
             expected = {r[0]: int(r[1]) for r in step.table or []}
-            differs = side_effects(expected, body["stats"])
+            differs = side_effects(expected, body["effects"])
             if differs:
                 return out("failed", f"side effects differ: {differs}")
             checked = True
@@ -665,7 +687,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if good:
                 checked = True
                 continue
-            if _below_the_microsecond(header, expected_raw):
+            if _below_the_microsecond(header, expected_raw) or _builds_below_the_microsecond(query):
                 return out(
                     "failed", f"expects digits below the microsecond; rows differ: got {rows[:3]}"
                 )
@@ -688,6 +710,22 @@ def _below_the_microsecond(header: list[str], rows: list[list[str]]) -> bool:
             if "nanosecond" in column.lower() and cell.lstrip("-").isdigit() and int(cell) % 1000:
                 return True
     return False
+
+
+#: A temporal constructor's nanosecond count, or a temporal string's fraction of a second.
+_NANOSECOND_KEY = re.compile(r"\bnanosecond\s*:\s*(\d+)", re.I)
+_SUB_MICROSECOND_STRING = re.compile(r"'[^']*\d:\d\d(?::\d\d)?\.\d{6}\d*[1-9][^']*'")
+
+
+def _builds_below_the_microsecond(query: str) -> bool:
+    """Whether a query builds temporal values that differ below the microsecond (REQ-2173,
+    amended 2026-10-27, NANOSECONDS PRESENTED AS ZERO): a constructor's nanosecond count that is
+    not a whole number of microseconds, or a temporal string with digits past the sixth. Held to
+    microsecond precision, such values are one value, so a scenario ordering or comparing them
+    expects the digits below the microsecond."""
+    if any(int(n) % 1000 for n in _NANOSECOND_KEY.findall(query)):
+        return True
+    return bool(_SUB_MICROSECOND_STRING.search(query))
 
 
 def in_running_order(scenarios: list[Scenario]) -> list[int]:
@@ -821,6 +859,8 @@ def main(argv: list[str]) -> int:
             Path(os.environ["CONFORMANCE_MODEL"]),
             os.environ["PROVISA_SUPERUSER_USERNAME"],
             os.environ["PROVISA_SUPERUSER_PASSWORD"],
+            # Its callers: the runner's role over HTTP and the Bolt session's.
+            (role, bolt.EMPTY_ROLE),
         )
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
     # CONFORMANCE_FEATURES: comma-separated feature-name globs; empty runs the whole suite.

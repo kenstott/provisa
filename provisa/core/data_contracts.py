@@ -29,7 +29,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from provisa.core.models import FIRST_CONTRACT_VERSION, ContractColumn, DataContract
+from provisa.core import contract_versions
+from provisa.core.models import (
+    FIRST_CONTRACT_VERSION,
+    ContractCheck,
+    ContractColumn,
+    DataContract,
+)
 from provisa.core.numeric_type import ReportedNumericMalformed, stored_type_of
 
 
@@ -66,7 +72,7 @@ def as_stored(cid: str, contract: DataContract) -> DataContract:
             columns.append(c.model_copy(update={"type": stored_type_of(c.type)}))
         except ReportedNumericMalformed as malformed:
             raise ContractRefused(
-                f"contract {cid} promises {c.name} as {c.type}, which is no column type"
+                f"contract {cid} declares {c.name} as {c.type}, which is no column type"
             ) from malformed
     return contract.model_copy(update={"columns": columns})
 
@@ -91,7 +97,7 @@ def require_new_version(cid: str, old: DataContract, new: DataContract) -> None:
     broken = _breaks(old, new)
     if broken and new.version == old.version:
         raise ContractRefused(
-            f"contract {cid} version {old.version} stops promising {', '.join(broken)}: "
+            f"contract {cid} version {old.version} removes or retypes {', '.join(broken)}: "
             "a change that breaks a contract is a new version of it"
         )
 
@@ -107,7 +113,7 @@ def require_provided(cid: str, contract: DataContract, column_types: dict[str, s
     ]
     if missing:
         raise ContractRefused(
-            f"contract {cid} version {contract.version} promises {', '.join(missing)}: release "
+            f"contract {cid} version {contract.version} declares {', '.join(missing)}: release "
             "a new version of the contract without it first, or in the same save"
         )
 
@@ -122,10 +128,12 @@ def for_save(
     stored: dict[str, Any] | None,
     stored_product_id: str | None,
     column_types: dict[str, str],
+    checks: list[ContractCheck] | None = None,
 ) -> DataContract | None:
     """The contract a table's save stores: none outside a product (or for a checker); the one
-    declared, else the one stored for the same product, else a draft of its columns. Refused
-    (:class:`ContractRefused`) when it would break the stored one or the columns break it."""
+    declared, else the one stored for the same product, else a draft of its columns, with the
+    version this save made recorded on it. Refused (:class:`ContractRefused`) when it would break
+    the stored one or the columns break it. ``checks``: the product's promises on the member."""
     if product_id is None or is_checker:
         return None
     cid = contract_id(product_id, schema_name, table_name)
@@ -144,4 +152,4 @@ def for_save(
         declared = declared.model_copy(update={"created_at": datetime.now(timezone.utc)})
     contract = declared or previous or draft(column_types)
     require_provided(cid, contract, column_types)
-    return contract
+    return contract_versions.recorded(previous, contract, checks or [])

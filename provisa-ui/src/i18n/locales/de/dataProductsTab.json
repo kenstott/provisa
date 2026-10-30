@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} öffnen",
     "contract": {
       "label": "Data Contracts",
-      "hint": "Der Contract jedes Output-Ports: was er zusichert, in eigener Version",
+      "hint": "Der Contract jedes Output-Ports: was er deklariert, in eigener Version",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Vorgeschlagen",
@@ -177,8 +177,8 @@
       "versionLabel": "Contract-Version",
       "statusLabel": "Contract-Status",
       "descriptionLabel": "Wofür er dient",
-      "columnsLabel": "Zugesicherte Spalten",
-      "columnsHelp": "Eine Spalte nicht mehr zuzusichern oder ihren Typ zu ändern erfordert eine neue Version.",
+      "columnsLabel": "Spalten",
+      "columnsHelp": "Eine Spalte zu entfernen oder ihren Typ zu ändern erfordert eine neue Version.",
       "requiredLabel": "Nie null",
       "slaLabel": "Service-Level",
       "slaProperty": "Eigenschaft",
@@ -187,6 +187,28 @@
       "slaRemove": "Service-Level entfernen",
       "slaAdd": "Service-Level hinzufügen",
       "notDeclared": "Nicht deklariert",
+      "breakingWarning": "Inkompatible Änderung in v{{version}}, noch nicht in Kraft",
+      "breaking": "Inkompatibel",
+      "savedBy": "Gespeichert {{when}} von {{who}}",
+      "savedBySystem": "dem System",
+      "noChanges": "Erste Version: nichts zum Vergleichen",
+      "change": {
+        "field_added": "Feld {{subject}} hinzugefügt, {{after}}",
+        "field_removed": "Feld {{subject}} entfernt, war {{before}}",
+        "field_renamed": "Feld {{subject}} umbenannt in {{after}}",
+        "field_type_changed": "Feld {{subject}} von {{before}} zu {{after}} geändert",
+        "field_required": "Feld {{subject}} ist jetzt erforderlich",
+        "field_optional": "Feld {{subject}} nicht mehr erforderlich",
+        "field_described": "Feld {{subject}} anders beschrieben",
+        "sla_added": "Service-Level {{subject}} hinzugefügt, {{after}}",
+        "sla_removed": "Service-Level {{subject}} entfernt, war {{before}}",
+        "sla_changed": "Service-Level {{subject}} von {{before}} zu {{after}} geändert",
+        "check_added": "Qualitätsprüfung {{subject}} hinzugefügt",
+        "check_removed": "Qualitätsprüfung {{subject}} entfernt",
+        "check_changed": "Qualitätsprüfung {{subject}} geändert",
+        "description_changed": "Beschreibung geändert",
+        "terms_changed": "Bedingungen geändert: {{subject}}"
+      },
       "loadError": "Die Verträge konnten nicht gelesen werden: {{error}}",
       "notExported": "{{member}} hat keinen exportierten Vertrag",
       "section": {
@@ -226,9 +248,9 @@
       "draftWarning": "Entwurf: noch nicht in Kraft",
       "card": {
         "details": "Details",
-        "fields": "Zugesagte Felder",
+        "fields": "Spalten",
         "sla": "SLAs & Aktualität",
-        "quality": "Qualitätszusagen",
+        "quality": "Zusagen",
         "consumers": "Verbraucher",
         "versions": "Versionen & Änderungen"
       }

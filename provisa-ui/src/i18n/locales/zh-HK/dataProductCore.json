@@ -19,7 +19,7 @@
     "detailCollapse": "收起",
     "inputs": "輸入",
     "inputsHint": "產品最近的實體輸入：構建其成員所用的表和來源。",
-    "inputsEmpty": "未記錄輸入。",
+    "inputsEmpty": "無",
     "promises_one": "{{count}} 項承諾",
     "promises_other": "{{count}} 項承諾",
     "expectations_one": "{{count}} 項預期",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "無。",
     "consumers": "消費方",
     "consumersHint": "在下游一跳讀取此產品的對象：直接建構在其成員之上的表、檢視和實體化檢視。",
-    "consumersEmpty": "未記錄消費方。",
+    "consumersEmpty": "無",
+    "ownerOnlyList": "此清單對數據產品的擁有者可見。",
     "consumerKind_table": "表",
     "consumerKind_view": "檢視",
     "consumerKind_materialized_view": "實體化檢視"

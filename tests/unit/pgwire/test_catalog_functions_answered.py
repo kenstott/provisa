@@ -113,7 +113,9 @@ def test_a_relation_is_its_own_partition_tree_and_ancestor():
     ) == [(1,)]
     # psql \d of a table: the foreign keys referencing it or an ancestor.
     assert _rows(f"SELECT * FROM pg_catalog.pg_partition_ancestors('{oid}')") == [(oid,)]
-    assert _rows(f"SELECT pg_catalog.pg_partition_ancestors({oid})") == [(oid,)]
+    # In a select list it is a regclass: the oid and name a regclass result column is sent by.
+    ((ancestor,),) = _rows(f"SELECT pg_catalog.pg_partition_ancestors({oid})")
+    assert ancestor["oid"] == oid
     assert (
         _rows(
             "SELECT conname FROM pg_catalog.pg_constraint WHERE confrelid IN "
@@ -188,13 +190,11 @@ def test_nothing_is_a_cursor_or_a_sequence():
     assert _rows("SELECT pg_statistics_obj_is_visible(1)") == [(True,)]
 
 
-@pytest.mark.parametrize(
-    "call", ["setval('s', 5)", "plpgsql_validator(1)", "pg_catalog.fmgr_c_validator(1)"]
-)
-def test_a_function_provisa_has_nothing_to_run_on_is_refused_by_name(call):
+@pytest.mark.parametrize("call", ["plpgsql_validator(1)", "pg_catalog.fmgr_c_validator(1)"])
+def test_a_validator_of_no_function_is_postgresqls_cache_lookup_error(call):
+    from provisa.core.pg_error import PostgresError
     from provisa.pgwire.server import _sqlstate_of
 
-    name = call.split("(")[0].removeprefix("pg_catalog.")
-    with pytest.raises(NotImplementedError, match=name) as refused:
+    with pytest.raises(PostgresError, match="cache lookup failed for function 1") as refused:
         _rows(f"SELECT {call}")
-    assert _sqlstate_of(refused.value) == "0A000"
+    assert _sqlstate_of(refused.value) == "XX000"

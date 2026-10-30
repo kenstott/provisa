@@ -24,8 +24,13 @@
     "downloadPng": "PNGをダウンロード",
     "downloadJpeg": "JPEGをダウンロード",
     "downloadJson": "図を JSON でダウンロード（テーブル、列、リレーションシップ）",
-    "close": "閉じる",
     "hint": "ドメイングループをクリックで折りたたみ／展開 · 破線は折りたたまれたドメインを接続します",
-    "resizeHandle": "ドメインボックスのサイズ変更（{{corner}}）"
+    "resizeHandle": "ドメインボックスのサイズ変更（{{corner}}）",
+    "focus": "フォーカス",
+    "addToFocus": "フォーカスに追加",
+    "focusDomains": "ドメイン: {{names}}",
+    "focusTables": "テーブル: {{names}}",
+    "focusMissing": "見つかりません: {{names}}",
+    "showAll": "すべて表示"
   }
 }

@@ -34,9 +34,14 @@ import { useDeleteTable, useRegisterTable, useTables } from "../../hooks/useAdmi
 import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { ListedTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
+import { reportCellHref } from "../../lib/reportCellHref";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { OntologyDriftPanel } from "./OntologyDriftPanel";
+
+/** REQ-1386: drift is computed from the model's history and shown with this report. */
+const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
 
 export function ReportsTab() {
   const { t } = useTranslation();
@@ -226,7 +231,19 @@ export function ReportsTab() {
       </div>
 
       {selected ? (
-        <GovernedTableViewer key={selected.id} table={selected} role={actingRoles} showTitle />
+        <div
+          style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
+          data-testid="report-pane"
+        >
+          <GovernedTableViewer
+            key={selected.id}
+            table={selected}
+            role={actingRoles}
+            showTitle
+            cellHref={reportCellHref}
+          />
+          {selected.tableName === ONTOLOGY_QUALITY_REPORT && <OntologyDriftPanel />}
+        </div>
       ) : (
         <div style={{ flex: 1 }} />
       )}
