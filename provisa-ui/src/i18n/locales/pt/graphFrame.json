@@ -40,6 +40,7 @@
     "copyErrorTitle": "Copiar erro",
     "expandedDialogLabel": "Visualização expandida do grafo",
     "firstNodesShown": "Mostrando os primeiros {{count}} nós; há mais. Aumente o limite no menu lateral.",
-    "deleteFrame": "Excluir este resultado"
+    "deleteFrame": "Excluir este resultado",
+    "sparqlNothingMore": "Nada mais é dito sobre {{resource}}."
   }
 }

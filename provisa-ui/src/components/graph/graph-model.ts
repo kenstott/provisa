@@ -137,6 +137,8 @@ export interface GNode {
   label: string;
   tableLabel: string;
   properties: Record<string, unknown>;
+  /** A SPARQL node's property names (compacted predicates) with the full IRI each stands for. */
+  propertyIris?: Record<string, string>;
 }
 export interface GEdge {
   identity: string;
@@ -396,8 +398,13 @@ export interface FrameData {
   sparqlForm?: SparqlForm;
   /** A CONSTRUCT's triples, which the frame draws with its literals as properties or as nodes. */
   sparqlTriples?: Triple[];
-  /** A SELECT whose rows pair into subject and object, and can be drawn as a graph. */
+  /** A SELECT whose rows hold triples, and can be drawn as a graph. */
   sparqlPairing?: SelectPairing;
+  /** What expanding, dragging or dropping onto the frame merged into it, by the resource or class
+   *  each was asked of. Kept apart from the answer, so an expansion can be taken back. */
+  sparqlExpansions?: Record<string, Triple[]>;
+  /** What the last merge said: why it was refused, or the resource it found nothing more of. */
+  sparqlMerge?: { error?: string; nothingMore?: string };
 }
 
 /** One statement's result, of a frame whose query holds several. */

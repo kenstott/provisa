@@ -13,6 +13,7 @@
     },
     "download": "Downloaden",
     "close": "Sluiten",
-    "empty": "Voer een query uit om het resultaat te exporteren."
+    "empty": "Voer een query uit om het resultaat te exporteren.",
+    "unnamedEdges": "De randen van deze graaf noemen geen predicaat, dus er zijn geen triples om als RDF te schrijven."
   }
 }

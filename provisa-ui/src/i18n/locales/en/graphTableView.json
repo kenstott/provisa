@@ -3,6 +3,7 @@
     "noRows": "No rows",
     "copyAsCsv": "Copy as CSV",
     "copyJson": "Copy JSON",
-    "table": "Table results"
+    "table": "Table results",
+    "copyIri": "Copy the full IRI"
   }
 }

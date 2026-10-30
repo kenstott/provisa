@@ -29,6 +29,7 @@ from provisa.gql.translator import cypher_to_sql
 from provisa.sparql_query.compiler import SparqlRefused, compile_sparql
 from provisa.transpiler.transpile import transpile_to_duckdb
 from provisa.sparql_query.vocabulary import (
+    RDF,
     XSD,
     Grounding,
     build_vocabulary,
@@ -283,6 +284,40 @@ def test_construct(con):
     )
     bo = subject_iri(BASE, "hr", "persons", [2])
     assert sorted((r["s"], r["o"]) for r in rows) == [(ann(), bo), (bo, ann())]
+
+
+def test_describe_of_a_resource_is_the_triples_about_it(con):
+    """REQ-2135: DESCRIBE of a resource works, as a CONSTRUCT of what is said of it."""
+    lm = _model()
+    vocab = build_vocabulary(lm, BASE, _TYPES, _COLUMNS)
+    assert compile_sparql(PREFIXES + f"DESCRIBE <{ann()}>", vocab, lm).form == "CONSTRUCT"
+    rows = _answer(con, f"DESCRIBE <{ann()}>")
+    assert {r["s"] for r in rows} == {ann()}
+    said = {(r["p"], r["o"]) for r in rows}
+    assert (NAME, "Ann") in said
+    assert (AGE, 41) in said
+    # An edge's object is the resource it points at, and the type is its class.
+    assert (KNOWS, subject_iri(BASE, "hr", "persons", [2])) in said
+    assert (f"{RDF}type", PERSON) in said
+
+
+def test_a_class_dropped_on_a_frame_constructs_its_instances(con):
+    """REQ-2135: the CONSTRUCT the SPARQL explorer merges for a class pill dropped on a frame."""
+    rows = _answer(con, f"CONSTRUCT {{ ?s ?p ?o }} WHERE {{ ?s a <{COMPANY}> ; ?p ?o }} LIMIT 50")
+    assert {r["s"] for r in rows} == {subject_iri(BASE, "hr", "companies", [i]) for i in (1, 2, 3)}
+    assert (f"{RDF}type", COMPANY) in {(r["p"], r["o"]) for r in rows}
+    assert {r["o"] for r in rows if r["p"] == CNAME} == {"Acme", "Beta", "Corp"}
+
+
+def test_describe_of_several_resources_says_each(con):
+    bo = subject_iri(BASE, "hr", "persons", [2])
+    rows = _answer(con, f"DESCRIBE <{ann()}> <{bo}>")
+    assert {r["s"] for r in rows if r["s"] is not None} == {ann(), bo}
+    assert {r["o"] for r in rows if r["p"] == NAME} == {"Ann", "Bo"}
+
+
+def test_describe_of_a_resource_no_table_holds_is_an_empty_graph(con):
+    assert _answer(con, "DESCRIBE <http://example.org/nowhere>") == []
 
 
 def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
