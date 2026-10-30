@@ -195,8 +195,8 @@ def test_a_call_in_an_argument_is_written_too():
 
 
 def test_an_expression_argument_keeps_its_place():
-    written = transpile("SELECT flt8_mul_cash(x + 1, y) AS v FROM t", "spark")
-    assert "(x + 1) * y" in written
+    written = transpile("SELECT textcat(x + 1, y) AS v FROM t", "spark")
+    assert "(x + 1) || y" in written
 
 
 def test_the_column_of_a_call_is_named_for_the_function(con):

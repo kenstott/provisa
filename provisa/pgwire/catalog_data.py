@@ -18,6 +18,7 @@ through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path
 
 from __future__ import annotations
 
+from provisa.core.pg_money import LC_MONETARY
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_tables import (
     CLIENT_RELATIONS,
@@ -246,6 +247,7 @@ _KNOWN_SETTINGS = {
     "search_path": 'public, "$user"',
     "extra_float_digits": "0",
     "application_name": "",
+    "lc_monetary": LC_MONETARY,  # REQ-2171: money is read and written under it, and no other
     "is_superuser": "on",
     "session_authorization": "org_admin",
     # PG-14 startup ParameterStatus fields (see PG protocol §54.2).
@@ -452,6 +454,25 @@ _PG_SETTINGS_ROWS: list[tuple] = [
         None,
         "postgres",
         "postgres",
+        None,
+        None,
+        False,
+    ),
+    (
+        "lc_monetary",
+        LC_MONETARY,
+        None,
+        "Client Connection Defaults / Locale and Formatting",
+        "Sets the locale for formatting monetary amounts.",
+        None,
+        "user",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        LC_MONETARY,
+        LC_MONETARY,
         None,
         None,
         False,
