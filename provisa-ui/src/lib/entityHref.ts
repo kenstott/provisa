@@ -25,8 +25,7 @@ export type EntityKind =
   | "tag"
   | "checker"
   | "profile"
-  | "lineage"
-  | "erd";
+  | "lineage";
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
@@ -59,8 +58,24 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
       return `/admin/tags?tag=${q(id)}`;
     case "lineage":
       return `/lineage?focus=${q(id)}`;
-    case "erd":
-      // The ERD opened centred on, and with selected, the table ``id``.
-      return `/relationships?erd=${q(id)}`;
   }
+}
+
+/** A link to the ERD view of a page (REQ-2187): the focus, and the panel to open. */
+export function erdViewHref(
+  page: "tables" | "relationships",
+  link: {
+    domains?: string[];
+    objects?: string[];
+    table?: string | number;
+    relationship?: string | number;
+  },
+): string {
+  const list = (names: string[]) => names.map(q).join(",");
+  const query = ["view=erd"];
+  if (link.domains?.length) query.push(`domains=${list(link.domains)}`);
+  if (link.objects?.length) query.push(`objects=${list(link.objects)}`);
+  if (link.table !== undefined) query.push(`table=${q(link.table)}`);
+  if (link.relationship !== undefined) query.push(`relationship=${q(link.relationship)}`);
+  return `/${page}?${query.join("&")}`;
 }

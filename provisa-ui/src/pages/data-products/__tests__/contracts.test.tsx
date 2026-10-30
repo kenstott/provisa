@@ -122,16 +122,18 @@ describe("a product's contracts", () => {
     // The checker has no contract, so no row.
     expect(screen.queryByTestId("data-contract-item-8")).toBeNull();
     expect(screen.queryByTestId("data-contract-8")).toBeNull();
-    // The Fields promised card is one row per property; the SLA card each service level.
+    // The Columns card is one row per property; the SLA card each service level.
     expect(screen.getByTestId("data-contract-7-fields")).toHaveTextContent(
       "physicalNamewh.public.daily_revenue",
     );
     expect(screen.getByTestId("data-contract-sla-7")).toHaveTextContent(
       "property: availability · value: 99.9 · unit: %",
     );
-    expect(screen.getByTestId("data-contract-7-quality")).toHaveTextContent(
-      "type: library · metric: nullValues · mustBe: 0",
-    );
+    // The Promises card is a table of the product's promises, never a record of raw rules; this
+    // port has none, so it says so.
+    const promises = screen.getByTestId("data-contract-7-quality");
+    expect(promises).toHaveTextContent("Not declared");
+    expect(promises).not.toHaveTextContent("nullValues");
   });
 
   it("open to every element, declared, derived or not declared", async () => {

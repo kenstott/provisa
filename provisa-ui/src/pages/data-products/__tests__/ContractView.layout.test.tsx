@@ -9,12 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-2158: a contract's cards flow in 320px columns -- Details, Versions & changes, Columns, SLAs &
-// freshness, Consumers -- and the Promises card runs full width beneath them, each promise one
-// unbroken item, the items flowing in columns of the same width. jsdom lays nothing out, so this
-// proves the structure and the column styles that make the layout.
+// freshness, Consumers -- and the Promises card runs full width beneath them. jsdom lays nothing
+// out, so this proves the structure and the column styles that make the layout.
 
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "../../../test-utils/render";
+import { render, screen } from "../../../test-utils/render";
 import { ContractView } from "../ContractView";
 import type { OdcsContract } from "../../../api/dataProductContracts";
 import type { ProductDqEntry } from "../../../api/lineage";
@@ -30,6 +29,7 @@ const promise = (id: number, table: string, outcome: "pass" | "fail" | null): Pr
   owner_product_id: "pet_health",
   checked_table_id: id + 100,
   checked_table: { id: id + 100, domain_id: "pet-store", table_name: table, alias: null },
+  rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: outcome,
   latest_run_at: null,
 });
@@ -64,21 +64,5 @@ describe("a contract's card layout", () => {
     expect(promises).toBe(screen.getByTestId("data-contract-7-quality"));
     expect(promises.style.breakInside).toBe("");
     expect(flow.contains(promises)).toBe(false);
-  });
-
-  it("renders each promise as its own unbroken item, flowing in columns of the same width", () => {
-    renderView();
-    const list = screen.getByTestId("data-contract-promises-7");
-    expect(list).toHaveTextContent("4 promises");
-    const items = PROMISES.map((p) =>
-      screen.getByTestId(`data-contract-promises-7-item-${p.checker_table_id}`),
-    );
-    expect(new Set(items).size).toBe(4);
-    for (const item of items) {
-      expect(item.style.breakInside).toBe("avoid");
-      expect(item.parentElement!.style.columnWidth).toBe("320px");
-    }
-    expect(within(items[1]).getByText("Quality scan of vets")).toBeInTheDocument();
-    expect(items[0]).not.toContainElement(items[1]);
   });
 });

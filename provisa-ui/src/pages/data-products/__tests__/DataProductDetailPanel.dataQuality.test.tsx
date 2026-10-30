@@ -87,6 +87,7 @@ const VETS_PROMISE: ProductDqEntry = {
   owner_product_id: "pet_health",
   checked_table_id: 1,
   checked_table: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
+  rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: "pass",
   latest_run_at: "2026-10-20T10:00:00Z",
 };

@@ -88639,7 +88639,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     own frame, with history and stars; a vocabulary pill starts a new frame; expanding or dragging a node
     runs a DESCRIBE or CONSTRUCT around that resource and merges its triples into the frame. Any graph view,
     including one drawn from a SELECT''s triples, exports as Turtle or N-Triples, as a CONSTRUCT''s already
-    does.'
+    does. (Amended 2026-10-29, A LIMIT NEEDS NO FULL UNION:) Maintainer 2026-10-30: graph.union_limit defaults
+    to 256. A query with LIMIT and no ORDER BY, DISTINCT or aggregate is allowed ten times the limit, because
+    the engine stops the union once it has its rows. Past that it is refused by name, since every branch
+    is still compiled.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -90283,7 +90286,33 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are called by
     clients, so they are served, not refused. Each answers as a PostgreSQL server with no such file or sequence
     would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise PostgreSQL''s own
-    error. None reads a server file or changes anything.'
+    error. None reads a server file or changes anything. (Amended 2026-10-29, WHAT IS SERVED AND WHAT WAITS
+    ON A TYPE:) Maintainer 2026-10-30: pg_catalog functions are served, including those no known client
+    calls: the functions behind operators, casts spelled as functions, wire format functions and ordinary
+    functions. That no client calls one is not a reason to skip it. Functions over a type the engine does
+    not hold stay skipped by design: geometric, text search, range and multirange, XML and money. The reason
+    recorded for each group names the missing type. (Amended 2026-10-29, EACH MISSING TYPE IS DECIDED ONE
+    BY ONE:) Maintainer 2026-10-30, replacing the skip in WHAT IS SERVED AND WHAT WAITS ON A TYPE: geometric,
+    text search, range and multirange, XML and money are not settled. The maintainer reviews each type and
+    decides; until then they stay open, not skipped by design. Everything else in that amendment stands.
+    (Amended 2026-10-29, LOCKS, FLOATS AND SERVER ANSWERS:) Maintainer 2026-10-30: advisory locks are real
+    locks held per process for now, and the docs say two Provisa processes do not exclude each other. float8
+    text form matches PostgreSQL: 2, not 2.0, and NaN, not nan. Server functions with nothing to act on
+    answer as PostgreSQL does on a server so configured: pg_create_restore_point and pg_backup_start as
+    wal_level minimal, slot and origin creation as max_replication_slots 0, lo_create as a read-only transaction,
+    pg_read_file as a role without pg_read_server_files. (Amended 2026-10-29, FUNCTIONS ARE COMPILER PUSHDOWN:)
+    Maintainer 2026-10-30: pgwire function support is an improvement to compiler pushdown. A function is
+    expressed in the compiler and transpiler through the semantic IR, as SQL for each dialect, so every
+    transport and every engine that can run it gets it. A UDF is never implemented within the pgwire module.
+    Wire encoding stays in the encoder. (Amended 2026-10-29, XML AND MONEY ARE SERVED:) Maintainer 2026-10-30,
+    replacing the earlier skip of XML and money: both are served with real results. XML generation is per-dialect
+    macros in the transpiler and reaches every transport. XML parsing and xpath are engine functions on
+    DuckDB, native where a dialect has them, and refused by name elsewhere; nothing reaches a source to
+    fail there. query_to_xml and its kin read through the governed pipeline and take constant arguments
+    only. (Amended 2026-10-29, A FUNCTION WITH NO FORM ON A SOURCE:) Maintainer 2026-10-30: functions are
+    one macro table in the transpiler. On a direct route to a source with no form for a function, the statement
+    goes to the federation engine, and it is refused by name only when no engine can run it. A source''s
+    own function sharing a name in the table stays refused until a source can declare its functions.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90552,7 +90581,31 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
     refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
     over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
-    emulation if one exists.'
+    emulation if one exists. (Amended 2026-10-29, RANGES ARE EMULATED ON EVERY ENGINE:) Maintainer 2026-10-30:
+    a range type works on every federation engine, not only DuckDB and Trino, whose emulations are the template.
+    Native on PostgreSQL, emulated on every other engine, for all six range types, never refused by name
+    for want of an emulation. Bounds compare as the range''s element type, not as text. (Amended 2026-10-29,
+    TSVECTOR AND SHAPES ARE NATIVE TO POSTGRESQL:) Maintainer 2026-10-30: tsvector and PostgreSQL''s shapes
+    are supported where the statement routes to a dialect with a native form, today PostgreSQL. A table
+    homed to a PostgreSQL store is how a model gets them. Elsewhere an operation on one is refused by name,
+    saying it needs PostgreSQL, and a read of the column as a value still works in its text form. They are
+    not emulated. This settles the types left open in REQ-2167: money and xml are served, ranges emulated
+    everywhere, tsvector and shapes native to PostgreSQL. (Amended 2026-10-29, THE FUNCTIONS ARE LIMITED,
+    NOT THE TYPES:) Maintainer 2026-10-30, correcting TSVECTOR AND SHAPES ARE NATIVE TO POSTGRESQL: tsvector
+    and the shapes are supported on every engine as types: stored, read, returned and carried through the
+    pipeline. Only their functions and operators are limited: those run where the statement routes to a
+    dialect with a native form, today PostgreSQL, and elsewhere a call is refused by name, saying it needs
+    PostgreSQL. (Amended 2026-10-29, SHAPE FUNCTIONS MAP TO THE GEOMETRY FUNCTIONS:) Maintainer 2026-10-30:
+    Provisa already has geometry functions, so a shape function maps to one wherever it can: a shape converts
+    to its geometry form and the existing function answers, on every dialect geometry is native to. A shape
+    function with no such mapping is limited as tsvector''s functions are: it runs on PostgreSQL and is
+    refused by name elsewhere. Shapes get no parallel set of functions. (Amended 2026-10-29, HOW THE LIMITS
+    ARE TESTED:) Maintainer 2026-10-30: conformance runs on two engines, the default and PostgreSQL, because
+    running every engine is not practical. A compile-only test covers every function on every dialect: each
+    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
+    (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
+    base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
+    binary wire forms. It is native on PostgreSQL and emulated elsewhere.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -91669,7 +91722,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a click on a relationship line opens the relationship panel. A click on the other kind of item goes
     to the other page''s ERD with that item''s panel open: a line clicked on Tables goes to the Relationships
     ERD, a table clicked on Relationships goes to the Tables ERD. The focus carries across, because both
-    pages read the same view, domains and objects parameters.'
+    pages read the same view, domains and objects parameters. (Amended 2026-10-29, THE PAGE FILTER WORKS
+    ON THE ERD:) Maintainer 2026-10-30: the page''s filter box applies to the ERD, as a search focuses the
+    Ontology graph. Typing highlights what matches and dims the rest, with nothing moved or rebuilt, and
+    clearing it restores everything. It is not part of the link: a focus is what is saved or shared. On
+    Relationships it matches lines by source or target.'
   scenario: 'Given the Tables page with the domain filter on one domain
 
     When the ERD icon is clicked
@@ -91717,7 +91774,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     A role that no longer owns any product loses that grant. Org admin or named owner is the default, not
     a limit: an org admin may still give a role of its own a grant and row rules, for example a data product
     administrator with RW and no rules, or one narrowed to a domain. data_product_rw leaves the standard
-    data_steward role, and the sandbox keeps it as its own.'
+    data_steward role, and the sandbox keeps it as its own. (Amended 2026-10-29, ONE RULE MAY CARRY SEVERAL
+    RIGHTS:) Maintainer 2026-10-30, replacing one rule for each right: a rule holds one predicate and a
+    set of rights, any of R, U and D, so a predicate shared by U and D is written once. Each right appears
+    in at most one rule per role and model, so every right still resolves to exactly one plain predicate,
+    which keeps reads pushed down as plain filters, and a save that puts a right in a second rule is refused.
+    The rule editor shows the rights as three checkboxes. (Amended 2026-10-29, A METRIC HAS A DOMAIN AND
+    AN OWNER:) Maintainer 2026-10-30: metrics are a model table, meta.metric_definitions, the name that
+    does not collide with ops metrics. A metric belongs to a domain and names an owner role, as a data product
+    does, so the same rule applies: an org admin or the named owner edits it.'
   scenario: 'Given data products owned by role pets_team and role sales_team
 
     And pets_team holds RW on data_products with U and D rules naming the product''s owner role
@@ -91745,4 +91810,49 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2155
   stakeholders:
   - compliance
+  - data-engineer
+- id: REQ-2189
+  value: An ERD arrangement can be saved as a named layout, reloaded and revised, while its content stays
+    live from the model.
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd
+  priority: MAY
+  type: behavioral
+  description: 'Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building a high quality
+    diagram that can keep being revised. It holds the selection (domains and objects, as the focus link
+    does), each table''s and domain''s position and size, and the display options (column detail, edge style,
+    what is collapsed). The ERD''s command bar has a Layout menu with Save, Save as and Delete. Automatic
+    is the generated layout: it always exists and cannot be deleted. Editing a layout marks it unsaved.
+    Only the arrangement is saved: columns and relationships always come from the live model, and positions
+    are held by object id, so a rename keeps its place. A deleted table disappears with no error. A new
+    table in a selected domain is not placed automatically: it waits in a ''new since saved'' tray. A layout
+    is stored in the model, so it versions with the environment, and read rights still apply, so a reader
+    sees a shared layout without what they cannot read. A layout can be named in the URL, as ?view=erd&layout=<name>.
+    (Amended 2026-10-29, EVERY OPTION IN THE BAR IS PART OF A LAYOUT:) Maintainer 2026-10-30: a layout saves
+    every option in the ERD''s bar: columns shown (keys only or all), edge style, snap, and whether orphans
+    show, as well as what is collapsed.'
+  scenario: 'Given an ERD arranged by hand and saved as layout Sales overview
+
+    When the page is reloaded and Sales overview is chosen
+
+    Then every table is where it was saved
+
+    When a table in the layout is renamed in the model
+
+    Then it keeps its position under its new name
+
+    When a new table is registered in a selected domain
+
+    Then the layout is unchanged and the table waits in the new since saved tray
+
+    When Automatic is chosen
+
+    Then the generated layout is shown, and Delete is unavailable'
+  related_reqs:
+  - REQ-2187
+  - REQ-518
+  stakeholders:
   - data-engineer

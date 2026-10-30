@@ -497,7 +497,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="rels-erd-modal"]',
     key: "step17",
     clickBefore: '[data-tour="rels-erd"]',
-    clickAfterNext: '[data-testid="erd-close"]',
+    clickAfterNext: '[data-tour="rels-erd"]',
   },
   {
     route: "/security/roles",

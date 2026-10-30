@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Apri {{successor}}",
     "contract": {
       "label": "Contratti dati",
-      "hint": "Il contratto di ogni porta di output: ciò che promette, con una versione propria",
+      "hint": "Il contratto di ogni porta di output: ciò che dichiara, con una versione propria",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Proposto",
@@ -177,8 +177,8 @@
       "versionLabel": "Versione del contratto",
       "statusLabel": "Stato del contratto",
       "descriptionLabel": "A cosa serve",
-      "columnsLabel": "Colonne promesse",
-      "columnsHelp": "Smettere di promettere una colonna, o cambiarne il tipo, richiede una nuova versione.",
+      "columnsLabel": "Colonne",
+      "columnsHelp": "Rimuovere una colonna, o cambiarne il tipo, richiede una nuova versione.",
       "requiredLabel": "Mai nullo",
       "slaLabel": "Livelli di servizio",
       "slaProperty": "Proprietà",
@@ -248,9 +248,9 @@
       "draftWarning": "Bozza: non ancora in vigore",
       "card": {
         "details": "Dettagli",
-        "fields": "Campi promessi",
+        "fields": "Colonne",
         "sla": "SLA e aggiornamento",
-        "quality": "Promesse di qualità",
+        "quality": "Promesse",
         "consumers": "Consumatori",
         "versions": "Versioni e modifiche"
       }

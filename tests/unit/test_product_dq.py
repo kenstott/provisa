@@ -42,6 +42,10 @@ def _checker(cid: int, checked: int, owner: str | None, columns: tuple[str, ...]
             "alias": None,
         },
         "rule_columns": list(columns),
+        "rules": [
+            {"check_type": "expect_column_values_to_not_be_null", "column_name": c, "args": {}}
+            for c in columns
+        ],
         "latest_outcome": "pass",
         "latest_run_at": None,
     }
@@ -86,6 +90,9 @@ def test_an_entry_names_its_checker_owner_and_latest_run() -> None:
         "owner_product_id": "p1",
         "checked_table_id": MEMBER,
         "checked_table": {"id": MEMBER, "domain_id": "sales", "table_name": "t1", "alias": None},
+        "rules": [
+            {"check_type": "expect_column_values_to_not_be_null", "column_name": "id", "args": {}}
+        ],
         "latest_outcome": "pass",
         "latest_run_at": None,
     }

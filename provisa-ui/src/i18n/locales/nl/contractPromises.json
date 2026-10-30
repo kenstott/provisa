@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "Geldt voor",
+      "check": "Controle",
+      "details": "Details",
+      "result": "Laatste resultaat"
+    },
+    "level": {
+      "table": "Tabel",
+      "row": "Rij"
+    },
+    "check": {
+      "notNull": "Niet leeg",
+      "unique": "Uniek",
+      "allowedValues": "Toegestane waarden",
+      "pattern": "Patroonovereenkomst",
+      "valueRange": "Waardebereik",
+      "textLength": "Tekstlengte",
+      "average": "Bereik van het gemiddelde",
+      "distinctCount": "Verschillende waarden",
+      "rowCount": "Aantal rijen",
+      "columnOrder": "Kolomvolgorde",
+      "unexpectedRows": "Geen onverwachte rijen",
+      "missing": "Geen ontbrekende waarden",
+      "valid": "Geldige waarden",
+      "duplicate": "Geen duplicaten",
+      "aggregate": "Aggregatie",
+      "freshness": "Actualiteit",
+      "failedRows": "Geen mislukte rijen"
+    },
+    "threshold": {
+      "eq": "Moet {{value}} zijn",
+      "ne": "Mag niet {{value}} zijn",
+      "gt": "Groter dan {{value}}",
+      "gte": "Minstens {{value}}",
+      "lt": "Kleiner dan {{value}}",
+      "lte": "Hoogstens {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "Van {{min}} tot {{max}}",
+      "atLeast": "Minstens {{value}}",
+      "atMost": "Hoogstens {{value}}",
+      "oneOf": "Een van {{values}}",
+      "matches": "Komt overeen met {{pattern}}",
+      "greater": "{{a}} groter dan {{b}}",
+      "orEqual": "{{a}} minstens {{b}}",
+      "query": "Onverwachte rijen: {{query}}",
+      "expression": "Mislukte rijen: {{expression}}",
+      "mostly": "Minstens {{percent}}% van de rijen",
+      "alsoMissing": "Ook ontbrekend: {{values}}",
+      "minLength": "Minstens {{value}} tekens",
+      "maxLength": "Hoogstens {{value}} tekens"
+    },
+    "aggregate": {
+      "avg": "Gemiddelde",
+      "sum": "Som",
+      "min": "Minimum",
+      "max": "Maximum",
+      "minLength": "Kortste lengte",
+      "maxLength": "Langste lengte",
+      "avgLength": "Gemiddelde lengte"
+    }
+  }
+}

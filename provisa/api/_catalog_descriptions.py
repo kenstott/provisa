@@ -62,6 +62,9 @@ _META: dict[str, str] = {
     # REQ-2125
     "data_products": "Every data product — one row per product with its own fields; its domain, "
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
+    # REQ-2188
+    "metric_definitions": "Every governed metric — a named aggregate expression with no grain of its own, "
+    "the roles that read it, and the fact it was registered from",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
@@ -261,6 +264,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "support_contact": "Who to contact for support",
         "custom_properties": "The product's own named properties",
         "created_at": "When the product was created",
+    },
+    # REQ-2188
+    "metric_definitions": {
+        "name": "Metric name, unique across the model",
+        "expression": "The aggregate SQL expression over semantic table.column references",
+        "datatype": "The type the expression yields",
+        "description": "What the metric measures",
+        "ai_context": "Definition text written for AI consumers",
+        "visible_to": "Roles that may read the metric",
+        "from_fact": "The fact spec the metric was registered from, when it was",
     },
     "table_columns": {
         "id": "Surrogate key for the column registration",

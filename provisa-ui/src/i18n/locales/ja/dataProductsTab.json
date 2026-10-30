@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} を開く",
     "contract": {
       "label": "データコントラクト",
-      "hint": "各出力ポートのコントラクト：独自のバージョンで約束する内容",
+      "hint": "各出力ポートのコントラクト：独自のバージョンで宣言する内容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "提案中",
@@ -177,8 +177,8 @@
       "versionLabel": "コントラクトのバージョン",
       "statusLabel": "コントラクトのステータス",
       "descriptionLabel": "目的",
-      "columnsLabel": "約束する列",
-      "columnsHelp": "列の約束をやめる、または型を変えるには新しいバージョンが必要です。",
+      "columnsLabel": "列",
+      "columnsHelp": "列を削除する、または型を変えるには新しいバージョンが必要です。",
       "requiredLabel": "NULL なし",
       "slaLabel": "サービスレベル",
       "slaProperty": "プロパティ",
@@ -248,9 +248,9 @@
       "draftWarning": "下書き: まだ有効ではありません",
       "card": {
         "details": "詳細",
-        "fields": "約束されたフィールド",
+        "fields": "列",
         "sla": "SLA と鮮度",
-        "quality": "品質の約束",
+        "quality": "約束",
         "consumers": "コンシューマー",
         "versions": "バージョンと変更"
       }

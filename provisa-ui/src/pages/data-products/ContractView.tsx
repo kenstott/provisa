@@ -16,19 +16,17 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
 import type { ContractVersion } from "../../types/admin";
 import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
-import { tableSqlRef } from "../../naming";
 import { DetailCard } from "./DetailCard";
-import { ConsumersList, OutcomeBadge } from "./dataProductDq";
-import { modelName } from "./productCore";
+import { ConsumersList } from "./dataProductDq";
+import { PromisesTable } from "./PromisesTable";
 
 // The contract's cards flow in columns this wide, as the product's own do; the Promises card runs
-// the panel's full width beneath them, its items flowing in columns of the same width.
+// the panel's full width beneath them, its promises a table.
 const COLUMN_WIDTH = "320px";
 const COLUMN_GAP = "var(--mantine-spacing-sm)";
 
@@ -254,47 +252,6 @@ function Versions({ versions, tableId }: { versions: ContractVersion[]; tableId:
   );
 }
 
-/** Each quality rule, with the property it is on where it is on one. */
-function qualityRules(contract: OdcsContract): OdcsRecord[] {
-  return (contract.schema ?? []).flatMap((object) => [
-    ...(object.quality ?? []),
-    ...(object.properties ?? []).flatMap((p) =>
-      (p.quality ?? []).map((rule) => ({ property: p.name, ...rule })),
-    ),
-  ]);
-}
-
-/** One promise, kept whole in its column: what it claims, the dataset it covers and its latest
- * outcome; it opens that outcome's rows in the SQL page. */
-function PromiseItem({ check, testId }: { check: ProductDqEntry; testId: string }) {
-  const navigate = useNavigate();
-  const results = tableSqlRef({
-    domainId: check.domain_id,
-    tableName: check.table_name,
-    alias: check.alias,
-  });
-  return (
-    <Stack
-      gap={2}
-      data-testid={testId}
-      role="button"
-      tabIndex={0}
-      onClick={() => navigate("/sql", { state: { sql: `select * from ${results}`, autoRun: true } })}
-      style={{ breakInside: "avoid", cursor: "pointer", marginBottom: COLUMN_GAP, minWidth: 0 }}
-    >
-      <Text size="sm" fw={500} style={{ overflowWrap: "anywhere" }}>
-        {check.description || modelName(check)}
-      </Text>
-      <Text size="xs" ff="monospace" c="var(--text-muted)" style={{ overflowWrap: "anywhere" }}>
-        {modelName(check)} · {modelName(check.checked_table)}
-      </Text>
-      <Group gap={6}>
-        <OutcomeBadge outcome={check.latest_outcome} />
-      </Group>
-    </Stack>
-  );
-}
-
 export function ContractView({
   contract,
   versions,
@@ -316,7 +273,6 @@ export function ContractView({
   const notDeclared = t("dataProductsTab.contract.notDeclared");
   const object = contract.schema?.[0];
   const properties = object?.properties ?? [];
-  const rules = qualityRules(contract);
   const sla = contract.slaProperties ?? [];
   const price = contract.price;
   const custom = contract.customProperties ?? [];
@@ -451,26 +407,17 @@ export function ContractView({
         )}
       </div>
       <DetailCard {...card("quality")} wide>
-        <Stack gap={4}>
-          {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
-          {promises && promises.length > 0 && (
-            <div data-testid={`data-contract-promises-${tableId}`}>
-              <Text size="sm" fw={500} mb="xs">
-                {t("dataProductCore.promises", { count: promises.length })}
-              </Text>
-              <div style={{ columnWidth: COLUMN_WIDTH, columnGap: COLUMN_GAP }}>
-                {promises.map((c) => (
-                  <PromiseItem
-                    key={c.checker_table_id}
-                    check={c}
-                    testId={`data-contract-promises-${tableId}-item-${c.checker_table_id}`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          <Records name="quality" items={rules} />
-        </Stack>
+        {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
+        {promises && promises.length > 0 ? (
+          <div data-testid={`data-contract-promises-${tableId}`}>
+            <Text size="sm" fw={500} mb="xs">
+              {t("dataProductCore.promises", { count: promises.length })}
+            </Text>
+            <PromisesTable promises={promises} testId={`data-contract-promises-table-${tableId}`} />
+          </div>
+        ) : (
+          <NotDeclared />
+        )}
       </DetailCard>
     </div>
   );

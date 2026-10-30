@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} openen",
     "contract": {
       "label": "Datacontracten",
-      "hint": "Het contract van elke outputpoort: wat het belooft, in een eigen versie",
+      "hint": "Het contract van elke outputpoort: wat het declareert, in een eigen versie",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Voorgesteld",
@@ -177,8 +177,8 @@
       "versionLabel": "Contractversie",
       "statusLabel": "Contractstatus",
       "descriptionLabel": "Waarvoor het dient",
-      "columnsLabel": "Beloofde kolommen",
-      "columnsHelp": "Een kolom niet meer beloven, of het type ervan wijzigen, vraagt een nieuwe versie.",
+      "columnsLabel": "Kolommen",
+      "columnsHelp": "Een kolom verwijderen, of het type ervan wijzigen, vraagt een nieuwe versie.",
       "requiredLabel": "Nooit null",
       "slaLabel": "Serviceniveaus",
       "slaProperty": "Eigenschap",
@@ -248,9 +248,9 @@
       "draftWarning": "Concept: nog niet van kracht",
       "card": {
         "details": "Details",
-        "fields": "Beloofde velden",
+        "fields": "Kolommen",
         "sla": "SLA's & actualiteit",
-        "quality": "Kwaliteitsbeloften",
+        "quality": "Beloften",
         "consumers": "Afnemers",
         "versions": "Versies & wijzigingen"
       }
