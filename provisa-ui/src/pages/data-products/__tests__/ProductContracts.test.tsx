@@ -338,20 +338,25 @@ describe("a product's contracts list (REQ-2158)", () => {
 
   const LINK = "/data-products?product=pet_health";
 
-  it("warns of a breaking change not yet in force, naming its version", () => {
-    panel(3, LINK, [saved("1.0.0", "active"), saved("2.0.0", "draft", [REMOVED])]);
+  it("warns only of a breaking change not yet in force, naming its version", () => {
+    const { unmount } = panel(3, LINK, [
+      saved("1.0.0", "active"),
+      saved("2.0.0", "draft", [REMOVED]),
+    ]);
     expect(screen.getByTestId("data-contract-breaking-1")).toHaveTextContent(
       "Breaking change in v2.0.0, not yet in force",
     );
-  });
+    unmount();
 
-  it("does not warn of a breaking change once it is in force", () => {
-    panel(3, LINK, [saved("1.0.0", "active"), saved("2.0.0", "active", [REMOVED])]);
+    // In force, it is no longer ahead of anyone.
+    const inForce = panel(3, LINK, [saved("1.0.0", "active"), saved("2.0.0", "active", [REMOVED])]);
+    expect(screen.getByTestId("data-contract-row-1")).toBeInTheDocument();
     expect(screen.queryByTestId("data-contract-breaking-1")).toBeNull();
-  });
+    inForce.unmount();
 
-  it("does not warn of a change not yet in force that breaks nothing", () => {
+    // Not yet in force, but it breaks nothing.
     panel(3, LINK, [saved("1.0.0", "active"), saved("1.1.0", "proposed", [ADDED])]);
+    expect(screen.getByTestId("data-contract-row-1")).toBeInTheDocument();
     expect(screen.queryByTestId("data-contract-breaking-1")).toBeNull();
   });
 
@@ -399,19 +404,19 @@ describe("a product's contracts list (REQ-2158)", () => {
     ]);
     panel(3);
     fireEvent.click(screen.getByTestId("data-contract-item-1-toggle"));
-    expect(await screen.findByTestId("data-contract-version-row-1-2.0.0-changes")).toHaveTextContent(
-      "Field note removed, was TEXT",
-    );
+    expect(
+      await screen.findByTestId("data-contract-version-row-1-2.0.0-changes"),
+    ).toHaveTextContent("Field note removed, was TEXT");
     expect(screen.queryByTestId("data-contract-version-row-1-1.0.0-changes")).toBeNull();
 
     fireEvent.click(screen.getByTestId("data-contract-version-row-1-1.0.0-toggle"));
-    expect(await screen.findByTestId("data-contract-version-row-1-1.0.0-changes")).toHaveTextContent(
-      "Field age added, INTEGER",
-    );
+    expect(
+      await screen.findByTestId("data-contract-version-row-1-1.0.0-changes"),
+    ).toHaveTextContent("Field age added, INTEGER");
 
     fireEvent.click(screen.getByTestId("data-contract-version-row-1-0.1.0-toggle"));
-    expect(await screen.findByTestId("data-contract-version-row-1-0.1.0-no-changes")).toHaveTextContent(
-      "First version",
-    );
+    expect(
+      await screen.findByTestId("data-contract-version-row-1-0.1.0-no-changes"),
+    ).toHaveTextContent("First version");
   });
 });
