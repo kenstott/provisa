@@ -9,7 +9,7 @@
 
 # A targeted run of named tests on a branch: on request only, each run on its own runner, so a
 # change's own tests need no local machine. Nothing here is a landing gate. Tests that need the
-# compose stack (tests/integration) are refused by name: they run in the Integration suite
+# compose stack (tests/integration, steps, features, e2e) are refused by name: they run in the Integration suite
 # workflow's targeted run (its `tests` input).
 
 name: Focused Tests
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # A file under tests/integration needs the compose stack: collecting it starts the stack
+      # A file under tests/integration, steps, features or e2e needs the compose stack: collecting it starts the stack
       # and builds the Trino function plugin in Docker, and a failure there kills every xdist
       # worker (run 41107416131: INTERNALERROR, no tests ran). This job has neither the images
       # nor the lanes' setup, so it names the file and stops before any setup.
@@ -47,8 +47,8 @@ jobs:
           read -r -a tests <<< "$TESTS"
           refused=0
           for t in "${tests[@]}"; do
-            if [[ "$t" =~ (^|/)tests/integration(/|$) ]]; then
-              echo "::error::$t is an integration test: it needs the compose stack, which Focused Tests does not start. Run it with the Integration suite workflow, input tests=\"$t\"."
+            if [[ "$t" =~ (^|/)tests/(integration|steps|features|e2e)(/|$) ]]; then
+              echo "::error::$t is an integration, steps, features or e2e test: it needs the compose stack, which Focused Tests does not start. Run it with the Integration suite workflow, input tests=\"$t\"."
               refused=1
             fi
           done

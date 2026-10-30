@@ -1191,14 +1191,17 @@ def _refusal(tests: str):
         "tests/integration/test_x.py",
         "tests/unit/test_a.py tests/integration/test_x.py::test_one",
         "./tests/integration/sub/test_y.py",
+        "tests/steps/steps_security.py",
+        "tests/features/a.feature",
+        "tests/e2e/test_z.py::test_one",
     ],
 )
 def test_focused_tests_refuses_an_integration_file_by_name(tests):
     """An integration file is refused at once, named, with the run that does take it."""
     done = _refusal(tests)
     assert done.returncode == 1
-    named = next(t for t in tests.split() if "tests/integration" in t)
-    assert f"::error::{named} is an integration test" in done.stdout
+    named = next(t for t in tests.split() if not t.startswith("tests/unit"))
+    assert f"::error::{named} is an integration, steps, features or e2e test" in done.stdout
     assert "Integration suite workflow" in done.stdout
 
 
