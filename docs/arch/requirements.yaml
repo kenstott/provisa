@@ -90297,7 +90297,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     text form matches PostgreSQL: 2, not 2.0, and NaN, not nan. Server functions with nothing to act on
     answer as PostgreSQL does on a server so configured: pg_create_restore_point and pg_backup_start as
     wal_level minimal, slot and origin creation as max_replication_slots 0, lo_create as a read-only transaction,
-    pg_read_file as a role without pg_read_server_files.'
+    pg_read_file as a role without pg_read_server_files. (Amended 2026-10-29, FUNCTIONS ARE COMPILER PUSHDOWN:)
+    Maintainer 2026-10-30: pgwire function support is an improvement to compiler pushdown. A function is
+    expressed in the compiler and transpiler through the semantic IR, as SQL for each dialect, so every
+    transport and every engine that can run it gets it. A UDF is never implemented within the pgwire module.
+    Wire encoding stays in the encoder.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
