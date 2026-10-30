@@ -768,7 +768,7 @@ export function RelationshipsPage() {
         }}
         list={
           erd.on ? (
-            <ErdView page="relationships" onOpen={openFromErd} />
+            <ErdView page="relationships" search={relSearch} onOpen={openFromErd} />
           ) : (
             <>
               {/* As on Tables: every column keeps its width and a name stays on one line; what the

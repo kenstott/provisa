@@ -49,9 +49,12 @@ function ErdFocusBar({ resolved, onClear }: { resolved: ResolvedErdFocus; onClea
 
 export function ErdView({
   page,
+  search = "",
   onOpen,
 }: {
   page: "tables" | "relationships";
+  /** The page's filter box: highlights what matches and dims the rest; not part of the link. */
+  search?: string;
   /** Opens the panel of the page's own kind of item: a table's id on Tables, a relationship's on
    * Relationships. */
   onOpen: (id: string) => void;
@@ -92,6 +95,8 @@ export function ErdView({
           domains={domains}
           checkedDomains={resolved.shownDomains ?? narrowed}
           highlightTableIds={resolved.highlighted}
+          search={search}
+          page={page}
           onTableClick={(id) =>
             guard(() =>
               page === "tables"

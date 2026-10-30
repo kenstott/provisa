@@ -25,7 +25,7 @@ import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
 import { buildErdElements, erdJson } from "./erd-model";
-import { highlightErdTables } from "./erd-focus";
+import { useErdMarks } from "./useErdMarks";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent } from "../graph/cytoscape-types";
@@ -69,6 +69,8 @@ export function ErdPanel({
   domains,
   checkedDomains,
   highlightTableIds = NO_TABLES,
+  search = "",
+  page = "tables",
   onTableClick,
   onRelationshipClick,
 }: ErdPanelProps) {
@@ -129,17 +131,7 @@ export function ErdPanel({
     body: "",
   });
 
-  // The tables highlighted and fitted into view (REQ-2187), and those the diagram held: applied
-  // when they change, and again by every layout, which draws the nodes anew.
-  const highlightRef = useRef(highlightTableIds);
-  const [highlighted, setHighlighted] = useState<number[]>([]);
-  const applyHighlight = useCallback((cy: CyInstance) => {
-    setHighlighted(highlightErdTables(cy, highlightRef.current));
-  }, []);
-  useEffect(() => {
-    highlightRef.current = highlightTableIds;
-    if (cyRef.current) applyHighlight(cyRef.current);
-  }, [highlightTableIds, applyHighlight]);
+  const { highlighted, applyHighlight } = useErdMarks(cyRef, highlightTableIds, search, page);
 
   // The host's handlers, read when a click comes: the diagram is not rebuilt when they change.
   const clicks = useRef({ onTableClick, onRelationshipClick });
