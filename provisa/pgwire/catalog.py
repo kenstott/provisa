@@ -24,6 +24,7 @@ from __future__ import annotations
 import functools
 import logging
 import re
+from typing import Any
 
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
@@ -172,6 +173,17 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "setval",
         "plpgsql_validator",
         "fmgr_c_validator",
+        "bpchar",
+        "has_type_privilege",
+        "pg_available_extensions",
+        "json_to_record",
+        "pg_blocking_pids",
+        "pg_current_logfile",
+        "pg_get_keywords",
+        "pg_get_replica_identity_index",
+        "pg_get_viewdef",
+        "pg_stat_reset_single_table_counters",
+        "ts_token_type",
     }
 )
 
@@ -397,9 +409,28 @@ def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:
         by_name = dict(reversed(declared))
         pg_types = [by_name.get(name, "") for name in names]
     return [
-        pg_type if pg_type and same_wire_form(pg_type, duck_type) else duck_type
+        pg_type
+        if pg_type and (pg_type == "record" or same_wire_form(pg_type, duck_type))
+        else duck_type
         for pg_type, duck_type in zip(pg_types, served)
     ]
+
+
+def _record_field(value: Any) -> str:
+    """One field as record_out writes it: nothing for NULL, quoted where it must be."""
+    if value is None:
+        return ""
+    text = {True: "t", False: "f"}.get(value, str(value)) if isinstance(value, bool) else str(value)
+    if text == "" or any(c in text for c in '",\\() \t\n'):
+        return '"' + text.replace("\\", "\\\\").replace('"', '""') + '"'
+    return text
+
+
+def _record_text(value: Any) -> Any:
+    """A record value (the engine's struct) in PostgreSQL's text form."""
+    if not isinstance(value, dict):
+        return value
+    return "(" + ",".join(_record_field(v) for v in value.values()) + ")"
 
 
 def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
@@ -491,11 +522,6 @@ def answer(sql: str, role_id: str, state):  # REQ-532
             )
         return _handle_typeinfo_tree(oids)
 
-    if "pg_get_keywords" in stripped.lower():
-        # pg_get_keywords() is a SRF — rewriter turns it into scalar NULL, breaking FROM clause.
-        # DBeaver uses it only for SQL autocomplete keyword exclusion; return empty string.
-        return QueryResult(rows=[(None,)], column_names=["string_agg"], column_types=["VARCHAR"])
-
     rewritten = stripped
     cur = None
     try:
@@ -518,6 +544,12 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         col_types = _declared_types(
             stripped, col_names, [str(desc[1]) for desc in (cur.description or [])]
         )
+        records = [i for i, declared in enumerate(col_types) if declared == "record"]
+        if records:
+            rows = [
+                tuple(_record_text(v) if i in records else v for i, v in enumerate(row))
+                for row in rows
+            ]
         return QueryResult(rows=rows, column_names=col_names, column_types=col_types)
     except Exception as exc:
         log.error(
