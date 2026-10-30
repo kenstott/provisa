@@ -44,6 +44,7 @@ from tests.integration.metadata_export_server import (
     SCHEMA,
     SOURCE,
     VIEW,
+    approve_terms,
     publish,
     published_server,
     refused,
@@ -98,6 +99,7 @@ async def published():
     """The production publish (REQ-2119): a Provisa server saves Atlas as its target and
     publishes over the admin API. The server stays up for the test, which republishes."""
     async with published_server(ORG) as client:
+        await approve_terms(client)
         result = await publish(client, _target())
         assert result["ok"], refused(result)
         yield client, result

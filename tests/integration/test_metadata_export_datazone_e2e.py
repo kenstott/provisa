@@ -28,7 +28,6 @@ import os
 import time
 import uuid
 
-import httpx
 import pytest
 
 from provisa.api.metadata_export.datazone import PRODUCT_FORM, TABLE_FORM, TABLE_TYPE
@@ -38,6 +37,7 @@ from tests.integration.metadata_export_server import (
     GLOSSARY_DEFINITION,
     GLOSSARY_TERM,
     PRODUCT_FIELDS,
+    approve_terms,
     publish,
     published_server,
     refused,
@@ -154,24 +154,13 @@ def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict
     return product, assets, listing
 
 
-async def _approve_terms(client: httpx.AsyncClient, names: tuple[str, ...]) -> None:
-    """The run's terms approved, as a steward does: a config-declared term starts as a draft and
-    only an approved term publishes (REQ-1387)."""
-    listed = await client.get("/admin/glossary/terms")
-    assert listed.status_code == 200, listed.text
-    ids = {t["name"]: t["id"] for t in listed.json()}
-    for name in names:
-        approved = await client.post(f"/admin/glossary/terms/{ids[name]}/approve")
-        assert approved.status_code == 200, approved.text
-
-
 @pytest.fixture(scope="module")
 async def published():
     creds = _credentials()
     product = f"provisa_e2e_{uuid.uuid4().hex[:8]}"
     name = f"{PRODUCT_FIELDS['name']} {product}"
     async with published_server(ORG, with_view=False, product=product, product_name=name) as client:
-        await _approve_terms(client, (GLOSSARY_TERM, CLASS_TERM))
+        await approve_terms(client)
         result = await publish(
             client,
             {

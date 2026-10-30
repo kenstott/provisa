@@ -35,10 +35,23 @@ _BY_OPERATION = ("/dataProducts/", "/glossaries/")
 
 class FakeDataplex:
     """Resources by name; ``linger`` names stay after their delete; ``refuse`` answers a delete
-    with that status; ``op_error`` ends a delete's operation in an error."""
+    with that status; ``op_error`` ends a delete's operation in an error; ``throttle`` answers the
+    first that many reads of an operation 429, with ``retry_after`` as its Retry-After."""
 
-    def __init__(self, names, *, linger=(), refuse=None, op_error=None, link_page=1):
+    def __init__(
+        self,
+        names,
+        *,
+        linger=(),
+        refuse=None,
+        op_error=None,
+        link_page=1,
+        throttle=0,
+        retry_after=None,
+    ):
         self.names = set(names)
+        self.throttle = throttle
+        self.retry_after = retry_after
         self.linger = set(linger)
         self.refuse = refuse
         self.op_error = op_error
@@ -74,6 +87,10 @@ class FakeDataplex:
                 return httpx.Response(200, json={"name": op, "done": False})
             return httpx.Response(200, json={})
         if name in self.operations:
+            if self.throttle:
+                self.throttle -= 1
+                headers = {"Retry-After": self.retry_after} if self.retry_after else {}
+                return httpx.Response(429, headers=headers, json={"error": {"code": 429}})
             self.operations[name] += 1
             body: dict = {"name": name, "done": self.operations[name] >= 2}
             if body["done"] and self.op_error:
@@ -115,6 +132,19 @@ def _no_sleep(_s: float) -> None:
 @pytest.fixture(autouse=True)
 def _instant_polls(monkeypatch):
     monkeypatch.setattr(dataplex_catalog.time, "sleep", _no_sleep)
+
+
+@pytest.fixture
+def waits(monkeypatch) -> list[float]:
+    """Every wait but the operation poll's own interval, in order."""
+    seen: list[float] = []
+
+    def record(seconds: float) -> None:
+        if seconds != dataplex_catalog._POLL_S:
+            seen.append(seconds)
+
+    monkeypatch.setattr(dataplex_catalog.time, "sleep", record)
+    return seen
 
 
 def test_an_entry_link_answered_with_itself_is_read_back_gone_not_polled():
@@ -204,3 +234,20 @@ def test_a_product_goes_after_its_assets():
         dataplex_catalog.remove_product(http, PRODUCT)
     assert fake.deletes() == [ASSET, PRODUCT]
     assert fake.names == set()
+
+
+def test_a_throttled_operation_poll_waits_as_long_as_dataplex_says_then_finishes(waits):
+    """Run 40970287308: the teardown's operation poll answered 429 and failed the teardown of a
+    delete that was under way. A 429 is Dataplex asking the caller to wait (Retry-After)."""
+    fake = FakeDataplex([PRODUCT], throttle=2, retry_after="3")
+    with fake.client() as http:
+        dataplex_catalog.delete(http, PRODUCT)
+    assert waits == [3.0, 3.0]
+    assert PRODUCT not in fake.names
+
+
+def test_a_throttled_read_without_retry_after_backs_off_1_2_4_8_16_then_raises(waits):
+    fake = FakeDataplex([PRODUCT], throttle=99)
+    with fake.client() as http, pytest.raises(httpx.HTTPStatusError, match="429"):
+        dataplex_catalog.delete(http, PRODUCT)
+    assert waits == [1.0, 2.0, 4.0, 8.0, 16.0]
