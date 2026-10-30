@@ -403,9 +403,15 @@ export interface FrameData {
   /** What expanding, dragging or dropping onto the frame merged into it, by the resource or class
    *  each was asked of. Kept apart from the answer, so an expansion can be taken back. */
   sparqlExpansions?: Record<string, Triple[]>;
+  /** What selecting a node asked of its resource (a DESCRIBE), by the resource: its literal triples
+   *  for the Properties panel, or the error the request was refused with. Never drawn. */
+  sparqlDescribed?: Record<string, SparqlDescribed>;
   /** What the last merge said: why it was refused, or the resource it found nothing more of. */
   sparqlMerge?: { error?: string; nothingMore?: string };
 }
+
+/** What a DESCRIBE of a selected node answered: the triples whose object is a literal, or why not. */
+export type SparqlDescribed = { literals: Triple[] } | { error: string };
 
 /** One statement's result, of a frame whose query holds several. */
 export type FrameStatement = Pick<
@@ -424,3 +430,18 @@ export type FrameStatement = Pick<
   | "sparqlTriples"
   | "sparqlPairing"
 > & { status: "done" | "error" };
+
+// The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
+// they don't appear twice (degreeCentrality was the visible duplicate).
+export const INJECTED_PROPS = new Set([
+  "l1Cluster",
+  "l2Cluster",
+  "l3Cluster",
+  "scl1",
+  "scl2",
+  "scl3",
+  "degIn",
+  "degOut",
+  "degTotal",
+  "degreeCentrality",
+]);

@@ -163,7 +163,9 @@ export function SparqlVocabularyPanel({
       })),
       // A term's name is its IRI's, whatever a column calls it: one pill, with its classes listed.
       terms: byName(
-        oncePerIri(vocabulary.predicates.filter((x) => x.kind === "term" && termVisible(x.domains))),
+        oncePerIri(
+          vocabulary.predicates.filter((x) => x.kind === "term" && termVisible(x.domains)),
+        ),
         (x) => c(x.iri),
       ).map((x) => {
         const term = termName(x.iri, named) ?? c(x.iri);
@@ -266,23 +268,58 @@ export function SparqlVocabularyPanel({
           t("sparqlVocabulary.classes"),
           shown.classes.length === 0
             ? empty
-            : shown.classes.map((x) => (
-                <Pill
-                  key={x.iri}
-                  text={x.shown}
-                  color={colorOverrides[x.shown] ?? labelColor(x.shown)}
-                  muted={x.parents.length > 0 ? `⊂ ${x.parents.join(", ")}` : undefined}
-                  tip={[
-                    x.iri,
-                    x.kind === "term"
-                      ? t("sparqlVocabulary.classTerm", { term: x.term ?? "" })
-                      : t("sparqlVocabulary.tableClass"),
-                  ].join(" · ")}
-                  onClick={() => onPick({ kind: "class", iri: x.iri })}
-                  dragged={x.iri}
-                  testId={`sparql-class-${x.shown}`}
-                />
-              )),
+            : (() => {
+                const pill = (x: (typeof shown.classes)[number], text: string) => (
+                  <Pill
+                    key={x.iri}
+                    text={text}
+                    color={colorOverrides[x.shown] ?? labelColor(x.shown)}
+                    muted={x.parents.length > 0 ? `⊂ ${x.parents.join(", ")}` : undefined}
+                    tip={[
+                      x.shown,
+                      x.iri,
+                      x.kind === "term"
+                        ? t("sparqlVocabulary.classTerm", { term: x.term ?? "" })
+                        : t("sparqlVocabulary.tableClass"),
+                    ].join(" · ")}
+                    onClick={() => onPick({ kind: "class", iri: x.iri })}
+                    dragged={x.iri}
+                    testId={`sparql-class-${x.shown}`}
+                  />
+                );
+                // A class by its prefix (pet-store:vets under pet-store), as properties go by class;
+                // one no prefix names (a full IRI) stands alone, whole.
+                const byPrefix = new Map<string, typeof shown.classes>();
+                const bare: typeof shown.classes = [];
+                for (const x of shown.classes) {
+                  const at = x.shown.startsWith("<") ? -1 : x.shown.indexOf(":");
+                  if (at <= 0) bare.push(x);
+                  else
+                    byPrefix.set(x.shown.slice(0, at), [
+                      ...(byPrefix.get(x.shown.slice(0, at)) ?? []),
+                      x,
+                    ]);
+                }
+                return (
+                  <>
+                    {bare.map((x) => pill(x, x.shown))}
+                    <Collapsibles id="sparql.vocabulary.classes">
+                      {[...byPrefix].map(([prefix, list]) => (
+                        <CollapsibleItem
+                          key={prefix}
+                          value={prefix}
+                          title={`${prefix} (${list.length})`}
+                          controlTestId={`sparql-class-prefix-${prefix}`}
+                        >
+                          <div className="graph-label-list">
+                            {list.map((x) => pill(x, x.shown.slice(prefix.length + 1)))}
+                          </div>
+                        </CollapsibleItem>
+                      ))}
+                    </Collapsibles>
+                  </>
+                );
+              })(),
         )}
         {section(
           "properties",

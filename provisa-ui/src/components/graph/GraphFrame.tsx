@@ -55,6 +55,7 @@ import { useFrameDerivedData } from "./frame/use-frame-derived-data";
 import { frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
 import { useSparqlExpansion } from "./frame/use-sparql-expansion";
+import { useSparqlNodeProperties } from "./frame/use-sparql-node-properties";
 import { groupableAttributes } from "./frame/frame-meta";
 import {
   GraphViewIcon,
@@ -122,6 +123,8 @@ interface GraphFrameProps {
   /** Merge what the model says of a resource into a SPARQL frame. ``toggle`` takes an expansion
    *  back where there is one; a drag only ever adds. */
   onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
+  /** Ask the model, once, for the properties of a SPARQL node that was selected and holds none. */
+  onDescribeResource?: (frameId: string, iri: string) => void;
 }
 
 export function GraphFrame({
@@ -155,6 +158,7 @@ export function GraphFrame({
   language = "cypher",
   sparqlPrefixes,
   onExpandResource,
+  onDescribeResource,
 }: GraphFrameProps) {
   const { t } = useTranslation();
   const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
@@ -330,6 +334,11 @@ export function GraphFrame({
 
   useAutoImpute(frame, autoImpute && language === "cypher", setOverlayData);
 
+  const { inspected, describeError } = useSparqlNodeProperties(
+    frame,
+    selected,
+    onDescribeResource,
+  );
   const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
@@ -825,7 +834,8 @@ export function GraphFrame({
             )}
             {inspectorVisible && (
               <Inspector
-                selected={selected}
+                selected={inspected}
+                describeError={describeError}
                 graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
                 overviewData={overviewData}
                 highlight={highlight}
