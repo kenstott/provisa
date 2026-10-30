@@ -1590,14 +1590,28 @@ def _typed(value: str, datatype: str | None) -> CypherExpr:
     return TypedLiteral(value, datatype)
 
 
+def _describe_construct(algebra: Any) -> str:
+    """The CONSTRUCT of a ``DESCRIBE <iri> ...``: each resource with every triple the model says
+    of it, read through its class's predicates as ``<iri> ?p ?o`` reads them. A DESCRIBE over a
+    pattern's variables is refused by name."""
+    resources = [t for t in algebra.PV if isinstance(t, URIRef)]
+    if len(resources) != len(algebra.PV):
+        raise SparqlRefused("A DESCRIBE of a variable is not supported; DESCRIBE a resource's IRI")
+    triples = [f"{r.n3()} ?p{i} ?o{i}" for i, r in enumerate(resources)]
+    where = " UNION ".join(f"{{ {t} }}" for t in triples)
+    return f"CONSTRUCT {{ {' . '.join(triples)} }} WHERE {{ {where} }}"
+
+
 def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
-    """``text``, a SPARQL SELECT, ASK or CONSTRUCT, as the graph IR, read against ``vocab``
-    (built from the label map ``lm``)."""
+    """``text``, a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE of a resource, as the graph IR, read
+    against ``vocab`` (built from the label map ``lm``)."""
     try:
         query = translateQuery(parseQuery(text))
     except Exception as exc:  # rdflib raises pyparsing's and its own errors alike
         raise SparqlRefused(f"The query is not SPARQL this endpoint reads: {exc}") from exc
     algebra = query.algebra
+    if algebra.name == "DescribeQuery":
+        return compile_sparql(_describe_construct(algebra), vocab, lm)
     form = {"SelectQuery": "SELECT", "AskQuery": "ASK", "ConstructQuery": "CONSTRUCT"}.get(
         algebra.name
     )

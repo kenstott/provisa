@@ -15,6 +15,24 @@
 import type { FrameData, GEdge, GNode } from "./graph-model";
 import { Neo4jExportModal } from "./Neo4jExportModal";
 import { SparqlExportModal } from "./SparqlExportModal";
+import { frameTriples } from "./sparql";
+import type { SparqlExportable } from "./sparqlExport";
+
+/** A SPARQL frame's export: a graph one query answers is asked of the endpoint again, as it is
+ * answered; a graph drawn from rows, or holding what was merged into it, is written from its
+ * triples. */
+function sparqlExportable(f: FrameData, prefixes: Record<string, string>): SparqlExportable[] {
+  if (f.status !== "done" || !f.sparqlForm) return [];
+  const own = { id: f.id, query: f.query, form: f.sparqlForm };
+  const merged = Object.keys(f.sparqlExpansions ?? {}).length > 0;
+  if (f.sparqlForm === "graph" && !merged) return [own];
+  const triples = frameTriples(f);
+  return [
+    triples.length > 0
+      ? { ...own, triples, prefixes }
+      : { ...own, unnamedEdges: f.sparqlPairing !== undefined },
+  ];
+}
 
 interface GraphExportModalProps {
   sparql: boolean;
@@ -23,6 +41,8 @@ interface GraphExportModalProps {
   /** Each frame's drawing as its canvas shows it, where it has one. */
   effective: Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>;
   roleHeader: string | undefined;
+  /** The prefixes a SPARQL graph's Turtle is written with. */
+  prefixes: Record<string, string>;
   onClose: () => void;
 }
 
@@ -31,16 +51,13 @@ export function GraphExportModal({
   frames,
   effective,
   roleHeader,
+  prefixes,
   onClose,
 }: GraphExportModalProps) {
   if (sparql)
     return (
       <SparqlExportModal
-        frames={frames.flatMap((f) =>
-          f.status === "done" && f.sparqlForm
-            ? [{ id: f.id, query: f.query, form: f.sparqlForm }]
-            : [],
-        )}
+        frames={frames.flatMap((f) => sparqlExportable(f, prefixes))}
         roleHeader={roleHeader}
         onClose={onClose}
       />

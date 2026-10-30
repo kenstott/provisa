@@ -39,7 +39,7 @@ export interface CyElement {
   position(pos: { x: number; y: number }): CyElement;
   source(): CyElement;
   target(): CyElement;
-  neighborhood(): CyCollection;
+  neighborhood(selector?: string): CyCollection;
   children(): CyNodeCollection;
   renderedPosition(): { x: number; y: number };
   renderedWidth(): number;

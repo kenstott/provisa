@@ -75,6 +75,43 @@ export function applyNodeSize(
 // The nodes the user placed, where they are, as fcose's fixedNodeConstraint: fcose moves a locked
 // node during its simulation and only the final write is refused, so the rest were laid out around
 // where the simulation had carried it, not where the user put it.
+/** Where each drawn node stands, by its own id, which outlives a change of its label. */
+export function nodePositions(cy: CyInstance): Map<number, { x: number; y: number }> {
+  const held = new Map<number, { x: number; y: number }>();
+  cy.nodes().forEach((n) => {
+    const gn = n.data("_node") as GNode | undefined;
+    if (gn) held.set(gn.id, { ...n.position() });
+  });
+  return held;
+}
+
+/** Puts each node of a new drawing where ``held`` has it, and each new node beside a neighbour that
+ * was held. The ids of the nodes that are new, for the layout to place. */
+export function restorePositions(
+  cy: CyInstance,
+  held: Map<number, { x: number; y: number }>,
+  spread: number,
+): Set<string> {
+  const fresh: CyElement[] = [];
+  cy.nodes().forEach((n) => {
+    const gn = n.data("_node") as GNode | undefined;
+    const position = gn && held.get(gn.id);
+    if (position) n.position(position);
+    else fresh.push(n);
+  });
+  for (const n of fresh) {
+    const beside = n.neighborhood("node").filter((nb: CyElement) => {
+      const gn = nb.data("_node") as GNode | undefined;
+      return gn !== undefined && held.has(gn.id);
+    });
+    if (beside.length === 0) continue;
+    const from = beside[0].position();
+    const angle = Math.random() * 2 * Math.PI;
+    n.position({ x: from.x + spread * Math.cos(angle), y: from.y + spread * Math.sin(angle) });
+  }
+  return new Set(fresh.map((n) => n.id() as string));
+}
+
 export function anchoredPositions(
   cy: CyInstance,
   anchored: Set<string>,
