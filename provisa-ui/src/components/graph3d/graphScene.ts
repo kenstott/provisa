@@ -143,6 +143,9 @@ export class GraphScene extends BaseScene<GraphHover> {
   private sized = 1;
   /** The labels' font size last set, in px. */
   private labelSize = 0;
+  /** How far the 3D camera stood from its target at the resting view (resetView): labels are at
+   * their resting size there. */
+  private restDistance = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -204,6 +207,8 @@ export class GraphScene extends BaseScene<GraphHover> {
       this.fitOrtho();
     }
     this.flyTo(view.dir.clone().multiplyScalar(this.fitDistance()), centre, instant, view.up);
+    // Where the camera comes to rest: the orbit controls hold it within their farthest distance.
+    this.restDistance = Math.min(this.fitDistance(), this.controls.maxDistance);
   }
 
   focus(id: string) {
@@ -296,8 +301,9 @@ export class GraphScene extends BaseScene<GraphHover> {
    * the orthographic camera's zoom). */
   private zoomNow(): number {
     if (this.flat) return this.ortho.zoom;
+    // Before the first resting view, and with the camera on its target, the resting size.
     const d = this.camera.position.distanceTo(this.controls.target);
-    return d > 0 ? this.fitDistance() / d : 1;
+    return this.restDistance > 0 && d > 0 ? this.restDistance / d : 1;
   }
 
   /** Labels at a readable size that follows the zoom (labelPx), never shrunk to fit; no two drawn
