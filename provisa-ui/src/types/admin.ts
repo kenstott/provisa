@@ -10,7 +10,6 @@
 
 /** Types matching provisa/api/admin/types.py */
 
-import type { ContractVersion } from "../api/dataProductContracts";
 import type { MaskEntry } from "../lib/masks";
 import type { LifecycleStatus } from "./lifecycle";
 import { domainToSqlName } from "../naming";
@@ -146,6 +145,24 @@ export interface ContractTerms {
 }
 
 // REQ-2158: a product member's contract, its output port, versioned on its own.
+/** One difference of a contract version from the one before it (REQ-2158). */
+export interface ContractChange {
+  kind: string;
+  subject: string;
+  before: string | null;
+  after: string | null;
+  breaking: boolean;
+}
+
+/** A saved version of a contract, as the store keeps it (REQ-2158). */
+export interface ContractVersion {
+  contract: { version: string; status: string };
+  changes: ContractChange[];
+  saved_at: string;
+  /** Who saved it; null when the system did (a configuration load). */
+  saved_by: string | null;
+}
+
 export interface DataContract {
   tableId: number;
   sourceId: string;

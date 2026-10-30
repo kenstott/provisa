@@ -18,11 +18,11 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type {
-  ContractVersion,
   OdcsContract,
   OdcsProperty,
   OdcsRecord,
 } from "../../api/dataProductContracts";
+import type { ContractVersion } from "../../types/admin";
 import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
 import { DetailCard } from "./DetailCard";

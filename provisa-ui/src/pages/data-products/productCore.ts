@@ -34,7 +34,7 @@ import {
   type ProductRow as GraphProductRow,
   type TermEdgeRow,
 } from "../../components/graph3d/productGraphData";
-import type { ContractVersion } from "../../api/dataProductContracts";
+import type { ContractVersion } from "../../types/admin";
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataContract, DataProduct } from "../../types/admin";

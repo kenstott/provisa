@@ -23,9 +23,9 @@ import { TriangleAlert } from "lucide-react";
 import {
   fetchContractVersions,
   fetchProductContract,
-  type ContractVersion,
   type OdcsContract,
 } from "../../api/dataProductContracts";
+import type { ContractVersion } from "../../types/admin";
 import type { ProductLineage } from "../../api/lineage";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import { Tip } from "../../components/Tip";

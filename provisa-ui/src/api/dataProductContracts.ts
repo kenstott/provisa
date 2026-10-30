@@ -12,6 +12,7 @@
 // declared or derived -- the one document a catalog pulls, read by the product's contracts list.
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import type { ContractVersion } from "../types/admin";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -78,24 +79,6 @@ export async function fetchProductContract(
     throw new Error(serverMessage(data, requestFailed("Product contract", resp.status)));
   }
   return resp.json();
-}
-
-/** One difference of a contract version from the one before it (REQ-2158). */
-export interface ContractChange {
-  kind: string;
-  subject: string;
-  before: string | null;
-  after: string | null;
-  breaking: boolean;
-}
-
-/** A saved version of a contract, as the store keeps it (REQ-2158). */
-export interface ContractVersion {
-  contract: { version: string; status: string };
-  changes: ContractChange[];
-  saved_at: string;
-  /** Who saved it; null when the system did (a configuration load). */
-  saved_by: string | null;
 }
 
 /** One output port's saved versions, oldest first: read with its contract when its row opens. */
