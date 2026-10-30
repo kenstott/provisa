@@ -379,3 +379,49 @@ def test_a_pattern_comprehension_carried_by_a_with_is_its_paths(monkeypatch):
     rows = s.run("MATCH (n)-->(b) WITH [p = (n)-->() | p] AS ps, count(b) AS c RETURN ps, c")
     got = sorted([[n["labels"] for n in p["nodes"]] for p in r["ps"]] for r in rows)
     assert got == [[[["A"], ["B"]]], [[["B"], ["C"]]]]
+
+
+# --- a session hop's ends are the session's own and those its relationships end at ---------------
+
+
+def test_a_session_hop_reads_no_model_label_its_relationships_do_not_end_at(monkeypatch):
+    # TCK Create2 [14], Create6 [8]-[14]: the read after CREATE ()-[r:R]->() finds r again over
+    # the session's relationships; a model label no session relationship ends at is no end of
+    # the hop -- read on both ends, governance refuses it as two model tables joined by nothing
+    # it knows (V002).
+    s = Session(
+        monkeypatch, {"Traces": ({"id": "bigint"}, "(1)"), "Lineage": ({"id": "bigint"}, "(2)")}
+    )
+    s.run("CREATE ()-[:R {num: 42}]->()")
+    sql = s.sql("MATCH ()-[r:R]->() RETURN r.num AS num")
+    assert '"traces"' not in sql and '"lineage"' not in sql
+    assert s.run("MATCH ()-[r:R]->() RETURN r.num AS num") == [{"num": 42}]
+
+
+def test_a_session_hop_reads_a_model_label_a_session_relationship_ends_at(monkeypatch):
+    s = Session(
+        monkeypatch, {"Traces": ({"id": "bigint"}, "(1)"), "Lineage": ({"id": "bigint"}, "(2)")}
+    )
+    s.run("MATCH (t:Traces) CREATE (t)-[:R {num: 7}]->()")
+    sql = s.sql("MATCH (a)-[r:R]->() RETURN a.id AS id, r.num AS num")
+    assert '"lineage"' not in sql
+    assert s.run("MATCH (a)-[r:R]->() RETURN a.id AS id, r.num AS num") == [{"id": 1, "num": 7}]
+
+
+def test_a_pattern_of_undirected_session_hops_reads_no_model_label(monkeypatch):
+    # TCK WithWhere2 [1]: five undirected hops over the session's relationships; each end read as
+    # a union of every model label the role reads made the read outrun its request timeout.
+    s = Session(
+        monkeypatch, {"Traces": ({"id": "bigint"}, "(1)"), "Lineage": ({"id": "bigint"}, "(2)")}
+    )
+    s.run(
+        "CREATE (a:A), (b:B {id: 1}), (c:C {id: 2}), (d:D) "
+        "CREATE (a)-[:T]->(b), (a)-[:T]->(c), (a)-[:T]->(d), (b)-[:T]->(c), (b)-[:T]->(d), "
+        "(c)-[:T]->(d)"
+    )
+    query = (
+        "MATCH (a)--(b)--(c)--(d)--(a), (b)--(d) WITH a, c, d WHERE a.id = 1 AND c.id = 2 RETURN d"
+    )
+    sql = s.sql(query)
+    assert '"traces"' not in sql and '"lineage"' not in sql
+    assert sorted(r["d"]["labels"] for r in s.answer(query)) == [["A"], ["D"]]

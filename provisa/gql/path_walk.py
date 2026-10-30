@@ -575,6 +575,10 @@ class SessionWalkMixin:  # REQ-348
             )
             steps = exp.Union(this=steps, expression=back, distinct=False)
         h, ns, nt, p = "_h", "_hs", "_ht", "_hp"
+        # Each end is a node of the session or of a model label a session relationship ends at
+        # (_node_objects with no further label): a hop takes a session relationship, which ends
+        # at no other node, and a model label read on both ends with nothing relating them is
+        # refused (V002).
         src_json, tgt_json = _col(_NODE_OBJECT, ns), _col(_NODE_OBJECT, nt)
         # The edge's own start and end, whichever way the hop reads it.
         start = exp.Case(
@@ -621,12 +625,12 @@ class SessionWalkMixin:  # REQ-348
             )
             .from_(exp.alias_(exp.Subquery(this=steps), h))
             .join(
-                exp.alias_(self._node_objects(walk, None), ns),
+                exp.alias_(self._node_objects(walk, set()), ns),
                 on=exp.EQ(this=_col(GRAPH_ID, ns), expression=_col("__near", h)),
                 join_type="INNER",
             )
             .join(
-                exp.alias_(self._node_objects(walk, None), nt),
+                exp.alias_(self._node_objects(walk, set()), nt),
                 on=exp.EQ(this=_col(GRAPH_ID, nt), expression=_col("__far", h)),
                 join_type="INNER",
             )
