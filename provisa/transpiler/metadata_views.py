@@ -27,10 +27,11 @@ SCOPE_COLUMN = "provisa_table_id"
 
 
 def catalog_view_name(schema: str, name: str) -> str:
-    """The meta table that is ``schema.name``, which is all a client's name needs: a pg_catalog
-    relation's own name, an information_schema relation's prefixed, its names being meta's too
-    (domains, roles)."""
-    return name if schema == _PG else f"is_{name}"
+    """The meta table that is ``schema.name``, which is all a client's name needs. Each has a
+    prefix: an information_schema name is meta's too (domains, roles), and a view named as a
+    pg_catalog relation would be that relation to anything naming it unqualified, the system
+    catalog coming first on every search path."""
+    return f"{'catalog' if schema == _PG else 'is'}_{name}"
 
 
 CATALOG_VIEW_NAMES: tuple[str, ...] = tuple(
@@ -39,11 +40,14 @@ CATALOG_VIEW_NAMES: tuple[str, ...] = tuple(
 #: Registered, and read by the forms, beside the relations themselves.
 NEUTRAL_VIEW_NAMES: tuple[str, ...] = ("table_details", "column_details", "table_keys")
 
+#: The views of schemas: every role reads meta's domains, whose rows are not scoped.
+LISTS_EVERY_SCHEMA: frozenset[str] = frozenset({"catalog_pg_namespace", "is_schemata"})
+
 #: The relations carrying :data:`SCOPE_COLUMN`.
 SCOPED_BY_COLUMN: frozenset[str] = frozenset(
     {
-        "pg_tables",
-        "pg_indexes",
+        "catalog_pg_tables",
+        "catalog_pg_indexes",
         "is_tables",
         "is_columns",
         "is_table_constraints",
@@ -61,15 +65,15 @@ SCOPED_BY_COLUMN: frozenset[str] = frozenset(
 #: what lets a catalog list itself under a scope that knows only table ids.
 CATALOG_ROW_SCOPES: dict[str, tuple[str, ...]] = {
     **{name: (SCOPE_COLUMN,) for name in SCOPED_BY_COLUMN},
-    "pg_class": (owner_table_sql("oid"),),
-    "pg_attribute": (owner_table_sql("attrelid"),),
-    "pg_attrdef": (owner_table_sql("adrelid"),),
-    "pg_index": (owner_table_sql("indrelid"),),
-    "pg_constraint": (
+    "catalog_pg_class": (owner_table_sql("oid"),),
+    "catalog_pg_attribute": (owner_table_sql("attrelid"),),
+    "catalog_pg_attrdef": (owner_table_sql("adrelid"),),
+    "catalog_pg_index": (owner_table_sql("indrelid"),),
+    "catalog_pg_constraint": (
         owner_table_sql("conrelid"),
         f"CASE WHEN confrelid = 0 THEN NULL ELSE {owner_table_sql('confrelid')} END",
     ),
-    "pg_description": (
+    "catalog_pg_description": (
         f"CASE WHEN classoid = {PG_CLASS_OID} THEN {owner_table_sql('objoid')} END",
     ),
 }
@@ -89,8 +93,9 @@ def column_descriptions() -> dict[str, dict[str, str]]:
     return described
 
 
-def table_descriptions() -> dict[str, str]:
+def table_descriptions(own: str) -> dict[str, str]:
+    """What each view is, ending as every built-in table's description does (``own``)."""
     return {
-        catalog_view_name(schema, name): f"PostgreSQL's {schema}.{name}, of this model"
+        catalog_view_name(schema, name): f"PostgreSQL's {schema}.{name}, of this model{own}"
         for schema, name in sorted(RELATIONS)
     }

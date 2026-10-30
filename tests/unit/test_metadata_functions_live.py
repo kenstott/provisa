@@ -358,7 +358,7 @@ def test_a_column_comment_is_the_real_one(live, attnum, real_column):
 
 def test_a_schema_comment_comes_from_its_domain(live):
     with live.begin() as conn:
-        sales_oid = _one(conn, "SELECT oid FROM meta.pg_namespace WHERE nspname = 'sales'")
+        sales_oid = _one(conn, "SELECT oid FROM meta.catalog_pg_namespace WHERE nspname = 'sales'")
         assert _form(conn, f"obj_description({sales_oid}, 'pg_namespace')") == "The sales domain"
 
 

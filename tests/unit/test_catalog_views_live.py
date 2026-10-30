@@ -99,13 +99,13 @@ def _model(conn) -> None:
             **extras,
         )
     _insert(conn, t.metrics, name="revenue", expression="SUM(x)", description="All of it")
-    _insert(conn, t.roles, id="analyst", description="reads")
-    _insert(conn, t.roles, id="clerk", description="enters", parents=["analyst"])
+    _insert(conn, t.roles, id="reader_role", description="reads")
+    _insert(conn, t.roles, id="clerk_role", description="enters", parents=["reader_role"])
     _insert(
         conn,
         t.table_write_grants,
         table_id=1,
-        role_id="analyst",
+        role_id="reader_role",
         operation="insert",
         presets=[{"column": "total", "source": "value", "value": "0"}],
     )
@@ -113,7 +113,7 @@ def _model(conn) -> None:
         conn,
         t.table_write_grants,
         table_id=1,
-        role_id="clerk",
+        role_id="clerk_role",
         operation="insert",
         presets=[{"column": "code", "source": "now"}],
     )
@@ -146,7 +146,7 @@ def plane(embedded_postgres, control_plane_template):
     held.close()
 
 
-def _told(conn, role="analyst", can_write=True, **session) -> None:
+def _told(conn, role="reader_role", can_write=True, **session) -> None:
     sql, values = set_statement(
         statement_settings(role, can_write, "provisa", False, session=session)
     )
@@ -175,11 +175,16 @@ def test_a_view_of_no_rows_of_the_server_shows_none_of_the_control_plane(plane):
     """A statistics or activity relation is the catalog's, never the server's it runs on."""
     with plane.begin() as conn:
         _told(conn)
-        for view in ("pg_stat_all_tables", "pg_locks", "pg_stat_user_tables", "pg_stat_database"):
+        for view in (
+            "catalog_pg_stat_all_tables",
+            "catalog_pg_locks",
+            "catalog_pg_stat_user_tables",
+            "catalog_pg_stat_database",
+        ):
             assert _read(conn, f"SELECT count(*) FROM meta.{view}") == [(0,)], view
-        assert _read(conn, "SELECT count(*) FROM meta.pg_class WHERE relname = 'table_columns'")[
-            0
-        ] == (0,)
+        assert _read(
+            conn, "SELECT count(*) FROM meta.catalog_pg_class WHERE relname = 'table_columns'"
+        )[0] == (0,)
 
 
 def test_the_catalog_lists_the_model_and_not_itself(plane):
@@ -187,11 +192,11 @@ def test_the_catalog_lists_the_model_and_not_itself(plane):
         _told(conn)
         rows = _read(
             conn,
-            "SELECT c.relname, n.nspname FROM meta.pg_class c "
-            "JOIN meta.pg_namespace n ON n.oid = c.relnamespace "
+            "SELECT c.relname, n.nspname FROM meta.catalog_pg_class c "
+            "JOIN meta.catalog_pg_namespace n ON n.oid = c.relnamespace "
             "WHERE c.relkind = 'r' AND n.nspname IN ('sales', 'sales_eu', 'hr', 'metrics')",
         )
-        names = _read(conn, "SELECT relname FROM meta.pg_class")
+        names = _read(conn, "SELECT relname FROM meta.catalog_pg_class")
     assert sorted(rows) == [
         ("customer_orders", "sales"),
         ("order_lines", "sales_eu"),
@@ -210,7 +215,7 @@ def test_a_column_is_what_the_catalog_says_of_it(plane):
         rows = _read(
             conn,
             "SELECT attname, attnum, atttypid::int, atttypmod, attnotnull, attlen "
-            f"FROM meta.pg_attribute WHERE attrelid = {table_oid(1)} ORDER BY attnum",
+            f"FROM meta.catalog_pg_attribute WHERE attrelid = {table_oid(1)} ORDER BY attnum",
         )
     assert rows == [
         ("order_id", 1, 23, -1, True, 4),
@@ -226,13 +231,16 @@ def test_a_metric_is_a_relation_of_one_value_with_its_description(plane):
     oid = metric_oid("revenue")
     with plane.begin() as conn:
         _told(conn)
-        assert _read(conn, f"SELECT relname FROM meta.pg_class WHERE oid = {oid}") == [("revenue",)]
-        assert _read(
-            conn, f"SELECT attname, atttypid::int FROM meta.pg_attribute WHERE attrelid = {oid}"
-        ) == [("value", 701)]
-        assert _read(conn, f"SELECT description FROM meta.pg_description WHERE objoid = {oid}") == [
-            ("All of it",)
+        assert _read(conn, f"SELECT relname FROM meta.catalog_pg_class WHERE oid = {oid}") == [
+            ("revenue",)
         ]
+        assert _read(
+            conn,
+            f"SELECT attname, atttypid::int FROM meta.catalog_pg_attribute WHERE attrelid = {oid}",
+        ) == [("value", 701)]
+        assert _read(
+            conn, f"SELECT description FROM meta.catalog_pg_description WHERE objoid = {oid}"
+        ) == [("All of it",)]
 
 
 def test_information_schema_columns_lists_a_column_as_pg_attribute_does(plane):
@@ -253,27 +261,27 @@ def test_information_schema_columns_lists_a_column_as_pg_attribute_does(plane):
 
 
 def test_a_column_default_is_the_asking_roles(plane):
-    query = f"SELECT adnum, adbin FROM meta.pg_attrdef WHERE adrelid = {table_oid(1)}"
+    query = f"SELECT adnum, adbin FROM meta.catalog_pg_attrdef WHERE adrelid = {table_oid(1)}"
     with plane.begin() as conn:
-        _told(conn, role="analyst")
+        _told(conn, role="reader_role")
         assert _read(conn, query) == [(2, "0")]
     with plane.begin() as conn:
-        _told(conn, role="clerk")
+        _told(conn, role="clerk_role")
         assert _read(conn, query) == [(3, "now()")]
     with plane.begin() as conn:
-        _told(conn, role="analyst", can_write=False)
+        _told(conn, role="reader_role", can_write=False)
         assert _read(conn, query) == []
 
 
 def test_a_view_told_nothing_lists_no_role_default_and_no_session(plane):
     with plane.begin() as conn:
-        assert _read(conn, "SELECT count(*) FROM meta.pg_attrdef") == [(0,)]
-        assert _read(conn, "SELECT count(*) FROM meta.pg_stat_activity") == [(0,)]
+        assert _read(conn, "SELECT count(*) FROM meta.catalog_pg_attrdef") == [(0,)]
+        assert _read(conn, "SELECT count(*) FROM meta.catalog_pg_stat_activity") == [(0,)]
 
 
 def test_settings_end_with_the_statements_transaction(plane):
     with plane.begin() as conn:
-        _told(conn, role="clerk")
+        _told(conn, role="clerk_role")
     with plane.begin() as conn:
         assert _read(conn, "SELECT current_setting('provisa.catalog.role', true)") in (
             [("",)],
@@ -293,21 +301,21 @@ def test_the_connection_asking_is_the_one_row_of_activity(plane):
         rows = _read(
             conn,
             "SELECT datname, pid, usename, application_name, query, state "
-            "FROM meta.pg_stat_activity",
+            "FROM meta.catalog_pg_stat_activity",
         )
-    assert rows == [("provisa", 77, "analyst", "psql", "SELECT 1", "active")]
+    assert rows == [("provisa", 77, "reader_role", "psql", "SELECT 1", "active")]
 
 
 def test_the_role_asking_is_listed_with_the_models_and_postgresqls(plane):
     with plane.begin() as conn:
         _told(conn, role="visitor")
-        names = {n for (n,) in _read(conn, "SELECT rolname FROM meta.pg_roles")}
+        names = {n for (n,) in _read(conn, "SELECT rolname FROM meta.catalog_pg_roles")}
         members = _read(
             conn,
-            "SELECT count(*) FROM meta.pg_auth_members m JOIN meta.pg_roles r ON r.oid = m.member "
-            "WHERE r.rolname = 'clerk'",
+            "SELECT count(*) FROM meta.catalog_pg_auth_members m JOIN meta.catalog_pg_roles r ON r.oid = m.member "
+            "WHERE r.rolname = 'clerk_role'",
         )
-    assert {"analyst", "clerk", "visitor", "provisa", "pg_monitor"} <= names
+    assert {"reader_role", "clerk_role", "visitor", "provisa", "pg_monitor"} <= names
     assert members == [(1,)]
 
 
@@ -316,12 +324,12 @@ def test_a_foreign_key_and_its_key_read_as_a_client_reads_them(plane):
         _told(conn)
         keys = _read(
             conn,
-            "SELECT conname, contype, conkey FROM meta.pg_constraint "
+            "SELECT conname, contype, conkey FROM meta.catalog_pg_constraint "
             f"WHERE conrelid = {table_oid(2)} AND conname NOT LIKE '%___meta%' ORDER BY contype",
         )
         indexed = _read(
             conn,
-            f"SELECT indkey::text, indisprimary FROM meta.pg_index WHERE indrelid = {table_oid(1)}",
+            f"SELECT indkey::text, indisprimary FROM meta.catalog_pg_index WHERE indrelid = {table_oid(1)}",
         )
         referential = _read(
             conn,
@@ -353,20 +361,20 @@ def _scoped(view: str, listed: set[int]) -> str:
 def test_a_role_reads_what_it_lists_and_every_system_row(plane):
     with plane.begin() as conn:
         _told(conn)
-        unscoped = _read(conn, "SELECT count(*) FROM meta.pg_class WHERE oid < 16384")
+        unscoped = _read(conn, "SELECT count(*) FROM meta.catalog_pg_class WHERE oid < 16384")
         system = _read(
             conn,
-            f"SELECT count(*) FROM meta.pg_class WHERE oid < 16384 AND {_scoped('pg_class', {1})}",
+            f"SELECT count(*) FROM meta.catalog_pg_class WHERE oid < 16384 AND {_scoped('catalog_pg_class', {1})}",
         )
         model = _read(
             conn,
-            "SELECT relname FROM meta.pg_class WHERE oid >= 16384 AND relkind = 'r' "
-            f"AND {_scoped('pg_class', {1})} ORDER BY relname",
+            "SELECT relname FROM meta.catalog_pg_class WHERE oid >= 16384 AND relkind = 'r' "
+            f"AND {_scoped('catalog_pg_class', {1})} ORDER BY relname",
         )
         attributes = _read(
             conn,
-            "SELECT DISTINCT attrelid::bigint FROM meta.pg_attribute "
-            f"WHERE attrelid >= 16384 AND {_scoped('pg_attribute', {1})} ORDER BY 1",
+            "SELECT DISTINCT attrelid::bigint FROM meta.catalog_pg_attribute "
+            f"WHERE attrelid >= 16384 AND {_scoped('catalog_pg_attribute', {1})} ORDER BY 1",
         )
     assert unscoped == system and unscoped[0][0] == len(RELATIONS)
     assert model == [("customer_orders",), ("revenue",)]  # a metric belongs to no table
@@ -389,9 +397,7 @@ def test_the_scope_of_a_view_is_the_scope_of_table_columns(plane):
         _told(conn)
         keys = _read(
             conn,
-            "SELECT DISTINCT table_id FROM meta.is_tables_keys_check"
-            if False
-            else f"SELECT DISTINCT {SCOPE_COLUMN} FROM meta.is_columns "
+            f"SELECT DISTINCT {SCOPE_COLUMN} FROM meta.is_columns "
             f"WHERE {_scoped('is_columns', listed)} AND {SCOPE_COLUMN} IS NOT NULL ORDER BY 1",
         )
     assert keys == [(1,), (2,)]
@@ -402,9 +408,9 @@ def test_a_foreign_key_to_a_table_not_listed_is_not_read(plane):
         _told(conn)
         rows = _read(
             conn,
-            "SELECT conname FROM meta.pg_constraint "
+            "SELECT conname FROM meta.catalog_pg_constraint "
             f"WHERE contype = 'f' AND conname LIKE 'fk_order_lines__id' "
-            f"AND {_scoped('pg_constraint', {2})}",
+            f"AND {_scoped('catalog_pg_constraint', {2})}",
         )
     assert rows == []
 
@@ -578,8 +584,8 @@ async def test_a_rule_the_engines_read_differently_is_refused(plane, pattern, re
     "sql",
     (
         "SELECT set_config('provisa.catalog.role', 'admin', true)",
-        "SELECT SET_CONFIG('provisa.catalog.role', 'admin', false), * FROM meta.pg_attrdef",
-        "SELECT pg_catalog.set_config('x', 'y', true) FROM meta.pg_class",
+        "SELECT SET_CONFIG('provisa.catalog.role', 'admin', false), * FROM meta.catalog_pg_attrdef",
+        "SELECT pg_catalog.set_config('x', 'y', true) FROM meta.catalog_pg_class",
         "SELECT \"set_config\"('x', 'y', true)",
         "WITH a AS (SELECT set_config('x', 'y', true)) SELECT * FROM a",
     ),
@@ -592,7 +598,7 @@ def test_a_client_calling_set_config_is_refused(sql):
 @pytest.mark.parametrize(
     "sql",
     (
-        "SELECT relname FROM meta.pg_class",
+        "SELECT relname FROM meta.catalog_pg_class",
         "SELECT 'set_config' AS word",
         "SELECT set_config_note FROM meta.notes",
     ),

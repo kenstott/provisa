@@ -168,17 +168,28 @@ ORDER BY c.conname, k.pos
 """
 
 
+_PG_CATALOG_NOT_NULL = """
+SELECT a.attname
+FROM pg_catalog.pg_attribute AS a
+JOIN pg_catalog.pg_class AS t ON t.oid = a.attrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+WHERE n.nspname = {schema} AND t.relname = {table}
+  AND a.attnum > 0 AND a.attnotnull AND NOT a.attisdropped
+"""
+
+
 async def _pg_catalog(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
     args = {"schema": sql_literal(schema, "postgres"), "table": sql_literal(table, "postgres")}
     keys = await pool.execute(source_id, _PG_CATALOG_KEYS.format(**args), [])
     primary = [(name, col) for kind, name, col in keys.rows if kind == "PRIMARY KEY"]
     unique = [(name, col) for kind, name, col in keys.rows if kind == "UNIQUE"]
     foreign = await pool.execute(source_id, _PG_CATALOG_FOREIGN.format(**args), [])
+    required = await pool.execute(source_id, _PG_CATALOG_NOT_NULL.format(**args), [])
     return DeclaredKeys(
         primary_key=tuple(col for _name, col in primary),
         unique=_grouped(unique),
         foreign=tuple(ForeignKey(*row) for row in foreign.rows),
-        not_null=await _info_schema_not_null(pool, source_id, args),
+        not_null=frozenset(row[0] for row in required.rows),
     )
 
 

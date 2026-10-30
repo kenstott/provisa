@@ -81,8 +81,19 @@ _METRICS_SCHEMA = "metrics"
 _TYPES_HELD_AS_TEXT = frozenset({"anyarray", "pg_node_tree", "pg_statistic[]"})
 
 
+#: Array types by the name PostgreSQL gives them, which the compiler reads where it cannot read
+#: their ``element[]`` spelling.
+_ARRAY_NAMES = {
+    "oid[]": "_oid",
+    "regtype[]": "_regtype",
+    "aclitem[]": "_aclitem",
+    '"char"[]': "_char",
+    "name[]": "_name",
+}
+
+
 def _column_type(pg_type: str) -> str:
-    return "text" if pg_type in _TYPES_HELD_AS_TEXT else pg_type
+    return "text" if pg_type in _TYPES_HELD_AS_TEXT else _ARRAY_NAMES.get(pg_type, pg_type)
 
 
 def _select(relation: tuple[str, str], values: Mapping[str, str], source: str) -> str:
@@ -1348,8 +1359,7 @@ CATALOG_KEY_VIEWS: dict[str, str] = {
 CATALOG_VIEWS: dict[str, str] = {
     catalog_view_name(*relation): _ddl(relation) for relation in sorted(RELATIONS)
 }
-#: is_schemata lists what pg_namespace does; a view reads no other catalog view by name, since a
-#: name pg_catalog also has would resolve there first.
+#: is_schemata lists what pg_namespace does.
 CATALOG_VIEWS["is_schemata"] = _view(
     (_IS, "schemata"),
     _select(

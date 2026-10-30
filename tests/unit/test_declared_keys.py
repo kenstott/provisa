@@ -19,6 +19,7 @@ as relationship candidates. A source that declares no keys records none: nothing
 
 from __future__ import annotations
 
+import dataclasses
 import contextlib
 import sqlite3
 from types import SimpleNamespace
@@ -274,7 +275,9 @@ async def test_postgresql_declares_its_keys_in_its_catalog(control_plane):
         "pg", "postgresql", "127.0.0.1", control_plane.pg.port, control_plane.name, ROLE, PASSWORD
     )
     try:
-        assert await declared_keys(pool, "postgresql", "pg", "zoo", "pets") == _PETS
+        keys = await declared_keys(pool, "postgresql", "pg", "zoo", "pets")
+        # REQ-2190: PostgreSQL's catalog marks a primary key's columns NOT NULL.
+        assert keys == dataclasses.replace(_PETS, not_null=frozenset({"id"}))
     finally:
         await pool.close_all()
 
@@ -310,6 +313,7 @@ async def test_mysql_sql_server_and_cockroachdb_declare_their_keys_in_informatio
                 ("UNIQUE", "pets_pair", "b"),
             ],
             foreign_marker: [("owner_id", "owners", "id")],
+            "is_nullable = 'NO'": [("id",), ("tag",)],
         }
     )
     keys = await declared_keys(catalog, kind, "src", "zoo", "pets")
@@ -317,6 +321,7 @@ async def test_mysql_sql_server_and_cockroachdb_declare_their_keys_in_informatio
         primary_key=("id",),
         unique=(UniqueKey("pets_tag", ("tag",)), UniqueKey("pets_pair", ("a", "b"))),
         foreign=(ForeignKey("owner_id", "owners", "id"),),
+        not_null=frozenset({"id", "tag"}),
     )
     # Only a one-column unique key is an alternate key of its own.
     assert keys is not None and keys.alternate_columns == frozenset({"tag"})
@@ -373,7 +378,9 @@ async def test_a_composite_foreign_key_keeps_its_pairing_column_by_column(contro
         ForeignKey("pb", "parent", "b"),
     )
     assert parent == DeclaredKeys(
-        primary_key=("b", "a"), unique=(UniqueKey("parent_c_a_key", ("c", "a")),)
+        primary_key=("b", "a"),
+        unique=(UniqueKey("parent_c_a_key", ("c", "a")),),
+        not_null=frozenset({"a", "b"}),
     )
 
 
@@ -385,13 +392,16 @@ async def test_postgresql_keys_are_read_from_pg_catalog_by_the_tables_name():
         {
             "c.contype IN": [("PRIMARY KEY", "pets_pkey", "id")],
             "c.contype = 'f'": [("owner_id", "owners", "id")],
+            "a.attnotnull": [("id",)],
         }
     )
     keys = await declared_keys(catalog, "postgresql", "src", "zoo", "pets")
     assert keys == DeclaredKeys(
-        primary_key=("id",), foreign=(ForeignKey("owner_id", "owners", "id"),)
+        primary_key=("id",),
+        foreign=(ForeignKey("owner_id", "owners", "id"),),
+        not_null=frozenset({"id"}),
     )
-    assert len(catalog.statements) == 2
+    assert len(catalog.statements) == 3
     for sql in catalog.statements:
         assert "information_schema" not in sql
         assert "n.nspname = 'zoo'" in sql and "t.relname = 'pets'" in sql

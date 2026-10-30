@@ -61,6 +61,7 @@ from provisa.transpiler.metadata_functions import (
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, metric_oid, table_oid
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
+    LISTS_EVERY_SCHEMA,
     SCOPE_COLUMN,
     SCOPED_BY_COLUMN,
     catalog_view_name,
@@ -142,8 +143,8 @@ def test_the_call_is_replaced_and_its_column_named_for_it():
 
 def test_a_form_reads_the_meta_views_a_statement_is_governed_on():
     assert "meta.table_keys" in _expanded(f"SELECT pg_get_indexdef({KEY_OID_BASE})")
-    assert "meta.pg_description" in _expanded("SELECT col_description(16385, 1)")
-    assert "meta.pg_class" in _expanded("SELECT pg_table_is_visible(16385)")
+    assert "meta.catalog_pg_description" in _expanded("SELECT col_description(16385, 1)")
+    assert "meta.catalog_pg_class" in _expanded("SELECT pg_table_is_visible(16385)")
 
 
 def test_only_what_a_privilege_function_reads_is_carried():
@@ -396,7 +397,7 @@ def test_every_relation_is_a_registered_view_served_to_sql_alone():
 
 
 def test_a_client_name_is_addressed_by_name_alone():
-    assert catalog_view_name("pg_catalog", "pg_class") == "pg_class"
+    assert catalog_view_name("pg_catalog", "pg_class") == "catalog_pg_class"
     assert catalog_view_name("information_schema", "domains") == "is_domains"
     assert "domains" not in CATALOG_VIEW_NAMES and "roles" not in CATALOG_VIEW_NAMES
 
@@ -411,17 +412,17 @@ def test_a_view_of_model_rows_names_how_its_rows_are_scoped():
     """A view left out of the scope maps would list every table to every role: nothing else would
     say so. Every relation reading the model has an entry; every entry is a relation."""
     reads_model = {name for name, ddl in CATALOG_VIEWS.items() if _MODEL_READS.search(ddl)}
-    missing = reads_model - set(META_CATALOG_ROW_SCOPES) - set(META_ROW_SCOPED_VIEWS)
+    missing = reads_model - set(META_CATALOG_ROW_SCOPES) - LISTS_EVERY_SCHEMA
     assert missing == set()
     assert set(META_CATALOG_ROW_SCOPES) <= set(CATALOG_VIEWS)
 
 
-@pytest.mark.parametrize("name", ("pg_class", "pg_attribute", "is_columns"))
+@pytest.mark.parametrize("name", ("catalog_pg_class", "catalog_pg_attribute", "is_columns"))
 def test_the_check_above_catches_a_view_dropped_from_the_map(name):
     scoped = dict(META_CATALOG_ROW_SCOPES)
     del scoped[name]
     reads_model = {n for n, ddl in CATALOG_VIEWS.items() if _MODEL_READS.search(ddl)}
-    assert reads_model - set(scoped) - set(META_ROW_SCOPED_VIEWS) == {name}
+    assert reads_model - set(scoped) - LISTS_EVERY_SCHEMA == {name}
 
 
 def _meta_context(*names: str):
@@ -458,7 +459,7 @@ _TABLES = [
 def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
     from provisa.compiler.stage2 import build_governance_context
 
-    ctx = _meta_context("pg_class", "is_tables", "pg_constraint")
+    ctx = _meta_context("catalog_pg_class", "is_tables", "catalog_pg_constraint")
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
     )
@@ -471,7 +472,7 @@ def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
 def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
     from provisa.compiler.stage2 import build_governance_context
 
-    ctx = _meta_context("pg_attribute", "is_columns")
+    ctx = _meta_context("catalog_pg_attribute", "is_columns")
     ctx.columns_outside_relation = {(1, "Pets")}
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
@@ -483,7 +484,7 @@ def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
 def test_a_whole_catalog_role_is_not_scoped():
     from provisa.compiler.stage2 import build_governance_context
 
-    ctx = _meta_context("pg_class")
+    ctx = _meta_context("catalog_pg_class")
     role = {**_ROLE, "domain_access": ["*"]}
     gov = build_governance_context("analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, role, [])
     assert 10 not in gov.rls_rules

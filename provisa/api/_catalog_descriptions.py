@@ -183,7 +183,7 @@ _OPS_OWN = (
 TABLE_DESCRIPTIONS: dict[str, str] = {
     **{name: text + _META_OWN for name, text in _META.items()},
     **{name: text + _OPS_OWN for name, text in _OPS.items()},
-    **catalog_table_descriptions(),  # REQ-2190
+    **catalog_table_descriptions(_META_OWN),  # REQ-2190
 }
 
 COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {

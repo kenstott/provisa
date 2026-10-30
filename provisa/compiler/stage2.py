@@ -417,7 +417,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     from provisa.compiler.sql_literals import sql_literal
 
     for view, columns in (
-        ("pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
+        ("catalog_pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
         ("is_columns", "CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)"),
     ):
         if not ctx.columns_outside_relation:

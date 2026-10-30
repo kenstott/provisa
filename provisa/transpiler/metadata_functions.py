@@ -313,30 +313,30 @@ def _index_column(key: str, position: str) -> str:
 
 
 _OBJECT_COMMENT = (
-    "(SELECT MIN(_d.description) FROM meta.pg_description _d "
+    "(SELECT MIN(_d.description) FROM meta.catalog_pg_description _d "
     "WHERE _d.objoid = object_oid AND _d.objsubid = 0)"
 )
 #: PostgreSQL's oid of the catalog obj_description is asked about, by the name it is asked with.
 _COMMENT_IN_CATALOG = (
-    "(SELECT _d.description FROM meta.pg_description _d WHERE _d.objoid = object_oid "
+    "(SELECT _d.description FROM meta.catalog_pg_description _d WHERE _d.objoid = object_oid "
     "AND _d.objsubid = 0 AND _d.classoid = CASE catalog WHEN 'pg_class' THEN 1259 "
     "WHEN 'pg_namespace' THEN 2615 END)"
 )
 _COLUMN_COMMENT = (
-    "(SELECT _d.description FROM meta.pg_description _d WHERE _d.objoid = relation_oid "
+    "(SELECT _d.description FROM meta.catalog_pg_description _d WHERE _d.objoid = relation_oid "
     "AND _d.classoid = 1259 AND _d.objsubid = attnum)"
 )
 
-_LISTED = "(SELECT TRUE FROM meta.pg_class _c WHERE _c.oid = relation_oid)"
+_LISTED = "(SELECT TRUE FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid)"
 _PUBLISHABLE = (
     "COALESCE((SELECT _c.relkind IN ('r', 'p') AND _c.relnamespace NOT IN (11, 12) "
-    "FROM meta.pg_class _c WHERE _c.oid = relation_oid), FALSE)"
+    "FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid), FALSE)"
 )
 
 #: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
 #: its schema; the path's first where both hold the name.
 _NAMED_RELATION = (
-    "FROM meta.pg_class _c JOIN meta.pg_namespace _n ON _n.oid = _c.relnamespace "
+    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
     "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
@@ -360,8 +360,8 @@ _TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_RELATION}{_PATH_FIRST})"
 _COLUMN_PRIVILEGE = (
     f"(SELECT NOT EXISTS (SELECT 1 FROM {UNSERVED} _u WHERE _u.relation_oid = _c.oid "
     f"AND _u.column_name = _a.attname) AND {_held('priv')} "
-    "FROM meta.pg_class _c JOIN meta.pg_namespace _n ON _n.oid = _c.relnamespace "
-    "JOIN meta.pg_attribute _a ON _a.attrelid = _c.oid "
+    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
+    "JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
     "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
     "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
