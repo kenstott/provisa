@@ -38,6 +38,8 @@ from provisa.pgwire.catalog_data import (
     typeinfo,
 )
 from provisa.pgwire.catalog_populate import catalog_db_for
+from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
+from provisa.pgwire.pg_error import from_engine
 
 log = logging.getLogger(__name__)
 
@@ -170,7 +172,6 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "oidvectortypes",
         "pg_cursor",
         "pg_sequence_last_value",
-        "setval",
         "plpgsql_validator",
         "fmgr_c_validator",
         "bpchar",
@@ -184,6 +185,7 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "pg_get_viewdef",
         "pg_stat_reset_single_table_counters",
         "ts_token_type",
+        *_SERVER_ANSWERED,
     }
 )
 
@@ -552,6 +554,9 @@ def answer(sql: str, role_id: str, state):  # REQ-532
             ]
         return QueryResult(rows=rows, column_names=col_names, column_types=col_types)
     except Exception as exc:
+        answered = from_engine(exc)
+        if answered is not None:  # PostgreSQL's own answer to the call, not a failure
+            raise answered from exc
         log.error(
             "[CATALOG] DuckDB error sql=%r rewritten=%r: %s", stripped[:200], rewritten[:200], exc
         )

@@ -709,16 +709,11 @@ _SERVER_FUNCTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-#: The server functions no client of Provisa may call: they act on a PostgreSQL server's own files,
-#: configuration, recovery or locks, which Provisa has none of a client may reach (REQ-2167).
+#: The server functions no client of Provisa may call: they act on a PostgreSQL server's own
+#: locks, which Provisa has none of a client may reach (REQ-2167).
 #: pg_advisory_unlock_all is answered (catalog.py): no lock is ever held, so all are released.
 REFUSED_SERVER_FUNCTIONS = frozenset(
     {
-        "pg_reload_conf",
-        "pg_read_file",
-        "pg_read_binary_file",
-        "pg_stat_file",
-        "pg_create_restore_point",
         "pg_advisory_lock",
         "pg_advisory_lock_shared",
         "pg_try_advisory_lock",
@@ -748,7 +743,7 @@ def refuse_server_function(sql: str) -> None:  # REQ-2167
         if name in REFUSED_SERVER_FUNCTIONS:
             raise NotAvailableHere(
                 f"{name} is not available through Provisa: it acts on a PostgreSQL server's own "
-                "files, configuration, recovery or locks"
+                "locks"
             )
 
 

@@ -414,9 +414,8 @@ _ANSWERED_BY_MACRO = frozenset(
 )
 
 # REQ-2167: functions a client may call that Provisa has nothing to run them on, each refused by
-# name: it keeps no sequences, and creates no functions to validate.
+# name: it creates no functions to validate.
 _REFUSED_FUNCTIONS = {
-    "setval": "setval is not available through Provisa: it keeps no sequences",
     "plpgsql_validator": (
         "plpgsql_validator is not available through Provisa: no function is created in it"
     ),
@@ -572,6 +571,22 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     ),
                     expression=exp.Literal.number(1),
                 )
+            if fn == "setval" and args:
+                # REQ-2167: a name is resolved as the call is read, as PostgreSQL reads a regclass
+                # argument: a name naming no relation is its error.
+                from provisa.pgwire.catalog_regs import reg_oid, reg_type_of
+
+                named = args[0]
+                if isinstance(named, exp.Cast) and reg_type_of(named.to) == "regclass":
+                    named = named.this
+                if isinstance(named, exp.Literal) and named.is_string:
+                    return exp.Anonymous(
+                        this="setval",
+                        expressions=[
+                            reg_oid("regclass", named),
+                            *(a.transform(_transform) for a in args[1:]),
+                        ],
+                    )
             if fn == "json_build_object":
                 # DuckDB has no json_build_object; json_object takes the same
                 # alternating key/value argument list.

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
 from provisa.pgwire.catalog_rewrite import _PG_TYPE_DISPLAY_NAMES
+from provisa.pgwire.catalog_server_answers import macros as server_macros
 
 # The schemas on the search path (catalog_data's search_path, and pg_catalog): an object in one is
 # named unqualified, as PostgreSQL names a visible object.
@@ -311,5 +312,5 @@ def _identify_object() -> str:
 
 def populate_catalog_macros(db) -> None:  # REQ-2167
     """Create the macros, over the catalog relations they read (created before)."""
-    for macro in (*_MACROS, _describe_object(), _identify_object()):
+    for macro in (*_MACROS, _describe_object(), _identify_object(), *server_macros()):
         db.execute(macro)

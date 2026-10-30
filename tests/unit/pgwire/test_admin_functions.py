@@ -12,8 +12,8 @@
 
 pg_backend_pid is the connection's own process id; pg_cancel_backend and pg_terminate_backend act
 on a pgwire session the caller owns, or any session of the caller's org for a caller with the
-user_management right; pg_reload_conf, the server-file functions, pg_create_restore_point and the
-advisory locks are refused by name. pg_advisory_unlock_all is answered: no lock is ever held."""
+user_management right; the advisory locks are refused by name. pg_advisory_unlock_all is answered:
+no lock is ever held. The other server functions answer as PostgreSQL does (test_server_answers)."""
 
 from __future__ import annotations
 
@@ -160,11 +160,6 @@ async def test_another_users_session_is_refused_by_name_and_open_to_user_managem
 
 
 _REFUSED = [
-    "pg_reload_conf()",
-    "pg_read_file('postgresql.conf')",
-    "pg_read_binary_file('postgresql.conf')",
-    "pg_stat_file('postgresql.conf')",
-    "pg_create_restore_point('p')",
     "pg_advisory_lock(1)",
     "pg_try_advisory_lock(1)",
     "pg_advisory_lock_shared(1)",
