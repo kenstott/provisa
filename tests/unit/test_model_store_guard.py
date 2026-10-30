@@ -441,6 +441,81 @@ async def test_a_glossary_term_is_blocked_by_its_refs_and_takes_its_edges_with_i
     assert await plane.count("glossary_terms") == 1
 
 
+async def _scan_with_draft(plane, document_id, **draft):
+    scan = await plane.add(
+        "glossary_term_scans",
+        document_id=document_id,
+        document_title="Policy",
+        document_source="policy.pdf",
+        domains="[]",
+        status="done",
+    )
+    draft_id = await plane.add(
+        "glossary_term_drafts",
+        scan_id=scan,
+        ordinal=1,
+        name="Order",
+        category="entity",
+        sense="a purchase",
+        definition_kind="explicit",
+        proposal="new",
+        payload="{}",
+        status="draft",
+        **draft,
+    )
+    return scan, draft_id
+
+
+async def _value(plane, table, row_id, column):
+    tbl = metadata.tables[table]
+    async with plane.db.acquire() as conn:
+        found = await conn.execute_core(select(tbl.c[column]).where(tbl.c.id == row_id))
+        return found.fetchone()[0]
+
+
+async def test_deleting_a_document_empties_the_scans_link_and_keeps_the_scan(plane):
+    """REQ-2179: a scan keeps the document's title and source, so a document never blocks."""
+    doc = await plane.add(
+        "reference_documents",
+        title="Policy",
+        source_kind="file",
+        source="policy.pdf",
+        media_type="application/pdf",
+        content_sha256="h",
+        status="kept",
+        embedding_model="m",
+    )
+    scan, _ = await _scan_with_draft(plane, doc)
+    ref = ObjectRef("reference_document", doc)
+    assert await plane.blocking(ref) == set()
+    await plane.remove(ref)
+    assert await plane.count("glossary_term_scans") == 1
+    assert await _value(plane, "glossary_term_scans", scan, "document_id") is None
+    assert await _value(plane, "glossary_term_scans", scan, "document_title") == "Policy"
+
+
+async def test_deleting_a_term_empties_the_drafts_links_and_keeps_the_draft(plane):
+    matched = await plane.add("glossary_terms", name="Sale")
+    made = await plane.add("glossary_terms", name="Order")
+    _, draft = await _scan_with_draft(plane, None, match_term_id=matched, term_id=made)
+    for term_id in (matched, made):
+        ref = ObjectRef("glossary_term", term_id)
+        assert await plane.blocking(ref) == set()
+        await plane.remove(ref)
+    assert await plane.count("glossary_term_drafts") == 1
+    assert await _value(plane, "glossary_term_drafts", draft, "match_term_id") is None
+    assert await _value(plane, "glossary_term_drafts", draft, "term_id") is None
+
+
+async def test_deleting_a_scan_removes_its_drafts(plane):
+    scan, _ = await _scan_with_draft(plane, None)
+    ref = ObjectRef("term_scan", scan)
+    assert await plane.going(ref) == {"glossary_term_drafts.scan_id": 1}
+    await plane.remove(ref)
+    assert await plane.count("glossary_term_drafts") == 0
+    assert await plane.count("glossary_term_scans") == 0
+
+
 # --- no circle: something can always go first ----------------------------------------------------
 
 
