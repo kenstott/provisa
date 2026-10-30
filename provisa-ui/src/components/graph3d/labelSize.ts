@@ -16,8 +16,8 @@
 /** A label's font size at the resting view (profile3d.css .p3d-label). */
 export const LABEL_FONT_PX = 10.5;
 /** The smallest and largest a label is drawn, whatever the zoom. */
-export const MIN_LABEL_PX = 11.5;
-export const MAX_LABEL_PX = 20;
+export const MIN_LABEL_PX = 9;
+export const MAX_LABEL_PX = 10;
 
 /** A label's font size at ``zoom`` (1 at the resting view, more when nearer). */
 export function labelPx(zoom: number): number {
