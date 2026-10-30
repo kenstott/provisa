@@ -590,6 +590,7 @@ export function ReferenceLibraryTab() {
           color={outcome.failed.length ? "red" : "green"}
           icon={outcome.failed.length ? <TriangleAlert size={16} /> : <Check size={16} />}
           withCloseButton
+          style={{ flexShrink: 0 }}
           onClose={() => setOutcome(null)}
           data-testid="reflib-reembed-result"
         >
