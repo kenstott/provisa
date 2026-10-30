@@ -648,6 +648,39 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: metric_definitions
+  columns:
+  - name: ai_context
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datatype
+    data_type: text
+    visible_to:
+    - viewer
+  - name: description
+    data_type: text
+    visible_to:
+    - viewer
+  - name: expression
+    data_type: text
+    visible_to:
+    - viewer
+  - name: from_fact
+    data_type: text
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: visible_to
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: registered_tables
   columns:
   - name: alias

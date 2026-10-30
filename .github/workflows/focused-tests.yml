@@ -1,0 +1,76 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+# A targeted run of named tests on a branch: on request only, each run on its own runner, so a
+# change's own tests need no local machine. Nothing here is a landing gate.
+
+name: Focused Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      python:
+        description: "Space-separated pytest files or node ids (empty: none)"
+        required: false
+        default: ""
+      ui:
+        description: "Space-separated vitest files under provisa-ui (empty: none)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: pytest
+    if: inputs.python != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          client: "true"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Run the named tests
+        env:
+          TESTS: ${{ inputs.python }}
+        run: |
+          read -r -a tests <<< "$TESTS"
+          uv run pytest "${tests[@]}" --no-cov -q -n auto -o faulthandler_timeout=300
+
+  ui:
+    name: vitest
+    if: inputs.ui != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: provisa-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the UI toolchain
+        uses: ./.github/actions/setup-ui
+        with:
+          graph-render: "true"
+
+      - name: Run the named tests
+        env:
+          TESTS: ${{ inputs.ui }}
+        run: |
+          read -r -a tests <<< "$TESTS"
+          npx vitest run "${tests[@]}"
