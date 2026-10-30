@@ -164,6 +164,9 @@ const TABLES = {
     table(2, "customers", "sales"),
     table(3, "ledger", "finance"),
     table(4, "invoices", "finance"),
+    // A domain of orphan tables only: no relationship touches it.
+    table(5, "audit_log", "ops"),
+    table(6, "scratch", "ops"),
   ],
   loading: false,
   refetch: REFETCH,
@@ -177,6 +180,7 @@ const DOMAINS = {
   domains: [
     { id: "sales", description: "" },
     { id: "finance", description: "" },
+    { id: "ops", description: "" },
   ],
   loading: false,
   refetch: REFETCH,
@@ -189,7 +193,7 @@ const AUTH = {
 };
 const FILTER = {
   checkedDomains: new Set<string>(),
-  domains: ["sales", "finance"],
+  domains: ["sales", "finance", "ops"],
   domainsEnabled: true,
   ensureDomainChecked: vi.fn(),
 };
@@ -548,5 +552,80 @@ describe("clicks in the diagram", () => {
     expect(await screen.findByTestId("tables-split-title")).toHaveTextContent("customers");
     await settled("1");
     expect(screen.getByTestId("erd-focus-table")).toBeInTheDocument();
+  });
+});
+
+describe("a domain of orphan tables only", () => {
+  it.each(["tables", "relationships"] as const)(
+    "is drawn on the %s ERD with only that domain ticked",
+    async (page) => {
+      FILTER.checkedDomains = new Set(["ops"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("t:5");
+      expect(drawnHas("d:ops")).toBe(true);
+      expect(drawnHas("t:6")).toBe(true);
+      expect(drawnHas("t:1")).toBe(false);
+      const node = (id: string) =>
+        (drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } }).getElementById(id);
+      // Laid out and shown: the layout leaves the orphans displayed.
+      await waitFor(() => expect(node("t:5").style("display")).toBe("element"));
+      expect(node("d:ops").style("display")).toBe("element");
+    },
+  );
+});
+
+describe("the page's filter box on the ERD", () => {
+  const dimmed = (id: string) =>
+    (drawn.cy as unknown as { getElementById(id: string): { hasClass(c: string): boolean } })
+      .getElementById(id)
+      .hasClass("erd-dim");
+  const type = (value: string) =>
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value } });
+
+  it("on Tables marks the tables that match and dims the rest, rebuilding and moving nothing", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    await waitFor(() => expect(highlighted("t:1")).toBe(false));
+    const cy = drawn.cy;
+    const at = JSON.stringify(
+      (drawn.cy as unknown as { getElementById(i: string): { position(): unknown } })
+        .getElementById("t:3")
+        .position(),
+    );
+    type("orders");
+    await waitFor(() => expect(dimmed("t:3")).toBe(true));
+    expect(dimmed("t:1")).toBe(false);
+    expect(dimmed("d:sales")).toBe(false);
+    expect(dimmed("d:finance")).toBe(true);
+    expect(dimmed("r:ledger-invoices")).toBe(true);
+    expect(drawn.cy).toBe(cy);
+    expect(
+      JSON.stringify(
+        (drawn.cy as unknown as { getElementById(i: string): { position(): unknown } })
+          .getElementById("t:3")
+          .position(),
+      ),
+    ).toBe(at);
+    // It is not in the link.
+    expect(param("search")).toBeNull();
+    // Clearing restores everything.
+    type("");
+    await waitFor(() => expect(dimmed("t:3")).toBe(false));
+    expect(dimmed("d:finance")).toBe(false);
+    expect(dimmed("r:ledger-invoices")).toBe(false);
+  });
+
+  it("on Relationships matches lines by source or target and dims the rest", async () => {
+    open("/relationships?view=erd");
+    await diagramHolds("r:orders-customers");
+    type("customers");
+    await waitFor(() => expect(dimmed("r:ledger-invoices")).toBe(true));
+    expect(dimmed("r:orders-customers")).toBe(false);
+    expect(dimmed("t:1")).toBe(false); // the line's source
+    expect(dimmed("t:2")).toBe(false); // its target
+    expect(dimmed("t:3")).toBe(true);
+    expect(param("search")).toBeNull(); // not in the link
+    type("t3"); // a source that is no table's name matches nothing
+    await waitFor(() => expect(dimmed("r:orders-customers")).toBe(true));
   });
 });

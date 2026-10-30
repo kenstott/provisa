@@ -1174,7 +1174,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         }}
         list={
           erd.on ? (
-            <ErdView page="tables" onOpen={openFromErd} />
+            <ErdView page="tables" search={tableSearch} onOpen={openFromErd} />
           ) : (
             <>
               <ListTable testId="tables-list">
