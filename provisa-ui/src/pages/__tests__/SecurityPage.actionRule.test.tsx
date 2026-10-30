@@ -67,6 +67,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
         actionName: "customer_lookup",
         roleId: "analyst",
         filterExpr: "region = 'east'",
+        right: "R",
       },
     ],
     loading: false,
@@ -158,7 +159,7 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() =>
-      expect(deleteRlsRuleSpy).toHaveBeenCalledWith("analyst", null, null, "customer_lookup", null),
+      expect(deleteRlsRuleSpy).toHaveBeenCalledWith("analyst", null, null, "customer_lookup", null, "R"),
     );
   });
 });

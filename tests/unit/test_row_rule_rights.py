@@ -664,6 +664,34 @@ async def test_a_rule_with_a_literal_holding_a_colon_runs(plane, monkeypatch):
     assert await _name(plane, "pets_p") == "colon"
 
 
+def test_the_store_asks_no_runtime_of_a_table_that_cannot_carry_a_rule():
+    from provisa.api.app import _model_rule
+
+    assert _model_rule("pets_team", "orgs", "U") is None
+
+
+def test_a_write_with_no_org_bound_has_no_rule_to_read():
+    from provisa.api.app import _model_rule
+    from provisa.core.request_context import current_org
+
+    token = current_org.set(None)
+    try:
+        assert _model_rule("pets_team", "data_products", "U") is None
+    finally:
+        current_org.reset(token)
+
+
+def test_a_write_in_an_org_with_no_runtime_built_has_no_rule_to_read():
+    from provisa.api.app import _model_rule
+    from provisa.core.request_context import current_org
+
+    token = current_org.set("never-built")
+    try:
+        assert _model_rule("pets_team", "data_products", "U") is None
+    finally:
+        current_org.reset(token)
+
+
 # --- the rule store ------------------------------------------------------------------------------
 
 

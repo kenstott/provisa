@@ -1326,9 +1326,25 @@ def _org_store_of(side: str) -> Database:
 
 register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
-model_row_rules.register_rule_provider(  # REQ-2188
-    lambda role, table, right: acting_model_rule(state, role, table, right)
-)
+
+
+def _model_rule(role: str, table: str, right: str) -> model_row_rules.ModelRule | None:  # REQ-2188
+    """The rule a write of ``table`` is held to. The store asks of every UPDATE and DELETE a
+    person's request makes, and only a table of the meta domain can carry one, in an org whose
+    runtime is built: a platform write, or an org's first build, has no rule to read and must not
+    be refused for having no runtime to read it from."""
+    from provisa.api.app_loaders import _META_TABLES
+    from provisa.core.request_context import current_env, current_org
+
+    org_id = current_org.get()
+    if table not in _META_TABLES or org_id is None:
+        return None
+    if state.org_registry.get(runtime_key(org_id, current_env.get())) is None:
+        return None
+    return acting_model_rule(state, role, table, right)
+
+
+model_row_rules.register_rule_provider(_model_rule)
 
 # REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
 # the org whose request is running. `core` cannot import this ContextVar, so the API layer installs

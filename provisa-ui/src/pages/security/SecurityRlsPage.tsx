@@ -13,6 +13,7 @@
 
 import { Tip } from "../../components/Tip";
 import { RlsRuleRead } from "./RlsRuleRead";
+import { RULE_RIGHT_LABEL } from "./ruleRights";
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
@@ -34,7 +35,7 @@ import { FilterInput } from "../../components/admin/FilterInput";
 import { HelpBubble } from "../../components/HelpBubble";
 import { useRoles, useTables, useDomains } from "../../hooks/useAdminQueries";
 import { useRLSRules, useUpsertRlsRule, useDeleteRlsRule } from "../../hooks/useSecurityQueries";
-import { baseTagId, type RLSRule } from "../../types/admin";
+import { baseTagId, type RLSRule, type RuleRight } from "../../types/admin";
 import { useTags, useTagAssignments } from "../../hooks/useTagQueries";
 import { fetchActions } from "../../api/actions";
 import { useDomainFilter } from "../../context/DomainFilterContext";
@@ -61,6 +62,7 @@ const EMPTY_RULE = {
   roleId: "",
   filterExpr: "",
   description: "", // REQ-2081: required
+  right: "R" as RuleRight, // REQ-2188: what the rule narrows
   domainFilter: "",
   applyToDomain: false,
   applyToAction: false,
@@ -189,6 +191,7 @@ export function SecurityRlsPage() {
         roleId: ruleForm.roleId,
         filterExpr: ruleForm.filterExpr,
         description: ruleForm.description.trim(),
+        right: ruleForm.right, // REQ-2188
       });
       if (!res.success) {
         setError(serverMessage(res, res.message));
@@ -215,6 +218,7 @@ export function SecurityRlsPage() {
         rule.domainId,
         rule.actionName ?? null,
         rule.tagId ?? null,
+        rule.right,
       );
       if (expandedRule === rule.id) setExpandedRule(null);
       await reload();
@@ -233,6 +237,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        right: rule.right,
         applyToTag: true,
       });
     } else if (rule.actionName) {
@@ -242,6 +247,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        right: rule.right,
         domainFilter: actions.find((a) => a.name === rule.actionName)?.domainId ?? "",
         applyToAction: true,
       });
@@ -253,6 +259,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        right: rule.right,
         domainFilter: rule.domainId,
         applyToDomain: true,
       });
@@ -267,6 +274,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        right: rule.right,
         domainFilter: tbl ? tbl.domainId : "",
         applyToDomain: false,
       });
@@ -321,6 +329,13 @@ export function SecurityRlsPage() {
       sortValue: (r) => r.roleId,
       groupValue: (r) => r.roleId,
     },
+    // REQ-2188: what the rule narrows.
+    {
+      key: "right",
+      label: t("securityPage.colRight"),
+      sortValue: (r) => r.right,
+      groupValue: (r) => t(RULE_RIGHT_LABEL[r.right]),
+    },
     { key: "filter", label: t("securityPage.colFilter"), sortValue: (r) => r.filterExpr },
     // REQ-2081: what each rule is for, beside what it filters.
     {
@@ -366,6 +381,8 @@ export function SecurityRlsPage() {
                   tableId: "",
                   actionName: "",
                   tagId: "",
+                  // An action's rows are only read (REQ-2188).
+                  right: v === "action" ? "R" : ruleForm.right,
                 })
               }
               allowDeselect={false}
@@ -381,6 +398,7 @@ export function SecurityRlsPage() {
                 data={domains.map((d) => ({ value: d.id, label: d.id }))}
                 value={ruleForm.domainFilter || null}
                 onChange={(v) => setRuleForm({ ...ruleForm, domainFilter: v ?? "", tableId: "" })}
+                data-testid="rule-domain-select"
               />
             </FormField>
           )}
@@ -444,6 +462,24 @@ export function SecurityRlsPage() {
               data-testid="rule-role-select"
             />
           </FormField>
+          {/* REQ-2188: an action has no row to update. A rule is keyed by its right, so editing
+              one keeps it: another right is another rule. */}
+          {!ruleForm.applyToAction && (
+            <FormField size="medium" help={t("securityPage.ruleRightHelp")}>
+              <Select
+                label={t("securityPage.ruleRight")}
+                data={(["R", "U", "D"] as const).map((right) => ({
+                  value: right,
+                  label: t(RULE_RIGHT_LABEL[right]),
+                }))}
+                value={ruleForm.right}
+                onChange={(v) => setRuleForm({ ...ruleForm, right: (v ?? "R") as RuleRight })}
+                allowDeselect={false}
+                disabled={editingRuleInRow !== null}
+                data-testid="rule-right-select"
+              />
+            </FormField>
+          )}
         </FormLayout>
       </Group>
       <FormLayout>
@@ -634,20 +670,21 @@ export function SecurityRlsPage() {
           backToList: t("tablesPage.backToList"),
         }}
         list={
-          <ListTable minWidth={640} testId="rules-list">
+          <ListTable minWidth={720} testId="rules-list">
             <ListHead
               sortGroup={ruleSortGroup}
               columns={[
                 { col: "id" },
                 { col: "scope" },
                 { col: "role" },
+                { col: "right" },
                 { col: "filter" },
                 { col: "description" },
               ]}
             />
             <Table.Tbody>
               {filtered.length === 0 && (
-                <ListEmpty colSpan={5}>
+                <ListEmpty colSpan={6}>
                   {rules.length === 0
                     ? t("securityPage.noRulesDefined")
                     : t("securityPage.noRulesMatchFilter")}
@@ -655,7 +692,7 @@ export function SecurityRlsPage() {
               )}
               <ListItems
                 state={ruleSortGroup}
-                colSpan={5}
+                colSpan={6}
                 rowKey={(r) => r.id}
                 render={(r) => (
                   <React.Fragment>
@@ -697,6 +734,9 @@ export function SecurityRlsPage() {
                         )}
                       </Table.Td>
                       <Table.Td>{r.roleId}</Table.Td>
+                      <Table.Td data-testid={`rule-right-${r.id}`}>
+                        {t(RULE_RIGHT_LABEL[r.right])}
+                      </Table.Td>
                       <Table.Td>
                         <Text component="code">{r.filterExpr}</Text>
                       </Table.Td>

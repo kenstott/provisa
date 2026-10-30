@@ -793,6 +793,9 @@ export interface RelationshipParameter {
   sourceColumn: string;
 }
 
+// REQ-2188: what a row rule narrows: reading a row, updating it or deleting it.
+export type RuleRight = "R" | "U" | "D";
+
 export interface RLSRule {
   id: number;
   tableId: number | null;
@@ -802,6 +805,7 @@ export interface RLSRule {
   roleId: string;
   filterExpr: string;
   description: string; // REQ-2081: what the rule is for
+  right: RuleRight; // REQ-2188: what the rule narrows
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.
