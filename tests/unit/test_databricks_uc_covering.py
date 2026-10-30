@@ -100,3 +100,77 @@ def test_a_listing_unity_catalog_does_not_answer_raises(monkeypatch):
     with pytest.raises(ExternalLinkError, match="429"):
         ensure_external_link("h", "t", location=_PATH, credential=_CRED)
     assert _posted(uc) == []
+
+
+class _Resp:
+    def __init__(self, status: int, headers: dict | None = None) -> None:
+        self.status_code, self.headers = status, headers or {}
+
+    def json(self):
+        return {"external_locations": []}
+
+
+def _uc_over(monkeypatch, statuses: list, slept: list):
+    """A real ``_UC`` whose HTTP layer answers ``statuses`` in turn; sleeps are recorded."""
+    import requests
+
+    answers = iter(statuses)
+    calls: list[tuple[str, str]] = []
+
+    def fake_request(method, url, **kw):
+        calls.append((method, url))
+        return next(answers)
+
+    monkeypatch.setattr(requests, "request", fake_request)
+    return databricks_uc._UC("h", "t", sleep=slept.append), calls
+
+
+def test_a_429_with_retry_after_waits_that_long_then_succeeds(monkeypatch):
+    slept: list[float] = []
+    uc, calls = _uc_over(monkeypatch, [_Resp(429, {"Retry-After": "7"}), _Resp(200)], slept)
+    assert uc.get("/x")[0] == HTTPStatus.OK
+    assert slept == [7.0] and len(calls) == 2
+
+
+def test_a_429_without_retry_after_backs_off_then_succeeds(monkeypatch):
+    slept: list[float] = []
+    uc, _ = _uc_over(monkeypatch, [_Resp(429), _Resp(429), _Resp(200)], slept)
+    assert uc.post("/x", {})[0] == HTTPStatus.OK
+    assert slept == [1.0, 2.0]
+
+
+def test_exhausted_retries_raise_naming_the_call(monkeypatch):
+    slept: list[float] = []
+    uc, _ = _uc_over(monkeypatch, [_Resp(429)] * 6, slept)
+    with pytest.raises(ExternalLinkError, match="GET /api/x"):
+        uc.get("/api/x")
+    assert slept == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
+def test_a_non_429_error_is_returned_at_once(monkeypatch):
+    slept: list[float] = []
+    uc, calls = _uc_over(monkeypatch, [_Resp(500)], slept)
+    assert uc.get("/x")[0] == 500
+    assert slept == [] and len(calls) == 1
+
+
+def test_a_throttled_page_is_waited_out_and_every_page_is_read(monkeypatch):
+    class Page(_Resp):
+        def __init__(self, url: str, token: str | None) -> None:
+            super().__init__(200)
+            self.body = {"external_locations": [{"name": "l", "url": url}]}
+            if token:
+                self.body["next_page_token"] = token
+
+        def json(self):
+            return self.body
+
+    covering = f"{_ROOT}/provisa_ext_link_e2e_852309f0"
+    slept: list[float] = []
+    uc, calls = _uc_over(
+        monkeypatch,
+        [Page("r2://other@a/x", "t1"), _Resp(429), Page(covering, None)],
+        slept,
+    )
+    assert databricks_uc._covering_location(uc, _PATH) == covering
+    assert slept == [1.0] and "page_token=t1" in calls[-1][1]

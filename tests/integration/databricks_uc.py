@@ -27,9 +27,9 @@ that nothing is left.
 from __future__ import annotations
 
 import time
-from http import HTTPStatus
 from typing import Any
 
+from provisa.federation.databricks_uc import send_waiting
 from tests.integration.databricks_warehouse import _client
 
 _UC = "/api/2.1/unity-catalog"
@@ -41,18 +41,11 @@ def _base() -> str:
     return f"https://{os.environ['DATABRICKS_SERVER_HOSTNAME']}{_UC}"
 
 
-_THROTTLE_WAITS = 5  # waits of 1, 2, 4, 8, 16s unless Unity Catalog names its own
-
-
 def _get(client: Any, url: str, params: dict) -> Any:
-    """``GET url``, waiting out a 429 as Unity Catalog asks, then raising on any error status."""
-    for attempt in range(_THROTTLE_WAITS + 1):
-        resp = client.get(url, params=params)
-        if resp.status_code != HTTPStatus.TOO_MANY_REQUESTS or attempt == _THROTTLE_WAITS:
-            return resp.raise_for_status()
-        retry_after = resp.headers.get("Retry-After")
-        time.sleep(float(retry_after) if retry_after else float(2**attempt))
-    raise AssertionError("unreachable: the last attempt returns or raises")
+    """``GET url``, waiting out a 429 as Unity Catalog asks (the product's helper), then raising on
+    any error status."""
+    resp = send_waiting(lambda: client.get(url, params=params), f"GET {url}", sleep=time.sleep)
+    return resp.raise_for_status()
 
 
 def _listed(client: Any, kind: str) -> list[dict]:
