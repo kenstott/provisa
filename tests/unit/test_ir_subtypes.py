@@ -367,7 +367,8 @@ def test_pgwire_sends_each_subtype_in_postgresqls_text_form():
     assert _text("point", "(1,2)") == "(1,2)"
     assert _text("point", (1.0, 2.5)) == "(1,2.5)"
     assert _text("oid", 42) == "42"
-    # money in PostgreSQL's own form (lc_monetary C): a dollar sign, thousands, two decimals.
+    # money in PostgreSQL's own form (lc_monetary en_US.UTF-8): a dollar sign, thousands, two
+    # decimals.
     assert _text("money", decimal.Decimal("1234.5")) == "$1,234.50"
     assert _text("money", decimal.Decimal("-1234.567")) == "-$1,234.57"
     assert _text("money", "$1,234.50") == "$1,234.50"

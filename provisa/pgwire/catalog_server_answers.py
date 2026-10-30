@@ -45,7 +45,6 @@ _HELD_AS = {
         "regcollation", "regconfig", "regdictionary", "regoper", "regoperator", "regprocedure",
         "regrole",
     ),
-    "DECIMAL(18,2)": ("money",),
 }  # fmt: skip
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(
@@ -1159,7 +1158,6 @@ ANSWERED = frozenset(
         "pg_reload_conf",
         "pg_stat_file",
         "setval",
-        "money",
         "regclass",
         *SERVER_VALUE_NAMES,
         *_answers().scalar,

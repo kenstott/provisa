@@ -37,11 +37,13 @@ from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
 from provisa.transpiler import function_macros
 from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.pg_literals import postgres_literals
+from provisa.transpiler.pg_money import lowered
 from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
-_TXID_COUNTER = itertools.count(1)
+#: PostgreSQL's FirstNormalTransactionId: xids 1 and 2 are the bootstrap's, always past.
+_TXID_COUNTER = itertools.count(3)
 
 
 def next_txid() -> int:
@@ -515,6 +517,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 
     sql = to_char_for_duckdb(sql)  # REQ-2167
+    sql = lowered(sql, "duckdb")  # REQ-2171: the catalog DB holds money as the engine does
     try:
         sql = typed_calls(sql)  # REQ-2167
         if "::bytea" in sql:
