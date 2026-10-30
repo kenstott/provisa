@@ -19,7 +19,7 @@
     "detailCollapse": "Mostrar menos",
     "inputs": "Entradas",
     "inputsHint": "Las entradas físicas más cercanas del producto: las tablas y fuentes de las que se construyen sus miembros.",
-    "inputsEmpty": "No hay entradas registradas.",
+    "inputsEmpty": "Ninguno",
     "promises_one": "{{count}} promesa",
     "promises_other": "{{count}} promesas",
     "expectations_one": "{{count}} expectativa",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "Ninguna.",
     "consumers": "Consumidores",
     "consumersHint": "Quién lee este producto un salto aguas abajo: las tablas, vistas y vistas materializadas construidas directamente sobre sus miembros.",
-    "consumersEmpty": "No hay consumidores registrados.",
+    "consumersEmpty": "Ninguno",
+    "ownerOnlyList": "Esta lista es visible para el propietario del producto de datos.",
     "consumerKind_table": "tabla",
     "consumerKind_view": "vista",
     "consumerKind_materialized_view": "vista materializada"

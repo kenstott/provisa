@@ -517,3 +517,164 @@ async def test_the_mcp_tool_searches_for_the_callers_role(db, monkeypatch):
         "quote",
         "score",
     }
+
+
+# -- re-embedding (REQ-2185, RE-EMBED) ----------------------------------------------------------
+
+
+def _other_vector(text: str) -> list[float]:
+    return [float(len(text)), float(text.count(" ")) + 0.5, 1.0]
+
+
+async def _embed_other(texts: list[str]) -> list[list[float]]:
+    return [_other_vector(t) for t in texts]
+
+
+OTHER = library.Embedder(model="other-embed", embed=_embed_other)
+
+
+async def _unreadable(*_a: Any, **_k: Any) -> Any:
+    raise AssertionError("re-embedding must not read the file or fetch the URL again")
+
+
+def _no_rereading(monkeypatch) -> None:
+    monkeypatch.setattr(library, "fetch", _unreadable)
+    monkeypatch.setattr(extract, "read", _unreadable)
+
+
+async def test_a_document_embedded_by_an_earlier_model_is_named_as_needing_re_embedding(db):
+    async with db.acquire() as conn:
+        old = await _add(conn, "policy.html", POLICY, ["*"])
+        assert [d.id for d in await library.needing_re_embedding(conn, EMBEDDER)] == []
+        assert [d.id for d in await library.needing_re_embedding(conn, OTHER)] == [old]
+
+
+async def test_re_embedding_one_document_rebuilds_its_vectors_from_the_stored_text(db, monkeypatch):
+    async with db.acquire() as conn:
+        document_id = await _add(conn, "policy.html", POLICY, ["sales"])
+        before = await store.document(conn, document_id)
+        texts = [t for _, _, _, t in await store.passages(conn, document_id)]
+        _no_rereading(monkeypatch)
+
+        await library.reembed(conn, document_id, OTHER)
+
+        after = await store.document(conn, document_id)
+        assert before is not None and after is not None
+        assert after.embedding_model == "other-embed"
+        assert (after.title, after.status, after.domains, after.source, after.content_sha256) == (
+            before.title,
+            before.status,
+            before.domains,
+            before.source,
+            before.content_sha256,
+        )
+        assert (after.added_at, after.refreshed_at, after.replaced_at) == (
+            before.added_at,
+            before.refreshed_at,
+            before.replaced_at,
+        )
+        assert [t for _, _, _, t in await store.passages(conn, document_id)] == texts
+        hits = await store.nearest_passages(conn, _other_vector(texts[0]), [document_id], 5)
+        assert [h.text for h in hits][0] == texts[0] and len(hits) == len(texts)
+        assert hits[0].score == pytest.approx(1.0)
+        # the org's current model now draws on it without complaint
+        assert await retrieve.retrieve(conn, "A Client holds an account", None, OTHER)
+
+
+async def test_re_embedding_all_rebuilds_only_the_documents_of_an_earlier_model(db, monkeypatch):
+    async with db.acquire() as conn:
+        first = await _add(conn, "policy.html", POLICY, ["*"])
+        second = await _add(conn, "spec.md", SPEC, ["*"])
+        await library.reembed(conn, second, OTHER)  # already on the current model
+        _no_rereading(monkeypatch)
+
+        outcome = await library.reembed_all(conn, OTHER)
+
+        assert outcome.reembedded == [first]
+        assert outcome.failed == []
+        models = {d.id: d.embedding_model for d in await store.documents(conn)}
+        assert models == {first: "other-embed", second: "other-embed"}
+        assert await library.needing_re_embedding(conn, OTHER) == []
+
+
+async def test_a_failed_embedding_is_reported_by_document_and_leaves_that_document_as_it_was(
+    db, monkeypatch
+):
+    async with db.acquire() as conn:
+        good = await _add(conn, "spec.md", SPEC, ["*"])
+        bad = await _add(conn, "policy.html", POLICY, ["*"])
+        bad_before = await store.passages(conn, bad)
+
+        async def embed(texts: list[str]) -> list[list[float]]:
+            if any("Client" in t for t in texts):
+                raise RuntimeError("quota exceeded")
+            return [_other_vector(t) for t in texts]
+
+        flaky = library.Embedder(model="other-embed", embed=embed)
+        _no_rereading(monkeypatch)
+
+        outcome = await library.reembed_all(conn, flaky)
+
+        assert outcome.reembedded == [good]
+        assert [(f.document_id, f.title) for f in outcome.failed] == [(bad, "Client policy")]
+        assert "quota exceeded" in outcome.failed[0].reason
+        kept = await store.document(conn, bad)
+        assert kept is not None and kept.embedding_model == "test-embed"
+        assert await store.passages(conn, bad) == bad_before
+        with pytest.raises(library.EmbeddingFailed, match="'Client policy'.*quota exceeded"):
+            await library.reembed(conn, bad, flaky)
+
+
+async def test_re_embedding_a_missing_document_is_refused_by_name(db):
+    async with db.acquire() as conn:
+        with pytest.raises(library.DocumentNotFound):
+            await library.reembed(conn, 999, OTHER)
+
+
+def _use_embedder(monkeypatch, embedder: library.Embedder) -> None:
+    async def current():
+        return embedder
+
+    monkeypatch.setattr(router, "_embedder", current)
+
+
+async def test_the_admin_api_names_documents_needing_re_embedding_and_re_embeds_one(
+    api, monkeypatch
+):
+    added = await router.add_document(_upload("policy.html", POLICY, domains=["*"]), _request())
+    assert added["needs_reembedding"] is False
+    _use_embedder(monkeypatch, OTHER)
+
+    listed = await router.list_documents(_request())
+    assert listed["embedding_model"] == "other-embed"
+    assert [(d["id"], d["needs_reembedding"]) for d in listed["documents"]] == [(added["id"], True)]
+
+    _no_rereading(monkeypatch)
+    one = await router.reembed_document(added["id"], _request())
+    assert (one["embedding_model"], one["needs_reembedding"]) == ("other-embed", False)
+
+
+async def test_the_admin_api_re_embeds_all_and_reports_each_failed_document(api, monkeypatch):
+    first = await router.add_document(_upload("spec.md", SPEC, domains=["*"]), _request())
+    second = await router.add_document(_upload("policy.html", POLICY, domains=["*"]), _request())
+    _no_rereading(monkeypatch)
+
+    async def embed(texts: list[str]) -> list[list[float]]:
+        if any("Client" in t for t in texts):
+            raise RuntimeError("quota exceeded")
+        return [_other_vector(t) for t in texts]
+
+    _use_embedder(monkeypatch, library.Embedder(model="other-embed", embed=embed))
+    outcome = await router.reembed_documents(_request())
+    assert outcome["reembedded"] == [first["id"]]
+    assert [(f["document_id"], f["title"]) for f in outcome["failed"]] == [
+        (second["id"], "Client policy")
+    ]
+    assert "quota exceeded" in outcome["failed"][0]["reason"]
+
+    with pytest.raises(ApiError) as failed:
+        await router.reembed_document(second["id"], _request())
+    assert failed.value.status_code == 502 and failed.value.code == "reference_library.embed_failed"
+    with pytest.raises(ApiError) as gone:
+        await router.reembed_document(999, _request())
+    assert gone.value.status_code == 404

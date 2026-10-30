@@ -47,6 +47,13 @@
     "removeTitle": "移除此文档？",
     "removeConsequence": "从现在起，任何助手都不再依据“{{title}}”。引用它的术语和定义会保留其引用。",
     "discardTitle": "舍弃此提议的文档？",
-    "discardConsequence": "“{{title}}”将离开资料库，任何助手都不再依据它。"
+    "discardConsequence": "“{{title}}”将离开资料库，任何助手都不再依据它。",
+    "reembed": "重新嵌入",
+    "reembedAll": "全部重新嵌入（{{n}}）",
+    "needsReembedding": "需要重新嵌入",
+    "needsReembeddingHelp": "使用 {{model}} 嵌入，而非组织当前的向量模型。",
+    "reembedDone": "已重新嵌入的文档：{{n}}",
+    "reembedFailedHeading": "以下文档无法重新嵌入，保持不变：",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

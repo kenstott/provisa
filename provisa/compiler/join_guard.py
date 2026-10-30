@@ -310,6 +310,10 @@ class _Resolver:
                         alts = [alt | {instance} for alt in alts]
                     per_source.append(alts)
             found = [frozenset().union(*choice) for choice in product(*per_source)]
+        # Alternatives are a set: two branches reading the same instances (none, for a graph
+        # session's tables, which are no registered table) are one choice. Kept as a list of
+        # each, a pattern of unions multiplies them hop by hop (arms ** hops of the same set).
+        found = list(dict.fromkeys(found))
         self._instances[key] = found
         return found
 

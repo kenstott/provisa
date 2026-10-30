@@ -182,6 +182,28 @@ def named_write_conflict() -> Iterator[None]:
         raise WriteConflict(first) from exc
 
 
+def _typed_back(schema: Any) -> str:
+    """The select list copying a store table from its Arrow: ``*``, each column the broker sent
+    as its text for want of an Arrow type (materialize_broker.zoned_times_as_text) cast back to
+    its own type."""
+    from provisa.federation.materialize_broker import ZONED_TIME_TYPE
+
+    back = [
+        (f.name, f.metadata[ZONED_TIME_TYPE].decode())
+        for f in schema
+        if f.metadata and ZONED_TIME_TYPE in f.metadata
+    ]
+    if not back:
+        return "*"
+
+    def quoted(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    return (
+        "* REPLACE (" + ", ".join(f"CAST({quoted(n)} AS {k}) AS {quoted(n)}" for n, k in back) + ")"
+    )
+
+
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(
         self, *, materialize_dsn: str | None = None, store_engine: Any | None = None
@@ -218,6 +240,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
         register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method
+        from provisa.federation.duckdb_pg_functions import register as register_pg_functions
+
+        register_pg_functions(self._con)  # REQ-2167: what DuckDB has no equivalent of
         self._engine = build_duckdb_engine()
         # REQ-1922: the FederationEngine whose store this runtime lands in — the backend's own, so
         # the store an org lane pins on it (``pin_materialize_store``) is the one attached. A
@@ -1332,7 +1357,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         try:
             cur.register(reg_name, arrow_tbl)
             try:
-                cur.execute(f'CREATE OR REPLACE TABLE {target} AS SELECT * FROM "{reg_name}"')
+                cur.execute(
+                    f"CREATE OR REPLACE TABLE {target} AS SELECT {_typed_back(arrow_tbl.schema)} "
+                    f'FROM "{reg_name}"'
+                )
             finally:
                 cur.unregister(reg_name)
             if is_replicas_schema(schema):

@@ -22,7 +22,9 @@ pads it."""
 
 from __future__ import annotations
 
+import decimal
 import functools
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -93,6 +95,72 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
     return None
 
 
+def _to_decimal(value: Any) -> Any:
+    if value is None or isinstance(value, decimal.Decimal):
+        return value
+    return decimal.Decimal(str(value))
+
+
+def _to_int(value: Any) -> Any:
+    return None if value is None else int(value)
+
+
+def _to_float(value: Any) -> Any:
+    return None if value is None else float(value)
+
+
+_INTEGERS = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT})
+_NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
+
+#: How a call of a pg_catalog function is described, by the type PostgreSQL says it returns
+#: (function_types): the engine computes the value, in a type of its own where its function's
+#: differs (DuckDB's length is a BIGINT, its avg a DOUBLE), brought to PostgreSQL's type. A type
+#: absent here is the engine's to get right: its value is not this type's by a conversion of form.
+_RETURNED: dict[str, CastType] = {
+    "smallint": CastType(21, -1, BVType.SMALLINT, _INTEGERS, _to_int),
+    "integer": CastType(23, -1, BVType.INTEGER, _INTEGERS, _to_int),
+    "bigint": CastType(20, -1, BVType.BIGINT, _INTEGERS, _to_int),
+    # An exact numeric of no fixed scale is served as its text (duckdb_pg_scalars).
+    "numeric": CastType(1700, -1, BVType.DECIMAL, _NUMBERS | {BVType.TEXT}, _to_decimal),
+    "double precision": CastType(701, -1, BVType.FLOAT, _NUMBERS, _to_float),
+    "real": CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}), _to_float),
+    "oid": CastType(26, -1, BVType.OID, _INTEGERS | {BVType.OID}),
+    "character": CastType(1042, -1, BVType.TEXT, _TEXT_FORMS),
+    '"char"': CastType(18, -1, BVType.TEXT, _TEXT_FORMS),
+    "name": CastType(19, -1, BVType.TEXT, _TEXT_FORMS),
+    "character varying": CastType(1043, -1, BVType.TEXT, _TEXT_FORMS),
+    "bit": CastType(1560, -1, BVType.BIT, frozenset({BVType.BIT, BVType.TEXT})),
+    "bit varying": CastType(1562, -1, BVType.VARBIT, frozenset({BVType.BIT, BVType.TEXT})),
+    "numrange": CastType(3906, -1, BVType.NUMRANGE, _TEXT_FORMS),
+    "tsvector": CastType(3614, -1, BVType.TSVECTOR, _TEXT_FORMS),
+    "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB})),
+    "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
+    "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET})),
+    "void": CastType(2278, -1, BVType.TEXT, _TEXT_FORMS),
+}
+
+
+_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
+
+
+def bit_varying_read(sql: str) -> str:
+    """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
+    return _BIT_VARYING.sub("::varbit", sql)
+
+
+def _result_type(expression: Any) -> CastType | None:
+    """How a result column is described by its root: a cast by the cast's type, a call of a
+    pg_catalog function by the type that function returns; None for any other column."""
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire.function_types import call_result_type
+
+    if isinstance(expression, exp.Cast):
+        return _cast_type(expression.to)
+    returned = call_result_type(expression)
+    return None if returned is None else _RETURNED.get(returned)
+
+
 @functools.lru_cache(maxsize=4096)
 def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     """For each result column of ``sql`` (a single SELECT), the type its root cast gives it, or
@@ -103,7 +171,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     from sqlglot.errors import ParseError
 
     try:
-        tree = sqlglot.parse_one(sql, read="postgres")
+        tree = sqlglot.parse_one(bit_varying_read(sql), read="postgres")
     except ParseError:
         return None  # not PostgreSQL's grammar: the engine's own types describe it
     if not isinstance(tree, exp.Select):
@@ -113,7 +181,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
         expression = select.unalias()
         if isinstance(expression, exp.Star):
             return None  # its columns are known only to the engine
-        out.append(_cast_type(expression.to) if isinstance(expression, exp.Cast) else None)
+        out.append(_result_type(expression))
     return tuple(out)
 
 

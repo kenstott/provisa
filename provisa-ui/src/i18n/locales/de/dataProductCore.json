@@ -19,7 +19,7 @@
     "detailCollapse": "Weniger anzeigen",
     "inputs": "Eingaben",
     "inputsHint": "Die nächsten physischen Eingaben des Produkts: die Tabellen und Quellen, aus denen seine Mitglieder gebaut sind.",
-    "inputsEmpty": "Keine Eingaben erfasst.",
+    "inputsEmpty": "Keine",
     "promises_one": "{{count}} Zusage",
     "promises_other": "{{count}} Zusagen",
     "expectations_one": "{{count}} Erwartung",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "Keine.",
     "consumers": "Verbraucher",
     "consumersHint": "Wer dieses Produkt eine Stufe flussabwärts liest: die Tabellen, Sichten und materialisierten Sichten, die direkt auf seinen Mitgliedern aufbauen.",
-    "consumersEmpty": "Keine Verbraucher erfasst.",
+    "consumersEmpty": "Keine",
+    "ownerOnlyList": "Diese Liste ist für den Eigentümer des Datenprodukts sichtbar.",
     "consumerKind_table": "Tabelle",
     "consumerKind_view": "Sicht",
     "consumerKind_materialized_view": "materialisierte Sicht"

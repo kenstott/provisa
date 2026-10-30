@@ -20,6 +20,8 @@ on:
         description: "Commit or branch to test (default: the dispatched one)"
         required: false
         default: ""
+  # verification calls it (verify-surface.yml), on the run's own commit.
+  workflow_call:
 
 permissions:
   contents: read

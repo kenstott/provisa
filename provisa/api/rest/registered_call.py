@@ -32,16 +32,6 @@ _COMMANDS_PROC_RE = _re.compile(
 )
 
 
-def _command_signature(cmd: dict) -> str:
-    args = ", ".join(
-        f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
-    )
-    if cmd["void"]:  # REQ-2001: a VOID command answers nothing
-        return f"{cmd['name']}({args}) :: ()"
-    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
-    return f"{cmd['name']}({args}) :: ({ret})"
-
-
 def _detect_procedure(query: str) -> str | None:
     m = _PROC_RE.match(query.strip())
     return m.group(1).lower() if m else None
@@ -78,10 +68,11 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     """
     if _COMMANDS_PROC_RE.match(body.query.strip()):
         from provisa.api.data.action_exec import list_visible_commands
+        from provisa.cypher.command_call import command_signature
 
         cmds = list_visible_commands(state, role_id, "cypher")
         rows = [
-            {"name": c["name"], "description": c["description"], "signature": _command_signature(c)}
+            {"name": c["name"], "description": c["description"], "signature": command_signature(c)}
             for c in cmds
         ]
         return JSONResponse(content={"columns": ["name", "description", "signature"], "rows": rows})
@@ -89,26 +80,15 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     if proc is not None:
         return _handle_procedure(proc, label_map)
     from provisa.api.errors import ApiError
-    from provisa.cypher.command_call import CommandCallRefused, parse_command_call, project
+    from provisa.cypher.command_call import CommandCallRefused, parse_command_call
 
     try:
         call = parse_command_call(body.query, body.params or {})
-    except CommandCallRefused as exc:
-        raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
-    if call is None:
-        return None
-    from provisa.api.data.action_exec import (
-        bind_command_args,
-        command_named,
-        invoke_tracked_function,
-    )
+        if call is None:
+            return None
+        from provisa.api.data.action_exec import run_cypher_call
 
-    # REQ-2168: the name is the command's Cypher command binding.
-    name = command_named(state, role_id, "cypher", call.name)
-    args = bind_command_args(name, call.values, state, role_id)
-    rows = await invoke_tracked_function(name, args, state, role_id)
-    try:
-        cols, shaped = project(call, rows)
+        cols, shaped = await run_cypher_call(call, state, role_id)
     except CommandCallRefused as exc:
         raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
     return JSONResponse(content={"columns": cols, "rows": shaped})

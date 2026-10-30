@@ -1015,10 +1015,13 @@ async def plan_indexes(state: Any, key: ReplicaKey, landed_at: datetime) -> None
 
 
 async def build_indexes(state: Any, item: Any) -> None:
-    """REQ-2015: build the indexes ``item`` names on the standing replica."""
+    """REQ-2015: build the indexes ``item`` names on the standing replica or materialized view."""
     from provisa.federation import replica_indexes
 
-    _source, _table, _address, indexer = await _indexed_replica(state, item.key)
+    if item.address is not None:
+        indexer = state.federation_engine.view_indexer(*item.address)
+    else:
+        _source, _table, _address, indexer = await _indexed_replica(state, item.key)
     if indexer is None:
         return
     await replica_indexes.build_due(state.tenant_db, item, indexer)

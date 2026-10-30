@@ -396,7 +396,11 @@ def iso_duration(months: int, days: int, micros: int) -> str:
 
 
 def _months_and_days(duration: exp.Expression) -> exp.Expression:
-    months, days = parts(duration)[:2]
+    """What a duration moves a date by: its months, its days and the whole days of its time (a
+    time of 1.4 days moves a date one day, toward zero either way); the rest of its time is no
+    part of a date."""
+    months, days, micros = parts(duration)
+    days = exp.Add(this=days, expression=_int_div(micros, _SECONDS_PER_DAY * _MICROS))
     return exp.Paren(this=exp.Add(this=_times(months, "month"), expression=_times(days, "day")))
 
 
@@ -774,6 +778,8 @@ _TYPE_KINDS = {
     "time without time zone": LOCALTIME,
     "timetz": TIME,
     "time with time zone": TIME,
+    # A session property's kind for a time with its offset (provisa.ephemeral.types).
+    "zoned_time": TIME,
     "timestamp": LOCALDATETIME,
     "timestamp without time zone": LOCALDATETIME,
     "datetime": LOCALDATETIME,

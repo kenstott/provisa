@@ -65,6 +65,8 @@ class NodePattern:
     #: Each inline property's value as the statement writes it (``'x'``, ``42``, ``$p``), which a
     #: read matches on as ``WHERE var.prop = <value>`` (:func:`with_inline_conditions`).
     property_text: dict[str, str] = field(default_factory=dict)
+    #: Whether the pattern writes a property map, an empty one (``{}``) included.
+    has_map: bool = False
 
     @property
     def label_expr(self) -> LabelExpr:
@@ -253,8 +255,10 @@ class WithClause:
     where: WhereClause | None = None
     # A WITH's own ORDER BY, SKIP and LIMIT pick the rows it carries on, not the statement's.
     order_by: list[OrderItem] = field(default_factory=list)
-    skip: int | None = None
-    limit: int | None = None
+    #: A count of rows as written, or the expression giving it ($n, toInteger(...)): one
+    #: reading no variable, its value a whole number of 0 or more (translator._row_count).
+    skip: int | CypherExpr | None = None
+    limit: int | CypherExpr | None = None
     #: WITH DISTINCT: the rows it carries on are distinct.
     distinct: bool = False
 
@@ -305,6 +309,8 @@ class SetItem:
     property: str | None = None
     value: CypherExpr | None = None
     merge: bool = False
+    #: The value's expression as written (REQ-2176: the graph session reads it as written).
+    value_text: str | None = None
 
 
 @dataclass
@@ -335,6 +341,8 @@ class DeleteClause:
     expressions: list[CypherExpr]
     detach: bool = False
     start: int = -1  # as CreateClause.start
+    #: Each expression as written, which a session's DELETE reads its value by (REQ-2176).
+    texts: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -345,6 +353,8 @@ class MergeClause:
     on_create: list[SetItem] = field(default_factory=list)
     on_match: list[SetItem] = field(default_factory=list)
     start: int = -1  # as CreateClause.start
+    #: ``MERGE p = <pattern>``: the path the pattern matched or made is bound to it.
+    path_variable: str | None = None
 
 
 WriteClause = CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause
@@ -375,8 +385,8 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     pipeline: list["MatchStep | WithClause"]
     return_clause: ReturnClause | None
     order_by: list[OrderItem]
-    skip: int | None
-    limit: int | None
+    skip: int | CypherExpr | None
+    limit: int | CypherExpr | None
     call_subqueries: list[CallSubquery] = field(default_factory=list)
     # UNION / UNION ALL: list of (sub_ast, is_all)
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)

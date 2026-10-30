@@ -1607,18 +1607,11 @@ def _list_commands(app_state, role_id: str | None) -> list[dict]:
 
 
 def _command_signature(cmd: dict) -> str:
-    """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
-    import json
+    """A Neo4j-style procedure signature for a command (REQ-1156): the one Cypher over HTTP
+    lists too (cypher/command_call.command_signature), ``:: ()`` for a VOID one (REQ-2001)."""
+    from provisa.cypher.command_call import command_signature
 
-    args = ", ".join(
-        f"{a['name']}"
-        # REQ-2168: an argument that declares a default, written as Neo4j writes one.
-        + (f" = {json.dumps(a['default'], default=str)}" if "default" in a else "")
-        + f" :: {str(a.get('type', 'String')).upper()}"
-        for a in cmd["arguments"]
-    )
-    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
-    return f"{cmd['name']}({args}) :: ({ret})"
+    return command_signature(cmd)
 
 
 async def _maybe_invoke_command_call(
@@ -1627,21 +1620,13 @@ async def _maybe_invoke_command_call(
     """If *cypher* is ``CALL <command>(args)``, invoke it (REQ-1156): read by the one Cypher
     command-call reader (cypher/command_call.py, shared with Cypher over HTTP), admitted and bound
     by the shared executor, shaped by its YIELD and RETURN. None falls through to Cypher."""
-    from provisa.api.data.action_exec import (
-        bind_command_args,
-        command_named,
-        invoke_tracked_function,
-    )
-    from provisa.cypher.command_call import parse_command_call, project
+    from provisa.api.data.action_exec import run_cypher_call
+    from provisa.cypher.command_call import parse_command_call
 
     call = parse_command_call(cypher, parameters or {})
     if call is None:
         return None
-    # REQ-2168: the name is the command's Cypher command binding.
-    name = command_named(app_state, role_id, "cypher", call.name)
-    args = bind_command_args(name, call.values, app_state, role_id)
-    rows = await invoke_tracked_function(name, args, app_state, role_id)
-    cols, shaped = project(call, rows)
+    cols, shaped = await run_cypher_call(call, app_state, role_id)
     return cols, [[r.get(c) for c in cols] for r in shaped]
 
 
@@ -1741,8 +1726,13 @@ async def _execute_cypher(
     roles: list[str] | None = None,
     deliver: Any = None,
     orgs: list[str] | None = None,
+    internal: bool = False,
 ) -> tuple[list[str], list[list[Any]], dict | None]:
     """Run Cypher through the Provisa pipeline; return (columns, rows-of-values, redirect-handle).
+
+    ``internal``: a read the graph session's own write makes (REQ-2176), whose nodes and
+    relationships keep their graph identities, as a read of a session holding ephemeral objects
+    does: neither is registered in the model's ids.
 
     ``deliver`` (a ``Delivery`` or None) requests the read result be materialized to a sink instead of
     buffered; when it fires the returned rows are empty and the third element is the sink handle. Only
@@ -1750,6 +1740,7 @@ async def _execute_cypher(
     """
     from provisa.api.app import state as app_state
     from provisa.gql.assembler import (
+        answered_columns,
         assemble_rows,
         register_node_ids,
         register_rel_ids,
@@ -1846,7 +1837,13 @@ async def _execute_cypher(
 
         async def run_read(query: str, values: dict) -> list[dict]:
             cols, value_rows, _ = await _execute_cypher(
-                query, values, role_id, include_ops=include_ops, roles=roles, orgs=orgs
+                query,
+                values,
+                role_id,
+                include_ops=include_ops,
+                roles=roles,
+                orgs=orgs,
+                internal=True,
             )
             return [dict(zip(cols, row)) for row in value_rows]
 
@@ -1874,7 +1871,7 @@ async def _execute_cypher(
                 )
                 held.wrote = True
             # A write followed by reads answers with the rest's rows (REQ-2176).
-            return (*seam.rows_of(made), None)
+            return (*seam.rows_of(made, temp), None)
     involved = ephemeral_read.involved(temp)
 
     translation = None if involved else kept.cached()
@@ -1978,11 +1975,18 @@ async def _execute_cypher(
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r, keep_values=True) for r in assembled]  # REQ-2173
 
-    _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
-    await register_node_ids(serializable, _model_db)
-    await register_rel_ids(serializable, _model_db)
+    if not (involved or internal):
+        # REQ-2176: an ephemeral node is the session's alone, never registered in the model's
+        # node ids; a read of the session keeps every node's graph identity.
+        _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
+        await register_node_ids(serializable, _model_db)
+        await register_rel_ids(serializable, _model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable = seam.answered(serializable, temp)
 
-    columns = list(raw_rows[0].keys()) if raw_rows else []
+    # A read of no rows names its columns too, as Cypher over HTTP does (REQ-347).
+    columns = list(raw_rows[0].keys()) if raw_rows else answered_columns(list(result.column_names))
     rows = [[row.get(col) for col in columns] for row in serializable]
     return columns, rows, None
 

@@ -29,7 +29,7 @@ everything else are real.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
 
 from provisa.core.runtime_gone import RuntimeNotBuilt
@@ -466,6 +466,7 @@ def registry_marking(
     model_db: Any,
     build_state: Any,
     on_built: Callable[[Any], None] | None = None,
+    plan_indexes: Callable[[Any], Awaitable[None]] | None = None,
 ) -> Any:
     """``mv -> mark(change)``: a view's refresh by the event loop, recorded in the MV registry a
     read asks whether the view is fresh, and on this region's build row in ``build_state`` (its
@@ -480,7 +481,10 @@ def registry_marking(
     it, as the coordinated refresh seeds it (``coordination.ensure_mv_row``).
 
     ``on_built`` is told of each view a change marks fresh: a view that reads it may have been
-    waiting for its first build to be wired (:func:`_views_awaiting_an_input`)."""
+    waiting for its first build to be wired (:func:`_views_awaiting_an_input`).
+
+    ``plan_indexes`` states the indexes of each view a change landed (REQ-2015), for the replica
+    runner to build after the landing."""
     from provisa.mv.coordination import ensure_mv_row, record_build
 
     def mv_refreshed(mv: Any) -> Any:
@@ -503,6 +507,8 @@ def registry_marking(
             else:
                 registry.mark_refreshed(mv.id, None)
                 await record()
+            if event_type != "error" and plan_indexes is not None:
+                await plan_indexes(mv)
             if event_type != "error" and on_built is not None:
                 on_built(mv)
 
@@ -809,11 +815,19 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         state.views_awaiting_input = _views_awaiting_an_input(mvs, _mv_cols, graph)
         from provisa.core.request_context import require_current_org as _org_bound
 
+        from provisa.mv.view_indexes import plan_view_indexes
+
+        async def _plan_view_indexes(mv: Any) -> None:
+            await plan_view_indexes(
+                engine, mv, model_db=state.model_db, state_db=state.tenant_db, served=state
+            )
+
         mv_refreshed = registry_marking(
             state.mv_registry,
             state.model_db,
             state.tenant_db,
             on_built=_wire_views_reading(scheduler, state, log, _org_bound()),
+            plan_indexes=_plan_view_indexes,
         )
 
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),

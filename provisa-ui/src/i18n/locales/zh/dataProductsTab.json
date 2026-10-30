@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "打开 {{successor}}",
     "contract": {
       "label": "数据契约",
-      "hint": "每个输出端口的契约：以其自身版本承诺的内容",
+      "hint": "每个输出端口的契约：以其自身版本声明的内容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "已提议",
@@ -177,8 +177,8 @@
       "versionLabel": "契约版本",
       "statusLabel": "契约状态",
       "descriptionLabel": "用途说明",
-      "columnsLabel": "承诺的列",
-      "columnsHelp": "不再承诺某列或更改其类型，需要新版本。",
+      "columnsLabel": "列",
+      "columnsHelp": "删除某列或更改其类型，需要新版本。",
       "requiredLabel": "从不为空",
       "slaLabel": "服务级别",
       "slaProperty": "属性",
@@ -187,6 +187,28 @@
       "slaRemove": "移除服务级别",
       "slaAdd": "添加服务级别",
       "notDeclared": "未声明",
+      "breakingWarning": "v{{version}} 中有破坏性变更，尚未生效",
+      "breaking": "破坏性",
+      "savedBy": "由 {{who}} 于 {{when}} 保存",
+      "savedBySystem": "系统",
+      "noChanges": "第一个版本：没有可比较的内容",
+      "change": {
+        "field_added": "已添加字段 {{subject}}，{{after}}",
+        "field_removed": "已移除字段 {{subject}}，原为 {{before}}",
+        "field_renamed": "字段 {{subject}} 已重命名为 {{after}}",
+        "field_type_changed": "字段 {{subject}} 已从 {{before}} 改为 {{after}}",
+        "field_required": "字段 {{subject}} 已设为必填",
+        "field_optional": "字段 {{subject}} 不再必填",
+        "field_described": "字段 {{subject}} 的描述已更改",
+        "sla_added": "已添加服务级别 {{subject}}，{{after}}",
+        "sla_removed": "已移除服务级别 {{subject}}，原为 {{before}}",
+        "sla_changed": "服务级别 {{subject}} 已从 {{before}} 改为 {{after}}",
+        "check_added": "已添加质量检查 {{subject}}",
+        "check_removed": "已移除质量检查 {{subject}}",
+        "check_changed": "质量检查 {{subject}} 已更改",
+        "description_changed": "描述已更改",
+        "terms_changed": "条款已更改：{{subject}}"
+      },
       "loadError": "无法读取契约：{{error}}",
       "notExported": "{{member}} 没有已导出的契约",
       "section": {
@@ -226,9 +248,9 @@
       "draftWarning": "草稿：尚未生效",
       "card": {
         "details": "详情",
-        "fields": "承诺的字段",
+        "fields": "列",
         "sla": "SLA 与新鲜度",
-        "quality": "质量承诺",
+        "quality": "承诺",
         "consumers": "消费方",
         "versions": "版本与变更"
       }

@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import sqlglot.expressions as exp
 
@@ -109,6 +109,48 @@ _XSD_NUMBERS = {
 _XSD_CASTS = {f"{_XSD}date": "DATE", f"{_XSD}dateTime": "TIMESTAMP", f"{_XSD}time": "TIME"}
 
 
+def _as_text(value: exp.Expression) -> exp.Expression:
+    """``value`` as the text a string + it joins: a property read by a key that is a value
+    (``n[key]``, its JSON) as its scalar's text, not its JSON (a string's quotes); any other as
+    it is."""
+    inner = value.this if isinstance(value, exp.Paren) else value
+    if isinstance(inner, exp.Anonymous) and str(inner.this).upper() == "JSON_EXTRACT":
+        return exp.Paren(this=_anon("JSON_EXTRACT_SCALAR", *(e.copy() for e in inner.expressions)))
+    return value
+
+
+def _json_text_of(e: exp.Expression) -> exp.Expression | None:
+    """The JSON a value is read as the text of (``JSON_EXTRACT_SCALAR(j, '$')``, a key of a map
+    inside a map a WITH carries, expr_context.resolve_property), or None for any other value."""
+    if not (isinstance(e, exp.Anonymous) and str(e.this).upper() == "JSON_EXTRACT_SCALAR"):
+        return None
+    if len(e.expressions) != 2:
+        return None
+    held, path = e.expressions
+    return held if isinstance(path, exp.Literal) and path.this == "$" else None
+
+
+def _element_or_map_key(held: exp.Expression, name: str) -> exp.Expression:
+    """``name`` of ``held``, a JSON value: a node's or relationship's property where it is one
+    (an object of ``properties`` and a ``label`` or ``type``), else the map's key; JSON null where
+    it has none."""
+    key = json.dumps(name)
+
+    def at(path: str) -> exp.Expression:
+        return _anon("JSON_EXTRACT", held.copy(), exp.Literal.string(path))
+
+    element = exp.and_(
+        exp.Not(this=exp.Is(this=at("$.properties"), expression=exp.Null())),
+        exp.or_(
+            exp.Not(this=exp.Is(this=at("$.label"), expression=exp.Null())),
+            exp.Not(this=exp.Is(this=at("$.type"), expression=exp.Null())),
+        ),
+    )
+    return exp.Case(
+        ifs=[exp.If(this=element, true=at(f"$.properties.{key}"))], default=at(f"$.{key}")
+    )
+
+
 class ExprContext(Protocol):
     """Translator-supplied resolution for the context-dependent leaves of an expression."""
 
@@ -174,6 +216,16 @@ class ExprContext(Protocol):
         """A function call after its args are lowered (Cypher→engine renames/casts live here)."""
         ...
 
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path" where ``expr`` is a list of collected graph elements (their
+        JSON values), else None."""
+        ...
+
+    def element_property_type(self, expr: CypherExpr, name: str) -> exp.DataType | None:
+        """The one type property ``name`` of the elements the list ``expr`` collects has, where
+        their labels agree; None to read it as text."""
+        ...
+
     def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:
         """A label test ``n:Label`` against the lowered operand."""
         ...
@@ -187,6 +239,15 @@ class ExprContext(Protocol):
         answers), None for any other name."""
         ...
 
+    def is_json_property(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a property held as one JSON value (a column of type json)."""
+        ...
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:
+        """A bound node, relationship or path as the JSON object a list, a map or collect()
+        holds, None for any other name."""
+        ...
+
     def graph_kind(self, name: str) -> str | None:
         """What the pattern variable ``name`` binds -- "node", "relationship", "path", or "list"
         (a variable-length relationship's relationships) -- else None."""
@@ -195,6 +256,18 @@ class ExprContext(Protocol):
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         """A bound node's or relationship's properties as one JSON object, None for any other
         name."""
+        ...
+
+    def resolve_element_rows(
+        self, node: ListComprehension, source: exp.Expression
+    ) -> exp.Expression:
+        """``node`` over ``source``, a list of graph elements, read one row per item in order:
+        a comprehension whose body reads a subquery, which no lambda holds."""
+        ...
+
+    def is_bound(self, name: str) -> bool:
+        """Whether the statement binds ``name`` where an expression reads it: a node,
+        relationship or path variable, or any other value a clause before it names."""
         ...
 
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
@@ -634,6 +707,31 @@ def _json_string(value: exp.Expression) -> exp.Expression:
     )
 
 
+def _pattern_variables(body: Any) -> list[str]:
+    """The node and relationship variables a pattern predicate's statement names, in order."""
+    from provisa.gql.ir import MatchStep, PathPattern
+
+    found: list[str] = []
+    for step in getattr(body, "pipeline", []):
+        if not isinstance(step, MatchStep):
+            continue
+        for match in step.matches:
+            pattern = match.pattern
+            if not isinstance(pattern, PathPattern):
+                continue
+            for item in [*pattern.nodes, *pattern.rels]:
+                if item.variable and item.variable not in found:
+                    found.append(item.variable)
+    return found
+
+
+def _is_json_object(e: exp.Expression) -> bool:
+    """Whether ``e`` builds a JSON value itself (JSON_OBJECT or TO_JSON): a graph element held as
+    any other value (a node a union carries, a path that may be null) is put in a list as its
+    JSON by TO_JSON."""
+    return isinstance(e, exp.Anonymous) and str(e.this).upper() in ("JSON_OBJECT", "TO_JSON")
+
+
 def _json_equals(item: exp.Expression, other: exp.Expression, kind: str) -> exp.Expression:
     """``item`` (an item of a list of several types, its JSON) = ``other`` (a value of ``kind``):
     null where the item is null, false where it is of another kind, else their values compared."""
@@ -709,9 +807,16 @@ class ExprLowering:
         #: The variables a comprehension or quantifier binds to an item of a list of JSON-encoded
         #: values ([[1, 2], ['a']]): each item is its JSON.
         self._json_vars: set[str] = set()
+        #: Each comprehension variable bound to the items of a list of collected graph elements
+        #: ("node", "rel" or "path"): its JSON value (translator._element_list_kind).
+        self._element_vars: dict[str, str] = {}
+        #: The list each such variable ranges over, as the statement writes it.
+        self._element_sources: dict[str, CypherExpr] = {}
         #: The kinds of the items a comprehension or quantifier variable is bound to, where its list
         #: is written in the statement ([x IN [1, []] | ...]): _static_kind of each.
         self._item_kinds: dict[str, frozenset[str | None]] = {}
+        # Every lambda variable in scope (_over), innermost last
+        self._lambda_vars: list[str] = []
 
     def _given_type(self, node: CypherExpr) -> type | None:
         """The type of the value the client gives ``node`` (a parameter, or a variable bound to
@@ -729,7 +834,18 @@ class ExprLowering:
             self._item_kinds[var] = frozenset(self._static_kind(i) for i in written.items)
         else:
             self._item_kinds.pop(var, None)
+        element = self._ctx.element_list_kind(written)
+        before = self._element_vars.get(var)
+        before_source = self._element_sources.get(var)
+        if element is not None:
+            self._element_vars[var] = element
+            self._element_sources[var] = written
+        else:
+            self._element_vars.pop(var, None)
+        self._lambda_vars.append(var)
         try:
+            if element is not None:
+                return self.lower(body)
             if _json_valued(source) != "list":
                 return self.lower(body)
             held = var in self._json_vars
@@ -740,10 +856,23 @@ class ExprLowering:
                 if not held:
                     self._json_vars.discard(var)
         finally:
+            self._lambda_vars.pop()
             if kinds is None:
                 self._item_kinds.pop(var, None)
             else:
                 self._item_kinds[var] = kinds
+            if before is None:
+                self._element_vars.pop(var, None)
+                self._element_sources.pop(var, None)
+            else:
+                self._element_vars[var] = before
+                if before_source is not None:
+                    self._element_sources[var] = before_source
+
+    def _json_item(self, node: CypherExpr) -> bool:
+        """Whether ``node`` is one value held as its JSON: an item of a list of several types, or
+        a property held so (a json column)."""
+        return self._ctx.is_json_value(node) or self._ctx.is_json_property(node)
 
     def _static_kind(self, node: CypherExpr) -> str | None:
         """The kind of value ``node`` is, where the statement says it -- "integer", "float",
@@ -813,13 +942,27 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, Variable) and self._element_vars.get(node.obj.name) in (
+            "node",
+            "rel",
+        ):
+            # A property of a collected node or relationship: its value in the element's JSON,
+            # of the one type its labels give it, else its text.
+            value = _anon(
+                "JSON_EXTRACT_SCALAR",
+                exp.column(node.obj.name),
+                exp.Literal.string("$.properties." + json.dumps(node.name)),
+            )
+            held = self._ctx.element_property_type(self._element_sources[node.obj.name], node.name)
+            return value if held is None else exp.Cast(this=value, to=held)
         if not isinstance(node.obj, (MapLiteral, Variable)):
             held = self.lower(node.obj)
             if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
                 # A map read from a list of several types is its JSON: its key, read as JSON
                 # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
-                path = "$." + json.dumps(node.name)
-                return exp.Paren(this=_anon("JSON_EXTRACT", held, exp.Literal.string(path)))
+                # A node or relationship such a list holds is its JSON object: a property of it
+                # is read from its properties.
+                return exp.Paren(this=_element_or_map_key(held, node.name))
         if isinstance(node.obj, MapLiteral):
             # A map literal's key is its entry's own value; a key it has not is null (#287).
             for key, value in node.obj.entries:
@@ -837,7 +980,14 @@ class ExprLowering:
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
-        return self._ctx.resolve_label_predicate(self.lower(node.operand), node.labels)
+        # A variable's label test is resolved by its name, wherever its row is held: lowered, a
+        # node a WITH carries is its CTE's row, which names no variable.
+        operand = (
+            exp.column(node.operand.name)
+            if isinstance(node.operand, Variable)
+            else self.lower(node.operand)
+        )
+        return self._ctx.resolve_label_predicate(operand, node.labels)
 
     # -- operators --------------------------------------------------------- #
 
@@ -914,8 +1064,8 @@ class ExprLowering:
         item or a value of a known kind: their values compared where both are numbers, strings
         or booleans, else null -- openCypher orders no values of two kinds, nor null. Never their
         JSON text (3.14 < 10). None where neither side is such an item."""
-        left_json = self._ctx.is_json_value(node.left)
-        right_json = self._ctx.is_json_value(node.right)
+        left_json = self._json_item(node.left)
+        right_json = self._json_item(node.right)
         if not (left_json or right_json):
             return None
         if (not left_json and left_kind is None) or (not right_json and right_kind is None):
@@ -1027,7 +1177,7 @@ class ExprLowering:
                     (node.left, node.right, right_kind),
                     (node.right, node.left, left_kind),
                 ):
-                    if kind and self._ctx.is_json_value(item):
+                    if kind and self._json_item(item):
                         same = _json_equals(self.lower(item), self.lower(other), kind)
                         return same if op == "=" else exp.Not(this=exp.Paren(this=same))
             else:
@@ -1056,7 +1206,7 @@ class ExprLowering:
             if op == "+" and (self._ctx.is_text(node.left) or self._ctx.is_text(node.right)):
                 if not (self._ctx.is_list(node.left) or self._ctx.is_list(node.right)):
                     # A string + a value is the two as one string (SQL's + adds numbers alone).
-                    return exp.DPipe(this=left, expression=right)
+                    return exp.DPipe(this=_as_text(left), expression=_as_text(right))
             if op == "+" and self._ctx.is_list(node.left) != self._ctx.is_list(node.right):
                 # A list + an element appends it, an element + a list prepends it (SQL's + of a
                 # list and a value is no operator).
@@ -1276,6 +1426,20 @@ class ExprLowering:
         if node.star:
             return exp.Count(this=exp.Star())
         if (
+            node.name.lower() in ("nodes", "relationships")
+            and len(node.args) == 1
+            and isinstance(node.args[0], Variable)
+            and self._element_vars.get(node.args[0].name) == "path"
+        ):
+            # A collected path's nodes or relationships: the lists its JSON holds.
+            member = "$.nodes" if node.name.lower() == "nodes" else "$.edges"
+            return exp.Cast(
+                this=_anon(
+                    "JSON_EXTRACT", exp.column(node.args[0].name), exp.Literal.string(member)
+                ),
+                to=exp.DataType.build("JSON[]"),
+            )
+        if (
             node.name.lower() in ("max", "min")
             and len(node.args) == 1
             and not node.distinct
@@ -1299,8 +1463,21 @@ class ExprLowering:
                 # An item of a list of several types is its JSON: a string is its own text, never
                 # its quoted JSON ('apa', not '"apa"').
                 # Bracketed: DuckDB writes it x ->> '$', which in a lambda reads as (x -> x) ->> '$'.
-                text = _anon("JSON_EXTRACT_SCALAR", self.lower(given), exp.Literal.string("$"))
-                return exp.Paren(this=text)
+                held = self.lower(given)
+                text = _anon("JSON_EXTRACT_SCALAR", held.copy(), exp.Literal.string("$"))
+                if node.name.lower() == "tostring":
+                    # Of a list, a map or a graph element: refused by _checked_conversion.
+                    return exp.Paren(this=text)
+                # A list, a map, a node, a relationship or a path (each a JSON array or object)
+                # has no string: toStringOrNull() of it is null.
+                as_text = exp.Cast(this=held, to=exp.DataType.build("TEXT"))
+                composite = exp.Or(
+                    this=exp.Like(this=as_text, expression=exp.Literal.string("[%")),
+                    expression=exp.Like(this=as_text.copy(), expression=exp.Literal.string("{%")),
+                )
+                return exp.Paren(
+                    this=exp.Case(ifs=[exp.If(this=composite, true=exp.Null())], default=text)
+                )
         if node.name.lower() == "properties" and len(node.args) == 1:
             given = node.args[0]
             # properties() of a map is the map itself; of null, null.
@@ -1418,7 +1595,7 @@ class ExprLowering:
         if deep is not None:
             return deep
         elements = [
-            self._ctx.resolve_graph_element(i.name) if isinstance(i, Variable) else None
+            self._ctx.resolve_element_value(i.name) if isinstance(i, Variable) else None
             for i in node.items
         ]
         graph = [isinstance(i, Variable) and self._ctx.graph_kind(i.name) for i in node.items]
@@ -1432,7 +1609,9 @@ class ExprLowering:
         # a relationship or a path the read holds as its JSON already ([1, n]).
         return exp.Array(
             expressions=[
-                e if e is not None else _anon("to_json", self.lower(i))
+                _anon("to_json", self.lower(i) if e is None else e)
+                if e is None or not _is_json_object(e)
+                else e
                 for i, e in zip(node.items, elements, strict=True)
             ]
         )
@@ -1446,7 +1625,15 @@ class ExprLowering:
         # rewrite). to_json, NOT CAST(v AS JSON): in the IR dialect (Postgres) CAST AS JSON *parses*
         # the input as JSON text, so a bare string 'Siamese' fails; to_json *encodes* any scalar.
         keys = [exp.Literal.string(k) for k, _ in node.entries]
-        values = [_anon("to_json", self.lower(v)) for _, v in node.entries]
+        # A node, relationship or path is its JSON object, as a list literal holds one.
+        elements = [
+            self._ctx.resolve_element_value(v.name) if isinstance(v, Variable) else None
+            for _, v in node.entries
+        ]
+        values = [
+            e if e is not None else _anon("to_json", self.lower(v))
+            for (_, v), e in zip(node.entries, elements, strict=True)
+        ]
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
@@ -1491,6 +1678,17 @@ class ExprLowering:
             )
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
+        held_json = _json_text_of(base)
+        if (
+            held_json is not None
+            and isinstance(node.index, Literal)
+            and node.index.kind == "number"
+            and int(cast("int | float", node.index.value)) >= 0
+        ):
+            # An item of a list a map inside a carried map holds: read from its JSON, as JSON
+            # (the answer decodes it), never a character of its text.
+            path = f"$[{int(cast('int | float', node.index.value))}]"
+            return exp.Paren(this=_anon("JSON_EXTRACT", held_json, exp.Literal.string(path)))
         idx = self.lower(node.index)
         if isinstance(node.index, Literal) and node.index.kind == "number":
             idx = exp.Literal.number(int(cast("int | float", node.index.value)) + 1)
@@ -1571,6 +1769,14 @@ class ExprLowering:
 
     def _lower_ListComprehension(self, node: ListComprehension) -> exp.Expression:
         source = self.lower(node.source)
+        if self._ctx.element_list_kind(node.source) is not None and any(
+            isinstance(e, (SubqueryExpr, PatternComprehension))
+            for part in (node.predicate, node.projection)
+            if part is not None
+            for e in walk(part)
+        ):
+            # An engine reads no subquery inside a lambda: each item a row of its own instead.
+            return self._ctx.resolve_element_rows(node, source)
         result = source
         if node.predicate is not None:
             predicate = self._over(node.var, source, node.predicate, node.source)
@@ -1637,6 +1843,18 @@ class ExprLowering:
         return self._ctx.resolve_map_projection(node)
 
     def _lower_SubqueryExpr(self, node: SubqueryExpr) -> exp.Expression:
+        if node.predicate:
+            # openCypher: a pattern predicate introduces no variable (UndefinedVariable).
+            unbound = [
+                v
+                for v in _pattern_variables(node.body)
+                if v not in self._lambda_vars and not self._ctx.is_bound(v)
+            ]
+            if unbound:
+                raise CypherTranslateError(
+                    f"A pattern predicate introduces no variable: {unbound[0]} is not bound "
+                    "before it; match it first, or write EXISTS { MATCH ... }"
+                )
         return self._ctx.resolve_subquery(node)
 
     # -- RDF values (REQ-2135) ---------------------------------------------- #

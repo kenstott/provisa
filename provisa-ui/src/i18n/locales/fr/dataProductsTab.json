@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Ouvrir {{successor}}",
     "contract": {
       "label": "Contrats de données",
-      "hint": "Le contrat de chaque port de sortie : ce qu'il promet, dans sa propre version",
+      "hint": "Le contrat de chaque port de sortie : ce qu'il déclare, dans sa propre version",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Proposé",
@@ -177,8 +177,8 @@
       "versionLabel": "Version du contrat",
       "statusLabel": "Statut du contrat",
       "descriptionLabel": "À quoi il sert",
-      "columnsLabel": "Colonnes promises",
-      "columnsHelp": "Ne plus promettre une colonne, ou changer son type, exige une nouvelle version.",
+      "columnsLabel": "Colonnes",
+      "columnsHelp": "Retirer une colonne, ou changer son type, exige une nouvelle version.",
       "requiredLabel": "Jamais nul",
       "slaLabel": "Niveaux de service",
       "slaProperty": "Propriété",
@@ -187,6 +187,28 @@
       "slaRemove": "Retirer le niveau de service",
       "slaAdd": "Ajouter un niveau de service",
       "notDeclared": "Non déclaré",
+      "breakingWarning": "Changement incompatible en v{{version}}, pas encore en vigueur",
+      "breaking": "Incompatible",
+      "savedBy": "Enregistré {{when}} par {{who}}",
+      "savedBySystem": "le système",
+      "noChanges": "Première version : rien à comparer",
+      "change": {
+        "field_added": "Champ {{subject}} ajouté, {{after}}",
+        "field_removed": "Champ {{subject}} supprimé, était {{before}}",
+        "field_renamed": "Champ {{subject}} renommé en {{after}}",
+        "field_type_changed": "Champ {{subject}} modifié de {{before}} à {{after}}",
+        "field_required": "Champ {{subject}} rendu obligatoire",
+        "field_optional": "Champ {{subject}} n'est plus obligatoire",
+        "field_described": "Champ {{subject}} décrit autrement",
+        "sla_added": "Niveau de service {{subject}} ajouté, {{after}}",
+        "sla_removed": "Niveau de service {{subject}} supprimé, était {{before}}",
+        "sla_changed": "Niveau de service {{subject}} modifié de {{before}} à {{after}}",
+        "check_added": "Contrôle qualité {{subject}} ajouté",
+        "check_removed": "Contrôle qualité {{subject}} supprimé",
+        "check_changed": "Contrôle qualité {{subject}} modifié",
+        "description_changed": "Description modifiée",
+        "terms_changed": "Conditions modifiées : {{subject}}"
+      },
       "loadError": "Impossible de lire les contrats : {{error}}",
       "notExported": "{{member}} n’a aucun contrat exporté",
       "section": {
@@ -226,9 +248,9 @@
       "draftWarning": "Brouillon : pas encore en vigueur",
       "card": {
         "details": "Détails",
-        "fields": "Champs promis",
+        "fields": "Colonnes",
         "sla": "SLA et fraîcheur",
-        "quality": "Promesses de qualité",
+        "quality": "Promesses",
         "consumers": "Consommateurs",
         "versions": "Versions et modifications"
       }

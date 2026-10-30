@@ -16,12 +16,12 @@ instantiated alone.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
-from provisa.gql.label_map import GRAPH_ID
+from provisa.gql.label_map import GRAPH_ID, LABELS_COLUMN, is_session_node
 from provisa.gql.path_walk import graph_identity
 from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
@@ -32,7 +32,7 @@ from provisa.gql.translator_helpers import (
     via_column,
 )
 
-from provisa.gql.translator_types import NODE_COLUMN, CypherTranslateError
+from provisa.gql.translator_types import NODE_COLUMN
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
@@ -45,7 +45,11 @@ _NUMBERS = _INTEGERS | {"float", "double", "numeric"}
 def union_labels(lm: "CypherLabelMap", domain_name: str) -> list[str]:
     """The node types a node matched by a domain alone (or by no label, ``__all__``) is drawn
     from."""
-    return list(lm.nodes.keys()) if domain_name == "__all__" else lm.domains[domain_name]
+    if domain_name != "__all__":
+        return lm.domains[domain_name]
+    # A session's relation of several labels' nodes (node_of_all) holds no node its first
+    # label's relation does not.
+    return [key for key in lm.nodes if key not in lm.label_sets]
 
 
 def attribute_type(prop: str, rels: "list[RelationshipMapping]") -> exp.DataType | None:
@@ -104,7 +108,7 @@ def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.Data
     return None
 
 
-def _held_by_any(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> bool:
+def held_by_any(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> bool:
     """Whether a table of ``labels`` holds ``prop`` as a column of its own."""
     return any(
         nm is not None and nm.physical_properties.get(prop)
@@ -192,6 +196,15 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
             this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
         )
     )
+    if is_session_node(nm):
+        # A graph session's node names its every label (REQ-2176), which labels() of the node
+        # a list or map holds reads.
+        kv.append(
+            exp.JSONKeyValue(
+                this=exp.Literal.string("labels"),
+                expression=exp.Column(this=exp.Identifier(this=LABELS_COLUMN, quoted=True)),
+            )
+        )
     return exp.JSONObject(expressions=kv)
 
 
@@ -207,6 +220,8 @@ class _UnionMixin:  # mixin for _Translator
         _all_rels_mappings: list[RelationshipMapping]
         _union_columns: dict[str, list[str]]
         _graph_id_unions: set[str]
+        _labels_unions: set[str]
+        _ast: Any
 
         def _collect_var_props(self, var: str) -> list[str]: ...
 
@@ -316,7 +331,7 @@ class _UnionMixin:  # mixin for _Translator
                     continue
                 if tgt_type is not None and far != tgt_type:
                     continue
-                if rel_type is not None and rm.rel_type.upper() != rel_type:
+                if rel_type is not None and rm.rel_type != rel_type:
                     continue
                 # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
                 # These are not real FK traversals and would pull in unrelated domain nodes.
@@ -532,7 +547,20 @@ class _UnionMixin:  # mixin for _Translator
                 self._all_rels_mappings.append(rm)
 
         if not branches:
-            raise CypherTranslateError("No relationship types found in schema")
+            # No relationship the pattern can be (an empty graph, or none between the ends'
+            # labels): it matches no row -- null under an OPTIONAL MATCH -- never an error
+            # (REQ-347). The read of none, with the columns a read of one has.
+            def _none(name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+                null = exp.Cast(this=exp.Null(), to=exp.DataType.build("JSON"))
+                return exp.alias_(null, name)  # pyright: ignore[reportReturnType]
+
+            nothing = exp.select(
+                _none(src_col),
+                _none(rel_col),
+                _none(tgt_col),
+                _none(edge_properties_column(rel_col)),
+            ).where(exp.false())
+            return exp.alias_(exp.Subquery(this=nothing), alias=alias)  # pyright: ignore[reportReturnType]
 
         union: exp.Expression = branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for b in branches[1:]:
@@ -552,7 +580,7 @@ class _UnionMixin:  # mixin for _Translator
         # (a number to average, a string to join) beside it, never text.
         held_as = {
             p: union_type(p, type_labels, self._lm)
-            or (exp.DataType.build("VARCHAR") if _held_by_any(p, type_labels, self._lm) else None)
+            or (exp.DataType.build("VARCHAR") if held_by_any(p, type_labels, self._lm) else None)
             for p in props
         }
         branches: list[exp.Select] = []
@@ -620,6 +648,19 @@ class _UnionMixin:  # mixin for _Translator
                     exp.alias_(graph_identity(walk, nm, None), alias=GRAPH_ID), copy=False
                 )
             self._graph_id_unions.add(var)
+            from provisa.gql.translator import labels_read
+
+            if labels_read(self._ast, var):
+                # REQ-2176: a session node carries every label the session holds for it, which
+                # its relation names (ephemeral.read); a model node its own.
+                for branch, nm in zip(branches, arms):
+                    labels = (
+                        exp.Column(this=exp.Identifier(this=LABELS_COLUMN, quoted=True))
+                        if nm.catalog_name == walk.catalog_name
+                        else exp.Array(expressions=[exp.Literal.string(nm.label)])
+                    )
+                    branch.select(exp.alias_(labels, alias=LABELS_COLUMN), copy=False)
+                self._labels_unions.add(var)
 
         if not branches:
             if not had_resolvable:

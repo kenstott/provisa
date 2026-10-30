@@ -51,11 +51,20 @@ class _FakeCtx:
     def is_json_value(self, expr):
         return False
 
+    def is_json_property(self, expr):
+        return False
+
     def graph_kind(self, name):
         return None  # no pattern variables in scope here
 
+    def element_list_kind(self, expr):
+        return None  # no list of collected graph elements in scope here
+
     def is_null(self, expr):
         return getattr(expr, "kind", None) == "null"
+
+    def is_bound(self, name):
+        return True  # every variable an expression here reads is bound
 
     def given_value(self, expr):
         return False, None

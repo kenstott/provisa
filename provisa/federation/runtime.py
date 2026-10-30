@@ -724,6 +724,16 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, schema=schema, table=table, pk_columns=pk_columns
         )
 
+    def view_indexer(self, schema: str, table: str) -> Any:
+        """How the view stored at ``schema.table`` in this engine's materialization store gets its
+        indexes after it lands (REQ-2015): the indexer a replica in that store gets, or None for a
+        store that keeps no secondary index."""
+        from provisa.federation.replica_address import ReplicaAddress
+
+        return self._backend.replica_indexer(
+            self._state, address=ReplicaAddress(schema=schema, table=table)
+        )
+
     def mv_store_broker(self) -> Any:
         """The store broker an MV refresh writes through instead of engine SQL, or ``None``
         (REQ-1901) — delegated to the backend."""

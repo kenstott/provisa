@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Открыть {{successor}}",
     "contract": {
       "label": "Контракты данных",
-      "hint": "Контракт каждого выходного порта: что он обещает, в собственной версии",
+      "hint": "Контракт каждого выходного порта: что он объявляет, в собственной версии",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Предложен",
@@ -177,8 +177,8 @@
       "versionLabel": "Версия контракта",
       "statusLabel": "Статус контракта",
       "descriptionLabel": "Для чего он",
-      "columnsLabel": "Обещанные столбцы",
-      "columnsHelp": "Чтобы перестать обещать столбец или изменить его тип, нужна новая версия.",
+      "columnsLabel": "Столбцы",
+      "columnsHelp": "Чтобы удалить столбец или изменить его тип, нужна новая версия.",
       "requiredLabel": "Никогда не null",
       "slaLabel": "Уровни обслуживания",
       "slaProperty": "Свойство",
@@ -187,6 +187,28 @@
       "slaRemove": "Удалить уровень обслуживания",
       "slaAdd": "Добавить уровень обслуживания",
       "notDeclared": "Не объявлено",
+      "breakingWarning": "Несовместимое изменение в v{{version}}, ещё не действует",
+      "breaking": "Несовместимое",
+      "savedBy": "Сохранено {{when}}, {{who}}",
+      "savedBySystem": "система",
+      "noChanges": "Первая версия: сравнивать не с чем",
+      "change": {
+        "field_added": "Поле {{subject}} добавлено, {{after}}",
+        "field_removed": "Поле {{subject}} удалено, было {{before}}",
+        "field_renamed": "Поле {{subject}} переименовано в {{after}}",
+        "field_type_changed": "Поле {{subject}} изменено с {{before}} на {{after}}",
+        "field_required": "Поле {{subject}} стало обязательным",
+        "field_optional": "Поле {{subject}} больше не обязательно",
+        "field_described": "Описание поля {{subject}} изменено",
+        "sla_added": "Уровень обслуживания {{subject}} добавлен, {{after}}",
+        "sla_removed": "Уровень обслуживания {{subject}} удалён, было {{before}}",
+        "sla_changed": "Уровень обслуживания {{subject}} изменён с {{before}} на {{after}}",
+        "check_added": "Проверка качества {{subject}} добавлена",
+        "check_removed": "Проверка качества {{subject}} удалена",
+        "check_changed": "Проверка качества {{subject}} изменена",
+        "description_changed": "Описание изменено",
+        "terms_changed": "Условия изменены: {{subject}}"
+      },
       "loadError": "Не удалось прочитать контракты: {{error}}",
       "notExported": "У {{member}} нет экспортированного контракта",
       "section": {
@@ -226,9 +248,9 @@
       "draftWarning": "Черновик: ещё не действует",
       "card": {
         "details": "Сведения",
-        "fields": "Обещанные поля",
+        "fields": "Столбцы",
         "sla": "SLA и актуальность",
-        "quality": "Обещания качества",
+        "quality": "Обещания",
         "consumers": "Потребители",
         "versions": "Версии и изменения"
       }

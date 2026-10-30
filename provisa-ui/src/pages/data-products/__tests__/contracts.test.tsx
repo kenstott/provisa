@@ -31,6 +31,7 @@ vi.mock("../../../components/graph3d/GraphPanel", () => ({
 const fetchProductContract = vi.fn<(id: string, member: string) => Promise<OdcsContract>>();
 vi.mock("../../../api/dataProductContracts", () => ({
   fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 
 const PRODUCT = {
@@ -121,7 +122,7 @@ describe("a product's contracts", () => {
     // The checker has no contract, so no row.
     expect(screen.queryByTestId("data-contract-item-8")).toBeNull();
     expect(screen.queryByTestId("data-contract-8")).toBeNull();
-    // The Fields promised card is one row per property; the SLA card each service level.
+    // The Columns card is one row per property; the SLA card each service level.
     expect(screen.getByTestId("data-contract-7-fields")).toHaveTextContent(
       "physicalNamewh.public.daily_revenue",
     );

@@ -327,6 +327,15 @@ def test_an_expected_value_below_the_microsecond_is_named():
     assert not tck._below_the_microsecond(["d.nanosecond"], [["645876000"]])
 
 
+def test_a_query_building_values_apart_only_below_the_microsecond_is_named():
+    # WithOrderBy1 [45] #7, #8: localtime({..., nanosecond: 645876123}) beside ...124.
+    assert tck._builds_below_the_microsecond("RETURN localtime({hour: 12, nanosecond: 645876123})")
+    assert tck._builds_below_the_microsecond("RETURN time('12:31:14.645876123+01:00')")
+    assert not tck._builds_below_the_microsecond("RETURN time({hour: 1, nanosecond: 645876000})")
+    assert not tck._builds_below_the_microsecond("RETURN localtime('12:31:14.645876')")
+    assert not tck._builds_below_the_microsecond("RETURN '1.5000000001' AS s")
+
+
 def test_a_cell_s_own_escapes_are_undone_before_its_value_is_read():
     # Gherkin's \\ is a backslash and \| a bar in a table cell (Literals6 [5]): the cell
     # 'a\\\\b' is the Cypher string 'a\\b', whose value is a\b.
@@ -432,6 +441,19 @@ def test_a_temporal_value_from_bolt_is_written_as_opencypher_writes_it():
     assert bolt.value(time.Duration()) == "PT0S"
 
 
+def test_a_date_time_at_offset_zero_from_bolt_names_no_region():
+    # Temporal4 [9]/[10]: the driver hydrates a DateTime at offset 0 as pytz.utc, whose zone is
+    # named "UTC"; it is written as the offset Z, as the TCK writes it. A region keeps its name.
+    from neo4j._codec.hydration.v2.temporal import hydrate_datetime
+
+    epoch_1912 = -1830384000
+    assert bolt.value(hydrate_datetime(epoch_1912, 0, 0)) == "1912-01-01T00:00Z"
+    assert bolt.value(hydrate_datetime(epoch_1912, 0, 3600)) == "1912-01-01T01:00+01:00"
+    assert bolt.value(hydrate_datetime(1437514832, 142000000, "Europe/Stockholm")) == (
+        "2015-07-21T23:40:32.142+02:00[Europe/Stockholm]"
+    )
+
+
 _SIDE_EFFECTS_FEATURE = '''
 Feature: Remove3 - Removing a label
 
@@ -473,26 +495,26 @@ def test_the_setup_is_only_the_steps_before_the_query(side_effect_scenario, monk
 
 
 @pytest.mark.parametrize(
-    ("stats", "status", "reason"),
+    ("effects", "status", "reason"),
     [
-        ({"labels-removed": 1}, "passed", tck.IN_A_SESSION),
+        ({"-labels": 1}, "passed", tck.IN_A_SESSION),
         (
-            {"labels-removed": 1, "nodes-created": 1},
+            {"-labels": 1, "+nodes": 1},
             "failed",
             f"side effects differ: +nodes 1, expected 0 {tck.IN_A_SESSION}",
         ),
         ({}, "failed", f"side effects differ: -labels 0, expected 1 {tck.IN_A_SESSION}"),
     ],
 )
-def test_a_session_scenario_s_side_effects_are_its_summary_counters(
-    side_effect_scenario, monkeypatch, stats, status, reason
+def test_a_session_scenario_s_side_effects_are_what_the_tck_observes(
+    side_effect_scenario, monkeypatch, effects, status, reason
 ):
     sent = []
 
     def session(setups, query, params):
         sent.append((list(setups), query))
         rows = [[("node", frozenset({"L1"}), {})]]
-        return 200, {"columns": ["n"], "rows": rows, "stats": stats}
+        return 200, {"columns": ["n"], "rows": rows, "effects": effects}
 
     monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
     monkeypatch.setattr(bolt, "run", session)
@@ -504,18 +526,175 @@ def test_a_session_scenario_s_side_effects_are_its_summary_counters(
 def test_side_effects_are_compared_exactly():
     assert tck.side_effects({}, {}) is None
     assert (
-        tck.side_effects({"+nodes": 2, "+properties": 1}, {"nodes-created": 2, "properties-set": 1})
-        is None
+        tck.side_effects({"+nodes": 2, "+properties": 1}, {"+nodes": 2, "+properties": 1}) is None
     )
-    assert tck.side_effects({"+nodes": 2}, {"nodes-created": 1}) == "+nodes 1, expected 2"
-    assert tck.side_effects({}, {"relationships-deleted": 3}) == "-relationships 3, expected 0"
+    assert tck.side_effects({"+nodes": 2}, {"+nodes": 1}) == "+nodes 1, expected 2"
+    assert tck.side_effects({}, {"-relationships": 3}) == "-relationships 3, expected 0"
+    assert tck.side_effects({"+nodes": 1}, {"+nodes": 1, "-nodes": 0}) is None
+    assert tck.side_effects({"+widgets": 1}, {}) == "+widgets: no such side effect"
 
 
-def test_a_side_effect_the_summary_has_no_counter_for_is_a_failure_naming_it():
-    assert tck.side_effects({"-properties": 1}, {"properties-set": 1}) == (
-        "+properties 1, expected 0; -properties expected 1, the summary has no counter for it"
+def test_a_removed_property_is_a_side_effect_like_any_other():
+    # The TCK's -properties is a triple the graph held before and not after (README), which a
+    # summary's counters have no name for; observed, it is compared as every side effect is.
+    assert tck.side_effects({"+properties": 1, "-properties": 1}, {"+properties": 1}) == (
+        "-properties 0, expected 1"
     )
+    assert tck.side_effects({"-properties": 1}, {"-properties": 1}) is None
     assert tck.side_effects({"-properties": 0}, {}) is None
+
+
+def _observed(nodes=(), rels=(), props=(), labels=()):
+    return bolt.Observed(frozenset(nodes), frozenset(rels), frozenset(props), frozenset(labels))
+
+
+def test_side_effects_are_the_difference_of_two_observations():
+    before = _observed(["n:e:1"], [], [("n:e:1", "name", "'A'")], ["A"])
+    after = _observed(
+        ["n:e:1", "n:e:2"],
+        ["r:7"],
+        [("n:e:1", "name", "'B'"), ("n:e:2", "k", "1")],
+        ["A", "B"],
+    )
+    assert bolt.effects(before, after) == {
+        "+nodes": 1,
+        "-nodes": 0,
+        "+relationships": 1,
+        "-relationships": 0,
+        # A changed value is one property removed and one added (README: an (entity, key,
+        # value) triple).
+        "+properties": 2,
+        "-properties": 1,
+        "+labels": 1,
+        "-labels": 0,
+    }
+
+
+def test_labels_are_observed_as_the_distinct_labels_the_graph_holds():
+    # Create1 [6]: CREATE (:B:A:D), (:B:C), (:D:E:B) adds eight node labels, five labels.
+    before = _observed()
+    after = _observed(["n:e:1", "n:e:2", "n:e:3"], labels=["A", "B", "C", "D", "E"])
+    assert bolt.effects(before, after)["+labels"] == 5
+
+
+class _Node(dict):
+    def __init__(self, labels, props):
+        super().__init__(props)
+        self.labels = frozenset(labels)
+
+
+class _Rel(dict):
+    def __init__(self, element_id, props):
+        super().__init__(props)
+        self.element_id = element_id
+
+
+class _Session:
+    def __init__(self, nodes, rels):
+        self.nodes, self.rels = nodes, rels
+        self.ran = []
+
+    def run(self, query):
+        self.ran.append(query)
+        if "-[r]->" in query:
+            if isinstance(self.rels, Exception):
+                raise self.rels
+            return [{"r": r} for r in self.rels]
+        return [{"id": i, "n": n} for i, n in self.nodes]
+
+
+def test_the_graph_is_observed_by_node_identity_whatever_label_reads_it():
+    # A node with no label in the pattern is read as Label|key, its label whichever of its own
+    # read it: its identity is its key, so a label added to it is no node removed and added.
+    before = bolt.observe(_Session([("A|e:1", _Node(["A"], {"k": 1}))], []))
+    after = bolt.observe(_Session([("Z|e:1", _Node(["A", "Z"], {"k": 1}))], [_Rel("9", {"w": 2})]))
+    assert before.nodes == after.nodes == frozenset({"n:e:1"})
+    assert bolt.effects(before, after) == {
+        "+nodes": 0,
+        "-nodes": 0,
+        "+relationships": 1,
+        "-relationships": 0,
+        "+properties": 1,
+        "-properties": 0,
+        "+labels": 1,
+        "-labels": 0,
+    }
+
+
+def test_a_graph_with_no_relationship_type_is_observed_holding_no_relationship():
+    from neo4j.exceptions import Neo4jError
+
+    refused = Neo4jError._hydrate_neo4j(
+        code="Neo.ClientError.Statement.SyntaxError",
+        message="No relationship types found in schema",
+    )
+    observed = bolt.observe(_Session([("|e:1", _Node([], {}))], refused))
+    assert observed.relationships == frozenset()
+    other = Neo4jError._hydrate_neo4j(
+        code="Neo.ClientError.Statement.SyntaxError", message="something else"
+    )
+    with pytest.raises(Neo4jError):
+        bolt.observe(_Session([], other))
+
+
+_MERGE_ON_EMPTY = '''
+Feature: Merge1 - Merge node
+
+  Scenario: [1] Merge node when no nodes exist
+    Given an empty graph
+    When executing query:
+      """
+      MERGE (a)
+      RETURN count(*) AS n
+      """
+    Then the result should be, in any order:
+      | n |
+      | 1 |
+'''
+
+
+def test_a_merge_on_an_empty_graph_runs_in_an_empty_session(tmp_path, monkeypatch):
+    # A MERGE matches its pattern before it makes it: on the TCK's empty graph it must match the
+    # session's empty graph, never the model's.
+    path = tmp_path / "merge1.feature"
+    path.write_text(_MERGE_ON_EMPTY)
+    (scenario,) = tck.parse_feature(path)
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
+
+
+_CREATE_THEN_CONTROL = '''
+Feature: Temporal4 - Store Temporal Values
+
+  Scenario: [1] Should store date
+    Given an empty graph
+    When executing query:
+      """
+      CREATE ({created: date({year: 1984, month: 10, day: 11})})
+      """
+    Then the result should be empty
+    And the side effects should be:
+      | +nodes      | 1 |
+      | +properties | 1 |
+    When executing control query:
+      """
+      MATCH (n)
+      RETURN n.created
+      """
+    Then the result should be, in any order:
+      | n.created    |
+      | '1984-10-11' |
+'''
+
+
+def test_a_control_query_on_an_empty_graph_reads_the_empty_session(tmp_path, monkeypatch):
+    # A CREATE whose control query matches what it made: on the TCK's empty graph the control
+    # query reads the session's graph, never the model's every node (Temporal4).
+    path = tmp_path / "temporal4.feature"
+    path.write_text(_CREATE_THEN_CONTROL)
+    (scenario,) = tck.parse_feature(path)
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    assert tck._session_scenario(scenario) == tck.EMPTY_GRAPH
 
 
 # --- named TCK graphs ---------------------------------------------------------------------------
@@ -656,6 +835,27 @@ Feature: Call2 - Procedure arguments
 '''
 
 
+#: The roles that call a procedure's command: the HTTP runner's and the Bolt session's.
+_ROLES = ("org_admin", "tck_empty")
+
+
+def test_a_procedure_s_command_is_admitted_for_the_roles_that_call_it(procedure_scenarios):
+    """REQ-2153/REQ-2154: an empty visible_to assigns a command to no role, so the command names
+    the runner's role and the session's; each is admitted, any other role finds no command."""
+    from provisa.security.mutation_authz import CommandNotFound, admit_command
+
+    entry = procedures.command(tck.procedure(procedure_scenarios[0]), _ROLES)
+    for role in (
+        {"id": "org_admin", "capabilities": [], "domain_access": ["*"]},
+        {"id": "tck_empty", "capabilities": [], "domain_access": ["tck_empty"]},
+    ):
+        admit_command(entry, role, entry["name"])
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            entry, {"id": "other", "capabilities": [], "domain_access": ["*"]}, entry["name"]
+        )
+
+
 @pytest.fixture
 def procedure_scenarios(tmp_path):
     path = tmp_path / "call2.feature"
@@ -680,13 +880,13 @@ def test_a_procedure_is_a_statement_command_bound_in_cypher_to_its_name(procedur
     from provisa.core.command_bindings import check_names
     from provisa.core.models import Function
 
-    entry = procedures.command(tck.procedure(procedure_scenarios[0]))
+    entry = procedures.command(tck.procedure(procedure_scenarios[0]), _ROLES)
     assert {k: entry[k] for k in ("name", "impl_kind", "kind", "domain_id", "visible_to")} == {
         "name": "tck_test_my_proc",
         "impl_kind": "statement",
         "kind": "query",
         "domain_id": "tck_empty",
-        "visible_to": [],
+        "visible_to": ["org_admin", "tck_empty"],
     }
     assert entry["arguments"] == [
         {"name": "name", "type": "text"},
@@ -750,7 +950,7 @@ def test_a_procedure_s_statement_answers_its_rows_for_the_arguments(proc, args, 
 
     from provisa.core.statement_declaration import declared
 
-    entry = procedures.command(proc)
+    entry = procedures.command(proc, _ROLES)
     found = declared(entry["name"], entry["binding"], [a["name"] for a in entry["arguments"]])
     sql = sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0]
     assert duckdb.execute(sql, args).fetchall() == rows
@@ -765,7 +965,7 @@ def test_a_void_procedure_is_a_void_command(procedure_scenarios):
     from provisa.core.statement_declaration import declared
     from provisa.core.void_command import is_void
 
-    entry = procedures.command(tck.procedure(procedure_scenarios[3]))
+    entry = procedures.command(tck.procedure(procedure_scenarios[3]), _ROLES)
     assert entry["output_columns"] == []
     assert entry["language_bindings"] == {"cypher": {"name": "test.doNothing"}}
     function = Function(**entry)
@@ -778,7 +978,7 @@ def test_a_void_procedure_s_statement_uses_each_argument():
     from provisa.core.models import Function
 
     proc = procedures.Procedure("test.doNothing", (("in", "STRING"),), (), ())
-    entry = procedures.command(proc)
+    entry = procedures.command(proc, _ROLES)
     assert entry["output_columns"] == []
     Function(**entry)  # every {{name}} is a declared argument and every argument is used
 
@@ -791,7 +991,7 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
     model = tmp_path / "provisa.yaml"
     model.write_text(yaml.safe_dump({"domains": [{"id": "tck_empty"}], "tables": []}))
     monkeypatch.setattr(procedures, "_MODEL", {})
-    procedures.configure("http://x", model, "su", "pw")
+    procedures.configure("http://x", model, "su", "pw", _ROLES)
     put = []
 
     def _put(body):
@@ -856,7 +1056,7 @@ def test_a_model_not_applied_is_said(procedure_scenarios, tmp_path, monkeypatch)
     model = tmp_path / "provisa.yaml"
     model.write_text("domains: []\n")
     monkeypatch.setattr(procedures, "_MODEL", {})
-    procedures.configure("http://x", model, "su", "pw")
+    procedures.configure("http://x", model, "su", "pw", _ROLES)
     monkeypatch.setattr(procedures, "_put", lambda _b: {"success": False, "message": "bad"})
     with pytest.raises(ValueError, match="was not applied"):
         procedures.declare(tck.procedure(procedure_scenarios[0]))
@@ -901,6 +1101,68 @@ def test_a_filtered_result_carries_the_filter_and_a_full_one_does_not():
     assert tck.report([outcome], "2024.3", "Merge*")["filter"] == "Merge*"
     assert "filter" not in tck.report([outcome], "2024.3", "")
     assert "filter" not in tck.report([outcome], "2024.3")
+
+
+_CONTROL_FEATURE = '''
+Feature: Merge6 - Merge relationships - on create
+
+  Scenario: [3] Updating one property with ON CREATE
+    Given an empty graph
+    And having executed:
+      """
+      CREATE (:A {name: 'A'}), (:B {name: 'B'})
+      """
+    When executing query:
+      """
+      MATCH (a {name: 'A'}), (b {name: 'B'})
+      MERGE (a)-[r:TYPE]->(b)
+        ON CREATE SET r.name = 'foo'
+      """
+    Then the result should be empty
+    And the side effects should be:
+      | +relationships | 1 |
+      | +properties    | 1 |
+    When executing control query:
+      """
+      MATCH ()-[r:TYPE]->()
+      RETURN [key IN keys(r) | key + '->' + r[key]] AS keyValue
+      """
+    Then the result should be, in any order:
+      | keyValue      |
+      | ['name->foo'] |
+'''
+
+
+@pytest.fixture
+def control_scenario(tmp_path):
+    path = tmp_path / "merge6.feature"
+    path.write_text(_CONTROL_FEATURE)
+    (scenario,) = tck.parse_feature(path)
+    return scenario
+
+
+@pytest.mark.parametrize(
+    ("control_rows", "status"),
+    [([[["name->foo"]]], "passed"), ([[["name->bar"]]], "failed")],
+)
+def test_a_control_query_runs_after_the_query_in_its_session_and_is_checked(
+    control_scenario, monkeypatch, control_rows, status
+):
+    sent = []
+
+    def session(setups, query, params, control=None):
+        sent.append((list(setups), query.split()[0], control))
+        effects = {"+relationships": 1, "+properties": 1}
+        held = {"columns": ["keyValue"], "rows": control_rows}
+        return 200, {"columns": [], "rows": [], "effects": effects, "control": held}
+
+    monkeypatch.setattr(bolt, "_BOLT", {"uri": "bolt://x", "token": "t"})
+    monkeypatch.setattr(bolt, "run", session)
+    outcome = tck.run(control_scenario, "http://x", "org_admin")
+    [(setups, verb, control)] = sent
+    assert (setups, verb) == (["CREATE (:A {name: 'A'}), (:B {name: 'B'})"], "MATCH")
+    assert control is not None and control.startswith("MATCH ()-[r:TYPE]->()")
+    assert outcome.status == status
 
 
 _LOG_DOC = {

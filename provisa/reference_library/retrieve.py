@@ -89,8 +89,8 @@ async def retrieve(
     if stale:
         raise LibraryModelChanged(
             f"reference library documents {', '.join(repr(t) for t in stale)} were embedded by "
-            f"another vector model than the org's {embedder.model!r}: refresh them or upload "
-            "them again"
+            f"another vector model than the org's {embedder.model!r}: re-embed them on the "
+            "Admin Reference library page"
         )
     query = (await embedder.embed([question.strip()]))[0]
     hits = await store.nearest_passages(conn, query, documents, k)
