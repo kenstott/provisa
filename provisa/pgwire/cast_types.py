@@ -160,7 +160,10 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     from provisa.pgwire.function_types import call_result_type
     from provisa.transpiler.pg_money import money_type
 
-    typed = None if columns is None else money_type(expression, columns)
+    # A column of a table only the plan's shape types: a part of the expression is not known here.
+    typed = None
+    if columns is not None and all(columns(c) for c in expression.find_all(exp.Column)):
+        typed = money_type(expression, columns)
     if typed is not None:
         return _RETURNED[typed]
     if isinstance(expression, exp.Cast):

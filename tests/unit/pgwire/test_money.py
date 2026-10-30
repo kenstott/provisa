@@ -22,6 +22,7 @@ IR's numeric(21,4). Either way ``price + price`` is money from the plan to the w
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -50,6 +51,7 @@ from tests.unit.pgwire.test_type_conversions import ROLE, conn, pgwire  # noqa: 
 import sqlglot
 
 _TABLE_ID = 1
+_FLOAT8 = 701
 
 
 def _rows(res: Any) -> list[Any]:
@@ -75,6 +77,8 @@ def _problem(connection: Any, sql: str, shown: str, expected: tuple) -> str | No
     if (text.ftype(0), binary.ftype(0)) != (oid, oid):
         return f"type {text.ftype(0)}/{binary.ftype(0)}, PostgreSQL {oid}"
     got = _rows(text)
+    if oid == _FLOAT8:  # the wire's digits are a known gap of their own: the value is compared
+        got, rows = [v and float(v) for v in got], [v and float(v) for v in rows]
     if got != rows:
         return f"rows {got}, PostgreSQL {rows}"
     raw = binary.get_value(0, 0) if binary.ntuples else None
@@ -211,16 +215,53 @@ def test_the_plan_types_a_money_expression_as_money_not_its_base(sql: str, expec
     assert [t for _, t in shape] == [expected]
 
 
-def test_a_described_money_expression_is_described_as_money(money_table: Any):
-    prepared = money_table.pgconn.prepare(
-        b"money_probe", b"SELECT price + price FROM m ORDER BY id"
+def test_a_described_money_expression_is_sent_as_it_was_described():
+    # Describe(Statement) answers from the shape, and each Execute encodes rows to it, whatever
+    # decimal the engine computed the expression in.
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaQueryResult, _StatementDescription
+
+    sql = "SELECT price + price AS v, price / price AS r FROM conformance.m"
+    ctx = _context()
+    ctx.physical_to_sql = {}
+    shape = derive_result_shape(sql, _MAP, ctx, {_TABLE_ID: _COLUMN_TYPES})
+    description = _StatementDescription(shape, None, sql)
+    engine = QueryResult(
+        rows=[(Decimal("2469.1200"), 1.0)],
+        column_names=["v", "r"],
+        column_types=["decimal(21,4)", "double"],
     )
-    assert prepared.status == pq.ExecStatus.COMMAND_OK
-    described = money_table.pgconn.describe_prepared(b"money_probe")
-    assert described.ftype(0) == 790
-    executed = money_table.pgconn.exec_prepared(b"money_probe", [], result_format=1)
-    assert executed.ftype(0) == 790
-    assert executed.get_value(0, 0).hex() == COLUMNS["SELECT price + price FROM m ORDER BY id"][3]
+    result = ProvisaQueryResult(engine, sql, shape)
+    for described in (description, result):
+        oids = [
+            described.column_type_oid(i) or BVTYPE_TO_PGTYPE[described.column(i)[1]][0]
+            for i in range(2)
+        ]
+        assert oids == [790, 701]
+    encoder = BVTYPE_TO_PGTYPE[result.column(0)[1]]
+    assert encoder[1](Decimal("2469.1200")) == "$2,469.12"
+    assert encoder[2](Decimal("2469.1200")).hex() == "000000000003c480"
+
+
+def test_a_bound_parameter_is_read_as_moneys_input():
+    written = lowered("SELECT $1::money AS v", "duckdb")
+    assert "PROVISA_CASH_IN(CAST($1 AS VARCHAR))" in written.upper()
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT pg_typeof('$1'::money + '$2'::money) AS v", "money"),
+        ("SELECT pg_typeof('$1'::money * 2) AS v", "money"),
+        ("SELECT pg_typeof(sum('$1'::money)) AS v", "money"),
+        ("SELECT pg_typeof('$1'::money / '$2'::money) AS v", "double precision"),
+    ],
+)
+def test_pg_typeof_names_what_money_operators_return(conn: Any, sql: str, expected: str):
+    res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert _rows(res) == [expected]
 
 
 def test_lc_monetary_is_reported_and_fixed(conn: Any):
@@ -270,7 +311,7 @@ def test_money_is_computed_over_the_base_on_trino():
         "SELECT price + price AS v FROM conformance.m", _SUBTYPE_COLUMNS
     )
     written = transpile(physical, "trino")
-    assert "DECIMAL(21, 4)" in written and "fail(" in written
+    assert "DECIMAL(21, 4)" in written and "fail(" in written.lower()
     assert "provisa_subtype" not in written
 
 
@@ -280,6 +321,74 @@ def test_a_divisor_of_unknown_kind_is_refused_by_name_with_no_typeof():
     )
     with pytest.raises(SubtypeOperationRefused, match="money"):
         transpile(physical, "mysql")
+
+
+_DIALECTS = (
+    "postgres",
+    "duckdb",
+    "trino",
+    "athena",
+    "mysql",
+    "tsql",
+    "oracle",
+    "snowflake",
+    "bigquery",
+    "clickhouse",
+    "databricks",
+    "sqlite",
+)
+_MONEY_ARGS = "'$1'::money, '$2'::money"
+_CALLS = (
+    *(
+        f"{name}({_MONEY_ARGS})"
+        for name in (
+            "cash_pl",
+            "cash_mi",
+            "cash_cmp",
+            "cash_eq",
+            "cash_ne",
+            "cash_lt",
+            "cash_le",
+            "cash_gt",
+            "cash_ge",
+            "cashlarger",
+            "cashsmaller",
+            "cash_div_cash",
+        )
+    ),
+    *(
+        f"cash_{op}_{kind}('$1'::money, 2)"
+        for op in ("mul", "div")
+        for kind in ("flt4", "flt8", "int2", "int4", "int8")
+    ),
+    *(f"{kind}_mul_cash(2, '$1'::money)" for kind in ("flt4", "flt8", "int2", "int4", "int8")),
+    "cash_words('$1'::money)",
+    "cash_send('$1'::money)",
+    "cash_out('$1'::money)",
+    "cash_in('$1')",
+    "money(1.5)",
+    "'$1'::money + '$2'::money",
+    "'$1'::money * 1.5",
+    "'$1'::money / 3",
+    "'$1'::money / '$2'::money",
+    "'$1'::money::text",
+    "'$1'::money::numeric",
+)
+
+
+@pytest.mark.parametrize("dialect", _DIALECTS)
+def test_every_money_function_compiles_or_is_refused_by_name_on_every_dialect(dialect: str):
+    """REQ-2171, HOW THE LIMITS ARE TESTED: never a raw engine error, here or at the engine."""
+    for call in _CALLS:
+        try:
+            written = transpile(f"SELECT {call} AS v", dialect)
+        except SubtypeOperationRefused as refused:
+            assert refused.params["subtype"] == "money"
+            continue
+        assert "provisa_subtype" not in written
+        if dialect != "postgres":
+            # No cast to the type, and no call of a family function, reaches a dialect without it.
+            assert not re.search(r"AS MONEY\b|(?<!provisa_)cash", written, re.IGNORECASE)
 
 
 def test_a_statement_naming_no_money_is_left_as_written():

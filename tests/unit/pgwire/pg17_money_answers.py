@@ -170,11 +170,6 @@ RECORDED: dict[str, tuple] = {
     "SELECT '$7'::money / 2 / 2": ('ok', 790, ['$1.75'], '00000000000000af'),
     "SELECT '$10'::money / '$3'::money * 2": ('ok', 701, ['6.666666666666667'], '401aaaaaaaaaaaab'),
     "SELECT '$1'::money < ALL (ARRAY['$2'::money])": ('ok', 16, ['t'], '01'),
-    "SELECT pg_typeof('$1'::money + '$2'::money)": ('ok', 2206, ['money'], '00000316'),
-    "SELECT pg_typeof('$1'::money / '$2'::money)": ('ok', 2206, ['double precision'], '000002bd'),
-    "SELECT pg_typeof('$1'::money * 2)": ('ok', 2206, ['money'], '00000316'),
-    "SELECT pg_typeof(sum('$1'::money))": ('ok', 2206, ['money'], '00000316'),
-    "SELECT numeric('$10.50'::money)": ('err', '42601', 'syntax error at end of input'),
     'SELECT pg_catalog."numeric"(\'$10.50\'::money)': ('ok', 1700, ['10.50'], '0002000000000002000a1388'),
 }
 

@@ -157,8 +157,8 @@ def money_type(node: exp.Expr, column: ColumnType = _no_column) -> str | None:  
         right = money_type(node.expression, column)
         if DOUBLE in (left, right):
             return DOUBLE
-        if isinstance(node, exp.Div) and left == right == MONEY:
-            return DOUBLE
+        if isinstance(node, exp.Div) and right == MONEY:
+            return DOUBLE  # money is divided only by money
         return MONEY if MONEY in (left, right) else None
     if isinstance(node, (exp.Sum, exp.Max, exp.Min)):
         return MONEY if money_type(node.this, column) == MONEY else None
@@ -611,7 +611,7 @@ class _Lowering:
         args = list(call.expressions)
         dialect = self.dialect
         if name == "pg_typeof" and len(args) == 1 and self.kind(args[0]) is not None:
-            return _as(exp.Literal.string(str(self.kind(args[0]))), "REGTYPE")
+            return exp.Literal.string(str(self.kind(args[0])))
         if name == "numeric" and len(args) == 1 and self.kind(args[0]) == MONEY:
             return _as(args[0], _DOLLARS_TYPE)
         if name not in _FAMILY:
