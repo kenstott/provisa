@@ -17,7 +17,7 @@ import type { ResultsGridState } from "../pages/sql/useResultsGrid";
 import type { ExplainResponse } from "../api/admin";
 
 const renderChart = vi.fn(async (id: string, chart: string) => ({
-  svg: `<svg data-testid="${id}" data-chart="${chart.split("\n")[0]}"></svg>`,
+  svg: `<svg viewBox="0 0 200 400" data-testid="${id}" data-chart="${chart.split("\n")[0]}"></svg>`,
 }));
 
 const parseChart = vi.fn(async (_chart: string) => ({ diagramType: "flowchart-v2" }));
