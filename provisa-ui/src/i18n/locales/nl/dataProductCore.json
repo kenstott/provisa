@@ -19,7 +19,7 @@
     "detailCollapse": "Minder tonen",
     "inputs": "Invoer",
     "inputsHint": "De dichtstbijzijnde fysieke invoer van het product: de tabellen en bronnen waaruit de leden zijn opgebouwd.",
-    "inputsEmpty": "Geen invoer vastgelegd.",
+    "inputsEmpty": "Geen",
     "promises_one": "{{count}} belofte",
     "promises_other": "{{count}} beloften",
     "expectations_one": "{{count}} verwachting",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "Geen.",
     "consumers": "Afnemers",
     "consumersHint": "Wie dit product één stap stroomafwaarts leest: de tabellen, views en gematerialiseerde views die direct op zijn leden zijn gebouwd.",
-    "consumersEmpty": "Geen afnemers vastgelegd.",
+    "consumersEmpty": "Geen",
+    "ownerOnlyList": "Deze lijst is zichtbaar voor de eigenaar van het dataproduct.",
     "consumerKind_table": "tabel",
     "consumerKind_view": "view",
     "consumerKind_materialized_view": "gematerialiseerde view"

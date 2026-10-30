@@ -19,7 +19,7 @@
     "detailCollapse": "收起",
     "inputs": "输入",
     "inputsHint": "产品最近的物理输入：构建其成员所用的表和源。",
-    "inputsEmpty": "未记录输入。",
+    "inputsEmpty": "无",
     "promises_one": "{{count}} 项承诺",
     "promises_other": "{{count}} 项承诺",
     "expectations_one": "{{count}} 项预期",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "无。",
     "consumers": "消费方",
     "consumersHint": "在下游一跳读取此产品的对象：直接构建在其成员之上的表、视图和物化视图。",
-    "consumersEmpty": "未记录消费方。",
+    "consumersEmpty": "无",
+    "ownerOnlyList": "此列表对数据产品的所有者可见。",
     "consumerKind_table": "表",
     "consumerKind_view": "视图",
     "consumerKind_materialized_view": "物化视图"

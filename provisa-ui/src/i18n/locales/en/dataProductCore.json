@@ -19,7 +19,7 @@
     "detailCollapse": "Show less",
     "inputs": "Inputs",
     "inputsHint": "The product's nearest physical inputs: the tables and sources its members are built from.",
-    "inputsEmpty": "No inputs recorded.",
+    "inputsEmpty": "None",
     "promises_one": "{{count}} promise",
     "promises_other": "{{count}} promises",
     "expectations_one": "{{count}} expectation",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "None.",
     "consumers": "Consumers",
     "consumersHint": "Who reads this product one hop downstream: the tables, views and materialized views built directly on its members.",
-    "consumersEmpty": "No consumers recorded.",
+    "consumersEmpty": "None",
+    "ownerOnlyList": "This list is visible to the product's owner.",
     "consumerKind_table": "table",
     "consumerKind_view": "view",
     "consumerKind_materialized_view": "materialized view"
