@@ -53,6 +53,13 @@ def _value_of(column: str, member: str) -> exp.Expression:  # pyright: ignore[re
     )
 
 
+def _member(value: exp.Expression, member: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``member`` of a node or edge ``value``, as text."""
+    return exp.Anonymous(
+        this="JSON_EXTRACT_SCALAR", expressions=[value, exp.Literal.string(f"$.{member}")]
+    )
+
+
 def _same_edge(left: str, right: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Whether two union columns carry the same edge: its id, of its type."""
     return exp.And(
@@ -82,6 +89,9 @@ class _EveryRelMixin:  # mixin for _Translator
         _all_rels_node_vars: set[str]
         _rel_var_types: dict[str, str]
         _held_end_conditions: list[exp.Expression]
+
+        def _typed_rel_value(self, name: str) -> exp.Expression: ...  # pyright: ignore[reportPrivateImportUsage]
+
         _all_rels_src_col: str | None
         _all_rels_rel_col: str | None
         _all_rels_tgt_col: str | None
@@ -353,14 +363,21 @@ class _EveryRelMixin:  # mixin for _Translator
             rel.variable in self._all_rels_rel_vars or rel.variable in self._rel_var_types
         )
         if rel_bound:
-            if rel.variable in self._rel_var_types:
-                raise CypherTranslateError(
-                    f"The relationship {rel.variable}, bound to a relationship between labelled "
-                    "nodes, is matched again between labelled nodes"
-                )
             rel_col = f"_{alias}_r"
-            same = _same_edge(rel_col, rel.variable)  # type: ignore[arg-type]
-            (inner if rel.variable in self._every_rel_clause_cols else outer).append(same)
+            if rel.variable in self._rel_var_types:
+                # A relationship an earlier pattern between labelled nodes bound: the edge of
+                # its id and type, its value as a union would carry it (translator).
+                held = self._typed_rel_value(rel.variable)
+                same = exp.And(
+                    this=exp.EQ(this=_value_of(rel_col, "id"), expression=_member(held, "id")),
+                    expression=exp.EQ(
+                        this=_value_of(rel_col, "type"), expression=_member(held, "type")
+                    ),
+                )
+                outer.append(same)
+            else:
+                same = _same_edge(rel_col, rel.variable)  # type: ignore[arg-type]
+                (inner if rel.variable in self._every_rel_clause_cols else outer).append(same)
         for earlier, of_clause in self._every_rel_edges:
             # Relationship uniqueness: no two hops of one MATCH bind the same edge.
             distinct = exp.Not(this=exp.paren(_same_edge(rel_col, earlier)))

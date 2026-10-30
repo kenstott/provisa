@@ -494,3 +494,36 @@ def test_a_later_match_of_a_node_alone_is_the_node_already_matched(monkeypatch):
     assert s.run("MATCH (a {num: 1}) MATCH (a) RETURN a.num AS n") == [{"n": 1}]
     rows = s.answer("MATCH (a:L) MATCH p = (a) RETURN p")
     assert [n["properties"] for n in rows[0]["p"]["nodes"]] == [{"num": 2}]
+
+
+# --- a relationship between labelled nodes matched again -----------------------------------------
+
+
+def test_a_relationship_between_labelled_nodes_is_carried_by_a_with(monkeypatch):
+    # WITH a, r of r:REL between labelled nodes selected a column r no table has.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A)-[:REL {w: 1}]->(:B)")
+    rows = s.run("MATCH (a:A)-[r:REL]->(b:B) WITH a AS x, r RETURN type(r) AS t, r.w AS w")
+    assert rows == [{"t": "REL", "w": 1}]
+
+
+def test_a_relationship_bound_between_labelled_nodes_is_matched_again(monkeypatch):
+    # TCK With7 [1]: r bound between labelled nodes, carried through WITHs that rename its ends,
+    # is matched again from one of them; it was refused.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A)-[:REL]->(:B)")
+    rows = s.answer(
+        "MATCH (a:A)-[r:REL]->(b:B) WITH a AS b, b AS tmp, r AS r WITH b AS a, r LIMIT 1 "
+        "MATCH (a)-[r]->(b) RETURN a, r, b"
+    )
+    assert [(r["a"]["labels"], r["r"]["type"], r["b"]["labels"]) for r in rows] == [
+        (["A"], "REL", ["B"])
+    ]
+
+
+def test_a_relationship_bound_between_labelled_nodes_is_matched_again_in_its_stage(monkeypatch):
+    # The same relationship matched again with no WITH between: each edge once, never another.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A)-[:REL]->(:B), (:A)-[:REL]->(:B)")
+    rows = s.run("MATCH (a:A)-[r:REL]->(b:B) MATCH (x)-[r]->(c) RETURN count(*) AS n")
+    assert rows == [{"n": 2}]

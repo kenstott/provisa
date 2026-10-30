@@ -93,6 +93,7 @@ from provisa.gql.translator_helpers import (
     _rewrite_cypher_fn_node,
     _safe_alias,
     edge_properties_column,
+    via_column,
 )
 from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
@@ -2133,6 +2134,35 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 return element
         return self._lower_expr(value)
 
+    def _is_typed_rel(self, name: str) -> bool:
+        """Whether ``name`` is a relationship a pattern between labelled nodes bound (its type's
+        own join, not a union of every relationship)."""
+        return name in self._rel_var_types and name in self._rel_var_endpoints
+
+    def _typed_rel_value(self, name: str) -> exp.Expression:
+        """The typed relationship ``name`` as the value a union of every relationship carries:
+        its edge object, its ``id`` the union's (its own row's id, else its ends' keys)."""
+        from provisa.gql.select_builder import node_key_text
+
+        src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = self._rel_var_endpoints[name]
+        if is_reversed:
+            src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+        via = self._rel_var_via.get(name)
+        edge_id: exp.Expression = exp.DPipe(
+            this=exp.DPipe(
+                this=node_key_text(src_alias, src_nm), expression=exp.Literal.string("-")
+            ),
+            expression=node_key_text(tgt_alias, tgt_nm),
+        )
+        if via is not None and via[1].identity_column is not None:
+            edge_id = via_column(via[0], via[1].identity_column)
+        edge = self._temporal_context().resolve_graph_element(name)
+        assert isinstance(edge, exp.Anonymous)
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[exp.Literal.string("id"), edge_id, *(e.copy() for e in edge.expressions)],
+        )
+
     def _is_graph_element(self, name: str) -> bool:
         """Whether ``name`` is a node, relationship or path of the query."""
         return self._temporal_context().resolve_element_value(name) is not None
@@ -2245,6 +2275,24 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         )
                     )
                 continue
+            if bare is not None and self._is_typed_rel(bare):
+                # A relationship between labelled nodes goes on as its value, as one a union of
+                # every relationship carries (its own properties beside it): a later pattern
+                # matches it again by it (translator_every_rel).
+                key = alias or bare
+                value = self._typed_rel_value(bare)
+                exprs.append(exp.alias_(value, key, quoted=True))
+                exprs.append(
+                    exp.alias_(
+                        exp.Anonymous(
+                            this="JSON_EXTRACT",
+                            expressions=[value.copy(), exp.Literal.string("$.properties")],
+                        ),
+                        edge_properties_column(key),
+                        quoted=True,
+                    )
+                )
+                continue
             if bare is not None and bare in self._path_vars and bare not in self._var_table:
                 # A path goes on as its object, as RETURN p answers it: its nodes and edges are
                 # read here, where the pattern that matched them is in scope.
@@ -2305,6 +2353,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         json_lists: set[str] = set()
         json_list_lists: set[str] = set()
         json_values: set[str] = set()
+        #: Each relationship between labelled nodes the WITH carries, as its value from here on.
+        typed_carried: set[str] = set()
         nulls = {
             i.alias
             for i in items
@@ -2383,6 +2433,24 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._map_array_vars.add(key)
         for item in items:
             bare = item.expression.name if isinstance(item.expression, Variable) else None
+            if bare is not None and self._is_typed_rel(bare):
+                # Carried as its value (_build_with_select_items), read on as a union's edge.
+                key = item.alias or bare
+                self._passthrough_vars.add(key)
+                self._all_rels_rel_vars.add(key)
+                self._all_rels_var_alias[key] = cte_name
+                typed_carried.add(key)
+                # What a property read of it takes its type from (translator_union).
+                rel_type = self._rel_var_types[bare]
+                self._all_rels_mappings.extend(
+                    r
+                    for r in [
+                        *self._lm.relationships.values(),
+                        *(r for rs in self._lm.aliases.values() for r in rs),
+                    ]
+                    if r.rel_type == rel_type and r not in self._all_rels_mappings
+                )
+                continue
             if bare is None or not self._is_union_value(bare):
                 continue
             # Read on from the WITH's rows as the value it carries (translator_every_rel).
@@ -2394,6 +2462,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 self._all_rels_node_vars.add(key)
                 self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
             self._all_rels_var_alias[key] = cte_name
+        # A relationship between labelled nodes is, after the WITH, the value it carries, or out
+        # of scope: a later pattern naming it binds it anew.
+        for name in [*self._rel_var_types]:
+            if name in typed_carried or name not in new_var_table:
+                self._rel_var_types.pop(name, None)
+                self._rel_var_endpoints.pop(name, None)
         for path in carried_paths:
             self._path_vars.pop(path, None)
         for key in new_var_table:
