@@ -330,7 +330,10 @@ _COLUMN_COMMENT = (
     "AND _d.classoid = 1259 AND _d.objsubid = attnum)"
 )
 
-_LISTED = "(SELECT TRUE FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid)"
+#: The relations a role lists, read once by a statement however many rows ask: a client calls
+#: pg_table_is_visible for each row of pg_class, and each call would read the view again.
+LISTED_RELATIONS = "_provisa_listed_relations"
+_LISTED = f"(SELECT TRUE FROM {LISTED_RELATIONS} _c WHERE _c.oid = relation_oid)"
 _PUBLISHABLE = (
     "COALESCE((SELECT _c.relkind IN ('r', 'p') AND _c.relnamespace NOT IN (11, 12) "
     "FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid), FALSE)"
@@ -450,7 +453,7 @@ _FORMS: tuple[Form, ...] = (
     _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT),
     # Every table has one owner, the role a client is shown as owning it (pg_class.relowner).
     _form("pg_get_userbyid", "role_oid", "CASE WHEN role_oid IS NOT NULL THEN 'provisa' END"),
-    _form("pg_table_is_visible", "relation_oid", _LISTED),
+    _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS),
     _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE),
     _form("pg_is_other_temp_schema", "schema_oid", "FALSE"),
     _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
@@ -616,8 +619,16 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     out = tree.transform(rewrite)
     if not isinstance(out, exp.Query):
         return out
-    for name in sorted(needed):
+    for name in sorted(needed - {LISTED_RELATIONS}):
         out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
+    if LISTED_RELATIONS in needed:
+        out = out.with_(
+            LISTED_RELATIONS,
+            as_="SELECT _l.oid FROM meta.catalog_pg_class _l",
+            append=True,
+            copy=False,
+            materialized=True,
+        )
     return out
 
 
