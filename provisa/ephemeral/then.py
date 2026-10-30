@@ -262,7 +262,31 @@ def split_of(statement: str) -> Split | None:
             f"A read after a write finds its rows again by their nodes and relationships: the "
             f"path {', '.join(sorted(paths))} is neither; return it before the write"
         )
-    return Split(statement[:rest_at].rstrip(), statement[rest_at:], kind, tuple(scope))
+    rest = statement[rest_at:]
+    if (
+        isinstance(first, MergeClause)
+        and first.path_variable is not None
+        and first.path_variable in names_in(rest)
+    ):
+        # MERGE p = <pattern>: the path is found again by the elements it matched or made.
+        rest = f"MATCH {first.path_variable} = {_path_text(first.pattern)} {rest}"
+    return Split(statement[:rest_at].rstrip(), rest, kind, tuple(scope))
+
+
+def _path_text(path: Any) -> str:
+    """A write pattern every element of which is named, as a pattern of its names alone."""
+    text = f"({_quoted(path.nodes[0].variable)})"
+    for rel, node in zip(path.rels, path.nodes[1:], strict=True):
+        body = f"[{_quoted(rel.variable)}]"
+        arrow = (
+            f"-{body}->"
+            if rel.direction == "right"
+            else f"<-{body}-"
+            if rel.direction == "left"
+            else f"-{body}-"
+        )
+        text += f"{arrow}({_quoted(node.variable)})"
+    return text
 
 
 _CARRY = re.compile(

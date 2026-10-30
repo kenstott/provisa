@@ -691,7 +691,27 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 patterns.append(self._parse_write_pattern())
             return CreateClause(patterns=patterns, start=start)
         if kw == "MERGE":
-            merge = MergeClause(pattern=self._parse_write_pattern(), start=start)
+            path_variable = None
+            _name = self._peek()
+            if (
+                _name is not None
+                and _name.type == "IDENT"
+                and self._pos + 1 < len(self._tokens)
+                and self._tokens[self._pos + 1].type == "EQ"
+            ):
+                # MERGE p = (a)-[:R]->(b): the path is bound to p.
+                path_variable = self._advance().value
+                self._advance()
+            merge = MergeClause(
+                pattern=self._parse_write_pattern(), start=start, path_variable=path_variable
+            )
+            if path_variable is not None:
+                # Each element of a bound path is named, so a read after the MERGE finds the
+                # path again by them (ephemeral.then).
+                for i, node in enumerate(merge.pattern.nodes):
+                    node.variable = node.variable or f"_{path_variable}_n{i}"
+                for j, rel in enumerate(merge.pattern.rels):
+                    rel.variable = rel.variable or f"_{path_variable}_r{j}"
             while self._match_keyword("ON"):
                 self._advance()
                 on_create = self._opt_keyword("CREATE")

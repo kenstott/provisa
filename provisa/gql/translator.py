@@ -833,6 +833,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         #: node, relationship or path, or a session walk's nodes or relationships; their JSON
         #: values, which the answer decodes.
         self._element_list_vars: dict[str, str] = {}
+        #: Each variable a WITH bound to one item of such a list (WITH nodes[i] AS n1): its kind,
+        #: its value that item's JSON, which the answer decodes.
+        self._element_vars: dict[str, str] = {}
         #: The node types a list of collected nodes draws from, by its variable (union_type).
         self._element_list_labels: dict[str, list[str]] = {}
         # Each UNWIND's UNNEST alias (``UNNEST(a) AS _uw0(x)``): its variable is that alias's column
@@ -1599,6 +1602,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             ):
                 return "node" if body.args[0].name.lower() == "nodes" else "rel"
             return None
+        if isinstance(expr, ListLiteral) and expr.items:
+            # [a, b] of nodes (or of relationships, or of paths): each item's JSON value.
+            kinds = {
+                self._element_kind(i.name) if isinstance(i, Variable) else None for i in expr.items
+            }
+            return kinds.pop() if len(kinds) == 1 else None
+        if isinstance(expr, Binary) and expr.op == "+":
+            # [a] + collect(n) + [b]: lists of one kind of element, joined.
+            left, right = self._element_list_kind(expr.left), self._element_list_kind(expr.right)
+            return left if left is not None and left == right else None
         if not (
             isinstance(expr, FunctionCall)
             and expr.name.lower() == "collect"
@@ -1606,7 +1619,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             and isinstance(expr.args[0], Variable)
         ):
             return None
-        name = expr.args[0].name
+        return self._element_kind(expr.args[0].name)
+
+    def _element_item_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path": the one graph element ``expr`` is when it is an item of a
+        list of them (nodes[i], head(nodes), last(nodes)) or a variable a WITH bound to one; None
+        for any other expression."""
+        from provisa.gql.expr_ast import Index
+
+        if isinstance(expr, Variable):
+            return self._element_vars.get(expr.name)
+        if isinstance(expr, Index):
+            return self._element_list_kind(expr.obj)
+        if (
+            isinstance(expr, FunctionCall)
+            and len(expr.args) == 1
+            and expr.name.lower() in ("head", "last")
+        ):
+            return self._element_list_kind(expr.args[0])
+        return None
+
+    def _element_kind(self, name: str) -> str | None:
+        """ "node", "rel" or "path": the graph element the variable ``name`` is; None for any
+        other variable."""
         if self._temporal_context()._element_of(name) is None:
             return None
         if name in self._path_vars:
@@ -1619,19 +1654,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         """The node types the nodes of the list ``expr`` collects are drawn from, which a
         property read of one of them takes its type from (union_type)."""
         from provisa.gql.expr_ast import ListComprehension, Slice
-        from provisa.gql.translator_union import union_labels
 
         if isinstance(expr, Variable):
             return list(self._element_list_labels.get(expr.name, []))
         if isinstance(expr, Slice):
             return self._element_list_types(expr.obj)
+        if isinstance(expr, ListLiteral):
+            parts = [self._element_types(i.name) for i in expr.items if isinstance(i, Variable)]
+            return list(dict.fromkeys(t for part in parts for t in part))
+        if isinstance(expr, Binary):
+            parts = [self._element_list_types(expr.left), self._element_list_types(expr.right)]
+            return list(dict.fromkeys(t for part in parts for t in part))
         if isinstance(expr, ListComprehension):
             return self._element_list_types(expr.source)
         if not (
             isinstance(expr, FunctionCall) and expr.args and isinstance(expr.args[0], Variable)
         ):
             return []
-        name = expr.args[0].name
+        return self._element_types(expr.args[0].name)
+
+    def _element_types(self, name: str) -> list[str]:
+        """The node types the node ``name`` is drawn from."""
+        from provisa.gql.translator_union import union_labels
+
         nm = self._var_table.get(name, (name, None))[1]
         if nm is not None:
             return [nm.type_name]
@@ -2280,6 +2325,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         union_columns: dict[str, list[str]] = {}
         element_lists: dict[str, str] = {}
         element_types: dict[str, list[str]] = {}
+        element_vars: dict[str, str] = {}
         for item in items:
             name = item.alias or (
                 item.expression.name if isinstance(item.expression, Variable) else None
@@ -2314,6 +2360,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if held_kind is not None:
                 element_lists[key] = held_kind
                 element_types[key] = self._element_list_types(expr)
+            one_kind = self._element_item_kind(expr)
+            if one_kind is not None:
+                element_vars[key] = one_kind
             if bare is not None and bare in self._union_columns:
                 union_columns[key] = self._union_columns[bare]
             if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
@@ -2358,6 +2407,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_node_vars &= set(new_var_table)
         self._carried_paths = carried_paths
         self._element_list_vars = element_lists
+        self._element_vars = element_vars
         self._element_list_labels = element_types
         self._var_table = new_var_table
         self._union_columns = union_columns

@@ -287,3 +287,29 @@ def test_a_match_maps_value_may_be_any_expression(monkeypatch):
     )
     assert made.rows == [{"x": 1}, {"x": 2}]
     assert made.counters["nodes"] == 2 and made.counters["relationships"] == 2
+
+
+def test_a_merge_binds_the_path_of_one_node_it_made(monkeypatch):
+    # TCK Merge1 [13]: MERGE p = (a {num: 1}) binds p ("Expected 'LPAREN', got 'IDENT'").
+    from provisa.ephemeral import seam
+
+    s = _empty(monkeypatch)
+    made = s.run("MERGE p = (a {num: 1}) RETURN p")
+    assert made.counters["nodes"] == 1
+    [row] = seam.answered(made.rows, s.session)
+    assert [n["properties"] for n in row["p"]["nodes"]] == [{"num": 1}]
+    assert row["p"]["edges"] == []
+
+
+def test_a_merge_binds_the_path_of_a_relationship_it_made(monkeypatch):
+    # TCK Merge5 [10]: MERGE p = (a)-[:R]->(b), its relationship anonymous, binds p.
+    from provisa.ephemeral import seam
+
+    s = _empty(monkeypatch)
+    made = s.run("MERGE (a {num: 1}) MERGE (b {num: 2}) MERGE p = (a)-[:R]->(b) RETURN p")
+    assert made.counters == {"nodes": 2, "relationships": 1, "labels": 0}
+    [row] = seam.answered(made.rows, s.session)
+    assert [n["properties"] for n in row["p"]["nodes"]] == [{"num": 1}, {"num": 2}]
+    assert [e["type"] for e in row["p"]["edges"]] == ["R"]
+    again = s.run("MERGE p = (a {num: 1})-[:R]->(b {num: 2}) RETURN p")
+    assert again.counters["relationships"] == 0 and len(again.rows) == 1

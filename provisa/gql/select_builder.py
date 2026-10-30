@@ -22,7 +22,14 @@ from typing import TYPE_CHECKING
 import sqlglot.expressions as exp
 
 from provisa.gql import spatial, temporal
-from provisa.gql.expr_ast import CypherExpr, FunctionCall, Literal, Property, Term, Variable
+from provisa.gql.expr_ast import (
+    CypherExpr,
+    FunctionCall,
+    Literal,
+    Property,
+    Term,
+    Variable,
+)
 from provisa.gql.label_map import (
     IDENTITY_COLUMN,
     LABELS_COLUMN,
@@ -775,17 +782,15 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     def _element_list_kind(self, expr: CypherExpr) -> str | None:
         raise NotImplementedError(expr)
 
+    def _element_item_kind(self, expr: CypherExpr) -> str | None:
+        raise NotImplementedError(expr)
+
     def _trail_kind(self, expr: CypherExpr) -> str | None:
         """The graph kind of a list of nodes or relationships ``expr`` is, each its JSON object
-        (translator._element_list_kind), or of ``head`` or ``last`` of one; None for any other
-        expression."""
-        if (
-            isinstance(expr, FunctionCall)
-            and len(expr.args) == 1
-            and expr.name.lower() in ("head", "last")
-        ):
-            expr = expr.args[0]
-        return _ELEMENT_KINDS.get(self._element_list_kind(expr) or "")
+        (translator._element_list_kind), or of one item of one (translator._element_item_kind);
+        None for any other expression."""
+        kind = self._element_item_kind(expr) or self._element_list_kind(expr)
+        return _ELEMENT_KINDS.get(kind or "")
 
     def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """A node graph functions return (startNode(r), nodes(p)), with the identity every node

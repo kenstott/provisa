@@ -451,3 +451,46 @@ def test_a_relationships_label_is_its_type(monkeypatch):
         ("T4", False),
         ("t2", False),
     ]
+
+
+# --- nodes carried in a list ----------------------------------------------------------------------
+
+
+def test_a_with_aggregating_beside_two_nodes_groups_by_their_columns(monkeypatch):
+    # TCK Match4 [4]: WITH a, b, collect(n) carries a and b as their own columns; it grouped by
+    # a.*, b.* ("STAR expression is not supported here").
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a {var: 'start'}), (b {var: 'end'}), ({num: 1}), ({num: 2})")
+    rows = s.run(
+        "MATCH (a {var: 'start'}), (b {var: 'end'}), (n) WHERE n.num IN [1, 2] "
+        "WITH a, b, count(n) AS c RETURN a.var AS a, b.var AS b, c"
+    )
+    assert _sorted(rows) == [("start", "end", 2)]
+
+
+def test_an_item_of_a_list_of_nodes_is_a_node(monkeypatch):
+    # TCK Match4 [4]: [a] + collect(n) + [b] is a list of nodes, nodeList[i] one of them; each
+    # came back as its JSON text, and a CREATE between two of them was refused.
+    s = Session(monkeypatch, {})
+    made = s.run(
+        "CREATE (a {var: 'start'}), (b {var: 'end'}) WITH * UNWIND range(1, 3) AS i "
+        "CREATE (n {var: i}) WITH a, b, [a] + collect(n) + [b] AS nodeList "
+        "UNWIND range(0, size(nodeList) - 2, 1) AS i "
+        "WITH nodeList[i] AS n1, nodeList[i+1] AS n2 CREATE (n1)-[:T]->(n2)"
+    )
+    assert made.counters == {"nodes": 5, "relationships": 4, "labels": 0}
+    rows = s.answer("MATCH (n {var: 'start'})-[:T*..10]->(m {var: 'end'}) RETURN m")
+    assert [r["m"]["properties"] for r in rows] == [{"var": "end"}]
+    listed = s.answer("MATCH (a {var: 'start'}) WITH [a] AS l RETURN l[0] AS x, l")
+    assert listed[0]["x"]["properties"] == {"var": "start"}
+    assert [n["properties"] for n in listed[0]["l"]] == [{"var": "start"}]
+
+
+def test_a_later_match_of_a_node_alone_is_the_node_already_matched(monkeypatch):
+    # MATCH (a) ... MATCH (a) / MATCH p = (a): the second read the node's table again under the
+    # same name ("Ambiguous reference to table a"), as the read after MERGE p = (a) did.
+    s = Session(monkeypatch, {})
+    s.run("CREATE ({num: 1}), (:L {num: 2})")
+    assert s.run("MATCH (a {num: 1}) MATCH (a) RETURN a.num AS n") == [{"n": 1}]
+    rows = s.answer("MATCH (a:L) MATCH p = (a) RETURN p")
+    assert [n["properties"] for n in rows[0]["p"]["nodes"]] == [{"num": 2}]

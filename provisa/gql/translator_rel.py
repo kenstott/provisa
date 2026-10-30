@@ -1227,7 +1227,12 @@ class _RelJoinMixin:  # mixin for _Translator
                 if new_from is not None:
                     from_expr = own_first = new_from
             elif from_expr is not None and nodes and not rels:
-                j = self._build_standalone_node_join(nodes[0].variable, clause)
+                if nodes[0].variable in joined and not nodes[0].labels:
+                    # MATCH (a) ... MATCH (a): a node an earlier pattern placed is that node,
+                    # never a second read of its table under the same name.
+                    j = None
+                else:
+                    j = self._build_standalone_node_join(nodes[0].variable, clause)
                 if j is not None:
                     joins.append(j)
 

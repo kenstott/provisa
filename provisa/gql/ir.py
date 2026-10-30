@@ -353,6 +353,8 @@ class MergeClause:
     on_create: list[SetItem] = field(default_factory=list)
     on_match: list[SetItem] = field(default_factory=list)
     start: int = -1  # as CreateClause.start
+    #: ``MERGE p = <pattern>``: the path the pattern matched or made is bound to it.
+    path_variable: str | None = None
 
 
 WriteClause = CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause
