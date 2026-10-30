@@ -23,7 +23,6 @@ import {
   Button,
   Card,
   Checkbox,
-  Collapse,
   Group,
   Loader,
   SegmentedControl,
@@ -35,14 +34,11 @@ import {
   Textarea,
   TextInput,
   Title,
-  UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
-  ChevronRight,
   GitMerge,
   Pencil,
   Share2,
@@ -62,6 +58,7 @@ import {
 } from "../../api/termFinding";
 import { generateGlossaryRelationships, type GlossaryTermSummary } from "../../api/glossary";
 import { Tip } from "../Tip";
+import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 
 /** How often a running scan is read again, in milliseconds. */
 const POLL_MS = 2000;
@@ -218,7 +215,6 @@ function DraftCard({
 }) {
   const { t } = useTranslation();
   const open = draft.status === "draft";
-  const [showPassages, setShowPassages] = useState(false);
   const [editing, setEditing] = useState(false);
   const [merging, setMerging] = useState(false);
   const [name, setName] = useState(draft.name);
@@ -479,24 +475,24 @@ function DraftCard({
           </Stack>
         )}
 
-        <UnstyledButton
-          onClick={() => setShowPassages((v) => !v)}
-          data-testid={`find-terms-passages-toggle-${draft.id}`}
-        >
-          <Group gap={4}>
-            {showPassages ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <Text size="xs" c="blue">
-              {t("findTerms.passages", { count: draft.passages.length })}
-            </Text>
-          </Group>
-        </UnstyledButton>
-        <Collapse in={showPassages}>
-          <Stack gap="xs">
-            {draft.passages.map((p) => (
-              <PassageQuote key={p.mention} citation={p} document={document} />
-            ))}
-          </Stack>
-        </Collapse>
+        <Collapsibles id="find-terms.passages">
+          <CollapsibleItem
+            value={`draft-${draft.id}`}
+            defaultOpen={false}
+            controlTestId={`find-terms-passages-toggle-${draft.id}`}
+            title={
+              <Text size="xs" c="blue">
+                {t("findTerms.passages", { count: draft.passages.length })}
+              </Text>
+            }
+          >
+            <Stack gap="xs">
+              {draft.passages.map((p) => (
+                <PassageQuote key={p.mention} citation={p} document={document} />
+              ))}
+            </Stack>
+          </CollapsibleItem>
+        </Collapsibles>
         {problem && (
           <Alert color="red" data-testid="find-terms-draft-problem">
             {problem}
