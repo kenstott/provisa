@@ -26751,3 +26751,15 @@ Maintainer 2026-10-29: a file source can read the lists in its HTML pages (ul an
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2187 · Admin UI {#REQ-2187}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with the list in place by an icon in the page's toolbar, filled while on, the way the Ontology view is; it is no longer a modal. The Relationships page's ERD icon goes to that view. Clicking a table in the ERD opens the Tables page's own right-hand detail panel, and the diagram narrows beside it. The panel's head has a Focus action, and while a focus is on an Add to focus action. Focus restricts the ERD to that table's domain and highlights the table; Add to focus adds the table, and its domain if new. A focus is a deep link: /tables?view=erd&domains=a,b&objects=x,y, where domains are the only domains shown and objects the tables highlighted and fitted into view. Only objects given: their own domains are shown. Only domains given: nothing is highlighted. The link never changes the page's domain filter. The URL always states the focus, so a view can be copied and shared. A bar names the focus and has Show all, which clears both lists. A domain or table the link names that does not exist is named in the bar and the rest of the link still works. The Ontology's Open in ERD opens this view focused on its table with the table's panel open.
+
+**Code:** —
+
+**Tests:** —
