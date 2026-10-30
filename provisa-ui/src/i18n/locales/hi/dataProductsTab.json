@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} कस्टम गुण",
         "tags_one": "{{count}} टैग",
         "tags_other": "{{count}} टैग"
+      },
+      "empty": "इस उत्पाद में डेटा अनुबंध वाला कोई आउटपुट पोर्ट नहीं है।",
+      "consumers_one": "{{count}} उपभोक्ता",
+      "consumers_other": "{{count}} उपभोक्ता",
+      "freshness": "{{seconds}} सेकंड के भीतर ताज़ा",
+      "loadedOnce": "एक बार लोड किया गया, कभी रीफ़्रेश नहीं",
+      "noSla": "कोई सेवा स्तर घोषित नहीं",
+      "checkedAt": "{{when}} को जाँचा गया",
+      "neverChecked": "कभी नहीं जाँचा गया",
+      "draftWarning": "मसौदा: अभी लागू नहीं",
+      "card": {
+        "details": "विवरण",
+        "fields": "वादा किए गए फ़ील्ड",
+        "sla": "SLA और ताज़गी",
+        "quality": "गुणवत्ता के वादे",
+        "consumers": "उपभोक्ता",
+        "versions": "संस्करण और परिवर्तन"
       }
     }
   }

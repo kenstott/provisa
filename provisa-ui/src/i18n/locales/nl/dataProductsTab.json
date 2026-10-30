@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} aangepaste eigenschappen",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "Dit product heeft geen uitvoerpoort met een datacontract.",
+      "consumers_one": "{{count}} afnemer",
+      "consumers_other": "{{count}} afnemers",
+      "freshness": "Actueel binnen {{seconds}} s",
+      "loadedOnce": "Eenmaal geladen, nooit vernieuwd",
+      "noSla": "Geen serviceniveau gedeclareerd",
+      "checkedAt": "Gecontroleerd {{when}}",
+      "neverChecked": "Nooit gecontroleerd",
+      "draftWarning": "Concept: nog niet van kracht",
+      "card": {
+        "details": "Details",
+        "fields": "Beloofde velden",
+        "sla": "SLA's & actualiteit",
+        "quality": "Kwaliteitsbeloften",
+        "consumers": "Afnemers",
+        "versions": "Versies & wijzigingen"
       }
     }
   }
