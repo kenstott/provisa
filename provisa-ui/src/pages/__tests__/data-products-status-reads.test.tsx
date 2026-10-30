@@ -69,6 +69,7 @@ vi.mock("../../api/actions", () => ({
 }));
 vi.mock("../../api/dataProductContracts", () => ({
   fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 vi.mock("../../api/lineage", () => ({
   fetchProductLineage: () => fetchProductLineage(),
