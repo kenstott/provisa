@@ -246,7 +246,7 @@ class TestAnswerPgCatalog:
     def test_pg_roles_contains_role(self):
         state = self._state_with_table()
         result = answer("SELECT * FROM pg_catalog.pg_roles", "testrole", state)
-        rolnames = [r[1] for r in result.rows]
+        rolnames = [r[0] for r in result.rows]  # PostgreSQL's order: rolname first, oid last
         assert "testrole" in rolnames
 
     def test_join_pg_class_pg_namespace(self):
