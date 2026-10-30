@@ -62,12 +62,10 @@ export type Capability =
   // carries `glossary_read` and `glossary_rw` as well.
   | "org_glossary_rw"
   // REQ-1634: data products' two rights. `data_product_read` opens the surface — org_admin,
-  // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
-  // same footing as `table_registration`: org_admin only.
+  // analyst, developer, and modeler all hold it. `data_product_rw` is org_admin's and, REQ-2188,
+  // comes with being named in a product's Owner field, held to that product by a row rule.
   | "data_product_read"
   | "data_product_rw"
-  // REQ-2155: edit a data product the caller's role owns (its owner_role, an ancestor included).
-  | "data_product_owned_rw"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
   | "dq_read"

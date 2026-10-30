@@ -513,10 +513,9 @@ async def _save_data_product(
     """A data product saved: a create makes a new one, refusing an id that exists; an update
     changes one, refusing an id that does not. Either refusal names the id and writes nothing."""
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
-    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2155: a product's
-    # owner (data_product_owned_rw) edits the one it owns.
-    from provisa.api.admin.capabilities import _identity_from_info, data_product_edit_refusal
-    from provisa.api.app import state as app_state
+    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2188: the role's
+    # U rule, not this gate, says which products it edits (core.model_row_rules).
+    from provisa.api.admin.capabilities import require_right_in_domains
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
@@ -526,14 +525,11 @@ async def _save_data_product(
         conn = cast("Connection", conn)
         # REQ-1944: the product's domain, and the one it is moved out of when it exists.
         stored = await data_product_repo.get(conn, input.id)
-        refusal = data_product_edit_refusal(
-            _identity_from_info(info),
-            app_state,
-            stored,
+        require_right_in_domains(
+            info,
+            "data_product_rw",
             {input.domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
-        if refusal is not None:
-            raise PermissionError(refusal)
         if creating and stored is not None:
             return MutationResult(
                 success=False,
@@ -582,6 +578,8 @@ async def _save_data_product(
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
         )
         await data_product_repo.upsert(conn, model)
+    if (None if stored is None else stored["owner_role"]) != model.owner_role:
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     if creating:
         return MutationResult(
             success=True,
@@ -3291,6 +3289,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     },
                 )
         if deleted:
+            if stored is not None and stored["owner_role"]:
+                await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
             return MutationResult(
                 success=True,
                 message=f"Data product {id!r} deleted",

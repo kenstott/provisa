@@ -94,7 +94,7 @@ Only catalogs with a native data-product concept publish it as an entity of its 
 | `id` | Yes | Machine-readable stable identifier, e.g. `customer_360` |
 | `domain_id` | Yes | Owning domain; membership rule enforced against this |
 | `name` | Yes | Display name |
-| `owner_role` | No | Role accountable for this product; distinct from the domain steward |
+| `owner_role` | No | Role accountable for this product; distinct from the domain steward. Naming a role here lets it edit the products that name it (see [row rules](security.md#a-rules-rights)) |
 | `team_role` | No | Role whose holders form the day-to-day working team; resolves to individuals |
 | `purpose` | No | What this product publishes and why |
 | `limitations` | No | Known constraints, caveats, or exclusions |

@@ -506,7 +506,7 @@ async def test_req_2188_scenario(plane, rights):
 def test_req_2188_a_role_with_r_only_and_a_u_rule_is_refused_at_the_right():
     """The ceiling is the role's right: a U rule neither gives data_product_rw nor touches the
     gate that reads it."""
-    from provisa.api.admin.capabilities import data_product_edit_refusal
+    from provisa.api.admin.capabilities import right_domain_refusal
 
     state = types.SimpleNamespace(
         roles={"rule_holder": {"capabilities": ["data_product_read"], "domain_access": ["*"]}},
@@ -515,8 +515,7 @@ def test_req_2188_a_role_with_r_only_and_a_u_rule_is_refused_at_the_right():
     identity = types.SimpleNamespace(
         user_id="u", acting_roles=["rule_holder"], env_capabilities=set()
     )
-    stored = {"id": "p", "domain_id": "pets", "owner_role": "rule_holder"}
-    assert data_product_edit_refusal(identity, state, stored, {"pets"}) is not None
+    assert right_domain_refusal(identity, state, "data_product_rw", {"pets"}) is not None
 
 
 async def test_a_refused_delete_leaves_the_product(plane, rights):

@@ -1290,7 +1290,7 @@ from provisa.core.request_context import (  # noqa: E402
     register_org_store_provider,
     register_platform_config_provider,
 )
-from provisa.security.row_filters import acting_model_rule  # noqa: E402
+from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
 
 
 # The platform config as last read, with the config generation it was read under. Asked on request
@@ -1330,14 +1330,14 @@ register_platform_config_provider(_read_platform_config)
 
 def _model_rule(role: str, table: str, right: str) -> model_row_rules.ModelRule | None:  # REQ-2188
     """The rule a write of ``table`` is held to. The store asks of every UPDATE and DELETE a
-    person's request makes, and only a table of the meta domain can carry one, in an org whose
-    runtime is built: a platform write, or an org's first build, has no rule to read and must not
-    be refused for having no runtime to read it from."""
+    person's request makes, and only a semantic object's table can carry one (the meta domain's, or
+    a glossary term's), in an org whose runtime is built: a platform write, or an org's first build,
+    has no rule to read and must not be refused for having no runtime to read it from."""
     from provisa.api.app_loaders import _META_TABLES
     from provisa.core.request_context import current_env, current_org
 
     org_id = current_org.get()
-    if table not in _META_TABLES or org_id is None:
+    if (table not in _META_TABLES and table not in MODEL_RW_RIGHTS) or org_id is None:
         return None
     if state.org_registry.get(runtime_key(org_id, current_env.get())) is None:
         return None
@@ -3219,6 +3219,13 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         role_chains_by_id = role_chains(roles)
         # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
         role_parents_by_id = parent_map(roles)
+        # REQ-2188: naming a role in a product's Owner field gives it RW on data products, with the
+        # generated rules (row_filters.with_owner_grant); it folds to the role's children as a
+        # right does, and is gone from the next build once the role owns nothing.
+        from provisa.core.repositories import data_product as _data_product_repo
+        from provisa.security.row_filters import with_owner_grant
+
+        roles = with_owner_grant(roles, await _data_product_repo.owner_roles(conn))
         # REQ-1363: then down the domain tree -- a role that lists a domain reaches every domain
         # under it. state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.

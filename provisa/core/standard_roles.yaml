@@ -50,10 +50,12 @@ modeler:
   capabilities: [ignore_relationships]
 
 data_product_owner:
-  description: "Edits the data products it owns."
+  description: "A role to name in a data product's Owner field: edits the data products that name it."
+  # REQ-2188: it holds nothing of its own. Naming a role in an Owner field gives that role RW on data
+  # products with the generated U and D rules (security/row_filters.with_owner_grant), this one or any other.
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [data_product_owned_rw]
+  capabilities: []
 
 security_admin:
   description: "Configures access: row rules, column grants, masks and sensitive columns."
@@ -62,13 +64,14 @@ security_admin:
   capabilities: [access_config, column_grant, masking_config, sensitive_data, view_governance]
 
 data_steward:
-  description: "Governs a domain's meaning and access: the glossary, relationships, data products, row rules, grants, masks and sensitive columns. Nothing operational."
+  description: "Governs a domain's meaning and access: the glossary, relationships, row rules, grants, masks and sensitive columns. Nothing operational."
   # REQ-1944: meaning plus access -- a domain's governance and its delegation of read, with the
-  # glossary, relationships and data products on top; every edit checked against the domain of what
-  # it changes (api/admin/capabilities.right_domain_refusal).
+  # glossary and relationships on top; every edit checked against the domain of what it changes
+  # (api/admin/capabilities.right_domain_refusal). REQ-2188: not data_product_rw: an org admin who
+  # wants stewards to edit products gives a role of its own RW and a row rule on domain.
   parents: [security_admin, analyst]
   domain_access: ["*"]
-  capabilities: [glossary_rw, create_relationship, data_product_rw, full_results]
+  capabilities: [glossary_rw, create_relationship, full_results]
 
 dq_reader:
   description: "Reads data quality check definitions and results."
@@ -101,8 +104,9 @@ org_admin:
   parents: [developer, data_product_owner, data_steward, dq_steward, source_admin, org_operator]
   domain_access: ["*"]
   # REQ-1573: creating or deleting an environment spends the plan ceiling and drops a schema;
-  # REQ-1942: an environment's data choices; REQ-1592: the override over any term, whoever authored it.
-  capabilities: [environment_management, environment_data, user_management, org_glossary_rw]
+  # REQ-1942: an environment's data choices; REQ-1592: the override over any term, whoever authored it;
+  # REQ-2188: every data product, with no U or D rule.
+  capabilities: [environment_management, environment_data, user_management, org_glossary_rw, data_product_rw]
 
 sandbox:
   description: "A Try it Out visitor: what the product does, inside an environment that expires, but not members, environments or the organization glossary."
@@ -111,10 +115,11 @@ sandbox:
   # conferring roles, or the org glossary's override.
   # Not developer's child: developer manages the environments it owns, and the sandbox never
   # manages an environment (REQ-2053). It holds developer's other rights: create_relationship and
-  # full_results through data_steward, the rest as its own.
+  # full_results through data_steward, the rest as its own. REQ-2188: data_product_rw is its own too,
+  # so a visitor can try products.
   parents: [analyst, data_product_owner, dq_steward, source_admin, security_admin, data_steward, org_operator]
   domain_access: ["*"]
-  capabilities: [create_view, write, environment_switch]
+  capabilities: [create_view, write, environment_switch, data_product_rw]
 
 platform_admin:
   description: "Runs the platform: organizations, infrastructure and deployment settings. Holds no right to any organization's data."

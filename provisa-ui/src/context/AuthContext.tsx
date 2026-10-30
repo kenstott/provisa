@@ -49,6 +49,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "environment_data",
     "user_management",
     "org_glossary_rw",
+    "data_product_rw",
   ] as Capability[],
   parents: [
     "developer",
@@ -87,7 +88,6 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "org_glossary_rw", // REQ-1592
     "data_product_read", // REQ-1634
     "data_product_rw", // REQ-1634
-    "data_product_owned_rw", // REQ-2155
     "dq_read", // REQ-2155
     "dq_rw", // REQ-2155
   ] as Capability[],

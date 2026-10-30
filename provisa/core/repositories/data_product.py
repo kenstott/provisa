@@ -103,6 +103,14 @@ async def list_by_domain(conn: "Connection", domain_id: str) -> list[dict]:  # R
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def owner_roles(conn: "Connection") -> set[str]:  # REQ-2188
+    """The roles named in an Owner field: what the runtime build gives RW on data products."""
+    result = await conn.execute_core(
+        select(data_products.c.owner_role).where(data_products.c.owner_role.is_not(None)).distinct()
+    )
+    return {r[0] for r in result.fetchall()}
+
+
 class DataProductDeleteRefused(Exception):
     """A data product that may not be deleted because it has members; ``dependents`` lists
     them."""

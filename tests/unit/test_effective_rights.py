@@ -18,7 +18,7 @@ from provisa.security.effective_rights import capabilities_view
 ROWS = [
     {"id": "viewer", "capabilities": ["read"], "parents": []},
     {"id": "dq_steward", "capabilities": ["read", "dq_rw"], "parents": ["viewer"]},
-    {"id": "dp_owner", "capabilities": ["data_product_owned_rw"], "parents": ["viewer"]},
+    {"id": "dp_owner", "capabilities": ["data_product_rw"], "parents": ["viewer"]},
     {"id": "dq_lead", "capabilities": ["export"], "parents": ["dq_steward", "dp_owner"]},
 ]
 STANDARD = {"viewer", "dq_steward", "dp_owner"}
@@ -30,7 +30,7 @@ def test_each_capability_names_the_role_it_comes_from():
     assert view["standard"] is False
     assert view["chain"] == ["dq_lead", "dq_steward", "viewer", "dp_owner"]
     assert view["capabilities"] == [
-        {"right": "data_product_owned_rw", "from": ["dp_owner"]},
+        {"right": "data_product_rw", "from": ["dp_owner"]},
         {"right": "dq_rw", "from": ["dq_steward"]},
         {"right": "export", "from": ["dq_lead"]},
         {"right": "read", "from": ["viewer"]},
@@ -49,7 +49,7 @@ def test_the_lineage_has_every_role_s_parents_and_what_it_adds():
     assert view["adds"] == {
         "viewer": ["read"],
         "dq_steward": ["dq_rw"],
-        "dp_owner": ["data_product_owned_rw"],
+        "dp_owner": ["data_product_rw"],
         "dq_lead": ["export"],
     }
     assert view["standards"] == ["dq_steward", "viewer", "dp_owner"]
@@ -90,7 +90,7 @@ def test_a_meta_role_is_a_child_of_its_members():
     view = capabilities_view("meta:dp_owner+dq_steward", ROWS, standard=STANDARD)
     assert view["parents"]["meta:dp_owner+dq_steward"] == ["dp_owner", "dq_steward"]
     assert view["adds"]["meta:dp_owner+dq_steward"] == []
-    assert {c["right"] for c in view["capabilities"]} == {"read", "dq_rw", "data_product_owned_rw"}
+    assert {c["right"] for c in view["capabilities"]} == {"read", "dq_rw", "data_product_rw"}
 
 
 # --- GET /admin/roles/{role_id}/effective ----------------------------------------------------------

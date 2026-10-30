@@ -1862,7 +1862,9 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "metrics": metrics,
         "rls_rules": rls_rules,
         # REQ-2188: the U and D rules on model tables, which hold the model store's writes.
-        "model_write_rules": model_write_rules(rls_rules, tables),
+        "model_write_rules": model_write_rules(
+            rls_rules, tables, [r["id"] for r in roles if r.get("owner_held")]
+        ),
         "field_numbers": field_numbers,
     }
 
