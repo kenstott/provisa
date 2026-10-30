@@ -66,6 +66,7 @@ pytest.importorskip("azure.identity", reason="azure-identity required")
 from tests.integration.connector_source_harness import (  # noqa: E402
     assert_registration_and_query,
 )
+from tests.integration.live_teardown import none_remain, run_every, run_name  # noqa: E402
 from tests.integration.synapse_provision import cli_ready, synapse_lane  # noqa: E402
 
 _CLI_PROBLEM = cli_ready()
@@ -75,7 +76,8 @@ pytestmark.append(
 
 _SOURCE_ID = "synapse-ext"
 _DOMAIN = "synapse_e2e"
-_SCHEMA = "provisa_ext_pipe"
+# The run's own schema (REQ-254): in a pinned standing workspace, teardown drops exactly it.
+_SCHEMA = run_name("provisa_ext_pipe")
 _TABLE = "orders"
 
 # The rows synapse_provision seeds into the ADLS Parquet, and their steward-assigned IR types.
@@ -93,8 +95,33 @@ def lane():
         yield coordinates
 
 
+@pytest.fixture(scope="module")
+def attached_dropped(lane):
+    """After the module: the view the source's attach created over the ADLS Parquet and its
+    schema, dropped and read back gone (REQ-254). A pinned standing workspace has no workspace
+    delete to take them."""
+    from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
+
+    yield
+    sql_server, database, _adls_url = lane
+    rt = MssqlWarehouseRuntime(server=sql_server, database=database, engine_name="synapse")
+
+    def drop() -> None:
+        cur = rt.connection.cursor()
+        try:
+            cur.execute(f"DROP VIEW IF EXISTS [{_SCHEMA}].[{_TABLE}]")
+            cur.execute(f"DROP SCHEMA IF EXISTS [{_SCHEMA}]")
+            rt.connection.commit()
+            cur.execute("SELECT name FROM sys.schemas WHERE name = ?", [_SCHEMA])
+            none_remain("Synapse schemas", [r[0] for r in cur.fetchall()])
+        finally:
+            cur.close()
+
+    run_every([(f"drop [{_SCHEMA}]", drop), ("close the runtime", rt.close)])
+
+
 @pytest_asyncio.fixture(loop_scope="session")
-async def synapse_client(lane):
+async def synapse_client(lane, attached_dropped):  # noqa: ARG001 -- torn down after the client
     """An in-process app whose federation engine is the lane's Synapse workspace.
 
     Same rebuild ``connector_client`` performs and for the same reason: ``AppState.__init__`` calls

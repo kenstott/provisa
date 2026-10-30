@@ -184,6 +184,17 @@ const SWAP_SPECS = [
   "**/engine-swap-reboot.spec.ts",
   "**/engine-swap-reboot-engines.spec.ts",
 ];
+// The specs that register or query a live cloud warehouse (Snowflake, Databricks, BigQuery, Fabric)
+// and Google Sheets, each billed or metered by its vendor. Maintainer 2026-10-29: the core UI lane
+// never touches a live warehouse; these are the "warehouse" project, which only the nightly
+// warehouse lane runs (integration-suite-lanes.yml warehouse-ui) and which "core" excludes the way
+// it excludes TRINO_SPECS. (The engine-swap specs that seed a warehouse are SWAP_SPECS, already
+// outside "core".)
+const WAREHOUSE_SPECS = ["**/source-to-query-cloud-warehouse.spec.ts"];
+// The same, for a case that shares its file with others: matched by title (google_sheets, in
+// source-to-query-special-cases.spec.ts, whose other cases stay in "core").
+const WAREHOUSE_TITLE_SPECS = ["**/source-to-query-special-cases.spec.ts"];
+const WAREHOUSE_TITLES = /\bgoogle_sheets: source to query through the UI\b/;
 // Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
@@ -679,8 +690,10 @@ export default defineConfig({
               ...SWAP_SPECS,
               ...REGIONS_SPECS,
               ...PROVISIONING_SPECS,
+              ...WAREHOUSE_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
+            grepInvert: WAREHOUSE_TITLES,
             // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
             // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
             // turning for a whole test held SwiftShader's GPU process at most of a core.
@@ -691,6 +704,16 @@ export default defineConfig({
             name: "core-provisioning",
             testMatch: PROVISIONING_SPECS,
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
+            use: { reducedMotion: "reduce" },
+          },
+          {
+            // Maintainer 2026-10-29: the live warehouses, nightly only (see WAREHOUSE_SPECS).
+            // Every case of the cloud-warehouse spec, and the google_sheets case of the special-cases one.
+            name: "warehouse",
+            testMatch: [...WAREHOUSE_SPECS, ...WAREHOUSE_TITLE_SPECS],
+            grep: new RegExp(
+              `\\bcloud warehouse sources through the UI\\b|${WAREHOUSE_TITLES.source}`,
+            ),
             use: { reducedMotion: "reduce" },
           },
         ]

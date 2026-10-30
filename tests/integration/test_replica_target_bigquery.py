@@ -19,6 +19,7 @@ import pytest
 
 pytest.importorskip("google.cloud.bigquery", reason="google-cloud-bigquery required")
 
+from tests.integration.live_teardown import none_remain, run_every, run_name  # noqa: E402
 from provisa.federation.replica_address import replica_schema  # noqa: E402
 from provisa.federation.replica_target import build_table_name  # noqa: E402
 from provisa.federation.replica_target_warehouse import BigQueryStoreTarget  # noqa: E402
@@ -32,7 +33,7 @@ pytestmark = [
     pytest.mark.requires_warehouse,
 ]
 
-_DATASET = replica_schema(f"swaptest{os.getpid()}")
+_DATASET = replica_schema(run_name("swaptest"))  # the run's own (REQ-254)
 _TABLE = "src__public__orders"
 _COLUMNS = [
     ("id", "integer"),
@@ -71,8 +72,15 @@ def client():
     try:
         yield found
     finally:
-        found.delete_dataset(f"{project}.{_DATASET}", delete_contents=True, not_found_ok=True)
-        found.close()
+
+        def drop() -> None:
+            found.delete_dataset(f"{project}.{_DATASET}", delete_contents=True, not_found_ok=True)
+            none_remain(
+                "BigQuery datasets",
+                [d.dataset_id for d in found.list_datasets(project) if d.dataset_id == _DATASET],
+            )
+
+        run_every([(f"drop dataset {_DATASET}", drop), ("close the client", found.close)])
 
 
 def _target(client) -> BigQueryStoreTarget:

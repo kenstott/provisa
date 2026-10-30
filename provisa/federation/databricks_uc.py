@@ -100,16 +100,26 @@ def _credential_body(name: str, scheme: str, cred: dict) -> dict:
 
 
 def _covering_location(uc: "_UC", location: str) -> str | None:
-    """An existing UC external location whose URL is a prefix of ``location`` (already governs it), or
-    None. UC permits only one external location per path, so coverage — not name — is what matters."""
-    st, payload = uc.get("/api/2.1/unity-catalog/external-locations")
-    if st != HTTPStatus.OK or not isinstance(payload, dict):
-        return None
-    for loc in payload.get("external_locations", []):
-        url = loc.get("url") or ""
-        if url and location.startswith(url):
-            return url
-    return None
+    """An existing UC external location at a parent directory of ``location`` (already governs it),
+    or None. UC permits only one external location per path, so coverage — not name — is what
+    matters. Coverage is by path segment: a location at ``.../run`` covers ``.../run/x.parquet``,
+    never ``.../run_2/x.parquet``. Every page of the listing is read (``max_results=0`` asks UC to
+    page it), and a listing UC does not answer raises: an unread listing is not "not covered"."""
+    token: str | None = None
+    while True:
+        path = "/api/2.1/unity-catalog/external-locations?max_results=0"
+        if token:
+            path += f"&page_token={token}"
+        st, payload = uc.get(path)
+        if st != HTTPStatus.OK or not isinstance(payload, dict):
+            raise ExternalLinkError(f"UC external-location listing failed ({st}): {payload}")
+        for loc in payload.get("external_locations", []):
+            url = loc.get("url") or ""
+            if url and location.startswith(url.rstrip("/") + "/"):
+                return url
+        token = payload.get("next_page_token")
+        if not token:
+            return None
 
 
 def ensure_external_link(host: str, token: str, *, location: str, credential: dict) -> str:

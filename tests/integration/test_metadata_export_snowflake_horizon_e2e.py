@@ -34,7 +34,6 @@ import yaml
 from provisa.federation.replica_address import replica_table_name
 from tests.integration.metadata_export_server import (
     DOMAIN,
-    PRODUCT,
     PRODUCT_FIELDS,
     SCHEMA,
     SOURCE,
@@ -43,6 +42,8 @@ from tests.integration.metadata_export_server import (
     refused,
 )
 
+from tests.integration.live_teardown import run_name  # noqa: E402
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.requires_warehouse,
@@ -50,7 +51,10 @@ pytestmark = [
 ]
 
 ORG = "mdx_horizon_e2e"
-# The adapter names both as quoted identifiers, in the product id's own case: provisa_<id>_share.
+# The data product is named for the run (REQ-254), so its share and listing are the run's own:
+# teardown drops exactly these, never another run's. The adapter names both as quoted
+# identifiers, in the product id's own case: provisa_<id>_share.
+PRODUCT = run_name("provisa_e2e")
 SHARE = f"provisa_{PRODUCT}_share"
 LISTING = f"provisa_{PRODUCT}_listing"
 _CREDENTIALS = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE")
@@ -84,6 +88,17 @@ def _rows(conn, sql: str) -> list[dict]:
         cur.close()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warehouse_left_as_found():
+    """The module's statements resume the Snowflake warehouse if it is suspended; it is suspended
+    again after the module however it ends, unless it was running before (REQ-254). Module-scoped
+    autouse: its state is read before, and the suspend runs after, every other fixture here."""
+    from tests.integration.snowflake_warehouse import warehouse_in_use
+
+    with warehouse_in_use(_credentials()["SNOWFLAKE_WAREHOUSE"]):
+        yield
+
+
 @pytest.fixture(scope="module")
 def engine_database():
     """A database of the run's own for the engine to land in, dropped with what was shared."""
@@ -94,13 +109,42 @@ def engine_database():
         _rows(conn, f"CREATE DATABASE {database}")
         yield creds, database
     finally:
-        for stmt in (
-            f'DROP LISTING IF EXISTS "{LISTING}"',
-            f'DROP SHARE IF EXISTS "{SHARE}"',
-            f"DROP DATABASE IF EXISTS {database}",
-        ):
-            _rows(conn, stmt)
-        conn.close()
+        from tests.integration.live_teardown import run_every
+
+        # Every drop is attempted and read back, then any that failed is raised (REQ-254).
+        run_every(
+            [
+                (stmt, lambda stmt=stmt: _rows(conn, stmt))
+                for stmt in (
+                    f'DROP LISTING IF EXISTS "{LISTING}"',
+                    f'DROP SHARE IF EXISTS "{SHARE}"',
+                    f"DROP DATABASE IF EXISTS {database}",
+                )
+            ]
+            + [
+                (
+                    f"read back {kind} {name} gone",
+                    lambda kind=kind, name=name: _gone(conn, kind, name),
+                )
+                for kind, name in (
+                    ("LISTINGS", LISTING),
+                    ("SHARES", SHARE),
+                    ("DATABASES", database),
+                )
+            ]
+            + [("close the connection", conn.close)]
+        )
+
+
+def _gone(conn, kind: str, name: str) -> None:
+    """Raise if ``SHOW <kind> LIKE '<name>'`` still lists ``name``. A share is listed under its
+    account-qualified name (``<account>.<share>``); an unquoted database name in upper case."""
+    from tests.integration.live_teardown import none_remain
+
+    listed = [
+        r["name"].split(".")[-1].strip('"') for r in _rows(conn, f"SHOW {kind} LIKE '{name}'")
+    ]
+    none_remain(f"Snowflake {kind.lower()}", [n for n in listed if n.upper() == name.upper()])
 
 
 @pytest.fixture(scope="module")
@@ -113,7 +157,12 @@ async def published(engine_database):
     )
     # A draft (REQ-1634 STATUS): the organization listing stays unpublished in the shared account.
     async with published_server(
-        ORG, engine="snowflake", env={"PROVISA_ENGINE_URL": dsn}, with_view=False, status="draft"
+        ORG,
+        engine="snowflake",
+        env={"PROVISA_ENGINE_URL": dsn},
+        with_view=False,
+        status="draft",
+        product=PRODUCT,
     ) as client:
         # A member is replicated into Snowflake on its first read; its export view is what the
         # listing shares.

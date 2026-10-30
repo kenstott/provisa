@@ -1,0 +1,75 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e1fe5620-04ef-4499-9dba-2b04fbe8b09e
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Teardown of what a test left in a live external account: every step attempted, none hidden.
+
+REQ-254: a test tears down everything it created in a live account, in teardown that runs even
+when the test fails. A teardown of several steps (drop the test's objects, close the connection)
+must not stop at the first one that fails -- the rest would be left behind -- and must not log a
+failure away either: an object left in the account bills. ``run_every`` runs each step, then
+raises every failure together.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable, Iterable
+
+
+def _raise_all(failures: list[Exception]) -> None:
+    if failures:
+        raise ExceptionGroup(
+            f"{len(failures)} teardown step(s) failed; the live account may hold what the test "
+            "created",
+            failures,
+        )
+
+
+def run_every(steps: Iterable[tuple[str, Callable[[], object]]]) -> None:
+    """Run each ``(what, step)`` in order, even after one fails; then raise every failure in one
+    ExceptionGroup, each noted with what it was tearing down."""
+    failures: list[Exception] = []
+    for what, step in steps:
+        try:
+            step()
+        except Exception as exc:  # noqa: BLE001 -- collected and re-raised below, never dropped
+            exc.add_note(f"teardown step: {what}")
+            failures.append(exc)
+    _raise_all(failures)
+
+
+def run_name(stem: str, sep: str = "_") -> str:
+    """``stem`` with a per-run suffix (REQ-254): every object a live test creates carries one, so
+    its teardown, and a later sweep, find exactly that run's objects -- never another run's, and
+    never a durable fixture a test only reads. ``sep`` joins them for names that cannot hold
+    ``_`` (or must use it)."""
+    import uuid
+
+    return f"{stem}{sep}{uuid.uuid4().hex[:8]}"
+
+
+def none_remain(what: str, remaining: Iterable[object]) -> None:
+    """Raise when a teardown's own read-back still finds what it deleted: an object left in a live
+    account bills (REQ-254), so a delete that answered but did not take is a failure too."""
+    left = list(remaining)
+    if left:
+        raise AssertionError(f"teardown left {what} in the live account: {left!r}")
+
+
+async def run_every_async(steps: Iterable[tuple[str, Callable[[], Awaitable[object]]]]) -> None:
+    """``run_every`` for coroutine steps: each awaited in order, even after one fails; then every
+    failure raised in one ExceptionGroup."""
+    failures: list[Exception] = []
+    for what, step in steps:
+        try:
+            await step()
+        except Exception as exc:  # noqa: BLE001 -- collected and re-raised below, never dropped
+            exc.add_note(f"teardown step: {what}")
+            failures.append(exc)
+    _raise_all(failures)
