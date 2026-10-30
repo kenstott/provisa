@@ -124,12 +124,19 @@ def _to_int(value: Any) -> Any:
     return None if value is None else int(value)
 
 
+def _to_bool(value: Any) -> Any:
+    return None if value is None else bool(value)
+
+
 def _to_float(value: Any) -> Any:
     return None if value is None else float(value)
 
 
 _INTEGERS = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT})
 _NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
+
+#: A predicate: a boolean, whose value an engine with no boolean computes as 1 or 0.
+_BOOLEAN = CastType(16, -1, BVType.BOOL, _INTEGERS | {BVType.BOOL}, _to_bool)
 
 #: How a call of a pg_catalog function is described, by the type PostgreSQL says it returns
 #: (function_types): the engine computes the value, in a type of its own where its function's
@@ -139,6 +146,7 @@ _RETURNED: dict[str, CastType] = {
     "smallint": CastType(21, -1, BVType.SMALLINT, _INTEGERS, _to_int),
     "integer": CastType(23, -1, BVType.INTEGER, _INTEGERS, _to_int),
     "bigint": CastType(20, -1, BVType.BIGINT, _INTEGERS, _to_int),
+    "boolean": _BOOLEAN,
     # An exact numeric of no fixed scale is served as its text (duckdb_pg_scalars).
     "numeric": CastType(1700, -1, BVType.DECIMAL, _NUMBERS | {BVType.TEXT}, _to_decimal),
     "double precision": CastType(701, -1, BVType.FLOAT, _NUMBERS, _to_float),
@@ -167,6 +175,28 @@ def bit_varying_read(sql: str) -> str:
     return _BIT_VARYING.sub("::varbit", sql)
 
 
+def _predicate_nodes() -> tuple[type, ...]:
+    import sqlglot.expressions as exp
+
+    return (
+        exp.EQ,
+        exp.NEQ,
+        exp.GT,
+        exp.GTE,
+        exp.LT,
+        exp.LTE,
+        exp.ArrayOverlaps,
+        exp.ArrayContainsAll,
+        exp.ArrayContainedBy,
+        exp.Adjacent,
+        exp.ExtendsLeft,
+        exp.ExtendsRight,
+    )
+
+
+_PREDICATES = _predicate_nodes()
+
+
 def _operand_type(operand: Any) -> CastType | None:
     """A range operator's result (a + b, a * b, a - b) is its operand's range or multirange."""
     import sqlglot.expressions as exp
@@ -191,6 +221,12 @@ def _result_type(expression: Any) -> CastType | None:
         return _cast_type(expression.to)
     if isinstance(expression, (exp.Add, exp.Sub, exp.Mul)):
         return _operand_type(expression.this) or _operand_type(expression.expression)
+    if isinstance(expression, _PREDICATES):
+        return _BOOLEAN
+    if isinstance(expression, (exp.BitwiseLeftShift, exp.BitwiseRightShift)) and (
+        _operand_type(expression.this) or _operand_type(expression.expression)
+    ):
+        return _BOOLEAN  # << and >> of a range: on anything else, a shift
     returned = call_result_type(expression)
     return None if returned is None else _RETURNED.get(returned)
 

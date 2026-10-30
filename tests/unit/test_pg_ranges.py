@@ -30,6 +30,7 @@ from provisa.compiler.native_subtype import mark_subtype_operations
 from provisa.core import pg_range
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.duckdb_pg_functions import register
+from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.native_subtype import SubtypeOperationRefused
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 from tests.unit import range_corpus as corpus
@@ -317,6 +318,48 @@ def test_a_multirange_built_from_columns_is_refused_by_name_without_a_fold(diale
         "operation": op,
         "dialect": dialect,
     }
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT a.v && b.v AS r FROM s.t AS a, s.t AS b",
+        "SELECT a.v -|- b.v AS r FROM s.t AS a, s.t AS b",
+        "SELECT a.v = b.v AS r FROM s.t AS a, s.t AS b",
+        "SELECT '[1,2)'::int4range << '[3,4)'::int4range AS r",
+        "SELECT isempty('empty'::int4range) AS r",
+    ],
+)
+def test_pgwire_describes_a_predicate_as_a_boolean_whatever_integer_the_engine_gives(sql):
+    (described,) = result_casts(sql)
+    assert described.oid == 16
+    assert (described.coerce(1), described.coerce(0), described.coerce(None)) == (True, False, None)
+
+
+def test_a_shift_of_integers_is_no_predicate():
+    (described,) = result_casts("SELECT 1 << 2 AS r")
+    assert described is None
+
+
+@pytest.mark.parametrize("dialect", ("trino", "athena", "snowflake"))
+def test_an_offset_is_named_once_where_the_dialect_has_a_regular_expression(dialect):
+    columns = {("s", "t"): {"z": "tstzrange"}}
+    written = transpile(
+        mark_subtype_operations("SELECT a.i FROM s.t AS a WHERE a.z && a.z", columns), dialect
+    )
+    assert "REGEXP_REPLACE" in written.upper()
+    assert ":00' ELSE" not in written and "':00'" not in written
+
+
+def test_a_trino_zoned_statement_stays_near_the_size_of_a_plain_one():
+    def size(subtype: str) -> int:
+        marked = mark_subtype_operations(
+            "SELECT a.i, range_merge(a.v, b.v)::text AS r FROM s.t AS a, s.t AS b",
+            {("s", "t"): {"v": subtype}},
+        )
+        return len(transpile(marked, "trino"))
+
+    assert size("tstzrange") < size("tsrange") * 1.5
 
 
 # --- literals, as PostgreSQL reads them ----------------------------------------------------------

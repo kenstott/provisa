@@ -72,6 +72,7 @@ _BOUND_TYPES: dict[str, dict[str, str]] = {
     "clickhouse": {
         "numeric": "Decimal(38, 10)",
         "timestamp": "DateTime64(6)",
+        "timestamptz": "DateTime64(6, 'UTC')",
         "date": "Date32",
     },
     "databricks": {"timestamp": "TIMESTAMP_NTZ", "timestamptz": "TIMESTAMP"},
@@ -113,6 +114,13 @@ _UTC_WALL = {
 }
 #: The dialects whose reading of an offset needs its minutes.
 _OFFSET_WITH_MINUTES = frozenset({"trino", "athena", "tsql", "snowflake", "mysql"})
+#: Those with a regular expression for it. A bound is read many times over in one statement, and
+#: this names the bound once: Trino's compiler refused the statement that named it five times.
+_OFFSET_MINUTES_ADDED = {
+    "trino": "regexp_replace({a}, '([+-][0-9][0-9])$', '$1:00')",
+    "athena": "regexp_replace({a}, '([+-][0-9][0-9])$', '$1:00')",
+    "snowflake": "REGEXP_REPLACE({a}, '([+-][0-9][0-9])$', '\\\\1:00')",
+}
 #: The seconds from ``{b}`` to ``{a}``, two timestamps, as a double.
 _SECONDS_BETWEEN = {
     "duckdb": "(EPOCH({a}) - EPOCH({b}))",
@@ -547,20 +555,26 @@ class _Writer:
     def bound_from_text(self, text: exp.Expr, element: str) -> exp.Expr:
         if element != "timestamptz":
             return self.typed(text, element)
-        if self.dialect not in _OFFSET_WITH_MINUTES:
-            return self.typed(text, element)
-        # PostgreSQL's +00 is the +00:00 these readers of an offset ask for.
-        offset_only = exp.In(
-            this=_substring(text, _minus(_length(text), _int(2)), _int(1)),
-            expressions=[_string("+"), _string("-")],
-        )
-        written = _case([(offset_only, _concat(text, _string(":00")))], text)
         template = _INSTANT_FROM_TEXT.get(self.dialect)
+        if self.dialect not in _OFFSET_WITH_MINUTES:
+            return self.typed(text, element) if template is None else self.raw(template, a=text)
+        # PostgreSQL's +00 is the +00:00 these readers of an offset ask for.
+        regex = _OFFSET_MINUTES_ADDED.get(self.dialect)
+        if regex is not None:
+            written = self.raw(regex, a=text)
+        else:
+            offset_only = exp.In(
+                this=_substring(text, _minus(_length(text), _int(2)), _int(1)),
+                expressions=[_string("+"), _string("-")],
+            )
+            written = _case([(offset_only, _concat(text, _string(":00")))], text)
         return self.typed(written, element) if template is None else self.raw(template, a=written)
 
     def element_value(self, node: exp.Expr, rtype: RangeType) -> exp.Expr:
         """An element beside a range: a literal is read as a bound's text is."""
-        written = _string_literal(node)
+        inner = _unwrapped(node)
+        # A literal, or a literal cast to its type ('2020-01-10'::date): read as a bound's text is.
+        written = _string_literal(inner.this if isinstance(inner, exp.Cast) else inner)
         if written is not None:
             return self._literal_bound(pg_range.read_element(rtype, written), rtype)
         return self.typed(node, rtype.element)
@@ -908,8 +922,16 @@ class _Writer:
         body = _concat(_string("{"), self.text(replace(value, null=exp.false())), _string("}"))
         return _M(mr, value.null, _case([(value.empty, _string(_EMPTY_MULTIRANGE))], body))
 
+    def joined(self, text: exp.Expr) -> exp.Expr:
+        """An aggregate of a group's texts, joined by commas."""
+        if self.dialect == "clickhouse":  # groupConcat is of later servers
+            return _call("arrayStringConcat", _call("groupArray", text), _string(","))
+        return exp.GroupConcat(this=text.copy(), separator=_string(","))
+
     def _matches(self, text: exp.Expr, pattern: str) -> exp.Expr:
         name = _REGEX_LIST[self.dialect]
+        if self.dialect == "clickhouse":  # its arrays are never Nullable
+            text = _call("ifNull", text, _string(""))
         extra = [_int(0)] if self.dialect in ("databricks", "spark") else []
         return _call(name, text, _string(pattern), *extra)
 
@@ -1144,9 +1166,12 @@ class _Writer:
             return _or(*(test(self.literal(r)) for r in value.literal.ranges))
         name = f"_r{depth}"
         var = exp.column(name)
+        # A multirange of no range splits to one empty item, which NULLIF leaves out: no test of it
+        # holds, and no dialect's WHERE is promised to stop before a substring of it.
         if self.dialect == "tsql":
             alias = f"_s{depth}"
             item = exp.column("value", table=alias)
+            item = exp.Nullif(this=item, expression=_string(""))
             found = (
                 exp.select(_int(1))
                 .from_(
@@ -1168,6 +1193,7 @@ class _Writer:
                 "JSON_TABLE({a}, '$[*]' COLUMNS (" + name + " VARCHAR(255) PATH '$')) AS " + alias,
                 a=json_list,
             )
+            item = exp.Nullif(this=item, expression=_string(""))
             found = exp.select(_int(1)).from_(table).where(test(self.parsed(item, value.rtype)))
             return exp.Exists(this=found)
         if self.dialect not in _REGEX_LIST:
@@ -1559,7 +1585,10 @@ class _Rewrite:
 
     def _element_test(self, shown: str, container: _Value, element: exp.Expr) -> exp.Expr:
         typed = self.writer.element_value(self.rewritten(element), container.rtype)
-        null = _is_null(element)
+        inner = _unwrapped(element)
+        # A literal is not NULL, and a cast of its PostgreSQL text may be no value on the engine.
+        written = inner.this if isinstance(inner, exp.Cast) else inner
+        null = _is_null(element) if _string_literal(written) is None else exp.false()
         if isinstance(container, _R):
             test = _contains_element(container, typed)
         else:
@@ -1581,11 +1610,12 @@ class _Rewrite:
             # Held canonical: equal multiranges have one text.
             return cls(this=left.text.copy(), expression=right.text.copy())
         shown = _COMPARE_SHOWN.get(cls, cls.__name__)
-        keys = (
-            self.writer.multirange_sort_key(left, shown),
-            self.writer.multirange_sort_key(right, shown),
+        compared = cls(
+            this=self.writer.multirange_sort_key(left, shown),
+            expression=self.writer.multirange_sort_key(right, shown),
         )
-        return cls(this=keys[0], expression=keys[1])
+        null = _or(left.null, right.null)
+        return _eq(_case([(null, _null()), (compared, _int(1))], _int(0)), _int(1))
 
     def _compare_sign(self, cls: type, sign: exp.Expr, a: _R, b: _R) -> exp.Expr:
         null = _or(a.null, b.null)
@@ -1599,14 +1629,14 @@ class _Rewrite:
 
     # -- scalars of a value -------------------------------------------------------------------
 
-    def _part(self, name: str, value: _Value, projected: bool) -> exp.Expr:
+    def _part(self, name: str, value: _Value, projected: bool, as_text: bool = False) -> exp.Expr:
         w = self.writer
         if isinstance(value, _M):
             if name == "isempty":
                 return self._three_valued(w.is_none(value), value)
             first = name.startswith("lower") if name != "isempty" else True
             edge = w.first(value) if first else w.last(value)
-            return self._part(name, edge, projected)
+            return self._part(name, edge, projected, as_text)
         if name == "isempty":
             return self._three_valued(value.empty, value)
         side = value.lower if name.startswith("lower") else value.upper
@@ -1616,7 +1646,11 @@ class _Rewrite:
             return self._three_valued(_and(_not(value.empty), side.inf), value)
         # lower or upper. A numeric keeps its written scale as its text at the root of a result,
         # which pgwire sends as the numeric it is (a numeric of no fixed scale).
-        kept = side.text if projected and value.rtype.element == "numeric" else side.value
+        kept = side.value
+        if projected and value.rtype.element == "numeric":
+            kept = side.text
+        elif as_text and value.rtype.element in ("timestamp", "timestamptz"):
+            kept = side.text  # as held, in PostgreSQL's form; a dialect's cast writes its own
         return _case([(value.null, _null()), (value.empty, _null()), (side.inf, _null())], kept)
 
     def _subdiff(self, name: str, a: exp.Expr, b: exp.Expr) -> exp.Expr:
@@ -1679,13 +1713,14 @@ class _Rewrite:
             parent = parent.parent
         return isinstance(parent, exp.Select) and node.arg_key != "where"
 
+    def _read_as_text(self, node: exp.Expr) -> bool:
+        parent = node.parent
+        return isinstance(parent, exp.Cast) and parent.to.is_type(_T.TEXT, _T.VARCHAR)
+
     def _as_written(self, node: exp.Expr) -> bool:
         """Whether a bound's value is read as text, or is a result's root: pgwire sends a numeric
         of no fixed scale from its text."""
-        parent = node.parent
-        return self._projected(node) or (
-            isinstance(parent, exp.Cast) and parent.to.is_type(_T.TEXT, _T.VARCHAR)
-        )
+        return self._projected(node) or self._read_as_text(node)
 
     def _boolean_value(self, written: exp.Expr, original: exp.Expr) -> exp.Expr:
         if self.dialect in _NO_BOOLEAN_VALUE and self._projected(original):
@@ -1718,7 +1753,7 @@ class _Rewrite:
             if value is None:
                 return node
             name = "lower" if isinstance(node, exp.Lower) else "upper"
-            return self._part(name, value, self._as_written(node))
+            return self._part(name, value, self._as_written(node), self._read_as_text(node))
         if isinstance(node, (exp.Explode, exp.Unnest)):
             return self._unnest(node)
         if isinstance(node, exp.Anonymous):
@@ -1814,7 +1849,7 @@ class _Rewrite:
             return exp.Anonymous(this=name, expressions=[self.rewritten(argument)])
         w, rtype = self.writer, value.rtype
         text = w.text(value)
-        joined = exp.GroupConcat(this=text.copy(), separator=_string(","))
+        joined = w.joined(text)
         if name == "range_agg":
             folded = w.canonical(joined, rtype, name)
         elif isinstance(value, _M):
@@ -1852,8 +1887,10 @@ class _Rewrite:
                 written.append(ordered)
                 continue
             if isinstance(value, _M):
-                key = self.writer.multirange_sort_key(value, "ORDER BY")
-                keys = [_case([(value.null, _null())], key)]
+                # NULL by a flag of its own: a dialect's list has no supertype with NULL.
+                high = bool(ordered.args.get("desc")) == bool(ordered.args.get("nulls_first"))
+                flag = _case([(value.null, _int(1 if high else 0))], _int(0 if high else 1))
+                keys = [flag, self.writer.multirange_sort_key(value, "ORDER BY")]
             else:
                 keys = self.writer.order_keys(value)
             for key in keys:

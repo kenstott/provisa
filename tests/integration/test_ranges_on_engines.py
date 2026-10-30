@@ -34,27 +34,44 @@ pytestmark = [pytest.mark.integration]
 
 #: The operators on every pair of a type's values.
 _STATEMENTS = corpus.pair_statements()
+_PREDICATES = frozenset(corpus.predicate_statements())
 _TABLE = re.compile(r"\bs\.t\b(?: AS (\w+))?")
 
 
-def _literal(value: str | None) -> str:
-    return "CAST(NULL AS VARCHAR(255))" if value is None else f"'{value}'"
+#: The dialect's spelling of a NULL of the column's text type.
+_NULL_TEXT = {"clickhouse": "CAST(NULL AS Nullable(String))"}
+#: The engines whose value of a predicate is the integer 1 or 0, read here as PostgreSQL's boolean
+#: as pgwire describes it (cast_types). Any other value is no boolean, and fails.
+_INTEGER_BOOLEANS = frozenset({"clickhouse", "tsql", "mysql"})
+_BOOLEAN_TEXT = {1: "t", 0: "f", None: None}
 
 
-def _inline(sql: str, samples: list[str | None]) -> str:
+def _literal(value: str | None, dialect: str) -> str:
+    if value is None:
+        return _NULL_TEXT.get(dialect, "CAST(NULL AS VARCHAR(255))")
+    return f"'{value}'"
+
+
+def _inline(sql: str, samples: list[str | None], dialect: str) -> str:
     """``sql`` over the values themselves: a subquery of ``i`` and ``v`` where it reads s.t."""
     rows = " UNION ALL ".join(
-        f"SELECT {i} AS i, {_literal(value)} AS v" for i, value in enumerate(samples)
+        f"SELECT {i} AS i, {_literal(value, dialect)} AS v" for i, value in enumerate(samples)
     )
     return _TABLE.sub(lambda m: f"({rows}) AS {m[1] or 't'}", sql)
+
+
+def _text(value: Any, statement: str, dialect: str) -> str | None:
+    if dialect in _INTEGER_BOOLEANS and statement in _PREDICATES:
+        return _BOOLEAN_TEXT[value]
+    return corpus.text_of(value)
 
 
 def _check(run: Callable[[str], list[Any]], dialect: str, type_name: str) -> None:
     samples = corpus.SAMPLES[type_name]
     for statement in _STATEMENTS:
         marked = mark_subtype_operations(statement, {("s", "t"): {"v": type_name}})
-        rows = run(_inline(transpile(marked, dialect), samples))
-        got = [corpus.text_of(row[-1]) for row in rows]
+        rows = run(_inline(transpile(marked, dialect), samples, dialect))
+        got = [_text(row[-1], statement, dialect) for row in rows]
         assert got == RECORDED[type_name][statement], statement
 
 

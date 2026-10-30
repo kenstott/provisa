@@ -167,12 +167,17 @@ def text_of(value: Any) -> str | None:
     return str(value)
 
 
+_PAIRS = "FROM s.t AS a CROSS JOIN s.t AS b ORDER BY a.i, b.i"
+
+
+def predicate_statements() -> list[str]:
+    """Each boolean operator over every pair of the table's rows, in one read."""
+    return [f"SELECT a.i, b.i, a.v {op} b.v AS r {_PAIRS}" for op in BOOLEAN_OPERATORS]
+
+
 def pair_statements() -> list[str]:
     """Statements over every pair of the table's rows, in one read: nothing here raises."""
-    pairs = "FROM s.t AS a CROSS JOIN s.t AS b ORDER BY a.i, b.i"
-    tests = [f"SELECT a.i, b.i, a.v {op} b.v AS r {pairs}" for op in BOOLEAN_OPERATORS]
-    tests.append(f"SELECT a.i, b.i, range_merge(a.v, b.v)::text AS r {pairs}")
-    return tests
+    return [*predicate_statements(), f"SELECT a.i, b.i, range_merge(a.v, b.v)::text AS r {_PAIRS}"]
 
 
 def constructed_statement(type_name: str) -> str:
