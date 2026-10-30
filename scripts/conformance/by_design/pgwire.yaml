@@ -38,8 +38,8 @@
     4 pg_catalog functions (4 overloads) the engine does not have and no
     client queries: psql, pgjdbc, pgAdmin and DBeaver call none of them. A statement's own
     SQL uses the engine's functions; these are not emulated (PGWIRE'S CATALOG FUNCTIONS). The
-    range functions themselves are served (REQ-2171, RANGES ARE EMULATED ON EVERY ENGINE): these
-    are a binary upgrade's and a BRIN index's.
+    range functions themselves are served, on every engine: these are a binary upgrade's and a
+    BRIN index's.
   case: "^catalog function::(binary_upgrade_set_next_multirange_array_pg_type_oid|binary_upgrade_set_next_multirange_pg_type_oid|brin_desummarize_range|brin_summarize_range)\\("
 
 - group: JSON and JSONB functions
