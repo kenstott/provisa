@@ -61,6 +61,11 @@ def _model_holds_the_joined_tables(monkeypatch):
     views join, registered on source ``src``."""
     from provisa.api.app import state
 
+    # The model is read whole -- registered tables, the model-wide context, source catalogs and
+    # the view registry -- so each is this test's own, never what an earlier test left.
+    monkeypatch.setattr(state, "view_context", None)
+    monkeypatch.setattr(state, "source_catalogs", {})
+    monkeypatch.setattr(state, "mv_registry", MVRegistry())
     monkeypatch.setattr(
         state,
         "tables",
