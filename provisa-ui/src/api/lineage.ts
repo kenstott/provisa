@@ -133,6 +133,8 @@ export interface ProductConsumer {
   alias: string | null;
   // The product the consumer belongs to, when it is another product's member.
   product_id: string | null;
+  // REQ-2158: the member relations it reads, so each contract names its own port's consumers.
+  reads: string[];
 }
 
 /** REQ-2156: a data product's lineage, cut to what its reader may read. */

@@ -58,3 +58,18 @@ def test_a_catalogs_pull_is_the_metadata_exports(org):
     with pytest.raises(ApiError) as refused:
         asyncio.run(router.data_product_contract("prod", "wh.public.orders", object()))
     assert refused.value.status_code == 403
+
+
+def test_a_rows_contract_is_read_alone_without_the_export(org):
+    # REQ-2158: a contract row of the product's list reads its own port's contract when it opens.
+    contract = asyncio.run(router.data_product_contract_json("prod", "wh.public.orders", object()))
+    assert contract["kind"] == "DataContract"
+    assert contract["schema"][0]["physicalName"] == "wh.public.orders"
+    assert org == ["data_product_read", "snapshot:prod"]
+
+
+def test_a_port_with_no_contract_names_the_ports_there_are(org):
+    with pytest.raises(ApiError) as missing:
+        asyncio.run(router.data_product_contract_json("prod", "wh.public.nope", object()))
+    assert missing.value.status_code == 404
+    assert "wh.public.orders" in missing.value.detail

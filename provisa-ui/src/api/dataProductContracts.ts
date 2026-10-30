@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2158, REQ-2118: a data product's output-port contracts as ODCS 3.1 documents, each element
-// declared or derived -- the one document a catalog pulls, read by the product's Contracts panel.
+// declared or derived -- the one document a catalog pulls, read by the product's contracts list.
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
@@ -64,16 +64,18 @@ export interface OdcsContract extends OdcsRecord {
   tags?: string[];
 }
 
-/** Every output port's contract, by its member's address (source.schema.table). */
-export async function fetchProductContracts(
+/** One output port's contract, the port named by its member's address (source.schema.table): read
+ * when its row in the product's contracts list opens. */
+export async function fetchProductContract(
   productId: string,
-): Promise<Record<string, OdcsContract>> {
+  member: string,
+): Promise<OdcsContract> {
   const resp = await fetch(
-    `${API_BASE}/data-products/${encodeURIComponent(productId)}/contracts.json`,
+    `${API_BASE}/data-products/${encodeURIComponent(productId)}/contracts/${encodeURIComponent(member)}.json`,
   );
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(serverMessage(data, requestFailed("Product contracts", resp.status)));
+    throw new Error(serverMessage(data, requestFailed("Product contract", resp.status)));
   }
   return resp.json();
 }

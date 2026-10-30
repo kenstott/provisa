@@ -84,10 +84,8 @@ async def data_product_contracts(product_id: str, request: Request) -> dict:  # 
     return contracts
 
 
-@router.get("/data-products/{product_id}/contracts/{member}.yaml")
-async def data_product_contract(product_id: str, member: str, request: Request) -> Response:
-    """A member's ODCS 3.1 contract, the member named by its address (source.schema.table)."""
-    _, contracts = await _documents(request, product_id)
+def _port_contract(product_id: str, member: str, contracts: dict[str, dict]) -> dict:
+    """The output port ``member``'s contract, or why there is none."""
     contract = contracts.get(member)
     if contract is None:
         raise ApiError(
@@ -96,4 +94,19 @@ async def data_product_contract(product_id: str, member: str, request: Request) 
             f"data product {product_id!r} has no output port {member!r}; its output ports are "
             f"{', '.join(sorted(contracts))}",
         )
-    return _yaml(contract)
+    return contract
+
+
+@router.get("/data-products/{product_id}/contracts/{member}.json")
+async def data_product_contract_json(product_id: str, member: str, request: Request) -> dict:
+    """One output port's ODCS 3.1 contract, as the product's contracts list shows it when that
+    port's row opens (REQ-2158): asking what reading the product asks, as contracts.json does."""
+    _, contracts = await _documents(request, product_id, export=False)
+    return _port_contract(product_id, member, contracts)
+
+
+@router.get("/data-products/{product_id}/contracts/{member}.yaml")
+async def data_product_contract(product_id: str, member: str, request: Request) -> Response:
+    """A member's ODCS 3.1 contract, the member named by its address (source.schema.table)."""
+    _, contracts = await _documents(request, product_id)
+    return _yaml(_port_contract(product_id, member, contracts))
