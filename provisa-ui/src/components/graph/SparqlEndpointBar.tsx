@@ -14,9 +14,10 @@
 
 import { useState } from "react";
 import { ActionIcon, Button, Text, TextInput } from "@mantine/core";
-import { ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { CopySymbolButton } from "../CopyButton";
+import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { Tip } from "../Tip";
 import type { PrefixEdits } from "./sparql";
 
@@ -94,7 +95,6 @@ export function SparqlEndpointBar({
   onEdit: (edits: PrefixEdits) => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(0);
   const endpoint = `${base}/data/sparql`;
   const rows = Object.entries(prefixes).sort(([a], [b]) => a.localeCompare(b));
@@ -112,60 +112,57 @@ export function SparqlEndpointBar({
           className="graph-endpoint-copy"
           title={t("sparqlEndpoint.copyEndpoint")}
         />
-        <Button
-          size="compact-xs"
-          variant="subtle"
-          leftSection={open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          data-testid="sparql-prefixes-toggle"
-        >
-          {t("sparqlEndpoint.prefixes", { count: rows.length })}
-        </Button>
       </div>
-      {open && (
-        <div className="graph-prefix-list" data-testid="sparql-prefix-list">
-          {rows.map(([prefix, ns]) => (
+      <Collapsibles id="sparql.endpoint">
+        <CollapsibleItem
+          value="prefixes"
+          title={t("sparqlEndpoint.prefixes", { count: rows.length })}
+          defaultOpen={false}
+          controlTestId="sparql-prefixes-toggle"
+        >
+          <div className="graph-prefix-list" data-testid="sparql-prefix-list">
+            {rows.map(([prefix, ns]) => (
+              <PrefixRow
+                key={`${prefix} ${ns}`}
+                prefix={prefix}
+                namespace={ns}
+                onSave={(name, namespace) =>
+                  onEdit({
+                    ...edits,
+                    ...(name === prefix ? {} : { [prefix]: null }),
+                    [name]: namespace,
+                  })
+                }
+                onRemove={() => onEdit({ ...edits, [prefix]: null })}
+              />
+            ))}
             <PrefixRow
-              key={`${prefix} ${ns}`}
-              prefix={prefix}
-              namespace={ns}
-              onSave={(name, namespace) =>
-                onEdit({
-                  ...edits,
-                  ...(name === prefix ? {} : { [prefix]: null }),
-                  [name]: namespace,
-                })
-              }
-              onRemove={() => onEdit({ ...edits, [prefix]: null })}
+              key={`new ${adding}`}
+              prefix=""
+              namespace=""
+              onSave={(name, namespace) => {
+                onEdit({ ...edits, [name]: namespace });
+                setAdding((n) => n + 1);
+              }}
             />
-          ))}
-          <PrefixRow
-            key={`new ${adding}`}
-            prefix=""
-            namespace=""
-            onSave={(name, namespace) => {
-              onEdit({ ...edits, [name]: namespace });
-              setAdding((n) => n + 1);
-            }}
-          />
-          <div className="graph-prefix-actions">
-            <Text component="span" size="xs" c="dimmed">
-              <Plus size={10} aria-hidden /> {t("sparqlEndpoint.addHint")}
-            </Text>
-            {Object.keys(edits).length > 0 && (
-              <Button
-                size="compact-xs"
-                variant="default"
-                onClick={() => onEdit({})}
-                data-testid="sparql-prefixes-restore"
-              >
-                {t("sparqlEndpoint.restore")}
-              </Button>
-            )}
+            <div className="graph-prefix-actions">
+              <Text component="span" size="xs" c="dimmed">
+                <Plus size={10} aria-hidden /> {t("sparqlEndpoint.addHint")}
+              </Text>
+              {Object.keys(edits).length > 0 && (
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  onClick={() => onEdit({})}
+                  data-testid="sparql-prefixes-restore"
+                >
+                  {t("sparqlEndpoint.restore")}
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        </CollapsibleItem>
+      </Collapsibles>
     </div>
   );
 }
