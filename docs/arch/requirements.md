@@ -3144,7 +3144,7 @@ Naming convention option `graphql-default` provides camelCase field names, Pasca
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Naming convention now uses three preset enums (`snake`, `hasura_graphql`, `apollo_graphql` default) with `domain_prefix: bool` as orthogonal option. `snake` (PascalCase types, snake_case fields/mutations), `hasura_graphql` (PascalCase types, camelCase fields, snake_case mutations matching Hasura V2), `apollo_graphql` (PascalCase types, camelCase fields/mutations per Apollo/GraphQL idiom). Old free-form strings deprecated.
+Naming convention now uses three preset enums (`snake`, `hasura_graphql`, `apollo_graphql` default) with `domain_prefix: bool` as orthogonal option. `snake` (PascalCase types, snake_case fields/mutations), `hasura_graphql` (PascalCase types, camelCase fields, snake_case mutations matching Hasura V2), `apollo_graphql` (PascalCase types, camelCase fields/mutations per Apollo/GraphQL idiom). Old free-form strings deprecated. (Amended 2026-10-29, GRAPHQL IS SNAKE CASE:) Maintainer 2026-10-30: GraphQL field and mutation names are snake case on the SDL, always; snake is the default convention, and types stay PascalCase. on_terms and ref_count are the names.
 
 **Use case:** Enum-based preset naming eliminates ambiguous string values and standardizes on clear, documented conventions compatible with Hasura and Apollo ecosystems.
 
