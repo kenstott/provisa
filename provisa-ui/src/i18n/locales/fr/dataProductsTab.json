@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Ouvrir {{successor}}",
     "contract": {
       "label": "Contrats de données",
-      "hint": "Le contrat de chaque port de sortie : ce qu'il promet, dans sa propre version",
+      "hint": "Le contrat de chaque port de sortie : ce qu'il déclare, dans sa propre version",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Proposé",
@@ -177,8 +177,8 @@
       "versionLabel": "Version du contrat",
       "statusLabel": "Statut du contrat",
       "descriptionLabel": "À quoi il sert",
-      "columnsLabel": "Colonnes promises",
-      "columnsHelp": "Ne plus promettre une colonne, ou changer son type, exige une nouvelle version.",
+      "columnsLabel": "Colonnes",
+      "columnsHelp": "Retirer une colonne, ou changer son type, exige une nouvelle version.",
       "requiredLabel": "Jamais nul",
       "slaLabel": "Niveaux de service",
       "slaProperty": "Propriété",
@@ -248,9 +248,9 @@
       "draftWarning": "Brouillon : pas encore en vigueur",
       "card": {
         "details": "Détails",
-        "fields": "Champs promis",
+        "fields": "Colonnes",
         "sla": "SLA et fraîcheur",
-        "quality": "Promesses de qualité",
+        "quality": "Promesses",
         "consumers": "Consommateurs",
         "versions": "Versions et modifications"
       }

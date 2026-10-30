@@ -14,6 +14,24 @@
     "deleteConfirm": "Rapport {{name}} verwijderen?",
     "deleted": "Rapport {{name}} verwijderd.",
     "empty": "Geen rapporten geregistreerd in het ops-domein.",
-    "resize": "Grootte van de rapportlijst aanpassen"
+    "resize": "Grootte van de rapportlijst aanpassen",
+    "drift": {
+      "title": "Drift sinds de vorige periode",
+      "baseline": "Vergeleken met het model van {{date}}, de laatste versie tot en met {{cutoff}}.",
+      "noHistory": "Geen geschiedenis: het model heeft geen versie van {{cutoff}} of eerder om mee te vergelijken.",
+      "none": "Geen enkele term heeft verankering verloren of gekregen.",
+      "counts": "Verloren: {{lost}} · Gekregen: {{gained}} · Nieuw: {{new}}",
+      "renameRule": "Termen worden op naam vergeleken, dus een hernoeming verschijnt als één verloren en één nieuwe term.",
+      "term": "Term",
+      "before": "Voorheen",
+      "after": "Nu",
+      "change": "Wijziging",
+      "absent": "Niet in het model",
+      "changeKind": {
+        "lost": "Verloren",
+        "gained": "Gekregen",
+        "new": "Nieuw"
+      }
+    }
   }
 }

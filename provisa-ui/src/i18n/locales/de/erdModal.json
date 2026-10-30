@@ -1,7 +1,6 @@
 {
   "erdModal": {
     "title": "Entity-Relationship-Diagramm",
-    "tableNotFound": "Im ERD gibt es keine Tabelle mit der ID {{id}}.",
     "domains": "Domänen",
     "domainsTooltip": "Domänen ein-/ausblenden",
     "columnDetailLabel": "Spaltendetail",
@@ -25,8 +24,13 @@
     "downloadPng": "PNG herunterladen",
     "downloadJpeg": "JPEG herunterladen",
     "downloadJson": "Diagramm als JSON herunterladen (Tabellen, Spalten, Beziehungen)",
-    "close": "Schließen",
     "hint": "Klicken Sie auf eine Domänengruppe zum Ein-/Ausklappen · gestrichelte Linien verbinden eingeklappte Domänen",
-    "resizeHandle": "Domänenrahmen skalieren ({{corner}})"
+    "resizeHandle": "Domänenrahmen skalieren ({{corner}})",
+    "focus": "Fokussieren",
+    "addToFocus": "Zum Fokus hinzufügen",
+    "focusDomains": "Domänen: {{names}}",
+    "focusTables": "Tabellen: {{names}}",
+    "focusMissing": "Nicht gefunden: {{names}}",
+    "showAll": "Alle anzeigen"
   }
 }
