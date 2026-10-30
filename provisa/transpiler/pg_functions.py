@@ -28,16 +28,50 @@ from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.errors import ParseError
+
+from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
 _ENCODE_ESCAPE = "provisa_encode_escape"
 _REGEXP_GROUP = "provisa_regexp_group"
 _DATE_PART = "provisa_date_part"
 
+#: A function named for a type: a cast to it.
+_TYPE_CALLS = {
+    "numeric": "text",  # a numeric's digits, exact: pgwire sends them as the numeric declared
+    "text": "text",
+    "name": "text",
+    "varchar": "varchar",
+    "bool": "boolean",
+    "oid": "oid",
+    "regclass": "regclass",
+    "money": "money",
+}
+#: A length-carrying cast function: (value, typmod, is_explicit); a typmod counts the header.
+_SIZED_CALLS = {"varchar": "varchar", "bpchar": "bpchar"}
+#: Calls an overload of whose DuckDB's function of the name does not take, or sqlglot cannot write:
+#: (name, argument count) -> the UDF that answers it.
+_UDF_CALLS = {
+    ("like_escape", 2): "PROVISA_LIKE_ESCAPE",
+    ("normalize", 2): "PROVISA_NORMALIZE",
+    ("regexp_split_to_array", 3): "PROVISA_REGEXP_SPLIT",
+}
+
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
     r"\b(sha(224|256|384|512)|random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
     r"|overlay|substring|extract|decode|encode|pg_size_pretty|current_schemas)\b",
+    re.IGNORECASE,
+)
+#: The statements ``typed_calls`` has anything to do in.
+_CALLED = re.compile(
+    r"\b("
+    + "|".join(sorted({*_TYPE_CALLS, *_SIZED_CALLS, *(n for n, _ in _UDF_CALLS)}))
+    + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
+    r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
+    r"|notlike|like_escape"
+    r"|regexp_split_to_table|strpos)\"?\s*\(",
     re.IGNORECASE,
 )
 
@@ -246,8 +280,222 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
     return node if written is None else sqlglot.parse_one(written, read="postgres")
 
 
+def _is_kind(node: exp.Expr, *names: str) -> bool:
+    return isinstance(node, exp.Cast) and node.to.sql(dialect="postgres").lower() in names
+
+
+def _is_numeric(node: exp.Expr) -> bool:
+    return _cast_to(node, exp.DataType.Type.DECIMAL) or _scale(node) is not None
+
+
+def _sql(node: exp.Expr) -> str:
+    return node.transform(_call).sql(dialect="postgres")
+
+
+def _as_text(node: exp.Expr) -> str:
+    return f"CAST({_sql(node)} AS TEXT)"
+
+
+def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 -- one per form
+    """A call of a function named for a type, as the cast it is."""
+    if name == "char" and len(args) == 1 and _is_text(args[0]):
+        return f'CAST(LEFT({_sql(args[0])}, 1) AS "char")'
+    if name == "xid" and len(args) == 1:  # an xid8's low 32 bits
+        return f"CAST(({_sql(args[0])}) % 4294967296 AS xid)"
+    if name == "age" and len(args) == 1 and _is_kind(args[0], "xid"):
+        return f"PROVISA_XID_AGE({_sql(args[0])})"
+    if name in _TYPE_CALLS and len(args) == 1:
+        return f"CAST({_sql(args[0])} AS {_TYPE_CALLS[name]})"
+    if name == "numeric" and len(args) == 2:  # noqa: PLR2004 -- value and typmod
+        typmod = args[1]
+        if _is_null(typmod):
+            return "CAST(NULL AS TEXT)"
+        if isinstance(typmod, exp.Literal) and typmod.is_int:
+            packed = int(typmod.this) - 4
+            sized = f"NUMERIC({packed >> 16}, {packed & 0xFFFF})"
+            return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
+    if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
+        value, typmod = _sql(args[0]), _sql(args[1])
+        return f"CASE WHEN ({typmod}) < 0 THEN {value} ELSE LEFT({value}, ({typmod}) - 4) END"
+    if name == "bit" and len(args) == 3 and _is_null(args[1]):  # noqa: PLR2004
+        return "CAST(NULL AS BIT)"
+    if name == "bit" and len(args) == 2:  # noqa: PLR2004 -- an integer, as so many bits
+        value, width = _sql(args[0]), _sql(args[1])
+        return f"CAST(PROVISA_TO_BASE({value}, {width}, 2) AS BIT)"
+    return None
+
+
+def _numeric_call(name: str, args: list[exp.Expr]) -> str | None:
+    if name in ("gcd", "lcm") and len(args) == 2 and any(map(_is_numeric, args)):  # noqa: PLR2004
+        return f"PROVISA_NUMERIC_{name.upper()}({_as_text(args[0])}, {_as_text(args[1])})"
+    if name == "factorial" and len(args) == 1:
+        return f"PROVISA_FACTORIAL({_sql(args[0])})"
+    if name == "generate_series" and args and any(map(_is_numeric, args)):
+        step = _as_text(args[2]) if len(args) > 2 else "NULL"  # noqa: PLR2004
+        return f"UNNEST(PROVISA_NUMERIC_SERIES({_as_text(args[0])}, {_as_text(args[1])}, {step}))"
+    return None
+
+
+def _bytea_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 -- one per function
+    if not args or not _is_bytea(args[0]):
+        return None
+    written = [_sql(a) for a in args]
+    if name == "bit_count":
+        return f"PROVISA_BIT_COUNT({written[0]})"
+    if name in ("get_bit", "set_bit"):
+        return f"PROVISA_{name.upper()}({', '.join(written)})"
+    if name in ("substr", "substring"):
+        length = written[2] if len(args) > 2 else "NULL"  # noqa: PLR2004
+        return f"PROVISA_BYTEA_SUBSTR({written[0]}, {written[1]}, {length})"
+    if name == "overlay":
+        length = written[3] if len(args) > 3 else "NULL"  # noqa: PLR2004
+        return f"PROVISA_BYTEA_OVERLAY({written[0]}, {written[1]}, {written[2]}, {length})"
+    if name == "length" and len(args) == 2:  # noqa: PLR2004 -- a bytea and its encoding
+        return f"PROVISA_ENCODED_LENGTH({written[0]}, {written[1]})"
+    if name == "string_agg" and len(args) == 2:  # noqa: PLR2004
+        return f"UNHEX(STRING_AGG(HEX({written[0]}), HEX({written[1]})))"
+    return None
+
+
+def _bit_call(name: str, args: list[exp.Expr]) -> str | None:
+    if not args or not _cast_to(args[0], exp.DataType.Type.BIT):
+        return None
+    if name in ("substr", "substring"):
+        rest = ", ".join(_sql(a) for a in args[1:])
+        return f"CAST(SUBSTRING({_as_text(args[0])}, {rest}) AS BIT)"
+    if name in ("position", "strpos") and len(args) == 2:  # noqa: PLR2004
+        return f"STRPOS({_as_text(args[0])}, {_as_text(args[1])})"
+    if name == "overlay":
+        value, placing, start = _as_text(args[0]), _as_text(args[1]), _sql(args[2])
+        skip = _sql(args[3]) if len(args) > 3 else f"LENGTH({placing})"  # noqa: PLR2004
+        return (
+            f"CAST(SUBSTRING({value}, 1, {start} - 1) || {placing} || "
+            f"SUBSTRING({value}, {start} + {skip}) AS BIT)"
+        )
+    return None
+
+
+def _time_call(name: str, args: list[exp.Expr]) -> str | None:
+    interval = exp.DataType.Type.INTERVAL
+    written = [_sql(a) for a in args]
+    if name == "isfinite" and len(args) == 1 and _cast_to(args[0], interval):
+        # DuckDB's intervals are finite.
+        return f"CASE WHEN {written[0]} IS NOT NULL THEN TRUE END"
+    if name == "date_add" and len(args) == 2:  # noqa: PLR2004
+        return f"CAST({written[0]} AS TIMESTAMPTZ) + {written[1]}"
+    if name == "date_add" and len(args) == 3:  # noqa: PLR2004 -- added in the named time zone
+        zone = written[2]
+        return f"TIMEZONE({zone}, TIMEZONE({zone}, {written[0]}) + {written[1]})"
+    if name == "timezone" and len(args) == 2 and _cast_to(args[0], interval):  # noqa: PLR2004
+        kinds = exp.DataType.Type
+        if _cast_to(args[1], kinds.TIMESTAMPTZ):
+            return f"(TIMEZONE('UTC', {written[1]}) + {written[0]})"
+        return f"(CAST({written[1]} - {written[0]} AS TIMESTAMP) AT TIME ZONE 'UTC')"
+    if name == "sum" and len(args) == 1 and _cast_to(args[0], interval):
+        return f"TO_SECONDS(SUM(EPOCH({written[0]})))"
+    return None
+
+
+def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
+    """The name and arguments of a call of a function a parser class stands for."""
+    if isinstance(node, exp.Anonymous):
+        return node.name.lower(), list(node.expressions)
+    if isinstance(node, exp.Chr):
+        return "char", list(node.expressions)
+    if isinstance(node, exp.Normalize):
+        form = node.args.get("form")
+        if isinstance(form, (exp.Column, exp.Var)):
+            form = exp.Literal.string(form.name)
+        return "normalize", [node.this, form or exp.Literal.string("NFC")]
+    args = {
+        exp.Substring: ("substring", ("this", "start", "length")),
+        exp.Factorial: ("factorial", ("this",)),
+        exp.ExplodingGenerateSeries: ("generate_series", ("start", "end", "step")),
+        exp.GenerateSeries: ("generate_series", ("start", "end", "step")),
+        exp.Getbit: ("get_bit", ("this", "expression")),
+        exp.Overlay: ("overlay", ("this", "expression", "from_", "for_")),
+        exp.Length: ("length", ("this", "encoding")),
+        exp.GroupConcat: ("string_agg", ("this", "separator")),
+        exp.StrPosition: ("position", ("this", "substr")),
+        exp.Sum: ("sum", ("this",)),
+        exp.DateAdd: ("date_add", ("this", "expression", "unit")),
+    }.get(type(node))
+    if args is None:
+        return None
+    return args[0], [node.args[k] for k in args[1] if node.args.get(k) is not None]
+
+
+def _call(node: exp.Expr) -> exp.Expr:
+    """A call of an overload DuckDB's function of the name does not take."""
+    if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
+        inner = _call(node.expression)
+        return node if inner is node.expression else inner
+    named = _named(node)
+    if named is None:
+        return node
+    name, args = named
+    written = (
+        _type_call(name, args)
+        or _numeric_call(name, args)
+        or _bytea_call(name, args)
+        or _bit_call(name, args)
+        or _time_call(name, args)
+    )
+    if written is None and name in ("like", "notlike") and len(args) == 2:  # noqa: PLR2004
+        # Not sqlglot's LIKE function, whose arguments are SQLite's way round.
+        value, pattern = _sql(args[0]), _sql(args[1])
+        written = (
+            f"{'NOT ' if name == 'notlike' else ''}PROVISA_BYTEA_LIKE({value}, {pattern})"
+            if _is_bytea(args[0])
+            else f"{value} {'NOT ' if name == 'notlike' else ''}LIKE {pattern} ESCAPE '\\'"
+        )
+    if written is None and name == "like_escape" and args and _is_bytea(args[0]):
+        written = f"PROVISA_BYTEA_LIKE_ESCAPE({', '.join(_sql(a) for a in args)})"
+    if written is None and (name, len(args)) in _UDF_CALLS:
+        written = f"{_UDF_CALLS[(name, len(args))]}({', '.join(_sql(a) for a in args)})"
+    if written is None and name == "regexp_split_to_table" and len(args) == 3:  # noqa: PLR2004
+        written = f"UNNEST(PROVISA_REGEXP_SPLIT({', '.join(_sql(a) for a in args)}))"
+    if written is None and name == "substring" and len(args) == 3 and _is_text(args[1]):  # noqa: PLR2004
+        # substring(string SIMILAR pattern ESCAPE escape).
+        written = (
+            "REGEXP_REPLACE(CAST(NULL AS TEXT), '', '') "
+            if any(map(_is_null, args))
+            else f"PROVISA_SIMILAR_SUBSTRING({', '.join(_sql(a) for a in args)})"
+        )
+    return node if written is None else sqlglot.parse_one(written, read="postgres")
+
+
+#: What sqlglot's parser cannot read as a call: CONVERT's and JSON_OBJECT's own syntax.
+_UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
+
+
+def readable(pg_sql: str) -> str:
+    """``pg_sql`` with a call of a function sqlglot reads as syntax spelled as a plain call: a
+    statement that parses is left as it is."""
+    try:
+        sqlglot.parse_one(pg_sql, read="postgres")
+    except ParseError:
+        return postgres_literals(_UNPARSED_CALLS.sub(lambda m: f"pg_{m[1].lower()}(", pg_sql))
+    return pg_sql
+
+
+def typed_calls(pg_sql: str) -> str:
+    """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
+    pg_sql = readable(pg_sql)
+    if _CALLED.search(pg_sql) is None:
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    out = tree.transform(_call)
+    return (
+        pg_sql
+        if out.sql(dialect="postgres") == tree.sql(dialect="postgres")
+        else out.sql(dialect="postgres")
+    )
+
+
 def before(pg_sql: str) -> str:
     """``pg_sql`` with each call DuckDB's own function of the name does not carry rewritten."""
+    pg_sql = typed_calls(pg_sql)
     if _NAMED.search(pg_sql) is None:
         return pg_sql
     rewritten = False

@@ -32,6 +32,8 @@ from provisa.pgwire.catalog_data import (
     _TABLE_MAP,
 )
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
+from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
+from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
@@ -413,17 +415,6 @@ _ANSWERED_BY_MACRO = frozenset(
     {"pg_get_keywords", "pg_get_replica_identity_index", "pg_get_statisticsobjdef_expressions"}
 )
 
-# REQ-2167: functions a client may call that Provisa has nothing to run them on, each refused by
-# name: it creates no functions to validate.
-_REFUSED_FUNCTIONS = {
-    "plpgsql_validator": (
-        "plpgsql_validator is not available through Provisa: no function is created in it"
-    ),
-    "fmgr_c_validator": (
-        "fmgr_c_validator is not available through Provisa: no function is created in it"
-    ),
-}
-
 
 def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
@@ -444,12 +435,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
 
     sql = to_char_for_duckdb(sql)  # REQ-2167
     try:
+        sql = typed_calls(sql)  # REQ-2167
         tree = sqlglot.parse_one(sql, read="postgres")
     except Exception:
         return sql
-    for call in tree.find_all(exp.Anonymous):
-        if call.name.lower() in _REFUSED_FUNCTIONS:
-            raise NotImplementedError(_REFUSED_FUNCTIONS[call.name.lower()])
     vectors = _vector_names(tree)
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -560,6 +549,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
             args = node.args.get("expressions", [])
+            if fn in SERVER_ANSWERED and fn != "setval":
+                return node  # REQ-2167: a macro of its own (catalog_server_answers)
             first_dimension = len(args) == 2 and args[1] == exp.Literal.number(1)
             if fn in ("array_lower", "array_upper") and first_dimension:
                 return _array_bound(fn, args[0].transform(_transform), vectors)

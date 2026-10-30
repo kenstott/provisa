@@ -54,6 +54,10 @@ _PG_NAMES: dict[Any, str] = {
     exp.DataType.Type.JSONB: "jsonb",
     exp.DataType.Type.INET: "inet",
     exp.DataType.Type.BIT: "bit",
+    exp.DataType.Type.MONEY: "money",
+    exp.DataType.Type.XML: "xml",
+    exp.DataType.Type.POINT: "point",
+    exp.DataType.Type.NUMRANGE: "numrange",
 }
 
 

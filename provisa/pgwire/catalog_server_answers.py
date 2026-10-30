@@ -18,7 +18,25 @@ file or changes anything: Provisa has no server files, sequences or WAL a client
 
 from __future__ import annotations
 
-from provisa.pgwire.pg_error import raising
+from provisa.core.pg_error import raising
+
+#: PostgreSQL's types the catalog DB has no type for, each what its values are held as there.
+_HELD_AS = {
+    "VARCHAR": (
+        "pg_lsn", "pg_snapshot", "txid_snapshot", "aclitem", "macaddr", "macaddr8", "cidr",
+        "tsvector", "pg_mcv_list", "pg_ndistinct", "pg_dependencies", "pg_node_tree",
+        "box", "circle", "line", "lseg", "path", "polygon", "point", "xml", "varbit",
+    ),
+    "BIGINT": ("xid8", "regcollation", "regconfig", "regdictionary", "regoper", "regoperator",
+               "regprocedure", "regrole"),
+    "DECIMAL(18,2)": ("money",),
+}  # fmt: skip
+#: The aliases that let a statement name them in a cast.
+PG_ONLY_TYPES = tuple(
+    f"CREATE TYPE {name} AS {held}" for held, names in _HELD_AS.items() for name in names
+)
+#: Their names, as a cast to one is written.
+PG_ONLY_TYPE_NAMES = frozenset(name for names in _HELD_AS.values() for name in names)
 
 _NO_FILE = "No such file or directory"
 _FILE_REFUSALS = (
@@ -113,6 +131,838 @@ def _catalog_relation_names() -> str:
     return f"CASE seq {known} END"
 
 
+#: What a void function answers: PostgreSQL's void value, its empty text.
+_VOID = "''"
+_BINARY_UPGRADE = raising(
+    "55P02", "'function can only be called when server is in binary upgrade mode'"
+)
+_NO_SLOTS = raising(
+    "55000", "'replication slots can only be used if \"max_replication_slots\" > 0'"
+)
+_NO_ORIGINS = raising(
+    "55000",
+    "'cannot query or manipulate replication origin when \"max_replication_slots\" is 0'",
+)
+_NOT_IN_RECOVERY = raising("55000", "'recovery is not in progress'")
+_NO_LSN = "'0/0'"
+_FIXED_STATS = "('archiver', 'bgwriter', 'checkpointer', 'io', 'slru', 'wal')"
+_OBJECT_STATS = "('database', 'relation', 'function', 'replslot', 'subscription')"
+_RESET_TARGETS = (
+    "('archiver', 'bgwriter', 'checkpointer', 'io', 'recovery_prefetch', 'slru', 'wal')"
+)
+_LO = ("lo_close", "lo_tell", "lo_tell64", "lo_lseek", "lo_lseek64", "lo_truncate", "lo_truncate64")
+_LO_WRITES = (
+    ("lo_creat", "mode", "BIGINT"),
+    ("lo_create", "lobj", "BIGINT"),
+    ("lo_from_bytea", "lobj, data", "BIGINT"),
+)
+
+
+class _Answers:
+    """The macros of the functions below, one macro per name with one overload per arity."""
+
+    def __init__(self) -> None:
+        self.scalar: dict[str, list[str]] = {}
+        self.table: dict[str, list[str]] = {}
+
+    def body(self, name: str, params: str, sql: str) -> None:
+        """``name(params)`` answers ``sql``."""
+        self.scalar.setdefault(name, []).append(f"({params}) AS {sql}")
+
+    def strict(self, name: str, params: str, sql_type: str, answer: str) -> None:
+        """A strict function: a NULL argument is a NULL result of ``sql_type``."""
+        self.body(name, params, _strictly(params, sql_type, answer))
+
+    def strict_all(self, name: str, arities: tuple[str, ...], sql_type: str, answer: str) -> None:
+        for params in arities:
+            self.strict(name, params, sql_type, answer)
+
+    def rows(
+        self, name: str, params: str, columns: tuple[tuple[str, str], ...], where: str
+    ) -> None:
+        """A set-returning function of ``columns``: no rows, or (``where``) its refusal."""
+        typed = ", ".join(f"CAST(NULL AS {t}) AS {c}" for c, t in columns)
+        self.table.setdefault(name, []).append(
+            f"({params}) AS TABLE (SELECT {typed} WHERE {where})"
+        )
+        struct = "STRUCT(" + ", ".join(f"{c} {t}" for c, t in columns) + ")"
+        self.body(
+            name, params, f"unnest(CASE WHEN {where} THEN [] ELSE CAST([] AS {struct}[]) END)"
+        )
+
+    def values(self, name: str, sql_type: str) -> None:
+        """A set-returning function of one column, with no rows."""
+        self.body(name, "", f"unnest(CAST([] AS {sql_type}[]))")
+        self.table.setdefault(name, []).append(
+            f"() AS TABLE (SELECT CAST(NULL AS {sql_type}) AS {name} WHERE false)"
+        )
+
+    def record(self, name: str, params: str, columns: tuple[tuple[str, str, str], ...]) -> None:
+        """A record-returning function: its one row, strict in ``params``."""
+        struct = "STRUCT(" + ", ".join(f"{c} {t}" for c, t, _ in columns) + ")"
+        fields = ", ".join(f"{c} := CAST({v} AS {t})" for c, t, v in columns)
+        value = _strictly(params, struct, f"struct_pack({fields})")
+        self.body(name, params, value)
+        out = ", ".join(f"_s.{c} AS {c}" for c, _, _ in columns)
+        self.table.setdefault(name, []).append(
+            f"({params}) AS TABLE (SELECT {out} FROM (SELECT {value} AS _s))"
+        )
+
+    def refused_record(
+        self, name: str, params: str, columns: tuple[tuple[str, str], ...], refusal: str
+    ) -> None:
+        """A record-returning function that refuses every non-NULL call."""
+        struct = "STRUCT(" + ", ".join(f"{c} {t}" for c, t in columns) + ")"
+        value = _strictly(params, struct, refusal)
+        self.body(name, params, value)
+        out = ", ".join(f"_s.{c} AS {c}" for c, _ in columns)
+        self.table.setdefault(name, []).append(
+            f"({params}) AS TABLE (SELECT {out} FROM (SELECT {value} AS _s))"
+        )
+
+    def statements(self) -> tuple[str, ...]:
+        scalar = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.scalar.items())
+        table = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.table.items())
+        return scalar + table
+
+
+def _strictly(params: str, sql_type: str, answer: str) -> str:
+    if not params:
+        return answer
+    nulls = " OR ".join(f"{p} IS NULL" for p in params.split(", "))
+    return f"CASE WHEN {nulls} THEN CAST(NULL AS {sql_type}) ELSE {answer} END"
+
+
+_LSN_NUMBER = (
+    "((CAST('0x' || split_part({l}, '/', 1) AS BIGINT) << 32) + "
+    "CAST('0x' || split_part({l}, '/', 2) AS BIGINT))"
+)
+_WAL_SEGMENT = 16777216
+_SEGMENTS_PER_ID = 256
+
+
+def _lsn(value: str) -> str:
+    return _LSN_NUMBER.format(l=value)
+
+
+def _wal_file(value: str) -> str:
+    segment = f"({_lsn(value)} // {_WAL_SEGMENT})"
+    return (
+        f"upper(printf('%08x%08x%08x', 1, {segment} // {_SEGMENTS_PER_ID}, "
+        f"{segment} % {_SEGMENTS_PER_ID}))"
+    )
+
+
+def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per function
+    """The functions on what a server has that Provisa has none of."""
+    for suffix in (
+        "set_next_array_pg_type_oid",
+        "set_next_heap_pg_class_oid",
+        "set_next_heap_relfilenode",
+        "set_next_index_pg_class_oid",
+        "set_next_index_relfilenode",
+        "set_next_pg_authid_oid",
+        "set_next_pg_enum_oid",
+        "set_next_pg_tablespace_oid",
+        "set_next_pg_type_oid",
+        "set_next_toast_pg_class_oid",
+        "set_next_toast_relfilenode",
+    ):
+        a.strict(f"binary_upgrade_{suffix}", "oid", "VARCHAR", _BINARY_UPGRADE)
+    a.strict("binary_upgrade_set_record_init_privs", "flag", "VARCHAR", _BINARY_UPGRADE)
+    a.strict("binary_upgrade_set_missing_value", "a, b, c", "VARCHAR", _BINARY_UPGRADE)
+    a.strict("binary_upgrade_logical_slot_has_caught_up", "slot", "BOOLEAN", _BINARY_UPGRADE)
+    # The statistics Provisa does not keep: nothing to reset.
+    for name in ("pg_stat_force_next_flush", "pg_stat_clear_snapshot", "pg_stat_reset"):
+        a.body(name, "", _VOID)
+    a.strict("pg_stat_reset_single_function_counters", "oid", "VARCHAR", _VOID)
+    a.body("pg_stat_reset_subscription_stats", "oid", _VOID)
+    a.body("pg_stat_reset_slru", "target", _VOID)
+    a.body(
+        "pg_stat_reset_shared",
+        "target",
+        f"CASE WHEN target IS NULL OR target IN {_RESET_TARGETS} THEN {_VOID} ELSE "
+        + raising("22023", "'unrecognized reset target: \"' || target || '\"'")
+        + " END",
+    )
+    a.body(
+        "pg_stat_reset_replication_slot",
+        "slot",
+        f"CASE WHEN slot IS NULL THEN {_VOID} ELSE "
+        + raising("42704", "'replication slot \"' || slot || '\" does not exist'")
+        + " END",
+    )
+    a.strict(
+        "pg_stat_have_stats",
+        "kind, db, obj",
+        "BOOLEAN",
+        f"CASE WHEN kind IN {_FIXED_STATS} THEN true WHEN kind IN {_OBJECT_STATS} THEN false ELSE "
+        + raising("22023", "'invalid statistics kind: \"' || kind || '\"'")
+        + " END",
+    )
+    # Replication: a server whose max_replication_slots is 0.
+    a.strict("pg_replication_origin_oid", "name", "BIGINT", "CAST(NULL AS BIGINT)")
+    a.body("pg_replication_origin_session_is_setup", "", "false")
+    for name, params, sql_type in (
+        ("pg_replication_origin_create", "name", "BIGINT"),
+        ("pg_replication_origin_drop", "name", "VARCHAR"),
+        ("pg_replication_origin_advance", "name, lsn", "VARCHAR"),
+        ("pg_replication_origin_progress", "name, flush", "VARCHAR"),
+        ("pg_replication_origin_session_progress", "flush", "VARCHAR"),
+        ("pg_replication_origin_session_setup", "name", "VARCHAR"),
+        ("pg_replication_origin_xact_setup", "lsn, ts", "VARCHAR"),
+    ):
+        a.strict(name, params, sql_type, _NO_ORIGINS)
+    a.body("pg_replication_origin_xact_reset", "", _VOID)  # no origin is set up to reset
+    a.rows(
+        "pg_show_replication_origin_status",
+        "",
+        (
+            ("local_id", "BIGINT"),
+            ("external_id", "VARCHAR"),
+            ("remote_lsn", "VARCHAR"),
+            ("local_lsn", "VARCHAR"),
+        ),
+        "false",
+    )
+    slot = (("slot_name", "VARCHAR"), ("lsn", "VARCHAR"))
+    for name, arities in (
+        ("pg_create_physical_replication_slot", ("name", "name, reserve", "name, reserve, temp")),
+        (
+            "pg_create_logical_replication_slot",
+            (
+                "name, plugin",
+                "name, plugin, temp",
+                "name, plugin, temp, two",
+                "name, plugin, temp, two, failover",
+            ),
+        ),
+        ("pg_copy_physical_replication_slot", ("src, dst", "src, dst, temp")),
+        (
+            "pg_copy_logical_replication_slot",
+            ("src, dst", "src, dst, temp", "src, dst, temp, plugin"),
+        ),
+    ):
+        for params in arities:
+            a.refused_record(name, params, slot, _NO_SLOTS)
+    a.strict("pg_drop_replication_slot", "name", "VARCHAR", _NO_SLOTS)
+    a.refused_record(
+        "pg_replication_slot_advance",
+        "name, upto",
+        (("slot_name", "VARCHAR"), ("end_lsn", "VARCHAR")),
+        raising("42704", "'replication slot \"' || name || '\" does not exist'"),
+    )
+    a.strict("pg_logical_emit_message", "tx, prefix, message", "VARCHAR", _NO_LSN)
+    a.strict("pg_logical_emit_message", "tx, prefix, message, flush", "VARCHAR", _NO_LSN)
+    # The WAL: a primary that has written none.
+    for name in ("pg_current_wal_lsn", "pg_current_wal_insert_lsn", "pg_current_wal_flush_lsn"):
+        a.body(name, "", _NO_LSN)
+    a.body("pg_switch_wal", "", _NO_LSN)
+    a.body(
+        "pg_log_standby_snapshot",
+        "",
+        raising(
+            "55000",
+            '\'pg_log_standby_snapshot() can only be used if "wal_level" >= "replica"\'',
+        ),
+    )
+    a.body("pg_last_wal_receive_lsn", "", "CAST(NULL AS VARCHAR)")
+    a.body("pg_last_wal_replay_lsn", "", "CAST(NULL AS VARCHAR)")
+    a.body("pg_last_xact_replay_timestamp", "", "CAST(NULL AS TIMESTAMPTZ)")
+    a.strict_all("pg_promote", ("", "do_wait", "do_wait, seconds"), "BOOLEAN", _NOT_IN_RECOVERY)
+    backup_level = raising("55000", "'WAL level not sufficient for making an online backup'")
+    a.strict_all("pg_backup_start", ("label", "label, fast"), "VARCHAR", backup_level)
+    stop = (("lsn", "VARCHAR"), ("labelfile", "VARCHAR"), ("spcmapfile", "VARCHAR"))
+    for params in ("", "archive"):
+        a.refused_record(
+            "pg_backup_stop", params, stop, raising("55000", "'backup is not in progress'")
+        )
+    a.body("pg_rotate_logfile", "", "false")
+    a.strict("pg_walfile_name", "lsn", "VARCHAR", _wal_file("lsn"))
+    a.record(
+        "pg_walfile_name_offset",
+        "lsn",
+        (
+            ("file_name", "VARCHAR", _wal_file("lsn")),
+            ("file_offset", "INTEGER", f"{_lsn('lsn')} % {_WAL_SEGMENT}"),
+        ),
+    )
+    a.strict(
+        "pg_wal_lsn_diff",
+        "a, b",
+        "DECIMAL(38,0)",
+        f"CAST({_lsn('a')} AS DECIMAL(38,0)) - CAST({_lsn('b')} AS DECIMAL(38,0))",
+    )
+    a.strict(
+        "pg_lsn",
+        "value",
+        "VARCHAR",
+        "CASE WHEN value < 0 OR value >= 18446744073709551616 THEN "
+        + raising("22003", "'pg_lsn out of range'")
+        + " ELSE upper(printf('%x/%x', CAST(value AS UBIGINT) >> 32, "
+        "CAST(value AS UBIGINT) & 4294967295)) END",
+    )
+    a.record(
+        "pg_split_walfile_name",
+        "f",
+        (
+            (
+                "segment_number",
+                "DECIMAL(38,0)",
+                "CASE WHEN regexp_full_match(f, '[0-9A-F]{24}') THEN "
+                "(CAST('0x' || substr(f, 9, 8) AS BIGINT) * 256) + "
+                "CAST('0x' || substr(f, 17, 8) AS BIGINT) ELSE "
+                + raising("22023", "'invalid WAL file name \"' || f || '\"'")
+                + " END",
+            ),
+            ("timeline_id", "BIGINT", "CAST('0x' || substr(f, 1, 8) AS BIGINT)"),
+        ),
+    )
+    a.record(
+        "pg_get_wal_summarizer_state",
+        "",
+        (
+            ("summarized_tli", "BIGINT", "0"),
+            ("summarized_lsn", "VARCHAR", _NO_LSN),
+            ("pending_lsn", "VARCHAR", _NO_LSN),
+            ("summarizer_pid", "INTEGER", "NULL"),
+        ),
+    )
+    a.record(
+        "pg_control_system",
+        "",
+        (
+            ("pg_control_version", "INTEGER", "1700"),
+            ("catalog_version_no", "INTEGER", "202406281"),
+            ("system_identifier", "BIGINT", "0"),
+            ("pg_control_last_modified", "TIMESTAMPTZ", "NULL"),
+        ),
+    )
+    a.record(
+        "pg_control_init",
+        "",
+        (
+            ("max_data_alignment", "INTEGER", "8"),
+            ("database_block_size", "INTEGER", "8192"),
+            ("blocks_per_segment", "INTEGER", "131072"),
+            ("wal_block_size", "INTEGER", "8192"),
+            ("bytes_per_wal_segment", "INTEGER", str(_WAL_SEGMENT)),
+            ("max_identifier_length", "INTEGER", "64"),
+            ("max_index_columns", "INTEGER", "32"),
+            ("max_toast_chunk_size", "INTEGER", "1996"),
+            ("large_object_chunk_size", "INTEGER", "2048"),
+            ("float8_pass_by_value", "BOOLEAN", "true"),
+            ("data_page_checksum_version", "INTEGER", "0"),
+        ),
+    )
+    a.record(
+        "pg_control_recovery",
+        "",
+        (
+            ("min_recovery_end_lsn", "VARCHAR", _NO_LSN),
+            ("min_recovery_end_timeline", "INTEGER", "0"),
+            ("backup_start_lsn", "VARCHAR", _NO_LSN),
+            ("backup_end_lsn", "VARCHAR", _NO_LSN),
+            ("end_of_backup_record_required", "BOOLEAN", "false"),
+        ),
+    )
+    a.record(
+        "pg_control_checkpoint",
+        "",
+        (
+            ("checkpoint_lsn", "VARCHAR", _NO_LSN),
+            ("redo_lsn", "VARCHAR", _NO_LSN),
+            ("redo_wal_file", "VARCHAR", "'000000010000000000000000'"),
+            ("timeline_id", "INTEGER", "1"),
+            ("prev_timeline_id", "INTEGER", "1"),
+            ("full_page_writes", "BOOLEAN", "true"),
+            ("next_xid", "VARCHAR", "'0:3'"),
+            ("next_oid", "BIGINT", "16384"),
+            ("next_multixact_id", "BIGINT", "1"),
+            ("next_multi_offset", "BIGINT", "0"),
+            ("oldest_xid", "BIGINT", "3"),
+            ("oldest_xid_dbid", "BIGINT", "1"),
+            ("oldest_active_xid", "BIGINT", "0"),
+            ("oldest_multi_xid", "BIGINT", "1"),
+            ("oldest_multi_dbid", "BIGINT", "1"),
+            ("oldest_commit_ts_xid", "BIGINT", "0"),
+            ("newest_commit_ts_xid", "BIGINT", "0"),
+            ("checkpoint_time", "TIMESTAMPTZ", "NULL"),
+        ),
+    )
+    # What the server lists: nothing of its own to list.
+    named = (("name", "VARCHAR"), ("size", "BIGINT"), ("modification", "TIMESTAMPTZ"))
+    for name in (
+        "pg_ls_waldir",
+        "pg_ls_archive_statusdir",
+        "pg_ls_logicalmapdir",
+        "pg_ls_logicalsnapdir",
+    ):
+        a.rows(name, "", named, "false")
+    a.rows("pg_ls_tmpdir", "", named, "false")
+    a.rows(
+        "pg_ls_tmpdir",
+        "tablespace",
+        named,
+        "(tablespace IS NULL OR tablespace NOT IN (1663, 1664)) AND "
+        "(tablespace IS NOT NULL AND "
+        + raising("42704", "'tablespace with OID ' || tablespace || ' does not exist'")
+        + ")",
+    )
+    a.rows(
+        "pg_ls_replslotdir",
+        "slot",
+        named,
+        "slot IS NOT NULL AND "
+        + raising("42704", "'replication slot \"' || slot || '\" does not exist'"),
+    )
+    for name, columns in (
+        (
+            "pg_available_wal_summaries",
+            (("tli", "BIGINT"), ("start_lsn", "VARCHAR"), ("end_lsn", "VARCHAR")),
+        ),
+        (
+            "pg_lock_status",
+            (
+                ("locktype", "VARCHAR"),
+                ("database", "BIGINT"),
+                ("relation", "BIGINT"),
+                ("page", "INTEGER"),
+                ("tuple", "SMALLINT"),
+                ("virtualxid", "VARCHAR"),
+                ("transactionid", "BIGINT"),
+                ("classid", "BIGINT"),
+                ("objid", "BIGINT"),
+                ("objsubid", "SMALLINT"),
+                ("virtualtransaction", "VARCHAR"),
+                ("pid", "INTEGER"),
+                ("mode", "VARCHAR"),
+                ("granted", "BOOLEAN"),
+                ("fastpath", "BOOLEAN"),
+                ("waitstart", "TIMESTAMPTZ"),
+            ),
+        ),
+        (
+            "pg_prepared_statement",
+            (
+                ("name", "VARCHAR"),
+                ("statement", "VARCHAR"),
+                ("prepare_time", "TIMESTAMPTZ"),
+                ("parameter_types", "BIGINT[]"),
+                ("result_types", "BIGINT[]"),
+                ("from_sql", "BOOLEAN"),
+                ("generic_plans", "BIGINT"),
+                ("custom_plans", "BIGINT"),
+            ),
+        ),
+        (
+            "pg_prepared_xact",
+            (
+                ("transaction", "BIGINT"),
+                ("gid", "VARCHAR"),
+                ("prepared", "TIMESTAMPTZ"),
+                ("ownerid", "BIGINT"),
+                ("dbid", "BIGINT"),
+            ),
+        ),
+        (
+            "pg_get_replication_slots",
+            (
+                ("slot_name", "VARCHAR"),
+                ("plugin", "VARCHAR"),
+                ("slot_type", "VARCHAR"),
+                ("datoid", "BIGINT"),
+                ("temporary", "BOOLEAN"),
+                ("active", "BOOLEAN"),
+                ("active_pid", "INTEGER"),
+                ("xmin", "BIGINT"),
+                ("catalog_xmin", "BIGINT"),
+                ("restart_lsn", "VARCHAR"),
+                ("confirmed_flush_lsn", "VARCHAR"),
+                ("wal_status", "VARCHAR"),
+                ("safe_wal_size", "BIGINT"),
+                ("two_phase", "BOOLEAN"),
+                ("inactive_since", "TIMESTAMPTZ"),
+                ("conflicting", "BOOLEAN"),
+                ("invalidation_reason", "VARCHAR"),
+                ("failover", "BOOLEAN"),
+                ("synced", "BOOLEAN"),
+            ),
+        ),
+        (
+            "pg_get_backend_memory_contexts",
+            (
+                ("name", "VARCHAR"),
+                ("ident", "VARCHAR"),
+                ("parent", "VARCHAR"),
+                ("level", "INTEGER"),
+                ("total_bytes", "BIGINT"),
+                ("total_nblocks", "BIGINT"),
+                ("free_bytes", "BIGINT"),
+                ("free_chunks", "BIGINT"),
+                ("used_bytes", "BIGINT"),
+            ),
+        ),
+        (
+            "pg_get_shmem_allocations",
+            (
+                ("name", "VARCHAR"),
+                ("off", "BIGINT"),
+                ("size", "BIGINT"),
+                ("allocated_size", "BIGINT"),
+            ),
+        ),
+        (
+            "pg_get_wait_events",
+            (("type", "VARCHAR"), ("name", "VARCHAR"), ("description", "VARCHAR")),
+        ),
+        (
+            "pg_get_wal_resource_managers",
+            (("rm_id", "INTEGER"), ("rm_name", "VARCHAR"), ("rm_builtin", "BOOLEAN")),
+        ),
+        (
+            "pg_hba_file_rules",
+            (
+                ("rule_number", "INTEGER"),
+                ("file_name", "VARCHAR"),
+                ("line_number", "INTEGER"),
+                ("type", "VARCHAR"),
+                ("database", "VARCHAR[]"),
+                ("user_name", "VARCHAR[]"),
+                ("address", "VARCHAR"),
+                ("netmask", "VARCHAR"),
+                ("auth_method", "VARCHAR"),
+                ("options", "VARCHAR[]"),
+                ("error", "VARCHAR"),
+            ),
+        ),
+        (
+            "pg_ident_file_mappings",
+            (
+                ("map_number", "INTEGER"),
+                ("file_name", "VARCHAR"),
+                ("line_number", "INTEGER"),
+                ("map_name", "VARCHAR"),
+                ("sys_name", "VARCHAR"),
+                ("pg_username", "VARCHAR"),
+                ("error", "VARCHAR"),
+            ),
+        ),
+        (
+            "pg_show_all_file_settings",
+            (
+                ("sourcefile", "VARCHAR"),
+                ("sourceline", "INTEGER"),
+                ("seqno", "INTEGER"),
+                ("name", "VARCHAR"),
+                ("setting", "VARCHAR"),
+                ("applied", "BOOLEAN"),
+                ("error", "VARCHAR"),
+            ),
+        ),
+        (
+            "pg_get_catalog_foreign_keys",
+            (
+                ("fktable", "BIGINT"),
+                ("fkcols", "VARCHAR[]"),
+                ("pktable", "BIGINT"),
+                ("pkcols", "VARCHAR[]"),
+                ("is_array", "BOOLEAN"),
+                ("is_opt", "BOOLEAN"),
+            ),
+        ),
+        ("pg_config", (("name", "VARCHAR"), ("setting", "VARCHAR"))),
+    ):
+        a.rows(name, "", columns, "false")  # fmt: skip
+    a.values("pg_listening_channels", "VARCHAR")
+    a.body(
+        "pg_ls_dir",
+        "f",
+        "CASE WHEN f IS NULL THEN CAST(NULL AS VARCHAR) ELSE "
+        + _missing_directory("f", "false")
+        + " END",
+    )
+    a.body(
+        "pg_ls_dir",
+        "f, missing_ok, include_dots",
+        "CASE WHEN f IS NULL THEN CAST(NULL AS VARCHAR) ELSE "
+        + _missing_directory("f", "coalesce(missing_ok, false)")
+        + " END",
+    )
+    # A large object: Provisa holds none, and takes none: its catalog DB is read-only to a client.
+    missing_object = raising(
+        "42704", "'large object ' || CAST(lobj AS BIGINT) || ' does not exist'"
+    )
+    bad_descriptor = raising("42704", "'invalid large-object descriptor: ' || fd")
+    for name, params, sql_type in (
+        ("lo_close", "fd", "INTEGER"),
+        ("lo_tell", "fd", "INTEGER"),
+        ("lo_tell64", "fd", "BIGINT"),
+        ("lo_lseek", "fd, off, whence", "INTEGER"),
+        ("lo_lseek64", "fd, off, whence", "BIGINT"),
+        ("lo_truncate", "fd, len", "INTEGER"),
+        ("lo_truncate64", "fd, len", "INTEGER"),
+        ("loread", "fd, len", "BLOB"),
+        ("lowrite", "fd, data", "INTEGER"),
+    ):
+        a.strict(name, params, sql_type, bad_descriptor)
+    for name, params, sql_type in (
+        ("lo_open", "lobj, mode", "INTEGER"),
+        ("lo_get", "lobj", "BLOB"),
+        ("lo_get", "lobj, off, len", "BLOB"),
+        ("lo_put", "lobj, off, data", "VARCHAR"),
+        ("lo_unlink", "lobj", "INTEGER"),
+        ("lo_export", "lobj, f", "INTEGER"),
+    ):
+        a.strict(name, params, sql_type, missing_object)
+    for name, params, sql_type in _LO_WRITES:
+        a.strict(
+            name,
+            params,
+            sql_type,
+            raising("25006", f"'cannot execute {name}() in a read-only transaction'"),
+        )
+    unreadable = raising("58P01", f"'could not open server file \"' || f || '\": {_NO_FILE}'")
+    a.strict("lo_import", "f", "BIGINT", unreadable)
+    a.strict("lo_import", "f, lobj", "BIGINT", unreadable)
+
+
+def _missing_directory(path: str, missing_ok: str) -> str:
+    refusals = " ".join(
+        f"WHEN {test.format(f=path)} THEN {refusal}" for test, refusal in _FILE_REFUSALS
+    )
+    missing = raising("58P01", f"'could not open directory \"' || {path} || '\": {_NO_FILE}'")
+    return (
+        f"unnest(CASE {refusals} WHEN {missing_ok} THEN CAST([] AS VARCHAR[]) ELSE {missing} END)"
+    )
+
+
+def _xid(a: _Answers) -> None:
+    """Transaction ids and snapshots: nothing runs but the statement asking, which has no xid."""
+    a.body("pg_current_xact_id", "", "provisa_next_xid()")
+    a.body("pg_current_xact_id_if_assigned", "", "CAST(NULL AS BIGINT)")
+    a.body("txid_current_if_assigned", "", "CAST(NULL AS BIGINT)")
+    snapshot = "(SELECT _n || ':' || _n || ':' FROM (SELECT provisa_next_xid() AS _n))"
+    a.body("pg_current_snapshot", "", snapshot)
+    a.body("txid_current_snapshot", "", snapshot)
+    xip = (
+        "list_transform(string_split(nullif(split_part(s, ':', 3), ''), ','), "
+        "_x -> CAST(_x AS BIGINT))"
+    )
+    xmin, xmax = "CAST(split_part(s, ':', 1) AS BIGINT)", "CAST(split_part(s, ':', 2) AS BIGINT)"
+    for family, name in (
+        ("pg_snapshot", "pg_visible_in_snapshot"),
+        ("txid_snapshot", "txid_visible_in_snapshot"),
+    ):
+        a.strict(f"{family}_xmin", "s", "BIGINT", xmin)
+        a.strict(f"{family}_xmax", "s", "BIGINT", xmax)
+        a.body(f"{family}_xip", "s", f"unnest({xip})")
+        a.strict(
+            f"{family}_send",
+            "s",
+            "BLOB",
+            f"unhex(printf('%08x%016x%016x', coalesce(len({xip}), 0), {xmin}, {xmax}) || "
+            f"coalesce(array_to_string(list_transform({xip}, _x -> printf('%016x', _x)), ''), ''))",
+        )
+        a.strict(
+            name,
+            "x, s",
+            "BOOLEAN",
+            f"CASE WHEN x < {xmin} THEN true WHEN x >= {xmax} THEN false "
+            f"ELSE NOT coalesce(list_contains({xip}, x), false) END",
+        )
+    status = (
+        "CASE WHEN x >= provisa_next_xid() THEN "
+        + raising("22023", "'transaction ID ' || x || ' is in the future'")
+        + " ELSE 'committed' END"
+    )
+    a.strict("pg_xact_status", "x", "VARCHAR", status)
+    a.strict("txid_status", "x", "VARCHAR", status)
+    no_commit_ts = raising("55000", "'could not get commit timestamp data'")
+    a.strict("pg_xact_commit_timestamp", "x", "TIMESTAMPTZ", no_commit_ts)
+    a.refused_record(
+        "pg_xact_commit_timestamp_origin",
+        "x",
+        (("timestamp", "TIMESTAMPTZ"), ("roident", "BIGINT")),
+        no_commit_ts,
+    )
+    a.strict(
+        "provisa_xid_age",
+        "x",
+        "INTEGER",
+        "CASE WHEN x < 3 THEN 2147483647 ELSE CAST(provisa_next_xid() - x AS INTEGER) END",
+    )
+    a.strict(
+        "mxid_age",
+        "x",
+        "INTEGER",
+        "CASE WHEN x = 0 THEN 2147483647 ELSE CAST(1 - x AS INTEGER) END",
+    )
+    a.rows("pg_get_multixact_members", "m", (("xid", "BIGINT"), ("mode", "VARCHAR")), "false")
+    a.body(
+        "pg_export_snapshot",
+        "",
+        "(SELECT printf('%08X-%08X-1', 3, _n) FROM (SELECT provisa_next_xid() AS _n))",
+    )
+
+
+def _catalog_objects(a: _Answers) -> None:
+    """The functions on what the catalog holds, answered from it."""
+    a.strict("pg_basetype", "t", "BIGINT", "t")
+    a.body("pg_client_encoding", "", "'UTF8'")
+    a.strict(
+        "pg_collation_actual_version",
+        "c",
+        "VARCHAR",
+        "CASE WHEN c IN (SELECT _c.oid FROM _pg_collation _c) THEN CAST(NULL AS VARCHAR) ELSE "
+        + raising("42704", "'collation with OID ' || c || ' does not exist'")
+        + " END",
+    )
+    a.strict(
+        "pg_database_collation_actual_version",
+        "d",
+        "VARCHAR",
+        "CASE WHEN d IN (SELECT _d.oid FROM _pg_database _d) THEN CAST(NULL AS VARCHAR) ELSE "
+        + raising("42704", "'database with OID ' || d || ' does not exist'")
+        + " END",
+    )
+    is_table = "(SELECT _c.relkind IN ('r', 'p') FROM _pg_class _c WHERE _c.oid = rel)"
+    a.strict(
+        "pg_relation_is_updatable",
+        "rel, cascaded",
+        "INTEGER",
+        f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
+    )
+    a.strict(
+        "pg_column_is_updatable", "rel, att, cascaded", "BOOLEAN", f"coalesce({is_table}, false)"
+    )
+    a.strict(
+        "pg_filenode_relation",
+        "tablespace, filenode",
+        "STRUCT(oid BIGINT, name VARCHAR)",
+        "CAST(NULL AS STRUCT(oid BIGINT, name VARCHAR))",
+    )
+    a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")
+    a.strict("pg_relation_filepath", "rel", "VARCHAR", "CAST(NULL AS VARCHAR)")
+    a.strict("pg_get_function_arg_default", "f, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
+    a.strict("pg_get_statisticsobjdef", "s", "VARCHAR", "CAST(NULL AS VARCHAR)")
+    a.strict("pg_indexam_progress_phasename", "am, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
+    a.strict("pg_isolation_test_session_is_blocked", "pid, pids", "BOOLEAN", "false")
+    a.strict("pg_safe_snapshot_blocking_pids", "pid", "INTEGER[]", "CAST([] AS INTEGER[])")
+    a.strict("pg_log_backend_memory_contexts", "pid", "BOOLEAN", "false")
+    a.body("pg_jit_available", "", "false")
+    a.body("pg_notification_queue_usage", "", "CAST(0 AS DOUBLE)")
+    a.body("pg_trigger_depth", "", "0")
+    a.strict("row_security_active", "rel", "BOOLEAN", "false")
+    a.strict(
+        "pg_settings_get_flags",
+        "name",
+        "VARCHAR[]",
+        "(SELECT CAST([] AS VARCHAR[]) FROM _pg_settings _s WHERE _s.name = lower(name))",
+    )
+    a.strict(
+        "pg_extension_config_dump",
+        "rel, cond",
+        "VARCHAR",
+        raising(
+            "55000",
+            "'pg_extension_config_dump() can only be called from an SQL script executed by "
+            "CREATE EXTENSION'",
+        ),
+    )
+    a.strict(
+        "pg_nextoid",
+        "rel, att, idx",
+        "BIGINT",
+        raising("42501", "'must be superuser to call pg_nextoid()'"),
+    )
+    a.strict(
+        "pg_import_system_collations",
+        "ns",
+        "INTEGER",
+        raising("42501", "'must be superuser to import system collations'"),
+    )
+    a.strict(
+        "pg_sequence_parameters",
+        "seq",
+        "VARCHAR",
+        raising("XX000", "'cache lookup failed for sequence ' || seq"),
+    )
+    a.rows(
+        "pg_extension_update_paths",
+        "name",
+        (("source", "VARCHAR"), ("target", "VARCHAR"), ("path", "VARCHAR")),
+        "name IS NOT NULL AND "
+        + raising("0A000", "'extension \"' || name || '\" is not available'"),
+    )
+    a.body(
+        "pg_tablespace_databases",
+        "t",
+        "unnest((SELECT list(_d.oid) FROM _pg_database _d WHERE t = 1663))",
+    )
+    for name in ("pg_mcv_list", "pg_ndistinct", "pg_dependencies", "pg_node_tree"):
+        # No value of these types exists here: only a NULL reaches them.
+        a.body(f"{name}_send", "v", "CAST(NULL AS BLOB)")
+    a.rows(
+        "pg_mcv_list_items",
+        "v",
+        (
+            ("index", "INTEGER"), ("values", "VARCHAR[]"), ("nulls", "BOOLEAN[]"),
+            ("frequency", "DOUBLE"), ("base_frequency", "DOUBLE"),
+        ),
+        "false",
+    )  # fmt: skip
+    for name in (
+        "fmgr_c_validator",
+        "fmgr_internal_validator",
+        "fmgr_sql_validator",
+        "plpgsql_validator",
+    ):
+        a.strict(name, "f", "VARCHAR", raising("XX000", "'cache lookup failed for function ' || f"))
+    a.strict(
+        "amvalidate",
+        "c",
+        "BOOLEAN",
+        raising("XX000", "'cache lookup failed for operator class ' || c"),
+    )
+    a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
+    a.strict(
+        "aclinsert",
+        "acl, item",
+        "VARCHAR[]",
+        raising("0A000", "'aclinsert is no longer supported'"),
+    )
+    a.strict(
+        "aclremove",
+        "acl, item",
+        "VARCHAR[]",
+        raising("0A000", "'aclremove is no longer supported'"),
+    )
+    a.strict("aclitemeq", "a, b", "BOOLEAN", "a = b")
+    a.strict("aclcontains", "acl, item", "BOOLEAN", "list_contains(acl, item)")
+    privilege = (
+        "CASE WHEN upper(priv) NOT IN ('SET', 'ALTER SYSTEM', 'SET WITH GRANT OPTION', "
+        "'ALTER SYSTEM WITH GRANT OPTION') THEN "
+        + raising("22023", "'unrecognized privilege type: \"' || priv || '\"'")
+        + " WHEN lower(param) NOT IN (SELECT _s.name FROM _pg_settings _s) THEN "
+        + raising("42704", "'unrecognized configuration parameter \"' || param || '\"'")
+        + " ELSE true END"
+    )
+    a.strict("has_parameter_privilege", "param, priv", "BOOLEAN", privilege)
+    a.strict("has_parameter_privilege", "who, param, priv", "BOOLEAN", privilege)
+
+
+_STAT_ARITIES = (("f", ("f", "false")), ("f, missing_ok", ("f", "missing_ok")))
+
+
+def _answers() -> _Answers:
+    answers = _Answers()
+    _server_objects(answers)
+    _xid(answers)
+    _catalog_objects(answers)
+    return answers
+
+
 def macros() -> tuple[str, ...]:
     """The macros, over the catalog relations they read."""
     stat = ", ".join(f"({p}) AS {_stat(*a)}" for p, a in _STAT_ARITIES)
@@ -134,10 +984,9 @@ def macros() -> tuple[str, ...]:
         + _setval("seq", "value")
         + ", (seq, value, called) AS "
         + _setval("seq", "value", "called"),
+        *_answers().statements(),
     )
 
-
-_STAT_ARITIES = (("f", ("f", "false")), ("f, missing_ok", ("f", "missing_ok")))
 
 #: The functions these macros answer, which a statement reading no table is answered with.
 ANSWERED = frozenset(
@@ -148,5 +997,7 @@ ANSWERED = frozenset(
         "pg_reload_conf",
         "pg_stat_file",
         "setval",
+        *_answers().scalar,
+        *_answers().table,
     }
 )

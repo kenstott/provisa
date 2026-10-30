@@ -577,7 +577,9 @@ def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
                             transpile(
                                 pg_functions.before(
                                     _catalog_functions_unqualified(
-                                        to_char_for_duckdb(postgres_literals(pg_sql))
+                                        to_char_for_duckdb(
+                                            postgres_literals(pg_functions.typed_calls(pg_sql))
+                                        )
                                     )
                                 ),
                                 "duckdb",

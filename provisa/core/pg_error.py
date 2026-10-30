@@ -9,8 +9,9 @@
 # permission from the copyright holder.
 
 """PostgreSQL's own error from a catalog macro (REQ-2167, CLIENT-CALLED SERVER FUNCTIONS ANSWER
-LIKE POSTGRESQL): a macro raises it with ``raising``, in DuckDB's error(), whose message carries
-the SQLSTATE; ``from_engine`` reads that back as the error PostgreSQL reports."""
+LIKE POSTGRESQL): a macro raises it with ``raising``, in DuckDB's error(), and a UDF with its
+message, each carrying the SQLSTATE; ``from_engine`` reads that back as the error PostgreSQL
+reports."""
 
 # Requirements: REQ-2167
 
@@ -18,8 +19,10 @@ from __future__ import annotations
 
 import re
 
-_MARK = "postgresql-error"
-_MARKED = re.compile(rf"{_MARK} (?P<sqlstate>[0-9A-Z]{{5}}): (?P<message>.*)", re.DOTALL)
+MARK = "postgresql-error"
+#: Ends a message a UDF raises: the engine appends the Python traceback to it.
+END = "<end of postgresql-error>"
+_MARKED = re.compile(rf"{MARK} (?P<sqlstate>[0-9A-Z]{{5}}): (?P<message>.*?)(?:{END}|$)", re.DOTALL)
 
 
 class PostgresError(Exception):
@@ -33,10 +36,10 @@ class PostgresError(Exception):
 def raising(sqlstate: str, message_sql: str) -> str:
     """SQL raising PostgreSQL's error ``sqlstate`` with the text of ``message_sql`` (an SQL
     expression), usable where the engine expects a value of any type."""
-    return f"error('{_MARK} {sqlstate}: ' || {message_sql})"
+    return f"error('{MARK} {sqlstate}: ' || {message_sql})"
 
 
 def from_engine(error: Exception) -> PostgresError | None:
     """The PostgreSQL error a ``raising`` call raised; None for any other engine error."""
     marked = _MARKED.search(str(error))
-    return None if marked is None else PostgresError(marked["sqlstate"], marked["message"])
+    return None if marked is None else PostgresError(marked["sqlstate"], marked["message"].strip())

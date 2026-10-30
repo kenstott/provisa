@@ -26,7 +26,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.pgwire.catalog_pg17 import TYPES
-from provisa.pgwire.pg_error import raising
+from provisa.core.pg_error import raising
 
 #: The object identifier types a projected value of is its oid and its name together.
 NAMED_REG_TYPES = frozenset({"regclass", "regnamespace"})

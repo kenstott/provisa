@@ -39,7 +39,8 @@ from provisa.pgwire.catalog_data import (
 )
 from provisa.pgwire.catalog_populate import catalog_db_for
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
-from provisa.pgwire.pg_error import from_engine
+from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES
+from provisa.core.pg_error import from_engine
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,9 @@ _TXN_RE = re.compile(
 )
 
 _SHOW_MIN_PARTS = 2
+
+#: A call sqlglot reads as syntax of its own (provisa.transpiler.pg_functions.readable).
+_UNPARSED_CALL = re.compile(r"\b(convert|json_object)\s*\(")
 
 # REQ-2167: a statement that only sleeps, as PostgreSQL's pg_sleep(seconds) does, answering void.
 _PG_SLEEP_RE = re.compile(
@@ -172,8 +176,6 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "oidvectortypes",
         "pg_cursor",
         "pg_sequence_last_value",
-        "plpgsql_validator",
-        "fmgr_c_validator",
         "bpchar",
         "has_type_privilege",
         "pg_available_extensions",
@@ -209,7 +211,9 @@ def _calls_a_catalog_function_alone(tree) -> bool:
 
 #: The types only the catalog has (name, and the object identifier types): a statement reading no
 #: table that casts to one is answered by the catalog (REQ-2167).
-_CATALOG_ONLY_TYPES = frozenset({"name", "regclass", "regtype", "regnamespace"})
+_CATALOG_ONLY_TYPES = frozenset(
+    {"name", "regclass", "regtype", "regnamespace", "xid", "tid", "oidvector", *PG_ONLY_TYPE_NAMES}
+)
 
 
 def _casts_to_a_catalog_type_alone(tree) -> bool:
@@ -218,7 +222,8 @@ def _casts_to_a_catalog_type_alone(tree) -> bool:
     if any(True for _ in tree.find_all(exp.Table)):
         return False
     return any(
-        cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.") in _CATALOG_ONLY_TYPES
+        cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.").removesuffix("[]")
+        in _CATALOG_ONLY_TYPES
         for cast in tree.find_all(exp.Cast)
     )
 
@@ -276,6 +281,8 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
                 return "INTERCEPT"
     except Exception:
         lower = stripped.lower()
+        if _UNPARSED_CALL.search(lower) and " from " not in lower:
+            return "INTERCEPT"  # REQ-2167: sqlglot reads it as syntax; the catalog DB as a call
         for name in _CATALOG_TABLE_NAMES:
             if re.search(r"\b" + re.escape(name) + r"\b", lower):
                 return "INTERCEPT"

@@ -8,10 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PostgreSQL's functions DuckDB has no equivalent of, on the embedded DuckDB engine (REQ-2167,
-PGWIRE'S CATALOG FUNCTIONS): ``provisa_sha224``, ``provisa_sha384`` and ``provisa_sha512``, each a
-bytea's digest as a bytea (sha256 is DuckDB's own, provisa.transpiler.pg_functions), and
-``provisa_size_pretty``, pg_size_pretty's text (DuckDB's of that name writes KiB)."""
+"""PostgreSQL's functions DuckDB has no equivalent of, on the embedded DuckDB engine and the pgwire
+catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_sha224``, ``provisa_sha384`` and
+``provisa_sha512``, each a bytea's digest as a bytea (sha256 is DuckDB's own,
+provisa.transpiler.pg_functions), ``provisa_size_pretty``, pg_size_pretty's text (DuckDB's of that
+name writes KiB), and the functions of provisa.federation.duckdb_pg_scalars: UDFs where a value
+needs PostgreSQL's own algorithm, and macros where a DuckDB expression carries the function."""
 
 # Requirements: REQ-2167
 
@@ -60,6 +62,9 @@ def size_pretty(size: int) -> str:
 
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
+    from provisa.federation.duckdb_pg_scalars import register as register_scalars
+
+    register_scalars(con)
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )
