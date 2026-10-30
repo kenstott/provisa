@@ -62,13 +62,10 @@ export function PromisesTable({
     r.applies.level === "column"
       ? r.applies.column
       : t(`contractPromises.level.${r.applies.level}`);
-  const open = (p: ProductDqEntry) =>
-    navigate("/sql", {
-      state: {
-        sql: `select * from ${tableSqlRef({ domainId: p.domain_id, tableName: p.table_name, alias: p.alias })}`,
-        autoRun: true,
-      },
-    });
+  const open = (p: ProductDqEntry) => {
+    const results = tableSqlRef({ domainId: p.domain_id, tableName: p.table_name, alias: p.alias });
+    navigate("/sql", { state: { sql: `select * from ${results}`, autoRun: true } });
+  };
   return (
     <SortGroupTable
       testPrefix={testId}
