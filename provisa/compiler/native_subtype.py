@@ -26,6 +26,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
+from provisa.core.pg_range import MULTIRANGE_TYPES
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
     OPERATORS,
@@ -57,6 +58,7 @@ _RANGE_FUNCTION_NAMES = frozenset(
         "multirange",
         "range_agg",
         "range_intersect_agg",
+        *MULTIRANGE_TYPES,
     }
 )
 

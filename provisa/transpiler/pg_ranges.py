@@ -20,10 +20,10 @@ range-valued result is written back in PostgreSQL's text form. The expressions a
 ``_FORMS`` names what a dialect spells its own way. No dialect is refused a range.
 
 A multirange's text is ``{[1,3),[5,7)}``. A predicate over one quantifies over its ranges with the
-dialect's own list form (``_any``). A multirange built from columns needs a sort and a merge of a
-variable number of ranges: DuckDB does that in a UDF (federation.duckdb_pg_ranges); a dialect with
-no such form refuses it by name. Values the statement writes as literals are answered here, on
-every dialect, by provisa.core.pg_range."""
+dialect's own list form (``any``). A multirange built from columns is a fold over its ranges with a
+text as its state, in PostgreSQL's multirange form, written as SQL with the dialect's own sort and
+reduce (``reduce``, ``sorted_ranges``): a dialect with neither refuses it by name. Values the
+statement writes as literals are answered here, on every dialect, by provisa.core.pg_range."""
 
 # Requirements: REQ-2171, REQ-2167
 
@@ -146,12 +146,44 @@ _REGEX_LIST = {
     "spark": "regexp_extract_all",
     "snowflake": "REGEXP_SUBSTR_ALL",
 }
+#: A dialect's fold over a list, on the dialects that have one.
+_REDUCE = {
+    "duckdb": "list_reduce",
+    "trino": "reduce",
+    "athena": "reduce",
+    "clickhouse": "arrayFold",
+    "databricks": "aggregate",
+    "spark": "aggregate",
+    "snowflake": "REDUCE",
+}
+#: A dialect's row of sort keys, its sort of a list of rows, and how a row's field ``{n}`` of
+#: ``{a}`` is read: the dialects whose sort compares rows. Snowflake's ARRAY_SORT does not.
+_SORT = {
+    "duckdb": ("row", "list_sort", "{a}[{n}]"),
+    "trino": ("ROW", "array_sort", "{a}[{n}]"),
+    "athena": ("ROW", "array_sort", "{a}[{n}]"),
+    "clickhouse": ("tuple", "arraySort", "tupleElement({a}, {n})"),
+    "databricks": ("struct", "array_sort", "{a}.col{n}"),
+    "spark": ("struct", "array_sort", "{a}.col{n}"),
+}
 #: One range of a multirange's text.
 _RANGE_PATTERN = r"[\[(][^\])]*[\])]"
 #: The dialects with a boolean value in a select list.
 _NO_BOOLEAN_VALUE = frozenset({"tsql", "oracle"})
 
 _EMPTY_MULTIRANGE = "{}"
+#: A multirange's text among several joined.
+_MULTIRANGE_PATTERN = r"\{[^}]*\}"
+#: A value of each element type, for a sort key whose row a dialect refuses to compare with a NULL
+#: in it: the flag before it has already told an unbounded side from a bounded one.
+_FILLER = {
+    "integer": "0",
+    "bigint": "0",
+    "numeric": "0",
+    "date": "1970-01-01",
+    "timestamp": "1970-01-01 00:00:00",
+    "timestamptz": "1970-01-01 00:00:00+00",
+}
 
 
 # --- expressions, folded where a part is known ----------------------------------------------------
@@ -487,6 +519,12 @@ class _Writer:
 
     def __init__(self, dialect: str) -> None:
         self.dialect = dialect
+        self.serial = 0
+
+    def fresh(self, stem: str) -> str:
+        """A name for a lambda's variable, unique in the statement: lambdas here nest."""
+        self.serial += 1
+        return f"_{stem}{self.serial}"
 
     # -- values -------------------------------------------------------------------------------
 
@@ -681,10 +719,19 @@ class _Writer:
         )
         return _case([(value.null, _null()), (value.empty, _string("empty"))], body)
 
-    def order_keys(self, value: _R) -> list[exp.Expr]:
+    def order_keys(self, value: _R, filled: bool = False) -> list[exp.Expr]:
         """Sort keys in range_cmp's order: the empty range first, then the lower bound (an
         unbounded one first, an inclusive one before an exclusive), then the upper (an unbounded
-        one last, an inclusive one after an exclusive)."""
+        one last, an inclusive one after an exclusive). ``filled``: no NULL among them, for a row
+        a dialect compares (Trino refuses a NULL there)."""
+
+        def bound(side: _Side) -> exp.Expr:
+            if not filled:
+                return side.value.copy()
+            filler = self.bound_from_text(
+                _string(_FILLER[value.rtype.element]), value.rtype.element
+            )
+            return exp.Coalesce(this=side.value.copy(), expressions=[filler])
 
         def flag(condition: exp.Expr, when: int, otherwise: int) -> exp.Expr:
             return _case([(condition, _int(when))], _int(otherwise))
@@ -692,10 +739,10 @@ class _Writer:
         keys = [
             _case([(value.null, _null()), (value.empty, _int(0))], _int(1)),
             flag(value.lower.inf, 0, 1),
-            value.lower.value.copy(),
+            bound(value.lower),
             flag(value.lower.inc, 0, 1),
             flag(value.upper.inf, 1, 0),
-            value.upper.value.copy(),
+            bound(value.upper),
             flag(value.upper.inc, 1, 0),
         ]
         # A constant says nothing, and a number in ORDER BY would name a column.
@@ -861,10 +908,228 @@ class _Writer:
         body = _concat(_string("{"), self.text(replace(value, null=exp.false())), _string("}"))
         return _M(mr, value.null, _case([(value.empty, _string(_EMPTY_MULTIRANGE))], body))
 
-    def _ranges_list(self, text: exp.Expr) -> exp.Expr:
+    def _matches(self, text: exp.Expr, pattern: str) -> exp.Expr:
         name = _REGEX_LIST[self.dialect]
         extra = [_int(0)] if self.dialect in ("databricks", "spark") else []
-        return _call(name, text, _string(_RANGE_PATTERN), *extra)
+        return _call(name, text, _string(pattern), *extra)
+
+    def _ranges_list(self, text: exp.Expr) -> exp.Expr:
+        return self._matches(text, _RANGE_PATTERN)
+
+    def _list_form(self, rtype: RangeType, operation: str) -> None:
+        if self.dialect not in _REGEX_LIST:
+            raise SubtypeOperationRefused(rtype.multirange, operation, self.dialect)
+
+    def reduce(
+        self,
+        items: exp.Expr,
+        start: exp.Expr,
+        step: Callable[[exp.Expr, exp.Expr], exp.Expr],
+        rtype: RangeType,
+        operation: str,
+    ) -> exp.Expr:
+        """A fold of a list of texts, its state a text, with the dialect's own reduce."""
+        if self.dialect not in _REDUCE:
+            raise SubtypeOperationRefused(rtype.multirange, operation, self.dialect)
+        state_name, item_name = self.fresh("s"), self.fresh("x")
+        state, item = exp.column(state_name), exp.column(item_name)
+        if self.dialect == "snowflake":  # a lambda's variables are VARIANT there
+            state, item = _text_cast(state), _text_cast(item)
+        body = step(state, item)
+        fold = exp.Lambda(
+            this=body,
+            expressions=[exp.to_identifier(state_name), exp.to_identifier(item_name)],
+        )
+        name = _REDUCE[self.dialect]
+        if self.dialect == "duckdb":  # its state is the list's own first item
+            return _call(name, _call("list_prepend", start, items), fold)
+        if self.dialect == "clickhouse":
+            return _call(name, fold, items, _text_cast(start))
+        if self.dialect in ("trino", "athena"):
+            done = self.fresh("d")
+            same = exp.Lambda(this=exp.column(done), expressions=[exp.to_identifier(done)])
+            return _call(name, items, start, fold, same)
+        return _call(name, items, start, fold)  # databricks, spark, snowflake
+
+    def sorted_ranges(self, text: exp.Expr, rtype: RangeType, operation: str) -> exp.Expr:
+        """The ranges in ``text`` in range_cmp's order: each a row of its sort keys and itself,
+        the rows sorted, the text taken back. Empty ranges are not in it: the pattern reads only
+        a bracketed range."""
+        forms = _SORT.get(self.dialect)
+        if forms is None:
+            raise SubtypeOperationRefused(rtype.multirange, operation, self.dialect)
+        row, sort, pick = forms
+        name = self.fresh("r")
+        var = exp.column(name)
+        keys = [*self.order_keys(self.parsed(var, rtype), filled=True), var]
+        keyed = exp.Lambda(this=_call(row, *keys), expressions=[exp.to_identifier(name)])
+        back = self.fresh("k")
+        taken = exp.Var(this=pick.format(a=back, n=len(keys)))
+        unkeyed = exp.Lambda(this=taken, expressions=[exp.to_identifier(back)])
+        return self._mapped(_call(sort, self._mapped(self._ranges_list(text), keyed)), unkeyed)
+
+    def _mapped(self, items: exp.Expr, function: exp.Expr) -> exp.Expr:
+        if self.dialect == "duckdb":
+            return _call("list_transform", items, function)
+        if self.dialect == "clickhouse":
+            return _call("arrayMap", function, items)
+        return _call("transform", items, function)
+
+    def _bound_text(self, side: _Side, rtype: RangeType) -> exp.Expr:
+        quote = _string('"' if rtype.element in ("timestamp", "timestamptz") else "")
+        return _case([(side.inf, _string(""))], _concat(quote, side.text, quote))
+
+    def _last_upper(self, state: exp.Expr, rtype: RangeType) -> tuple[_Side, exp.Expr]:
+        """A multirange text's last upper bound, and the text up to it. A sort has put every
+        later range's lower bound after this one's, so this bound is all a merge needs of it."""
+        reverse = exp.Anonymous(this="REVERSE", expressions=[state.copy()])
+        comma = _plus(_minus(_length(state), _strpos(reverse, ",")), _int(1))
+        raw = _substring(
+            state, _plus(comma, _int(1)), _minus(_length(state), _plus(comma, _int(2)))
+        )
+        written = raw
+        if rtype.element in ("timestamp", "timestamptz"):
+            written = _replace(raw, '"', "")
+        side = _Side(
+            _eq(_substring(state, _minus(_length(state), _int(2)), _int(1)), _string(",")),
+            self.bound_from_text(exp.Nullif(this=written, expression=_string("")), rtype.element),
+            _eq(_substring(state, _minus(_length(state), _int(1)), _int(1)), _string("]")),
+            written,
+        )
+        return side, _substring(state, _int(1), comma)
+
+    def _appended(self, state: exp.Expr, range_text: exp.Expr) -> exp.Expr:
+        """A multirange text with a range after its last."""
+        return _case(
+            [
+                (
+                    _eq(state, _string(_EMPTY_MULTIRANGE)),
+                    _concat(_string("{"), range_text, _string("}")),
+                )
+            ],
+            _concat(
+                _substring(state, _int(1), _minus(_length(state), _int(1))),
+                _string(","),
+                range_text,
+                _string("}"),
+            ),
+        )
+
+    def _absorbed(self, state: exp.Expr, item: exp.Expr, rtype: RangeType) -> exp.Expr:
+        """multirange_canonicalize's step: the next range in order, merged into the last it
+        overlaps or meets, else after it."""
+        next_range = self.parsed(item, rtype)
+        upper, head = self._last_upper(state, rtype)
+        reached = _or(
+            _lte0(_bound_cmp(next_range.lower, True, upper, False)),
+            _touch(upper, next_range.lower),
+        )
+        kept = _choose(
+            _gte0(_bound_cmp(upper, False, next_range.upper, False)), upper, next_range.upper
+        )
+        merged = _concat(
+            head,
+            self._bound_text(kept, rtype),
+            _case([(kept.inc, _string("]"))], _string(")")),
+            _string("}"),
+        )
+        written = self.text(replace(next_range, null=exp.false()))
+        return _case(
+            [
+                (
+                    _not(_eq(state, _string(_EMPTY_MULTIRANGE))),
+                    _case([(reached, merged)], self._appended(state, written)),
+                )
+            ],
+            _concat(_string("{"), written, _string("}")),
+        )
+
+    def canonical(self, text: exp.Expr, rtype: RangeType, operation: str) -> exp.Expr:
+        """multirange_canonicalize of every range in ``text``, a joining of ranges and
+        multiranges."""
+        self._list_form(rtype, operation)
+        return self.reduce(
+            self.sorted_ranges(text, rtype, operation),
+            _string(_EMPTY_MULTIRANGE),
+            lambda state, item: self._absorbed(state, item, rtype),
+            rtype,
+            operation,
+        )
+
+    def multirange_intersect(
+        self, a: exp.Expr, b: exp.Expr, rtype: RangeType, operation: str
+    ) -> exp.Expr:
+        """Each range of a with each of b. Both are in order and apart, so the pieces are too."""
+        self._list_form(rtype, operation)
+
+        def against(state: exp.Expr, x: exp.Expr) -> exp.Expr:
+            first = self.parsed(x, rtype)
+
+            def piece(held: exp.Expr, y: exp.Expr) -> exp.Expr:
+                second = self.parsed(y, rtype)
+                meet = self.intersect(first, second)
+                written = self.text(replace(meet, null=exp.false(), empty=exp.false()))
+                return _case([(_overlaps(first, second), self._appended(held, written))], held)
+
+            return self.reduce(self._ranges_list(b), state, piece, rtype, operation)
+
+        return self.reduce(
+            self._ranges_list(a), _string(_EMPTY_MULTIRANGE), against, rtype, operation
+        )
+
+    def multirange_complement(self, text: exp.Expr, rtype: RangeType, operation: str) -> exp.Expr:
+        """Everything a multirange does not hold: the whole line, cut at each range. The state's
+        last range is open until the next cut."""
+        self._list_form(rtype, operation)
+
+        def cut(state: exp.Expr, item: exp.Expr) -> exp.Expr:
+            taken = self.parsed(item, rtype)
+            lower, upper = taken.lower, taken.upper
+            before = _concat(
+                _substring(state, _int(1), _minus(_length(state), _int(3))),
+                _string(","),
+                self._bound_text(lower, rtype),
+                _case([(lower.inc, _string(")"))], _string("]")),
+            )
+            after = _concat(
+                _case([(lower.inf, _string(""))], _string(",")),
+                _case([(upper.inc, _string("("))], _string("[")),
+                self._bound_text(upper, rtype),
+                _string(",)"),
+            )
+            return _concat(
+                _case([(lower.inf, _string("{"))], before),
+                _case([(upper.inf, _string(""))], after),
+                _string("}"),
+            )
+
+        return self.reduce(self._ranges_list(text), _string("{(,)}"), cut, rtype, operation)
+
+    def intersect_all(self, joined: exp.Expr, rtype: RangeType, operation: str) -> exp.Expr:
+        """range_intersect_agg of ranges joined by commas; the empty range holds nothing, and
+        the pattern reads only a bracketed range, so it is looked for first."""
+        self._list_form(rtype, operation)
+
+        def step(state: exp.Expr, item: exp.Expr) -> exp.Expr:
+            met = self.intersect(self.parsed(state, rtype), self.parsed(item, rtype))
+            return self.text(replace(met, null=exp.false()))
+
+        fold = self.reduce(self._ranges_list(joined), _string("(,)"), step, rtype, operation)
+        has_empty = exp.GT(this=_strpos(joined, "empty"), expression=_int(0))
+        return _case([(has_empty, _string("empty"))], fold)
+
+    def multirange_intersect_all(
+        self, joined: exp.Expr, rtype: RangeType, operation: str
+    ) -> exp.Expr:
+        """range_intersect_agg of multiranges joined by commas."""
+        self._list_form(rtype, operation)
+        return self.reduce(
+            self._matches(joined, _MULTIRANGE_PATTERN),
+            _string("{(,)}"),
+            lambda state, item: self.multirange_intersect(state, item, rtype, operation),
+            rtype,
+            operation,
+        )
 
     def _delimited(self, text: exp.Expr) -> exp.Expr:
         """A multirange's ranges, each apart from the next by a bar; no braces, no quotes."""
@@ -939,7 +1204,7 @@ class _Writer:
             raise SubtypeOperationRefused(value.rtype.multirange, operation, self.dialect)
         items = self._ranges_list(value.text)
         var = exp.column("_r0")
-        keys = self.order_keys(self.parsed(var, value.rtype))
+        keys = self.order_keys(self.parsed(var, value.rtype), filled=True)
         lambda_ = exp.Lambda(this=_call(row, *keys), expressions=[exp.to_identifier("_r0")])
         if self.dialect == "duckdb":
             return _call("list_transform", items, lambda_)
@@ -1163,17 +1428,15 @@ class _Rewrite:
         if left.literal is not None and right.literal is not None:
             fold_m = {"+": pg_range.mr_union, "*": pg_range.mr_intersect, "-": pg_range.mr_minus}
             return self.writer.literal_multirange(fold_m[operator](left.literal, right.literal))
-        if self.dialect != "duckdb":
-            raise SubtypeOperationRefused(left.rtype.multirange, operator, self.dialect)
-        verb = {"+": "union", "*": "intersect", "-": "minus"}[operator]
-        text = _call(
-            "provisa_multirange_op",
-            _string(verb),
-            _string(left.rtype.name),
-            left.text,
-            right.text,
-        )
-        return _M(left.rtype, _or(left.null, right.null), text)
+        w, rtype = self.writer, left.rtype
+        if operator == "+":
+            text = w.canonical(_concat(left.text, _string(","), right.text), rtype, operator)
+        elif operator == "*":
+            text = w.multirange_intersect(left.text, right.text, rtype, operator)
+        else:
+            rest = w.multirange_complement(right.text, rtype, operator)
+            text = w.multirange_intersect(left.text, rest, rtype, operator)
+        return _M(rtype, _or(left.null, right.null), text)
 
     def _both_multirange(self, value: _Value) -> _M:
         return value if isinstance(value, _M) else self.writer.of_range(value)
@@ -1205,10 +1468,16 @@ class _Rewrite:
             return self.writer.literal_multirange(literal)
         if len(parts) == 1:
             return self.writer.of_range(parts[0])
-        if self.dialect != "duckdb":
-            raise SubtypeOperationRefused(rtype.multirange, rtype.multirange, self.dialect)
-        items = exp.Array(expressions=[self.writer.text(p) for p in parts])
-        return _M(rtype, exp.false(), _call("provisa_multirange_of", _string(rtype.name), items))
+        pieces: list[exp.Expr] = []
+        for part in parts:
+            pieces += [*([_string(",")] if pieces else []), self.writer.text(part)]
+        null = self.writer.refusal(
+            _or(*(p.null for p in parts)),
+            "22004",
+            "multirange values cannot contain null members",
+            exp.false(),
+        )
+        return _M(rtype, null, self.writer.canonical(_concat(*pieces), rtype, rtype.multirange))
 
     # -- predicates ---------------------------------------------------------------------------
 
@@ -1543,10 +1812,18 @@ class _Rewrite:
         value = self.value(argument)
         if value is None:
             return exp.Anonymous(this=name, expressions=[self.rewritten(argument)])
-        if self.dialect != "duckdb":
-            raise SubtypeOperationRefused(value.rtype.multirange, name, self.dialect)
-        items = _call("LIST", self.writer.text(value))
-        return _call("provisa_" + name, _string(value.rtype.name), items)
+        w, rtype = self.writer, value.rtype
+        text = w.text(value)
+        joined = exp.GroupConcat(this=text.copy(), separator=_string(","))
+        if name == "range_agg":
+            folded = w.canonical(joined, rtype, name)
+        elif isinstance(value, _M):
+            folded = w.multirange_intersect_all(joined, rtype, name)
+        else:
+            folded = w.intersect_all(joined, rtype, name)
+        # No value at all is NULL, as a strict aggregate's result is.
+        nothing = _eq(exp.Count(this=text.copy()), _int(0))
+        return _case([(nothing, _null())], folded)
 
     def _unnest(self, node: exp.Expr) -> exp.Expr:
         argument = node.this if isinstance(node, exp.Explode) else node.expressions[0]

@@ -127,6 +127,7 @@ MULTIRANGE_RANGE = {
     "tstzmultirange": "tstzrange",
     "datemultirange": "daterange",
 }
+RANGE_MULTIRANGE = {range_name: name for name, range_name in MULTIRANGE_RANGE.items()}
 RANGE_OPERATORS = ("&&", "@>", "<@", "<<", ">>", "&<", "&>", "-|-")
 BOOLEAN_OPERATORS = (
     "&&",
@@ -174,6 +175,15 @@ def pair_statements() -> list[str]:
     return tests
 
 
+def constructed_statement(type_name: str) -> str:
+    """A multirange built from two columns: a NULL member is PostgreSQL's error, so none."""
+    multirange = RANGE_MULTIRANGE[type_name]
+    return (
+        f"SELECT a.i, b.i, {multirange}(a.v, b.v)::text AS r FROM s.t AS a CROSS JOIN s.t AS b "
+        "WHERE a.v IS NOT NULL AND b.v IS NOT NULL ORDER BY a.i, b.i"
+    )
+
+
 def value_statement(op: str, i: int, j: int) -> str:
     """A value operator over one pair of rows, a read each: a pair may raise PostgreSQL's error."""
     return f"SELECT (a.v {op} b.v)::text AS r FROM s.t AS a, s.t AS b WHERE a.i = {i} AND b.i = {j}"
@@ -187,6 +197,7 @@ def part_statements(type_name: str) -> list[str]:
     parts.append("SELECT i, multirange(v)::text AS r FROM s.t ORDER BY i")
     parts.append("SELECT range_agg(v)::text AS r FROM s.t")
     parts.append("SELECT range_intersect_agg(v)::text AS r FROM s.t WHERE i < 2")
+    parts.append(constructed_statement(type_name))
     first, second = SAMPLES[type_name][:2]
     parts.append(f"SELECT i FROM s.t WHERE v IN ('{first}', '{second}') ORDER BY i")
     parts.append(f"SELECT i FROM s.t WHERE v BETWEEN '{first}' AND '{second}' ORDER BY i")

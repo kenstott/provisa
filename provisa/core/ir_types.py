@@ -220,6 +220,12 @@ SUBTYPES: dict[str, Subtype] = {
 # subtype to its base, a PostGIS one through ST_AsText). Never a form other than the subtype's own
 # (no hex WKB for a geometry): a reader not named here cannot land the column.
 _LANDING: dict[str, dict[str, str]] = {
+    # A range or multirange reads as its PostgreSQL text.
+    **{
+        name: {"duckdb": "CAST({col} AS VARCHAR)", "trino": "CAST({col} AS VARCHAR)"}
+        for r in RANGE_TYPES.values()
+        for name in (r.name, r.multirange)
+    },
     "inet": {
         "duckdb": "CAST({col} AS VARCHAR)",
         "trino": "CAST({col} AS VARCHAR)",

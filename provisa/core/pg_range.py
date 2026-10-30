@@ -13,8 +13,8 @@ ENGINE; REQ-2167).
 
 The algorithms are src/backend/utils/adt/rangetypes.c's and multirangetypes.c's. A value is held
 in PostgreSQL's text form everywhere else; here it is read, so a literal in a statement is
-canonical and refused as PostgreSQL refuses it before any engine sees it, a statement of literals
-is answered where it is read, and DuckDB's multirange UDFs have their algorithm."""
+canonical and refused as PostgreSQL refuses it before any engine sees it, and a statement of
+literals is answered where it is read."""
 
 # Requirements: REQ-2171, REQ-2167
 

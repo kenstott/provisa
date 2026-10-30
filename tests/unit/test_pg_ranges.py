@@ -283,13 +283,38 @@ def test_a_multirange_of_literals_is_answered_where_the_statement_is_read(dialec
     assert "'{[1,5)}'" in written
 
 
-@pytest.mark.parametrize("dialect", ENGINE_DIALECTS)
-def test_a_multirange_built_from_columns_is_refused_by_name_without_a_sort_and_merge(dialect):
+@pytest.mark.parametrize(
+    ("dialect", "sort", "fold"),
+    [
+        ("duckdb", "LIST_SORT(", "LIST_REDUCE("),
+        ("trino", "ARRAY_SORT(", "REDUCE("),
+        ("athena", "ARRAY_SORT(", "REDUCE("),
+        ("clickhouse", "arraySort(", "arrayFold("),
+        ("databricks", "ARRAY_SORT(", "AGGREGATE("),
+        ("spark", "ARRAY_SORT(", "AGGREGATE("),
+    ],
+)
+def test_a_multirange_built_from_columns_is_sql_where_the_dialect_folds(dialect, sort, fold):
+    written = _written("SELECT a.m + a.m FROM s.t AS a", dialect).upper()
+    assert sort.upper() in written and fold.upper() in written
+    assert "PROVISA_" not in written  # no function of Provisa's: the engine computes it
+
+
+def test_snowflake_folds_a_multirange_but_cannot_sort_one():
+    assert "REDUCE(" in _written("SELECT a.m * a.m FROM s.t AS a", "snowflake")
+    assert "REDUCE(" in _written("SELECT a.m - a.m FROM s.t AS a", "snowflake")
+    with pytest.raises(SubtypeOperationRefused):
+        _written("SELECT a.m + a.m FROM s.t AS a", "snowflake")
+
+
+@pytest.mark.parametrize("dialect", ("bigquery", "tsql", "mysql"))
+@pytest.mark.parametrize("op", corpus.VALUE_OPERATORS)
+def test_a_multirange_built_from_columns_is_refused_by_name_without_a_fold(dialect, op):
     with pytest.raises(SubtypeOperationRefused) as refused:
-        _written("SELECT a.m + a.m FROM s.t AS a", dialect)
+        _written(f"SELECT a.m {op} a.m FROM s.t AS a", dialect)
     assert refused.value.params == {
         "subtype": "int4multirange",
-        "operation": "+",
+        "operation": op,
         "dialect": dialect,
     }
 
