@@ -4288,7 +4288,7 @@ JDBC driver that exposes registered tables and views as virtual tables. Connecti
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-`getTables()` returns registered tables and views visible to the authenticated role, by their registered names.
+`getTables()` returns registered tables and views visible to the authenticated role, by their registered names. (Amended 2026-10-29, VISIBILITY IS THE META DOMAIN'S:) Maintainer 2026-10-30: what a role sees in getTables() and the rest of the catalog is what the meta domain's rights show it. Rights limit the metadata view as they do everywhere, as gRPC's proto is the role's own. A client may be shown a table it cannot read, a relationship neighbour under meta's rights, and be refused when it reads it, as PostgreSQL refuses, with has_table_privilege answering false.
 
 **Use case:** getTables() returning registered tables/views lets BI tools discover governed datasets through standard JDBC metadata.
 
