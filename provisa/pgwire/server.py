@@ -246,6 +246,16 @@ def _parse_message_sql(payload: bytes) -> str:
     return payload[stmt_end + 1 : payload.index(0, stmt_end + 1)].decode("utf-8")
 
 
+def _with_spaced_placeholders(payload: bytes) -> bytes:
+    """A Parse message whose statement has every ``$N`` as sqlglot can read it."""
+    from provisa.pgwire.parameters import spaced_placeholders
+
+    stmt_end = payload.index(0)
+    sql_end = payload.index(0, stmt_end + 1)
+    sql = spaced_placeholders(payload[stmt_end + 1 : sql_end].decode("utf-8"))
+    return payload[: stmt_end + 1] + sql.encode("utf-8") + payload[sql_end:]
+
+
 def _refuse_bad_syntax(sql: str) -> None:
     """Refuse at Parse a statement the pipeline cannot parse. Only a statement it governs is
     checked: the catalog emulation answers its own statements (catalog.classify). DuckDB's parser
@@ -2389,6 +2399,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if ctx.has_error:
             return
         try:
+            payload = _with_spaced_placeholders(payload)
             _refuse_bad_syntax(_parse_message_sql(payload))
             super().handle_parse(ctx, payload)
         except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse

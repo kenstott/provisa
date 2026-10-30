@@ -100,6 +100,15 @@ _FLOWS = {
         "2",
         "00000002",
     ),
+    # $1,$2 with no space: no dollar quote, whose tag cannot start with a digit.
+    "uncast $1, IN with no space after its comma": (
+        "SELECT id FROM m WHERE label IN ($1,$2)",
+        [b"two", b"zzz"],
+        [_TEXT, _TEXT],
+        _INT4,
+        "2",
+        "00000002",
+    ),
     "uncast $1, IN on a text column": (
         "SELECT id FROM m WHERE label IN ($1, $2)",
         [b"two", b"zzz"],

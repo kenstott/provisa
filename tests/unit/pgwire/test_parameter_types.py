@@ -24,7 +24,7 @@ from buenavista.postgres import TYPE_OIDS
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.pgwire._pipeline import describe_pgwire_statement
-from provisa.pgwire.parameters import placeholder_oids, resolved_oids
+from provisa.pgwire.parameters import placeholder_oids, resolved_oids, spaced_placeholders
 from provisa.pgwire.server import _described_oid
 from tests.pgwire_describe_parity import registered_parameters
 from tests.role_state import with_surfaces
@@ -78,6 +78,27 @@ def _oids(sql: str) -> list[int]:
 )
 def test_an_uncast_parameter_is_the_type_it_meets(sql: str, oids: list[int]):
     assert _oids(sql) == oids
+
+
+@pytest.mark.parametrize(
+    ("sql", "spaced"),
+    [
+        ("SELECT $1,$2", "SELECT $1, $2"),
+        ("f($1,$2,$3)", "f($1, $2, $3)"),
+        ("SELECT $1, $2", "SELECT $1, $2"),
+        ("SELECT $1::int,$2::text", "SELECT $1::int, $2::text"),
+        ("SELECT a=$1", "SELECT a= $1"),
+        ("SELECT ($1)", "SELECT ($1)"),
+        ("SELECT $10", "SELECT $10"),
+        ("SELECT '$1,$2', a", "SELECT '$1,$2', a"),
+        ("SELECT 'it''s $1,$2'", "SELECT 'it''s $1,$2'"),
+        ('SELECT "$1,$2"', 'SELECT "$1,$2"'),
+        ("SELECT $$ $1,$2 $$", "SELECT $$ $1,$2 $$"),
+        ("SELECT $q$ $1,$2 $q$, $3", "SELECT $q$ $1,$2 $q$, $3"),
+    ],
+)
+def test_only_a_placeholder_is_spaced(sql: str, spaced: str):
+    assert spaced_placeholders(sql) == spaced
 
 
 def test_a_statement_with_no_placeholder_is_not_read():

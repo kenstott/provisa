@@ -39,6 +39,23 @@ _VARCHAR_OID = 1043
 _LITERAL = re.compile(r"'(?:[^']|'')*'")
 
 
+#: What ``spaced_placeholders`` reads past, then a ``$N`` with a character straight before it.
+_JOINED_PLACEHOLDER = re.compile(
+    r"""'(?:[^']|'')*'|"(?:[^"]|"")*"|\$(?P<tag>[A-Za-z_]\w*)?\$.*?\$(?P=tag)?\$|(?<=[^\s(])\$\d+""",
+    re.DOTALL,
+)
+
+
+def spaced_placeholders(sql: str) -> str:
+    """``sql`` with a space before each ``$N`` a character is joined to. sqlglot reads ``$1,$`` as
+    the start of a dollar quote, whose tag PostgreSQL does not let start with a digit. A string, a
+    quoted name and a dollar quote are left as written."""
+    return _JOINED_PLACEHOLDER.sub(
+        lambda m: f" {m[0]}" if m[0][1:].isdigit() else m[0],
+        sql,
+    )
+
+
 def placeholder_oids(sql: str) -> list[int]:
     """The type oid of each placeholder ``$1`` .. ``$n`` of ``sql`` (none when it has none)."""
     sql = _LITERAL.sub("''", sql)
