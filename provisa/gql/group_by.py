@@ -104,10 +104,25 @@ class GroupByMixin:  # REQ-653
     def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         if not any(_has_aggregate(item.expression) for item in items):
             return []
-        return [
-            group_key
-            for item in items
-            if not _has_aggregate(item.expression)
-            for key in _group_keys(item.expression)
-            for group_key in self._group_by_exprs_for_item(key)
-        ]
+        # A node the WITH carries beside another goes on as its columns (_carried_columns), not
+        # its row: it groups by those same columns, as a star is no grouping key.
+        split = self._carried_columns(items)
+        var_table = getattr(self, "_var_table", {})
+        keys: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for item in items:
+            expr = item.expression
+            if _has_aggregate(expr):
+                continue
+            if isinstance(expr, Variable) and (item.alias or expr.name) in split:
+                held_in = var_table[expr.name][0]
+                keys.extend(
+                    exp.column(c, table=held_in, quoted=True)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    for c in split[item.alias or expr.name]
+                )
+                continue
+            for key in _group_keys(expr):
+                keys.extend(self._group_by_exprs_for_item(key))
+        return keys
+
+    def _carried_columns(self, items: list[ReturnItem]) -> dict[str, list[str]]:
+        raise NotImplementedError

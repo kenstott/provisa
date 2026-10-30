@@ -15,14 +15,13 @@
 // checker's or profile run's results, read in their own domains as the same user.
 
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ActionIcon, Alert, Badge, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
-  CircleHelp,
   FileJson,
   Globe,
   ListChecks,
@@ -41,14 +40,13 @@ import type { DescribeColumn } from "../../components/lineage/column-description
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
-import { ContractView } from "./ContractView";
-import type { OdcsContract } from "../../api/dataProductContracts";
+import { ProductContracts } from "./ProductContracts";
+import { DetailCard, Empty, Muted } from "./DetailCard";
 import { ClampedDetail } from "./ClampedDetail";
 import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
-  coreContracts,
   coreGraph,
   modelName,
   type CoreEdge,
@@ -128,10 +126,9 @@ interface DataProductDetailPanelProps {
   // lineage endpoint) -- rendered with the same LineageDag component the Lineage page uses
   // (REQ-1161/1627). Any reader of the product sees it.
   lineageGraph: ProductLineage | null;
-  // REQ-2158, REQ-2118: each output port's ODCS contract, declared and derived, by its member's
-  // address (source.schema.table); null while it is read. odcsError: why it could not be read.
-  odcs: Record<string, OdcsContract> | null;
-  odcsError: string;
+  // REQ-2158: bumped when the product's members can have changed (a save, a retirement): each open
+  // contract row reads its contract again.
+  contractsVersion: number;
   // REQ-1667: the member relations the DAG's swimlanes are built around (lane 0).
   lineageMembers?: ReadonlySet<string>;
   // A field's registered description for the lineage hover, over every table (not just members).
@@ -153,88 +150,6 @@ interface DataProductDetailPanelProps {
   statusActions: DataProductStatus;
 }
 
-// A card in the masonry: kept whole within its column.
-const CARD_IN_COLUMN: React.CSSProperties = {
-  breakInside: "avoid",
-  minWidth: 0,
-  marginBottom: "var(--mantine-spacing-sm)",
-};
-// A card's content stays inside the card: long words wrap, and what cannot wrap (a table's
-// columns) scrolls within it.
-const CARD_BODY: React.CSSProperties = { minWidth: 0, overflowX: "auto", overflowWrap: "anywhere" };
-
-/** One card of the panel: the application's collapsible (one look, its open or closed state
- * remembered per section), headed by its label and, behind (?), what it holds. ``wide`` spans the
- * panel's width, outside the columns. */
-function DetailCard({
-  section,
-  label,
-  hint,
-  testId,
-  tourId,
-  wide = false,
-  children,
-}: {
-  section: string;
-  label: string;
-  hint?: string;
-  testId: string;
-  tourId?: string;
-  wide?: boolean;
-  children: React.ReactNode;
-}) {
-  const heading = (
-    <Group gap="xs" wrap="nowrap" component="span">
-      <span>{label}</span>
-      {hint && (
-        <Tip text={hint}>
-          <ActionIcon
-            component="span"
-            variant="subtle"
-            color="gray"
-            size="xs"
-            role="button"
-            tabIndex={0}
-            aria-label={hint}
-            data-testid={`${testId}-hint`}
-            // The icon sits in the heading; using it must not also open or close the card.
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <CircleHelp size={14} aria-hidden />
-          </ActionIcon>
-        </Tip>
-      )}
-    </Group>
-  );
-  return (
-    <div style={wide ? undefined : CARD_IN_COLUMN} data-tour={tourId} data-testid={testId}>
-      <Collapsibles id={`data-product.${section}`}>
-        <CollapsibleItem value={section} title={heading} controlTestId={`${testId}-toggle`}>
-          <div style={CARD_BODY}>{children}</div>
-        </CollapsibleItem>
-      </Collapsibles>
-    </div>
-  );
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <Text size="sm" c="var(--text-muted)">
-      {text}
-    </Text>
-  );
-}
-
-function Muted({ children }: { children: React.ReactNode }) {
-  return (
-    <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-      {" "}
-      {children}
-    </Text>
-  );
-}
-
 function relatedLabel(e: CoreEdge): string {
   return e.target_table ? modelName(e.target_table) : String(e.target_table_id);
 }
@@ -252,8 +167,7 @@ export function DataProductDetailPanel({
   lineageLoading,
   lineageError,
   lineageGraph,
-  odcs,
-  odcsError,
+  contractsVersion,
   lineageMembers,
   describeColumn,
   relationLabel,
@@ -354,7 +268,6 @@ export function DataProductDetailPanel({
   // REQ-2160: the owner sees every row; any other reader the product's promises.
   const shownDqRows: readonly (typeof DQ_ROWS)[number][] = owner ? DQ_ROWS : ["promises"];
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
-  const contracts = coreContracts(core); // REQ-2158
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
@@ -605,36 +518,6 @@ export function DataProductDetailPanel({
                   </List.Item>
                 ))}
               </List>
-            )}
-          </DetailCard>
-        )}
-        {contracts.length > 0 && (
-          <DetailCard
-            section="contracts"
-            testId={`data-product-card-contracts-${p.id}`}
-            label={t("dataProductsTab.contract.label")}
-            hint={t("dataProductsTab.contract.hint")}
-          >
-            {odcsError ? (
-              <Alert color="red" data-testid={`data-product-contracts-error-${p.id}`}>
-                {t("dataProductsTab.contract.loadError", { error: odcsError })}
-              </Alert>
-            ) : odcs === null ? (
-              <Loader size="sm" data-testid={`data-product-contracts-loading-${p.id}`} />
-            ) : (
-              <Stack gap="md">
-                {contracts.map((c) => {
-                  const member = `${c.sourceId}.${c.schemaName}.${c.tableName}`;
-                  const document = odcs[member];
-                  return document ? (
-                    <ContractView key={c.tableId} contract={document} tableId={c.tableId} />
-                  ) : (
-                    <Alert key={c.tableId} color="red" data-testid={`data-contract-${c.tableId}`}>
-                      {t("dataProductsTab.contract.notExported", { member })}
-                    </Alert>
-                  );
-                })}
-              </Stack>
             )}
           </DetailCard>
         )}
@@ -1056,6 +939,15 @@ export function DataProductDetailPanel({
           </CollapsibleItem>
         </Collapsibles>
       </div>
+      {/* REQ-2158: the product's contracts, one row per output port's contract, beneath its
+          lineage; a row opens to that contract's cards and reads it then. */}
+      <ProductContracts
+        productId={p.id}
+        core={core}
+        lineage={lineageGraph}
+        owner={owner}
+        version={contractsVersion}
+      />
       {lifecycle.dialogs}
       {(canEdit || canDelete) && (
         <Group gap="xs" mt={4}>

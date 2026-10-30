@@ -20,6 +20,7 @@ export function ErdModal({
   relationships,
   domains,
   checkedDomains,
+  focusTableId,
   onClose,
 }: ErdModalProps) {
   const colorScheme = useComputedColorScheme("dark");
@@ -55,6 +56,7 @@ export function ErdModal({
         relationships={relationships}
         domains={domains}
         checkedDomains={checkedDomains}
+        focusTableId={focusTableId}
         onClose={onClose}
       />
     </Modal>

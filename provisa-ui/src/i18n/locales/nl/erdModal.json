@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "Entiteit-relatiediagram",
+    "tableNotFound": "Er staat geen tabel met id {{id}} in het ERD.",
     "domains": "Domeinen",
     "domainsTooltip": "Domeinen tonen / verbergen",
     "columnDetailLabel": "Kolomdetail",

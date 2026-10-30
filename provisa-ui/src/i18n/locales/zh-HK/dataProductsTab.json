@@ -187,6 +187,28 @@
       "slaRemove": "移除服務級別",
       "slaAdd": "新增服務級別",
       "notDeclared": "未聲明",
+      "breakingWarning": "v{{version}} 中有破壞性變更，尚未生效",
+      "breaking": "破壞性",
+      "savedBy": "由 {{who}} 於 {{when}} 儲存",
+      "savedBySystem": "系統",
+      "noChanges": "第一個版本：沒有可比較的內容",
+      "change": {
+        "field_added": "已新增欄位 {{subject}}，{{after}}",
+        "field_removed": "已移除欄位 {{subject}}，原為 {{before}}",
+        "field_renamed": "欄位 {{subject}} 已重新命名為 {{after}}",
+        "field_type_changed": "欄位 {{subject}} 已由 {{before}} 改為 {{after}}",
+        "field_required": "欄位 {{subject}} 已設為必填",
+        "field_optional": "欄位 {{subject}} 不再必填",
+        "field_described": "欄位 {{subject}} 的描述已更改",
+        "sla_added": "已新增服務級別 {{subject}}，{{after}}",
+        "sla_removed": "已移除服務級別 {{subject}}，原為 {{before}}",
+        "sla_changed": "服務級別 {{subject}} 已由 {{before}} 改為 {{after}}",
+        "check_added": "已新增質素檢查 {{subject}}",
+        "check_removed": "已移除質素檢查 {{subject}}",
+        "check_changed": "質素檢查 {{subject}} 已更改",
+        "description_changed": "描述已更改",
+        "terms_changed": "條款已更改：{{subject}}"
+      },
       "loadError": "無法讀取契約：{{error}}",
       "notExported": "{{member}} 沒有已匯出的契約",
       "section": {
@@ -214,6 +236,23 @@
         "customProperties_other": "{{count}} 個自訂屬性",
         "tags_one": "{{count}} 個標籤",
         "tags_other": "{{count}} 個標籤"
+      },
+      "empty": "此產品沒有附數據契約的輸出埠。",
+      "consumers_one": "{{count}} 個消費方",
+      "consumers_other": "{{count}} 個消費方",
+      "freshness": "{{seconds}} 秒內保持新鮮",
+      "loadedOnce": "只載入一次，從不刷新",
+      "noSla": "未聲明服務水平",
+      "checkedAt": "檢查於 {{when}}",
+      "neverChecked": "從未檢查",
+      "draftWarning": "草稿：尚未生效",
+      "card": {
+        "details": "詳情",
+        "fields": "承諾的欄位",
+        "sla": "SLA 與新鮮度",
+        "quality": "質素承諾",
+        "consumers": "消費方",
+        "versions": "版本與變更"
       }
     }
   }

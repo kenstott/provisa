@@ -149,7 +149,7 @@ async def _axioms(control_plane) -> set[tuple]:
                 await conn.execute_core(
                     text(
                         "SELECT subject, predicate, object, object_iri, object_literal "
-                        "FROM _axioms_ontology"
+                        "FROM _axioms_ontology WHERE object_table_id IS NULL"
                     )
                 )
             ).fetchall()
@@ -288,7 +288,7 @@ async def test_the_repository_reads_the_axioms_the_view_states(control_plane):
                 await conn.execute_core(
                     text(
                         "SELECT subject_term_id, predicate, object_term_id, object_iri, "
-                        "object_literal FROM _axioms_ontology"
+                        "object_literal FROM _axioms_ontology WHERE object_table_id IS NULL"
                     )
                 )
             ).fetchall()
@@ -344,3 +344,21 @@ def test_an_edge_into_a_table_sql_alone_serves_is_no_relationship_of_the_graph()
     assert any(
         sparql.nodes[r.source_label].table_name == "_axioms" for r in sparql.relationships.values()
     )
+
+
+@pytest.mark.asyncio
+async def test_a_property_is_also_the_domain_of_each_table_class_whose_column_binds_it(
+    control_plane,
+):
+    """REQ-2163: one rdfs:domain row per (Property term, table a column of binds it), naming the
+    table; SPARQL answers it as the table's class IRI."""
+    rows = await _rows(
+        control_plane,
+        "SELECT subject, predicate, object_table_id FROM _axioms_ontology "
+        "WHERE object_table_id IS NOT NULL",
+    )
+    assert rows == {
+        ("segment", f"{RDFS}domain", 21),
+        ("customer", f"{RDFS}domain", 22),
+        ("order total", f"{RDFS}domain", 22),
+    }

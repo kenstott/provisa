@@ -37,8 +37,14 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.gql.expr_ast import CypherExpr, FunctionCall, Variable, walk
-from provisa.gql.ir import MatchClause, NodePattern, PathFunction, RelPattern
-from provisa.gql.label_map import GRAPH_ID, CypherLabelMap, NodeMapping, SessionWalk
+from provisa.gql.ir import MatchClause, NodePattern, PathFunction, PathPattern, RelPattern
+from provisa.gql.label_map import (
+    GRAPH_ID,
+    LABELS_COLUMN,
+    CypherLabelMap,
+    NodeMapping,
+    SessionWalk,
+)
 
 UNLABELLED_ENDS = "shortestPath/allShortestPaths require labeled source and target nodes"
 
@@ -73,9 +79,12 @@ def _hops(
     types: list[str] | None,
     undirected: bool,
     objects: tuple[exp.Expression, exp.Expression] | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    *,
+    backward: bool = False,
 ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Each step a walk may take, ``(rel_id, a, b)`` from ``a`` to ``b``: a relationship of one
-    of ``types`` (any, for None) its own way, and the other way too when ``undirected`` (a
+    of ``types`` (any, for None) its own way (from its end to its start, ``backward``), and the
+    other way too when ``undirected`` (a
     relationship to its own start once). With ``objects`` (the relations of the session's node
     objects and of its relationships' properties, _node_objects and _rel_properties), each step
     also carries what the walk's trail is made of: the relationship as an answer gives it
@@ -102,7 +111,7 @@ def _hops(
 
     forward = way("from_id", "to_id")
     if not undirected:
-        return forward
+        return way("to_id", "from_id") if backward else forward
     back = way("to_id", "from_id").where(
         exp.NEQ(this=_col("from_id", "_r"), expression=_col("to_id", "_r"))
     )
@@ -168,7 +177,7 @@ def _with_objects(
     )
 
 
-def _node_object(nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+def _node_object(walk: SessionWalk, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """A row of ``nm``'s relation as an answer gives the node: its identity, label and
     properties, each of its own type."""
     from provisa.gql.select_builder import node_identity
@@ -189,7 +198,31 @@ def _node_object(nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPr
             exp.Literal.string(nm.table_label),
             exp.Literal.string("properties"),
             exp.Anonymous(this="JSON_OBJECT", expressions=props),
+            # Its every label, which a label test or labels() of a hop's node held as this value
+            # reads in the statement (expr_context._session_labels); the answer's own come from
+            # ephemeral.seam.answered.
+            exp.Literal.string("labels"),
+            _labels_of(nm),
+            # Its graph identity, which a walk from it reads (_walk_end).
+            exp.Literal.string("graphId"),
+            graph_identity(walk, nm, None),
         ],
+    )
+
+
+_TEXT_LIST = exp.DataType.build("VARCHAR[]", dialect="postgres")
+
+
+def _labels_of(nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The labels of a row of ``nm``'s relation, every one: a graph session's node's own column,
+    a model node's one label."""
+    from provisa.gql.select_builder import node_labels
+
+    held = node_labels(None, nm)
+    if held is not None:
+        return held
+    return exp.Cast(
+        this=exp.Array(expressions=[exp.Literal.string(nm.label)]), to=_TEXT_LIST.copy()
     )
 
 
@@ -238,6 +271,42 @@ def reads_trail(statement: object, var: str) -> bool:
     return refs > lengths
 
 
+def _distinct(
+    mine: tuple[str, exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    other: tuple[str, exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """That two hops of a pattern take no relationship in common (openCypher's relationship
+    uniqueness): each an edge's id or a walk's trail of ``|id|`` (_translate_session_chain)."""
+    (kind, value), (other_kind, other_value) = mine, other
+    if kind == "edge" and other_kind == "edge":
+        return exp.NEQ(this=value.copy(), expression=other_value.copy())
+    if kind == "edge" or other_kind == "edge":
+        edge, trail = (value, other_value) if kind == "edge" else (other_value, value)
+        return exp.EQ(
+            this=exp.StrPosition(this=trail.copy(), substr=_bar(edge.copy())),
+            expression=exp.Literal.number(0),
+        )
+    # Two trails: no id of one is in the other.
+    item = exp.to_identifier("_id")
+    shared = exp.and_(
+        exp.NEQ(this=exp.column(item.copy()), expression=exp.Literal.string("")),
+        exp.GT(
+            this=exp.StrPosition(this=other_value.copy(), substr=_bar(exp.column(item.copy()))),
+            expression=exp.Literal.number(0),
+        ),
+    )
+    found = exp.Anonymous(
+        this="list_filter",
+        expressions=[
+            exp.Anonymous(this="string_split", expressions=[value.copy(), exp.Literal.string("|")]),
+            exp.Lambda(this=shared, expressions=[item]),
+        ],
+    )
+    return exp.EQ(
+        this=exp.Anonymous(this="len", expressions=[found]), expression=exp.Literal.number(0)
+    )
+
+
 class SessionWalkMixin:  # REQ-348
     """Mixin for _Translator: a path function with an unlabelled end, walked over the session's
     relationships."""
@@ -255,6 +324,19 @@ class SessionWalkMixin:  # REQ-348
     _ast: Any  # the statement translated (gql.ir.CypherAST)
     # path or relationship variable -> its walk's (nodes, relationships) lists, as RETURN names them
     _walk_trails: dict
+    _all_rels_ends: dict
+    _all_rels_mappings: list
+    _all_rels_node_vars: set
+    _all_rels_var_alias: dict
+
+    def _is_held_value(self, node: NodePattern) -> bool:
+        """Whether ``node`` is one a hop of the pattern holds as its value, of no one table."""
+        var = node.variable
+        return bool(
+            var
+            and var in self._all_rels_node_vars
+            and self._var_table.get(var, (None, None))[1] is None
+        )
 
     def _walk_end(
         self, node: NodePattern, alias: str, walk: SessionWalk, CypherTranslateError: type
@@ -264,6 +346,15 @@ class SessionWalkMixin:  # REQ-348
         from provisa.gql.translator_helpers import _node_table_expr
 
         var = node.variable
+        if self._is_held_value(node):
+            # A node a hop of the pattern holds as its value (_build_session_hop): its graph
+            # identity, which the node carries.
+            assert var is not None
+            held = exp.column(var, table=self._all_rels_var_alias.get(var))
+            graph_id = exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR", expressions=[held, exp.Literal.string("$.graphId")]
+            )
+            return exp.Subquery(this=exp.select(exp.Literal.number(1))), graph_id
         if var:
             self._register_node(node)  # type: ignore[attr-defined]
             nm = self._var_table[var][1]
@@ -286,13 +377,13 @@ class SessionWalkMixin:  # REQ-348
     def _walks_model_hops(self, walk: SessionWalk, rel: RelPattern | None) -> bool:
         """Whether the model's relationships could take a hop of the walk: on the model graph each
         is its own table, which a walk from no placed end would read as a union of them all."""
-        wanted = {t.upper() for t in rel.types} if rel and rel.types else None
+        wanted = set(rel.types) if rel and rel.types else None
         for r in self._lm.relationships.values():
             if r.via is not None and r.via.catalog_name == walk.catalog_name:
                 continue
             if r.constant_source and wanted is None:
                 continue
-            if wanted is None or r.rel_type.upper() in wanted:
+            if wanted is None or r.rel_type in wanted:
                 return True
         return False
 
@@ -334,7 +425,8 @@ class SessionWalkMixin:  # REQ-348
                     exp.alias_(exp.Literal.string(nm.label), "__label"),
                     exp.alias_(node_identity(None, nm), "__id"),
                     exp.alias_(graph_identity(walk, nm, None), GRAPH_ID),
-                    exp.alias_(_node_object(nm), _NODE_OBJECT),
+                    exp.alias_(_node_object(walk, nm), _NODE_OBJECT),
+                    exp.alias_(_labels_of(nm), LABELS_COLUMN),
                 ).from_(exp.alias_(table, f"_{nm.type_name.lower()}"))
             )
         if not arms:
@@ -348,6 +440,7 @@ class SessionWalkMixin:  # REQ-348
                     exp.alias_(
                         exp.Cast(this=exp.null(), to=exp.DataType.build("JSON")), _NODE_OBJECT
                     ),
+                    exp.alias_(exp.Cast(this=exp.null(), to=_TEXT_LIST.copy()), LABELS_COLUMN),
                 ).where(exp.false())
             )
         union: exp.Expression = arms[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -358,13 +451,13 @@ class SessionWalkMixin:  # REQ-348
     def _rel_properties(self, walk: SessionWalk, types: list[str] | None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Each session relationship of one of ``types`` (any, for None) and its properties, as
         one JSON value: read from its type's relation, as a relationship matched alone is."""
-        wanted = {t.upper() for t in types} if types is not None else None
+        wanted = set(types) if types is not None else None
         held: dict[str, exp.Select] = {}
         for r in self._lm.relationships.values():
             via = r.via
             if via is None or via.catalog_name != walk.catalog_name or via.table_name in held:
                 continue
-            if wanted is not None and r.rel_type.upper() not in wanted:
+            if wanted is not None and r.rel_type not in wanted:
                 continue
             # The overlay names every session relationship by its id (ephemeral.read.overlay).
             assert via.identity_column is not None, via.table_name
@@ -397,6 +490,347 @@ class SessionWalkMixin:  # REQ-348
             union = exp.Union(this=union, expression=arm, distinct=False)
         return exp.Subquery(this=union)
 
+    def _session_hop_ends(self, type_name: str | None, domain: str | None) -> list[str]:
+        """The labels a session hop's end may be read by: its type's, its domain's, or any."""
+        from provisa.gql.translator_union import union_labels
+
+        if type_name is not None:
+            return [type_name]
+        return union_labels(self._lm, domain if domain else "__all__")
+
+    def _session_end_filter(
+        self, alias: str, type_name: str | None, domain: str | None
+    ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The condition a session hop's end ``alias`` (a row of _node_objects) meets: every
+        label of its type (a label set's every one, label_map.node_of_all), or one of its
+        domain's types' labels; None for any node."""
+        if type_name is not None:
+            labels = self._lm.label_sets.get(type_name) or (self._lm.nodes[type_name].label,)
+            if labels == ("",):
+                # The session's nodes with no label (read.overlay's "" and then.UNLABELED).
+                return exp.EQ(
+                    this=exp.Anonymous(
+                        this="cardinality", expressions=[_col(LABELS_COLUMN, alias)]
+                    ),
+                    expression=exp.Literal.number(0),
+                )
+            return exp.ArrayContainsAll(
+                this=_col(LABELS_COLUMN, alias),
+                expression=exp.Array(expressions=[exp.Literal.string(x) for x in labels]),
+            )
+        if domain:
+            named = sorted({self._lm.nodes[t].label for t in self._session_hop_ends(None, domain)})
+            return exp.In(
+                this=_col("__label", alias), expressions=[exp.Literal.string(x) for x in named]
+            )
+        return None
+
+    def _build_session_hop(  # complexity-gate: allow-cc=14 reason="one hop's ends, direction and columns, each a short branch of its one select"
+        self,
+        src_col: str,
+        rel_col: str,
+        tgt_col: str,
+        *,
+        types: list[str] | None,
+        src_type: str | None,
+        tgt_type: str | None,
+        src_domain: str | None,
+        tgt_domain: str | None,
+        alias: str,
+        undirected: bool,
+        loop: bool,
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """One hop of a graph session's pattern read from its one relationships relation (REQ-348,
+        REQ-2176): every relationship of one of ``types`` (any, for None), its own way and, where
+        ``undirected``, the other way too, each end a node of the session or of the model it
+        ends at, carrying all of its labels and properties. The columns are those of a read of
+        every relationship (translator_union._build_all_rels_union): each end's node, the edge,
+        and the edge's own properties, under the hop's ``alias``. ``loop``: a relationship from
+        a node to itself."""
+        from provisa.gql.translator_helpers import edge_properties_column
+
+        walk = self._lm.session_walk
+        assert walk is not None
+        relation = exp.Table(
+            this=exp.Identifier(this=walk.table_name, quoted=True),
+            db=exp.Identifier(this=walk.schema_name, quoted=True),
+            catalog=exp.Identifier(this=walk.catalog_name, quoted=True),
+        )
+
+        def way(near: str, far: str, forward: bool) -> exp.Select:
+            step = exp.select(
+                _col("rel_id", "_r"),
+                _col("type", "_r"),
+                exp.alias_(_col(near, "_r"), "__near", quoted=True),
+                exp.alias_(_col(far, "_r"), "__far", quoted=True),
+                exp.alias_(exp.true() if forward else exp.false(), "__fwd", quoted=True),
+            ).from_(exp.alias_(relation.copy(), "_r"))
+            if types is not None:
+                # Types are case-sensitive (openCypher): T2 and t2 are two types.
+                wanted = sorted(set(types))
+                step = step.where(
+                    exp.In(
+                        this=_col("type", "_r"),
+                        expressions=[exp.Literal.string(t) for t in wanted],
+                    )
+                )
+            return step
+
+        steps: exp.Expression = way("from_id", "to_id", True)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if undirected and not loop:
+            # The other way too, a relationship to its own start once.
+            back = way("to_id", "from_id", False).where(
+                exp.NEQ(this=_col("from_id", "_r"), expression=_col("to_id", "_r"))
+            )
+            steps = exp.Union(this=steps, expression=back, distinct=False)
+        h, ns, nt, p = "_h", "_hs", "_ht", "_hp"
+        # Each end is a node of the session or of a model label a session relationship ends at
+        # (_node_objects with no further label): a hop takes a session relationship, which ends
+        # at no other node, and a model label read on both ends with nothing relating them is
+        # refused (V002).
+        src_json, tgt_json = _col(_NODE_OBJECT, ns), _col(_NODE_OBJECT, nt)
+        # The edge's own start and end, whichever way the hop reads it.
+        start = exp.Case(
+            ifs=[exp.If(this=_col("__fwd", h), true=src_json.copy())], default=tgt_json.copy()
+        )
+        end = exp.Case(
+            ifs=[exp.If(this=_col("__fwd", h), true=tgt_json.copy())], default=src_json.copy()
+        )
+        # And its ends' graph identities, as an edge read by its type names them (identity,
+        # start, end: select_builder._build_edge_object), which a DELETE of it reads.
+        start_id = exp.Case(
+            ifs=[exp.If(this=_col("__fwd", h), true=_col(GRAPH_ID, ns))], default=_col(GRAPH_ID, nt)
+        )
+        end_id = exp.Case(
+            ifs=[exp.If(this=_col("__fwd", h), true=_col(GRAPH_ID, nt))], default=_col(GRAPH_ID, ns)
+        )
+        edge = exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("id"),
+                _col("rel_id", h),
+                exp.Literal.string("identity"),
+                _col("rel_id", h),
+                exp.Literal.string("start"),
+                start_id,
+                exp.Literal.string("end"),
+                end_id,
+                exp.Literal.string("type"),
+                _col("type", h),
+                exp.Literal.string("startNode"),
+                start,
+                exp.Literal.string("endNode"),
+                end,
+                exp.Literal.string("properties"),
+                _col(_PROPS, p),
+            ],
+        )
+        select = (
+            exp.select(
+                exp.alias_(src_json, src_col),
+                exp.alias_(edge, rel_col),
+                exp.alias_(tgt_json.copy(), tgt_col),
+                exp.alias_(_col(_PROPS, p), edge_properties_column(rel_col)),
+            )
+            .from_(exp.alias_(exp.Subquery(this=steps), h))
+            .join(
+                exp.alias_(self._node_objects(walk, set()), ns),
+                on=exp.EQ(this=_col(GRAPH_ID, ns), expression=_col("__near", h)),
+                join_type="INNER",
+            )
+            .join(
+                exp.alias_(self._node_objects(walk, set()), nt),
+                on=exp.EQ(this=_col(GRAPH_ID, nt), expression=_col("__far", h)),
+                join_type="INNER",
+            )
+            .join(
+                exp.alias_(self._rel_properties(walk, types), p),
+                on=exp.EQ(this=_col("rel_id", p), expression=_col("rel_id", h)),
+                join_type="INNER",
+            )
+        )
+        conditions = [
+            c
+            for c in (
+                self._session_end_filter(ns, src_type, src_domain),
+                self._session_end_filter(nt, tgt_type, tgt_domain),
+                exp.EQ(this=_col("__near", h), expression=_col("__far", h)) if loop else None,
+            )
+            if c is not None
+        ]
+        if conditions:
+            select = select.where(exp.and_(*conditions))
+        # What a property read of each end or of the edge takes its one type from.
+        self._all_rels_ends.setdefault(src_col, []).extend(
+            self._session_hop_ends(src_type, src_domain)
+        )
+        self._all_rels_ends.setdefault(tgt_col, []).extend(
+            self._session_hop_ends(tgt_type, tgt_domain)
+        )
+        wanted = set(types) if types is not None else None
+        self._all_rels_mappings.extend(
+            r
+            for r in self._lm.relationships.values()
+            if r.via is not None
+            and r.via.catalog_name == walk.catalog_name
+            and (wanted is None or r.rel_type in wanted)
+        )
+        return exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier(alias)))
+
+    def _session_chain(self, rels: list[RelPattern]) -> bool:
+        """Whether a pattern of several relationships, a variable-length one among them, is read
+        hop by hop over a graph session's relationships (_translate_session_chain): in a session,
+        where no relationship of the model could take any of its hops."""
+        walk = self._lm.session_walk
+        return (
+            walk is not None
+            and len(rels) > 1
+            and any(r.variable_length for r in rels)
+            and all(r.path is None and not self._walks_model_hops(walk, r) for r in rels)
+        )
+
+    def _translate_session_chain(  # complexity-gate: allow-cc=16 reason="each hop a walk or one relationship, each a short branch joined in turn"
+        self,
+        clause: MatchClause,
+        nodes: list[NodePattern],
+        rels: list[RelPattern],
+        joined: set[str],
+        from_expr: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        own_first: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+        clause_index: int,
+        CypherTranslateError: type,
+    ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """A graph session's pattern of several relationships, variable-length ones among them
+        (REQ-348, REQ-2176), read hop by hop from its first node: a variable-length hop a walk
+        from the node the pattern has reached (_translate_session_walk), any other one hop read
+        from the relationships relation (_build_session_hop). No relationship is matched twice in
+        the pattern. Its path is every node and relationship of its hops, in order. Returns the
+        statement's FROM."""
+        walk = self._lm.session_walk
+        assert walk is not None
+        self._chain_count = getattr(self, "_chain_count", 0) + 1
+        n = self._chain_count
+        # Every node of the pattern named, so a later hop goes on from the one an earlier reached.
+        nodes = [
+            node if node.variable else dataclasses.replace(node, variable=f"__c{n}_{i}")
+            for i, node in enumerate(nodes)
+        ]
+        held = set(joined)
+        # Each hop's (nodes, relationships) lists, in pattern order, and what its relationships
+        # are told apart by: an edge's id, or a walk's trail.
+        segments: list[tuple[exp.Expression, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        taken: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for i, rel in enumerate(rels):
+            src, tgt = nodes[i], nodes[i + 1]
+            name = f"__c{n}_p{i}"
+            replaced = i == 0 and (from_expr is None or from_expr is own_first)
+            if rel.variable_length:
+                hop = MatchClause(
+                    pattern=PathFunction(
+                        func_name="allpaths", pattern=PathPattern(nodes=[src, tgt], rels=[rel])
+                    ),
+                    variable=name,
+                    optional=clause.optional,
+                )
+                assert isinstance(hop.pattern, PathFunction)
+                alias = f"_cw{n}_{i}"
+                src_from, walked = self._translate_session_walk(
+                    hop,
+                    hop.pattern,
+                    src,
+                    tgt,
+                    rel,
+                    walk,
+                    held,
+                    CypherTranslateError,
+                    alias=alias,
+                    backward=rel.direction == "left",
+                    trail=True,
+                )
+                self._path_vars.pop(name, None)
+                trail = self._walk_trails.pop(name)
+                if replaced:
+                    from_expr = src_from
+                elif src.variable not in held:
+                    joins.append({"table": src_from, "on": None, "join_type": "CROSS"})
+                mine = ("trail", _col("trail", alias))
+                distinct = [_distinct(mine, other) for other in taken]
+                if distinct:
+                    walked[0]["on"] = exp.and_(walked[0]["on"], *distinct)
+                joins.extend(walked)
+                segments.append(trail)
+            else:
+                part = dataclasses.replace(clause, variable=name)
+                count = len(joins)
+                start = self._every_rel_hop(  # type: ignore[attr-defined]
+                    rel,
+                    src,
+                    tgt,
+                    part,
+                    clause_index,
+                    from_expr,
+                    joins,
+                    held_source=src.variable in held,
+                    held_target=tgt.variable in held,
+                    replaceable=replaced,
+                    src_nm=self._named_type(src),  # type: ignore[attr-defined]
+                    tgt_nm=self._named_type(tgt),  # type: ignore[attr-defined]
+                )
+                ((first, edge, last),) = self._every_rel_paths.pop(name)  # type: ignore[attr-defined]
+                table = self._all_rels_var_alias[edge]
+                values = [exp.column(c, table=table) for c in (first, edge, last)]
+                mine = (
+                    "edge",
+                    exp.Anonymous(
+                        this="JSON_EXTRACT_SCALAR",
+                        expressions=[values[1], exp.Literal.string("$.id")],
+                    ),
+                )
+                distinct = [_distinct(mine, other) for other in taken if other[0] == "trail"]
+                if distinct:
+                    if replaced:
+                        self._held_end_conditions.extend(distinct)  # type: ignore[attr-defined]
+                    else:
+                        assert len(joins) == count + 1, "one hop is one join"
+                        joins[-1]["on"] = exp.and_(joins[-1]["on"] or exp.true(), *distinct)
+                from_expr = start
+                segments.append(
+                    (_json_list([values[0], values[2]]), _json_list([values[1].copy()]))
+                )
+            taken.append(mine)
+            held.update(v for v in (src.variable, tgt.variable) if v)
+        if clause.variable:
+            # The path: each hop's nodes after the first hop's without the one it starts at, the
+            # node the hop before it reached; and every hop's relationships.
+            path_nodes, path_rels = segments[0][0].copy(), segments[0][1].copy()
+            for hop_nodes, hop_rels in segments[1:]:
+                rest = exp.Anonymous(
+                    this="slice",
+                    expressions=[
+                        hop_nodes.copy(),
+                        exp.Literal.number(2),
+                        exp.Anonymous(this="cardinality", expressions=[hop_nodes.copy()]),
+                    ],
+                )
+                path_nodes = exp.ArrayConcat(this=path_nodes, expressions=[rest])
+                path_rels = exp.ArrayConcat(this=path_rels, expressions=[hop_rels.copy()])
+            self._walk_trails[clause.variable] = (path_nodes, path_rels)
+            self._path_vars[clause.variable] = (
+                nodes[0].variable or "",
+                nodes[-1].variable or "",
+                True,
+            )
+        return from_expr
+
+    def _session_hop(self, rel: RelPattern) -> bool:
+        """Whether ``rel``, one hop of a pattern, is read from a graph session's relationships
+        (_build_session_hop): in a session, where no relationship of the model could take it."""
+        walk = self._lm.session_walk
+        return (
+            walk is not None and not rel.variable_length and not self._walks_model_hops(walk, rel)
+        )
+
     def _start_labels(self, node: NodePattern) -> set[str] | None:
         """The labels a walk's start may be read from: its own label's, or every label (None)
         for a node with none."""
@@ -419,9 +853,16 @@ class SessionWalkMixin:  # REQ-348
         walk: SessionWalk,
         joined: set[str],
         CypherTranslateError: type,
+        *,
+        alias: str = "_t",
+        backward: bool = False,
+        trail: bool = False,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """The path function ``pf`` walked over the session's relationships from ``src_node`` to
-        ``tgt_node``. shortestPath reads the walk's rows by hops, the first one (REQ-767);
+        ``tgt_node``. ``alias`` names the walk's rows in the statement (one per walk of a
+        pattern of several hops, _translate_session_chain); ``backward``: each relationship
+        followed from its end to its start (a pattern written leftward from its held end);
+        ``trail``: the walk carries its nodes and relationships whatever the statement reads. shortestPath reads the walk's rows by hops, the first one (REQ-767);
         allShortestPaths the fewest hops between each pair; a variable-length pattern every
         walk. ``joined``: the variables the statement holds already, an end among them joined where
         it is read. The walk takes no relationship twice (openCypher's paths repeat none) and goes no
@@ -444,20 +885,26 @@ class SessionWalkMixin:  # REQ-348
             else self._walk_end(tgt_node, tgt_alias, walk, CypherTranslateError)
         )
 
-        cte_name = f"_walk_{src_alias.lower()}"
+        cte_name = f"_walk_{src_alias.lower()}" if alias == "_t" else f"_walk{alias}"
         bound = max_hops + 1 if by_limit else max_hops
         # REQ-751: a walk whose relationships or path the statement reads carries them, in the
         # order it took them, with every node it passed.
-        named = any(
+        named = trail or any(
             v is not None and reads_trail(self._ast, v)
             for v in (clause.variable, rel.variable if rel is not None else None)
         )
         nodes = self._node_objects(walk, self._start_labels(src_node)) if named else None
         objects = (nodes, self._rel_properties(walk, types)) if nodes is not None else None
-        hops = _hops(walk, types, undirected, objects)
+        hops = _hops(walk, types, undirected, objects, backward=backward)
         t, h = "t", "_h"
         if min_hops == 0:
-            seed_from, seed_id = self._walk_end(src_node, "_seed", walk, CypherTranslateError)
+            if self._is_held_value(src_node):
+                # A start a hop of the pattern holds as its value: the walk seeds from every
+                # node, its join to the start (src_id) picking that one.
+                seed_from = exp.alias_(self._node_objects(walk, None), "_seed")
+                seed_id: exp.Expression = _col(GRAPH_ID, "_seed")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            else:
+                seed_from, seed_id = self._walk_end(src_node, "_seed", walk, CypherTranslateError)
             seed = exp.select(
                 exp.alias_(seed_id, "src_id"),
                 exp.alias_(seed_id.copy(), "cur_id"),
@@ -538,12 +985,12 @@ class SessionWalkMixin:  # REQ-348
                 .where(exp.EQ(this=_col("hops"), expression=_col("__fewest")))
             )
 
-        on: exp.Condition = exp.EQ(this=_col("src_id", "_t"), expression=src_id.copy())
+        on: exp.Condition = exp.EQ(this=_col("src_id", alias), expression=src_id.copy())
         if same or tgt_bound:
-            on = exp.and_(on, exp.EQ(this=_col("cur_id", "_t"), expression=tgt_id.copy()))
+            on = exp.and_(on, exp.EQ(this=_col("cur_id", alias), expression=tgt_id.copy()))
         if by_limit:
             on = exp.and_(
-                on, exp.LTE(this=_col("hops", "_t"), expression=exp.Literal.number(max_hops))
+                on, exp.LTE(this=_col("hops", alias), expression=exp.Literal.number(max_hops))
             )
             self._cut_checks.append(
                 exp.Exists(
@@ -554,33 +1001,33 @@ class SessionWalkMixin:  # REQ-348
             )
         if min_hops > 1:
             on = exp.and_(
-                on, exp.GTE(this=_col("hops", "_t"), expression=exp.Literal.number(min_hops))
+                on, exp.GTE(this=_col("hops", alias), expression=exp.Literal.number(min_hops))
             )
         join_type = "LEFT" if clause.optional else "INNER"
         joins: list[dict[str, Any]] = [
-            {"table": exp.alias_(walked, "_t"), "on": on, "join_type": join_type}
+            {"table": exp.alias_(walked, alias), "on": on, "join_type": join_type}
         ]
         if tgt_from is not None and not tgt_bound:
             joins.append(
                 {
                     "table": tgt_from,
-                    "on": exp.EQ(this=tgt_id.copy(), expression=_col("cur_id", "_t")),
+                    "on": exp.EQ(this=tgt_id.copy(), expression=_col("cur_id", alias)),
                     "join_type": join_type,
                 }
             )
 
-        trail = (_col("nodes", "_t"), _col("rels", "_t"))
+        trail_cols = (_col("nodes", alias), _col("rels", alias))
         if rel is not None and rel.variable:
             # The walk's relationships, in the order it took them (REQ-751).
             self._varlen_rel_vars.setdefault(rel.variable, clause.variable or "")
             if nodes is not None:
-                self._walk_trails[rel.variable] = trail
+                self._walk_trails[rel.variable] = trail_cols
         if clause.variable:
             self._path_vars[clause.variable] = (src_node.variable, tgt_node.variable, True)
             if nodes is not None:
                 # The path: every node and relationship of the walk's trail.
-                self._walk_trails[clause.variable] = trail
+                self._walk_trails[clause.variable] = trail_cols
         if func != "allpaths":
-            self._shortestpath_hops_col = _col("hops", "_t")
+            self._shortestpath_hops_col = _col("hops", alias)
         self._shortestpath_is_all = func != "shortestpath"
         return src_from, joins

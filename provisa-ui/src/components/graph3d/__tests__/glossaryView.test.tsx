@@ -214,7 +214,7 @@ describe("the Glossary page's Ontology View", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // Every layer and no filter, for the controls' choices; then the defaults: retired hidden.
     expect(asked.scopes[0]).toEqual({
-      layers: ["ontology", "domains", "data", "columns", "ownerTables"],
+      layers: ["ontology", "domains", "data", "columns"],
       domains: [],
       edgeTypes: [],
       hiddenStatuses: [],
@@ -260,6 +260,7 @@ describe("the Glossary page's Ontology View", () => {
       "c:10:email",
       "d:finance",
       "d:sales",
+      "t:10",
       "term:1",
       "term:10",
       "term:2",
@@ -306,14 +307,14 @@ describe("the Glossary page's Ontology View", () => {
       drawn()
         .edges.filter((e) => e.kind === "term_binding")
         .map((e) => [e.a, e.label, e.b]);
-    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent(
-      "Layers: Domains, Columns",
-    );
+    // Domains and Columns: the layers this graph has, both on.
+    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent("Layers: all");
     expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]);
     expect(node(drawn(), "c:10:email")).toMatchObject({ type: "column", label: "customers.email" });
     await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([]));
     expect(ids(drawn())).not.toContain("c:10:email");
+    expect(ids(drawn())).not.toContain("t:10");
     await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]));
   });

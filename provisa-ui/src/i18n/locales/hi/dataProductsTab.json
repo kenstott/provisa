@@ -187,6 +187,28 @@
       "slaRemove": "सेवा स्तर हटाएँ",
       "slaAdd": "सेवा स्तर जोड़ें",
       "notDeclared": "घोषित नहीं",
+      "breakingWarning": "v{{version}} में असंगत परिवर्तन, अभी लागू नहीं",
+      "breaking": "असंगत",
+      "savedBy": "{{when}} को {{who}} द्वारा सहेजा गया",
+      "savedBySystem": "सिस्टम",
+      "noChanges": "पहला संस्करण: तुलना के लिए कुछ नहीं",
+      "change": {
+        "field_added": "फ़ील्ड {{subject}} जोड़ा गया, {{after}}",
+        "field_removed": "फ़ील्ड {{subject}} हटाया गया, पहले {{before}}",
+        "field_renamed": "फ़ील्ड {{subject}} का नाम बदलकर {{after}} किया गया",
+        "field_type_changed": "फ़ील्ड {{subject}} {{before}} से {{after}} में बदला गया",
+        "field_required": "फ़ील्ड {{subject}} अनिवार्य किया गया",
+        "field_optional": "फ़ील्ड {{subject}} अब अनिवार्य नहीं",
+        "field_described": "फ़ील्ड {{subject}} का विवरण बदला गया",
+        "sla_added": "सेवा स्तर {{subject}} जोड़ा गया, {{after}}",
+        "sla_removed": "सेवा स्तर {{subject}} हटाया गया, पहले {{before}}",
+        "sla_changed": "सेवा स्तर {{subject}} {{before}} से {{after}} में बदला गया",
+        "check_added": "गुणवत्ता जाँच {{subject}} जोड़ी गई",
+        "check_removed": "गुणवत्ता जाँच {{subject}} हटाई गई",
+        "check_changed": "गुणवत्ता जाँच {{subject}} बदली गई",
+        "description_changed": "विवरण बदला गया",
+        "terms_changed": "शर्तें बदली गईं: {{subject}}"
+      },
       "loadError": "अनुबंध पढ़े नहीं जा सके: {{error}}",
       "notExported": "{{member}} का कोई निर्यातित अनुबंध नहीं है",
       "section": {
@@ -214,6 +236,23 @@
         "customProperties_other": "{{count}} कस्टम गुण",
         "tags_one": "{{count}} टैग",
         "tags_other": "{{count}} टैग"
+      },
+      "empty": "इस उत्पाद में डेटा अनुबंध वाला कोई आउटपुट पोर्ट नहीं है।",
+      "consumers_one": "{{count}} उपभोक्ता",
+      "consumers_other": "{{count}} उपभोक्ता",
+      "freshness": "{{seconds}} सेकंड के भीतर ताज़ा",
+      "loadedOnce": "एक बार लोड किया गया, कभी रीफ़्रेश नहीं",
+      "noSla": "कोई सेवा स्तर घोषित नहीं",
+      "checkedAt": "{{when}} को जाँचा गया",
+      "neverChecked": "कभी नहीं जाँचा गया",
+      "draftWarning": "मसौदा: अभी लागू नहीं",
+      "card": {
+        "details": "विवरण",
+        "fields": "वादा किए गए फ़ील्ड",
+        "sla": "SLA और ताज़गी",
+        "quality": "गुणवत्ता के वादे",
+        "consumers": "उपभोक्ता",
+        "versions": "संस्करण और परिवर्तन"
       }
     }
   }

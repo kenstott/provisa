@@ -202,3 +202,35 @@ async def test_a_read_over_a_session_holding_ephemeral_objects_is_never_kept():
                 await _execute_cypher("MATCH (n:Temp) RETURN n.k", {}, "analyst")
     finally:
         temp_tables.unbind(token)
+
+
+async def test_the_session_s_own_reads_keep_graph_identities():
+    # The seam finds a node or relationship it read again by its graph identity (e:1, Label|key,
+    # r:2): its reads are internal, never registered in the model's integer ids (REQ-2176).
+    from contextlib import ExitStack
+
+    from provisa.bolt.session import _execute_cypher
+
+    inner: list[dict] = []
+
+    async def read_again(*_args, **kwargs):
+        inner.append(kwargs)
+        return ["n"], [[{"id": "|e:1", "label": "", "properties": {}}]], None
+
+    async def write(statement, params, model, held, _state, run_read, run_write):
+        assert await run_read("MATCH (n) RETURN n", {}) == [
+            {"n": {"id": "|e:1", "label": "", "properties": {}}}
+        ]
+        return Created(0, 0, 0)
+
+    held = temp_tables.TempSession()
+    token = temp_tables.bind(held)
+    try:
+        with ExitStack() as stack:
+            for p in _patched(seam=patch("provisa.ephemeral.seam.write", write)):
+                stack.enter_context(p)
+            stack.enter_context(patch("provisa.bolt.session._execute_cypher", read_again))
+            await _execute_cypher("MATCH (n) SET n:L", {}, "analyst")
+    finally:
+        temp_tables.unbind(token)
+    assert [k.get("internal") for k in inner] == [True]

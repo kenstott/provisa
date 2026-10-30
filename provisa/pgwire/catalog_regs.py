@@ -208,6 +208,23 @@ def reg_value(reg: str, operand: exp.Expr) -> exp.Expr:
     return _duckdb(f"CASE WHEN ({oid_sql}) IS NOT NULL THEN {pair} END")
 
 
+_COMPARISONS = (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)
+
+
+def coerce_reg_comparisons(tree: exp.Expr) -> None:
+    """A string literal compared with an object identifier value is read as a name of that type,
+    as PostgreSQL coerces an unknown-typed literal to the other operand's type: ``'pg_class'::
+    regclass = 'pg_class'`` is true, and a literal naming no relation is that name's error."""
+    for comparison in list(tree.find_all(*_COMPARISONS)):
+        for own, other in (("this", "expression"), ("expression", "this")):
+            reg_side = comparison.args.get(own)
+            literal = comparison.args.get(other)
+            if not (isinstance(reg_side, exp.Cast) and reg_type_of(reg_side.to) is not None):
+                continue
+            if isinstance(literal, exp.Literal) and literal.is_string:
+                comparison.set(other, exp.Cast(this=literal.copy(), to=reg_side.to.copy()))
+
+
 def project_reg_values(tree: exp.Expr) -> None:
     """Each result column of ``tree`` (a SELECT) that is a cast to an object identifier type,
     replaced by its value (``reg_value``). The value's operand is written in DuckDB's dialect and

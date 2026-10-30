@@ -324,6 +324,31 @@ describe("the Graph panel", () => {
   });
 });
 
+describe("Open in ERD", () => {
+  const open = async () => {
+    panel();
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+  };
+
+  it("is offered on a table node, as a link carrying the table's id", async () => {
+    await open();
+    act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "t:customers" }));
+    expect(screen.getByTestId("graph3d-open-in-erd")).toHaveAttribute(
+      "href",
+      "/relationships?erd=customers",
+    );
+  });
+
+  it("is not offered on a node that is not a table", async () => {
+    await open();
+    // The product the graph opened on.
+    expect(screen.queryByTestId("graph3d-open-in-erd")).toBeNull();
+    act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "g:gold" }));
+    expect(screen.queryByTestId("graph3d-open-in-erd")).toBeNull();
+  });
+});
+
 describe("the Product map entry point", () => {
   it("opens the full graph on the Products preset, every product shown", async () => {
     render(<ProductMapButton />);

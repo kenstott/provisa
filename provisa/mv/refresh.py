@@ -1038,6 +1038,12 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             row_count,
             duration,
         )
+        if store is not None and ledger is not None:
+            # REQ-2015: its indexes follow the landing, never in it. Without its stores a view has
+            # no build row to keep them on.
+            from provisa.mv.view_indexes import plan_view_indexes  # noqa: PLC0415
+
+            await plan_view_indexes(engine, mv, model_db=store, state_db=ledger, served=state)
         await _post_refresh_delta_capture(
             engine, mv, ledger, prev_rows, target, authorization=authorization
         )  # REQ-877

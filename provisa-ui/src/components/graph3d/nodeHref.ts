@@ -43,4 +43,7 @@ const HREF: Record<NodeType, (n: GraphNode) => string> = {
     n.id.startsWith("x:") ? entityHref("table", rest(n.id)) : entityHref("lineage", rest(n.id)),
 };
 
+/** A table node's ERD: the Relationships page's diagram, centred on and selecting that table. */
+export const erdHref = (n: GraphNode): string => entityHref("erd", rest(n.id));
+
 export const nodeHref = (n: GraphNode): string => HREF[n.type](n);

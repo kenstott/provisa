@@ -187,6 +187,28 @@
       "slaRemove": "הסרת רמת שירות",
       "slaAdd": "הוספת רמת שירות",
       "notDeclared": "לא הוצהר",
+      "breakingWarning": "שינוי שובר תאימות ב-v{{version}}, עדיין לא בתוקף",
+      "breaking": "שובר תאימות",
+      "savedBy": "נשמר {{when}} על ידי {{who}}",
+      "savedBySystem": "המערכת",
+      "noChanges": "גרסה ראשונה: אין עם מה להשוות",
+      "change": {
+        "field_added": "השדה {{subject}} נוסף, {{after}}",
+        "field_removed": "השדה {{subject}} הוסר, היה {{before}}",
+        "field_renamed": "השדה {{subject}} שונה לשם {{after}}",
+        "field_type_changed": "השדה {{subject}} שונה מ-{{before}} ל-{{after}}",
+        "field_required": "השדה {{subject}} הפך לחובה",
+        "field_optional": "השדה {{subject}} אינו חובה עוד",
+        "field_described": "השדה {{subject}} תואר אחרת",
+        "sla_added": "רמת השירות {{subject}} נוספה, {{after}}",
+        "sla_removed": "רמת השירות {{subject}} הוסרה, הייתה {{before}}",
+        "sla_changed": "רמת השירות {{subject}} שונתה מ-{{before}} ל-{{after}}",
+        "check_added": "בדיקת האיכות {{subject}} נוספה",
+        "check_removed": "בדיקת האיכות {{subject}} הוסרה",
+        "check_changed": "בדיקת האיכות {{subject}} שונתה",
+        "description_changed": "התיאור שונה",
+        "terms_changed": "התנאים שונו: {{subject}}"
+      },
       "loadError": "לא ניתן לקרוא את החוזים: {{error}}",
       "notExported": "ל-{{member}} אין חוזה מיוצא",
       "section": {
@@ -214,6 +236,23 @@
         "customProperties_other": "{{count}} מאפיינים מותאמים",
         "tags_one": "{{count}} תגית",
         "tags_other": "{{count}} תגיות"
+      },
+      "empty": "למוצר זה אין Output Port עם חוזה נתונים.",
+      "consumers_one": "צרכנים: {{count}}",
+      "consumers_other": "צרכנים: {{count}}",
+      "freshness": "עדכני בתוך {{seconds}} שניות",
+      "loadedOnce": "נטען פעם אחת, לעולם אינו מתעדכן",
+      "noSla": "לא הוצהרה רמת שירות",
+      "checkedAt": "נבדק {{when}}",
+      "neverChecked": "מעולם לא נבדק",
+      "draftWarning": "טיוטה: עדיין לא בתוקף",
+      "card": {
+        "details": "פרטים",
+        "fields": "שדות מובטחים",
+        "sla": "SLA ועדכניות",
+        "quality": "הבטחות איכות",
+        "consumers": "צרכנים",
+        "versions": "גרסאות ושינויים"
       }
     }
   }

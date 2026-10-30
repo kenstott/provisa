@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.cypher.parser import parse_cypher
-from provisa.ephemeral import seam
+from provisa.ephemeral import seam, store
 from provisa.gql.label_map import RelationshipMapping
 from provisa.gql.path_walk import UNLABELLED_ENDS
 from provisa.gql.translator import cypher_to_sql
@@ -152,7 +152,7 @@ def test_a_walk_reads_the_relationships_table_once(monkeypatch):
     s.run("CREATE ({n: 1})-[:T]->({n: 2})-[:U]->({n: 3})")
     sql = s.sql("MATCH p = shortestPath((a {n: 1})-[*..3]->(b)) RETURN length(p)")
     assert sql.count("FROM cypher__rels") == 1
-    assert "cypher__rel__T" not in sql and "cypher__rel__U" not in sql
+    assert store.rel_table("T") not in sql and store.rel_table("U") not in sql
 
 
 # --- refused --------------------------------------------------------------------------------------

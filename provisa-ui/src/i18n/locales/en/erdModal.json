@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "Entity Relationship Diagram",
+    "tableNotFound": "No table with id {{id}} is in the ERD.",
     "domains": "Domains",
     "domainsTooltip": "Show / hide domains",
     "columnDetailLabel": "Column detail",

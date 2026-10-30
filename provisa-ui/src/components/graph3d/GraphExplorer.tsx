@@ -61,7 +61,7 @@ import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
-import { nodeHref } from "./nodeHref";
+import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
 import { BreakableName } from "../list/BreakableName";
@@ -71,9 +71,8 @@ import "./graph3d.css";
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
 const STATUSES: TermStatus[] = ["draft", "deprecated", "retired"];
 
-/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns,
- * and its Tables, which draws the tables of the columns drawn and so goes with Columns. */
-const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "ownerTables"]);
+/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns. */
+const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns"]);
 
 export function GraphExplorer({
   data,
@@ -264,14 +263,7 @@ export function GraphExplorer({
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
 
-  // Tables are the tables of the columns drawn: without Columns, there are none to draw.
-  const on = useMemo(
-    () =>
-      new Set(
-        [...layers].filter((l) => offered.has(l) && (l !== "ownerTables" || layers.has("columns"))),
-      ),
-    [layers, offered],
-  );
+  const on = useMemo(() => new Set([...layers].filter((l) => offered.has(l))), [layers, offered]);
   // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
   // carry no domain included.
   const narrowed = useMemo(() => {
@@ -560,17 +552,6 @@ export function GraphExplorer({
             {t("graph3d.columnsToggle")}
           </Chip>
         )}
-        {!scope.menus && !flat && offered.has("ownerTables") && (
-          <Chip
-            size="xs"
-            checked={layers.has("ownerTables")}
-            disabled={!layers.has("columns")}
-            onChange={(on) => toggleLayer("ownerTables", on)}
-            data-testid={`${testId}-tables`}
-          >
-            {t("graph3d.tablesToggle")}
-          </Chip>
-        )}
         {!scope.menus && scope.orphans && hasTerms && (
           <Chip size="xs" checked={orphans} onChange={setOrphans} data-testid={`${testId}-orphans`}>
             {t("graph3d.orphans")}
@@ -768,6 +749,17 @@ function GraphDetail({
             >
               {t("graph3d.zoomTo")}
             </Button>
+            {node.type === "table" && (
+              <Button
+                size="xs"
+                variant="default"
+                component={Link}
+                to={erdHref(node)}
+                data-testid={`${testId}-open-in-erd`}
+              >
+                {t("graph3d.openInErd")}
+              </Button>
+            )}
             {hasColumns && (
               <Button
                 size="xs"

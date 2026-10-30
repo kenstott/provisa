@@ -187,6 +187,28 @@
       "slaRemove": "Serviceniveau verwijderen",
       "slaAdd": "Serviceniveau toevoegen",
       "notDeclared": "Niet gedeclareerd",
+      "breakingWarning": "Incompatibele wijziging in v{{version}}, nog niet van kracht",
+      "breaking": "Incompatibel",
+      "savedBy": "Opgeslagen {{when}} door {{who}}",
+      "savedBySystem": "het systeem",
+      "noChanges": "Eerste versie: niets om mee te vergelijken",
+      "change": {
+        "field_added": "Veld {{subject}} toegevoegd, {{after}}",
+        "field_removed": "Veld {{subject}} verwijderd, was {{before}}",
+        "field_renamed": "Veld {{subject}} hernoemd naar {{after}}",
+        "field_type_changed": "Veld {{subject}} gewijzigd van {{before}} naar {{after}}",
+        "field_required": "Veld {{subject}} verplicht gemaakt",
+        "field_optional": "Veld {{subject}} niet meer verplicht",
+        "field_described": "Veld {{subject}} anders beschreven",
+        "sla_added": "Serviceniveau {{subject}} toegevoegd, {{after}}",
+        "sla_removed": "Serviceniveau {{subject}} verwijderd, was {{before}}",
+        "sla_changed": "Serviceniveau {{subject}} gewijzigd van {{before}} naar {{after}}",
+        "check_added": "Kwaliteitscontrole {{subject}} toegevoegd",
+        "check_removed": "Kwaliteitscontrole {{subject}} verwijderd",
+        "check_changed": "Kwaliteitscontrole {{subject}} gewijzigd",
+        "description_changed": "Beschrijving gewijzigd",
+        "terms_changed": "Voorwaarden gewijzigd: {{subject}}"
+      },
       "loadError": "De contracten konden niet worden gelezen: {{error}}",
       "notExported": "{{member}} heeft geen geëxporteerd contract",
       "section": {
@@ -214,6 +236,23 @@
         "customProperties_other": "{{count}} aangepaste eigenschappen",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "Dit product heeft geen uitvoerpoort met een datacontract.",
+      "consumers_one": "{{count}} afnemer",
+      "consumers_other": "{{count}} afnemers",
+      "freshness": "Actueel binnen {{seconds}} s",
+      "loadedOnce": "Eenmaal geladen, nooit vernieuwd",
+      "noSla": "Geen serviceniveau gedeclareerd",
+      "checkedAt": "Gecontroleerd {{when}}",
+      "neverChecked": "Nooit gecontroleerd",
+      "draftWarning": "Concept: nog niet van kracht",
+      "card": {
+        "details": "Details",
+        "fields": "Beloofde velden",
+        "sla": "SLA's & actualiteit",
+        "quality": "Kwaliteitsbeloften",
+        "consumers": "Afnemers",
+        "versions": "Versies & wijzigingen"
       }
     }
   }

@@ -146,7 +146,8 @@ def _builtin(session: TempSession) -> list[dict[str, Any]]:
 
 def _session_rows(session: TempSession) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for name, (kind, of, props) in sorted(store.graph(session).indexes.items()):
+    graph = store.graph(session)
+    for name, (kind, of, props) in sorted(graph.indexes.items()):
         out.append(
             {
                 "name": name,
@@ -154,7 +155,7 @@ def _session_rows(session: TempSession) -> list[dict[str, Any]]:
                 "entityType": "NODE" if kind == "node" else "RELATIONSHIP",
                 "labelsOrTypes": [of],
                 "properties": list(props),
-                "table": store.index_table(kind, of),
+                "table": store.index_table(graph, kind, of),
                 "builtIn": False,
             }
         )
@@ -212,7 +213,9 @@ async def index_statement(statement: str, label_map: Any, session: TempSession, 
             held_as = name if name in graph.indexes else (same[0] if same else name)
             raise CypherParseError(f"An index {held_as} already exists")
         graph.indexes[name] = (kind, of, props)
-        await store.build_indexes(session, store.index_table(kind, of), temp_exec.in_place(state))
+        await store.build_indexes(
+            session, store.index_table(graph, kind, of), temp_exec.in_place(state)
+        )
         return Indexed(1, 0)
     m = _DROP.match(statement)
     old = _DROP_OLD.match(statement)
@@ -236,7 +239,7 @@ async def index_statement(statement: str, label_map: Any, session: TempSession, 
                 return Indexed(0, 0)
             raise CypherParseError(f"No session index is named {name}")
     kind, of, props = graph.indexes.pop(name)
-    table = store.index_table(kind, of)
+    table = store.index_table(graph, kind, of)
     writer = temp_exec.in_place(state)
     held = {c for c, _ in session.tables[table].columns} if table in session.tables else set()
     if writer is not None and set(props) <= held:

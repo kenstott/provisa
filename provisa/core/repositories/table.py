@@ -412,7 +412,11 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
 
     stored = (
         await conn.execute_core(
-            select(registered_tables.c.product_id, registered_tables.c.contract).where(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.product_id,
+                registered_tables.c.contract,
+            ).where(
                 registered_tables.c.source_id == table.source_id,
                 registered_tables.c.schema_name == table.schema_name,
                 registered_tables.c.table_name == table.table_name,
@@ -430,15 +434,23 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
             column_types[col.name] = stored_type_of(base_type(declared_type))
         except ReportedNumericMalformed as malformed:
             raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
+    product_id = getattr(table, "product_id", None)
+    is_checker = getattr(table, "dq_contract", None) is not None
+    promised = (
+        await data_product_repo.promised_checks(conn, product_id, stored.id)
+        if stored is not None and product_id is not None and not is_checker
+        else []
+    )
     return data_contracts.for_save(
-        product_id=getattr(table, "product_id", None),
-        is_checker=getattr(table, "dq_contract", None) is not None,
+        product_id=product_id,
+        is_checker=is_checker,
         schema_name=table.schema_name,
         table_name=table.table_name,
         declared=getattr(table, "contract", None),
         stored=None if stored is None else stored.contract,
         stored_product_id=None if stored is None else stored.product_id,
         column_types=column_types,
+        checks=promised,
     )
 
 

@@ -47068,7 +47068,12 @@
     version history: the glossary as it stood at the start of the previous period is graded with the same
     grounding computation as today''s and the two are compared; it is computed by Provisa rather than read
     from a view, and shown with the report. A broad hub term is one with at least five terms directly beneath
-    it on grounding edges; the report states the rule.'
+    it on grounding edges; the report states the rule. (Amended 2026-10-29, WHAT THE PREVIOUS PERIOD IS:)
+    Maintainer 2026-10-30: drift''s previous period is the last full calendar month, so it compares the
+    model now with the model at the first of last month, UTC: the latest commit on the environment''s branch
+    at or before that time. A term is matched by name, so a renamed term shows as one lost and one gained,
+    and the report says so. A branch with no commit at or before that time shows no history, not zero, and
+    a term absent then counts as new.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -89838,7 +89843,24 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     product uses (details, fields promised, SLAs and freshness, quality promises, consumers, versions and
     changes); several may be open at once, and a contract''s details are read when its row opens. The contracts
     are no longer a card in the product''s top panels; the product''s other cards, its output ports among
-    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.'
+    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.
+    (Amended 2026-10-29, A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29:
+    every saved version of a contract is kept, with when and by whom it was saved. Each version records
+    its differences from the one before it, and a difference that can break a consumer (a field removed
+    or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
+    is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
+    in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
+    2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
+    change is not yet in force while its version''s status is proposed or draft, meaning every version after
+    the last one in neither status. Who saved a version is visible to anyone who can read the data product.
+    (Amended 2026-10-29, A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise
+    means a data quality check a product makes on its output ports, and nothing else. Columns are never
+    called promised, and fields is not a second name for them: a contract declares its columns. The contract
+    view''s card and the contract editor''s field are both Columns, and the quality card is Promises. (Amended
+    2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
+    reference to a product''s expectations, the data quality checks on its input ports. They belong to the
+    consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
+    by ODPS outputPorts inputContracts.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -89902,7 +89924,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     checks, input ports, downstream consumers and contract editing. Every other part of the panel (fields,
     Graph, terms, tags, related tables, commands, promises, lineage, support) is shown to owner and consumer
     alike, capped by the reader''s read rights. The owner is a reader whose acting roles include the product''s
-    owner or team role.'
+    owner or team role. (Amended 2026-10-29, INPUT PORTS AND CONSUMERS ARE ALWAYS SHOWN:) Maintainer 2026-10-30:
+    a product''s Input Ports and Consumers cards always appear. The owner or team sees the list, or None
+    when there is nothing. Any other reader sees that the list is visible to the product''s owner, never
+    None, because the product may have entries that reader cannot see. What a non-owner may read does not
+    change.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
@@ -90249,7 +90275,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
     GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
     server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
-    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.'
+    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.
+    (Amended 2026-10-29, CLIENT-CALLED SERVER FUNCTIONS ANSWER LIKE POSTGRESQL:) Maintainer 2026-10-30:
+    pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are called by
+    clients, so they are served, not refused. Each answers as a PostgreSQL server with no such file or sequence
+    would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise PostgreSQL''s own
+    error. None reads a server file or changes anything.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90724,7 +90755,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node''s full name stays
     in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the
     layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
-    the 2D views may still move a crowded pair apart.'
+    the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
+    Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
+    between 9px and 10px, replacing 11.5px and 20px.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -91601,5 +91634,57 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And the page''s navigation menu list gives no table'
   related_reqs:
   - REQ-1960
+  stakeholders:
+  - data-engineer
+- id: REQ-2187
+  value: The ERD is a view of the Tables page, and a link or a table's panel can focus it on chosen domains
+    and tables.
+  status: accepted
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with the list
+    in place by an icon in the page''s toolbar, filled while on, the way the Ontology view is; it is no
+    longer a modal. The Relationships page''s ERD icon goes to that view. Clicking a table in the ERD opens
+    the Tables page''s own right-hand detail panel, and the diagram narrows beside it. The panel''s head
+    has a Focus action, and while a focus is on an Add to focus action. Focus restricts the ERD to that
+    table''s domain and highlights the table; Add to focus adds the table, and its domain if new. A focus
+    is a deep link: /tables?view=erd&domains=a,b&objects=x,y, where domains are the only domains shown and
+    objects the tables highlighted and fitted into view. Only objects given: their own domains are shown.
+    Only domains given: nothing is highlighted. The link never changes the page''s domain filter. The URL
+    always states the focus, so a view can be copied and shared. A bar names the focus and has Show all,
+    which clears both lists. A domain or table the link names that does not exist is named in the bar and
+    the rest of the link still works. The Ontology''s Open in ERD opens this view focused on its table with
+    the table''s panel open. (Amended 2026-10-29, ONE ERD VIEW ON BOTH PAGES, EACH WITH ITS OWN PANEL:)
+    Maintainer 2026-10-30, replacing the ERD on Tables only and the Relationships icon going there: the
+    ERD is one view hosted in place on both the Tables and the Relationships page, each swapping it with
+    its list by the same toolbar icon, and it is a modal on neither. The pages differ only in the detail
+    panel. On Tables a click on a table opens the table panel, which has Focus and Add to focus. On Relationships
+    a click on a relationship line opens the relationship panel. A click on the other kind of item goes
+    to the other page''s ERD with that item''s panel open: a line clicked on Tables goes to the Relationships
+    ERD, a table clicked on Relationships goes to the Tables ERD. The focus carries across, because both
+    pages read the same view, domains and objects parameters.'
+  scenario: 'Given the Tables page with the domain filter on one domain
+
+    When the ERD icon is clicked
+
+    Then the ERD replaces the list in place and no modal opens
+
+    When a table is clicked and Focus chosen in its panel
+
+    Then only that table''s domain is shown, the table is highlighted, and the URL names the domain and
+    the table
+
+    And opening that URL afresh shows the same view
+
+    When Show all is clicked
+
+    Then the focus clears and the page''s domain filter still stands'
+  related_reqs:
+  - REQ-518
+  - REQ-1387
   stakeholders:
   - data-engineer

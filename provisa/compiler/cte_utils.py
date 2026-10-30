@@ -23,6 +23,23 @@ def cte_names(tree: exp.Expr) -> frozenset[str]:
     return frozenset(cte.alias for cte in with_clause.expressions)
 
 
+def names_a_cte_in_scope(table: exp.Table) -> bool:
+    """Whether unqualified ``table`` names a CTE of a WITH it sits within: the statement's own,
+    or one of the statement it is part of (an EXISTS or a COLLECT, embedded with its own WITH).
+    A CTE never names a relation outside the statement that defines it."""
+    if table.db:
+        return False
+    node: exp.Expr | None = table.parent
+    while node is not None:
+        with_clause = node.args.get("with_") if isinstance(node, exp.Expression) else None
+        if with_clause is not None and any(
+            cte.alias == table.name for cte in with_clause.expressions
+        ):
+            return True
+        node = node.parent
+    return False
+
+
 def physical_tables(tree: exp.Expr) -> list[exp.Table]:
     """Return all exp.Table nodes that are physical table refs, not CTE aliases."""
     names = cte_names(tree)

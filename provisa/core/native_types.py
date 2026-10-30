@@ -147,9 +147,19 @@ def parse_native_type(native_type: str) -> NativeType:
     return NativeType("scalar", spelling)
 
 
+# PostgreSQL's character types, by their spellings' names, sizes aside (format_type's
+# ``character varying(20)`` and ``character(5)``, its ``bpchar``, the catalog's ``varchar``).
+PG_CHARACTER_TYPES = frozenset({"character varying", "varchar", "character", "char", "bpchar"})
+
+
 def natively_nested(native_type: str | None) -> TypeGuard[str]:
     """Whether a column whose recorded native type is ``native_type`` is natively an array, a
-    struct or a map (REQ-1965). The same hidden attribute keeps a character column's native type
-    (REQ-1961, VARCHAR AND CHAR KEEP THEIR TYPE), which is none of them; a column with none
-    recorded is none of them either."""
-    return bool(native_type) and parse_native_type(native_type).nested
+    struct or a map (REQ-1965). A native type is recorded only for such a column, or for a
+    character column (REQ-1961, VARCHAR AND CHAR KEEP THEIR TYPE), which is none of them; a
+    column with none recorded is none of them either. A named composite is recorded by its name,
+    which states no shape, so what is not a character type is nested."""
+    if not native_type:
+        return False
+    if parse_native_type(native_type).nested:
+        return True
+    return native_type.strip().lower().split("(", 1)[0].strip() not in PG_CHARACTER_TYPES

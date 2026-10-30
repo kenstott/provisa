@@ -34,6 +34,7 @@ import {
   type ProductRow as GraphProductRow,
   type TermEdgeRow,
 } from "../../components/graph3d/productGraphData";
+import type { ContractVersion } from "../../types/admin";
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataContract, DataProduct } from "../../types/admin";
@@ -90,6 +91,8 @@ const PANEL: Selection = {
           "description",
           "dq_contract",
           "contract",
+          // REQ-2158: its freshness, a contract row's SLA headline.
+          "cache_ttl",
         ],
         rels: {
           // Its checkers' latest scans: its quality on the graph (REQ-2174).
@@ -185,6 +188,8 @@ export interface CoreTable {
   alias: string | null;
   description: string | null;
   dq_contract: string | null;
+  // REQ-2158: how long a read may trail its source, in seconds (-1: never expires); null for none.
+  cache_ttl?: number | null;
   // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
   contract?: StoredContract | string | null;
   checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;
@@ -214,6 +219,7 @@ export interface StoredContract {
   terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
   sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
   columns?: { name: string; type: string; description?: string | null; required?: boolean }[];
+  versions?: ContractVersion[];
 }
 
 /** REQ-2158: each output port's contract, in the order the members are read. */
@@ -251,9 +257,24 @@ export function coreContracts(core: ProductCore): DataContract[] {
           description: x.description ?? null,
           required: x.required ?? false,
         })),
+        versions: c.versions ?? [],
       },
     ];
   });
+}
+
+/** A contract status that is not yet in force: it has not been made active. */
+const NOT_IN_FORCE = ["proposed", "draft"];
+
+/** The newest versions not yet in force that carry a breaking change, newest first: the versions
+ * after the last one in force. */
+export function breakingNotInForce(versions: ContractVersion[]): ContractVersion[] {
+  const pending: ContractVersion[] = [];
+  for (const v of [...versions].reverse()) {
+    if (!NOT_IN_FORCE.includes(v.contract.status)) break;
+    pending.push(v);
+  }
+  return pending.filter((v) => v.changes.some((c) => c.breaking));
 }
 
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */

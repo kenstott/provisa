@@ -642,8 +642,8 @@ async def _product_lineage(
     ]
     # REQ-2160: who reads the product, one hop downstream, as far as the role may read them.
     out["consumers"] = [
-        _consumer(by_relation[relation])
-        for relation in nearest_consumers(graph, member_relations)
+        {**_consumer(by_relation[relation]), "reads": reads}
+        for relation, reads in nearest_consumers(graph, member_relations).items()
         if relation in by_relation
     ]
     out["dq"] = product_dq(

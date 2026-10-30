@@ -140,7 +140,7 @@ async def test_a_void_command_runs_and_answers_no_rows(state):
 
 def test_a_void_command_is_listed_as_answering_nothing(state):
     from provisa.api.data.action_exec import list_visible_commands
-    from provisa.api.rest.registered_call import _command_signature
+    from provisa.cypher.command_call import command_signature as _command_signature
 
     listed = {c["command"]: c for c in list_visible_commands(state, "reader", "cypher")}
     assert listed["tck_do_nothing"]["void"] is True
@@ -296,3 +296,61 @@ def test_a_void_command_s_graphql_field_is_an_empty_list():
     gql = void_return_type()
     assert isinstance(gql, GraphQLNonNull)
     assert isinstance(gql.of_type, GraphQLList)
+
+
+# --- a standalone YIELD of a VOID command; its signature (J186) -----------------------------------
+
+
+async def _bolt(query: str, params: dict, state):
+    from provisa.bolt.session import _maybe_invoke_command_call
+
+    return await _maybe_invoke_command_call(query, params, "reader", state)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "CALL test.doNothing() YIELD x",
+        "CALL test.doNothing() YIELD *",
+        "CALL test.doNothing YIELD x",
+    ],
+)
+async def test_a_standalone_yield_of_a_void_command_is_refused_over_http_naming_void(query, state):
+    with pytest.raises(ApiError, match="VOID") as raised:
+        await _http(query, {}, state)
+    assert raised.value.status_code == 400
+    assert state.ran == []
+
+
+@pytest.mark.parametrize(
+    "query", ["CALL test.doNothing() YIELD x", "CALL test.doNothing() YIELD x RETURN x"]
+)
+async def test_a_standalone_yield_of_a_void_command_is_refused_over_bolt_naming_void(query, state):
+    from provisa.cypher.command_call import CommandCallRefused
+
+    with pytest.raises(CommandCallRefused, match="VOID"):
+        await _bolt(query, {}, state)
+    assert state.ran == []
+
+
+async def test_a_standalone_void_call_without_yield_still_runs_over_bolt(state):
+    assert await _bolt("CALL test.doNothing()", {}, state) == ([], [])
+    assert state.ran == [("tck_do_nothing", {})]
+
+
+def test_a_void_command_s_signature_is_the_same_on_bolt_and_http(state):
+    from provisa.api.data.action_exec import list_visible_commands
+    from provisa.bolt import session
+    from provisa.cypher.command_call import command_signature  # what Cypher over HTTP lists
+
+    listed = {c["command"]: c for c in list_visible_commands(state, "reader", "cypher")}
+    void = listed["tck_do_nothing"]
+    assert session._command_signature(void) == "test.doNothing() :: ()"
+    assert command_signature(void) == "test.doNothing() :: ()"
+    with_default = {
+        **listed["tck_my_proc"],
+        "arguments": [{"name": "name", "type": "text", "default": "x"}],
+    }
+    expected = 'test.my.proc(name = "x" :: TEXT) :: (MAP)'
+    assert session._command_signature(with_default) == expected
+    assert command_signature(with_default) == expected

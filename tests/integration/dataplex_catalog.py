@@ -15,6 +15,11 @@ with a long-running operation (its name has ``/operations/`` in it), polled unti
 link answers with the deleted link itself (``entryLinks.delete`` returns the EntryLink): there is
 no operation to poll, and polling the link's own name only finds it gone. Every delete is then
 read back: a resource still there after its delete raises (REQ-254).
+
+Dataplex rate-limits its reads: an operation poll in the teardown answered 429 in run
+40970287308. A 429 is Dataplex asking the caller to wait, so every call waits as long as it is
+told (``Retry-After``), or else doubles its wait from a second, and raises once the waits run out:
+a teardown that cannot read the project back has not shown that nothing is left.
 """
 
 # Requirements: REQ-254, REQ-2118
@@ -22,6 +27,8 @@ read back: a resource still there after its delete raises (REQ-254).
 from __future__ import annotations
 
 import time
+from http import HTTPStatus
+
 import httpx
 
 from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExport
@@ -29,11 +36,26 @@ from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExpor
 API = "https://dataplex.googleapis.com/v1"
 OPERATION_TIMEOUT_S = 300.0
 _POLL_S = 5.0
+_THROTTLE_WAITS = 5  # waits of 1, 2, 4, 8, 16s unless Dataplex names its own
+
+
+def send(http: httpx.Client, method: str, url: str, **kwargs) -> httpx.Response:
+    """``method url``, waiting out a 429 as Dataplex asks. The answer is returned for the caller
+    to judge; a 429 still there after the last wait raises."""
+    for attempt in range(_THROTTLE_WAITS + 1):
+        resp = http.request(method, url, **kwargs)
+        if resp.status_code != HTTPStatus.TOO_MANY_REQUESTS:
+            return resp
+        if attempt == _THROTTLE_WAITS:
+            resp.raise_for_status()
+        retry_after = resp.headers.get("Retry-After")
+        time.sleep(float(retry_after) if retry_after else float(2**attempt))
+    raise AssertionError("unreachable: the last attempt returns or raises")
 
 
 def exists(http: httpx.Client, name: str) -> bool:
     """Whether Dataplex holds ``name``: 200 yes, 404 no, anything else raises."""
-    found = http.get(f"{API}/{name}")
+    found = send(http, "GET", f"{API}/{name}")
     if found.status_code == 404:
         return False
     found.raise_for_status()
@@ -46,7 +68,7 @@ def listed(http: httpx.Client, url: str, key: str, **params: str) -> list[dict]:
     entries: list[dict] = []
     query = dict(params)
     while True:
-        resp = http.get(url, params=query)
+        resp = send(http, "GET", url, params=query)
         if resp.status_code == 404:
             return entries
         page = resp.raise_for_status().json()
@@ -60,7 +82,7 @@ def delete(http: httpx.Client, name: str) -> None:
     """Delete ``name``, which was just found to exist; wait out the operation when Dataplex answers
     with one; then read it back gone. Any refusal, a failed operation, or a resource still there
     raises."""
-    answer = http.delete(f"{API}/{name}").raise_for_status()
+    answer = send(http, "DELETE", f"{API}/{name}").raise_for_status()
     operation = answer.json() if answer.content else {}
     if "/operations/" in operation.get("name", ""):
         deadline = time.monotonic() + OPERATION_TIMEOUT_S
@@ -68,7 +90,7 @@ def delete(http: httpx.Client, name: str) -> None:
             if time.monotonic() >= deadline:
                 raise RuntimeError(f"Dataplex delete of {name} not done in {OPERATION_TIMEOUT_S}s")
             time.sleep(_POLL_S)
-            operation = http.get(f"{API}/{operation['name']}").raise_for_status().json()
+            operation = send(http, "GET", f"{API}/{operation['name']}").raise_for_status().json()
         if "error" in operation:
             raise RuntimeError(f"Dataplex delete of {name} failed: {operation['error']}")
     if exists(http, name):

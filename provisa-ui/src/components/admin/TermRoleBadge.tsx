@@ -178,7 +178,7 @@ export function TermRoleBadge({
 }
 
 /** A term's badges in the term list: its role, then its status (an approved term is the ordinary
- * case, so the list marks the others), its grounding, then its column count. */
+ * case, so the list marks the others), its grounding (a Concept only), then its column count. */
 export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
   const { t } = useTranslation();
   return (
@@ -201,12 +201,16 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
       {term.status !== "approved" && (
         <TermStatusBadge status={term.status} testId={`glossary-status-${term.id}`} iconOnly />
       )}
-      <TermGroundingChip
-        grounding={term.grounding}
-        columns={term.ref_count}
-        tables={term.table_count}
-        testId={`glossary-grounding-${term.id}`}
-      />
+      {/* A Class or Property is bound to a table or column, so it is always grounded and the symbol
+          would repeat its role: only a Concept shows it. */}
+      {termRole(term) === "concept" && (
+        <TermGroundingChip
+          grounding={term.grounding}
+          columns={term.ref_count}
+          tables={term.table_count}
+          testId={`glossary-grounding-${term.id}`}
+        />
+      )}
       {termRole(term) === "property" && (
         <Badge size="xs" variant="default">
           {term.ref_count}
