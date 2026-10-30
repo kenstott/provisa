@@ -28,7 +28,7 @@ import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react
 import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
-import { PALETTE, labelColor } from "./graph-model";
+import { INJECTED_PROPS, PALETTE, labelColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import type { CanvasHighlight } from "./canvas/canvas-types";
 import CodeMirror from "@uiw/react-codemirror";
@@ -63,21 +63,6 @@ interface InspectorProps {
   /** Each node label's registered table, which a node links to. */
   labelToTableId: Record<string, number>;
 }
-
-// The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
-// they don't appear twice (degreeCentrality was the visible duplicate).
-const HIDDEN_PROPS = new Set([
-  "l1Cluster",
-  "l2Cluster",
-  "l3Cluster",
-  "scl1",
-  "scl2",
-  "scl3",
-  "degIn",
-  "degOut",
-  "degTotal",
-  "degreeCentrality",
-]);
 
 export function Inspector({
   selected,
@@ -163,7 +148,7 @@ export function Inspector({
       return [
         ...keyRow,
         ...Object.entries(props)
-          .filter(([k]) => k !== "_id" && !HIDDEN_PROPS.has(k))
+          .filter(([k]) => k !== "_id" && !INJECTED_PROPS.has(k))
           .sort(([a], [b]) => a.localeCompare(b)),
       ];
     }

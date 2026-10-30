@@ -430,3 +430,18 @@ export type FrameStatement = Pick<
   | "sparqlTriples"
   | "sparqlPairing"
 > & { status: "done" | "error" };
+
+// The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
+// they don't appear twice (degreeCentrality was the visible duplicate).
+export const INJECTED_PROPS = new Set([
+  "l1Cluster",
+  "l2Cluster",
+  "l3Cluster",
+  "scl1",
+  "scl2",
+  "scl3",
+  "degIn",
+  "degOut",
+  "degTotal",
+  "degreeCentrality",
+]);

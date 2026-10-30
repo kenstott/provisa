@@ -9,7 +9,13 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo } from "react";
-import type { FrameData, GEdge, GNode, GraphStats } from "../graph-model";
+import {
+  INJECTED_PROPS,
+  type FrameData,
+  type GEdge,
+  type GNode,
+  type GraphStats,
+} from "../graph-model";
 import { describedProperties } from "../sparql";
 
 type Selection =
@@ -17,8 +23,8 @@ type Selection =
   | { kind: "edge"; data: GEdge }
   | null;
 
-// What a SELECT's node carries of itself: the properties it holds beyond these were read from the
-// model, so there is nothing more to ask.
+// What a SELECT's node carries of itself, and the graph metrics the drawing injects: a property
+// beyond these was read from the model, so there is nothing more to ask.
 const IDENTITY = new Set(["iri", "name", "class"]);
 
 /** A SELECT's bindings are IRIs, so its nodes hold no properties. A SPARQL node selected while it
@@ -32,7 +38,9 @@ export function useSparqlNodeProperties(
 ): { inspected: Selection; describeError: string | undefined } {
   const node = selected?.kind === "node" ? selected.data : null;
   const iri = typeof node?.properties.iri === "string" ? node.properties.iri : null;
-  const bare = node !== null && Object.keys(node.properties).every((k) => IDENTITY.has(k));
+  const bare =
+    node !== null &&
+    Object.keys(node.properties).every((k) => IDENTITY.has(k) || INJECTED_PROPS.has(k));
   const described = iri === null ? undefined : frame.sparqlDescribed?.[iri];
 
   useEffect(() => {

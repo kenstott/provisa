@@ -265,9 +265,14 @@ describe("a SPARQL answer drawn", () => {
   it("expands a node by its resource, marked as shown once merged", () => {
     const f = described();
     const expanded = vi.fn();
-    show(f.query, "sparql", { ...f, sparqlExpansions: { "http://x/b": [] } }, {
-      onExpandResource: expanded,
-    });
+    show(
+      f.query,
+      "sparql",
+      { ...f, sparqlExpansions: { "http://x/b": [] } },
+      {
+        onExpandResource: expanded,
+      },
+    );
     const props = canvas.props as {
       describable: boolean;
       keepPositions: boolean;
@@ -344,6 +349,16 @@ describe("a SPARQL answer drawn", () => {
       show("q", "sparql", f, { onDescribeResource: vi.fn() });
       pick(BARE);
       expect(screen.getByText("Not for you")).toBeInTheDocument();
+    });
+
+    it("asks even when the drawing has injected its degree metrics into the node", () => {
+      const metered: GNode = { ...BARE, properties: { ...BARE.properties, degIn: 0, degTotal: 1 } };
+      const describe_ = vi.fn();
+      show("q", "sparql", withNode({ nodes: new Map([["pets:7", metered]]) }), {
+        onDescribeResource: describe_,
+      });
+      pick(metered);
+      expect(describe_).toHaveBeenCalledWith("fs", "http://x/pets/6");
     });
 
     it("asks nothing of a node that already holds its properties", () => {
