@@ -1,0 +1,58 @@
+# Inventory and removal of stale Unity Catalog external locations left by tests (REQ-254).
+# Manual only: `list` is read-only (REST, wakes no SQL warehouse); `delete` removes exactly the
+# external locations named and refuses one that a table or volume still uses.
+name: Databricks location cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: list (read-only) or delete (exactly the names given)
+        type: choice
+        options: [list, delete]
+        required: true
+      names:
+        description: 'JSON list of external location names from a list run (required for delete)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databricks-location-cleanup
+  cancel-in-progress: false
+
+jobs:
+  databricks-location-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      MODE: ${{ inputs.mode }}
+      NAMES: ${{ inputs.names }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install httpx
+        run: python -m pip install httpx
+      - name: Require names for delete
+        if: env.MODE == 'delete' && env.NAMES == ''
+        run: |
+          echo "delete needs the names input" >&2
+          exit 1
+      - name: List
+        if: env.MODE == 'list'
+        run: |
+          python scripts/databricks_location_cleanup.py list > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Delete
+        if: env.MODE == 'delete'
+        run: |
+          python scripts/databricks_location_cleanup.py delete --names "$NAMES" > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
