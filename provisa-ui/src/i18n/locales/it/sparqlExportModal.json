@@ -13,6 +13,7 @@
     },
     "download": "Scarica",
     "close": "Chiudi",
-    "empty": "Esegui una query per esportarne il risultato."
+    "empty": "Esegui una query per esportarne il risultato.",
+    "unnamedEdges": "Gli archi di questo grafo non nominano alcun predicato, quindi non contiene triple da scrivere come RDF."
   }
 }

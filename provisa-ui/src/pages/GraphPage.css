@@ -2332,3 +2332,9 @@ button.gf-overview-chip {
 .gf-td-iri .gf-td-copy-iri:focus-visible {
   opacity: 1;
 }
+
+.gf-sparql-toggle {
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin: 4px 8px;
+}

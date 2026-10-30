@@ -40,6 +40,7 @@
     "copyErrorTitle": "Копировать ошибку",
     "expandedDialogLabel": "Развёрнутый вид графа",
     "firstNodesShown": "Показаны первые {{count}} узлов; есть и другие. Увеличьте лимит в боковом меню.",
-    "deleteFrame": "Удалить этот результат"
+    "deleteFrame": "Удалить этот результат",
+    "sparqlNothingMore": "О {{resource}} больше ничего не сказано."
   }
 }

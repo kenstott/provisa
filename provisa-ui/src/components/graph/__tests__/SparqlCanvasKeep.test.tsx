@@ -14,7 +14,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "../../../test-utils/render";
-import { nodePositions, restorePositions } from "../canvas/canvas-helpers";
+import { holdDrawing, restoreDrawing } from "../canvas/canvas-helpers";
 import { NodeContextMenu } from "../NodeContextMenu";
 import type { CyInstance } from "../cytoscape-types";
 import type { GNode } from "../graph-model";
@@ -33,23 +33,42 @@ function fakeNode(id: string, gid: number, x?: number, y?: number) {
   };
   return n;
 }
-const fakeCy = (nodes: ReturnType<typeof fakeNode>[]) =>
-  ({ nodes: () => ({ forEach: (f: (n: unknown) => void) => nodes.forEach(f) }) }) as unknown as CyInstance;
+const fakeCy = (nodes: ReturnType<typeof fakeNode>[]) => {
+  const view = { zoom: 1, pan: { x: 0, y: 0 } };
+  return {
+    view,
+    nodes: () => ({ forEach: (f: (n: unknown) => void) => nodes.forEach(f) }),
+    zoom(z?: number) {
+      if (z !== undefined) view.zoom = z;
+      return view.zoom;
+    },
+    pan(p?: { x: number; y: number }) {
+      if (p) view.pan = p;
+      return view.pan;
+    },
+  };
+};
+const asCy = (cy: ReturnType<typeof fakeCy>) => cy as unknown as CyInstance;
 
 describe("a drawing that keeps its nodes", () => {
-  it("holds each node's place by its own id", () => {
-    const held = nodePositions(fakeCy([fakeNode("a:1", 1, 10, 20)]));
-    expect(held.get(1)).toEqual({ x: 10, y: 20 });
+  it("holds each node's place by its own id, and the view", () => {
+    const cy = fakeCy([fakeNode("a:1", 1, 10, 20)]);
+    cy.zoom(2);
+    const held = holdDrawing(asCy(cy));
+    expect(held.positions.get(1)).toEqual({ x: 10, y: 20 });
+    expect(held.zoom).toBe(2);
   });
 
-  it("puts shared nodes back, and a new one beside its neighbour", () => {
+  it("puts shared nodes back under the same view, and a new one beside its neighbour", () => {
     // The node's label changed with the merge (its id in the drawing did), its own id did not.
     const kept = fakeNode("sales:orders:1", 1);
     const fresh = fakeNode("sales:customers:2", 2);
     fresh.links = [kept];
-    const held = new Map([[1, { x: 100, y: 100 }]]);
-    const placed = restorePositions(fakeCy([kept, fresh]), held, 50);
+    const held = { positions: new Map([[1, { x: 100, y: 100 }]]), zoom: 3, pan: { x: 5, y: 6 } };
+    const cy = fakeCy([kept, fresh]);
+    const placed = restoreDrawing(asCy(cy), held, 50);
     expect(kept.pos).toEqual({ x: 100, y: 100 });
+    expect(cy.view).toEqual({ zoom: 3, pan: { x: 5, y: 6 } });
     expect(placed).toEqual(new Set(["sales:customers:2"]));
     const { x, y } = fresh.pos!;
     expect(Math.hypot(x - 100, y - 100)).toBeCloseTo(50);

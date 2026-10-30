@@ -75,23 +75,29 @@ export function applyNodeSize(
 // The nodes the user placed, where they are, as fcose's fixedNodeConstraint: fcose moves a locked
 // node during its simulation and only the final write is refused, so the rest were laid out around
 // where the simulation had carried it, not where the user put it.
-/** Where each drawn node stands, by its own id, which outlives a change of its label. */
-export function nodePositions(cy: CyInstance): Map<number, { x: number; y: number }> {
-  const held = new Map<number, { x: number; y: number }>();
-  cy.nodes().forEach((n) => {
-    const gn = n.data("_node") as GNode | undefined;
-    if (gn) held.set(gn.id, { ...n.position() });
-  });
-  return held;
+/** A drawing's place on the canvas: where each node stands, by its own id, which outlives a change
+ * of its label, and the view of them. */
+export interface HeldDrawing {
+  positions: Map<number, { x: number; y: number }>;
+  zoom: number;
+  pan: { x: number; y: number };
 }
 
-/** Puts each node of a new drawing where ``held`` has it, and each new node beside a neighbour that
- * was held. The ids of the nodes that are new, for the layout to place. */
-export function restorePositions(
-  cy: CyInstance,
-  held: Map<number, { x: number; y: number }>,
-  spread: number,
-): Set<string> {
+export function holdDrawing(cy: CyInstance): HeldDrawing {
+  const positions = new Map<number, { x: number; y: number }>();
+  cy.nodes().forEach((n) => {
+    const gn = n.data("_node") as GNode | undefined;
+    if (gn) positions.set(gn.id, { ...n.position() });
+  });
+  return { positions, zoom: cy.zoom(), pan: { ...cy.pan() } };
+}
+
+/** Puts each node of a new drawing where ``held`` has it, under the same view, and each new node
+ * beside a neighbour that was held. The ids of the nodes that are new, for the layout to place. */
+export function restoreDrawing(cy: CyInstance, drawing: HeldDrawing, spread: number): Set<string> {
+  const held = drawing.positions;
+  cy.zoom(drawing.zoom);
+  cy.pan(drawing.pan);
   const fresh: CyElement[] = [];
   cy.nodes().forEach((n) => {
     const gn = n.data("_node") as GNode | undefined;

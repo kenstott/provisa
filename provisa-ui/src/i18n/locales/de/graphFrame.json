@@ -40,6 +40,7 @@
     "copyErrorTitle": "Fehler kopieren",
     "expandedDialogLabel": "Erweiterte Graphansicht",
     "firstNodesShown": "Die ersten {{count}} Knoten werden angezeigt; es gibt weitere. Erhöhen Sie das Limit im Seitenmenü.",
-    "deleteFrame": "Dieses Ergebnis löschen"
+    "deleteFrame": "Dieses Ergebnis löschen",
+    "sparqlNothingMore": "Über {{resource}} ist nichts weiter bekannt."
   }
 }

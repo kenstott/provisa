@@ -3,6 +3,7 @@
     "noRows": "行がありません",
     "copyAsCsv": "CSV としてコピー",
     "copyJson": "JSON をコピー",
-    "table": "テーブル結果"
+    "table": "テーブル結果",
+    "copyIri": "完全な IRI をコピー"
   }
 }

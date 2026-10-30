@@ -41,8 +41,9 @@ import { applyHighlight } from "./canvas/highlight";
 import {
   computeLabelSizeRanges,
   applyNodeSize,
-  nodePositions,
-  restorePositions,
+  holdDrawing,
+  restoreDrawing,
+  type HeldDrawing,
 } from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
 import { CanvasControls } from "./canvas/CanvasControls";
@@ -107,7 +108,7 @@ export function GraphCanvas({
   const keepPositionsRef = useRef(keepPositions);
   keepPositionsRef.current = keepPositions;
   // Where the last drawing's nodes stood, for a drawing that keeps them (keepPositions).
-  const heldPositionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const heldDrawingRef = useRef<HeldDrawing | null>(null);
   // Track nodes that the user has manually dragged; these stay anchored during re-layout
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
@@ -587,19 +588,22 @@ export function GraphCanvas({
     portEdgesAddedRef.current = false;
     cyRef.current = cy;
     onCyReady?.(cy);
-    const held = keepPositionsRef.current ? heldPositionsRef.current : new Map();
+    const held = keepPositionsRef.current ? heldDrawingRef.current : null;
     // A drawing that keeps its nodes keeps the ones the viewer pinned where they were put.
     anchoredRef.current = new Set(
-      held.size > 0 ? [...anchoredRef.current].filter((id) => cy.$id(id).length > 0) : [],
+      held ? [...anchoredRef.current].filter((id) => cy.$id(id).length > 0) : [],
     );
     activeLayoutRef.current = null;
     layoutRunningRef.current = false;
-    if (held.size > 0 && clusterLevel === "none") {
-      const fresh = restorePositions(cy, held, edgeDistanceRef.current);
-      if (fresh.size > 0) nudgeLayout(fresh, true);
+    if (held && clusterLevel === "none") {
+      // The nudge places what is new, and styles the rest as a layout does.
+      const fresh = restoreDrawing(cy, held, edgeDistanceRef.current);
+      nudgeLayout(fresh, fresh.size > 0);
     } else if (els.length > 0) runLayout();
     return () => {
-      if (keepPositionsRef.current) heldPositionsRef.current = nodePositions(cy);
+      // A drawing whose layout never finished has nowhere to keep.
+      heldDrawingRef.current =
+        keepPositionsRef.current && !layoutRunningRef.current ? holdDrawing(cy) : null;
       cyRef.current = null;
       activeLayoutRef.current = null;
       onCyReady?.(null);
