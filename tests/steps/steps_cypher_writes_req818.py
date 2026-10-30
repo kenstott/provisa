@@ -126,8 +126,21 @@ def _r818_then_row_filter(r818: dict) -> None:
     "it executes as a direct table write, returns affected_rows, and runs the one after-write step"
 )
 def _r818_then_direct_write(r818: dict) -> None:
-    # The route answers the pipeline's row count.
-    assert (r818["status"], r818["body"]) == (200, {"affected_rows": 1, "type": "cypher"})
+    # The route answers the pipeline's row count, and what the write did as Neo4j counts it
+    # (REQ-670, amended 2026-10-28).
+    assert (r818["status"], r818["body"]) == (
+        200,
+        {
+            "affected_rows": 1,
+            "type": "cypher",
+            "counters": {
+                "nodes-created": 1,
+                "properties-set": 2,
+                "labels-added": 1,
+                "contains-updates": True,
+            },
+        },
+    )
     # The one after-write step, at the pipeline's terminal, for the table written.
     calls = run_after_write(_USERS_TABLE_ID, "users", "pg-main")
     assert calls["invalidated"] == [_USERS_TABLE_ID]
