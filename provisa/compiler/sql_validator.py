@@ -53,6 +53,7 @@ from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
 from provisa.security.rights import reaches_all_domains
+from provisa.transpiler.xml_syntax import MAPPINGS
 
 
 @dataclass
@@ -124,6 +125,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     violations += _check_dag(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_xmltable(tree, gov_ctx, cte_names_set)
+    violations += _check_xml_mappings(tree)
 
     return violations
 
@@ -749,6 +751,17 @@ def _filters_plaintext(gov_ctx: GovernanceContext, tid: int, col_name: str) -> b
     from provisa.security.masking import MaskType
 
     return entry[0].mask_type != MaskType.fake
+
+
+def _check_xml_mappings(tree: exp.Expr) -> list[ValidationViolation]:  # REQ-2167
+    """Reject query_to_xml and its kin: what they read is in a string, which this statement's
+    governance cannot see, and a PostgreSQL source would run it as Provisa's own connection. A
+    surface that serves them answers each first, through governed reads (compiler.xml_mapping)."""
+    return [
+        ValidationViolation("V006", f"{call.name.lower()} is not a governed relation")
+        for call in tree.find_all(exp.Anonymous)
+        if call.name.lower() in MAPPINGS
+    ]
 
 
 def _check_masked_in_xmltable(  # REQ-040, REQ-2167

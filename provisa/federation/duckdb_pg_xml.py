@@ -860,7 +860,7 @@ def _strict_in_first(function: Any) -> Any:
 
 
 _MACROS: tuple[str, ...] = (
-    # A value that needs no reading: what query_to_xml wrote (provisa.pgwire.xml_publish).
+    # A value that needs no reading: what query_to_xml wrote (provisa.compiler.xml_mapping).
     "CREATE MACRO provisa_xml(value) AS CAST(value AS VARCHAR)",
     "CREATE MACRO provisa_xml_text(value) AS provisa_xml_value(CAST(value AS VARCHAR), "
     "typeof(value), CASE WHEN typeof(value) LIKE '%[]' THEN CAST(to_json(value) AS VARCHAR) "

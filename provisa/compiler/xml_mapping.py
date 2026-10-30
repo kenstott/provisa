@@ -11,10 +11,11 @@
 """SQL/XML's mapping of tables to XML (REQ-2167): query_to_xml, table_to_xml, schema_to_xml,
 database_to_xml, cursor_to_xml and their xmlschema forms, by src/backend/utils/adt/xml.c.
 
-These functions read data, so they read it as the session does: every read of theirs is a
-statement of the session (``Reads``), governed, masked, row-filtered and audited as the client's
-own, and what a schema or a database holds is what the session's role's catalog lists. Nothing
-here reaches a source or an engine. A call is answered before the statement that holds it is
+These functions read data, so they read it as the session asking does: every read of theirs goes
+through ``Reads``, which a surface implements with its own governed statements (masked,
+row-filtered and audited as the client's own), and what a schema or a database holds is what that
+role's catalog lists. Nothing here reaches a source or an engine, and a surface that offers no
+``Reads`` does not serve them: governance refuses them (sql_validator V006). A call is answered before the statement that holds it is
 governed (``fold``), and the statement then carries the document as a value: so its arguments
 must be constants, the one thing here PostgreSQL does not ask of them (see ``_constant``)."""
 

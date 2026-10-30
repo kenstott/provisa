@@ -62,17 +62,10 @@ class XmlExists(exp.Expression, exp.Func):
 
 #: The nodes that are an xml value.
 XML_VALUES = (XmlParse, XmlPi, XmlRoot, exp.XMLElement)
-#: The calls that return one: pg_proc's, and those only PostgreSQL's parser knows.
-RETURNS_XML = frozenset(
+#: SQL/XML's mappings of tables: each reads what its text argument names, so no statement holding
+#: one can be governed by reading the statement (provisa.compiler.xml_mapping answers them first).
+MAPPINGS = frozenset(
     {
-        "xml",
-        "xmlagg",
-        "xmlcomment",
-        "xmlconcat",
-        "xmlconcat2",
-        "xmlforest",
-        "xmltext",
-        "provisa_xml",
         "cursor_to_xml",
         "cursor_to_xmlschema",
         "database_to_xml",
@@ -87,6 +80,20 @@ RETURNS_XML = frozenset(
         "table_to_xml",
         "table_to_xml_and_xmlschema",
         "table_to_xmlschema",
+    }
+)
+#: The calls that return one: pg_proc's, and those only PostgreSQL's parser knows.
+RETURNS_XML = frozenset(
+    {
+        "xml",
+        "xmlagg",
+        "xmlcomment",
+        "xmlconcat",
+        "xmlconcat2",
+        "xmlforest",
+        "xmltext",
+        "provisa_xml",
+        *MAPPINGS,
     }
 )
 

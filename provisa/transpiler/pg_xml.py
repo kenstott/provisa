@@ -37,9 +37,73 @@ from provisa.transpiler.xml_syntax import (
 )
 
 #: A statement ``typed_calls`` has XML work in.
-MENTIONED = re.compile(r"\bxml|\bxpath|\bdocument\b", re.IGNORECASE)
+MENTIONED = re.compile(r"\bxml|\bxpath|\bdocument\b|\bprovisa_xml\b", re.IGNORECASE)
 
 _XML_TYPE = exp.DataType.Type.XML
+#: The dialects that run PostgreSQL's XML as PostgreSQL's parser reads it.
+NATIVE_DIALECTS = frozenset({"postgres", "postgresql"})
+
+
+class XmlFunctionRefused(ValueError):
+    """An XML function on a dialect with no way to run it: refused by name, never sent to fail
+    there or answered over the value's text form."""
+
+    code = "query.xml_function_unsupported"
+    sqlstate = "0A000"
+
+    def __init__(self, name: str, dialect: str) -> None:
+        self.params = {"function": name, "dialect": dialect}
+        super().__init__(f"{name} needs XML, which {dialect} has no SQL for")
+
+
+#: Every XML function that is a call. A value already answered, provisa_xml, is none.
+_CALLS = frozenset({"xmlattributes", "xpath", "xpath_exists", "xml_is_well_formed"}) | frozenset(
+    {"xml_is_well_formed_content", "xml_is_well_formed_document", "xml_send", "xmlvalidate"}
+)
+
+
+def _xml_function(node: exp.Expr) -> str | None:
+    """The name of the XML function a node is; None for any other."""
+    if isinstance(node, (XmlParse, XmlPi, XmlRoot, XmlSerialize, XmlExists)):
+        return type(node).sql_names()[0]
+    if isinstance(node, exp.XMLElement):
+        return "XMLELEMENT"
+    if isinstance(node, exp.XMLTable):
+        return "XMLTABLE"
+    if isinstance(node, exp.Is) and isinstance(node.expression, exp.Column):
+        return "IS DOCUMENT" if node.expression.name.upper() == "DOCUMENT" else None
+    if isinstance(node, exp.Anonymous):
+        name = node.name.lower()
+        if name in _CALLS or (name in RETURNS_XML and name != "provisa_xml"):
+            return name
+    return None
+
+
+def for_dialect(pg_sql: str, dialect: str) -> str:
+    """``pg_sql`` for a dialect other than DuckDB's: PostgreSQL runs XML as written, and any other
+    has no SQL for it, so an XML function is refused by name. A document already answered is a
+    value there, as xml on PostgreSQL and its text elsewhere."""
+    if MENTIONED.search(pg_sql) is None:
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    if dialect not in NATIVE_DIALECTS:
+        for node in tree.walk():
+            name = _xml_function(node)
+            if name is not None:
+                raise XmlFunctionRefused(name, dialect)
+
+    def value(node: exp.Expr) -> exp.Expr:
+        if not (isinstance(node, exp.Anonymous) and node.name.lower() == "provisa_xml"):
+            return node
+        if dialect in NATIVE_DIALECTS:
+            return exp.Cast(this=node.expressions[0], to=exp.DataType.build("XML"))
+        return node.expressions[0]
+
+    if not any(
+        isinstance(n, exp.Anonymous) and n.name.lower() == "provisa_xml" for n in tree.walk()
+    ):
+        return pg_sql
+    return tree.transform(value).sql(dialect="postgres")
 
 
 def _refused(sqlstate: str, message: str) -> Exception:

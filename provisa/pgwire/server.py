@@ -67,7 +67,8 @@ from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_RED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
 from provisa.core.ir_types import SUBTYPES
-from provisa.pgwire import advisory_locks, xml_publish
+from provisa.compiler import xml_mapping
+from provisa.pgwire import advisory_locks
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
 from provisa.pgwire.constant_arguments import is_constant
@@ -1488,13 +1489,13 @@ def _normalize_cursor_name(raw: str) -> str:
     return raw.lower()
 
 
-def _columns_of(result: Any) -> list[xml_publish.Column]:
+def _columns_of(result: Any) -> list[xml_mapping.Column]:
     """A described or executed result's columns: their names, type OIDs and text writers."""
     columns = []
     for index in range(result.column_count()):
         name, bvtype = result.column(index)
         oid, text, _ = BVTYPE_TO_PGTYPE[bvtype]
-        columns.append(xml_publish.Column(name, result.column_type_oid(index) or oid, text))
+        columns.append(xml_mapping.Column(name, result.column_type_oid(index) or oid, text))
     return columns
 
 
@@ -1513,7 +1514,7 @@ class _SessionReads:  # REQ-2167
 
         return served_database_name(state)
 
-    def rows(self, sql: str) -> tuple[list[xml_publish.Column], list[Any]]:
+    def rows(self, sql: str) -> tuple[list[xml_mapping.Column], list[Any]]:
         result = self._session._execute_sql_bound(sql, None, None)
         try:
             read = _columns_of(result), list(result.rows())
@@ -1522,7 +1523,7 @@ class _SessionReads:  # REQ-2167
         finally:
             result.close()
 
-    def shape(self, sql: str) -> list[xml_publish.Column]:
+    def shape(self, sql: str) -> list[xml_mapping.Column]:
         return _columns_of(self._session._describe_bound(sql, None))
 
     def _cursor(self, name: str) -> "_CursorState":
@@ -1531,11 +1532,11 @@ class _SessionReads:  # REQ-2167
             raise ValueError(f'{MARK} 34000: cursor "{name}" does not exist')
         return found
 
-    def cursor_rows(self, name: str, count: int) -> tuple[list[xml_publish.Column], list[Any]]:
+    def cursor_rows(self, name: str, count: int) -> tuple[list[xml_mapping.Column], list[Any]]:
         cursor = self._cursor(name)
         return _columns_of(cursor.query_result), _cursor_move(cursor, "forward", count)
 
-    def cursor_shape(self, name: str) -> list[xml_publish.Column]:
+    def cursor_shape(self, name: str) -> list[xml_mapping.Column]:
         return _columns_of(self._cursor(name).query_result)
 
     def catalog(self, sql: str, parameters: list[Any]) -> list[tuple]:
@@ -1721,11 +1722,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         stripped = sql.strip()
         refuse_server_function(stripped)  # REQ-2167
-        if xml_publish.calls_one(stripped):
+        if xml_mapping.calls_one(stripped):
             # REQ-2167: answered as its Execute is. With a parameter to come it is described with
             # no reads: the result is not held for that Execute.
             if _placeholder_count(stripped):
-                return self._execute_sql_bound(xml_publish.undescribed(stripped), None, None)
+                return self._execute_sql_bound(xml_mapping.undescribed(stripped), None, None)
             return self._execute_sql_bound(stripped, params, None)
         advisory = _advisory_call(stripped)
         if advisory is not None and _placeholder_count(stripped):
@@ -1942,11 +1943,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # can never change the governed shape. Only the INTERCEPT catalog emulation (not a governed
         # query) reads the values inline.
         stripped = sql.strip()
-        if xml_publish.calls_one(stripped):
+        if xml_mapping.calls_one(stripped):
             # REQ-2167: each read the call makes is a statement of this session, governed here,
             # and what such a read warns of (rows cut at the limit) the statement warns of.
             reads = _SessionReads(self)
-            folded = xml_publish.fold(stripped, reads, params)
+            folded = xml_mapping.fold(stripped, reads, params)
             result = self._execute_sql_bound(folded, None, result_fmt)
             result.warnings = (*result.warnings, *reads.warnings)
             return result

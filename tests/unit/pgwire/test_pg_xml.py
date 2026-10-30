@@ -26,9 +26,10 @@ import pytest
 from psycopg import pq
 
 from provisa.federation import duckdb_pg_xml as xml
-from provisa.pgwire import xml_publish
+from provisa.compiler import xml_mapping
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
-from provisa.pgwire.xml_publish import Column
+from provisa.compiler.xml_mapping import Column
+from provisa.transpiler.pg_xml import XmlFunctionRefused
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_xml_answers import CURSOR, PUBLISHED, SCALAR
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
@@ -282,7 +283,7 @@ class _FixtureReads:
 
 def _published_problem(sql: str, answer: tuple, reads: Any) -> str | None:
     try:
-        folded = xml_publish.fold(sql, reads, None)
+        folded = xml_mapping.fold(sql, reads, None)
     except ValueError as exc:
         if answer[0] != "err":
             return f"refused: {exc}"
@@ -291,9 +292,9 @@ def _published_problem(sql: str, answer: tuple, reads: Any) -> str | None:
     if answer[0] == "err":
         return f"answered {folded}"
     want = answer[3][0][0]
-    tree = xml_publish.sqlglot.parse_one(folded, read="postgres")
-    held = next(tree.find_all(xml_publish.exp.Anonymous)).expressions[0]
-    got = None if isinstance(held, xml_publish.exp.Null) else held.this
+    tree = xml_mapping.sqlglot.parse_one(folded, read="postgres")
+    held = next(tree.find_all(xml_mapping.exp.Anonymous)).expressions[0]
+    got = None if isinstance(held, xml_mapping.exp.Null) else held.this
     return None if got == want else f"answered {got!r}"
 
 
@@ -346,7 +347,7 @@ def test_a_cursor_is_read_through_the_server(conn: Any):
 
 def test_a_null_argument_reads_nothing():
     reads = _FixtureReads()
-    folded = xml_publish.fold(
+    folded = xml_mapping.fold(
         "SELECT table_to_xml(NULL::regclass, true, false, '') AS v", reads, None
     )
     assert reads.read == [] and "PROVISA_XML(NULL)" in folded
@@ -363,25 +364,25 @@ def test_a_query_argument_is_refused_unless_it_is_one_read():
         reads = _FixtureReads()
         escaped = query.replace("'", "''")
         with pytest.raises(ValueError, match=said):
-            xml_publish.fold(f"SELECT query_to_xml('{escaped}', true, false, '')", reads, None)
+            xml_mapping.fold(f"SELECT query_to_xml('{escaped}', true, false, '')", reads, None)
         assert reads.read == []
 
 
 def test_a_call_over_a_column_is_refused_by_name():
     with pytest.raises(ValueError, match="0A000: query_to_xml: an argument that is not a constant"):
-        xml_publish.fold("SELECT query_to_xml(q, true, false, '') FROM t", _FixtureReads(), None)
+        xml_mapping.fold("SELECT query_to_xml(q, true, false, '') FROM t", _FixtureReads(), None)
 
 
 def test_a_parameter_is_the_argument_it_binds():
     reads = _FixtureReads()
-    folded = xml_publish.fold("SELECT query_to_xml($1, true, false, '')", reads, ["SELECT 1 AS a"])
+    folded = xml_mapping.fold("SELECT query_to_xml($1, true, false, '')", reads, ["SELECT 1 AS a"])
     assert reads.read == ["SELECT 1 AS a"] and "<a>1</a>" in folded
 
 
 def test_a_string_that_only_names_a_function_is_no_call():
-    assert xml_publish.calls_one("SELECT 'query_to_xml(' AS v") is False
-    assert xml_publish.calls_one("SELECT query_to_xml('SELECT 1', true, false, '') AS v") is True
-    assert xml_publish.calls_one("SELECT pg_catalog.\"table_to_xml\"(1, true, false, '')") is True
+    assert xml_mapping.calls_one("SELECT 'query_to_xml(' AS v") is False
+    assert xml_mapping.calls_one("SELECT query_to_xml('SELECT 1', true, false, '') AS v") is True
+    assert xml_mapping.calls_one("SELECT pg_catalog.\"table_to_xml\"(1, true, false, '')") is True
 
 
 _STRING_COLUMN = '[{"path": "string(.)", "ordinality": false, "xml": false, "numeric": false}]'
@@ -486,10 +487,62 @@ def test_an_xmltable_column_name_stays_a_name():
     written = transpile_to_duckdb(
         f"""SELECT * FROM XMLTABLE('/r' PASSING ('<r/>'::xml) COLUMNS "{quoted}" text) t"""
     )
-    tree = xml_publish.sqlglot.parse_one(written, read="duckdb")
-    derived = tree.find(xml_publish.exp.Subquery)
+    tree = xml_mapping.sqlglot.parse_one(written, read="duckdb")
+    derived = tree.find(xml_mapping.exp.Subquery)
     assert derived is not None
     assert [s.alias_or_name for s in derived.this.selects] == [name]
+
+
+# --- where each function runs: a dialect's own SQL, or refused by name ------------------------
+
+
+@pytest.mark.parametrize("dialect", ["trino", "mysql", "tsql", "snowflake", "bigquery"])
+@pytest.mark.parametrize(
+    ("sql", "name"),
+    [
+        ("SELECT xpath('/a', x) FROM t", "xpath"),
+        ("SELECT XMLPARSE(CONTENT x) FROM t", "XMLPARSE"),
+        ("SELECT xmlelement(name a, x) FROM t", "XMLELEMENT"),
+        ("SELECT xmlagg(x) FROM t", "xmlagg"),
+        ("SELECT * FROM XMLTABLE('/r' PASSING (x) COLUMNS v TEXT) AS y", "XMLTABLE"),
+        ("SELECT x IS DOCUMENT FROM t", "IS DOCUMENT"),
+    ],
+)
+def test_a_dialect_with_no_xml_refuses_the_function_by_name(dialect, sql, name):
+    with pytest.raises(XmlFunctionRefused, match=f"{name} .*{dialect}"):
+        transpile(sql, dialect)
+
+
+def test_a_document_already_answered_is_a_value_on_any_dialect():
+    written = transpile("SELECT PROVISA_XML('<a/>') AS v, id FROM t", "mysql")
+    assert "PROVISA_XML" not in written and "<a/>" in written
+    native = transpile("SELECT PROVISA_XML('<a/>') AS v, id FROM t", "postgres")
+    assert native == "SELECT CAST('<a/>' AS XML) AS v, id FROM t"
+
+
+def test_a_statement_with_no_xml_function_is_left_alone():
+    assert transpile("SELECT xml_notes, document FROM t", "mysql")
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "query_to_xml('SELECT secret FROM sales.orders', true, false, '')",
+        "pg_catalog.query_to_xml('SELECT 1', true, false, '')",
+        "table_to_xml('sales.orders', true, false, '')",
+        "schema_to_xml('sales', true, false, '')",
+        "database_to_xml(true, false, '')",
+        "cursor_to_xml('c', 1, true, false, '')",
+    ],
+)
+def test_governance_refuses_a_call_no_surface_read_for_it(monkeypatch, call):
+    """A source would run the text as its own connection, which nothing here has governed."""
+    import asyncio
+
+    from tests.unit.test_governed_sql_engine_internals import _govern
+
+    with pytest.raises(PermissionError, match="V006"):
+        asyncio.run(_govern(monkeypatch, f"SELECT {call} FROM sales.orders o", ["*"]))
 
 
 # --- on a PostgreSQL source, the syntax is PostgreSQL's ---------------------------------------

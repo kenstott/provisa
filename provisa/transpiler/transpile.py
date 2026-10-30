@@ -1145,6 +1145,8 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
+        pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
     # `_expand_star`) stays unquoted through the transpile by default, which is harmless for every
