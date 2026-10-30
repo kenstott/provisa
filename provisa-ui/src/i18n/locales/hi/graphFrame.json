@@ -40,6 +40,7 @@
     "copyErrorTitle": "त्रुटि कॉपी करें",
     "expandedDialogLabel": "विस्तृत ग्राफ़ व्यू",
     "firstNodesShown": "पहले {{count}} नोड दिखाए जा रहे हैं; और भी हैं। साइड मेनू में सीमा बढ़ाएँ।",
-    "deleteFrame": "यह परिणाम हटाएँ"
+    "deleteFrame": "यह परिणाम हटाएँ",
+    "sparqlNothingMore": "{{resource}} के बारे में और कुछ नहीं कहा गया है।"
   }
 }

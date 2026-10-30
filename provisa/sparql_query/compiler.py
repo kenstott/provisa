@@ -53,7 +53,6 @@ from rdflib.plugins.sparql import parser as _rdf_parser
 from rdflib.plugins.sparql.parser import parseQuery
 from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
-from provisa.core import settings_registry
 from provisa.gql.expr_ast import (
     AxiomObject,
     Binary,
@@ -95,6 +94,7 @@ from provisa.gql.ir import (
     WhereClause,
 )
 from provisa.gql.iri import parse_subject_iri
+from provisa.gql.terms import union_allowance, union_refusal
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
 from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
@@ -1590,14 +1590,28 @@ def _typed(value: str, datatype: str | None) -> CypherExpr:
     return TypedLiteral(value, datatype)
 
 
+def _describe_construct(algebra: Any) -> str:
+    """The CONSTRUCT of a ``DESCRIBE <iri> ...``: each resource with every triple the model says
+    of it, read through its class's predicates as ``<iri> ?p ?o`` reads them. A DESCRIBE over a
+    pattern's variables is refused by name."""
+    resources = [t for t in algebra.PV if isinstance(t, URIRef)]
+    if len(resources) != len(algebra.PV):
+        raise SparqlRefused("A DESCRIBE of a variable is not supported; DESCRIBE a resource's IRI")
+    triples = [f"{r.n3()} ?p{i} ?o{i}" for i, r in enumerate(resources)]
+    where = " UNION ".join(f"{{ {t} }}" for t in triples)
+    return f"CONSTRUCT {{ {' . '.join(triples)} }} WHERE {{ {where} }}"
+
+
 def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
-    """``text``, a SPARQL SELECT, ASK or CONSTRUCT, as the graph IR, read against ``vocab``
-    (built from the label map ``lm``)."""
+    """``text``, a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE of a resource, as the graph IR, read
+    against ``vocab`` (built from the label map ``lm``)."""
     try:
         query = translateQuery(parseQuery(text))
     except Exception as exc:  # rdflib raises pyparsing's and its own errors alike
         raise SparqlRefused(f"The query is not SPARQL this endpoint reads: {exc}") from exc
     algebra = query.algebra
+    if algebra.name == "DescribeQuery":
+        return compile_sparql(_describe_construct(algebra), vocab, lm)
     form = {"SelectQuery": "SELECT", "AskQuery": "ASK", "ConstructQuery": "CONSTRUCT"}.get(
         algebra.name
     )
@@ -1626,11 +1640,16 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
             "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
             "give the subjects one class"
         )
-    limit = settings_registry.value("graph.union_limit")
-    if len(parts) > limit:
+    limit, allowed = union_allowance(
+        mods.get("limit") is not None
+        and not mods.get("order")
+        and not mods.get("distinct")
+        and aggregation is None
+    )
+    if len(parts) > allowed:
         raise SparqlRefused(
-            f"The query matches {len(parts)} combinations of classes, past the graph union limit "
-            f"of {limit}; give its subjects classes, or raise the limit (graph.union_limit)"
+            union_refusal(f"The query matches {len(parts)} combinations of classes", limit, allowed)
+            + "; give its subjects classes, or raise the limit (graph.union_limit)"
         )
     variables = mods.get("project", []) if form == "SELECT" else []
     if not parts:

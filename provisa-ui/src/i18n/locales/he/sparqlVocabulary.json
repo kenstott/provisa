@@ -12,6 +12,9 @@
     "classTerm": "מונח מחלקה {{term}}",
     "tableClass": "המחלקה של טבלה",
     "propertyTerm": "מונח תכונה {{term}}",
-    "columnPredicate": "עמודה {{column}}"
+    "columnPredicate": "עמודה {{column}}",
+    "propertySearch": "חיפוש מאפיינים",
+    "propertyTerms": "מונחי מאפיין",
+    "termClasses": "מחלקות: {{classes}}"
   }
 }

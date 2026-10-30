@@ -4858,6 +4858,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(reference_library_router)
+    from provisa.api.admin.term_finding_router import (  # REQ-2179
+        router as term_finding_router,
+    )
+
+    app.include_router(term_finding_router)
     from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
 
     app.include_router(model_report_router)

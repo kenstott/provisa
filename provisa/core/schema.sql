@@ -1860,6 +1860,50 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     UNIQUE (document_id, ordinal)
 );
 
+-- REQ-2179: the glossary's scans of reference library documents for terms, and the review queue of
+-- the candidate terms each proposes, drafts until a steward accepts, merges or rejects them. A scan
+-- keeps the document's title and source, so its citations outlive the document. Mirrors
+-- schema_org.glossary_term_scans and glossary_term_drafts.
+CREATE TABLE IF NOT EXISTS glossary_term_scans (
+    id              SERIAL PRIMARY KEY,
+    document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,
+    document_title  TEXT NOT NULL,
+    document_source TEXT NOT NULL,
+    domains         TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT glossary_term_scans_status_check
+                        CHECK (status IN ('running', 'done', 'failed')),
+    error           TEXT,
+    summary         TEXT,
+    started_by      TEXT,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
+
+CREATE TABLE IF NOT EXISTS glossary_term_drafts (
+    id              SERIAL PRIMARY KEY,
+    scan_id         INTEGER NOT NULL REFERENCES glossary_term_scans(id) ON DELETE CASCADE,
+    ordinal         INTEGER NOT NULL,
+    name            TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    sense           TEXT NOT NULL,
+    definition      TEXT,
+    definition_kind TEXT NOT NULL CONSTRAINT glossary_term_drafts_definition_check
+                        CHECK (definition_kind IN ('explicit', 'synthesized', 'missing')),
+    proposal        TEXT NOT NULL CONSTRAINT glossary_term_drafts_proposal_check
+                        CHECK (proposal IN ('new', 'merge')),
+    match_term_id   INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    match_kind      TEXT,
+    payload         TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT glossary_term_drafts_status_check
+                        CHECK (status IN ('draft', 'accepted', 'merged', 'rejected')),
+    term_id         INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    decided_by      TEXT,
+    decided_at      TIMESTAMPTZ,
+    tenant_id       UUID,
+    UNIQUE (scan_id, ordinal)
+);
+
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):
 -- an intervention by a platform_admin must be visible to the org afterward, and the query trail is

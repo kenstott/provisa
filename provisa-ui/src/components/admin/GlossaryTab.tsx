@@ -56,10 +56,11 @@ import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
 import { StewardshipSummary } from "./StewardshipSummary";
-import { tableNames, toReview } from "./termFindings";
+import { defaultFindDomains, tableNames, toReview } from "./termFindings";
 import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
 import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
 import { RetireTermDialog } from "./RetireTermDialog";
+import { FindTermsDialog } from "./FindTermsDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
@@ -230,6 +231,8 @@ export function GlossaryTab() {
   // Editable copies of the selected term's name/definition.
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
+  // REQ-2179: Find terms in a document, and the review queue of what it proposes.
+  const [findTermsOpen, setFindTermsOpen] = useState(false);
 
   const [actionError, setActionError] = useState("");
 
@@ -601,6 +604,9 @@ export function GlossaryTab() {
                 </Tip>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Item onClick={() => setFindTermsOpen(true)} data-testid="glossary-find-terms-btn">
+                  {t("findTerms.menuItem")}
+                </Menu.Item>
                 <Menu.Item
                   onClick={() => void handleBulkGenerateRelationships()}
                   data-testid="glossary-bulk-relationships-btn"
@@ -1057,6 +1063,16 @@ export function GlossaryTab() {
         </FormLayout>
       </Modal>
 
+      {findTermsOpen && (
+        <FindTermsDialog
+          terms={terms}
+          domainOptions={addDomainOptions}
+          domainsEnabled={domainsEnabled}
+          defaultDomains={defaultFindDomains(viewDomains, addDomainOptions)}
+          onClose={() => setFindTermsOpen(false)}
+          onGlossaryChanged={() => void refreshList()}
+        />
+      )}
       {detail && deprecateOpen && (
         <DeprecateTermDialog
           term={detail}

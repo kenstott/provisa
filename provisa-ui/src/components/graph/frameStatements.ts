@@ -104,6 +104,9 @@ export function showing(st: FrameStatement): Partial<FrameData> {
     sparqlForm: st.sparqlForm,
     sparqlTriples: st.sparqlTriples,
     sparqlPairing: st.sparqlPairing,
+    // A new answer starts over: what was merged into the old one is gone with it.
+    sparqlExpansions: undefined,
+    sparqlMerge: undefined,
   };
 }
 

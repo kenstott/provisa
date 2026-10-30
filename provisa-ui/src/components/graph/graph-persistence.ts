@@ -10,7 +10,8 @@
 
 import { useState, useCallback } from "react";
 import type { ResultRedirect } from "../../types/resultRedirect";
-import type { FrameData, FrameStatement, GNode, GEdge } from "./graph-model";
+import type { FrameData, FrameStatement, GNode, GEdge, SparqlForm } from "./graph-model";
+import type { SelectPairing, Triple } from "./sparql";
 import { getStored, setStored } from "../../lib/browserStorage";
 
 export type Favorite = { id: string; query: string; label: string; ts: number };
@@ -87,6 +88,10 @@ interface SerializedFrame {
   pinned?: boolean;
   statements?: SerializedStatement[];
   statementIndex?: number;
+  sparqlForm?: SparqlForm;
+  sparqlTriples?: Triple[];
+  sparqlPairing?: SelectPairing;
+  sparqlExpansions?: Record<string, Triple[]>;
 }
 
 interface SerializedStatement {
@@ -127,6 +132,10 @@ function serializeFrame(f: FrameData): SerializedFrame {
       truncated: p.truncated,
     })),
     statementIndex: f.statementIndex,
+    sparqlForm: f.sparqlForm,
+    sparqlTriples: f.sparqlTriples,
+    sparqlPairing: f.sparqlPairing,
+    sparqlExpansions: f.sparqlExpansions,
   };
 }
 
@@ -156,7 +165,7 @@ export function saveGraphState(state: GraphState): void {
   }
 }
 
-function loadGraphState(language: GraphLanguage): GraphState {
+export function loadGraphState(language: GraphLanguage): GraphState {
   const empty = { language, frames: [], history: [], currentQuery: DEFAULT_QUERY[language] };
   try {
     const raw = getStored(LS_KEY[language]);
