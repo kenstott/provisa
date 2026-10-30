@@ -89829,7 +89829,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     tags. The version stepper and Save, Save version and Cancel sit in its header. In the Schema tab the
     versioned, declared fields and the live fields (physical type, required, keys) are separate column groups,
     the live group marked live. Clicking a schema property or a quality check opens its detail in the same
-    stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.'
+    stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.
+    (Amended 2026-10-29, A PRODUCT''S CONTRACTS ARE A LIST BENEATH IT:) Maintainer 2026-10-29: every output
+    port other than a command port has exactly one contract. In the data products list, an expanded product
+    shows its contracts as a secondary list beneath its Lineage panel, one row per contract (output port,
+    contract version, status, consumers, SLA headline, last checked, and a warning where one applies), collapsed
+    at first. Expanding a row shows that contract''s details beneath it in the same dense card panels a
+    product uses (details, fields promised, SLAs and freshness, quality promises, consumers, versions and
+    changes); several may be open at once, and a contract''s details are read when its row opens. The contracts
+    are no longer a card in the product''s top panels; the product''s other cards, its output ports among
+    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
