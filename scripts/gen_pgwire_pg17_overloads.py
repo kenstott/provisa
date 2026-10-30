@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 9de4c26b-f223-467c-b796-ae513950ceb7
 #
 # This source code is licensed under the Business Source License 1.1
 """Generate provisa/pgwire/catalog_pg17_overloads.py: each pg_catalog function's overloads (kinds
