@@ -1176,10 +1176,9 @@ class WriteTranslator:
             )
             keys = self._end_keys(ast, n.variable) or [NODE_KEY_PROPERTY]
             items = ", ".join(f"{n.variable}.{k}" for k in keys)
-            params = {
-                p: (provided[v.name] if isinstance(v, CypherParam) else v)
-                for p, v in zip(names.values(), n.props.values(), strict=True)
-            }
+            params = dict(
+                zip(names.values(), set_values(list(n.props.values()), provided), strict=True)
+            )
             reads.append((f"MATCH {pattern} RETURN {items}", {**provided, **params}))
         return reads
 

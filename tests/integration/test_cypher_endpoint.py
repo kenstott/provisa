@@ -40,6 +40,14 @@ def client():
         yield c
 
 
+@pytest.fixture
+def cleared_session(client):
+    """REQ-2176: what a statement makes in the principal's graph session outlives the request,
+    and every later read of the principal goes through it: a test making any clears it after."""
+    yield
+    assert client.delete("/data/cypher/session").status_code == 200
+
+
 def test_cypher_endpoint_reachable(client):
     """Verify the /data/cypher endpoint exists and responds.
 
@@ -54,38 +62,35 @@ def test_cypher_endpoint_reachable(client):
     assert resp.status_code != 404, f"Endpoint not found: {resp.text}"
 
 
-def test_unsupported_write_pattern_rejected(client):
-    """Cypher is NOT read-only, but writes are constrained to direct table writes.
-
-    CREATE/DELETE/SET execute through the same write pipeline as any other write
-    (REQ-670). MERGE (upsert), DETACH DELETE (cascade), and REMOVE are not direct
-    table writes and are unsupported — they must be rejected, and the rejection
-    must NOT claim Cypher is read-only.
-    """
+def test_unsupported_write_pattern_rejected(client, cleared_session):
+    """Cypher is NOT read-only: a write pattern it cannot do is refused by name, and the refusal
+    must NOT claim Cypher is read-only. MERGE, CREATE and DETACH DELETE of what the model does
+    not have are the graph session's (REQ-2176); a MERGE reads one hop at a time."""
     resp = client.post(
         "/data/cypher",
-        json={"query": "MERGE (n:Person {name: 'Eve'})"},
+        json={"query": "CREATE (a), (b) MERGE (a)-[:KNOWS*2]->(b)"},
     )
     assert resp.status_code == 400
     data = resp.json()
     assert data["code"] == "cypher.refused", data
     err = data["detail"]
-    # Behavior: MERGE is an unsupported write pattern and is rejected by name.
-    assert "MERGE" in err.upper(), err
+    assert "one hop" in err, err
+    assert "read-only" not in err.lower()
 
 
-def test_supported_write_reaches_write_pipeline(client):
-    """A supported direct write (CREATE) against an unregistered label is routed to
-    the write pipeline (REQ-670) and rejected there for the missing label, NOT with a
-    read-only/write-clause error. Confirms CREATE is executed as a direct table write."""
+def test_supported_write_reaches_write_pipeline(client, cleared_session):
+    """A CREATE of a label the model does not have is the graph session's (REQ-2176, replacing
+    REQ-818's rejection): it is written, counted (REQ-670), and read back."""
     resp = client.post(
         "/data/cypher",
         json={"query": "CREATE (n:Person {name: 'Eve'})"},
     )
-    assert resp.status_code == 400
-    data = resp.json()
-    assert "label" in data["detail"].lower() and "Person" in data["detail"], data
-    assert "read-only" not in data["detail"].lower()
+    assert resp.status_code == 200, resp.text
+    counters = resp.json()["counters"]
+    assert counters["nodes-created"] == 1 and counters["properties-set"] == 1, counters
+    read = client.post("/data/cypher", json={"query": "MATCH (n:Person) RETURN n.name AS name"})
+    assert read.status_code == 200, read.text
+    assert read.json()["rows"] == [{"name": "Eve"}]
 
 
 def test_apoc_rejected(client):
@@ -99,10 +104,7 @@ def test_apoc_rejected(client):
 
 
 def test_parse_error_returns_400(client):
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "MERGE (n:Person {name: 'Eve'})"},
-    )
+    resp = client.post("/data/cypher", json={"query": "MATCH (n RETURN n"})
     assert resp.status_code == 400
     assert resp.json()["code"] == "cypher.refused"
 

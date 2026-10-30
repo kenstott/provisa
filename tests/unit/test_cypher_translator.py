@@ -2603,3 +2603,44 @@ def test_map_group_key_groups_by_its_values_and_orders_by_alias_key():
     group_by = sql.split("GROUP BY", 1)[1].split("ORDER BY", 1)[0].strip()
     assert group_by == 'n."age"'
     assert sql.split("ORDER BY", 1)[1].strip().startswith('n."age" DESC')
+
+
+def _rows_of(cypher: str, label_map: CypherLabelMap) -> list[tuple]:
+    """A translated statement with no model table in it, run."""
+    import duckdb
+    from provisa.cypher.parser import parse_cypher
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    sql, _params, _graph_vars = cypher_to_sql(parse_cypher(cypher, label_map), label_map, {})
+    return duckdb.connect().execute(transpile_to_duckdb(sql.sql(dialect="postgres"))).fetchall()
+
+
+@pytest.mark.parametrize(
+    "cypher,expected",
+    [
+        ("CALL db.labels() YIELD label RETURN label", [("Company",), ("Person",)]),
+        (
+            "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType",
+            [("MANAGES",), ("WORKS_AT",)],
+        ),
+        ("CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey", [("age",), ("name",)]),
+        ("CALL db.labels() YIELD label AS l WHERE l <> 'Person' RETURN l", [("Company",)]),
+    ],
+)
+def test_a_schema_procedure_yielding_is_answered_from_the_label_map(cypher, expected):
+    """REQ-572: as bare ``CALL db.labels()`` is; no command of that name is looked for."""
+    assert sorted(_rows_of(cypher, _make_label_map_multi_path())) == expected
+
+
+def test_a_schema_procedure_of_nothing_is_no_rows():
+    assert _rows_of("CALL db.labels() YIELD label RETURN label", CypherLabelMap({}, {})) == []
+
+
+def test_a_schema_procedure_yields_only_its_column():
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator_types import CypherTranslateError
+
+    label_map = _make_label_map_multi_path()
+    ast = parse_cypher("CALL db.labels() YIELD nope RETURN nope", label_map)
+    with pytest.raises(CypherTranslateError, match="it yields label"):
+        cypher_to_sql(ast, label_map, {})

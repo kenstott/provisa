@@ -259,7 +259,7 @@ def _gql(tag: int) -> str:
 
 
 def _cypher(tag: int) -> str:
-    return f"MATCH (e:events) WHERE e.id < {tag} RETURN e.id AS id, e.amount AS amount"
+    return f"MATCH (e:Events) WHERE e.id < {tag} RETURN e.id AS id, e.amount AS amount"
 
 
 def _flight_graphql(server: _Server, tag: int) -> int:
