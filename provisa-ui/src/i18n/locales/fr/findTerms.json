@@ -98,8 +98,6 @@
     "confirmMerge": "Fusionner",
     "edit": "Modifier",
     "reject": "Rejeter",
-    "save": "Enregistrer",
-    "cancel": "Annuler",
     "name": "Nom",
     "acceptDone": "{{name}} ajouté à l'ontologie.",
     "mergeDone": "{{name}} fusionné.",

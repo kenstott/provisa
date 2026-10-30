@@ -98,8 +98,6 @@
     "confirmMerge": "合并",
     "edit": "编辑",
     "reject": "拒绝",
-    "save": "保存",
-    "cancel": "取消",
     "name": "名称",
     "acceptDone": "{{name}} 已添加到本体。",
     "mergeDone": "{{name}} 已合并。",

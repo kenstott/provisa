@@ -98,8 +98,6 @@
     "confirmMerge": "Samenvoegen",
     "edit": "Bewerken",
     "reject": "Afwijzen",
-    "save": "Opslaan",
-    "cancel": "Annuleren",
     "name": "Naam",
     "acceptDone": "{{name}} aan de ontologie toegevoegd.",
     "mergeDone": "{{name}} samengevoegd.",

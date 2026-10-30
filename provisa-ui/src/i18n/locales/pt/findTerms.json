@@ -98,8 +98,6 @@
     "confirmMerge": "Mesclar",
     "edit": "Editar",
     "reject": "Rejeitar",
-    "save": "Salvar",
-    "cancel": "Cancelar",
     "name": "Nome",
     "acceptDone": "{{name}} adicionado à ontologia.",
     "mergeDone": "{{name}} mesclado.",

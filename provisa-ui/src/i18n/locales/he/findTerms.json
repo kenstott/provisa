@@ -98,8 +98,6 @@
     "confirmMerge": "מיזוג",
     "edit": "עריכה",
     "reject": "דחייה",
-    "save": "שמירה",
-    "cancel": "ביטול",
     "name": "שם",
     "acceptDone": "{{name}} נוסף לאונטולוגיה.",
     "mergeDone": "{{name}} מוזג.",

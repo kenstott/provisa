@@ -98,8 +98,6 @@
     "confirmMerge": "合併",
     "edit": "編輯",
     "reject": "拒絕",
-    "save": "儲存",
-    "cancel": "取消",
     "name": "名稱",
     "acceptDone": "{{name}} 已加入本體。",
     "mergeDone": "{{name}} 已合併。",

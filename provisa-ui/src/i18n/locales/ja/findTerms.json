@@ -98,8 +98,6 @@
     "confirmMerge": "マージ",
     "edit": "編集",
     "reject": "却下",
-    "save": "保存",
-    "cancel": "キャンセル",
     "name": "名前",
     "acceptDone": "{{name}} をオントロジーに追加しました。",
     "mergeDone": "{{name}} をマージしました。",

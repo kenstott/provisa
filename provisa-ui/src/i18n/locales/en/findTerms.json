@@ -98,8 +98,6 @@
     "confirmMerge": "Merge",
     "edit": "Edit",
     "reject": "Reject",
-    "save": "Save",
-    "cancel": "Cancel",
     "name": "Name",
     "acceptDone": "{{name}} added to the ontology.",
     "mergeDone": "{{name}} merged.",
