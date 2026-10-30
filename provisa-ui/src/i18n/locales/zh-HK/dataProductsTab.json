@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} 個自訂屬性",
         "tags_one": "{{count}} 個標籤",
         "tags_other": "{{count}} 個標籤"
+      },
+      "empty": "此產品沒有附數據契約的輸出埠。",
+      "consumers_one": "{{count}} 個消費方",
+      "consumers_other": "{{count}} 個消費方",
+      "freshness": "{{seconds}} 秒內保持新鮮",
+      "loadedOnce": "只載入一次，從不刷新",
+      "noSla": "未聲明服務水平",
+      "checkedAt": "檢查於 {{when}}",
+      "neverChecked": "從未檢查",
+      "draftWarning": "草稿：尚未生效",
+      "card": {
+        "details": "詳情",
+        "fields": "承諾的欄位",
+        "sla": "SLA 與新鮮度",
+        "quality": "質素承諾",
+        "consumers": "消費方",
+        "versions": "版本與變更"
       }
     }
   }

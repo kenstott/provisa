@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} 个自定义属性",
         "tags_one": "{{count}} 个标签",
         "tags_other": "{{count}} 个标签"
+      },
+      "empty": "此产品没有带数据契约的输出端口。",
+      "consumers_one": "{{count}} 个消费方",
+      "consumers_other": "{{count}} 个消费方",
+      "freshness": "{{seconds}} 秒内保持新鲜",
+      "loadedOnce": "仅加载一次，从不刷新",
+      "noSla": "未声明服务级别",
+      "checkedAt": "检查于 {{when}}",
+      "neverChecked": "从未检查",
+      "draftWarning": "草稿：尚未生效",
+      "card": {
+        "details": "详情",
+        "fields": "承诺的字段",
+        "sla": "SLA 与新鲜度",
+        "quality": "质量承诺",
+        "consumers": "消费方",
+        "versions": "版本与变更"
       }
     }
   }

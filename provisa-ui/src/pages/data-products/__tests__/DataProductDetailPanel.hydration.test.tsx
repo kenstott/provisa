@@ -54,9 +54,9 @@ const LINEAGE = [
   "describeColumn",
   "relationLabel",
 ];
-/** Decided (REQ-2158, amended 2026-10-28): the Contracts card shows each ODCS element declared or
- * derived, and the derivation is the export's (REQ-2118): the product's contracts endpoint. */
-const CONTRACTS = ["odcs", "odcsError"];
+/** Decided (REQ-2158, amended 2026-10-29): each contract row reads its own ODCS contract, declared
+ * and derived by the export (REQ-2118), when it opens; the page says only when to read it again. */
+const CONTRACTS = ["contractsVersion"];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
@@ -65,6 +65,8 @@ const INSIDE: Record<string, string> = {
   "../../components/graph3d/GraphPanel":
     "the meta domain, in a read of its own (useProductGraph): the graph card",
   "../../components/lineage/LineageDag": "draws the lineage it is given (the decided exception)",
+  "./ProductContracts":
+    "the product's contracts endpoint, one output port's contract as its row opens (REQ-2158)",
 };
 
 const PRODUCT = {
@@ -159,8 +161,7 @@ function panelFromMetaAlone() {
       canDelete={false}
       owner
       lineageLoading={false}
-      odcs={null}
-      odcsError=""
+      contractsVersion={0}
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}
@@ -213,7 +214,9 @@ describe("a data product's panel hydrates from the meta query", () => {
     const readers = [...source.matchAll(/^import (?!type ).* from "([^"]+)";$/gm)]
       .map((m) => m[1])
       .filter((from) =>
-        /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|api\/|hooks\//.test(from),
+        /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|ProductContracts|api\/|hooks\//.test(
+          from,
+        ),
       )
       .filter(
         (from) => !from.startsWith("../../api/lineage") && !from.startsWith("../../api/metaGraph"),
