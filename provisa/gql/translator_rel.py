@@ -206,7 +206,7 @@ class _RelJoinMixin:  # mixin for _Translator
         """Resolve early rel_mapping for domain-node path and anonymous node inference."""
         if not rel.types:
             return None
-        _rt_early = rel.types[0].upper()
+        _rt_early = rel.types[0]
         _early_matches = self._lm.aliases.get(_rt_early, [])
         if not _early_matches:
             _rm_early = self._lm.relationships.get(_rt_early)
@@ -232,7 +232,7 @@ class _RelJoinMixin:  # mixin for _Translator
         # read backward; undirected, either.
         forward = (src_nm is not None) == (rel.direction != "left")
         ways = (True, False) if rel.direction == "none" else (forward,)
-        mappings = self._lm.aliases.get(rel.types[0].upper(), [])
+        mappings = self._lm.aliases.get(rel.types[0], [])
         far = {
             (m.target_label if way else m.source_label)
             for m in mappings
@@ -253,7 +253,7 @@ class _RelJoinMixin:  # mixin for _Translator
         for node in (src_node, tgt_node):
             if node.variable and self._var_table.get(node.variable, (None, None))[1] is not None:
                 return False
-        mappings = self._lm.aliases.get(rel.types[0].upper(), [])
+        mappings = self._lm.aliases.get(rel.types[0], [])
         return any(m.directed for m in mappings)
 
     def _either_end_of_unnamed_ends(
@@ -272,7 +272,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 or self._domain_nodes.get(node.variable, "__all__") != "__all__"
             ):
                 return False
-        rel_type = rel.types[0].upper()
+        rel_type = rel.types[0]
         mappings = self._lm.aliases.get(rel_type) or [
             m for m in (self._lm.relationships.get(rel_type),) if m is not None
         ]
@@ -429,7 +429,7 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_nm_explicit: bool,
     ) -> "list[tuple]":
         """Resolve relationship candidates for a typed relationship."""
-        rel_type = rel.types[0].upper()
+        rel_type = rel.types[0]
         alias_matches = self._lm.aliases.get(rel_type, [])
         if not alias_matches:
             rm = self._lm.relationships.get(rel_type)
@@ -858,7 +858,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 src_var,
                 rel.variable,
                 tgt_var,
-                rel_type=rel.types[0].upper(),
+                rel_type=rel.types[0],
                 direction=rel.direction,
             )
             return from_expr, joins, True
@@ -870,7 +870,7 @@ class _RelJoinMixin:  # mixin for _Translator
             if joined_hop:
                 return every_rel_hop(None, None), joins, True
             from_expr = self._handle_unlabeled_rel_pattern(
-                src_var, rel.variable, tgt_var, rel_type=rel.types[0].upper(), direction="none"
+                src_var, rel.variable, tgt_var, rel_type=rel.types[0], direction="none"
             )
             return from_expr, joins, True
 

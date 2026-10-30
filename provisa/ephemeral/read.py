@@ -180,7 +180,7 @@ def overlay(model: Any, session: TempSession) -> Any:
             ),
         )
         relationships[mapping.field_name] = mapping
-        aliases.setdefault(rel_type.upper(), []).append(mapping)
+        aliases.setdefault(rel_type, []).append(mapping)
     # A copy of the model's map with its node, table and relationship maps replaced; everything
     # else it holds is the model's own.
     if then.rel_ids_read(session) and "" in nodes:
@@ -192,8 +192,6 @@ def overlay(model: Any, session: TempSession) -> Any:
     out.nodes_by_table = nodes_by_table
     out.relationships = relationships
     out.aliases = aliases
-    out._nodes_ci = {k.lower(): k for k in nodes}
-    out._nodes_by_table_ci = {k.lower(): k for k in nodes_by_table}
     # REQ-348: every session relationship in one relation, which a path function with an
     # unlabelled end walks.
     out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)

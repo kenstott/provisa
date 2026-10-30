@@ -85,8 +85,7 @@ def resolve(labels: list[str], label_map: Any) -> Labels:
         in_domain = [
             t
             for t in label_map.domains[domain]
-            if table is not None
-            and label_map.nodes[t].table_label.lower() == label_map.canonical_label(table).lower()
+            if table is not None and label_map.nodes[t].table_label == table
         ]
         if len(in_domain) != 1:
             raise CypherParseError(
@@ -168,7 +167,7 @@ def classify_create(
 
 
 def _model_type(label_map: Any, rel_type: str) -> bool:
-    return rel_type.upper() in label_map.aliases or rel_type.upper() in label_map.relationships
+    return rel_type in label_map.aliases or rel_type in label_map.relationships
 
 
 def _anchor(labels: Labels, graph: Graph) -> str | None:

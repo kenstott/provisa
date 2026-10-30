@@ -290,7 +290,12 @@ async def write_rows(
             node_id = graph.new_id()
             keys = c.labels.keys
             ids[c.index] = (node_id, keys or ("",))
-            anchor = store.anchor_table(c.anchor) if c.anchor is not None else store.DEFAULT_ANCHOR
+            if c.anchor is not None:
+                # Held from its first node on, so a label differing only in case made beside it
+                # is given another table (store.anchor_of).
+                anchor = graph.anchors.setdefault(c.anchor, store.anchor_of(graph, c.anchor))
+            else:
+                anchor = store.DEFAULT_ANCHOR
             writes.nodes.append(NewNode(node_id, anchor, keys, props))
         for i, node in enumerate(p.nodes):
             if i in ids or i in created_at:
@@ -315,7 +320,7 @@ async def write_rows(
         every_rel.append(rel_ids)
     for c in kind.created:
         if c.anchor is not None:
-            graph.anchors.setdefault(c.anchor, store.anchor_table(c.anchor))
+            graph.anchors.setdefault(c.anchor, store.anchor_of(graph, c.anchor))
     await store.write(state, session, writes)
     # The session's parts; each governed row was counted as the governed path wrote it.
     counters.count(

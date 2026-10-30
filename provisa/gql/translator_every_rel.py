@@ -408,7 +408,7 @@ class _EveryRelMixin:  # mixin for _Translator
                 domains[1],
                 src_type=types[0],
                 tgt_type=types[1],
-                rel_type=rel.types[0].upper() if rel.types else None,
+                rel_type=rel.types[0] if rel.types else None,
                 alias=alias,
                 undirected=rel.direction == "none",
                 src_props_of=props_of[0],

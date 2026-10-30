@@ -527,3 +527,35 @@ def test_a_relationship_bound_between_labelled_nodes_is_matched_again_in_its_sta
     s.run("CREATE (:A)-[:REL]->(:B), (:A)-[:REL]->(:B)")
     rows = s.run("MATCH (a:A)-[r:REL]->(b:B) MATCH (x)-[r]->(c) RETURN count(*) AS n")
     assert rows == [{"n": 2}]
+
+
+def test_a_relationship_type_matches_its_own_case_alone(monkeypatch):
+    # openCypher: types are case-sensitive; [r:T2] also matched t2 (aliases keyed by upper case).
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T2 {n: 1}]->(), ()-[:t2 {n: 2}]->()")
+    assert s.run("MATCH ()-[r:T2]->() RETURN r.n AS n") == [{"n": 1}]
+    assert s.run("MATCH ()-[r:t2]->() RETURN r.n AS n") == [{"n": 2}]
+    assert _sorted(s.run("MATCH ()-[r:T2|t2]->() RETURN r.n AS n")) == [(1,), (2,)]
+    assert s.run("MATCH ()-[:t2*1..2]->(m) RETURN count(m) AS c") == [{"c": 1}]
+
+
+def test_labels_differing_only_in_case_are_two_labels(monkeypatch):
+    # openCypher: labels are case-sensitive; A and a folded together (canonical_label), and their
+    # anchor tables were one name to DuckDB, the second CREATE's nodes replacing the first's.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A {n: 1}), (:a {n: 2})")
+    assert s.run("MATCH (x:A) RETURN x.n AS n") == [{"n": 1}]
+    assert s.run("MATCH (x:a) RETURN x.n AS n") == [{"n": 2}]
+    assert s.run("MATCH (x) WHERE x:A RETURN x.n AS n") == [{"n": 1}]
+    assert s.run("MATCH (x:A:a) RETURN x.n AS n") == []
+
+
+def test_a_model_label_is_found_by_its_declared_name_alone(monkeypatch):
+    from provisa.gql.translator_types import CypherMistake
+
+    s = Session(monkeypatch, {"Person": ({"id": "integer", "name": "text"}, "(1, 'Ann')")})
+    assert s.run("MATCH (p:Person) RETURN p.name AS n") == [{"n": "Ann"}]
+    with pytest.raises(
+        CypherMistake, match="There is no label :person. Registered labels: :Person"
+    ):
+        s.run("MATCH (p:person) RETURN p.name AS n")

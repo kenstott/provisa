@@ -84,7 +84,7 @@ def _extract_rel_attrs(
     optional RelPattern. A variable-length pattern with no lower bound starts at one hop, as
     Cypher's does; one with no upper bound walks to the operator's depth limit (REQ-2135), and
     ``by_limit`` says so, for the result to say when the walk was cut there."""
-    rel_types = [rt.upper() for rt in rel.types] if rel and rel.types else None
+    rel_types = list(rel.types) if rel and rel.types else None
     variable_length = bool(rel and rel.variable_length)
     is_undirected = bool(rel and getattr(rel, "direction", "right") == "none")
     by_limit = variable_length and rel is not None and rel.max_hops is None

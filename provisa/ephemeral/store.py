@@ -85,6 +85,22 @@ def anchor_table(label: str) -> str:
     return f"cypher__anchor__{label}"
 
 
+def anchor_of(g: "Graph", label: str) -> str:
+    """The anchor table of ``label`` in the session's graph ``g``: the one it holds, else the one
+    it would make -- :func:`anchor_table`, numbered when an engine that folds case (DuckDB) would
+    read it as one held for a label differing only in case (A and a are two labels)."""
+    held = g.anchors.get(label)
+    if held is not None:
+        return held
+    name = anchor_table(label)
+    taken = {t.lower() for t in g.anchors.values()}
+    n = 1
+    while name.lower() in taken:
+        name = f"{anchor_table(label)}__{n}"
+        n += 1
+    return name
+
+
 def rel_table(rel_type: str) -> str:
     """The table a relationship type's properties are held in: one per type, types told apart
     by case (T2 and t2)."""
@@ -356,10 +372,10 @@ def key_of(table: str, columns: Sequence[tuple[str, str]]) -> tuple[str, ...]:
     return _KEYS.get(table, (columns[0][0],))
 
 
-def index_table(kind: str, of: str) -> str:
+def index_table(g: "Graph", kind: str, of: str) -> str:
     """The session table a session index of ``kind`` ("node" or "rel") on ``of`` (a label or a
-    relationship type) is made on."""
-    return anchor_table(of) if kind == "node" else rel_table(of)
+    relationship type) is made on, in the session's graph ``g``."""
+    return anchor_of(g, of) if kind == "node" else rel_table(of)
 
 
 async def build_indexes(session: TempSession, table: str, writer: Any) -> None:
@@ -370,8 +386,9 @@ async def build_indexes(session: TempSession, table: str, writer: Any) -> None:
     if writer is None or table not in session.tables:
         return
     held = {name for name, _ in session.tables[table].columns}
-    for kind, of, props in graph(session).indexes.values():
-        if index_table(kind, of) == table and set(props) <= held:
+    g = graph(session)
+    for kind, of, props in g.indexes.values():
+        if index_table(g, kind, of) == table and set(props) <= held:
             await temp_exec.lookup_index(session, table, props, writer)
 
 

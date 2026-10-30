@@ -90,6 +90,10 @@ _ADDED_AFTER_THE_SPLIT = frozenset(
         "directed",  # REQ-2176: a stored edge (only the session's) has one direction
         "identity_column",  # REQ-2176: a stored edge (only the session's) is its own row
     }
+) | frozenset(
+    # Dropped after the split: labels are case-sensitive (openCypher), so no case-folding index of
+    # nodes, domains or tables is built.
+    {"_nodes_ci", "_domains_ci", "_nodes_by_table_ci"}
 )
 
 

@@ -377,13 +377,13 @@ class SessionWalkMixin:  # REQ-348
     def _walks_model_hops(self, walk: SessionWalk, rel: RelPattern | None) -> bool:
         """Whether the model's relationships could take a hop of the walk: on the model graph each
         is its own table, which a walk from no placed end would read as a union of them all."""
-        wanted = {t.upper() for t in rel.types} if rel and rel.types else None
+        wanted = set(rel.types) if rel and rel.types else None
         for r in self._lm.relationships.values():
             if r.via is not None and r.via.catalog_name == walk.catalog_name:
                 continue
             if r.constant_source and wanted is None:
                 continue
-            if wanted is None or r.rel_type.upper() in wanted:
+            if wanted is None or r.rel_type in wanted:
                 return True
         return False
 
@@ -451,13 +451,13 @@ class SessionWalkMixin:  # REQ-348
     def _rel_properties(self, walk: SessionWalk, types: list[str] | None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Each session relationship of one of ``types`` (any, for None) and its properties, as
         one JSON value: read from its type's relation, as a relationship matched alone is."""
-        wanted = {t.upper() for t in types} if types is not None else None
+        wanted = set(types) if types is not None else None
         held: dict[str, exp.Select] = {}
         for r in self._lm.relationships.values():
             via = r.via
             if via is None or via.catalog_name != walk.catalog_name or via.table_name in held:
                 continue
-            if wanted is not None and r.rel_type.upper() not in wanted:
+            if wanted is not None and r.rel_type not in wanted:
                 continue
             # The overlay names every session relationship by its id (ephemeral.read.overlay).
             assert via.identity_column is not None, via.table_name
@@ -566,10 +566,11 @@ class SessionWalkMixin:  # REQ-348
                 exp.alias_(exp.true() if forward else exp.false(), "__fwd", quoted=True),
             ).from_(exp.alias_(relation.copy(), "_r"))
             if types is not None:
-                wanted = sorted({t.upper() for t in types})
+                # Types are case-sensitive (openCypher): T2 and t2 are two types.
+                wanted = sorted(set(types))
                 step = step.where(
                     exp.In(
-                        this=exp.Upper(this=_col("type", "_r")),
+                        this=_col("type", "_r"),
                         expressions=[exp.Literal.string(t) for t in wanted],
                     )
                 )
@@ -666,13 +667,13 @@ class SessionWalkMixin:  # REQ-348
         self._all_rels_ends.setdefault(tgt_col, []).extend(
             self._session_hop_ends(tgt_type, tgt_domain)
         )
-        wanted = {t.upper() for t in types} if types is not None else None
+        wanted = set(types) if types is not None else None
         self._all_rels_mappings.extend(
             r
             for r in self._lm.relationships.values()
             if r.via is not None
             and r.via.catalog_name == walk.catalog_name
-            and (wanted is None or r.rel_type.upper() in wanted)
+            and (wanted is None or r.rel_type in wanted)
         )
         return exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier(alias)))
 

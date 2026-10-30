@@ -281,10 +281,6 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
         # rel_type → all RelationshipMappings with that type (supports UNION fan-out)
         self.aliases: dict[str, list[RelationshipMapping]] = aliases or {}
-        # case-insensitive lookup indexes: lowercase → canonical key
-        self._nodes_ci: dict[str, str] = {k.lower(): k for k in self.nodes}
-        self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
-        self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
 
     def with_sql_only(self) -> "CypherLabelMap":
         """This map with the SQL-only tables' nodes in it, for SPARQL's lowering of its
@@ -348,13 +344,9 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         return name
 
     def canonical_label(self, label: str) -> str:  # REQ-572
-        """Return the canonical-cased label, falling back to input if not found."""
-        return (
-            self._nodes_ci.get(label.lower())
-            or self._domains_ci.get(label.lower())
-            or self._nodes_by_table_ci.get(label.lower())
-            or label
-        )
+        """The label as written: labels are case-sensitive (openCypher), so ``A`` and ``a`` are
+        two labels, each found by its exact name."""
+        return label
 
     def node(self, label: str) -> NodeMapping:  # REQ-572
         try:

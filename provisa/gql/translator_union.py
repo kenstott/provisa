@@ -331,7 +331,7 @@ class _UnionMixin:  # mixin for _Translator
                     continue
                 if tgt_type is not None and far != tgt_type:
                     continue
-                if rel_type is not None and rm.rel_type.upper() != rel_type:
+                if rel_type is not None and rm.rel_type != rel_type:
                     continue
                 # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
                 # These are not real FK traversals and would pull in unrelated domain nodes.

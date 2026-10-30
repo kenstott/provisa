@@ -1427,7 +1427,7 @@ class TranslatorExprContext:
         t = self._t
         if self._comprehension_reads_several(src_var, rel_type, tgt_label):
             return self._comprehension_as_collect(node)
-        rel = t._lm.relationships.get(rel_type.upper()) if rel_type else None
+        rel = t._lm.relationships.get(rel_type) if rel_type else None
         if rel is None and rel_type and rel_type not in t._lm.aliases:
             # REQ-603: a type that is not registered is refused, never read as some other
             # relationship of the source.
@@ -1556,7 +1556,7 @@ class TranslatorExprContext:
             return False
         reached = {
             m.target_label
-            for m in t._lm.aliases.get(rel_type.upper(), [])
+            for m in t._lm.aliases.get(rel_type, [])
             if m.source_label == src_nm.type_name
             and (tgt_label is None or t._lm.canonical_label(tgt_label) == m.target_label)
         }
