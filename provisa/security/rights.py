@@ -653,15 +653,19 @@ GLOSSARY_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
 # languages reach them only where a language means to, as SPARQL lowers its RDFS/OWL/SKOS
 # patterns to ontology._axioms). Each is (domain id, table name).
 SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset(
+    {(ONTOLOGY_DOMAIN_ID, "_axioms"), (ONTOLOGY_DOMAIN_ID, "_closure")}
+)
+# REQ-2190: what a SQL catalog reads of the model, which is no table of it to a person: SQL alone
+# serves them, and neither the admin catalog nor anything built on it (the tables page, the ERD)
+# lists them.
+SQL_CATALOG_TABLES: frozenset[tuple[str, str]] = frozenset(
     {
-        (ONTOLOGY_DOMAIN_ID, "_axioms"),
-        (ONTOLOGY_DOMAIN_ID, "_closure"),
-        # REQ-2190: what a SQL catalog reads of the model.
         (META_DOMAIN_ID, "table_details"),
         (META_DOMAIN_ID, "column_details"),
         (META_DOMAIN_ID, "table_keys"),
     }
 )
+SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 
 
 def compute_meta_row_scope(

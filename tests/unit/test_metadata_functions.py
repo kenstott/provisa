@@ -30,7 +30,12 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.pgwire.catalog_populate import _physical_to_pg_name, _physical_to_pg_oid
-from provisa.security.rights import META_ROW_SCOPED_VIEWS, SQL_ONLY_TABLES, META_DOMAIN_ID
+from provisa.security.rights import (
+    META_DOMAIN_ID,
+    META_ROW_SCOPED_VIEWS,
+    SQL_CATALOG_TABLES,
+    SQL_ONLY_TABLES,
+)
 from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.transpiler.function_macros import MACROS, outcome
 from provisa.transpiler.metadata_facts import (
@@ -391,6 +396,7 @@ def test_a_catalog_view_is_registered_scoped_and_served_to_sql_alone(name):
     assert name in _META_TABLES
     assert name in META_ROW_SCOPED_VIEWS
     assert (META_DOMAIN_ID, name) in SQL_ONLY_TABLES
+    assert (META_DOMAIN_ID, name) in SQL_CATALOG_TABLES
 
 
 def test_a_foreign_key_is_read_where_both_its_tables_are():

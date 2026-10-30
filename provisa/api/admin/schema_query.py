@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
 from provisa.core.repositories import rls as rls_repo
 from provisa.security.inheritance import effective_capabilities
+from provisa.security.rights import SQL_CATALOG_TABLES
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
@@ -1013,7 +1014,10 @@ class Query:  # REQ-021, REQ-042
                 # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
                 listed = [
-                    r for r in rows if scope.lists_table(r["id"]) or r["id"] not in scope.compiled
+                    r
+                    for r in rows
+                    if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
+                    and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
                 ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
