@@ -1,0 +1,179 @@
+name: Verify surface
+
+# One surface's verification of the commit dispatched: Lint, Unit, the surface's own suite and the
+# integration tests mapped to it (scripts/ci/surfaces.toml, read by scripts/ci/surface_map.py).
+# Every suite is the workflow that owns it, called; none is copied here.
+#
+# A change between surfaces widens the run to every conformance suite and the whole integration
+# suite: `full` asks for that, and the plan does it unasked when the changed paths touch a contract
+# file ([contract] in surfaces.toml), read against main.
+#
+# One run per surface at a time, never cancelled; different surfaces run side by side. A run that
+# runs whole lanes queues with the suite's other full runs (integration-suite.yml says why). The
+# live lanes never run here: no input of them is passed and none of their credentials.
+#
+# A failing test is listed by name, per suite, in the run's summary (scripts/ci/verify_summary.py).
+
+run-name: Verify surface (${{ inputs.surface }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      surface:
+        description: "The surface (scripts/ci/surfaces.toml)"
+        type: string
+        required: true
+      full:
+        description: "Every conformance suite and the whole integration suite"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-surface-${{ inputs.surface }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      suites: ${{ steps.plan.outputs.suites }}
+      integration: ${{ steps.plan.outputs.integration }}
+      lanes: ${{ steps.plan.outputs.lanes }}
+      tests: ${{ steps.plan.outputs.tests }}
+    steps:
+      # Whole history: the changed paths are read against main's merge base.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          SURFACE: ${{ inputs.surface }}
+          FULL: ${{ inputs.full }}
+        run: |
+          full=()
+          if [ "$FULL" = true ]; then full=(--full); fi
+          python3 scripts/ci/surface_map.py plan "$SURFACE" --base origin/main "${full[@]}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+  lint:
+    needs: plan
+    uses: ./.github/workflows/lint.yml
+
+  unit:
+    needs: plan
+    uses: ./.github/workflows/unit-tests.yml
+
+  conformance-bolt:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',conformance-bolt,')
+    uses: ./.github/workflows/conformance-bolt.yml
+
+  conformance-cypher:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',conformance-cypher,')
+    uses: ./.github/workflows/conformance-cypher.yml
+
+  conformance-flight-sql:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',conformance-flight-sql,')
+    uses: ./.github/workflows/conformance-flight-sql.yml
+
+  conformance-graphql:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',conformance-graphql,')
+    uses: ./.github/workflows/conformance-graphql.yml
+
+  conformance-pgwire:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',conformance-pgwire,')
+    uses: ./.github/workflows/conformance-pgwire.yml
+
+  ui-unit:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',ui-unit,')
+    uses: ./.github/workflows/ui-unit-tests.yml
+
+  ui-e2e-core:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',ui-e2e-core,')
+    uses: ./.github/workflows/ui-e2e-core.yml
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+      SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+      SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+      SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+      SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+      SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+
+  ui-swap:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',ui-swap,')
+    uses: ./.github/workflows/ui-e2e-swap-amd64.yml
+
+  # The same lanes integration-suite.yml runs, under its two rules for a run's size: whole lanes
+  # wait for the other full runs, named tests run beside them.
+  integration:
+    needs: plan
+    if: needs.plan.outputs.integration == 'true'
+    uses: ./.github/workflows/integration-suite-lanes.yml
+    concurrency:
+      group: ${{ needs.plan.outputs.tests == '' && 'integration-suite' || format('integration-suite-targeted-{0}', github.ref) }}
+      queue: max
+    with:
+      lanes: ${{ needs.plan.outputs.lanes || 'all' }}
+      tests: ${{ needs.plan.outputs.tests }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      SPLUNKBASE_USERNAME: ${{ secrets.SPLUNKBASE_USERNAME }}
+      SPLUNKBASE_PASSWORD: ${{ secrets.SPLUNKBASE_PASSWORD }}
+
+  summary:
+    name: failing tests by name
+    needs:
+      - plan
+      - lint
+      - unit
+      - conformance-bolt
+      - conformance-cypher
+      - conformance-flight-sql
+      - conformance-graphql
+      - conformance-pgwire
+      - ui-unit
+      - ui-e2e-core
+      - ui-swap
+      - integration
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{lane-*,unit-junit-*,conformance-*,vitest-results-*,playwright-report-*}"
+          path: artifacts
+
+      - name: List them
+        env:
+          JOBS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p artifacts
+          printf '%s' "$JOBS" > jobs.json
+          python3 scripts/ci/verify_summary.py artifacts jobs.json "$RUN_URL" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
