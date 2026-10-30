@@ -19,7 +19,7 @@
     "detailCollapse": "कम दिखाएँ",
     "inputs": "इनपुट",
     "inputsHint": "प्रोडक्ट के सबसे नज़दीकी भौतिक इनपुट: वे टेबल और स्रोत जिनसे इसके सदस्य बनते हैं।",
-    "inputsEmpty": "कोई इनपुट दर्ज नहीं।",
+    "inputsEmpty": "कोई नहीं",
     "promises_one": "{{count}} वादा",
     "promises_other": "{{count}} वादे",
     "expectations_one": "{{count}} अपेक्षा",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "कोई नहीं।",
     "consumers": "उपभोक्ता",
     "consumersHint": "इस प्रोडक्ट को एक कदम डाउनस्ट्रीम कौन पढ़ता है: इसके सदस्यों पर सीधे बनी टेबल, व्यू और मटीरियलाइज़्ड व्यू।",
-    "consumersEmpty": "कोई उपभोक्ता दर्ज नहीं है।",
+    "consumersEmpty": "कोई नहीं",
+    "ownerOnlyList": "यह सूची डेटा उत्पाद के स्वामी को दिखाई देती है।",
     "consumerKind_table": "टेबल",
     "consumerKind_view": "व्यू",
     "consumerKind_materialized_view": "मटीरियलाइज़्ड व्यू"

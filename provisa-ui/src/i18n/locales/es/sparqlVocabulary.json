@@ -12,6 +12,9 @@
     "classTerm": "Término de Clase {{term}}",
     "tableClass": "La clase propia de una tabla",
     "propertyTerm": "Término de Propiedad {{term}}",
-    "columnPredicate": "Columna {{column}}"
+    "columnPredicate": "Columna {{column}}",
+    "propertySearch": "Buscar propiedades",
+    "propertyTerms": "Términos de propiedad",
+    "termClasses": "Clases: {{classes}}"
   }
 }

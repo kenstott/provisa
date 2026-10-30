@@ -158,6 +158,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "reference_documents",
         "reference_document_domains",
         "reference_passages",
+        # REQ-2179: the glossary's scans of this environment's library documents and the review
+        # queue of the terms they propose, drafts until a steward decides on them.
+        "glossary_term_scans",
+        "glossary_term_drafts",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's

@@ -122,10 +122,10 @@ describe("a CONSTRUCT's triples", () => {
     const byIri = (iri: string) =>
       [...nodes.values()].find((n) => n.properties.iri === `${BASE}/id/sales/orders/${iri}`);
     expect(byIri("1")?.properties).toMatchObject({
-      "sales:amount": "12.50",
-      "sales:note": 'said "hi"',
+      "sales:amount": '"12.50"^^xsd:decimal',
+      "sales:note": '"said "hi""@en',
     });
-    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": "12.50" });
+    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": '"12.50"^^xsd:decimal' });
   });
 
   it("hold a predicate's several literals as a list", () => {
@@ -149,7 +149,11 @@ describe("a CONSTRUCT's triples", () => {
       ['said "hi"', "sales:orders"],
     ]);
     // The same literal under two subjects is two nodes.
-    expect(literals.map((n) => n.properties.name).sort()).toEqual(["12.50", "12.50", 'said "hi"']);
+    expect(literals.map((n) => n.properties.name).sort()).toEqual([
+      '"12.50"^^xsd:decimal',
+      '"12.50"^^xsd:decimal',
+      '"said "hi""@en',
+    ]);
     expect([...edges.values()].map((e) => e.type).sort()).toEqual([
       "rdf:type",
       "sales:amount",
@@ -339,11 +343,17 @@ describe("a SELECT of resources", () => {
       answer(["a", "b"], [{ a: iri("ann"), b: iri("bob") }]),
       P,
     );
-    expect(st.sparqlPairing).toEqual({ subject: "a", predicate: null, object: "b" });
+    // The predicate the query writes between them names the edge.
+    expect(st.sparqlPairing).toEqual({
+      subject: "a",
+      predicate: null,
+      object: "b",
+      iri: "http://x/knows",
+    });
     expect(st.nodes.size).toBe(0);
     const drawn = sparqlDrawn({ id: "f", ...st } as FrameData, false, true);
     expect(drawn.nodes.size).toBe(2);
-    expect([...drawn.edges.values()].map((e) => e.type)).toEqual([""]);
+    expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["<http://x/knows>"]);
     // Not asked: still a table.
     expect(sparqlDrawn({ id: "f", ...st } as FrameData, false, false).nodes.size).toBe(0);
   });
@@ -367,10 +377,10 @@ describe("a SELECT of resources", () => {
     expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["rel:knows", "rel:likes"]);
   });
 
-  it("stays a table where a variable binds a literal, is unbound, or is not a pair", async () => {
+  it("stays a table where a literal has no predicate, a term is unbound, or it is no pair", async () => {
     const lit = { type: "literal", value: "3" };
     const cases: [string, string[], Record<string, unknown>[]][] = [
-      ["SELECT ?a ?n WHERE { ?a <http://x/n> ?n }", ["a", "n"], [{ a: iri("ann"), n: lit }]],
+      ["SELECT ?a ?n WHERE { ?n <http://x/n> ?a }", ["a", "n"], [{ a: iri("ann"), n: lit }]],
       ["SELECT ?a ?b WHERE { ?a <http://x/k> ?b }", ["a", "b"], [{ a: iri("ann") }]],
       [
         "SELECT ?a ?b ?c WHERE { ?a <http://x/k> ?b . ?b <http://x/k> ?c }",

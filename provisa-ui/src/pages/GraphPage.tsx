@@ -41,10 +41,13 @@ import {
 } from "../components/graph/graph-persistence";
 import {
   pickedQuery,
+  pillQuery,
+  refusalOf,
   sparqlStatement,
   SPARQL_ACCEPT,
-  type SparqlVocabulary,
 } from "../components/graph/sparql";
+import { useSparqlExplorer } from "../components/graph/useSparqlExplorer";
+import { SparqlEndpointBar } from "../components/graph/SparqlEndpointBar";
 import {
   SparqlVocabularyPanel,
   type VocabularyPick,
@@ -72,25 +75,6 @@ import {
 } from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-/** A refused request's error: its body's ``detail`` or ``error`` when it is JSON that has one, else
- *  the body as sent. */
-function refusalText(body: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return body;
-  }
-  if (parsed !== null && typeof parsed === "object") {
-    const said =
-      (parsed as { detail?: unknown; error?: unknown }).detail ??
-      (parsed as { error?: unknown }).error;
-    if (typeof said === "string") return said;
-    if (said !== undefined) return JSON.stringify(said);
-  }
-  return body;
-}
-
 export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } = {}) {
   const { t } = useTranslation();
   // REQ-2135: Cypher and SPARQL share this page, each with its own frames, history, favorites and
@@ -264,29 +248,29 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     [favorites],
   );
 
-  // REQ-2135: SPARQL's vocabulary, for the role (read again when the role changes).
-  const [vocabulary, setVocabulary] = useState<SparqlVocabulary | null>(null);
-  const [vocabularyError, setVocabularyError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!sparql) return;
-    const headers: Record<string, string> = {};
-    if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
-    let cancelled = false;
-    fetch("/data/sparql/vocabulary", { headers })
-      .then(async (r) => {
-        // A refused request's body is its error, never a vocabulary.
-        if (!r.ok) throw new Error(refusalText(await r.text()));
-        return r.json() as Promise<SparqlVocabulary>;
-      })
-      .then(
-        (v) => !cancelled && (setVocabulary(v), setVocabularyError(null)),
-        (e: unknown) =>
-          !cancelled && setVocabularyError(e instanceof Error ? e.message : String(e)),
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [sparql, roleHeaderValue]);
+  // REQ-2135: what a frame's expansion or drop merges changes that frame.
+  const changeFrame = useCallback(
+    (id: string, change: (frame: FrameData) => Partial<FrameData>) => {
+      setFrames((f) => {
+        const next = f.map((fr) => (fr.id === id ? { ...fr, ...change(fr) } : fr));
+        graphState.frames = next;
+        saveGraphState(graphState);
+        return next;
+      });
+    },
+    [graphState],
+  );
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
+  const {
+    vocabulary,
+    vocabularyError,
+    prefixes,
+    prefixEdits,
+    setPrefixEdits,
+    expandResource,
+    dropClass,
+  } = useSparqlExplorer({ active: sparql, roleHeader: roleHeaderValue, framesRef, changeFrame });
 
   // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
@@ -297,7 +281,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     fetch("/data/graph-schema", { headers })
       .then(async (r) => {
         // A refused request's body is its error, never a schema.
-        if (!r.ok) throw new Error(refusalText(await r.text()));
+        if (!r.ok) throw new Error(refusalOf(await r.text()));
         return r.json();
       })
       .then((data) => {
@@ -391,7 +375,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     fetch(`/data/graph-counts${domainsParam}`, { headers })
       .then(async (r) => {
         // A refused request's body is its error, never counts: shown, and not stored.
-        if (!r.ok) throw new Error(refusalText(await r.text()));
+        if (!r.ok) throw new Error(refusalOf(await r.text()));
         return (await r.json()) as GraphCounts;
       })
       .then((data) => {
@@ -422,7 +406,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         let statement;
         try {
           const res = await fetch("/data/sparql", { method: "POST", headers: hdrs, body: query });
-          statement = await sparqlStatement(query, res, vocabulary?.prefixes ?? {});
+          statement = await sparqlStatement(query, res, prefixes);
         } catch (err) {
           statement = null;
           const message = String(err);
@@ -514,7 +498,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         });
       }
     },
-    [roleHeaderValue, maxNodes, sparql, vocabulary, graphState],
+    [roleHeaderValue, maxNodes, sparql, prefixes, graphState],
   );
 
   // One statement's result, of the frame's, shown: its drawing, rows and error.
@@ -636,6 +620,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 truncated: undefined,
                 statements: undefined,
                 statementIndex: undefined,
+                sparqlExpansions: undefined,
+                sparqlMerge: undefined,
               }
             : fr,
         );
@@ -647,9 +633,6 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     },
     [answer, graphState],
   );
-
-  const framesRef = useRef(frames);
-  framesRef.current = frames;
 
   const NUMERIC_TYPES = new Set([
     "integer",
@@ -865,16 +848,22 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
 
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
 
-  // REQ-2135: a SPARQL pill adds to the query in the bar (pickedQuery).
+  // REQ-2135: a SPARQL vocabulary pill starts a new frame, as a Cypher label pill does; a prefix or
+  // a domain has no query of its own, so it declares its PREFIX in the bar (pickedQuery).
   const handleVocabularyPick = useCallback(
     (pick: VocabularyPick) => {
       if (!vocabulary) return;
-      const next = pickedQuery(graphState.currentQuery, pick, vocabulary);
+      const named = { ...vocabulary, prefixes };
+      if (pick.kind !== "prefix") {
+        runQuery(pillQuery(pick, named));
+        return;
+      }
+      const next = pickedQuery(graphState.currentQuery, pick, named);
       graphState.currentQuery = next;
       saveGraphState(graphState);
       setHistoryQuery(next);
     },
-    [vocabulary, graphState],
+    [vocabulary, prefixes, graphState, runQuery],
   );
   const handleDomainClick = useCallback(
     (domainId: string) => {
@@ -953,6 +942,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           frames={frames}
           effective={effectiveDataRef.current}
           roleHeader={roleHeaderValue}
+          prefixes={prefixes}
           onClose={() => setShowExportModal(false)}
         />
       )}
@@ -1014,6 +1004,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           sparql ? (
             <SparqlVocabularyPanel
               vocabulary={vocabulary}
+              prefixes={prefixes}
               error={vocabularyError}
               onPick={handleVocabularyPick}
               colorOverrides={colorOverrides}
@@ -1024,6 +1015,14 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       />
 
       <div className="graph-content">
+        {sparql && vocabulary && (
+          <SparqlEndpointBar
+            base={vocabulary.base}
+            prefixes={prefixes}
+            edits={prefixEdits}
+            onEdit={setPrefixEdits}
+          />
+        )}
         <QueryBar
           onRun={runQuery}
           initialQuery={historyQuery ?? graphState.currentQuery}
@@ -1065,8 +1064,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 onClose={closeFrame}
                 onRerun={rerunFrame}
                 // A drop, an expansion and an exclusion write Cypher against the model's labels and
-                // relationships: none of them acts on a SPARQL frame.
-                onTableDrop={sparql ? undefined : onTableDrop}
+                // relationships; a SPARQL frame merges a CONSTRUCT or DESCRIBE around the resource.
+                onTableDrop={sparql ? dropClass : onTableDrop}
                 onDomainDrop={sparql ? undefined : onDomainDrop}
                 colorOverrides={colorOverrides}
                 sizeOverrides={sizeOverrides}
@@ -1083,6 +1082,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 schemaRels={sparql ? [] : schemaRels}
                 autoImpute={autoImpute}
                 language={language}
+                sparqlPrefixes={sparql ? prefixes : undefined}
+                onExpandResource={sparql ? expandResource : undefined}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
                 onEffectiveDataChange={onEffectiveDataChange}

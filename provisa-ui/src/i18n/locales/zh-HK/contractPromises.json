@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "適用於",
+      "check": "檢查",
+      "details": "詳情",
+      "result": "最新結果"
+    },
+    "level": {
+      "table": "表",
+      "row": "列"
+    },
+    "check": {
+      "notNull": "非空",
+      "unique": "唯一",
+      "allowedValues": "允許的值",
+      "pattern": "模式比對",
+      "valueRange": "取值範圍",
+      "textLength": "文字長度",
+      "average": "平均值範圍",
+      "distinctCount": "不同值數量",
+      "rowCount": "列數",
+      "columnOrder": "欄位順序",
+      "unexpectedRows": "無意外列",
+      "missing": "無缺失值",
+      "valid": "有效值",
+      "duplicate": "無重複",
+      "aggregate": "彙總",
+      "freshness": "時效性",
+      "failedRows": "無失敗列"
+    },
+    "threshold": {
+      "eq": "必須為 {{value}}",
+      "ne": "不得為 {{value}}",
+      "gt": "大於 {{value}}",
+      "gte": "至少 {{value}}",
+      "lt": "小於 {{value}}",
+      "lte": "至多 {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "由 {{min}} 至 {{max}}",
+      "atLeast": "至少 {{value}}",
+      "atMost": "至多 {{value}}",
+      "oneOf": "以下其中之一：{{values}}",
+      "matches": "符合 {{pattern}}",
+      "greater": "{{a}} 大於 {{b}}",
+      "orEqual": "{{a}} 不小於 {{b}}",
+      "query": "意外列：{{query}}",
+      "expression": "失敗列：{{expression}}",
+      "mostly": "至少 {{percent}}% 的列",
+      "alsoMissing": "另外視為缺失：{{values}}",
+      "minLength": "至少 {{value}} 個字元",
+      "maxLength": "至多 {{value}} 個字元"
+    },
+    "aggregate": {
+      "avg": "平均值",
+      "sum": "總和",
+      "min": "最小值",
+      "max": "最大值",
+      "minLength": "最短長度",
+      "maxLength": "最長長度",
+      "avgLength": "平均長度"
+    }
+  }
+}

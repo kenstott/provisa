@@ -19,7 +19,7 @@
     "detailCollapse": "表示を減らす",
     "inputs": "入力",
     "inputsHint": "プロダクトに最も近い物理的な入力：メンバーの元になるテーブルとソース。",
-    "inputsEmpty": "記録された入力はありません。",
+    "inputsEmpty": "なし",
     "promises_one": "約束: {{count}}",
     "promises_other": "約束: {{count}}",
     "expectations_one": "期待: {{count}}",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "なし。",
     "consumers": "コンシューマー",
     "consumersHint": "このプロダクトを 1 ホップ下流で読むもの: メンバーの上に直接構築されたテーブル、ビュー、マテリアライズドビュー。",
-    "consumersEmpty": "記録されたコンシューマーはありません。",
+    "consumersEmpty": "なし",
+    "ownerOnlyList": "このリストはデータプロダクトのオーナーに表示されます。",
     "consumerKind_table": "テーブル",
     "consumerKind_view": "ビュー",
     "consumerKind_materialized_view": "マテリアライズドビュー"

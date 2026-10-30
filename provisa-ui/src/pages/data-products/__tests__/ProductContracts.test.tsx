@@ -128,6 +128,7 @@ const promise = (checker: number, checked: number, at: string | null): ProductDq
   owner_product_id: "pet_health",
   checked_table_id: checked,
   checked_table: { id: checked, domain_id: "pet-store", table_name: "pets", alias: null },
+  rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: at ? "pass" : null,
   latest_run_at: at,
 });

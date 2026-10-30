@@ -3,6 +3,7 @@
     "noRows": "אין שורות",
     "copyAsCsv": "העתקה כ-CSV",
     "copyJson": "העתקת JSON",
-    "table": "תוצאות טבלה"
+    "table": "תוצאות טבלה",
+    "copyIri": "העתקת ה-IRI המלא"
   }
 }

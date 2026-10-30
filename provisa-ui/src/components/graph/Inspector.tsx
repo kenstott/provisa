@@ -539,7 +539,12 @@ export function Inspector({
                       : String(v);
                 return (
                   <Table.Tr key={k} className="gf-prop-row">
-                    <Table.Td className="gf-prop-key">{k}</Table.Td>
+                    <Table.Td
+                      className="gf-prop-key"
+                      title={isN ? (selected.data as GNode).propertyIris?.[k] : undefined}
+                    >
+                      {k}
+                    </Table.Td>
                     <Table.Td className="gf-prop-val">{vs}</Table.Td>
                     <Table.Td className="gf-prop-copy-cell">
                       <ActionIcon

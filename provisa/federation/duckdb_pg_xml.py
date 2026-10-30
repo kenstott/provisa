@@ -859,33 +859,6 @@ def _strict_in_first(function: Any) -> Any:
     return xmlroot_of
 
 
-_MACROS: tuple[str, ...] = (
-    # A value that needs no reading: what query_to_xml wrote (provisa.compiler.xml_mapping).
-    "CREATE MACRO provisa_xml(value) AS CAST(value AS VARCHAR)",
-    "CREATE MACRO provisa_xml_text(value) AS provisa_xml_value(CAST(value AS VARCHAR), "
-    "typeof(value), CASE WHEN typeof(value) LIKE '%[]' THEN CAST(to_json(value) AS VARCHAR) "
-    "END, true)",
-    "CREATE MACRO provisa_xml_attribute(value) AS provisa_xml_value(CAST(value AS VARCHAR), "
-    "typeof(value), CASE WHEN typeof(value) LIKE '%[]' THEN CAST(to_json(value) AS VARCHAR) "
-    "END, false)",
-    "CREATE MACRO xml_is_well_formed(value) AS provisa_xml_well_formed(value, false)",
-    "CREATE MACRO xml_is_well_formed_content(value) AS provisa_xml_well_formed(value, false)",
-    "CREATE MACRO xml_is_well_formed_document(value) AS provisa_xml_well_formed(value, true)",
-    "CREATE MACRO xml_send(value) AS provisa_xml_send(value)",
-    "CREATE MACRO xmlcomment(value) AS provisa_xmlcomment(value)",
-    "CREATE MACRO xmltext(value) AS provisa_xmltext(value)",
-    "CREATE MACRO xmlconcat2(a, b) AS provisa_xmlconcat2(a, b)",
-    "CREATE MACRO xmlexists(path, value) AS provisa_xpath_exists(path, value, '[]')",
-    "CREATE MACRO xpath(path, value) AS provisa_xpath(path, value, '[]'), "
-    "(path, value, spaces) AS provisa_xpath(path, value, CAST(to_json(spaces) AS VARCHAR))",
-    "CREATE MACRO xpath_exists(path, value) AS provisa_xpath_exists(path, value, '[]'), "
-    "(path, value, spaces) AS provisa_xpath_exists(path, value, CAST(to_json(spaces) AS VARCHAR))",
-    "CREATE MACRO xmlvalidate(value, dtd) AS CASE WHEN value IS NULL OR dtd IS NULL THEN "
-    "CAST(NULL AS BOOLEAN) ELSE error('postgresql-error 0A000: xmlvalidate is not implemented') "
-    "END",
-)
-
-
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
     for name, function, parameters, returns in _UDFS:
@@ -899,5 +872,3 @@ def register(con: Any) -> None:
         con.create_function(
             name, function, parameters, returns, null_handling="special", side_effects=False
         )
-    for macro in _MACROS:
-        con.execute(macro)

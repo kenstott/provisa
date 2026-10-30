@@ -19,7 +19,7 @@ import re
 
 import sqlglot
 
-from provisa.transpiler import pg_functions
+from provisa.transpiler import function_macros, pg_functions
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
@@ -1199,6 +1199,12 @@ def transpile(
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if function_macros.mentioned(pg_sql, target_dialect):
+        # REQ-2167: each function the target does not have, in its form there, or refused by name.
+        lowered = function_macros.inline(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            target_dialect,
         )
     if target_dialect == "exasol":
         result = _exasol_stored_case(

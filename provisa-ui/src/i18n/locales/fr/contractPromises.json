@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "S'applique à",
+      "check": "Contrôle",
+      "details": "Détails",
+      "result": "Dernier résultat"
+    },
+    "level": {
+      "table": "Table",
+      "row": "Ligne"
+    },
+    "check": {
+      "notNull": "Non nul",
+      "unique": "Unique",
+      "allowedValues": "Valeurs autorisées",
+      "pattern": "Correspondance de motif",
+      "valueRange": "Plage de valeurs",
+      "textLength": "Longueur du texte",
+      "average": "Plage de la moyenne",
+      "distinctCount": "Valeurs distinctes",
+      "rowCount": "Nombre de lignes",
+      "columnOrder": "Ordre des colonnes",
+      "unexpectedRows": "Aucune ligne inattendue",
+      "missing": "Aucune valeur manquante",
+      "valid": "Valeurs valides",
+      "duplicate": "Aucun doublon",
+      "aggregate": "Agrégat",
+      "freshness": "Fraîcheur",
+      "failedRows": "Aucune ligne en échec"
+    },
+    "threshold": {
+      "eq": "Doit être {{value}}",
+      "ne": "Ne doit pas être {{value}}",
+      "gt": "Supérieur à {{value}}",
+      "gte": "Au moins {{value}}",
+      "lt": "Inférieur à {{value}}",
+      "lte": "Au plus {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}} %",
+      "between": "De {{min}} à {{max}}",
+      "atLeast": "Au moins {{value}}",
+      "atMost": "Au plus {{value}}",
+      "oneOf": "Parmi {{values}}",
+      "matches": "Correspond à {{pattern}}",
+      "greater": "{{a}} supérieur à {{b}}",
+      "orEqual": "{{a}} au moins égal à {{b}}",
+      "query": "Lignes inattendues : {{query}}",
+      "expression": "Lignes en échec : {{expression}}",
+      "mostly": "Au moins {{percent}} % des lignes",
+      "alsoMissing": "Aussi manquant : {{values}}",
+      "minLength": "Au moins {{value}} caractères",
+      "maxLength": "Au plus {{value}} caractères"
+    },
+    "aggregate": {
+      "avg": "Moyenne",
+      "sum": "Somme",
+      "min": "Minimum",
+      "max": "Maximum",
+      "minLength": "Longueur la plus courte",
+      "maxLength": "Longueur la plus longue",
+      "avgLength": "Longueur moyenne"
+    }
+  }
+}

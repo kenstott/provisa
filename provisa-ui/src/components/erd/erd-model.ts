@@ -39,6 +39,8 @@ export interface ErdNodeTable {
 export interface ErdEdge {
   type: "rel";
   id: string;
+  // The relationship the line draws: what a click on it opens (REQ-2187).
+  relationshipId: string;
   source: string;
   target: string;
   cardinality: string;
@@ -235,6 +237,7 @@ export function buildErdElements(
     const data = {
       type: "rel",
       id: isProxy ? `rp:${key}` : `r:${r.id}${opts.leg ? `:${opts.leg}` : ""}`,
+      relationshipId: String(r.id),
       source: src,
       target: tgt,
       cardinality: r.cardinality,
