@@ -91713,7 +91713,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a click on a relationship line opens the relationship panel. A click on the other kind of item goes
     to the other page''s ERD with that item''s panel open: a line clicked on Tables goes to the Relationships
     ERD, a table clicked on Relationships goes to the Tables ERD. The focus carries across, because both
-    pages read the same view, domains and objects parameters.'
+    pages read the same view, domains and objects parameters. (Amended 2026-10-29, THE PAGE FILTER WORKS
+    ON THE ERD:) Maintainer 2026-10-30: the page''s filter box applies to the ERD, as a search focuses the
+    Ontology graph. Typing highlights what matches and dims the rest, with nothing moved or rebuilt, and
+    clearing it restores everything. It is not part of the link: a focus is what is saved or shared. On
+    Relationships it matches lines by source or target.'
   scenario: 'Given the Tables page with the domain filter on one domain
 
     When the ERD icon is clicked
