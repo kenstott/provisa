@@ -269,6 +269,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     prefixEdits,
     setPrefixEdits,
     expandResource,
+    describeResource,
     dropClass,
   } = useSparqlExplorer({ active: sparql, roleHeader: roleHeaderValue, framesRef, changeFrame });
 
@@ -622,6 +623,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 statementIndex: undefined,
                 sparqlExpansions: undefined,
                 sparqlMerge: undefined,
+                sparqlDescribed: undefined,
               }
             : fr,
         );
@@ -1084,6 +1086,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 language={language}
                 sparqlPrefixes={sparql ? prefixes : undefined}
                 onExpandResource={sparql ? expandResource : undefined}
+                onDescribeResource={sparql ? describeResource : undefined}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
                 onEffectiveDataChange={onEffectiveDataChange}

@@ -3144,7 +3144,7 @@ Naming convention option `graphql-default` provides camelCase field names, Pasca
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Naming convention now uses three preset enums (`snake`, `hasura_graphql`, `apollo_graphql` default) with `domain_prefix: bool` as orthogonal option. `snake` (PascalCase types, snake_case fields/mutations), `hasura_graphql` (PascalCase types, camelCase fields, snake_case mutations matching Hasura V2), `apollo_graphql` (PascalCase types, camelCase fields/mutations per Apollo/GraphQL idiom). Old free-form strings deprecated.
+Naming convention now uses three preset enums (`snake`, `hasura_graphql`, `apollo_graphql` default) with `domain_prefix: bool` as orthogonal option. `snake` (PascalCase types, snake_case fields/mutations), `hasura_graphql` (PascalCase types, camelCase fields, snake_case mutations matching Hasura V2), `apollo_graphql` (PascalCase types, camelCase fields/mutations per Apollo/GraphQL idiom). Old free-form strings deprecated. (Amended 2026-10-29, GRAPHQL IS SNAKE CASE:) Maintainer 2026-10-30: GraphQL field and mutation names are snake case on the SDL, always; snake is the default convention, and types stay PascalCase. on_terms and ref_count are the names.
 
 **Use case:** Enum-based preset naming eliminates ambiguous string values and standardizes on clear, documented conventions compatible with Hasura and Apollo ecosystems.
 
@@ -26316,7 +26316,7 @@ CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
-A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right in layers: the terms whose relationships point to this term, the term itself, the terms this term's relationships point to, then what the term refers to (the columns it is applied to, and for a Class term the tables). Each arrow is labelled with its relationship type, and the graph reaches one hop each way. Nodes are named by their catalog names only. It reads the same metadata query the view already reads, with no request of its own. It is compact by default, and an expand control shows it at full size.
+A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right in layers: the terms whose relationships point to this term, the term itself, the terms this term's relationships point to, then what the term refers to (the columns it is applied to, and for a Class term the tables). Each arrow is labelled with its relationship type, and the graph reaches one hop each way. Nodes are named by their catalog names only. It reads the same metadata query the view already reads, with no request of its own. It is compact by default, and an expand control shows it at full size. (Amended 2026-10-29, A TERM GRAPH REACHES THE GROUND:) Maintainer 2026-10-30: a term's graph extends along its edges until each path is grounded, ending at the columns or tables that ground it, where that is possible. A path that does not ground ends where it ends.
 
 **Code:** —
 
