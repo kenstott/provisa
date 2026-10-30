@@ -14,3 +14,26 @@
   max-width: 100%;
   height: auto;
 }
+
+.stats-mermaid-error {
+  border: 1px solid var(--destructive);
+  border-radius: 4px;
+  padding: 8px 10px;
+  max-width: 100%;
+}
+
+.stats-mermaid-error-title {
+  color: var(--destructive);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.stats-mermaid-error-message {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

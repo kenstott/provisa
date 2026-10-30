@@ -8679,5 +8679,6 @@
   "es/glossaryTab.json::glossaryTab.relatedToDialogAnyway": "Add Related to anyway",
   "es/glossaryTab.json::glossaryTab.newTermPlaceholder": "new term",
   "es/glossaryTab.json::glossaryTab.shapeFormTitle": "New term: {{shape}}",
-  "es/glossaryTab.json::glossaryTab.shapeFormEdges": "Edges added with it"
+  "es/glossaryTab.json::glossaryTab.shapeFormEdges": "Edges added with it",
+  "es/mermaidDiagram.json::mermaidDiagram.unavailable": "Diagram unavailable"
 }
