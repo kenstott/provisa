@@ -1,0 +1,438 @@
+# The surfaces of the product and what verifies each. Read by scripts/ci/surface_map.py, which
+# verify-surface.yml runs; tests/unit/test_ci_surface_map.py holds this file to the repository.
+#
+# A surface:
+#   wider   the surface a change takes when it also touches a sibling: the nearest common wider
+#           surface of everything it touches. Nothing wider than control-plane.
+#   suites  the workflows that are its own full test, by the names verify-surface.yml knows.
+#   lanes   the container lanes it runs whole (run_lane.py). Without any, it runs its `tests` alone.
+#   paths   the code it owns, as fnmatch patterns (`*` crosses `/`).
+#   tests   the tests/integration files it owns, as fnmatch patterns.
+#
+# No file belongs to two surfaces. A file no surface names belongs to control-plane: it runs with
+# that surface's lanes, and with the lane its markers select when that is another lane.
+
+[contract]
+# A change to one of these is a change between surfaces: the run widens to every conformance suite
+# and the whole integration suite.
+#
+# The SQL goldens: each translation is replayed byte for byte, and a change to one is approved
+# query by query (tests/fixtures/cypher_golden/README.md, tests/unit/test_cypher_golden_sql.py,
+# tests/unit/test_graphql_golden_sql.py).
+sql_goldens = [
+    "tests/fixtures/cypher_golden/approved.jsonl",
+    "tests/fixtures/cypher_golden/entries.jsonl",
+    "tests/fixtures/graphql_golden/entries.jsonl",
+]
+# FederationEngine (REQ-840), its backend and terminal dispatch (REQ-825), the certification every
+# engine passes (REQ-827), and the store side of replication.
+engine_interfaces = [
+    "provisa/federation/backend.py",
+    "provisa/federation/conformance.py",
+    "provisa/federation/engine.py",
+    "provisa/federation/replica_target.py",
+    "provisa/federation/runtime.py",
+]
+# Connector (REQ-842), SourceContract (REQ-1756), DirectDriver (REQ-027), and the source side of
+# replication.
+source_interfaces = [
+    "provisa/executor/drivers/base.py",
+    "provisa/federation/connector_base.py",
+    "provisa/federation/connector_contract.py",
+    "provisa/federation/replica_source.py",
+]
+
+# Its paths are what is not named elsewhere: provisa/core, for one, less the glossary below.
+[surfaces.control-plane]
+lanes = ["core", "app"]
+paths = [
+    "provisa/audit/*",
+    "provisa/auth/*",
+    "provisa/control_plane/*",
+    "provisa/encryption/*",
+    "provisa/events/*",
+    "provisa/licensing/*",
+    "provisa/scheduler/*",
+    "provisa/security/*",
+]
+tests = [
+    "tests/integration/test_auth_integration.py",
+    "tests/integration/test_control_plane_*.py",
+    "tests/integration/test_multi_org_onboarding_flow.py",
+    "tests/integration/test_org_*.py",
+    "tests/integration/test_scheduler_single_holder.py",
+]
+
+[surfaces.compiler]
+wider = "control-plane"
+paths = ["provisa/compiler/*", "provisa/transpiler/*"]
+tests = [
+    "tests/integration/test_ast_transform_e2e.py",
+    "tests/integration/test_compile_endpoint.py",
+    "tests/integration/test_compiler_integration.py",
+    "tests/integration/test_cross_vendor_parity_e2e.py",
+    "tests/integration/test_view_input_refusal_e2e.py",
+    "tests/integration/test_view_lowering_e2e.py",
+]
+
+[surfaces.engines]
+wider = "control-plane"
+suites = ["ui-swap"]
+paths = [
+    "provisa/cache/*",
+    "provisa/executor/*",
+    "provisa/federation/*",
+    "provisa/mv/*",
+    "provisa/source_adapters/*",
+    "provisa/sources/*",
+    "provisa/storage/*",
+]
+tests = [
+    "tests/integration/test_*_federation_engine_e2e.py",
+    "tests/integration/test_*_runtime_e2e.py",
+    "tests/integration/test_aggregate_mv_rewrite_e2e.py",
+    "tests/integration/test_bench_features_e2e.py",
+    "tests/integration/test_cache_store.py",
+    "tests/integration/test_connection_thread_execution.py",
+    "tests/integration/test_delta_*.py",
+    "tests/integration/test_direct_*.py",
+    "tests/integration/test_duckdb_*.py",
+    "tests/integration/test_embedded_pg_*.py",
+    "tests/integration/test_engine_*.py",
+    "tests/integration/test_execution_routing.py",
+    "tests/integration/test_federation_integration.py",
+    "tests/integration/test_hot_*.py",
+    "tests/integration/test_ingest_push_integration.py",
+    "tests/integration/test_local_result_sink_e2e.py",
+    "tests/integration/test_materialization_*.py",
+    "tests/integration/test_mv_*.py",
+    "tests/integration/test_nosql_catalogs.py",
+    "tests/integration/test_pg_direct_*.py",
+    "tests/integration/test_pg_engine_*.py",
+    "tests/integration/test_pool.py",
+    "tests/integration/test_postgres_native_engine_e2e.py",
+    "tests/integration/test_raw_sql_response_cache_*.py",
+    "tests/integration/test_redirect_*.py",
+    "tests/integration/test_region_*.py",
+    "tests/integration/test_replica_*.py",
+    "tests/integration/test_replication_*.py",
+    "tests/integration/test_response_cache_opt_in_surfaces_e2e.py",
+    "tests/integration/test_streaming_memory_bounded_e2e.py",
+    "tests/integration/test_timestamptz_e2e.py",
+    "tests/integration/test_trino_*.py",
+]
+
+[surfaces.semantic]
+wider = "control-plane"
+paths = [
+    "provisa/api/_ontology_*.py",
+    "provisa/api/admin/glossary_router.py",
+    "provisa/core/glossary*.py",
+    "provisa/core/repositories/glossary.py",
+    "provisa/dq/*",
+    "provisa/lineage/*",
+    "provisa/llm/*",
+    "provisa/nl/*",
+    "provisa/profiler/*",
+    "provisa/reference_library/*",
+]
+tests = [
+    "tests/integration/test_cloudpolicy_demo.py",
+    "tests/integration/test_data_product_edges_e2e.py",
+    "tests/integration/test_data_profiler_e2e.py",
+    "tests/integration/test_dq_*.py",
+    "tests/integration/test_glossary_*.py",
+    "tests/integration/test_hold_on_failing_checks_e2e.py",
+    "tests/integration/test_insider_demo.py",
+    "tests/integration/test_metadata_export_*.py",
+    "tests/integration/test_nl_endpoint.py",
+    "tests/integration/test_pii_term_e2e.py",
+    "tests/integration/test_polly_bakeoff_e2e.py",
+    "tests/integration/test_profiler_*.py",
+    "tests/integration/test_sonnets_demo.py",
+]
+
+[surfaces.ui]
+wider = "control-plane"
+suites = ["ui-unit", "ui-e2e-core"]
+paths = ["provisa-ui/*"]
+
+[surfaces.delivery]
+wider = "control-plane"
+paths = [
+    ".github/*",
+    "Dockerfile*",
+    "docker-compose*.yml",
+    "docker/*",
+    "docs/*",
+    "helm/*",
+    "mkdocs.yml",
+    "packaging/*",
+    "pyproject.toml",
+    "scripts/*",
+    "site/*",
+    "terraform/*",
+    "uv.lock",
+]
+
+[surfaces.cypher-bolt]
+wider = "compiler"
+suites = ["conformance-cypher", "conformance-bolt"]
+paths = ["provisa/bolt/*", "provisa/cypher/*"]
+tests = [
+    "tests/integration/test_bolt_*.py",
+    "tests/integration/test_cypher_*.py",
+    "tests/integration/test_graph_*.py",
+    "tests/integration/test_langchain_apoc_schema.py",
+]
+
+[surfaces.pgwire]
+wider = "compiler"
+suites = ["conformance-pgwire"]
+paths = ["provisa/pgwire/*"]
+tests = [
+    "tests/integration/test_jdbc_introspection_pgwire.py",
+    "tests/integration/test_pgwire_*.py",
+]
+
+[surfaces.flight-sql]
+wider = "compiler"
+suites = ["conformance-flight-sql"]
+paths = ["provisa/api/flight/*"]
+tests = [
+    "tests/integration/test_adbc.py",
+    "tests/integration/test_arrow_flight_integration.py",
+    "tests/integration/test_flight_*.py",
+    "tests/integration/test_jdbc_driver_e2e.py",
+]
+
+[surfaces.graphql]
+wider = "compiler"
+suites = ["conformance-graphql"]
+paths = ["provisa/apq/*", "provisa/gql/*", "provisa/graphql_front/*", "provisa/subscriptions/*"]
+tests = [
+    "tests/integration/test_apq_integration.py",
+    "tests/integration/test_graphql_execution.py",
+    "tests/integration/test_graphql_response_cache_hit.py",
+    "tests/integration/test_mutations.py",
+    "tests/integration/test_schema_compiler_integration.py",
+    "tests/integration/test_schema_gen.py",
+    "tests/integration/test_schema_mutation_api.py",
+    "tests/integration/test_schema_query_api.py",
+    "tests/integration/test_sse_subscriptions.py",
+]
+
+# No conformance suite exists yet for the next four: their own suite is their mapped tests.
+[surfaces.sparql]
+wider = "compiler"
+paths = ["provisa/sparql/*", "provisa/sparql_query/*"]
+tests = ["tests/integration/test_sparql_*.py"]
+
+[surfaces.grpc]
+wider = "compiler"
+paths = ["provisa/grpc/*", "provisa/proto/*"]
+tests = ["tests/integration/test_grpc_*.py"]
+
+[surfaces.mcp]
+wider = "compiler"
+paths = ["provisa/api/mcp/*"]
+tests = ["tests/integration/test_mcp_*.py"]
+
+[surfaces.rest]
+wider = "compiler"
+paths = ["provisa/api/jsonapi/*", "provisa/api/rest/*"]
+tests = [
+    "tests/integration/test_jsonapi_*.py",
+    "tests/integration/test_openapi_spec.py",
+    "tests/integration/test_output_formats.py",
+    "tests/integration/test_rest_endpoints.py",
+]
+
+# Each connector is a surface of its own, source-<name>, whose wider surface is engines. A
+# connector's code under provisa/federation belongs to engines: that package is engines' whole.
+
+[sources.airport]
+paths = ["provisa/api/airport/*"]
+tests = ["tests/integration/test_airport_*.py"]
+
+[sources.athena]
+tests = ["tests/integration/test_athena_*.py"]
+
+[sources.cassandra]
+paths = ["provisa/cassandra/*"]
+tests = ["tests/integration/test_cassandra_*.py"]
+
+[sources.clickhouse]
+tests = [
+    "tests/integration/test_clickhouse_engine_attach_names_per_org.py",
+    "tests/integration/test_clickhouse_source_e2e.py",
+]
+
+[sources.cloudops]
+tests = ["tests/integration/test_cloudops_source_e2e.py"]
+
+[sources.cockroachdb]
+tests = ["tests/integration/test_cockroachdb_source_e2e.py"]
+
+[sources.code]
+paths = ["provisa/codehost/*", "provisa/codesource/*"]
+tests = ["tests/integration/test_code_*.py"]
+
+[sources.cosmosdb]
+paths = ["provisa/cosmosdb/*"]
+tests = ["tests/integration/test_cosmosdb_*.py"]
+
+[sources.custom-connectors]
+tests = ["tests/integration/test_custom_connectors_*.py"]
+
+[sources.databricks]
+tests = [
+    "tests/integration/test_databricks_external_link_e2e.py",
+    "tests/integration/test_databricks_source_e2e.py",
+]
+
+[sources.debezium]
+tests = ["tests/integration/test_debezium_*.py"]
+
+[sources.druid]
+paths = ["provisa/druid/*"]
+tests = ["tests/integration/test_druid_*.py"]
+
+[sources.elasticsearch]
+paths = ["provisa/elasticsearch/*"]
+tests = [
+    "tests/integration/test_demo_stores_elasticsearch.py",
+    "tests/integration/test_elasticsearch_*.py",
+]
+
+[sources.exasol]
+tests = ["tests/integration/test_exasol_*.py"]
+
+[sources.fakes]
+paths = ["provisa/fakes/*"]
+tests = ["tests/integration/test_fake_*.py"]
+
+[sources.files]
+paths = ["provisa/file_source/*"]
+tests = ["tests/integration/test_file_glob_*.py", "tests/integration/test_files_pgwire_replica.py"]
+
+[sources.firebird]
+tests = ["tests/integration/test_firebird_source_e2e.py"]
+
+[sources.google-sheets]
+paths = ["provisa/google_sheets/*"]
+tests = ["tests/integration/test_google_sheets_source_e2e.py"]
+
+[sources.google-workspace]
+paths = ["provisa/google_workspace/*"]
+tests = ["tests/integration/test_google_workspace_*.py"]
+
+[sources.govdata]
+paths = ["provisa/govdata/*"]
+tests = ["tests/integration/test_govdata_*.py"]
+
+[sources.graphql-remote]
+paths = ["provisa/graphql_remote/*"]
+tests = ["tests/integration/test_graphql_remote_*.py"]
+
+[sources.greenplum]
+tests = ["tests/integration/test_greenplum_source_e2e.py"]
+
+[sources.hasura]
+paths = ["provisa/hasura_v2/*"]
+tests = [
+    "tests/integration/test_hasura_migration_demo.py",
+    "tests/integration/test_hasura_v2_live_import.py",
+]
+
+[sources.hive]
+paths = ["provisa/hive/*"]
+tests = ["tests/integration/test_hive_*.py"]
+
+[sources.kafka]
+paths = ["provisa/kafka/*"]
+tests = [
+    "tests/integration/test_change_events_kafka_e2e.py",
+    "tests/integration/test_kafka_*.py",
+]
+
+[sources.mariadb]
+tests = ["tests/integration/test_mariadb_source_e2e.py"]
+
+[sources.microsoft365]
+paths = ["provisa/microsoft365/*"]
+tests = ["tests/integration/test_microsoft365_*.py"]
+
+[sources.mongodb]
+paths = ["provisa/mongodb/*"]
+tests = [
+    "tests/integration/test_mongodb_*.py",
+    "tests/integration/test_row_level_filter_mongodb_e2e.py",
+]
+
+[sources.motherduck]
+tests = ["tests/integration/test_motherduck_*.py"]
+
+[sources.neo4j]
+paths = ["provisa/neo4j/*"]
+tests = [
+    "tests/integration/test_neo4j_*.py",
+    "tests/integration/test_row_level_filter_neo4j_e2e.py",
+    "tests/integration/test_write_capability_neo4j_e2e.py",
+]
+
+[sources.openapi]
+paths = ["provisa/api_source/*", "provisa/openapi/*"]
+tests = ["tests/integration/test_openapi_pet_by_status.py", "tests/integration/test_openapi_source.py"]
+
+[sources.oracle]
+tests = ["tests/integration/test_oracle_source_e2e.py"]
+
+[sources.pinot]
+paths = ["provisa/pinot/*"]
+tests = ["tests/integration/test_pinot_*.py"]
+
+[sources.prometheus]
+paths = ["provisa/prometheus/*"]
+tests = ["tests/integration/test_prometheus_*.py"]
+
+[sources.qdrant]
+paths = ["provisa/qdrant/*"]
+tests = ["tests/integration/test_qdrant_source_e2e.py"]
+
+[sources.redis]
+paths = ["provisa/redis/*"]
+tests = ["tests/integration/test_redis_*.py"]
+
+[sources.redshift]
+tests = ["tests/integration/test_redshift_*.py"]
+
+[sources.salesforce]
+tests = ["tests/integration/test_salesforce_source_e2e.py"]
+
+[sources.servicenow]
+tests = ["tests/integration/test_servicenow_*.py"]
+
+[sources.sharepoint]
+tests = ["tests/integration/test_sharepoint_*.py"]
+
+[sources.singlestore]
+tests = ["tests/integration/test_singlestore_*.py"]
+
+[sources.snowflake]
+tests = ["tests/integration/test_snowflake_source_e2e.py"]
+
+[sources.splunk]
+tests = ["tests/integration/test_splunk_*.py"]
+
+[sources.sqlserver]
+tests = ["tests/integration/test_sqlserver_source_e2e.py"]
+
+[sources.synapse]
+tests = ["tests/integration/test_synapse_pipeline_e2e.py"]
+
+[sources.tidb]
+tests = ["tests/integration/test_tidb_source_e2e.py"]
+
+[sources.yugabytedb]
+tests = ["tests/integration/test_yugabytedb_source_e2e.py"]

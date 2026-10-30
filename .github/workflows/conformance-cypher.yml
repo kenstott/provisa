@@ -34,6 +34,8 @@ on:
         description: "TCK feature-name globs, comma-separated (e.g. Merge*,Set1*); empty runs all"
         required: false
         default: ""
+  # verification calls it (verify-surface.yml), on the run's own commit.
+  workflow_call:
 
 permissions:
   contents: read
