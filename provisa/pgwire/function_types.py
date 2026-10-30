@@ -129,10 +129,12 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
 
 
 def _fits(argument: str | None, parameter: str) -> bool:
-    """A string argument fits a character varying parameter as it fits a text one."""
+    """A string argument fits a character varying parameter as it fits a text one, and any
+    argument a parameter of pseudo-type "any"."""
     return (
         argument is None
         or argument == parameter
+        or parameter == '"any"'
         or (argument == "text" and parameter == "character varying")
     )
 

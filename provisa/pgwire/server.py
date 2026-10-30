@@ -52,6 +52,8 @@ from buenavista.postgres import (
     BuenaVistaHandler,
     BuenaVistaServer,
     ServerResponse,
+    TYPE_OIDS,
+    UnknownStatement,
 )
 
 from provisa.core import request_deadline
@@ -273,6 +275,8 @@ def _refuse_wrong_parameter_count(ctx: BVContext, payload: bytes) -> None:
     portal_end = payload.index(0)
     stmt_end = payload.index(0, portal_end + 1)
     stmt = payload[portal_end + 1 : stmt_end].decode("utf-8")
+    if stmt not in ctx.stmts:
+        raise UnknownStatement(stmt)
     sql, param_oids = ctx.stmts[stmt][0], ctx.stmts[stmt][1]
     (num_formats,) = struct.unpack("!h", payload[stmt_end + 1 : stmt_end + 3])
     at = stmt_end + 3 + 2 * num_formats
@@ -521,6 +525,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.TEXT: BVType.STRINGARRAY,
     BVType.OID: BVType.OIDARRAY,
     BVType.REGTYPE: BVType.REGTYPEARRAY,
+    BVType.MONEY: BVType.MONEYARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
@@ -640,6 +645,7 @@ _WIRE_FAMILIES = (
     frozenset({BVType.REAL, BVType.FLOAT}),
     frozenset({BVType.REALARRAY, BVType.FLOATARRAY}),
     frozenset({BVType.DECIMAL, BVType.MONEY}),
+    frozenset({BVType.DECIMALARRAY, BVType.MONEYARRAY}),
     # A regclass or regnamespace result column is served as its oid and name together, a
     # struct (catalog_regs).
     frozenset({BVType.REGCLASS, BVType.JSON}),
@@ -700,16 +706,26 @@ def _named_binary(value: dict) -> bytes:  # REQ-2167
     return value["oid"].to_bytes(4, "big", signed=False)
 
 
+def _regtype_binary(oids: dict[str, int]) -> Callable[[Any], bytes]:  # REQ-2167
+    """A regtype's binary form: an engine answers one by its name (pg_typeof), sent as its oid."""
+
+    def binary(value: Any) -> bytes:
+        return _reg_binary(oids.get(value, value) if isinstance(value, str) else value)
+
+    return binary
+
+
 def _register_reg_types() -> None:
     from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
 
     type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
+    type_oids = {name: oid for oid, name in type_names.items()}
     BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
     # A regclass or regnamespace value is its oid and its name (catalog_regs): sent as the name
     # in text, the oid in binary.
     BVTYPE_TO_PGTYPE[BVType.REGCLASS] = (2205, _named_text, _named_binary)
     BVTYPE_TO_PGTYPE[BVType.REGNAMESPACE] = (4089, _named_text, _named_binary)
-    BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
+    BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _regtype_binary(type_oids))
     BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY] = _array_entry(BVType.REGTYPE, 2211)
 
 
@@ -1034,10 +1050,17 @@ class _StatementDescription(BVQueryResult):  # REQ-589
     metadata, with no rows — nothing ran. ``statement_shape`` is what every Execute of the statement
     is encoded to; ``prepared`` is the governed statement the next Execute continues from."""
 
-    def __init__(self, shape: list[Tuple[str, str]], prepared: Any, sql: str) -> None:
+    def __init__(
+        self,
+        shape: list[Tuple[str, str]],
+        prepared: Any,
+        sql: str,
+        parameters: dict[int, str] | None = None,
+    ) -> None:
         super().__init__()
         self.statement_shape = shape
         self.prepared = prepared
+        self.parameter_types = parameters or {}
         self._types = [_sql_type_to_bvtype(t) for _, t in shape]
         self._type_oids = [_type_oid(t) for _, t in shape]
         self._typmods = [-1] * len(shape)
@@ -1680,8 +1703,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             # rows; that one row is the shape the client is told.
             if described.governed is None:
                 raise RuntimeError(_COMMAND_NOT_REDIRECTED)
-            return _StatementDescription(_REDIRECT_SHAPE, described.governed, stripped)
-        return _StatementDescription(described.shape, described.governed, stripped)
+            shape = _REDIRECT_SHAPE
+        else:
+            shape = described.shape
+        return _StatementDescription(shape, described.governed, stripped, described.parameters)
 
     @staticmethod
     def _advisory_shape(call: _AdvisoryCall) -> Any:
@@ -3067,23 +3092,26 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 return
         elif ba[0] == ord("S"):
             stmt = ba[1 : len(ba) - 1].decode("utf-8")
+            if stmt not in ctx.stmts:
+                self.send_error(UnknownStatement(stmt), ctx)
+                return
             sql = ctx.stmts[stmt][0]
             if not sql.strip():
                 self.send_parameter_description([])
                 self.send_no_data()
                 return
+            from provisa.pgwire.parameters import placeholder_oids, resolved_oids
+
             indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
+            stored_oids = ctx.stmts[stmt][1]
             if "typeinfo_tree" in sql.lower() and indices:
                 param_oids = [1028]
             elif "set_config" in sql.lower() and indices:
                 param_oids = [25] * len(indices)
             else:
-                stored_oids = ctx.stmts[stmt][1]
                 if stored_oids:
                     param_oids = stored_oids
                 else:
-                    from provisa.pgwire.parameters import placeholder_oids
-
                     param_oids = placeholder_oids(sql)
             # Update stored param_oids so describe_statement substitutes example values
             # instead of executing the SQL with unresolved $N placeholders.
@@ -3094,6 +3122,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.send_error(e, ctx)
                 return
             try:
+                if not stored_oids:
+                    # What only the statement's description says of an uncast parameter.
+                    param_oids = resolved_oids(
+                        param_oids,
+                        getattr(query_result, "parameter_types", {}),
+                        _described_oid,
+                        TYPE_OIDS,
+                    )
+                    ctx.stmts[stmt] = (sql, param_oids)
                 self.send_parameter_description(param_oids)
                 if query_result.has_results():
                     self.send_row_description(query_result)

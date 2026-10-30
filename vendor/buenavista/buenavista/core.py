@@ -91,6 +91,7 @@ class BVType(enum.Enum):
     # A relation's and a schema's oid, whose text form is its name: the value carries both.
     REGCLASS = 64
     REGNAMESPACE = 65
+    MONEYARRAY = 66
 
 
 class RawDataRowBytes(bytes):

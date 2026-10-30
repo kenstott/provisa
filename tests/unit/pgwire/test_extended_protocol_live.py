@@ -36,7 +36,7 @@ from psycopg import pq
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.pgwire.server import ProvisaSession
 from provisa.transpiler.transpile import transpile_to_duckdb
-from tests.pgwire_describe_parity import RuntimeEngine, registered_shape
+from tests.pgwire_describe_parity import RuntimeEngine, registered_parameters, registered_shape
 from tests.role_state import with_surfaces
 from tests.unit.pgwire.test_extended_protocol_portals import _engine_plan
 from tests.unit.pgwire.test_wire_protocol import _free_port, _make_server
@@ -66,6 +66,47 @@ _FLOWS = {
         _MONEY,
         "-$5.00",
         "fffffffffffffe0c",
+    ),
+    # An uncast $1 takes its type from what it is compared with, as PostgreSQL resolves it.
+    "uncast $1, a text column": (
+        "SELECT id FROM m WHERE label = $1",
+        [b"two"],
+        [_TEXT],
+        _INT4,
+        "2",
+        "00000002",
+    ),
+    "uncast $1, an integer column": (
+        "SELECT label FROM m WHERE id = $1",
+        [b"2"],
+        [_INT4],
+        _TEXT,
+        "two",
+        "74776f",
+    ),
+    "uncast $1, LIKE a text column": (
+        "SELECT id FROM m WHERE label LIKE $1",
+        [b"tw%"],
+        [_TEXT],
+        _INT4,
+        "2",
+        "00000002",
+    ),
+    "uncast $1, BETWEEN on a text column": (
+        "SELECT id FROM m WHERE label BETWEEN $1 AND $2",
+        [b"tt", b"tz"],
+        [_TEXT, _TEXT],
+        _INT4,
+        "2",
+        "00000002",
+    ),
+    "uncast $1, IN on a text column": (
+        "SELECT id FROM m WHERE label IN ($1, $2)",
+        [b"two", b"zzz"],
+        [_TEXT, _TEXT],
+        _INT4,
+        "2",
+        "00000002",
     ),
 }
 
@@ -130,7 +171,11 @@ def live(pgwire: int):
         return _plan_of(text, params)
 
     async def _describe(text, role_id, *, as_of=None):
-        return _Described(registered_shape(text, _REGISTRY), ("governed", text))  # type: ignore[arg-type]
+        return _Described(
+            registered_shape(text, _REGISTRY),
+            ("governed", text),  # type: ignore[arg-type]
+            registered_parameters(text, _REGISTRY),
+        )
 
     async def _plan(held, params, wire_formats=None, *, deliver):
         return _plan_of(held[1], params)
@@ -184,3 +229,36 @@ def test_each_step_of_the_extended_protocol_is_answered(live: Any, flow: str):
         executed = _answered(live, pq.ExecStatus.TUPLES_OK)
         assert executed.ftype(0) == oid
         assert executed.get_value(0, 0) == first
+
+
+def _error(result: Any) -> tuple[str, str]:
+    return (
+        result.error_field(pq.DiagnosticField.SQLSTATE).decode(),
+        result.error_field(pq.DiagnosticField.MESSAGE_PRIMARY).decode(),
+    )
+
+
+def _still_answers(pgconn: Any) -> None:
+    pgconn.send_query_params(b"SELECT id FROM m ORDER BY id", None)
+    assert _answered(pgconn, pq.ExecStatus.TUPLES_OK).get_value(0, 0) == b"1"
+
+
+def test_describing_an_unknown_statement_answers_26000_and_the_connection_goes_on(live: Any):
+    live.send_describe_prepared(b"never_prepared")
+    answered = _answered(live, pq.ExecStatus.FATAL_ERROR)
+    assert _error(answered) == ("26000", 'prepared statement "never_prepared" does not exist')
+    _still_answers(live)
+
+
+def test_describing_an_unknown_portal_answers_34000_and_the_connection_goes_on(live: Any):
+    live.send_describe_portal(b"never_bound")
+    answered = _answered(live, pq.ExecStatus.FATAL_ERROR)
+    assert _error(answered) == ("34000", 'portal "never_bound" does not exist')
+    _still_answers(live)
+
+
+def test_binding_an_unknown_statement_answers_26000_and_the_connection_goes_on(live: Any):
+    live.send_query_prepared(b"never_prepared", None)
+    answered = _answered(live, pq.ExecStatus.FATAL_ERROR)
+    assert _error(answered) == ("26000", 'prepared statement "never_prepared" does not exist')
+    _still_answers(live)

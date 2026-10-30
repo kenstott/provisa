@@ -171,6 +171,20 @@ def _macro(name: str, params: str, duckdb: str, others: Forms | None = None) -> 
     )
 
 
+#: typeof without a list's brackets or a decimal's size.
+_TYPE_BASE = "split_part(replace(typeof(value), '[]', ''), '(', 1)"
+#: pg_typeof: DuckDB's name of the value's type as format_type writes PostgreSQL's, with each of a
+#: list's dimensions. A type that holds another's value is named by the statement
+#: (pg_functions._type_said).
+_PG_TYPEOF = (
+    f"CASE {_TYPE_BASE} WHEN 'VARCHAR' THEN 'text' WHEN 'DOUBLE' THEN 'double precision' "
+    "WHEN 'FLOAT' THEN 'real' WHEN 'DECIMAL' THEN 'numeric' WHEN 'HUGEINT' THEN 'numeric' "
+    "WHEN 'TINYINT' THEN 'smallint' WHEN 'TIMESTAMP' THEN 'timestamp without time zone' "
+    "WHEN 'TIME' THEN 'time without time zone' WHEN 'BLOB' THEN 'bytea' "
+    f"WHEN '\"NULL\"' THEN 'unknown' ELSE lower({_TYPE_BASE}) END || "
+    "repeat('[]', (length(typeof(value)) - length(replace(typeof(value), '[]', ''))) // 2)"
+)
+
 #: oid_send: an oid's four bytes, for the send functions of the object identifier types.
 _OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
 _INT8_BYTES = "unhex(printf('%016x', CAST(v AS UBIGINT)))"
@@ -511,6 +525,7 @@ _ROWS: tuple[Macro, ...] = (
         "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
         "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
     ),
+    _macro("pg_typeof", "value", _PG_TYPEOF),
     _macro("area", "value", "provisa_area(CAST(value AS VARCHAR))"),
     _macro("center", "value", "provisa_center(CAST(value AS VARCHAR))"),
     _macro("diagonal", "value", "provisa_diagonal(CAST(value AS VARCHAR))"),
