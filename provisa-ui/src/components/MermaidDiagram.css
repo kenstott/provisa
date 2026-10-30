@@ -10,9 +10,9 @@
   overflow-x: auto;
 }
 
+/* Width and max-width are set per chart by fitSvgToWidth (MermaidDiagram.tsx). */
 .stats-mermaid svg {
-  max-width: 100%;
-  height: auto;
+  display: block;
 }
 
 .stats-mermaid-error {
