@@ -58,6 +58,7 @@ import {
 } from "../../api/termFinding";
 import { generateGlossaryRelationships, type GlossaryTermSummary } from "../../api/glossary";
 import { Tip } from "../Tip";
+import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 
 /** How often a running scan is read again, in milliseconds. */
@@ -334,50 +335,48 @@ function DraftCard({
         )}
 
         {editing ? (
-          <Stack gap="xs">
-            <TextInput
-              label={t("findTerms.name")}
-              value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
-              data-testid="find-terms-edit-name"
+          <FormLayout>
+            <FormField size="medium">
+              <TextInput
+                label={t("findTerms.name")}
+                value={name}
+                onChange={(e) => setName(e.currentTarget.value)}
+                data-testid="find-terms-edit-name"
+              />
+            </FormField>
+            <FormField size="full">
+              <Textarea
+                label={t("findTerms.definition")}
+                value={definition}
+                onChange={(e) => setDefinition(e.currentTarget.value)}
+                autosize
+                minRows={2}
+                data-testid="find-terms-edit-definition"
+              />
+            </FormField>
+            <FormField size="long" help={t("findTerms.synonymsHelp")}>
+              <TagsInput
+                label={t("findTerms.synonyms")}
+                value={synonyms}
+                onChange={setSynonyms}
+                data-testid="find-terms-edit-synonyms"
+              />
+            </FormField>
+            <FormFooter
+              saving={busy}
+              onCancel={() => setEditing(false)}
+              onSave={() =>
+                run(
+                  () =>
+                    editDraft(draft.id, { name, definition: definition || null, synonyms }).then(
+                      () => setEditing(false),
+                    ),
+                  "",
+                )
+              }
+              saveProps={{ "data-testid": "find-terms-edit-save" }}
             />
-            <Textarea
-              label={t("findTerms.definition")}
-              value={definition}
-              onChange={(e) => setDefinition(e.currentTarget.value)}
-              autosize
-              minRows={2}
-              data-testid="find-terms-edit-definition"
-            />
-            <TagsInput
-              label={t("findTerms.synonyms")}
-              description={t("findTerms.synonymsHelp")}
-              value={synonyms}
-              onChange={setSynonyms}
-              data-testid="find-terms-edit-synonyms"
-            />
-            <Group gap="xs" justify="flex-end">
-              <Button size="xs" variant="default" onClick={() => setEditing(false)}>
-                {t("findTerms.cancel")}
-              </Button>
-              <Button
-                size="xs"
-                loading={busy}
-                onClick={() =>
-                  void run(
-                    () =>
-                      editDraft(draft.id, { name, definition: definition || null, synonyms }).then(
-                        () => setEditing(false),
-                      ),
-                    "",
-                  )
-                }
-                data-testid="find-terms-edit-save"
-              >
-                {t("findTerms.save")}
-              </Button>
-            </Group>
-          </Stack>
+          </FormLayout>
         ) : (
           <>
             <Stack gap={4}>
@@ -417,46 +416,50 @@ function DraftCard({
         )}
 
         {merging && (
-          <Group gap="xs" align="flex-end">
-            <Select
-              label={t("findTerms.mergeInto")}
-              placeholder={t("findTerms.mergeIntoPlaceholder")}
-              searchable
-              value={target}
-              onChange={setTarget}
-              data={terms.map((term) => ({ value: String(term.id), label: term.name }))}
-              data-testid="find-terms-merge-target"
-              style={{ minWidth: 260 }}
-            />
-            <Checkbox
-              label={t("findTerms.useDefinition")}
-              checked={useDefinition}
-              disabled={!draft.definition}
-              onChange={(e) => setUseDefinition(e.currentTarget.checked)}
-              data-testid="find-terms-use-definition"
-            />
-            <Button size="xs" variant="default" onClick={() => setMerging(false)}>
-              {t("findTerms.cancel")}
-            </Button>
-            <Button
-              size="xs"
-              disabled={target === null}
-              loading={busy}
-              onClick={() =>
-                void run(
-                  () =>
-                    mergeDraft(draft.id, {
-                      term_id: Number(target),
-                      use_definition: useDefinition,
-                    }),
-                  t("findTerms.mergeDone", { name: draft.name }),
-                )
+          <FormLayout>
+            <FormField size="medium">
+              <Select
+                label={t("findTerms.mergeInto")}
+                placeholder={t("findTerms.mergeIntoPlaceholder")}
+                searchable
+                value={target}
+                onChange={setTarget}
+                data={terms.map((term) => ({ value: String(term.id), label: term.name }))}
+                data-testid="find-terms-merge-target"
+              />
+            </FormField>
+            <FormChecks>
+              <Checkbox
+                label={t("findTerms.useDefinition")}
+                checked={useDefinition}
+                disabled={!draft.definition}
+                onChange={(e) => setUseDefinition(e.currentTarget.checked)}
+                data-testid="find-terms-use-definition"
+              />
+            </FormChecks>
+            <FormFooter
+              onCancel={() => setMerging(false)}
+              action={
+                <Button
+                  disabled={target === null}
+                  loading={busy}
+                  onClick={() =>
+                    void run(
+                      () =>
+                        mergeDraft(draft.id, {
+                          term_id: Number(target),
+                          use_definition: useDefinition,
+                        }),
+                      t("findTerms.mergeDone", { name: draft.name }),
+                    )
+                  }
+                  data-testid="find-terms-merge-confirm"
+                >
+                  {t("findTerms.confirmMerge")}
+                </Button>
               }
-              data-testid="find-terms-merge-confirm"
-            >
-              {t("findTerms.confirmMerge")}
-            </Button>
-          </Group>
+            />
+          </FormLayout>
         )}
 
         {draft.conflicts.length > 0 && (
