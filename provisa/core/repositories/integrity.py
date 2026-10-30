@@ -11,7 +11,9 @@
 """The model store's dependency guard: what refers to an object, and whether it may go (REQ-1918).
 
 An object has PARTS and DEPENDENTS. A part exists only as part of it and goes with it. A
-dependent is another object that refers to it, and blocks its deletion. A reference from an
+dependent is another object that refers to it, and blocks its deletion. A LINK is a column that
+only points at the object, on a row that lives on without it (a review record's source document):
+it never blocks, and :func:`remove_parts` empties it. A reference from an
 object to itself never blocks. Dependents are chosen so that something can always be deleted
 first — a relationship stands on its own and goes before the tables it joins — so no legitimate
 circle of objects blocking each other exists; views that read each other, the one way to make
@@ -62,6 +64,7 @@ if TYPE_CHECKING:
 class Standing(Enum):
     PART = "part"
     DEPENDENT = "dependent"
+    LINK = "link"  # the row outlives the object: its column is emptied, and nothing blocks
 
 
 class Match(Enum):
@@ -158,9 +161,10 @@ KINDS: dict[str, Kind] = {
     "region": Kind("org_regions", "id"),  # REQ-1921
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
     "reference_document": Kind("reference_documents", "id"),  # REQ-2185
+    "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
 }
 
-_P, _D = Standing.PART, Standing.DEPENDENT
+_P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
 _ENDS = ("source_table_id", "target_table_id", "via_table_id")
 
 
@@ -170,6 +174,10 @@ def _part(table: str, column: str, to: str, **kw: Any) -> Reference:
 
 def _dep(table: str, column: str, to: str, of: str, owner: str, **kw: Any) -> Reference:
     return Reference(table, column, to, _D, of=of, owner=owner, **kw)
+
+
+def _link(table: str, column: str, to: str) -> Reference:
+    return Reference(table, column, to, _L)
 
 
 REFERENCES: tuple[Reference, ...] = (
@@ -334,6 +342,14 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2185: a document's domains and its embedded passages go with the document.
     _part("reference_document_domains", "document_id", "reference_document"),
     _part("reference_passages", "document_id", "reference_document"),
+    # REQ-2179: a scan keeps the document's title and source, so it outlives the document.
+    _link("glossary_term_scans", "document_id", "reference_document"),
+    # --- to a term scan, and the terms its drafts touch ----------------------------------------
+    # REQ-2179: a scan's drafts go with it. A draft outlives a term it matched or became: an
+    # accepted draft is the history of how the term came about, and a review record never blocks.
+    _part("glossary_term_drafts", "scan_id", "term_scan"),
+    _link("glossary_term_drafts", "match_term_id", "glossary_term"),
+    _link("glossary_term_drafts", "term_id", "glossary_term"),
 )
 
 
@@ -630,6 +646,15 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
     """Delete the rows that go with ``ref``. The caller holds the transaction, has asked
     :func:`guard`, and deletes the object's own row after this."""
     attributes = await _attributes(conn, ref)
+    for reference in REFERENCES:
+        if reference.standing is Standing.LINK and reference.to == ref.kind:
+            # The database's ON DELETE SET NULL is not relied on: the link is emptied here.
+            table = metadata.tables[reference.table]
+            await conn.execute_core(
+                table.update()
+                .where(table.c[reference.column] == attributes[reference.by])
+                .values({reference.column: None})
+            )
     for reference, where in _part_statements(ref, attributes):
         table = metadata.tables[reference.table]
         if reference.standing is Standing.PART and reference.of is not None:

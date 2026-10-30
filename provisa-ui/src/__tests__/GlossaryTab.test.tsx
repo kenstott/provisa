@@ -736,12 +736,14 @@ describe("GlossaryTab", () => {
         order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByTestId("glossary-generate-menu")).toHaveAccessibleName("Generate with AI");
-    // Its two drafts are items of the menu, in this order, and nowhere else on the page.
+    // Its drafts are items of the menu, in this order, and nowhere else on the page: finding terms
+    // in a document (REQ-2179), then relationships and definitions.
     expect(screen.queryByTestId("glossary-bulk-relationships-btn")).toBeNull();
     fireEvent.click(screen.getByTestId("glossary-generate-menu"));
     const menu = await screen.findByRole("menu");
     // Mantine's items are not exposed by role in jsdom (mantine-menu-test-pattern): read them in place.
     expect([...menu.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent)).toEqual([
+      "Find terms in a document",
       "Relationships",
       "Definitions",
     ]);
