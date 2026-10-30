@@ -529,3 +529,80 @@ def test_a_scope_is_qualified_on_a_join_of_two_views():
     )
     where = sqlglot.parse_one(governed, read="postgres").args["where"]
     assert {reference.table for reference in where.find_all(exp.Column)} == {"c"}
+
+
+def _schema_input_with_views():
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.compiler.schema_gen import SchemaInput
+
+    def table(table_id, domain, source, name, columns):
+        return {
+            "id": table_id,
+            "source_id": source,
+            "domain_id": domain,
+            "schema_name": "public",
+            "table_name": name,
+            "alias": None,
+            "description": None,
+            "view_sql": None,
+            "columns": [
+                {
+                    "column_name": column,
+                    "visible_to": ["viewer"],
+                    "data_type": "varchar",
+                    "is_primary_key": False,
+                    "alias": None,
+                    "description": None,
+                    "scope": "domain",
+                }
+                for column in columns
+            ],
+            "unique_constraints": [],
+            "write_ops": [],
+            "write_returns_rows": False,
+            "write_refused_forms": [],
+        }
+
+    views = [
+        table(10 + n, META_DOMAIN_ID, "provisa-admin", name, ["id", "note"])
+        for n, name in enumerate(("catalog_pg_class", "is_columns", "table_keys"))
+    ]
+    tables = [table(1, "sales", "pg", "orders", ["id", "total"]), *views]
+    return SchemaInput(
+        tables=tables,
+        relationships=[],
+        column_types={
+            t["id"]: [ColumnMetadata(c["column_name"], "varchar", True) for c in t["columns"]]
+            for t in tables
+        },
+        naming_rules=[],
+        # The control plane is a PostgreSQL source: a change-capture source to subscriptions.
+        role={"id": "viewer", "capabilities": [], "domain_access": ["*"]},
+        domains=[{"id": "sales"}, {"id": META_DOMAIN_ID}],
+        source_types={"pg": "postgresql", "provisa-admin": "postgresql"},
+    )
+
+
+_VIEW_SPELLINGS = re.compile(r"catalog_?pg|is_?columns|table_?keys", re.IGNORECASE)
+
+
+def test_no_catalog_view_is_anywhere_in_the_sdl():
+    """Not a query field, a subscription field or a type."""
+    from graphql import print_schema
+
+    from provisa.compiler.schema_gen import generate_schema
+
+    sdl = print_schema(generate_schema(_schema_input_with_views()))
+    assert "orders" in sdl.lower()
+    assert _VIEW_SPELLINGS.search(sdl) is None
+
+
+def test_no_catalog_view_is_in_the_proto_or_a_cypher_label():
+    from provisa.compiler.context import build_context
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.grpc.proto_gen import generate_proto
+
+    source = _schema_input_with_views()
+    assert _VIEW_SPELLINGS.search(generate_proto(source)) is None
+    labels = CypherLabelMap.from_schema(build_context(source), ["*"])
+    assert not [label for label in labels.nodes if _VIEW_SPELLINGS.search(label)]
