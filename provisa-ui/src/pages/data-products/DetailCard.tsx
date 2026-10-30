@@ -41,6 +41,7 @@ export function DetailCard({
   testId,
   tourId,
   wide = false,
+  span,
   children,
 }: {
   section: string;
@@ -49,6 +50,8 @@ export function DetailCard({
   testId: string;
   tourId?: string;
   wide?: boolean;
+  /** Tracks wide in a grid of cards (the contract view's); spanned only where the grid has 3+ columns. */
+  span?: 2;
   children: React.ReactNode;
 }) {
   const heading = (
@@ -76,7 +79,12 @@ export function DetailCard({
     </Group>
   );
   return (
-    <div style={wide ? undefined : CARD_IN_COLUMN} data-tour={tourId} data-testid={testId}>
+    <div
+      style={wide ? undefined : CARD_IN_COLUMN}
+      className={span ? `detail-card--span-${span}` : undefined}
+      data-tour={tourId}
+      data-testid={testId}
+    >
       <Collapsibles id={`data-product.${section}`}>
         <CollapsibleItem value={section} title={heading} controlTestId={`${testId}-toggle`}>
           <div style={CARD_BODY}>{children}</div>
