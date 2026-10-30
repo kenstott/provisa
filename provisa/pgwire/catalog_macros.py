@@ -21,6 +21,7 @@ from provisa.federation.duckdb_pg_functions import register as register_pg_funct
 from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
 from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS, _PG_TYPE_DISPLAY_NAMES, next_txid
 from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPES, macros as server_macros
+from provisa.transpiler.function_macros import quoted_identifier
 
 # The schemas on the search path (catalog_data's search_path, and pg_catalog): an object in one is
 # named unqualified, as PostgreSQL names a visible object.
@@ -29,14 +30,6 @@ _VISIBLE = "('public', 'pg_catalog')"
 # A macro's argument is written into its body as the caller wrote it (c.oid), so every relation
 # the body reads has an alias no caller writes (_c, _n, ...), and the argument is taken in a
 # FROM-less select (_a) before the body reads a relation with it.
-
-
-def quoted_identifier(name: str) -> str:
-    """A name as quote_ident writes it: bare when it is a lowercase identifier."""
-    return (
-        f"CASE WHEN regexp_full_match({name}, '[a-z_][a-z0-9_$]*') THEN {name} "
-        f"ELSE '\"' || replace({name}, '\"', '\"\"') || '\"' END"
-    )
 
 
 def _type_name(oid: str, qualified: bool = False) -> str:
@@ -123,11 +116,8 @@ _TOKENS_SELECT = (
 _SETTINGS_SELECT = "SELECT * FROM _pg_settings"
 
 _MACROS = (
-    # The database's encoding, and an encoding's number: UTF8 is 6, a name naming none -1.
+    # The database's encoding.
     "CREATE MACRO getdatabaseencoding() AS 'UTF8'",
-    "CREATE MACRO pg_char_to_encoding(name) AS CASE "
-    "WHEN lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) IN ('utf8', 'unicode') THEN 6 "
-    "WHEN name IS NOT NULL THEN -1 END",
     "CREATE MACRO pg_statistics_obj_is_visible(oid) AS true",
     # Provisa keeps no ACLs, no sequences and no cursors.
     "CREATE MACRO acldefault(objtype, owner) AS CAST(NULL AS VARCHAR[])",
@@ -190,8 +180,6 @@ _MACROS = (
         "word, catcode, barelabel, catdesc, baredesc",
     ),
     *_set_returning("ts_token_type", "parser", _TOKENS_SELECT, "tokid, alias, description"),
-    # A character value of a "char".
-    "CREATE MACRO bpchar(value) AS CAST(value AS VARCHAR)",
     # Every type is usable by every role: PostgreSQL grants USAGE on a type to PUBLIC, and
     # Provisa keeps no ACLs. The function is strict.
     "CREATE MACRO has_type_privilege(type, priv) AS "
@@ -206,10 +194,6 @@ _MACROS = (
     # Provisa keeps no statistics: there is nothing to reset (void, its empty text).
     "CREATE MACRO pg_stat_reset_single_table_counters(tbl) AS "
     "CASE WHEN tbl IS NOT NULL THEN '' END",
-    # Strict; on a value PostgreSQL refuses this form: a record needs a column definition list.
-    "CREATE MACRO json_to_record(value) AS CASE WHEN value IS NOT NULL THEN "
-    "error('function returning record called in context that cannot accept type record') "
-    "ELSE CAST(NULL AS VARCHAR) END",
     # A vector of type oids, as its types' names.
     "CREATE MACRO oidvectortypes(types) AS CASE WHEN types IS NOT NULL THEN "
     + _type_names("types", ", ", False)

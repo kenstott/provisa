@@ -62,6 +62,7 @@ const check = (
   owner_product_id: owner,
   checked_table_id: checked[0],
   checked_table: { id: checked[0], domain_id: "sales", table_name: checked[1], alias: null },
+  rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: "pass",
   latest_run_at: "2026-10-20T10:00:00Z",
   ...over,

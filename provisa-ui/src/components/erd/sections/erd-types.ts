@@ -26,6 +26,9 @@ export interface ErdPanelProps {
   checkedDomains: Set<string> | null;
   // REQ-2187: the tables highlighted and fitted into view.
   highlightTableIds?: number[];
+  // The page's filter box: what matches is marked and the rest dimmed, nothing rebuilt.
+  search?: string;
+  page?: "tables" | "relationships";
   onTableClick: (tableId: number, tableName: string) => void;
   // A line in the diagram clicked: a host with no use for it leaves it out.
   onRelationshipClick?: (relationshipId: string) => void;

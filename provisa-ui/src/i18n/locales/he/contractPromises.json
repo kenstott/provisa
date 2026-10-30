@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "חל על",
+      "check": "בדיקה",
+      "details": "פרטים",
+      "result": "התוצאה האחרונה"
+    },
+    "level": {
+      "table": "טבלה",
+      "row": "שורה"
+    },
+    "check": {
+      "notNull": "לא ריק",
+      "unique": "ייחודי",
+      "allowedValues": "ערכים מותרים",
+      "pattern": "התאמת תבנית",
+      "valueRange": "טווח ערכים",
+      "textLength": "אורך טקסט",
+      "average": "טווח הממוצע",
+      "distinctCount": "ערכים שונים",
+      "rowCount": "מספר שורות",
+      "columnOrder": "סדר עמודות",
+      "unexpectedRows": "אין שורות בלתי צפויות",
+      "missing": "אין ערכים חסרים",
+      "valid": "ערכים תקינים",
+      "duplicate": "אין כפילויות",
+      "aggregate": "צבירה",
+      "freshness": "עדכניות",
+      "failedRows": "אין שורות כושלות"
+    },
+    "threshold": {
+      "eq": "חייב להיות {{value}}",
+      "ne": "אסור שיהיה {{value}}",
+      "gt": "גדול מ-{{value}}",
+      "gte": "לפחות {{value}}",
+      "lt": "קטן מ-{{value}}",
+      "lte": "לכל היותר {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "מ-{{min}} עד {{max}}",
+      "atLeast": "לפחות {{value}}",
+      "atMost": "לכל היותר {{value}}",
+      "oneOf": "אחד מתוך {{values}}",
+      "matches": "תואם ל-{{pattern}}",
+      "greater": "{{a}} גדול מ-{{b}}",
+      "orEqual": "{{a}} לפחות {{b}}",
+      "query": "שורות בלתי צפויות: {{query}}",
+      "expression": "שורות כושלות: {{expression}}",
+      "mostly": "לפחות {{percent}}% מהשורות",
+      "alsoMissing": "חסר גם: {{values}}",
+      "minLength": "לפחות {{value}} תווים",
+      "maxLength": "לכל היותר {{value}} תווים"
+    },
+    "aggregate": {
+      "avg": "ממוצע",
+      "sum": "סכום",
+      "min": "מינימום",
+      "max": "מקסימום",
+      "minLength": "האורך הקצר ביותר",
+      "maxLength": "האורך הארוך ביותר",
+      "avgLength": "אורך ממוצע"
+    }
+  }
+}
