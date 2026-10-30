@@ -47,6 +47,13 @@
     "removeTitle": "Retirer ce document ?",
     "removeConsequence": "Désormais, aucun assistant ne s'appuie sur « {{title}} ». Les termes et définitions qui le citent conservent leurs citations.",
     "discardTitle": "Rejeter ce document proposé ?",
-    "discardConsequence": "« {{title}} » quitte la bibliothèque et aucun assistant ne s'appuie dessus."
+    "discardConsequence": "« {{title}} » quitte la bibliothèque et aucun assistant ne s'appuie dessus.",
+    "reembed": "Réintégrer",
+    "reembedAll": "Tout réintégrer ({{n}})",
+    "needsReembedding": "À réintégrer",
+    "needsReembeddingHelp": "Intégré avec {{model}}, et non avec le modèle vectoriel actuel de l'organisation.",
+    "reembedDone": "Documents réintégrés : {{n}}",
+    "reembedFailedHeading": "Ces documents n'ont pas pu être réintégrés et sont inchangés :",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

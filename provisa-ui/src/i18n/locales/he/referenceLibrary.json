@@ -47,6 +47,13 @@
     "removeTitle": "להסיר את המסמך הזה?",
     "removeConsequence": "מעכשיו אף עוזר לא נשען על ״{{title}}״. מונחים והגדרות שמצטטים אותו שומרים על הציטוטים שלהם.",
     "discardTitle": "לדחות את המסמך המוצע הזה?",
-    "discardConsequence": "״{{title}}״ יוצא מהספרייה ואף עוזר לא נשען עליו."
+    "discardConsequence": "״{{title}}״ יוצא מהספרייה ואף עוזר לא נשען עליו.",
+    "reembed": "הטמעה מחדש",
+    "reembedAll": "הטמעה מחדש של הכול ({{n}})",
+    "needsReembedding": "נדרשת הטמעה מחדש",
+    "needsReembeddingHelp": "הוטמע באמצעות {{model}}, ולא במודל הווקטורי הנוכחי של הארגון.",
+    "reembedDone": "מסמכים שהוטמעו מחדש: {{n}}",
+    "reembedFailedHeading": "לא ניתן היה להטמיע מחדש את המסמכים האלה והם לא השתנו:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

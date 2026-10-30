@@ -32,18 +32,21 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { Check, RefreshCw, Trash2, TriangleAlert, Upload, X } from "lucide-react";
+import { Check, DatabaseZap, RefreshCw, Trash2, TriangleAlert, Upload, X } from "lucide-react";
 import {
   addLibraryDocument,
   fetchLibrary,
   fetchLibraryDocument,
   keepLibraryDocument,
+  reembedLibrary,
+  reembedLibraryDocument,
   refreshLibraryDocument,
   removeLibraryDocument,
   setLibraryDomains,
   uploadLibraryVersion,
   type LibraryDocument,
   type LibraryDocumentDetail,
+  type ReembedOutcome,
 } from "../../api/referenceLibrary";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -90,6 +93,18 @@ function StatusBadge({ status }: { status: LibraryDocument["status"] }) {
         ? t("referenceLibrary.statusProposed")
         : t("referenceLibrary.statusKept")}
     </Badge>
+  );
+}
+
+function StaleBadge({ doc }: { doc: LibraryDocument }) {
+  const { t } = useTranslation();
+  if (!doc.needs_reembedding) return null;
+  return (
+    <Tip text={t("referenceLibrary.needsReembeddingHelp", { model: doc.embedding_model })}>
+      <Badge size="xs" variant="light" color="orange" data-testid={`reflib-stale-${doc.id}`}>
+        {t("referenceLibrary.needsReembedding")}
+      </Badge>
+    </Tip>
   );
 }
 
@@ -282,6 +297,18 @@ function DocumentDetail({
                 </ActionIcon>
               </Tip>
             )}
+            {doc.needs_reembedding && (
+              <Tip text={t("referenceLibrary.reembed")} named>
+                <ActionIcon
+                  aria-label={t("referenceLibrary.reembed")}
+                  data-testid="reflib-reembed"
+                  loading={busy === "reembed"}
+                  onClick={() => act("reembed", () => reembedLibraryDocument(doc.id))}
+                >
+                  <DatabaseZap size={14} />
+                </ActionIcon>
+              </Tip>
+            )}
             {doc.source_kind === "url" ? (
               <Tip text={t("referenceLibrary.refresh")} named>
                 <ActionIcon
@@ -352,7 +379,15 @@ function DocumentDetail({
           },
           { label: t("referenceLibrary.fieldStatus"), value: <StatusBadge status={doc.status} /> },
           { label: t("referenceLibrary.fieldPassages"), value: String(doc.passages) },
-          { label: t("referenceLibrary.fieldModel"), value: doc.embedding_model },
+          {
+            label: t("referenceLibrary.fieldModel"),
+            value: (
+              <Group gap="xs">
+                <span>{doc.embedding_model}</span>
+                <StaleBadge doc={doc} />
+              </Group>
+            ),
+          },
           { label: t("referenceLibrary.fieldAdded"), value: when(doc.added_at, i18n.language) },
           {
             label: t("referenceLibrary.fieldRefreshed"),
@@ -436,12 +471,30 @@ export function ReferenceLibraryTab() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [reembedding, setReembedding] = useState(false);
+  const [outcome, setOutcome] = useState<ReembedOutcome | null>(null);
 
   useEffect(() => {
     fetchLibrary()
       .then(setDocuments)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  const reembedAll = async () => {
+    setReembedding(true);
+    setError("");
+    setOutcome(null);
+    try {
+      const result = await reembedLibrary();
+      setOutcome(result);
+      setDocuments(await fetchLibrary());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReembedding(false);
+    }
+  };
+  const stale = (documents ?? []).filter((d) => d.needs_reembedding).length;
 
   const columns: ListColumn<LibraryDocument>[] = useMemo(
     () => [
@@ -505,19 +558,58 @@ export function ReferenceLibraryTab() {
         <Text c="dimmed" size="sm" maw={820}>
           {t("referenceLibrary.intro")}
         </Text>
-        {!adding && (
-          <Button
-            size="xs"
-            data-testid="reflib-add"
-            onClick={() => {
-              setAdding(true);
-              setSelected(null);
-            }}
-          >
-            {t("referenceLibrary.add")}
-          </Button>
-        )}
+        <Group gap="xs" wrap="nowrap">
+          {stale > 0 && (
+            <Button
+              size="xs"
+              variant="light"
+              color="orange"
+              data-testid="reflib-reembed-all"
+              loading={reembedding}
+              onClick={reembedAll}
+            >
+              {t("referenceLibrary.reembedAll", { n: stale })}
+            </Button>
+          )}
+          {!adding && (
+            <Button
+              size="xs"
+              data-testid="reflib-add"
+              onClick={() => {
+                setAdding(true);
+                setSelected(null);
+              }}
+            >
+              {t("referenceLibrary.add")}
+            </Button>
+          )}
+        </Group>
       </Group>
+      {outcome && (
+        <Alert
+          color={outcome.failed.length ? "red" : "green"}
+          icon={outcome.failed.length ? <TriangleAlert size={16} /> : <Check size={16} />}
+          withCloseButton
+          onClose={() => setOutcome(null)}
+          data-testid="reflib-reembed-result"
+        >
+          <Text size="sm">
+            {t("referenceLibrary.reembedDone", { n: outcome.reembedded.length })}
+          </Text>
+          {outcome.failed.length > 0 && (
+            <>
+              <Text size="sm">{t("referenceLibrary.reembedFailedHeading")}</Text>
+              <ul data-testid="reflib-reembed-failures">
+                {outcome.failed.map((f) => (
+                  <li key={f.document_id}>
+                    {t("referenceLibrary.reembedFailure", { title: f.title, reason: f.reason })}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Alert>
+      )}
       {error && (
         <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="reflib-error">
           {error}
@@ -584,7 +676,10 @@ export function ReferenceLibraryTab() {
                         </Text>
                       </Table.Td>
                       <Table.Td>
-                        <StatusBadge status={d.status} />
+                        <Group gap={4} wrap="wrap">
+                          <StatusBadge status={d.status} />
+                          <StaleBadge doc={d} />
+                        </Group>
                       </Table.Td>
                       <Table.Td>
                         <DomainBadges domains={d.domains} />
