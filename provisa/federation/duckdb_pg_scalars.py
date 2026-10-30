@@ -523,6 +523,216 @@ def size_bytes(value: str) -> int:
     return int(Decimal(found[1]) * (1 << bits))
 
 
+_ACL_LETTERS = {
+    "SELECT": "r", "INSERT": "a", "UPDATE": "w", "DELETE": "d", "TRUNCATE": "D", "REFERENCES": "x",
+    "TRIGGER": "t", "EXECUTE": "X", "USAGE": "U", "CREATE": "C", "TEMP": "T", "TEMPORARY": "T",
+    "CONNECT": "c", "SET": "s", "ALTER SYSTEM": "A", "MAINTAIN": "m",
+}  # fmt: skip
+
+
+def aclitem(grantee: str, grantor: str, privileges: str, grantable: bool) -> str:
+    """makeaclitem's text: grantee=letters/grantor, a star after a grantable privilege."""
+    letters: list[str] = []
+    for privilege in privileges.split(","):
+        name = privilege.strip().upper()
+        if name not in _ACL_LETTERS:
+            raise _error("22023", f'unrecognized privilege type: "{privilege.strip()}"')
+        letters.append(_ACL_LETTERS[name] + ("*" if grantable else ""))
+    return f"{grantee}={''.join(letters)}/{grantor}"
+
+
+_TYPEMOD = re.compile(r"\s*(.*?)\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)\s*")
+
+
+def typemod(name: str) -> int:
+    """to_regtypemod: -1 for a type with no modifier; a length's or a numeric's typmod."""
+    found = _TYPEMOD.fullmatch(name)
+    if found is None:
+        return -1
+    base = found[1].lower()
+    first = int(found[2])
+    if base in ("numeric", "decimal"):
+        return ((first << 16) | int(found[3] or 0)) + 4
+    if base in ("varchar", "character varying", "char", "character", "bpchar"):
+        return first + 4
+    if base in ("bit", "varbit", "bit varying", "time", "timestamp", "timetz", "timestamptz"):
+        return first
+    raise _error("22023", f'type modifier is not allowed for type "{base}"')
+
+
+_TSVECTOR_ITEM = re.compile(r"'((?:[^']|'')*)'(?::([0-9A-D,]+))?|(\S+?)(?::([0-9A-D,]+))?(?=\s|$)")
+
+
+def tsvector_items(value: str) -> list[dict[str, Any]]:
+    """A tsvector's lexemes in text form, in order, with their positions and weights: what
+    unnest(tsvector) answers."""
+    items = []
+    for found in _TSVECTOR_ITEM.finditer(value):
+        lexeme = found[3] if found[3] is not None else found[1].replace("''", "'")
+        marks = (found[2] or found[4] or "").split(",") if (found[2] or found[4]) else []
+        items.append(
+            {
+                "lexeme": lexeme,
+                "positions": [int(m.rstrip("ABCD")) for m in marks] or None,
+                "weights": [m[-1] if m[-1] in "ABC" else "D" for m in marks] or None,
+            }
+        )
+    return sorted(items, key=lambda item: item["lexeme"])
+
+
+def tsvector_strip(value: str) -> str:
+    return " ".join("'" + item["lexeme"].replace("'", "''") + "'" for item in tsvector_items(value))
+
+
+# --- geometry -------------------------------------------------------------------------------------
+
+_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+#: geo_decls.h's fuzz: PostgreSQL's geometric comparisons allow it.
+_EPSILON = 1.0e-06
+
+
+def _numbers(value: str) -> list[float]:
+    return [float(n) for n in _NUMBER.findall(value)]
+
+
+def _points(value: str) -> list[tuple[float, float]]:
+    numbers = _numbers(value)
+    return list(zip(numbers[0::2], numbers[1::2]))
+
+
+def _is_circle(value: str) -> bool:
+    return value.lstrip().startswith("<")
+
+
+def _shoelace(points: list[tuple[float, float]]) -> float:
+    pairs = zip(points, points[1:] + points[:1])
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in pairs)) / 2.0
+
+
+def _box(value: str) -> tuple[float, float, float, float]:
+    (x1, y1), (x2, y2) = _points(value)
+    return max(x1, x2), max(y1, y2), min(x1, x2), min(y1, y2)
+
+
+def area(value: str) -> float | None:
+    """area(box), area(circle) or area(path): a path's only if it is closed."""
+    if _is_circle(value):
+        return math.pi * _numbers(value)[2] ** 2
+    stripped = value.strip()
+    if stripped.startswith("["):
+        return None  # an open path has no area
+    points = _points(value)
+    if len(points) == 2:  # noqa: PLR2004 -- a box's two corners, or a two-point closed path
+        high_x, high_y, low_x, low_y = _box(value)
+        return (high_x - low_x) * (high_y - low_y)
+    return _shoelace(points)
+
+
+def _text_point(x: float, y: float) -> str:
+    return f"({x:g},{y:g})"
+
+
+def center(value: str) -> str:
+    if _is_circle(value):
+        x, y, _ = _numbers(value)
+        return _text_point(x, y)
+    high_x, high_y, low_x, low_y = _box(value)
+    return _text_point((high_x + low_x) / 2.0, (high_y + low_y) / 2.0)
+
+
+def diagonal(value: str) -> str:
+    """diagonal(box): the line segment between its corners, upper right first."""
+    high_x, high_y, low_x, low_y = _box(value)
+    return f"[{_text_point(high_x, high_y)},{_text_point(low_x, low_y)}]"
+
+
+def box_height(value: str) -> float:
+    _, high_y, _, low_y = _box(value)
+    return high_y - low_y
+
+
+def box_width(value: str) -> float:
+    high_x, _, low_x, _ = _box(value)
+    return high_x - low_x
+
+
+def circle_radius(value: str) -> float:
+    return _numbers(value)[2]
+
+
+def path_is_closed(value: str) -> bool:
+    return value.strip().startswith("(")
+
+
+def _direction(value: str) -> tuple[float, float]:
+    """The direction of a line segment, or of a line {A,B,C}: (dx, dy)."""
+    if value.strip().startswith("{"):
+        a, b, _ = _numbers(value)
+        return b, -a
+    (x1, y1), (x2, y2) = _points(value)
+    return x2 - x1, y2 - y1
+
+
+def is_horizontal(value: str) -> bool:
+    return abs(_direction(value)[1]) <= _EPSILON
+
+
+def is_vertical(value: str) -> bool:
+    return abs(_direction(value)[0]) <= _EPSILON
+
+
+def is_parallel(a: str, b: str) -> bool:
+    (ax, ay), (bx, by) = _direction(a), _direction(b)
+    return abs(ax * by - ay * bx) <= _EPSILON
+
+
+def is_perpendicular(a: str, b: str) -> bool:
+    (ax, ay), (bx, by) = _direction(a), _direction(b)
+    return abs(ax * bx + ay * by) <= _EPSILON
+
+
+def _points_differ_in(a: str, b: str, index: int) -> bool:
+    return abs(_numbers(a)[index] - _numbers(b)[index]) <= _EPSILON
+
+
+def points_horizontal(a: str, b: str) -> bool:
+    return _points_differ_in(a, b, 1)
+
+
+def points_vertical(a: str, b: str) -> bool:
+    return _points_differ_in(a, b, 0)
+
+
+def point_in_circle(point: str, circle: str) -> bool:
+    x, y = _numbers(point)
+    cx, cy, radius = _numbers(circle)
+    return math.hypot(x - cx, y - cy) <= radius + _EPSILON
+
+
+def point_in_polygon(point: str, polygon: str) -> bool:
+    """Whether a point is on or inside a polygon, by the even-odd rule."""
+    x, y = _numbers(point)
+    corners = _points(polygon)
+    inside = False
+    for (x1, y1), (x2, y2) in zip(corners, corners[1:] + corners[:1]):
+        length = math.hypot(x2 - x1, y2 - y1)
+        offset = abs((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1))
+        along = (x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)
+        if length and offset / length <= _EPSILON and 0 <= along <= length**2:
+            return True  # on an edge
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            inside = not inside
+    return inside
+
+
+def geometry_length(value: str) -> float:
+    """length(lseg) or length(path): a closed path's includes its closing segment."""
+    points = _points(value)
+    if path_is_closed(value) and len(points) > 1:
+        points = [*points, points[0]]
+    return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
+
+
 # --- numeric, as text -----------------------------------------------------------------------------
 
 
@@ -614,10 +824,35 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
     ("provisa_to_base", to_base, ["BIGINT", "BIGINT", "BIGINT"], "VARCHAR"),
     ("provisa_abbrev", abbrev, ["VARCHAR", "VARCHAR"], "VARCHAR"),
+    ("provisa_aclitem", aclitem, ["VARCHAR", "VARCHAR", "VARCHAR", "BOOLEAN"], "VARCHAR"),
+    ("provisa_typemod", typemod, ["VARCHAR"], "INTEGER"),
+    (
+        "provisa_tsvector_items",
+        tsvector_items,
+        ["VARCHAR"],
+        "STRUCT(lexeme VARCHAR, positions SMALLINT[], weights VARCHAR[])[]",
+    ),
+    ("provisa_tsvector_strip", tsvector_strip, ["VARCHAR"], "VARCHAR"),
+    ("provisa_center", center, ["VARCHAR"], "VARCHAR"),
+    ("provisa_diagonal", diagonal, ["VARCHAR"], "VARCHAR"),
+    ("provisa_box_height", box_height, ["VARCHAR"], "DOUBLE"),
+    ("provisa_box_width", box_width, ["VARCHAR"], "DOUBLE"),
+    ("provisa_circle_radius", circle_radius, ["VARCHAR"], "DOUBLE"),
+    ("provisa_path_is_closed", path_is_closed, ["VARCHAR"], "BOOLEAN"),
+    ("provisa_is_horizontal", is_horizontal, ["VARCHAR"], "BOOLEAN"),
+    ("provisa_is_vertical", is_vertical, ["VARCHAR"], "BOOLEAN"),
+    ("provisa_is_parallel", is_parallel, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
+    ("provisa_is_perpendicular", is_perpendicular, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
+    ("provisa_points_horizontal", points_horizontal, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
+    ("provisa_points_vertical", points_vertical, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
+    ("provisa_point_in_circle", point_in_circle, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
+    ("provisa_point_in_polygon", point_in_polygon, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
+    ("provisa_geometry_length", geometry_length, ["VARCHAR"], "DOUBLE"),
 )
 
 #: Strict UDFs that answer NULL themselves.
 _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
+    ("provisa_area", area, ["VARCHAR"], "DOUBLE"),
     ("provisa_regexp_match", regexp_match, ["VARCHAR"] * 3, "VARCHAR[]"),
     (
         "provisa_regexp_substr",
@@ -717,8 +952,9 @@ _MACROS: tuple[str, ...] = (
     "CREATE MACRO pg_size_bytes(size) AS provisa_size_bytes(size)",
     "CREATE MACRO pg_convert(value, source, destination) AS "
     "provisa_convert(value, source, destination)",
-    "CREATE MACRO pg_json_object(value) AS provisa_json_object(value, NULL), "
-    "(ks, vs) AS CASE WHEN ks IS NOT NULL AND vs IS NOT NULL THEN provisa_json_object(ks, vs) END",
+    "CREATE MACRO pg_json_object(value) AS CAST(provisa_json_object(value, NULL) AS JSON), "
+    "(ks, vs) AS CAST(CASE WHEN ks IS NOT NULL AND vs IS NOT NULL THEN "
+    "provisa_json_object(ks, vs) END AS JSON)",
     "CREATE MACRO convert_from(value, source) AS decode(provisa_convert(value, source, 'UTF8'))",
     "CREATE MACRO convert_to(value, destination) AS "
     "provisa_convert(encode(value), 'UTF8', destination)",
@@ -759,6 +995,49 @@ _MACROS: tuple[str, ...] = (
     "CREATE MACRO jsonb_typeof(value) AS CASE json_type(value) WHEN 'OBJECT' THEN 'object' "
     "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
     "WHEN 'NULL' THEN 'null' WHEN NULL THEN NULL ELSE 'number' END",
+    *(
+        f"CREATE MACRO {name}(value) AS provisa_{target}(CAST(value AS VARCHAR))"
+        for name, target in (
+            ("area", "area"),
+            ("center", "center"),
+            ("diagonal", "diagonal"),
+            ("height", "box_height"),
+            ("width", "box_width"),
+            ("radius", "circle_radius"),
+            ("isclosed", "path_is_closed"),
+        )
+    ),
+    "CREATE MACRO isopen(value) AS NOT provisa_path_is_closed(CAST(value AS VARCHAR))",
+    "CREATE MACRO ishorizontal(a) AS provisa_is_horizontal(CAST(a AS VARCHAR)), "
+    "(a, b) AS provisa_points_horizontal(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
+    "CREATE MACRO isvertical(a) AS provisa_is_vertical(CAST(a AS VARCHAR)), "
+    "(a, b) AS provisa_points_vertical(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
+    "CREATE MACRO isparallel(a, b) AS provisa_is_parallel(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
+    "CREATE MACRO isperp(a, b) AS provisa_is_perpendicular(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
+    "CREATE MACRO pt_contained_circle(p, c) AS "
+    "provisa_point_in_circle(CAST(p AS VARCHAR), CAST(c AS VARCHAR))",
+    "CREATE MACRO pt_contained_poly(p, poly) AS "
+    "provisa_point_in_polygon(CAST(p AS VARCHAR), CAST(poly AS VARCHAR))",
+    "CREATE MACRO strip(value) AS provisa_tsvector_strip(CAST(value AS VARCHAR))",
+    "CREATE MACRO flt4_mul_cash(a, b) AS CAST(round(a * b, 2) AS DECIMAL(18,2))",
+    "CREATE MACRO flt8_mul_cash(a, b) AS CAST(round(a * b, 2) AS DECIMAL(18,2))",
+    "CREATE MACRO mul_d_interval(d, i) AS "
+    "to_microseconds(CAST(round(epoch(i) * 1000000 * d) AS BIGINT))",
+    "CREATE MACRO oidvectorsend(v) AS CASE WHEN v IS NOT NULL THEN unhex("
+    "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(v), 0) || "
+    "array_to_string(list_transform(v, _o -> printf('00000004%08x', _o)), '')) END",
+    "CREATE MACRO numrange(a, b) AS CASE "
+    "WHEN a IS NOT NULL AND b IS NOT NULL AND a > b THEN "
+    "error('postgresql-error 22000: range lower bound must be less than or equal to range upper "
+    "bound') "
+    "WHEN a IS NOT NULL AND a = b THEN 'empty' "
+    "ELSE '[' || coalesce(CAST(a AS VARCHAR), '') || ',' || coalesce(CAST(b AS VARCHAR), '') "
+    "|| ')' END",
+    "CREATE MACRO varbit(value, n, explicit) AS CASE WHEN value IS NOT NULL AND n IS NOT NULL THEN "
+    "CAST(CASE WHEN n < 0 THEN CAST(value AS VARCHAR) ELSE left(CAST(value AS VARCHAR), n) END "
+    "AS BIT) END",
+    "CREATE MACRO json_each(value) AS unnest(list_transform(json_keys(value), "
+    "_k -> struct_pack(key := _k, value := json_extract(value, '$.\"' || _k || '\"'))))",
     *_comparisons("oidvector", "eq", "ne", "lt", "le", "gt", "ge"),
     *_comparisons("xid8", "eq", "ne", "lt", "le", "gt", "ge"),
     "CREATE MACRO xid8cmp(a, b) AS CASE WHEN a < b THEN -1 WHEN a > b THEN 1 WHEN a = b THEN 0 END",

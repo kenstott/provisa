@@ -62,7 +62,11 @@ _PG_NAMES: dict[Any, str] = {
 
 
 #: A sqlglot class naming a PostgreSQL function by a name of its own.
-_SPELLINGS: dict[type, tuple[str, ...]] = {exp.StrPosition: ("strpos", "position")}
+_SPELLINGS: dict[type, tuple[str, ...]] = {
+    exp.StrPosition: ("strpos", "position"),
+    exp.Explode: ("unnest",),
+    exp.Unnest: ("unnest",),
+}
 
 
 def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
@@ -83,7 +87,8 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     if isinstance(arg, exp.Cast):
         to = arg.to
         if isinstance(to, exp.ObjectIdentifier) or to.this == exp.DataType.Type.USERDEFINED:
-            return to.sql(dialect="postgres").lower().removeprefix("pg_catalog.")
+            spelled = to.sql(dialect="postgres").lower().removeprefix("pg_catalog.")
+            return "bit varying" if spelled == "varbit" else spelled
         if to.this == exp.DataType.Type.ARRAY:
             return None
         return _PG_NAMES.get(to.this)
@@ -123,6 +128,15 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
     return None
 
 
+def _fits(argument: str | None, parameter: str) -> bool:
+    """A string argument fits a character varying parameter as it fits a text one."""
+    return (
+        argument is None
+        or argument == parameter
+        or (argument == "text" and parameter == "character varying")
+    )
+
+
 def call_result_type(expression: exp.Expr) -> str | None:
     """The format_type name of what a call of a pg_catalog function returns; None when the
     expression is not such a call or its overload is not known from the statement."""
@@ -139,7 +153,7 @@ def call_result_type(expression: exp.Expr) -> str | None:
                 returns
                 for params, returns in FUNCTION_OVERLOADS.get(name, ())
                 if len(params) == len(arg_types)
-                and all(t is None or t == p for t, p in zip(arg_types, params))
+                and all(_fits(t, p) for t, p in zip(arg_types, params))
             }
             if len(candidates) == 1:
                 return candidates.pop()

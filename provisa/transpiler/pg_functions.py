@@ -70,7 +70,7 @@ _CALLED = re.compile(
     + "|".join(sorted({*_TYPE_CALLS, *_SIZED_CALLS, *(n for n, _ in _UDF_CALLS)}))
     + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
     r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
-    r"|notlike|like_escape"
+    r"|notlike|like_escape|convert|json_object|unnest|trunc|pg_get_object_address"
     r"|regexp_split_to_table|strpos)\"?\s*\(",
     re.IGNORECASE,
 )
@@ -284,6 +284,40 @@ def _is_kind(node: exp.Expr, *names: str) -> bool:
     return isinstance(node, exp.Cast) and node.to.sql(dialect="postgres").lower() in names
 
 
+def _text_array(node: exp.Expr) -> str:
+    """A text[] argument: an unknown-type '{a,b}' literal is that array."""
+    if not (isinstance(node, exp.Literal) and node.is_string):
+        return _sql(node)
+    elements = [e.strip().strip('"') for e in node.this.strip("{}").split(",") if e.strip()]
+    written = ", ".join(exp.Literal.string(e).sql(dialect="postgres") for e in elements)
+    return f"CAST(ARRAY[{written}] AS TEXT[])"
+
+
+def _tsvector_call(name: str, args: list[exp.Expr]) -> str | None:
+    if not args or not _is_kind(args[0], "tsvector"):
+        return None
+    value = _sql(args[0])
+    if name == "unnest":
+        return f"UNNEST(PROVISA_TSVECTOR_ITEMS({value}))"
+    if name == "length":
+        return f"LEN(PROVISA_TSVECTOR_ITEMS({value}))"
+    return None
+
+
+def _geometry_call(name: str, args: list[exp.Expr]) -> str | None:
+    """length of a line segment or a path, which DuckDB's length would count as text."""
+    if name == "length" and len(args) == 1 and _is_kind(args[0], "lseg", "path"):
+        return f"PROVISA_GEOMETRY_LENGTH({_sql(args[0])})"
+    return None
+
+
+def _mac_call(name: str, args: list[exp.Expr]) -> str | None:
+    if name == "trunc" and len(args) == 1 and _is_kind(args[0], "macaddr", "macaddr8"):
+        zeros = "00:00:00" if _is_kind(args[0], "macaddr") else "00:00:00:00:00"
+        return f"CAST(LEFT({_sql(args[0])}, 9) || '{zeros}' AS TEXT)"
+    return None
+
+
 def _is_numeric(node: exp.Expr) -> bool:
     return _cast_to(node, exp.DataType.Type.DECIMAL) or _scale(node) is not None
 
@@ -413,6 +447,9 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         exp.ExplodingGenerateSeries: ("generate_series", ("start", "end", "step")),
         exp.GenerateSeries: ("generate_series", ("start", "end", "step")),
         exp.Getbit: ("get_bit", ("this", "expression")),
+        exp.Trunc: ("trunc", ("this",)),
+        exp.Explode: ("unnest", ("this",)),
+        exp.Unnest: ("unnest", ("expressions",)),
         exp.Overlay: ("overlay", ("this", "expression", "from_", "for_")),
         exp.Length: ("length", ("this", "encoding")),
         exp.GroupConcat: ("string_agg", ("this", "separator")),
@@ -422,7 +459,9 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     }.get(type(node))
     if args is None:
         return None
-    return args[0], [node.args[k] for k in args[1] if node.args.get(k) is not None]
+    values = [node.args[k] for k in args[1] if node.args.get(k) is not None]
+    flat = [v for value in values for v in (value if isinstance(value, list) else [value])]
+    return args[0], flat
 
 
 def _call(node: exp.Expr) -> exp.Expr:
@@ -430,17 +469,30 @@ def _call(node: exp.Expr) -> exp.Expr:
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
         inner = _call(node.expression)
         return node if inner is node.expression else inner
+    if isinstance(node, exp.BitString):
+        # A bit string's digits: sqlglot writes it for DuckDB as an integer, of another length.
+        return exp.Cast(this=exp.Literal.string(node.this), to=exp.DataType.build("BIT"))
     named = _named(node)
     if named is None:
         return node
     name, args = named
+    if name == "pg_get_object_address" and len(args) == 3:  # noqa: PLR2004
+        written = f"pg_get_object_address({_sql(args[0])}, {_text_array(args[1])}, {_text_array(args[2])})"
+        return sqlglot.parse_one(written, read="postgres")
     written = (
         _type_call(name, args)
         or _numeric_call(name, args)
         or _bytea_call(name, args)
         or _bit_call(name, args)
         or _time_call(name, args)
+        or _tsvector_call(name, args)
+        or _geometry_call(name, args)
+        or _mac_call(name, args)
     )
+    if written is None and name == "convert" and len(args) == 3:  # noqa: PLR2004
+        written = f"pg_convert({', '.join(_sql(a) for a in args)})"
+    if written is None and name == "json_object" and len(args) in (1, 2):
+        written = f"pg_json_object({', '.join(_sql(a) for a in args)})"
     if written is None and name in ("like", "notlike") and len(args) == 2:  # noqa: PLR2004
         # Not sqlglot's LIKE function, whose arguments are SQLite's way round.
         value, pattern = _sql(args[0]), _sql(args[1])
@@ -467,11 +519,16 @@ def _call(node: exp.Expr) -> exp.Expr:
 
 #: What sqlglot's parser cannot read as a call: CONVERT's and JSON_OBJECT's own syntax.
 _UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
+_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
+_JSON_OBJECT_OF_ARRAYS = re.compile(r"\bjson_object\s*\(\s*(?='\{|ARRAY\[)", re.IGNORECASE)
+_BIT_STRING = re.compile(r"\bB'[01]*'", re.IGNORECASE)
 
 
 def readable(pg_sql: str) -> str:
     """``pg_sql`` with a call of a function sqlglot reads as syntax spelled as a plain call: a
-    statement that parses is left as it is."""
+    statement that parses is left as it is. ``bit varying``, which sqlglot reads as a bit and an
+    alias, is the bit string the engine holds it as."""
+    pg_sql = _JSON_OBJECT_OF_ARRAYS.sub("pg_json_object(", _BIT_VARYING.sub("::bit", pg_sql))
     try:
         sqlglot.parse_one(pg_sql, read="postgres")
     except ParseError:
@@ -482,7 +539,7 @@ def readable(pg_sql: str) -> str:
 def typed_calls(pg_sql: str) -> str:
     """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
     pg_sql = readable(pg_sql)
-    if _CALLED.search(pg_sql) is None:
+    if _CALLED.search(pg_sql) is None and _BIT_STRING.search(pg_sql) is None:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
     out = tree.transform(_call)

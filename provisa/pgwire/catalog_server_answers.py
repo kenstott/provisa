@@ -18,7 +18,10 @@ file or changes anything: Provisa has no server files, sequences or WAL a client
 
 from __future__ import annotations
 
-from provisa.core.pg_error import raising
+import sqlglot.expressions as exp
+from sqlglot.errors import SqlglotError
+
+from provisa.core.pg_error import PostgresError, raising
 
 #: PostgreSQL's types the catalog DB has no type for, each what its values are held as there.
 _HELD_AS = {
@@ -358,14 +361,7 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
     for name in ("pg_current_wal_lsn", "pg_current_wal_insert_lsn", "pg_current_wal_flush_lsn"):
         a.body(name, "", _NO_LSN)
     a.body("pg_switch_wal", "", _NO_LSN)
-    a.body(
-        "pg_log_standby_snapshot",
-        "",
-        raising(
-            "55000",
-            '\'pg_log_standby_snapshot() can only be used if "wal_level" >= "replica"\'',
-        ),
-    )
+    a.body("pg_log_standby_snapshot", "", _NO_LSN)
     a.body("pg_last_wal_receive_lsn", "", "CAST(NULL AS VARCHAR)")
     a.body("pg_last_wal_replay_lsn", "", "CAST(NULL AS VARCHAR)")
     a.body("pg_last_xact_replay_timestamp", "", "CAST(NULL AS TIMESTAMPTZ)")
@@ -806,8 +802,204 @@ def _xid(a: _Answers) -> None:
     )
 
 
+#: Each encoding's longest character in bytes, by its number (common/wchar.c's pg_wchar_table).
+_ENCODING_MAX_LENGTHS = (1, 3, 3, 3, 4, 3, 4, 4, *(1,) * 27, 2, 2, 2, 2, 4, 3, 2)
+_NAMED_STRUCT = "STRUCT(oid BIGINT, name VARCHAR)"
+
+
+def _last_part(name: str) -> str:
+    return f"provisa_parse_ident({name}, true)[-1]"
+
+
+def _qualifier(name: str) -> str:
+    """The schema a possibly qualified name names; NULL for none."""
+    parts = f"provisa_parse_ident({name}, true)"
+    return f"CASE WHEN len({parts}) > 1 THEN {parts}[-2] END"
+
+
+def _to_reg(a: _Answers) -> None:
+    """to_regclass and its kin: an object identifier of the object a name names; NULL for none."""
+    in_path = "('pg_catalog', 'public')"
+    a.strict(
+        "to_regclass",
+        "name",
+        _NAMED_STRUCT,
+        "(SELECT struct_pack(oid := _c.oid, name := _c.relname) FROM _pg_class _c "
+        "JOIN _pg_namespace _n ON _n.oid = _c.relnamespace "
+        f"WHERE _c.relname = {_last_part('name')} AND (_n.nspname = {_qualifier('name')} "
+        f"OR ({_qualifier('name')} IS NULL AND _n.nspname IN {in_path})) LIMIT 1)",
+    )
+    a.strict(
+        "to_regnamespace",
+        "name",
+        _NAMED_STRUCT,
+        "(SELECT struct_pack(oid := _n.oid, name := _n.nspname) FROM _pg_namespace _n "
+        f"WHERE _n.nspname = {_last_part('name')})",
+    )
+    a.strict(
+        "to_regrole",
+        "name",
+        "VARCHAR",
+        f"(SELECT _r.rolname FROM _pg_roles _r WHERE _r.rolname = {_last_part('name')})",
+    )
+    a.strict(
+        "to_regproc",
+        "name",
+        "BIGINT",
+        f"(SELECT _p.oid FROM _pg_proc _p WHERE _p.proname = {_last_part('name')} LIMIT 1)",
+    )
+    a.strict(
+        "to_regprocedure",
+        "name",
+        "VARCHAR",
+        "(SELECT split_part(name, '(', 1) || '(' || split_part(name, '(', 2) "
+        "FROM _pg_proc _p WHERE _p.proname = split_part(name, '(', 1) LIMIT 1)",
+    )
+    a.strict(
+        "to_regoper",
+        "name",
+        "VARCHAR",
+        "(SELECT _o.oprname FROM _pg_operator _o WHERE _o.oprname = name LIMIT 1)",
+    )
+    a.strict(
+        "to_regoperator",
+        "name",
+        "VARCHAR",
+        "(SELECT name FROM _pg_operator _o WHERE _o.oprname = split_part(name, '(', 1) LIMIT 1)",
+    )
+    a.strict(
+        "to_regcollation",
+        "name",
+        "VARCHAR",
+        f"(SELECT _c.collname FROM _pg_collation _c WHERE _c.collname = {_last_part('name')} "
+        "LIMIT 1)",
+    )
+    a.strict("to_regtype", "name", "BIGINT", _type_lookup("name"))
+    a.strict(
+        "to_regtypemod",
+        "name",
+        "INTEGER",
+        f"CASE WHEN {_type_lookup("regexp_replace(name, '\\s*\\(.*$', '')")} IS NOT NULL "
+        "THEN provisa_typemod(name) END",
+    )
+
+
+def _type_lookup(name: str) -> str:
+    return (
+        "(SELECT _t.oid FROM _pg_type _t WHERE _t.typname = "
+        f"provisa_type_name(lower(trim({name}))) LIMIT 1)"
+    )
+
+
+def _addresses(a: _Answers) -> None:
+    """pg_identify_object_as_address and pg_get_object_address, for what pg_identify_object
+    identifies: relations, types and schemas."""
+    identified = "pg_identify_object(classid, objid, objsubid)"
+    address = (
+        ("type", "VARCHAR", f"{identified}.type"),
+        (
+            "object_names",
+            "VARCHAR[]",
+            f"CASE WHEN {identified}.identity IS NOT NULL "
+            f"THEN string_split({identified}.identity, '.') END",
+        ),
+        ("object_args", "VARCHAR[]", "CAST([] AS VARCHAR[])"),
+    )
+    a.record("pg_identify_object_as_address", "classid, objid, objsubid", address)
+    relation = (
+        "(SELECT _c.oid FROM _pg_class _c JOIN _pg_namespace _n ON _n.oid = _c.relnamespace "
+        "WHERE _c.relname = names[-1] AND (len(names) = 1 OR _n.nspname = names[-2]) LIMIT 1)"
+    )
+    namespace = "(SELECT _n.oid FROM _pg_namespace _n WHERE _n.nspname = names[-1])"
+    named = "array_to_string(names, '.')"
+    missing = {
+        "table": raising("42P01", f"'relation \"' || {named} || '\" does not exist'"),
+        "schema": raising("3F000", f"'schema \"' || {named} || '\" does not exist'"),
+        "type": raising("42704", f"'type \"' || {named} || '\" does not exist'"),
+    }
+    found = (
+        f"CASE kind WHEN 'table' THEN coalesce({relation}, {missing['table']}) "
+        f"WHEN 'schema' THEN coalesce({namespace}, {missing['schema']}) "
+        f"WHEN 'type' THEN coalesce({_type_lookup('names[-1]')}, {missing['type']}) ELSE "
+        + raising("22023", "'unsupported object type \"' || kind || '\"'")
+        + " END"
+    )
+    a.record(
+        "pg_get_object_address",
+        "kind, names, args",
+        (
+            (
+                "classid",
+                "BIGINT",
+                "CASE kind WHEN 'table' THEN 1259 WHEN 'schema' THEN 2615 WHEN 'type' THEN 1247 END",
+            ),
+            ("objid", "BIGINT", found),
+            ("objsubid", "INTEGER", "0"),
+        ),
+    )
+
+
 def _catalog_objects(a: _Answers) -> None:
     """The functions on what the catalog holds, answered from it."""
+    _to_reg(a)
+    _addresses(a)
+    lengths = ", ".join(str(n) for n in _ENCODING_MAX_LENGTHS)
+    a.strict("pg_encoding_max_length", "e", "INTEGER", f"[{lengths}][e + 1]")
+    a.body(
+        "pg_available_extension_versions",
+        "",
+        "unnest((SELECT list(struct_pack(name := _e.extname, version := _e.extversion, "
+        "superuser := CAST(NULL AS BOOLEAN), trusted := CAST(NULL AS BOOLEAN), "
+        "relocatable := CAST(NULL AS BOOLEAN), schema := CAST(NULL AS VARCHAR), "
+        "requires := CAST(NULL AS VARCHAR[]), comment := CAST(NULL AS VARCHAR))) "
+        "FROM _pg_extension _e))",
+    )
+    a.body(
+        "pg_cursor",
+        "",
+        "unnest(CAST([] AS STRUCT(name VARCHAR, statement VARCHAR, is_holdable BOOLEAN, "
+        "is_binary BOOLEAN, is_scrollable BOOLEAN, creation_time TIMESTAMPTZ)[]))",
+    )
+    a.body(
+        "pg_timezone_names",
+        "",
+        "unnest((SELECT list(struct_pack(name := _z.name, abbrev := _z.abbrev, "
+        "utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM pg_timezone_names() _z))",
+    )
+    a.body(
+        "pg_timezone_abbrevs",
+        "",
+        "unnest((SELECT list(struct_pack(abbrev := _z.abbrev, utc_offset := _z.utc_offset, "
+        "is_dst := _z.is_dst)) FROM (SELECT DISTINCT abbrev, utc_offset, is_dst "
+        "FROM pg_timezone_names()) _z))",
+    )
+    a.table.setdefault("pg_timezone_abbrevs", []).append(
+        "() AS TABLE (SELECT DISTINCT abbrev, utc_offset, is_dst FROM pg_timezone_names())"
+    )
+    a.rows(
+        "pg_wal_summary_contents",
+        "tli, start_lsn, end_lsn",
+        (
+            ("relfilenode", "BIGINT"), ("reltablespace", "BIGINT"), ("reldatabase", "BIGINT"),
+            ("relforknumber", "SMALLINT"), ("relblocknumber", "BIGINT"),
+            ("is_limit_block", "BOOLEAN"),
+        ),
+        "false",
+    )  # fmt: skip
+    a.strict(
+        "currtid2",
+        "rel, tid",
+        "BIGINT",
+        raising("42P01", "'relation \"' || rel || '\" does not exist'"),
+    )
+    a.strict(
+        "makeaclitem",
+        "grantee, grantor, priv, grantable",
+        "VARCHAR",
+        "provisa_aclitem(coalesce((SELECT _r.rolname FROM _pg_roles _r WHERE _r.oid = grantee), "
+        "''), coalesce((SELECT _r.rolname FROM _pg_roles _r WHERE _r.oid = grantor), "
+        "CAST(grantor AS VARCHAR)), priv, grantable)",
+    )
     a.strict("pg_basetype", "t", "BIGINT", "t")
     a.body("pg_client_encoding", "", "'UTF8'")
     a.strict(
@@ -997,7 +1189,50 @@ ANSWERED = frozenset(
         "pg_reload_conf",
         "pg_stat_file",
         "setval",
+        "money",
+        "regclass",
         *_answers().scalar,
         *_answers().table,
     }
 )
+#: Names the catalog's rewrite answers, a statement reading no table is answered with too.
+REWRITTEN = frozenset(
+    {
+        "convert",
+        "getpgusername",
+        "json_each",
+        "json_object",
+        "normalize",
+        "pg_indexam_has_property",
+        "pg_input_error_info",
+        "pg_input_is_valid",
+        "system_user",
+    }
+)
+
+
+def known_type(name: str) -> bool:
+    """Whether PostgreSQL has a type of this name."""
+    from provisa.pgwire.catalog_pg17 import TYPES
+
+    return any(name.lower() in (entry[1], entry[-1]) for entry in TYPES.values())
+
+
+def input_check(value: exp.Expr, type_name: exp.Expr) -> tuple[exp.Expr, str, str]:
+    """For pg_input_is_valid and pg_input_error_info: the value's check -- whether it reads as the
+    type -- and the SQL of the value and the type's name in messages. The type is named in the
+    statement: the check is a cast to it."""
+    if not (isinstance(type_name, exp.Literal) and type_name.is_string):
+        raise NotImplementedError(
+            "pg_input_is_valid: a type that is not a literal is not supported; the cast is "
+            "written where the statement is read"
+        )
+    missing = PostgresError("42704", f'type "{type_name.this}" does not exist')
+    try:
+        to = exp.DataType.build(type_name.this, dialect="postgres", udt=True)
+    except (ValueError, SqlglotError) as exc:
+        raise missing from exc
+    if to.this == exp.DataType.Type.USERDEFINED and not known_type(type_name.this):
+        raise missing
+    check = exp.Not(this=exp.Is(this=exp.TryCast(this=value.copy(), to=to), expression=exp.null()))
+    return check, value.sql(dialect="duckdb"), type_name.sql(dialect="duckdb")

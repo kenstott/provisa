@@ -566,13 +566,6 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "XID": BVType.OID,
     "XID8": BVType.BIGINT,
     "TID": BVType.OID,
-    "REGCOLLATION": BVType.OID,
-    "REGCONFIG": BVType.OID,
-    "REGDICTIONARY": BVType.OID,
-    "REGOPER": BVType.OID,
-    "REGOPERATOR": BVType.OID,
-    "REGPROCEDURE": BVType.OID,
-    "REGROLE": BVType.OID,
     "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
     "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
     "REGPROC": BVType.REGPROC,
@@ -650,7 +643,18 @@ _WIRE_FAMILIES = (
     # struct (catalog_regs).
     frozenset({BVType.REGCLASS, BVType.JSON}),
     frozenset({BVType.REGNAMESPACE, BVType.JSON}),
-    frozenset({BVType.TEXT, BVType.INET, BVType.PG_LSN}),
+    frozenset(
+        {
+            BVType.TEXT,
+            BVType.INET,
+            BVType.PG_LSN,
+            BVType.POINT,
+            BVType.LSEG,
+            BVType.TSVECTOR,
+            BVType.MACADDR,
+            BVType.MACADDR8,
+        }
+    ),
     frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
     frozenset(
         {

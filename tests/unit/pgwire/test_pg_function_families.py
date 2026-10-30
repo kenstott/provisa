@@ -178,6 +178,89 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
     ),
     "SELECT pg_split_walfile_name('000000010000000000000001') AS v": (RECORD, ["(1,1)"]),
     "SELECT pg_rotate_logfile() AS v": (BOOL, ["f"]),
+    # Object identifiers by name: NULL for no such object.
+    "SELECT to_regclass('pg_class') AS v": (2205, ["pg_class"]),
+    "SELECT to_regclass('pg_catalog.pg_class') AS v": (2205, ["pg_class"]),
+    "SELECT to_regclass('no_such_relation') AS v": (2205, [None]),
+    "SELECT to_regnamespace('pg_catalog') AS v": (4089, ["pg_catalog"]),
+    "SELECT to_regnamespace('no_such_schema') AS v": (4089, [None]),
+    "SELECT to_regtype('integer') AS v": (2206, ["integer"]),
+    "SELECT to_regtype('no_such_type') AS v": (2206, [None]),
+    "SELECT to_regrole('no_such_role') AS v": (4096, [None]),
+    "SELECT to_regproc('no_such_function') AS v": (24, [None]),
+    "SELECT to_regtypemod('varchar(32)') AS v": (INT4, ["36"]),
+    "SELECT to_regtypemod('numeric(10,2)') AS v": (INT4, ["655366"]),
+    "SELECT to_regtypemod('integer') AS v": (INT4, ["-1"]),
+    "SELECT to_regtypemod('no_such_type') AS v": (INT4, [None]),
+    "SELECT regclass('pg_catalog.pg_class') AS v": (2205, ["pg_class"]),
+    "SELECT pg_partition_root(2147483000) AS v": (2205, [None]),
+    "SELECT pg_get_object_address('schema', '{pg_catalog}', '{}') AS v": (
+        RECORD,
+        ["(2615,11,0)"],
+    ),
+    "SELECT pg_identify_object_as_address(1247, 23, 0) AS v": (RECORD, ["(type,{integer},{})"]),
+    # Input functions.
+    "SELECT pg_input_is_valid('42', 'integer') AS v": (BOOL, ["t"]),
+    "SELECT pg_input_is_valid('x', 'integer') AS v": (BOOL, ["f"]),
+    "SELECT pg_input_is_valid(NULL::text, 'integer') AS v": (BOOL, [None]),
+    "SELECT pg_input_error_info('42', 'integer') AS v": (RECORD, ["(,,,)"]),
+    "SELECT pg_input_error_info('x', 'integer') AS v": (
+        RECORD,
+        ['("invalid input syntax for type integer: ""x""",,,22P02)'],
+    ),
+    # Encodings, and who is asking.
+    "SELECT pg_encoding_max_length(6) AS v": (INT4, ["4"]),
+    "SELECT pg_encoding_max_length(0) AS v": (INT4, ["1"]),
+    "SELECT pg_encoding_max_length(35) AS v": (INT4, ["2"]),
+    "SELECT pg_encoding_max_length(99) AS v": (INT4, [None]),
+    "SELECT getpgusername() AS v": (NAME, ["alice"]),
+    "SELECT pg_catalog.system_user() AS v": (TEXT, [None]),
+    # Money, bits, ranges.
+    "SELECT money(1::integer) AS v": (MONEY, ["$1.00"]),
+    "SELECT flt8_mul_cash(2.5::float8, 2::money) AS v": (MONEY, ["$5.00"]),
+    "SELECT bitcat(B'10'::bit varying, B'01'::bit varying) AS v": (1562, ["1001"]),
+    "SELECT bitshiftleft(B'0011'::bit(4), 1) AS v": (1560, ["0110"]),
+    "SELECT bitshiftright(B'1100'::bit(4), 1) AS v": (1560, ["0110"]),
+    "SELECT numrange(1.5, 2.5) AS v": (3906, ["[1.5,2.5)"]),
+    "SELECT numrange(1, 1) AS v": (3906, ["empty"]),
+    "SELECT json_object('{a,1,b,2}'::text[]) AS v": (114, ['{"a" : "1", "b" : "2"}']),
+    "SELECT json_object('{a,b}'::text[], '{1,2}'::text[]) AS v": (
+        114,
+        ['{"a" : "1", "b" : "2"}'],
+    ),
+    "SELECT json_each('{\"a\": 1}'::json) AS v": (RECORD, ["(a,1)"]),
+    "SELECT trunc('08:00:2b:01:02:03'::macaddr) AS v": (829, ["08:00:2b:00:00:00"]),
+    # Geometry.
+    "SELECT area('(2,2),(0,0)'::box) AS v": (FLOAT8, ["4"]),
+    "SELECT area('((0,0),(1,0),(1,1),(0,1))'::path) AS v": (FLOAT8, ["1"]),
+    "SELECT area('[(0,0),(1,0)]'::path) AS v": (FLOAT8, [None]),
+    "SELECT center('(2,2),(0,0)'::box) AS v": (600, ["(1,1)"]),
+    "SELECT center('<(1,2),3>'::circle) AS v": (600, ["(1,2)"]),
+    "SELECT diagonal('(2,2),(0,0)'::box) AS v": (601, ["[(2,2),(0,0)]"]),
+    "SELECT height('(2,3),(0,0)'::box) AS v": (FLOAT8, ["3"]),
+    "SELECT width('(2,3),(0,0)'::box) AS v": (FLOAT8, ["2"]),
+    "SELECT radius('<(1,2),3>'::circle) AS v": (FLOAT8, ["3"]),
+    "SELECT isclosed('((0,0),(1,1))'::path) AS v": (BOOL, ["t"]),
+    "SELECT isopen('((0,0),(1,1))'::path) AS v": (BOOL, ["f"]),
+    "SELECT ishorizontal('[(0,1),(2,1)]'::lseg) AS v": (BOOL, ["t"]),
+    "SELECT isvertical('[(1,0),(1,2)]'::lseg) AS v": (BOOL, ["t"]),
+    "SELECT isparallel('[(0,0),(1,1)]'::lseg, '[(0,1),(1,2)]'::lseg) AS v": (BOOL, ["t"]),
+    "SELECT isperp('[(0,0),(1,0)]'::lseg, '[(0,0),(0,1)]'::lseg) AS v": (BOOL, ["t"]),
+    "SELECT pt_contained_circle('(1,1)'::point, '<(0,0),2>'::circle) AS v": (BOOL, ["t"]),
+    "SELECT pt_contained_poly('(1,1)'::point, '((0,0),(2,0),(2,2),(0,2))'::polygon) AS v": (
+        BOOL,
+        ["t"],
+    ),
+    "SELECT pt_contained_poly('(3,3)'::point, '((0,0),(2,0),(2,2),(0,2))'::polygon) AS v": (
+        BOOL,
+        ["f"],
+    ),
+    "SELECT length('[(0,0),(3,4)]'::lseg) AS v": (FLOAT8, ["5"]),
+    "SELECT length('[(0,0),(3,4)]'::path) AS v": (FLOAT8, ["5"]),
+    # Text search values, in text form.
+    "SELECT strip('a:1 b:2'::tsvector) AS v": (3614, ["'a' 'b'"]),
+    "SELECT length('a:1 b:2'::tsvector) AS v": (INT4, ["2"]),
+    "SELECT unnest('a:1 b:2'::tsvector) AS v": (RECORD, ["(a,{1},{D})", "(b,{2},{D})"]),
     # Statistics Provisa does not keep.
     "SELECT pg_stat_reset() AS v": (VOID, [""]),
     "SELECT pg_stat_reset_shared('wal') AS v": (VOID, [""]),
@@ -208,7 +291,7 @@ def test_a_function_is_answered_as_postgresql_answers_it(conn: Any, sql: str):
     oid, rows = ANSWERS[sql]
     assert res.ftype(0) == oid
     if oid == FLOAT8:  # its digits are the wire's, a known gap of its own: the value is compared
-        assert [float(v) for v in _rows(res)] == [float(v) for v in rows]
+        assert [v and float(v) for v in _rows(res)] == [v and float(v) for v in rows]
     else:
         assert _rows(res) == rows
 
@@ -283,6 +366,28 @@ REFUSALS: dict[str, tuple[str, str]] = {
     "SELECT pg_size_bytes('1 XB')": ("22023", 'invalid size: "1 XB"'),
     "SELECT factorial(-1::bigint)": ("22003", "factorial of a negative number is undefined"),
     "SELECT to_ascii('a')": ("0A000", "encoding conversion from UTF8 to ASCII not supported"),
+    "SELECT pg_input_is_valid('1', 'no_such_type')": (
+        "42704",
+        'type "no_such_type" does not exist',
+    ),
+    "SELECT pg_get_object_address('table', '{no_such_table}', '{}')": (
+        "42P01",
+        'relation "no_such_table" does not exist',
+    ),
+    "SELECT pg_get_object_address('rule', '{r}', '{}')": (
+        "22023",
+        'unsupported object type "rule"',
+    ),
+    "SELECT currtid2('no_such_table', '(0,1)'::tid)": (
+        "42P01",
+        'relation "no_such_table" does not exist',
+    ),
+    "SELECT numrange(2, 1)": (
+        "22000",
+        "range lower bound must be less than or equal to range upper bound",
+    ),
+    "SELECT makeaclitem(0, 10, 'NOPE', false)": ("22023", 'unrecognized privilege type: "NOPE"'),
+    "SELECT json_object('{a}'::text[])": ("2202E", "array must have even number of elements"),
 }
 
 
@@ -292,6 +397,32 @@ def test_a_function_refuses_as_postgresql_refuses_it(conn: Any, sql: str):
     assert res.status == pq.ExecStatus.FATAL_ERROR, _rows(res)
     assert res.error_field(pq.DiagnosticField.SQLSTATE).decode() == REFUSALS[sql][0]
     assert res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY).decode() == REFUSALS[sql][1]
+
+
+def test_sleeping_for_a_while_and_until_a_time_answer_void(conn: Any):
+    for sql in (
+        "SELECT pg_sleep_for('0 seconds'::interval) AS v",
+        "SELECT pg_sleep_until('2000-01-01 00:00:00+00'::timestamptz) AS v",
+    ):
+        res = _run(conn, sql)
+        assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+        assert (res.ftype(0), _rows(res)) == (VOID, [""])
+    res = _run(conn, "SELECT pg_sleep_for(NULL::interval) AS v")
+    assert (res.ftype(0), _rows(res)) == (VOID, [None])
+
+
+def test_time_zones_are_listed(conn: Any):
+    for sql in ("SELECT pg_timezone_names() AS v", "SELECT pg_timezone_abbrevs() AS v"):
+        res = _run(conn, sql)
+        assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+        assert res.ftype(0) == RECORD and res.ntuples > 0
+
+
+def test_an_acl_item_is_written_as_aclitemout_writes_it(conn: Any):
+    res = _run(conn, "SELECT makeaclitem(0, 10, 'SELECT, INSERT', false) AS v")
+    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+    assert res.ftype(0) == 1033
+    assert _rows(res)[0].startswith("=ra/")
 
 
 def test_a_transaction_id_advances_and_a_snapshot_is_after_it(conn: Any):

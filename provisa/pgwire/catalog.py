@@ -39,7 +39,7 @@ from provisa.pgwire.catalog_data import (
 )
 from provisa.pgwire.catalog_populate import catalog_db_for
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
-from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES
+from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES, REWRITTEN
 from provisa.core.pg_error import from_engine
 
 log = logging.getLogger(__name__)
@@ -58,7 +58,8 @@ _UNPARSED_CALL = re.compile(r"\b(convert|json_object)\s*\(")
 
 # REQ-2167: a statement that only sleeps, as PostgreSQL's pg_sleep(seconds) does, answering void.
 _PG_SLEEP_RE = re.compile(
-    r'^\s*SELECT\s+(?:pg_catalog\.)?"?pg_sleep"?\s*\((?P<arg>.*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
+    r'^\s*SELECT\s+(?:pg_catalog\.)?"?(?P<name>pg_sleep(?:_for|_until)?)"?\s*\((?P<arg>.*)\)\s*'
+    r"(?:AS\s+(?P<alias>\w+))?\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -187,7 +188,9 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "pg_get_viewdef",
         "pg_stat_reset_single_table_counters",
         "ts_token_type",
+        "pg_partition_root",
         *_SERVER_ANSWERED,
+        *REWRITTEN,
     }
 )
 
@@ -212,7 +215,17 @@ def _calls_a_catalog_function_alone(tree) -> bool:
 #: The types only the catalog has (name, and the object identifier types): a statement reading no
 #: table that casts to one is answered by the catalog (REQ-2167).
 _CATALOG_ONLY_TYPES = frozenset(
-    {"name", "regclass", "regtype", "regnamespace", "xid", "tid", "oidvector", *PG_ONLY_TYPE_NAMES}
+    {
+        "name",
+        "regclass",
+        "regtype",
+        "regnamespace",
+        "regproc",
+        "xid",
+        "tid",
+        "oidvector",
+        *PG_ONLY_TYPE_NAMES,
+    }
 )
 
 
@@ -429,7 +442,12 @@ def _record_field(value: Any) -> str:
     """One field as record_out writes it: nothing for NULL, quoted where it must be."""
     if value is None:
         return ""
-    text = {True: "t", False: "f"}.get(value, str(value)) if isinstance(value, bool) else str(value)
+    if isinstance(value, list):
+        text = "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
+    elif isinstance(value, bool):
+        text = "t" if value else "f"
+    else:
+        text = str(value)
     if text == "" or any(c in text for c in '",\\() \t\n'):
         return '"' + text.replace("\\", "\\\\").replace('"', '""') + '"'
     return text
@@ -443,8 +461,9 @@ def _record_text(value: Any) -> Any:
 
 
 def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
-    """pg_sleep(seconds): sleeps that long and answers void (empty text); strict, so a NULL
-    argument answers NULL without sleeping. A sleep longer than the request has left ends with
+    """pg_sleep(seconds), pg_sleep_for(interval) or pg_sleep_until(timestamp with time zone):
+    sleeps that long and answers void (empty text); strict, so a NULL argument answers NULL
+    without sleeping. A sleep longer than the request has left ends with
     the request's timeout."""
     import threading
 
@@ -453,9 +472,13 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     from provisa.core import engine_memory
     from provisa.executor.result import QueryResult
 
-    seconds_sql = sqlglot.transpile(
-        f"SELECT CAST(({match['arg']}) AS DOUBLE PRECISION)", read="postgres", write="duckdb"
-    )[0]
+    arg = match["arg"]
+    seconds = {
+        "pg_sleep": f"CAST(({arg}) AS DOUBLE PRECISION)",
+        "pg_sleep_for": f"EXTRACT(EPOCH FROM ({arg}))",
+        "pg_sleep_until": f"EXTRACT(EPOCH FROM ({arg})) - EXTRACT(EPOCH FROM NOW())",
+    }[match["name"]]
+    seconds_sql = sqlglot.transpile(f"SELECT {seconds}", read="postgres", write="duckdb")[0]
     con = engine_memory.connect()
     try:
         ((seconds,),) = con.execute(seconds_sql).fetchall()
@@ -473,7 +496,7 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
         request_deadline.check()
     return QueryResult(
         rows=[(None if seconds is None else "",)],
-        column_names=[match["alias"] or "pg_sleep"],
+        column_names=[match["alias"] or match["name"]],
         column_types=["void"],
     )
 

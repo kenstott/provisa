@@ -204,7 +204,8 @@ def reg_value(reg: str, operand: exp.Expr) -> exp.Expr:
     oid_sql = _oid_of(reg, operand)
     if reg not in NAMED_REG_TYPES:
         return _duckdb(oid_sql)
-    return _duckdb(f"struct_pack(oid := ({oid_sql}), name := {_name_of(reg, f'({oid_sql})')})")
+    pair = f"struct_pack(oid := ({oid_sql}), name := {_name_of(reg, f'({oid_sql})')})"
+    return _duckdb(f"CASE WHEN ({oid_sql}) IS NOT NULL THEN {pair} END")
 
 
 def project_reg_values(tree: exp.Expr) -> None:

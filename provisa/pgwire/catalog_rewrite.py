@@ -25,6 +25,7 @@ from typing import cast
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.core.pg_error import PostgresError
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
     _INTERCEPT_SCHEMAS,
@@ -416,6 +417,56 @@ _ANSWERED_BY_MACRO = frozenset(
 )
 
 
+#: The array element types whose literals are strings.
+_TEXT_ELEMENTS = frozenset({"text", "varchar", "name", "bpchar", "aclitem"})
+
+
+def _array_literal(found) -> str:
+    """A '{...}'::type[] literal as a list: its elements quoted where they are strings."""
+    if found[2].lower() not in _TEXT_ELEMENTS:
+        return "[" + found[1] + "]"
+    elements = [e.strip().strip('"').replace("'", "''") for e in found[1].split(",") if e.strip()]
+    return "[" + ", ".join(f"'{e}'" for e in elements) + "]::TEXT[]"
+
+
+def _input_answer(fn: str, args: list) -> exp.Expr:
+    """pg_input_is_valid(value, type) or pg_input_error_info(value, type): strict, and the type's
+    input function's verdict; the message is that of a value that does not read as the type."""
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire.catalog_server_answers import input_check
+
+    value, type_name = args
+    is_null = isinstance(value, exp.Null) or (
+        isinstance(value, exp.Cast) and isinstance(value.this, exp.Null)
+    )
+    if (
+        is_null
+        or isinstance(type_name, exp.Null)
+        or (isinstance(type_name, exp.Cast) and isinstance(type_name.this, exp.Null))
+    ):
+        return (
+            exp.cast(exp.null(), "BOOLEAN")
+            if fn == "pg_input_is_valid"
+            else sqlglot.parse_one(
+                "CAST(NULL AS STRUCT(message VARCHAR, detail VARCHAR, hint VARCHAR, "
+                "sql_error_code VARCHAR))",
+                read="duckdb",
+            )
+        )
+    check, shown, named = input_check(value, type_name)
+    if fn == "pg_input_is_valid":
+        return check
+    verdict = check.sql(dialect="duckdb")
+    message = f"'invalid input syntax for type ' || {named} || ': \"' || {shown} || '\"'"
+    return sqlglot.parse_one(
+        f"struct_pack(message := CASE WHEN {verdict} THEN NULL ELSE {message} END, "
+        "detail := CAST(NULL AS VARCHAR), hint := CAST(NULL AS VARCHAR), "
+        f"sql_error_code := CASE WHEN {verdict} THEN NULL ELSE '22P02' END)",
+        read="duckdb",
+    )
+
+
 def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot.expressions as exp
@@ -425,11 +476,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     # sqlglot parses — sqlglot misparses e.g. '{16395}'::oid[] (treats [] as
     # bracket indexing, not array type), causing a silent fallback to original SQL.
     # '{a,b,c}'::type[] → [a,b,c]
-    sql = _pre_re.sub(
-        r"'\{([^}]*)\}'::\w+(?:\[\])+",
-        lambda m: "[" + m.group(1) + "]",
-        sql,
-    )
+    sql = _pre_re.sub(r"'\{([^}]*)\}'::(\w+)(?:\[\])+", _array_literal, sql)
+    # REQ-2167: the catalog holds a tid as an integer: its literal is that integer.
+    sql = _pre_re.sub(r"'\(\d+,\d+\)'::tid\b", "0::tid", sql)
     # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
     sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 
@@ -551,6 +600,12 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             args = node.args.get("expressions", [])
             if fn in SERVER_ANSWERED and fn != "setval":
                 return node  # REQ-2167: a macro of its own (catalog_server_answers)
+            if fn == "getpgusername":
+                return exp.Literal.string(role_id)
+            if fn == "system_user":
+                return exp.cast(exp.null(), "VARCHAR")  # no authenticated identity to name
+            if fn in ("pg_input_is_valid", "pg_input_error_info") and len(args) == 2:
+                return cast("exp.Expression", _input_answer(fn, args))
             first_dimension = len(args) == 2 and args[1] == exp.Literal.number(1)
             if fn in ("array_lower", "array_upper") and first_dimension:
                 return _array_bound(fn, args[0].transform(_transform), vectors)
@@ -762,8 +817,17 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             if fn == "encode":
                 # PG encode(bytea, format) → return NULL; our catalog columns are VARCHAR not bytea
                 return exp.null()
+            if fn == "pg_indexam_has_property" and len(args) == 2:
+                # No access method has an amcan* property here; strict in both arguments.
+                nulls = " OR ".join(f"({a.sql(dialect='duckdb')}) IS NULL" for a in args)
+                return cast(
+                    "exp.Expression",
+                    sqlglot.parse_one(
+                        f"CASE WHEN {nulls} THEN CAST(NULL AS BOOLEAN) ELSE false END",
+                        read="duckdb",
+                    ),
+                )
             if fn in (
-                "pg_indexam_has_property",
                 "pg_am_has_property",
                 "pg_index_has_property",
                 "pg_index_column_has_property",
@@ -862,5 +926,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             sql_out,
         )
         return sql_out
+    except (PostgresError, NotImplementedError):
+        raise  # REQ-2167: the answer to the call, not a statement left unrewritten
     except Exception:
         return sql

@@ -166,6 +166,9 @@ _MACROS = (
     "CREATE MACRO pg_available_extensions() AS unnest((SELECT list(struct_pack(name := _e.name, "
     "default_version := _e.default_version, comment := _e.comment)) "
     "FROM _pg_available_extensions _e))",
+    "CREATE MACRO pg_partition_root(rel) AS ("
+    + _partition_relation("struct_pack(oid := _c.oid, name := _c.relname)")
+    + ")",
     "CREATE MACRO pg_partition_ancestors_named(rel) AS unnest(("
     + _partition_relation("list(struct_pack(oid := _c.oid, name := _c.relname))")
     + "))",
@@ -212,6 +215,15 @@ _MACROS = (
     + _type_names("types", ", ", False)
     + " END",
 )
+
+
+def _type_spellings() -> str:
+    """A type's internal name from the name format_type writes, for to_regtype."""
+    spelled = " ".join(
+        f"WHEN '{display}' THEN '{internal}'"
+        for internal, display in _PG_TYPE_DISPLAY_NAMES.items()
+    )
+    return f"CREATE MACRO provisa_type_name(n) AS CASE n {spelled} ELSE n END"
 
 
 def _named_in_path(schema: str, name: str) -> str:
@@ -310,5 +322,11 @@ def populate_catalog_macros(db) -> None:  # REQ-2167
         db.execute(alias)
     register_pg_functions(db)
     db.create_function("provisa_next_xid", next_txid, [], "BIGINT", side_effects=True)
-    for macro in (*_MACROS, _describe_object(), _identify_object(), *server_macros()):
+    for macro in (
+        *_MACROS,
+        _describe_object(),
+        _identify_object(),
+        _type_spellings(),
+        *server_macros(),
+    ):
         db.execute(macro)
