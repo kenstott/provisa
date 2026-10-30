@@ -89870,7 +89870,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
     reference to a product''s expectations, the data quality checks on its input ports. They belong to the
     consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
-    by ODPS outputPorts inputContracts.'
+    by ODPS outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer
+    2026-10-30: Support and team, Servers, Pricing, and Custom properties and tags are cards at the same
+    level as Details, Versions, Columns and SLAs, not panels inside Details.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
