@@ -86,6 +86,9 @@ class NodeMapping:
     #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
     #: and its _id hold every one. Empty for a key of one column (``id_column``).
     key_columns: tuple[str, ...] = ()
+    #: A graph session's date time properties, each with the zone its values were written in
+    #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
+    property_zones: tuple[tuple[str, str], ...] = ()
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its

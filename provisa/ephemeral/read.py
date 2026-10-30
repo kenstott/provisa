@@ -137,6 +137,7 @@ def overlay(model: Any, session: TempSession) -> Any:
             properties=properties,
             physical_properties={prop: alias for prop, alias in properties.items()},
             property_types=tuple((prop, types[alias]) for prop, alias in properties.items()),
+            property_zones=store.column_zones(graph, resolved.anchors),
         )
         if held is None:
             nodes_by_table.setdefault(key, [key])

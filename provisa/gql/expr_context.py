@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.label_map import LABELS_COLUMN, SESSION_REL_ID
+from provisa.gql.label_map import LABELS_COLUMN, SESSION_REL_ID, NodeMapping
 from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_identity, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
@@ -58,7 +58,6 @@ from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
 if TYPE_CHECKING:
     from provisa.gql.expr_ast import ListComprehension
     from provisa.gql.ir import CypherAST, PathPattern
-    from provisa.gql.label_map import NodeMapping
     from provisa.gql.translator import _Translator
 
 
@@ -750,12 +749,23 @@ class TranslatorExprContext:
         )
 
     def temporal_zone(self, expr: CypherExpr) -> str | None:
-        """The zone a time or date time the query builds names (REQ-2173), or None."""
+        """The zone a time or date time the query builds names (REQ-2173), or a graph session's
+        date time property was written in (REQ-2176), or None."""
         from provisa.gql import temporal
 
+        if isinstance(expr, Property) and isinstance(expr.obj, Variable):
+            written = self._property_zone(expr.obj.name, expr.name)
+            if written is not None:
+                return written
         return temporal.zone_of(
             expr, ChainMap(self._t._temporal_zones, self._t._param_zones), self.temporal_kind
         )
+
+    def _property_zone(self, var: str, prop: str) -> str | None:
+        """The zone the session's date times of the node ``var``'s property ``prop`` were all
+        written in (NodeMapping.property_zones), or None."""
+        nm = self._t._var_table.get(var, (None, None))[1]
+        return dict(nm.property_zones).get(prop) if isinstance(nm, NodeMapping) else None
 
     def temporal_element_zone(self, expr: CypherExpr) -> str | None:
         """The zone every item of a list literal names (an UNWIND's variable), or None."""
