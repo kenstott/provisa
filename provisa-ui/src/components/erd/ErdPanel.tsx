@@ -178,8 +178,8 @@ export function ErdPanel({
       }
     ).renderedBoundingBox({ includeLabels: false });
     // Rendered coordinates are relative to the canvas, and the box is positioned inside it: a
-    // fixed-position box measured against the viewport lands offset inside the Modal, whose
-    // transformed content becomes the containing block of anything fixed within it.
+    // fixed-position box measured against the viewport lands offset inside any transformed
+    // ancestor, which becomes the containing block of anything fixed within it.
     setResizeHandleBox({ x: bb.x1, y: bb.y1, w: bb.w, h: bb.h });
   }, []);
 

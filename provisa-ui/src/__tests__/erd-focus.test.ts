@@ -23,6 +23,9 @@ import {
   resolveErdFocus,
   writeErdFocus,
 } from "../components/erd/erd-focus";
+import { erdHref } from "../components/graph3d/nodeHref";
+import type { GraphNode } from "../components/graph3d/graphModel";
+import { erdViewHref } from "../lib/entityHref";
 import type { ListedTable } from "../types/admin";
 
 const table = (id: number, tableName: string, domainId: string) =>
@@ -54,6 +57,28 @@ function fakeCy(ids: string[], zoomed = 1) {
   };
   return { cy: cy as unknown as CyInstance, classed, fit, center, zoom };
 }
+
+describe("a link to the ERD view", () => {
+  it("writes its lists comma-separated, each name escaped, and reads back the same", () => {
+    const href = erdViewHref("relationships", {
+      domains: ["sales", "post sale"],
+      objects: ["sales.orders"],
+      relationship: "a&b",
+    });
+    expect(href).toBe(
+      "/relationships?view=erd&domains=sales,post%20sale&objects=sales.orders&relationship=a%26b",
+    );
+    expect(readErdFocus(new URL(href, "http://x").searchParams)).toEqual({
+      domains: ["sales", "post sale"],
+      objects: ["sales.orders"],
+    });
+  });
+
+  it("is Open in ERD's for a graph's table: focused on it, its panel open", () => {
+    const node = { id: "t:12", type: "table", label: "sales.orders" } as GraphNode;
+    expect(erdHref(node)).toBe("/tables?view=erd&objects=sales.orders&table=12");
+  });
+});
 
 describe("readErdFocus", () => {
   it("reads both lists, each name once, and nothing from a link without them", () => {
