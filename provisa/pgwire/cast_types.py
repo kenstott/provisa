@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import decimal
 import functools
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -119,17 +120,32 @@ _RETURNED: dict[str, CastType] = {
     "smallint": CastType(21, -1, BVType.SMALLINT, _INTEGERS, _to_int),
     "integer": CastType(23, -1, BVType.INTEGER, _INTEGERS, _to_int),
     "bigint": CastType(20, -1, BVType.BIGINT, _INTEGERS, _to_int),
-    "numeric": CastType(1700, -1, BVType.DECIMAL, _NUMBERS, _to_decimal),
+    # An exact numeric of no fixed scale is served as its text (duckdb_pg_scalars).
+    "numeric": CastType(1700, -1, BVType.DECIMAL, _NUMBERS | {BVType.TEXT}, _to_decimal),
     "double precision": CastType(701, -1, BVType.FLOAT, _NUMBERS, _to_float),
     "real": CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}), _to_float),
     "oid": CastType(26, -1, BVType.OID, _INTEGERS | {BVType.OID}),
     "character": CastType(1042, -1, BVType.TEXT, _TEXT_FORMS),
     '"char"': CastType(18, -1, BVType.TEXT, _TEXT_FORMS),
+    "name": CastType(19, -1, BVType.TEXT, _TEXT_FORMS),
+    "character varying": CastType(1043, -1, BVType.TEXT, _TEXT_FORMS),
+    "bit": CastType(1560, -1, BVType.BIT, frozenset({BVType.BIT, BVType.TEXT})),
+    "bit varying": CastType(1562, -1, BVType.VARBIT, frozenset({BVType.BIT, BVType.TEXT})),
+    "numrange": CastType(3906, -1, BVType.NUMRANGE, _TEXT_FORMS),
+    "tsvector": CastType(3614, -1, BVType.TSVECTOR, _TEXT_FORMS),
     "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB})),
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
     "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET})),
     "void": CastType(2278, -1, BVType.TEXT, _TEXT_FORMS),
 }
+
+
+_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
+
+
+def bit_varying_read(sql: str) -> str:
+    """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
+    return _BIT_VARYING.sub("::varbit", sql)
 
 
 def _result_type(expression: Any) -> CastType | None:
@@ -155,7 +171,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     from sqlglot.errors import ParseError
 
     try:
-        tree = sqlglot.parse_one(sql, read="postgres")
+        tree = sqlglot.parse_one(bit_varying_read(sql), read="postgres")
     except ParseError:
         return None  # not PostgreSQL's grammar: the engine's own types describe it
     if not isinstance(tree, exp.Select):

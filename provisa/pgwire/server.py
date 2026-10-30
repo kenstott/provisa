@@ -66,6 +66,8 @@ from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_RED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
 from provisa.core.ir_types import SUBTYPES
+from provisa.pgwire import advisory_locks
+from provisa.pgwire.constant_arguments import is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -563,6 +565,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     # (REQ-2167: a catalog column is described with the type PostgreSQL declares for it).
     "OID": BVType.OID,
     "XID": BVType.OID,
+    "XID8": BVType.BIGINT,
+    "TID": BVType.OID,
     "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
     "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
     "REGPROC": BVType.REGPROC,
@@ -635,11 +639,23 @@ _WIRE_FAMILIES = (
     ),
     frozenset({BVType.REAL, BVType.FLOAT}),
     frozenset({BVType.REALARRAY, BVType.FLOATARRAY}),
+    frozenset({BVType.DECIMAL, BVType.MONEY}),
     # A regclass or regnamespace result column is served as its oid and name together, a
     # struct (catalog_regs).
     frozenset({BVType.REGCLASS, BVType.JSON}),
     frozenset({BVType.REGNAMESPACE, BVType.JSON}),
-    frozenset({BVType.TEXT, BVType.INET, BVType.PG_LSN}),
+    frozenset(
+        {
+            BVType.TEXT,
+            BVType.INET,
+            BVType.PG_LSN,
+            BVType.POINT,
+            BVType.LSEG,
+            BVType.TSVECTOR,
+            BVType.MACADDR,
+            BVType.MACADDR8,
+        }
+    ),
     frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
     frozenset(
         {
@@ -709,46 +725,107 @@ _SERVER_FUNCTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-#: The server functions no client of Provisa may call: they act on a PostgreSQL server's own files,
-#: configuration, recovery or locks, which Provisa has none of a client may reach (REQ-2167).
-#: pg_advisory_unlock_all is answered (catalog.py): no lock is ever held, so all are released.
-REFUSED_SERVER_FUNCTIONS = frozenset(
-    {
-        "pg_reload_conf",
-        "pg_read_file",
-        "pg_read_binary_file",
-        "pg_stat_file",
-        "pg_create_restore_point",
-        "pg_advisory_lock",
-        "pg_advisory_lock_shared",
-        "pg_try_advisory_lock",
-        "pg_try_advisory_lock_shared",
-        "pg_advisory_xact_lock",
-        "pg_advisory_xact_lock_shared",
-        "pg_try_advisory_xact_lock",
-        "pg_try_advisory_xact_lock_shared",
-        "pg_advisory_unlock",
-        "pg_advisory_unlock_shared",
-    }
-)
+#: The advisory lock functions: (mode, wait, transaction level); pg_advisory_unlock* by itself.
+_ADVISORY_LOCKS = {
+    "pg_advisory_lock": (advisory_locks.EXCLUSIVE, True, False),
+    "pg_advisory_lock_shared": (advisory_locks.SHARED, True, False),
+    "pg_advisory_xact_lock": (advisory_locks.EXCLUSIVE, True, True),
+    "pg_advisory_xact_lock_shared": (advisory_locks.SHARED, True, True),
+    "pg_try_advisory_lock": (advisory_locks.EXCLUSIVE, False, False),
+    "pg_try_advisory_lock_shared": (advisory_locks.SHARED, False, False),
+    "pg_try_advisory_xact_lock": (advisory_locks.EXCLUSIVE, False, True),
+    "pg_try_advisory_xact_lock_shared": (advisory_locks.SHARED, False, True),
+}
+_ADVISORY_UNLOCKS = {
+    "pg_advisory_unlock": advisory_locks.EXCLUSIVE,
+    "pg_advisory_unlock_shared": advisory_locks.SHARED,
+}
+_ADVISORY_FUNCTIONS = frozenset({*_ADVISORY_LOCKS, *_ADVISORY_UNLOCKS, "pg_advisory_unlock_all"})
+_ADVISORY_NAME = re.compile(r"\bpg_(?:try_)?advisory_", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class _AdvisoryCall:
+    """A statement that is one advisory lock function's call, and nothing else."""
+
+    name: str
+    args: tuple[str, ...]
+    column: str
+
+
+@dataclass(frozen=True)
+class _PostgresWarning:
+    """A WARNING PostgreSQL sends ahead of a result."""
+
+    message: str
+
+
+def _advisory_function(call: Any) -> Any:
+    """The call of an advisory lock function ``call`` is, under a pg_catalog qualifier; or None."""
+    import sqlglot.expressions as exp
+
+    if isinstance(call, exp.Dot):
+        call = call.expression
+    is_one = isinstance(call, exp.Anonymous) and call.name.lower() in _ADVISORY_FUNCTIONS
+    return call if is_one else None
+
+
+def _advisory_tree(sql: str) -> Any:
+    """``sql``'s parse if it names an advisory lock function; None if it names none."""
+    import sqlglot
+    from sqlglot.errors import SqlglotError
+
+    if _ADVISORY_NAME.search(sql) is None:
+        return None
+    try:
+        return sqlglot.parse_one(sql, read="postgres")
+    except SqlglotError:
+        return None  # the statement's own path reports what it cannot read
+
+
+def _advisory_call(sql: str) -> _AdvisoryCall | None:  # REQ-2167
+    """The advisory lock function ``sql`` only calls, with constant keys; None for any other
+    statement. Its keys are evaluated outside governance, so anything else is not one."""
+    import sqlglot.expressions as exp
+
+    tree = _advisory_tree(sql)
+    if not isinstance(tree, exp.Select) or tree.find(exp.From) is not None:
+        return None
+    if len(tree.selects) != 1:
+        return None
+    select = tree.selects[0]
+    call = _advisory_function(select.unalias())
+    if call is None or not all(_is_key(a) for a in call.expressions):
+        return None
+    name = call.name.lower()
+    args = tuple(a.sql(dialect="postgres") for a in call.expressions)
+    return _AdvisoryCall(name, args, select.alias or name)
+
+
+def _is_key(arg: Any) -> bool:
+    import sqlglot.expressions as exp
+
+    bound = isinstance(arg, (exp.Parameter, exp.Placeholder))
+    return bound or is_constant(arg)
 
 
 def refuse_server_function(sql: str) -> None:  # REQ-2167
-    """Refuse a statement that calls a server function Provisa does not carry, naming it."""
-    lowered = sql.lower()
-    if not any(name in lowered for name in REFUSED_SERVER_FUNCTIONS):
-        return
-    import sqlglot
+    """Refuse a statement that takes an advisory lock while it does anything else, or with a key
+    that is not a constant, naming the function: a lock is taken by a statement that only calls
+    it, and its key is evaluated outside governance."""
     import sqlglot.expressions as exp
 
     from provisa.compiler.definitions import NotAvailableHere
 
-    for fn in sqlglot.parse_one(sql, read="postgres").find_all(exp.Anonymous):
+    tree = _advisory_tree(sql)
+    if tree is None or _advisory_call(sql) is not None:
+        return
+    for fn in tree.find_all(exp.Anonymous):
         name = fn.name.lower()
-        if name in REFUSED_SERVER_FUNCTIONS:
+        if name in _ADVISORY_FUNCTIONS:
             raise NotAvailableHere(
-                f"{name} is not available through Provisa: it acts on a PostgreSQL server's own "
-                "files, configuration, recovery or locks"
+                f"{name} is not available through Provisa in a statement that does more than "
+                "call it with constant keys"
             )
 
 
@@ -771,6 +848,21 @@ def _evaluated_pid(args: str) -> int | None:
     finally:
         con.close()
     return pid
+
+
+def _evaluated_keys(args: tuple[str, ...]) -> tuple[int | None, ...]:
+    """A lock key's arguments, evaluated as constant expressions."""
+    import sqlglot
+
+    from provisa.core import engine_memory
+
+    selected = ", ".join(f"CAST(({a}) AS BIGINT)" for a in args)
+    sql = sqlglot.transpile(f"SELECT {selected}", read="postgres", write="duckdb")[0]
+    con = engine_memory.connect()
+    try:
+        return tuple(con.execute(sql).fetchall()[0])
+    finally:
+        con.close()
 
 
 def _undescribed_read_shape(plan: Any, shape: Any) -> list[tuple[str, str]] | None:  # REQ-2171
@@ -1492,6 +1584,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
     def close_owned(self):
         """Release cursors on the owning connection thread (its loop is bound here)."""
+        advisory_locks.LOCKS.end_session(self)  # REQ-2167: a session's locks end with it
         # REQ-1862: release every still-open cursor's underlying stream (server-side cursor /
         # pooled connection) — a client that disconnects mid-cursor must not leak it.
         for cs in self.cursors.values():
@@ -1547,7 +1640,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         stripped = sql.strip()
         refuse_server_function(stripped)  # REQ-2167
-        if _SERVER_FUNCTION_RE.match(stripped):
+        advisory = _advisory_call(stripped)
+        if advisory is not None and _placeholder_count(stripped):
+            # Described with example values: the lock is taken by the Execute, with the Bind's.
+            return ProvisaQueryResult(self._advisory_shape(advisory), stripped)
+        if advisory is not None or _SERVER_FUNCTION_RE.match(stripped):
             return self._execute_sql_bound(sql, params, None)
         if classify(stripped) == "INTERCEPT":
             return self._execute_sql_bound(sql, params, None)
@@ -1585,6 +1682,53 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 raise RuntimeError(_COMMAND_NOT_REDIRECTED)
             return _StatementDescription(_REDIRECT_SHAPE, described.governed, stripped)
         return _StatementDescription(described.shape, described.governed, stripped)
+
+    @staticmethod
+    def _advisory_shape(call: _AdvisoryCall) -> Any:
+        from provisa.executor.result import QueryResult
+
+        returns_bool = "try" in call.name or "unlock" in call.name and call.args
+        return QueryResult(
+            rows=[],
+            column_names=[call.column],
+            column_types=["BOOLEAN" if returns_bool else "void"],
+        )
+
+    def _advisory_answer(self, call: _AdvisoryCall, sql: str, params: Any) -> ProvisaQueryResult:
+        """An advisory lock function, on this server's locks. Strict: a NULL key takes no lock."""
+        locks = advisory_locks.LOCKS
+        answer = self._advisory_shape(call)
+        keys = (
+            _evaluated_keys(tuple(_substitute_params(a, params) for a in call.args))
+            if call.args
+            else ()
+        )
+        warnings: tuple[Any, ...] = ()
+        if call.name == "pg_advisory_unlock_all":
+            locks.release_all(self)
+            value: Any = ""
+        elif any(k is None for k in keys):
+            value = None
+        else:
+            key = (self.org_id, *keys)  # a one-argument key is another space than a two-argument
+            if call.name in _ADVISORY_UNLOCKS:
+                mode = _ADVISORY_UNLOCKS[call.name]
+                value = locks.release(key, mode, self)
+                if not value:
+                    warnings = (_PostgresWarning(f"you don't own a lock of type {mode}"),)
+            else:
+                mode, wait, transaction = _ADVISORY_LOCKS[call.name]
+                if wait:
+                    locks.acquire(key, mode, self, transaction=transaction)
+                    value = ""
+                else:
+                    value = locks.try_acquire(key, mode, self, transaction=transaction)
+                if transaction and not self.transaction_open:
+                    locks.end_transaction(self)  # the statement was its own transaction
+        answer.rows.append((value,))
+        result = ProvisaQueryResult(answer, sql)
+        result.warnings = warnings
+        return result
 
     def _server_function(self, match: re.Match[str]) -> Any:  # REQ-2167
         """pg_backend_pid(), pg_cancel_backend(pid) or pg_terminate_backend(pid[, timeout]), on
@@ -1713,6 +1857,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         stripped = sql.strip()
         bound = list(params) if params else None
         refuse_server_function(stripped)  # REQ-2167
+        advisory = _advisory_call(stripped)
+        if advisory is not None:
+            return self._advisory_answer(advisory, stripped, params)
         server_function = _SERVER_FUNCTION_RE.match(stripped)
         if server_function is not None:
             return ProvisaQueryResult(self._server_function(server_function), stripped)
@@ -1721,7 +1868,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             from provisa.executor.result import QueryResult
 
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
-        self.transaction_open = _transaction_open(stripped, self.transaction_open)
+        was_open = self.transaction_open
+        self.transaction_open = _transaction_open(stripped, was_open)
+        if was_open and not self.transaction_open:
+            advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
         if disposition == "INTERCEPT":
             from provisa.api.app import state
@@ -2179,6 +2329,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         simple and the extended protocol alike; anything else as the base class sends it."""
         from provisa.compiler.definitions import definition_refusal
 
+        from provisa.core.pg_error import from_engine
+
+        answered = from_engine(exception)  # REQ-2167: PostgreSQL's own error, from the engine
+        if answered is not None:
+            self._send_pg_error("ERROR", answered.sqlstate, str(answered))
+            if ctx:
+                ctx.mark_error()
+            return
         refusal = definition_refusal(exception)
         if refusal is None:
             # REQ-2087: the text the client is given -- model names, redacted. The session's org
@@ -2236,6 +2394,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self._close_request()
 
     def _send_warning(self, warning: Any) -> None:
+        if isinstance(warning, _PostgresWarning):
+            self._send_pg_notice(warning.message, severity="WARNING")
+            return
         self._send_pg_notice(
             warning.message,
             json.dumps({"code": warning.code, "params": warning.params}, ensure_ascii=True),

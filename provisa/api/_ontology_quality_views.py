@@ -28,8 +28,8 @@ restate ``provisa.core.glossary.approvals_that_ground`` (the REQ-1387 path_pendi
 those edges. A term's domains are ``_domains_ontology``'s; a domain's steward is its own or, when
 it has none, its nearest stewarded parent's (the rule ``stale_metadata`` applies).
 
-Drift (terms that lost or gained grounding since the previous period) is not here: the glossary
-keeps no grounding history a view can read.
+Drift (terms that lost or gained grounding since the previous period) is not here: it is computed
+from the model's history by ``provisa.core.term_drift`` and shown with the report.
 """
 
 # Requirements: REQ-1386, REQ-1387

@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2130: `/relationships?erd=<table id>` (the Ontology's "Open in ERD") opens the ERD on that
-// table -- selected and centred -- on a direct load too; a table the ERD does not hold is said so.
+// REQ-2187: a focus link opens the Relationships page's ERD in place, on a direct load too: its
+// table highlighted; a table the diagram does not hold is said so in the bar, none other taken.
 
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
@@ -26,7 +26,7 @@ const table = (id: number, name: string) => ({
 });
 const RELS = { relationships: [], loading: false, refetch: vi.fn() };
 const TABLES = { tables: [table(1, "orders"), table(2, "customers")], loading: false };
-const DOMAINS = { domains: [{ domainId: "sales", label: "Sales", description: "" }] };
+const DOMAINS = { domains: [{ id: "sales", description: "" }] };
 const AUTH = { capabilities: [] };
 const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<string>() };
 
@@ -68,24 +68,31 @@ HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
 } as unknown as typeof HTMLCanvasElement.prototype.getContext;
 vi.mock("../components/TagControl", () => ({ TagControl: () => null }));
 
-describe("RelationshipsPage opened on a table's ERD", () => {
-  it("opens the ERD with the table in the parameter selected and centred", async () => {
-    render(<RelationshipsPage />, { initialEntries: ["/relationships?erd=2"] });
-    expect(await screen.findByTestId("erd-modal")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-focus", "found"));
-    expect(screen.queryByTestId("erd-table-not-found")).toBeNull();
+describe("RelationshipsPage opened on a focus link", () => {
+  it("opens the ERD in place with the table in the link highlighted", async () => {
+    render(<RelationshipsPage />, {
+      initialEntries: ["/relationships?view=erd&objects=sales.customers"],
+    });
+    expect(await screen.findByTestId("erd-panel")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-highlighted", "2"),
+    );
+    expect(screen.queryByTestId("erd-focus-missing")).toBeNull();
   });
 
   it("says so for a table the ERD does not hold, with no other table taken", async () => {
-    render(<RelationshipsPage />, { initialEntries: ["/relationships?erd=99"] });
-    expect(await screen.findByTestId("erd-table-not-found")).toHaveTextContent(
-      "No table with id 99 is in the ERD.",
+    render(<RelationshipsPage />, {
+      initialEntries: ["/relationships?view=erd&objects=sales.ghosts"],
+    });
+    expect(await screen.findByTestId("erd-focus-missing")).toHaveTextContent(
+      "Not found: sales.ghosts",
     );
-    expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-focus", "missing");
+    expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-highlighted", "");
   });
 
-  it("stays closed without the parameter", () => {
+  it("stays on the list without the parameter", () => {
     render(<RelationshipsPage />, { initialEntries: ["/relationships"] });
-    expect(screen.queryByTestId("erd-modal")).toBeNull();
+    expect(screen.queryByTestId("erd-panel")).toBeNull();
   });
 });

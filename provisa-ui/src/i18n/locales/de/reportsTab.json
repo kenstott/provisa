@@ -14,6 +14,24 @@
     "deleteConfirm": "Bericht {{name}} löschen?",
     "deleted": "Bericht {{name}} gelöscht.",
     "empty": "Keine Berichte in der Ops-Domäne registriert.",
-    "resize": "Größe der Berichtsliste ändern"
+    "resize": "Größe der Berichtsliste ändern",
+    "drift": {
+      "title": "Drift seit dem vorherigen Zeitraum",
+      "baseline": "Verglichen mit dem Modell vom {{date}}, der letzten Version bis {{cutoff}}.",
+      "noHistory": "Kein Verlauf: Das Modell hat keine Version vom {{cutoff}} oder früher zum Vergleich.",
+      "none": "Kein Begriff hat seine Verankerung verloren oder gewonnen.",
+      "counts": "Verloren: {{lost}} · Gewonnen: {{gained}} · Neu: {{new}}",
+      "renameRule": "Begriffe werden nach Namen abgeglichen, daher erscheint eine Umbenennung als ein verlorener und ein neuer Begriff.",
+      "term": "Begriff",
+      "before": "Vorher",
+      "after": "Jetzt",
+      "change": "Änderung",
+      "absent": "Nicht im Modell",
+      "changeKind": {
+        "lost": "Verloren",
+        "gained": "Gewonnen",
+        "new": "Neu"
+      }
+    }
   }
 }

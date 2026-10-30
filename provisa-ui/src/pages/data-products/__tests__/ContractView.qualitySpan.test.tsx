@@ -21,7 +21,7 @@ import type { OdcsContract } from "../../../api/dataProductContracts";
 
 const CONTRACT = { id: "c1", version: "1.0.0", status: "active" } as unknown as OdcsContract;
 
-describe("a contract's Quality promises card", () => {
+describe("a contract's Promises card", () => {
   it("carries the two-column span, and no other card does", () => {
     render(
       <ContractView contract={CONTRACT} versions={[]} tableId={7} promises={null} consumers={[]} />,

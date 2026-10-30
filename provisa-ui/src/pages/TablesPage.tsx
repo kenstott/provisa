@@ -20,7 +20,7 @@ import { RegionSelector } from "../components/RegionSelector";
 import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, FileSpreadsheet, Network, X, Layers, Table2 } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, X, Layers, Table2 } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -33,7 +33,10 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { ErdModal } from "../components/erd/ErdModal";
+import { ErdFocusActions } from "../components/erd/ErdFocusActions";
+import { ErdToggle } from "../components/erd/ErdToggle";
+import { ErdView } from "../components/erd/ErdView";
+import { useErdView } from "../components/erd/useErdView";
 import { fetchSettings, profileTable, runSql } from "../api/admin";
 import { downloadModelReport } from "../api/modelReport";
 import type { PlatformSettings } from "../api/admin";
@@ -131,7 +134,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // The detail's section in view: the same in the read view and the edit form, so opening the
   // editor keeps the tab that was being read.
   const [section, setSection] = useState<TableSection>("identity");
-  const [showErd, setShowErd] = useState(false);
+  // REQ-2187: the ERD in the list's place, its state in the URL.
+  const erd = useErdView();
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
   const {
@@ -796,6 +800,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setPreviewTable(null);
     setEditingViewDef(null);
     cancelEditing();
+    if (erd.on) erd.setPanel("table", null);
+  };
+  // REQ-2187: a table clicked in the ERD: its panel, in place of whatever the panel held.
+  const openFromErd = (id: string) => {
+    setShowForm(false);
+    setShowViewForm(false);
+    setShowModeling(false);
+    setPreviewTable(null);
+    setEditingViewDef(null);
+    cancelEditing();
+    setExpanded(Number(id));
+    erd.setPanel("table", id);
   };
   const selectedTable =
     expanded === null ? null : (tables.find((tb) => tb.id === expanded) ?? null);
@@ -960,6 +976,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             <div className="split-pane__fill" data-testid="table-preview-modal">
               {/* The table's actions stay in the panel's head while its rows are looked at. */}
               {readView({ actionsOnly: true })}
+              <ErdFocusActions table={t} />
               <TablePreviewPane table={t} role={actingRole} onBack={() => setPreviewTable(null)} />
             </div>
           );
@@ -968,6 +985,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           return (
             <ReplicaBuildsContext.Provider value={replicaBuilds}>
               {readView({})}
+              <ErdFocusActions table={t} />
             </ReplicaBuildsContext.Provider>
           );
         }
@@ -1083,23 +1101,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               </ActionIcon>
             </Tip>
           )}
-          {/* The icon is the opaque thing here, so it is its own hover target: a "?" next to
-              it would add one more glyph to the row a reader is already trying to decode. */}
-          <HelpBubble
+          <ErdToggle
+            page="tables"
             title={translate("tablesPage.erdHelpTitle")}
-            paragraphs={[translate("tablesPage.erdHelpBody")]}
-            ariaLabel={translate("tablesPage.viewErd")}
-            testId="tables-erd-help"
-            target={
-              <ActionIcon
-                data-tour="tables-erd"
-                variant="subtle"
-                aria-label={translate("tablesPage.viewErd")}
-                onClick={() => setShowErd(true)}
-              >
-                <Network size={14} />
-              </ActionIcon>
-            }
+            body={translate("tablesPage.erdHelpBody")}
+            label={translate("tablesPage.viewErd")}
           />
           <HelpBubble
             title={translate("tablesPage.purposeTitle")}
@@ -1167,306 +1173,313 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           backToList: translate("tablesPage.backToList"),
         }}
         list={
-          <>
-            <ListTable testId="tables-list">
-              <ListHead
-                sortGroup={sortGroup}
-                columns={[
-                  { col: "source" },
-                  ...(domainsEnabled ? [{ col: "domain" }] : []),
-                  { col: "table" },
-                  translate("tablesPage.colNaming"),
-                  translate("tablesPage.colCacheTtl"),
-                  translate("tablesPage.colEffectiveTtl"),
-                  ...(hasRegions ? [translate("regionSelector.columnHeader")] : []),
-                  { col: "cols" },
-                  "",
-                ]}
-              />
-              <Table.Tbody>
-                {(() => {
-                  const items =
-                    groupBy.length === 0
-                      ? sortGroup.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-                      : sortGroup.items;
+          erd.on ? (
+            <ErdView page="tables" onOpen={openFromErd} />
+          ) : (
+            <>
+              <ListTable testId="tables-list">
+                <ListHead
+                  sortGroup={sortGroup}
+                  columns={[
+                    { col: "source" },
+                    ...(domainsEnabled ? [{ col: "domain" }] : []),
+                    { col: "table" },
+                    translate("tablesPage.colNaming"),
+                    translate("tablesPage.colCacheTtl"),
+                    translate("tablesPage.colEffectiveTtl"),
+                    ...(hasRegions ? [translate("regionSelector.columnHeader")] : []),
+                    { col: "cols" },
+                    "",
+                  ]}
+                />
+                <Table.Tbody>
+                  {(() => {
+                    const items =
+                      groupBy.length === 0
+                        ? sortGroup.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+                        : sortGroup.items;
 
-                  if (items.length === 0) {
-                    return (
-                      <ListEmpty
-                        colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)}
-                        testId="tables-empty"
-                      >
-                        {translate("tablesPage.empty")}
-                      </ListEmpty>
-                    );
-                  }
-
-                  return items.map((item) => {
-                    if (item.type === "header") {
+                    if (items.length === 0) {
                       return (
-                        <ListGroupRow
-                          key={`grp-${item.key}`}
-                          colSpan={(domainsEnabled ? 9 : 8) + (hasRegions ? 1 : 0)}
-                          level={item.level}
-                          label={item.label}
-                          count={item.count}
-                          collapsed={sortGroup.collapsed.has(item.key)}
-                          onToggle={() => sortGroup.toggleCollapsed(item.key)}
-                        />
+                        <ListEmpty
+                          colSpan={(domainsEnabled ? 12 : 11) + (hasRegions ? 1 : 0)}
+                          testId="tables-empty"
+                        >
+                          {translate("tablesPage.empty")}
+                        </ListEmpty>
                       );
                     }
-                    const t = item.row;
-                    const row = (
-                      <Fragment key={t.id}>
-                        <ListRow
-                          // A stable per-table anchor (source.table) for tour steps that open one row.
-                          data-table-row={`${t.sourceId}.${t.tableName}`}
-                          // The row whose detail the right-hand panel is showing.
-                          selected={expanded === t.id}
-                          aria-selected={expanded === t.id}
-                          onClick={() => {
-                            setExpanded(expanded === t.id ? null : t.id);
-                            // Another table, or none: the panel shows that table's detail.
-                            setPreviewTable(null);
-                            if (expanded === t.id) cancelEditing();
-                          }}
-                        >
-                          <Table.Td>
-                            {t.sourceId === DERIVED_SOURCE_ID ? (
-                              // A derived relation has no external source — its provenance is the
-                              // lineage of its definition, so never print the storage sentinel.
-                              <Badge
-                                size="xs"
-                                variant="light"
-                                color="gray"
-                                data-testid={`tables-derived-${t.tableName}`}
-                              >
-                                {translate("tablesPage.derived")}
-                              </Badge>
-                            ) : (
-                              t.sourceId
-                            )}
-                          </Table.Td>
-                          {domainsEnabled && (
-                            <Table.Td>{t.domainId ? domainToSqlName(t.domainId) : ""}</Table.Td>
-                          )}
-                          <Table.Td
-                            style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
-                            title={t.description || undefined}
+
+                    return items.map((item) => {
+                      if (item.type === "header") {
+                        return (
+                          <ListGroupRow
+                            key={`grp-${item.key}`}
+                            colSpan={(domainsEnabled ? 9 : 8) + (hasRegions ? 1 : 0)}
+                            level={item.level}
+                            label={item.label}
+                            count={item.count}
+                            collapsed={sortGroup.collapsed.has(item.key)}
+                            onToggle={() => sortGroup.toggleCollapsed(item.key)}
+                          />
+                        );
+                      }
+                      const t = item.row;
+                      const row = (
+                        <Fragment key={t.id}>
+                          <ListRow
+                            // A stable per-table anchor (source.table) for tour steps that open one row.
+                            data-table-row={`${t.sourceId}.${t.tableName}`}
+                            // The row whose detail the right-hand panel is showing.
+                            selected={expanded === t.id}
+                            aria-selected={expanded === t.id}
+                            onClick={() => {
+                              setExpanded(expanded === t.id ? null : t.id);
+                              // Another table, or none: the panel shows that table's detail.
+                              setPreviewTable(null);
+                              if (expanded === t.id) cancelEditing();
+                            }}
                           >
-                            <Group gap="0.35rem">
-                              {t.alias || t.tableName}
-                              <ReplicatingMark build={buildOf(replicaBuilds?.builds, t)} />
-                              <EndpointErrorMark
-                                error={t.apiEndpointError}
-                                testId={`tables-endpoint-error-${t.tableName}`}
-                              />
-                              {/* REQ-1320: star-schema role is metadata on the registration itself —
-                                the badge derives live from it, so it can never drift from the def. */}
-                              {t.modelingRole ? (
+                            <Table.Td>
+                              {t.sourceId === DERIVED_SOURCE_ID ? (
+                                // A derived relation has no external source — its provenance is the
+                                // lineage of its definition, so never print the storage sentinel.
                                 <Badge
                                   size="xs"
                                   variant="light"
-                                  color={t.modelingRole === "fact" ? "grape" : "teal"}
-                                  data-testid={`tables-modeling-role-${t.tableName}`}
+                                  color="gray"
+                                  data-testid={`tables-derived-${t.tableName}`}
                                 >
-                                  {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
+                                  {translate("tablesPage.derived")}
                                 </Badge>
                               ) : (
-                                <>
-                                  {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
-                                    Group By directly imply fact/dimension usage, so badge from those. */}
-                                  {t.enableAggregates && (
-                                    <Badge
-                                      size="xs"
-                                      variant="outline"
-                                      color="grape"
-                                      title={translate("tablesPage.modelingRole.impliedFactTitle")}
-                                      data-testid={`tables-implied-fact-${t.tableName}`}
-                                    >
-                                      {translate("tablesPage.modelingRole.fact")}
-                                    </Badge>
-                                  )}
-                                  {t.enableGroupBy && (
-                                    <Badge
-                                      size="xs"
-                                      variant="outline"
-                                      color="teal"
-                                      title={translate(
-                                        "tablesPage.modelingRole.impliedDimensionTitle",
-                                      )}
-                                      data-testid={`tables-implied-dimension-${t.tableName}`}
-                                    >
-                                      {translate("tablesPage.modelingRole.dimension")}
-                                    </Badge>
-                                  )}
-                                </>
+                                t.sourceId
                               )}
-                              {/* REQ-2109: a table or view that keeps its versions. */}
-                              {t.businessKey.length > 0 && (
-                                <Badge
-                                  size="xs"
-                                  variant="light"
-                                  color="orange"
-                                  title={translate("tablesPage.history.title")}
-                                  data-testid={`tables-history-${t.tableName}`}
-                                >
-                                  {translate("tablesPage.history.badge")}
-                                </Badge>
-                              )}
-                              {/* REQ-1443: a checker table names the checker its contract runs under —
-                                the source's type is the one authority for that, never a table field. */}
-                              {(() => {
-                                const checker = sources.find((s) => s.id === t.sourceId)?.type;
-                                return checker === "soda" || checker === "great_expectations" ? (
+                            </Table.Td>
+                            {domainsEnabled && (
+                              <Table.Td>{t.domainId ? domainToSqlName(t.domainId) : ""}</Table.Td>
+                            )}
+                            <Table.Td
+                              style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
+                              title={t.description || undefined}
+                            >
+                              <Group gap="0.35rem">
+                                {t.alias || t.tableName}
+                                <ReplicatingMark build={buildOf(replicaBuilds?.builds, t)} />
+                                <EndpointErrorMark
+                                  error={t.apiEndpointError}
+                                  testId={`tables-endpoint-error-${t.tableName}`}
+                                />
+                                {/* REQ-1320: star-schema role is metadata on the registration itself —
+                                the badge derives live from it, so it can never drift from the def. */}
+                                {t.modelingRole ? (
                                   <Badge
                                     size="xs"
                                     variant="light"
-                                    color="cyan"
-                                    title={translate("tablesPage.checker.title")}
-                                    data-testid={`tables-checker-${t.tableName}`}
+                                    color={t.modelingRole === "fact" ? "grape" : "teal"}
+                                    data-testid={`tables-modeling-role-${t.tableName}`}
                                   >
-                                    {translate(`tablesPage.checker.${checker}`)}
+                                    {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
                                   </Badge>
-                                ) : null;
-                              })()}
-                              {t.productId != null && (
-                                <Badge
-                                  size="xs"
-                                  variant="light"
-                                  color="indigo"
-                                  title={translate("tablesPage.dataProductTitle")}
-                                  data-testid={`tables-data-product-${t.tableName}`}
-                                >
-                                  {dataProducts.find((p) => p.id === t.productId)?.name ??
-                                    t.productId}
-                                </Badge>
-                              )}
-                              <TagControl objectType="table" tableId={t.id} />
-                            </Group>
-                          </Table.Td>
-                          <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                            {t.gqlNamingConvention
-                              ? namingConventionLabel(translate, t.gqlNamingConvention)
-                              : translate("tablesPage.inheritSource")}
-                          </Table.Td>
-                          <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                            {t.cacheTtl != null
-                              ? ttlText(t.cacheTtl, translate)
-                              : translate("tablesPage.inherit")}
-                          </Table.Td>
-                          <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                            {getEffectiveTableTtl(t)}
-                          </Table.Td>
-                          {hasRegions && (
-                            <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                              {t.region ?? translate("regionSelector.noRegion")}
-                            </Table.Td>
-                          )}
-                          <Table.Td>{t.columns.length}</Table.Td>
-                          <Table.Td onClick={(e) => e.stopPropagation()}>
-                            <Group gap="xs" wrap="nowrap">
-                              {!hidingOnly &&
-                                (() => {
-                                  // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
-                                  // The server derives that from the same policy resolution (REQ-1143) this
-                                  // reads, so the button appears exactly where the mutation would accept it.
-                                  const serving = t.refreshPolicySummary?.serving;
-                                  const isLanded = serving === "scheduled" || serving === "frozen";
-                                  return (
-                                    <>
-                                      {isLanded && (
-                                        <Tip text={translate("tablesPage.runNowTitle")}>
-                                          <Button
-                                            size="compact-xs"
-                                            variant="default"
-                                            onClick={() => {
-                                              setRegenReason("");
-                                              setRegenTable(t);
-                                            }}
-                                            data-testid={`tables-run-now-${t.tableName}`}
-                                          >
-                                            {translate("tablesPage.runNow")}
-                                          </Button>
-                                        </Tip>
-                                      )}
-                                    </>
-                                  );
+                                ) : (
+                                  <>
+                                    {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
+                                    Group By directly imply fact/dimension usage, so badge from those. */}
+                                    {t.enableAggregates && (
+                                      <Badge
+                                        size="xs"
+                                        variant="outline"
+                                        color="grape"
+                                        title={translate(
+                                          "tablesPage.modelingRole.impliedFactTitle",
+                                        )}
+                                        data-testid={`tables-implied-fact-${t.tableName}`}
+                                      >
+                                        {translate("tablesPage.modelingRole.fact")}
+                                      </Badge>
+                                    )}
+                                    {t.enableGroupBy && (
+                                      <Badge
+                                        size="xs"
+                                        variant="outline"
+                                        color="teal"
+                                        title={translate(
+                                          "tablesPage.modelingRole.impliedDimensionTitle",
+                                        )}
+                                        data-testid={`tables-implied-dimension-${t.tableName}`}
+                                      >
+                                        {translate("tablesPage.modelingRole.dimension")}
+                                      </Badge>
+                                    )}
+                                  </>
+                                )}
+                                {/* REQ-2109: a table or view that keeps its versions. */}
+                                {t.businessKey.length > 0 && (
+                                  <Badge
+                                    size="xs"
+                                    variant="light"
+                                    color="orange"
+                                    title={translate("tablesPage.history.title")}
+                                    data-testid={`tables-history-${t.tableName}`}
+                                  >
+                                    {translate("tablesPage.history.badge")}
+                                  </Badge>
+                                )}
+                                {/* REQ-1443: a checker table names the checker its contract runs under —
+                                the source's type is the one authority for that, never a table field. */}
+                                {(() => {
+                                  const checker = sources.find((s) => s.id === t.sourceId)?.type;
+                                  return checker === "soda" || checker === "great_expectations" ? (
+                                    <Badge
+                                      size="xs"
+                                      variant="light"
+                                      color="cyan"
+                                      title={translate("tablesPage.checker.title")}
+                                      data-testid={`tables-checker-${t.tableName}`}
+                                    >
+                                      {translate(`tablesPage.checker.${checker}`)}
+                                    </Badge>
+                                  ) : null;
                                 })()}
-                            </Group>
-                          </Table.Td>
-                        </ListRow>
-                      </Fragment>
-                    );
-                    return row;
-                  });
-                })()}
-              </Table.Tbody>
-            </ListTable>
+                                {t.productId != null && (
+                                  <Badge
+                                    size="xs"
+                                    variant="light"
+                                    color="indigo"
+                                    title={translate("tablesPage.dataProductTitle")}
+                                    data-testid={`tables-data-product-${t.tableName}`}
+                                  >
+                                    {dataProducts.find((p) => p.id === t.productId)?.name ??
+                                      t.productId}
+                                  </Badge>
+                                )}
+                                <TagControl objectType="table" tableId={t.id} />
+                              </Group>
+                            </Table.Td>
+                            <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                              {t.gqlNamingConvention
+                                ? namingConventionLabel(translate, t.gqlNamingConvention)
+                                : translate("tablesPage.inheritSource")}
+                            </Table.Td>
+                            <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                              {t.cacheTtl != null
+                                ? ttlText(t.cacheTtl, translate)
+                                : translate("tablesPage.inherit")}
+                            </Table.Td>
+                            <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                              {getEffectiveTableTtl(t)}
+                            </Table.Td>
+                            {hasRegions && (
+                              <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                                {t.region ?? translate("regionSelector.noRegion")}
+                              </Table.Td>
+                            )}
+                            <Table.Td>{t.columns.length}</Table.Td>
+                            <Table.Td onClick={(e) => e.stopPropagation()}>
+                              <Group gap="xs" wrap="nowrap">
+                                {!hidingOnly &&
+                                  (() => {
+                                    // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
+                                    // The server derives that from the same policy resolution (REQ-1143) this
+                                    // reads, so the button appears exactly where the mutation would accept it.
+                                    const serving = t.refreshPolicySummary?.serving;
+                                    const isLanded =
+                                      serving === "scheduled" || serving === "frozen";
+                                    return (
+                                      <>
+                                        {isLanded && (
+                                          <Tip text={translate("tablesPage.runNowTitle")}>
+                                            <Button
+                                              size="compact-xs"
+                                              variant="default"
+                                              onClick={() => {
+                                                setRegenReason("");
+                                                setRegenTable(t);
+                                              }}
+                                              data-testid={`tables-run-now-${t.tableName}`}
+                                            >
+                                              {translate("tablesPage.runNow")}
+                                            </Button>
+                                          </Tip>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                              </Group>
+                            </Table.Td>
+                          </ListRow>
+                        </Fragment>
+                      );
+                      return row;
+                    });
+                  })()}
+                </Table.Tbody>
+              </ListTable>
 
-            {(() => {
-              const filtered = regionTables;
-              if (groupBy.length > 0) return null;
-              const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-              if (totalPages === 1) return null;
-              return (
-                <Group gap="sm" justify="flex-end" py="sm">
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={translate("tablesPage.firstPage")}
-                    onClick={() => setPage(0)}
-                    disabled={page === 0}
-                  >
-                    «
-                  </ActionIcon>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={translate("tablesPage.prevPage")}
-                    onClick={() => setPage((p) => p - 1)}
-                    disabled={page === 0}
-                  >
-                    ‹
-                  </ActionIcon>
-                  <Text fz="sm">
-                    {translate("tablesPage.pageOf", { page: page + 1, totalPages })}
-                  </Text>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={translate("tablesPage.nextPage")}
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={page >= totalPages - 1}
-                  >
-                    ›
-                  </ActionIcon>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={translate("tablesPage.lastPage")}
-                    onClick={() => setPage(totalPages - 1)}
-                    disabled={page >= totalPages - 1}
-                  >
-                    »
-                  </ActionIcon>
-                </Group>
-              );
-            })()}
+              {(() => {
+                const filtered = regionTables;
+                if (groupBy.length > 0) return null;
+                const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+                if (totalPages === 1) return null;
+                return (
+                  <Group gap="sm" justify="flex-end" py="sm">
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={translate("tablesPage.firstPage")}
+                      onClick={() => setPage(0)}
+                      disabled={page === 0}
+                    >
+                      «
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={translate("tablesPage.prevPage")}
+                      onClick={() => setPage((p) => p - 1)}
+                      disabled={page === 0}
+                    >
+                      ‹
+                    </ActionIcon>
+                    <Text fz="sm">
+                      {translate("tablesPage.pageOf", { page: page + 1, totalPages })}
+                    </Text>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={translate("tablesPage.nextPage")}
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={page >= totalPages - 1}
+                    >
+                      ›
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={translate("tablesPage.lastPage")}
+                      onClick={() => setPage(totalPages - 1)}
+                      disabled={page >= totalPages - 1}
+                    >
+                      »
+                    </ActionIcon>
+                  </Group>
+                );
+              })()}
 
-            {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
-            {!viewsOnly && listedNames.length > 0 && (
-              <Stack gap="0.25rem" py="sm" data-testid="tables-listed-names">
-                <Text size="sm" fw={600}>
-                  {translate("tablesPage.listedElsewhere")}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {translate("tablesPage.listedElsewhereHint")}
-                </Text>
-                {listedNames.map((n) => (
-                  <Text key={relationName(n)} size="sm" style={{ fontFamily: "monospace" }}>
-                    {relationName(n)}: {n.columnNames.join(", ")}
+              {/* REQ-2153: what other domains list -- names only, nothing more about them. */}
+              {!viewsOnly && listedNames.length > 0 && (
+                <Stack gap="0.25rem" py="sm" data-testid="tables-listed-names">
+                  <Text size="sm" fw={600}>
+                    {translate("tablesPage.listedElsewhere")}
                   </Text>
-                ))}
-              </Stack>
-            )}
-          </>
+                  <Text size="xs" c="dimmed">
+                    {translate("tablesPage.listedElsewhereHint")}
+                  </Text>
+                  {listedNames.map((n) => (
+                    <Text key={relationName(n)} size="sm" style={{ fontFamily: "monospace" }}>
+                      {relationName(n)}: {n.columnNames.join(", ")}
+                    </Text>
+                  ))}
+                </Stack>
+              )}
+            </>
+          )
         }
       >
         {panelBody}
@@ -1558,17 +1571,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </Button>
         </Group>
       </Modal>
-      {showErd && (
-        <ErdModal
-          tables={tables}
-          relationships={relationships}
-          domains={domains}
-          checkedDomains={
-            checkedDomains.size > 0 && checkedDomains.size < domains.length ? checkedDomains : null
-          }
-          onClose={() => setShowErd(false)}
-        />
-      )}
       <NativeParamsModal
         key={profileParamsTable?.id ?? "none"}
         table={profileParamsTable}

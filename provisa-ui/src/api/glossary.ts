@@ -553,6 +553,35 @@ export async function fetchAppliedHistory(termId: number): Promise<AppliedHistor
   return res.json();
 }
 
+/** A term's grounding (REQ-1387), as the model graded it. */
+export type TermGrade = "grounded" | "grounded_pending" | "not_grounded";
+
+/** One term whose grounding moved since the previous period (REQ-1386). A grade is null where the
+ * model did not hold the term; ``term_id`` is null once no term has the name. */
+export interface OntologyDriftTerm {
+  name: string;
+  before: TermGrade | null;
+  after: TermGrade | null;
+  change: "lost" | "gained" | "new";
+  term_id: number | null;
+}
+
+/** The Ontology quality report's drift (REQ-1386). ``has_history`` false means the branch holds no
+ * commit by the cutoff: ``base``, ``terms`` and ``counts`` are null, which is not zero drift. */
+export interface OntologyDrift {
+  has_history: boolean;
+  cutoff: string;
+  base: { sha: string; committed_at: string } | null;
+  terms: OntologyDriftTerm[] | null;
+  counts: { lost: number; gained: number; new: number } | null;
+}
+
+export async function fetchOntologyDrift(): Promise<OntologyDrift> {
+  const res = await fetch(`${API_BASE}/admin/glossary/drift`);
+  if (!res.ok) throw await mutationError(res, "fetchOntologyDrift");
+  return res.json();
+}
+
 /** Clear a term's retirement or a curator's deprecation. */
 export async function restoreGlossaryTerm(termId: number): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/restore`, {
