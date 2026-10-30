@@ -89870,7 +89870,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
     reference to a product''s expectations, the data quality checks on its input ports. They belong to the
     consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
-    by ODPS outputPorts inputContracts.'
+    by ODPS outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer
+    2026-10-30: Support and team, Servers, Pricing, and Custom properties and tags are cards at the same
+    level as Details, Versions, Columns and SLAs, not panels inside Details.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -91905,7 +91907,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a rewritten catalog statement runs with the relationship guard bypassed, since a client''s join on oids
     is no registered relationship; row scope and column rules still apply. A listed column the role is not
     served appears in pg_attribute, and has_column_privilege answers false for it. pg_attrdef shows the
-    role''s own insert preset, read from its write grants and not held in meta.'
+    role''s own insert preset, read from its write grants and not held in meta. (Amended 2026-10-29, CATALOG
+    VIEWS:) Maintainer 2026-10-30: the catalog''s relations are PostgreSQL-shaped views in meta. A view
+    gets a table''s SQL name from an expression generated from the configured convention, held to the Python
+    rule by a test, and a naming rule whose regex behaves differently in PostgreSQL is refused at registration.
+    NOT NULL is registered on the column, as its type is. The acting role, database and session reach a
+    view through set_config in the statement''s transaction, and a client''s own set_config never reaches
+    that path. Meta''s row scope passes PostgreSQL''s system rows, which have no table id; who sees what
+    does not change. pg_attrdef reads the role''s own insert presets this way.'
   scenario: 'Given a role connected over pgwire
 
     When a client reads pg_class and pg_attribute

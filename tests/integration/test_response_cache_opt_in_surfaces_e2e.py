@@ -171,8 +171,8 @@ def test_cypher_hint_over_flight(server):
     _assert_opt_in(
         server,
         lambda q: _flight_first_column(server, q),
-        "// @provisa cache=true\nMATCH (e:events) RETURN e.id AS id ORDER BY id",
-        "MATCH (e:events) RETURN e.id AS id ORDER BY id",
+        "// @provisa cache=true\nMATCH (e:Events) RETURN e.id AS id ORDER BY id",
+        "MATCH (e:Events) RETURN e.id AS id ORDER BY id",
     )
 
 
@@ -180,8 +180,8 @@ def test_cypher_hint_over_http(server):
     _assert_opt_in(
         server,
         lambda q: _http_cypher_first_column(server, q),
-        "// @provisa cache=true\nMATCH (e:events) RETURN e.id AS id ORDER BY id DESC",
-        "MATCH (e:events) RETURN e.id AS id ORDER BY id DESC",
+        "// @provisa cache=true\nMATCH (e:Events) RETURN e.id AS id ORDER BY id DESC",
+        "MATCH (e:Events) RETURN e.id AS id ORDER BY id DESC",
     )
 
 
@@ -189,8 +189,8 @@ def test_cypher_hint_over_bolt(server):
     _assert_opt_in(
         server,
         lambda q: _bolt_first_column(server, q),
-        "// @provisa cache_ttl=60\nMATCH (e:events) RETURN e.id AS id, e.ts AS ts ORDER BY id",
-        "MATCH (e:events) RETURN e.id AS id, e.ts AS ts ORDER BY id",
+        "// @provisa cache_ttl=60\nMATCH (e:Events) RETURN e.id AS id, e.ts AS ts ORDER BY id",
+        "MATCH (e:Events) RETURN e.id AS id, e.ts AS ts ORDER BY id",
     )
 
 
@@ -253,7 +253,7 @@ def _neo4j(srv, headers: dict) -> list:
         "POST",
         "/db/neo4j/query/v2",
         headers,
-        json={"statement": "MATCH (e:events) RETURN e.id AS id ORDER BY id DESC LIMIT 3"},
+        json={"statement": "MATCH (e:Events) RETURN e.id AS id ORDER BY id DESC LIMIT 3"},
     )
 
 
