@@ -163,9 +163,24 @@ def test_postgresql_runs_its_own_function(sql):
 
 
 def test_a_function_of_a_name_sqlglot_writes_stays_sqlglots():
+    assert transpile("SELECT regexp_substr(a, b) AS v FROM t", "mysql") == (
+        "SELECT REGEXP_SUBSTR(a, b) AS v FROM t"
+    )
+
+
+def test_trino_has_no_regexp_substr_of_its_own():
     assert transpile("SELECT regexp_substr(a, b) AS v FROM t", "trino") == (
         "SELECT REGEXP_EXTRACT(a, b) AS v FROM t"
     )
+    with pytest.raises(FunctionRefused):
+        transpile("SELECT regexp_substr(a, b, 2) AS v FROM t", "trino")
+
+
+def test_an_overload_a_dialect_does_not_take_is_refused():
+    assert outcome("regexp_substr", 4, "bigquery") == "mapped"
+    assert outcome("regexp_substr", 5, "bigquery") == "refused"
+    assert outcome("regexp_substr", 6, "mysql") == "refused"
+    assert outcome("regexp_substr", 6, "snowflake") == "mapped"
 
 
 def test_a_function_named_in_pg_catalog_is_that_function():

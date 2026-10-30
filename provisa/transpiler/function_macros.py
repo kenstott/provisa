@@ -51,6 +51,8 @@ _CBRTS = _LIKES | {"bigquery", "clickhouse"}
 _TRUNCATES = _TRINO | {"snowflake", "mysql", "bigquery", "tsql", "redshift", "clickhouse"}
 _BOOL_ANDS = _LIKES | {"bigquery"}
 _SPLIT_PARTS = _LIKES
+#: A regexp_substr(value, pattern, start, occurrence) of the dialect's own, sqlglot's to write.
+_REGEXP_SUBSTRS = frozenset({"snowflake", "oracle", "mysql", "bigquery", "redshift"})
 
 
 class Pg(str):
@@ -430,20 +432,26 @@ _ROWS: tuple[Macro, ...] = (
         Macro(
             "regexp_substr",
             params,
-            {
-                _DUCKDB: f"provisa_regexp_substr(value, pattern, {rest})",
-                # sqlglot writes each of these dialects' own regexp_substr.
-                _TRINO | {"snowflake", "oracle", "mysql", "bigquery", "redshift"}: MAPPED,
-            },
+            {_DUCKDB: f"provisa_regexp_substr(value, pattern, {rest})", **others},
         )
-        for params, rest in (
-            (("value", "pattern"), "1, 1, '', 0"),
-            (("value", "pattern", "start"), "start, 1, '', 0"),
-            (("value", "pattern", "start", "n"), "start, n, '', 0"),
-            (("value", "pattern", "start", "n", "flags"), "start, n, flags, 0"),
+        for params, rest, others in (
+            (
+                ("value", "pattern"),
+                "1, 1, '', 0",
+                # Trino has no regexp_substr, which sqlglot writes; regexp_extract is its first match.
+                {_TRINO: "regexp_extract(value, pattern)", _REGEXP_SUBSTRS: MAPPED},
+            ),
+            (("value", "pattern", "start"), "start, 1, '', 0", {_REGEXP_SUBSTRS: MAPPED}),
+            (("value", "pattern", "start", "n"), "start, n, '', 0", {_REGEXP_SUBSTRS: MAPPED}),
+            (
+                ("value", "pattern", "start", "n", "flags"),
+                "start, n, flags, 0",
+                {_REGEXP_SUBSTRS - {"bigquery"}: MAPPED},  # BigQuery's stops at the occurrence
+            ),
             (
                 ("value", "pattern", "start", "n", "flags", "subexpr"),
                 "start, n, flags, subexpr",
+                {frozenset({"snowflake", "oracle"}): MAPPED},  # the others take no group
             ),
         )
     ),
