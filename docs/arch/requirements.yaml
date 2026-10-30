@@ -91725,7 +91725,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     A role that no longer owns any product loses that grant. Org admin or named owner is the default, not
     a limit: an org admin may still give a role of its own a grant and row rules, for example a data product
     administrator with RW and no rules, or one narrowed to a domain. data_product_rw leaves the standard
-    data_steward role, and the sandbox keeps it as its own.'
+    data_steward role, and the sandbox keeps it as its own. (Amended 2026-10-29, ONE RULE MAY CARRY SEVERAL
+    RIGHTS:) Maintainer 2026-10-30, replacing one rule for each right: a rule holds one predicate and a
+    set of rights, any of R, U and D, so a predicate shared by U and D is written once. Each right appears
+    in at most one rule per role and model, so every right still resolves to exactly one plain predicate,
+    which keeps reads pushed down as plain filters, and a save that puts a right in a second rule is refused.
+    The rule editor shows the rights as three checkboxes.'
   scenario: 'Given data products owned by role pets_team and role sales_team
 
     And pets_team holds RW on data_products with U and D rules naming the product''s owner role
