@@ -80,6 +80,33 @@ describe("a SPARQL frame", () => {
     expect(screen.queryByTestId("graph-frame-auto-impute-btn")).toBeNull();
   });
 
+  it("stars its query as a Cypher frame does", () => {
+    const query = "SELECT ?s WHERE { ?s ?p ?o }";
+    const starred = vi.fn();
+    render(
+      <GraphFrame
+        frame={frame(query)}
+        language="sparql"
+        onAddFavorite={starred}
+        onClose={() => {}}
+        onRerun={() => {}}
+        schemaRels={[]}
+        colorOverrides={{}}
+        sizeOverrides={{}}
+        labelProperty={{}}
+        sizeByProperty={{}}
+        sizeMultiplier={{}}
+        relLineOverrides={{}}
+        onColorChange={() => {}}
+        pkMap={{}}
+        labelToTableLabel={{}}
+        labelToTableId={{}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("graph-frame-favorite-btn"));
+    expect(starred).toHaveBeenCalledWith(query);
+  });
+
   it("is a Cypher frame's offer still", () => {
     show("MATCH (n) RETURN n");
     expect(screen.getByTestId("graph-frame-auto-impute-btn")).toBeInTheDocument();
