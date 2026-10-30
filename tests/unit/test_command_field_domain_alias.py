@@ -9,10 +9,11 @@
 # permission from the copyright holder.
 
 """A command's domain-prefixed GraphQL field routes back to the command when its domain's computed
-alias is another domain's too: orders, ops and ontology all compute "o", so the schema names the
-orders domain's command orders__moveAlfreds (domain_alias_map), and the loader registers the command
-under that same field -- not o__moveAlfreds, which left the field to the table compiler as an
-"Unknown mutation field" (the data vault demo's setup)."""
+alias is another domain's too: orders and outlets both compute "o", so the schema names the orders
+domain's command orders__moveAlfreds (domain_alias_map), and the loader registers the command under
+that same field -- not o__moveAlfreds, which left the field to the table compiler as an "Unknown
+mutation field" (the data vault demo's setup, where ops and ontology computed "o" too; they are
+named by their own SDL prefixes since REQ-2163 and take no model domain's alias)."""
 
 # Requirements: REQ-471, REQ-1156
 
@@ -31,6 +32,7 @@ pytestmark = pytest.mark.unit
 
 DOMAINS = [
     {"id": "orders", "description": "Orders"},
+    {"id": "outlets", "description": "Outlets"},
     {"id": "ops", "description": "Ops"},
     {"id": "ontology", "description": "Ontology"},
 ]
@@ -98,7 +100,7 @@ def _emitted() -> set[str]:
     return set(mutation)
 
 
-def test_the_schema_names_the_command_by_its_domain_apart_from_ops_and_ontology():
+def test_the_schema_names_the_command_by_its_domain_apart_from_another_domain():
     assert _emitted() == {"orders__moveAlfreds"}
 
 

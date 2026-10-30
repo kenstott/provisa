@@ -111,6 +111,10 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
     monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    # Nor is any table compiled: every table is judged by its stored grants, whatever an earlier
+    # test in this process left in the runtime (catalog_scope reads tables and contexts).
+    monkeypatch.setattr(appmod.state, "tables", [], raising=False)
+    monkeypatch.setattr(appmod.state, "contexts", {}, raising=False)
     monkeypatch.setattr(
         appmod.state,
         "config",
