@@ -26,6 +26,7 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+from provisa.transpiler.xml_syntax import RETURNS_XML, XML_VALUES
 
 #: sqlglot's type of an argument -> PostgreSQL's format_type name of it. A varchar is text to
 #: overload resolution (every pg_catalog function taking a string takes text).
@@ -140,10 +141,16 @@ def _fits(argument: str | None, parameter: str) -> bool:
 def call_result_type(expression: exp.Expr) -> str | None:
     """The format_type name of what a call of a pg_catalog function returns; None when the
     expression is not such a call or its overload is not known from the statement."""
+    if isinstance(expression, exp.Dot):
+        expression = expression.expression
+    if isinstance(expression, XML_VALUES):
+        return "xml"  # PostgreSQL's grammar has these, and pg_proc none
     call = _call(expression)
     if call is None:
         return None
     names, args = call
+    if names[0] in RETURNS_XML and names[0] not in FUNCTION_OVERLOADS:
+        return "xml"
     # An unknown-type literal fits any overload; where that leaves the call ambiguous, it is text,
     # as PostgreSQL prefers a string category type for one. A number's own type is tried first.
     for literal, numbers in ((None, True), ("text", True), (None, False), ("text", False)):

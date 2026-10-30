@@ -56,6 +56,7 @@ from buenavista.postgres import (
 
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
+from provisa.core.pg_error import MARK
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
 from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
@@ -66,7 +67,9 @@ from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_RED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
 from provisa.core.ir_types import SUBTYPES
-from provisa.pgwire import advisory_locks
+from provisa.pgwire import advisory_locks, xml_publish
+from provisa.federation.duckdb_pg_xml import xml_out
+from provisa.pgwire.cast_types import XML_ARRAY
 from provisa.pgwire.constant_arguments import is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
@@ -521,6 +524,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.TEXT: BVType.STRINGARRAY,
     BVType.OID: BVType.OIDARRAY,
     BVType.REGTYPE: BVType.REGTYPEARRAY,
+    BVType.XML: XML_ARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
@@ -654,9 +658,18 @@ _WIRE_FAMILIES = (
             BVType.TSVECTOR,
             BVType.MACADDR,
             BVType.MACADDR8,
+            BVType.XML,
         }
     ),
-    frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
+    frozenset(
+        {
+            BVType.STRINGARRAY,
+            BVType.ACLITEMARRAY,
+            BVType.CHARARRAY,
+            BVType.NAMEARRAY,
+            XML_ARRAY,
+        }
+    ),
     frozenset(
         {
             BVType.SMALLINTARRAY,
@@ -711,6 +724,7 @@ def _register_reg_types() -> None:
     BVTYPE_TO_PGTYPE[BVType.REGNAMESPACE] = (4089, _named_text, _named_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY] = _array_entry(BVType.REGTYPE, 2211)
+    BVTYPE_TO_PGTYPE[XML_ARRAY] = _array_entry(BVType.XML, 143)
 
 
 _register_reg_types()
@@ -963,6 +977,7 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
     BVType.TIMESTAMPTZ: _to_timestamp,
     # A registered JSON column described as its array (REQ-1965) may arrive as its JSON text.
     **{array: _to_list for array in _ARRAY_OF.values()},
+    BVType.XML: xml_out,  # REQ-2171: held as its text, sent as xml_out writes it
 }
 
 
@@ -1176,6 +1191,8 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             for i, (_name, declared) in enumerate(read_shape):
                 if declared in SUBTYPES:
                     self._types[i] = _sql_type_to_bvtype(declared)
+                if declared == "xml":  # REQ-2171: held as its text, sent as xml_out writes it
+                    self._coerce.append((i, xml_out))
             _describe_registered(
                 read_shape, self._types, self._type_oids, self._typmods, self._coerce
             )
@@ -1468,6 +1485,67 @@ def _normalize_cursor_name(raw: str) -> str:
     return raw.lower()
 
 
+def _columns_of(result: Any) -> list[xml_publish.Column]:
+    """A described or executed result's columns: their names, type OIDs and text writers."""
+    columns = []
+    for index in range(result.column_count()):
+        name, bvtype = result.column(index)
+        oid, text, _ = BVTYPE_TO_PGTYPE[bvtype]
+        columns.append(xml_publish.Column(name, result.column_type_oid(index) or oid, text))
+    return columns
+
+
+class _SessionReads:  # REQ-2167
+    """What query_to_xml and its kin read, as the session reads it: a statement of the session
+    through its governed path, and the catalog of its role."""
+
+    def __init__(self, session: "ProvisaSession") -> None:
+        self._session = session
+        self.warnings: list[Any] = []
+
+    @property
+    def database(self) -> str:
+        from provisa.api.app import state
+        from provisa.pgwire.catalog_populate import served_database_name
+
+        return served_database_name(state)
+
+    def rows(self, sql: str) -> tuple[list[xml_publish.Column], list[Any]]:
+        result = self._session._execute_sql_bound(sql, None, None)
+        try:
+            read = _columns_of(result), list(result.rows())
+            self.warnings.extend((*result.warnings, *result.late_warnings()))
+            return read
+        finally:
+            result.close()
+
+    def shape(self, sql: str) -> list[xml_publish.Column]:
+        return _columns_of(self._session._describe_bound(sql, None))
+
+    def _cursor(self, name: str) -> "_CursorState":
+        found = self._session.cursors.get(name)
+        if found is None:
+            raise ValueError(f'{MARK} 34000: cursor "{name}" does not exist')
+        return found
+
+    def cursor_rows(self, name: str, count: int) -> tuple[list[xml_publish.Column], list[Any]]:
+        cursor = self._cursor(name)
+        return _columns_of(cursor.query_result), _cursor_move(cursor, "forward", count)
+
+    def cursor_shape(self, name: str) -> list[xml_publish.Column]:
+        return _columns_of(self._cursor(name).query_result)
+
+    def catalog(self, sql: str, parameters: list[Any]) -> list[tuple]:
+        from provisa.api.app import state
+        from provisa.pgwire.catalog_populate import catalog_db_for
+
+        cursor = catalog_db_for(self._session.role_id or "", state).cursor()
+        try:
+            return [tuple(row) for row in cursor.execute(sql, parameters).fetchall()]
+        finally:
+            cursor.close()
+
+
 class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def __init__(self, peers: dict | None = None) -> None:
         super().__init__()
@@ -1640,6 +1718,12 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         stripped = sql.strip()
         refuse_server_function(stripped)  # REQ-2167
+        if xml_publish.calls_one(stripped):
+            # REQ-2167: answered as its Execute is. With a parameter to come it is described with
+            # no reads: the result is not held for that Execute.
+            if _placeholder_count(stripped):
+                return self._execute_sql_bound(xml_publish.undescribed(stripped), None, None)
+            return self._execute_sql_bound(stripped, params, None)
         advisory = _advisory_call(stripped)
         if advisory is not None and _placeholder_count(stripped):
             # Described with example values: the lock is taken by the Execute, with the Bind's.
@@ -1855,6 +1939,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # can never change the governed shape. Only the INTERCEPT catalog emulation (not a governed
         # query) reads the values inline.
         stripped = sql.strip()
+        if xml_publish.calls_one(stripped):
+            # REQ-2167: each read the call makes is a statement of this session, governed here,
+            # and what such a read warns of (rows cut at the limit) the statement warns of.
+            reads = _SessionReads(self)
+            folded = xml_publish.fold(stripped, reads, params)
+            result = self._execute_sql_bound(folded, None, result_fmt)
+            result.warnings = (*result.warnings, *reads.warnings)
+            return result
         bound = list(params) if params else None
         refuse_server_function(stripped)  # REQ-2167
         advisory = _advisory_call(stripped)

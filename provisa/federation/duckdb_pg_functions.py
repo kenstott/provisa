@@ -63,8 +63,10 @@ def size_pretty(size: int) -> str:
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
     from provisa.federation.duckdb_pg_scalars import register as register_scalars
+    from provisa.federation.duckdb_pg_xml import register as register_xml
 
     register_scalars(con)
+    register_xml(con)
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )

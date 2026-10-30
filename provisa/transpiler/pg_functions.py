@@ -30,6 +30,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import ParseError
 
+from provisa.transpiler import pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -493,6 +494,9 @@ def _call(node: exp.Expr) -> exp.Expr:
     if isinstance(node, exp.BitString):
         # A bit string's digits: sqlglot writes it for DuckDB as an integer, of another length.
         return exp.Cast(this=exp.Literal.string(node.this), to=exp.DataType.build("BIT"))
+    xml = pg_xml.rewritten(node, _sql)
+    if xml is not None:
+        return xml
     named = _named(node)
     if named is None:
         return node
@@ -562,7 +566,11 @@ def readable(pg_sql: str) -> str:
 def typed_calls(pg_sql: str) -> str:
     """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
     pg_sql = readable(pg_sql)
-    if _CALLED.search(pg_sql) is None and _SPECIAL_LITERAL.search(pg_sql) is None:
+    if (
+        _CALLED.search(pg_sql) is None
+        and _SPECIAL_LITERAL.search(pg_sql) is None
+        and pg_xml.MENTIONED.search(pg_sql) is None
+    ):
         return pg_sql
     rewritten = False
 
