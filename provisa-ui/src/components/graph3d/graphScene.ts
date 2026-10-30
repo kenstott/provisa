@@ -280,15 +280,17 @@ export class GraphScene extends BaseScene<GraphHover> {
     return Math.max(1, height) / across;
   }
 
-  /** Nodes sized so the smallest gap at the best view holds a label; the pairs sizing cannot
-   * part are moved apart in the view's plane, and the graph is drawn again from there. */
+  /** Nodes sized so the smallest gap at the best view holds a label. In 2D the pairs sizing
+   * cannot part are moved apart in the view's plane, and the graph is drawn again from there; in
+   * 3D the layout is left as it is (moving pairs in the view's plane flattens it), and a label
+   * still colliding is hidden (onLabelsPlaced). */
   private fitLabels() {
     const view = this.settleView();
     if (!view) return;
     const content = this.viewContent();
     const { scale, crowded } = labelFit(content.nodes, view.dir, view.up);
     this.sized = scale;
-    if (crowded.length > 0) {
+    if (this.flat && crowded.length > 0) {
       const moved = loosen(content.nodes, crowded, view.dir, view.up, scale);
       this.at = new Map(this.nodes.map((n, i) => [n.node.id, moved[i].toArray()]));
     }

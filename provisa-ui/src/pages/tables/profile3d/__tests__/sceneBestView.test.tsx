@@ -249,8 +249,9 @@ describe("a network graph's best view", () => {
     const full = (labels.firstElementChild as HTMLElement).style.fontSize;
     const fullMesh = meshScale();
     // The same graph with two nodes all but on one spot: their labels would run into each other
-    // at any size, so the nodes are drawn smaller and the pair is moved apart, the rest left in
-    // place. The labels are not shrunk: one that still collides is hidden (labelSize.ts).
+    // at any size, so the nodes are drawn smaller. In 3D nothing moves (moving the pair in the
+    // view's plane would flatten the layout), and the labels are not shrunk: one that still
+    // collides is hidden (labelSize.ts).
     const tight = new Map(roomy.at);
     const [x, y, z] = roomy.at.get("term:0-0") as [number, number, number];
     tight.set("term:0-1", [x + 0.05, y, z]);
@@ -259,6 +260,22 @@ describe("a network graph's best view", () => {
     const kept = (labels.firstElementChild as HTMLElement).style.fontSize;
     expect(parseFloat(kept)).toBe(parseFloat(full));
     expect(parseFloat(kept)).toBeGreaterThanOrEqual(MIN_LABEL_PX);
+    const inside = scene as unknown as { at: Map<string, [number, number, number]> };
+    const a = new THREE.Vector3(...(inside.at.get("term:0-0") as [number, number, number]));
+    const b = new THREE.Vector3(...(inside.at.get("term:0-1") as [number, number, number]));
+    expect(a.distanceTo(b)).toBeCloseTo(0.05);
+    expect(inside.at.get("term:4-4")).toEqual(roomy.at.get("term:4-4"));
+    scene.dispose();
+  });
+
+  it("moves a crowded pair apart in 2D, the rest left in place", async () => {
+    const { scene } = await stage();
+    const roomy = planeGraph(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), 6);
+    scene.setFlat(true);
+    const tight = new Map(roomy.at);
+    const [x, y, z] = roomy.at.get("term:0-0") as [number, number, number];
+    tight.set("term:0-1", [x + 0.05, y, z]);
+    scene.setData(roomy.graph, tight, true);
     const inside = scene as unknown as { at: Map<string, [number, number, number]> };
     const a = new THREE.Vector3(...(inside.at.get("term:0-0") as [number, number, number]));
     const b = new THREE.Vector3(...(inside.at.get("term:0-1") as [number, number, number]));
