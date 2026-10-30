@@ -90584,7 +90584,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Provisa already has geometry functions, so a shape function maps to one wherever it can: a shape converts
     to its geometry form and the existing function answers, on every dialect geometry is native to. A shape
     function with no such mapping is limited as tsvector''s functions are: it runs on PostgreSQL and is
-    refused by name elsewhere. Shapes get no parallel set of functions.'
+    refused by name elsewhere. Shapes get no parallel set of functions. (Amended 2026-10-29, HOW THE LIMITS
+    ARE TESTED:) Maintainer 2026-10-30: conformance runs on two engines, the default and PostgreSQL, because
+    running every engine is not practical. A compile-only test covers every function on every dialect: each
+    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -91754,7 +91757,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     set of rights, any of R, U and D, so a predicate shared by U and D is written once. Each right appears
     in at most one rule per role and model, so every right still resolves to exactly one plain predicate,
     which keeps reads pushed down as plain filters, and a save that puts a right in a second rule is refused.
-    The rule editor shows the rights as three checkboxes.'
+    The rule editor shows the rights as three checkboxes. (Amended 2026-10-29, A METRIC HAS A DOMAIN AND
+    AN OWNER:) Maintainer 2026-10-30: metrics are a model table, meta.metric_definitions, the name that
+    does not collide with ops metrics. A metric belongs to a domain and names an owner role, as a data product
+    does, so the same rule applies: an org admin or the named owner edits it.'
   scenario: 'Given data products owned by role pets_team and role sales_team
 
     And pets_team holds RW on data_products with U and D rules naming the product''s owner role
