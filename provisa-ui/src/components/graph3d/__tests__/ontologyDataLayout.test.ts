@@ -8,17 +8,26 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The Ontology View's force layout with Data on. A data product whose datasets' columns no term is
-// drawn with nothing joining it to the terms but its domain; the layout fits the graph's large parts
-// and draws a small part it does not reach in to their rim, so turning Data on leaves the term and
-// column clusters as spread out as with Data off.
+// The Ontology View's force layout with Data on. Data adds the product of each table drawn, joined
+// to its tables alone (REQ-2130, amended 2026-10-29), so turning Data on leaves the term and column
+// clusters as spread out as with Data off. The layout fits a graph's large parts and draws a small
+// part it does not reach in to their rim.
 
 import { describe, expect, it } from "vitest";
 import { forceLayout } from "../../../pages/tables/profile3d/forceLayout";
 import { GLOSSARY_SCOPE, layoutGraph, visibleGraph, NO_FILTERS, type LayerId } from "../graphModel";
-import { glossaryGraph, type ProductRow, type TermRow } from "../glossaryGraphData";
+import { glossaryGraph, type TermRow } from "../glossaryGraphData";
 
 type At = Map<string, [number, number, number]>;
+
+/** A table's data product, as the query names it under Data: the pet store's first two tables are
+ * Workforce Ops's, the shelter's first is Payroll's (a product of a domain no term is in). */
+function productOf(table: number) {
+  if (table === 100 || table === 101)
+    return { id: "workforce_ops", name: "workforce_ops", domain_id: "shelter" };
+  if (table === 200) return { id: "payroll", name: "payroll", domain_id: "hr" };
+  return null;
+}
 
 /** Two domains of eight terms, each term the two columns of a table of its own. */
 const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
@@ -40,37 +49,13 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
         table_id: table,
         table_name: `t${table}`,
         domain_id: domain,
-        table: { id: table, product: null, source_relationships: [] },
+        table: { id: table, product: productOf(table) },
       })),
     };
   }),
 );
 
-/** A product with one dataset of eight columns no term is. */
-const product = (id: string, domain: string, table: number): ProductRow => ({
-  id,
-  name: id,
-  domain_id: domain,
-  member_tables: [
-    {
-      id: table,
-      domain_id: domain,
-      table_name: `t${table}`,
-      table_columns: Array.from({ length: 8 }, (_, i) => ({
-        column_name: `c${i}`,
-        column_key: `${table}:c${i}`,
-        glossary_ref: null,
-      })),
-      source_relationships: [],
-    },
-  ],
-});
-
-// Workforce Ops is in a domain a term is in; Payroll in one no term is, so no domain is drawn to
-// hold it.
-const PRODUCTS = [product("workforce_ops", "shelter", 900), product("payroll", "hr", 901)];
-
-const G = glossaryGraph(TERMS, [], PRODUCTS);
+const G = glossaryGraph(TERMS, []);
 const view = (layers: LayerId[]) =>
   visibleGraph(G, new Set(layers), NO_FILTERS, new Set(), GLOSSARY_SCOPE);
 
@@ -86,13 +71,13 @@ const core = (ids: string[]) =>
   ids.filter((id) => id.startsWith("term:") || id.startsWith("c:1") || id.startsWith("c:2"));
 
 describe("the Ontology View's layout with Data on", () => {
-  it("joins a data product to its domain, as the data product graph does", () => {
+  it("joins a data product to its tables alone: no domain edge, no domain of its own", () => {
     const g = view(["ontology", "domains", "columns", "data"]);
-    expect(
-      g.edges.some(
-        (e) => e.kind === "in_domain" && e.a === "p:workforce_ops" && e.b === "d:shelter",
-      ),
-    ).toBe(true);
+    expect(g.edges.filter((e) => e.a === "p:workforce_ops").map((e) => e.b).sort()).toEqual([
+      "t:100",
+      "t:101",
+    ]);
+    expect(g.edges.some((e) => e.kind === "in_domain" && e.a.startsWith("p:"))).toBe(false);
     expect(g.nodes.map((n) => n.id)).not.toContain("d:hr");
   });
 
@@ -101,7 +86,7 @@ describe("the Ontology View's layout with Data on", () => {
       const off = view(["ontology", "domains", "columns"]);
       const on = view(["ontology", "domains", "columns", "data"]);
       expect(on.nodes.map((n) => n.id)).toEqual(
-        expect.arrayContaining(["p:workforce_ops", "p:payroll", "c:901:c7"]),
+        expect.arrayContaining(["p:workforce_ops", "p:payroll"]),
       );
       const ids = core(off.nodes.map((n) => n.id));
       const before = spread(layoutGraph(off, "force", attraction), ids);

@@ -77,7 +77,6 @@
     "ontologyView": "Вид онтологии",
     "orphans": "Сироты",
     "columnsToggle": "Столбцы",
-    "tablesToggle": "Таблицы",
     "allEdgeTypes": "Все типы рёбер",
     "someEdgeTypes": "{{count}} из {{total}} типов рёбер",
     "allDomains": "Все домены",

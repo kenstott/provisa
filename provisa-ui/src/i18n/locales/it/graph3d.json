@@ -77,7 +77,6 @@
     "ontologyView": "Vista ontologia",
     "orphans": "Orfani",
     "columnsToggle": "Colonne",
-    "tablesToggle": "Tabelle",
     "allEdgeTypes": "Tutti i tipi di arco",
     "someEdgeTypes": "{{count}} di {{total}} tipi di arco",
     "allDomains": "Tutti i domini",

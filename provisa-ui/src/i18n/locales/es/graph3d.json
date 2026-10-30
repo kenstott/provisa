@@ -77,7 +77,6 @@
     "ontologyView": "Vista de ontología",
     "orphans": "Huérfanos",
     "columnsToggle": "Columnas",
-    "tablesToggle": "Tablas",
     "allEdgeTypes": "Todos los tipos de arista",
     "someEdgeTypes": "{{count}} de {{total}} tipos de arista",
     "allDomains": "Todos los dominios",

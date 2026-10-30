@@ -9,10 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-2130: the glossary's Ontology View data, read from the ontology schema (REQ-2163) as the
-// signed-in user -- ontology._terms (its standing columns), the domains each term is in, its refs to columns
-// with those columns' tables and the relationships declared from them, and the edges leaving it
-// (ontology._term_edges, read with the term); and the data products with their datasets, the datasets' columns and
-// the terms those columns are -- turned into the graph's nodes and edges.
+// signed-in user -- ontology._terms (its standing columns), the domains each term is in, the tables it
+// grounds, its refs to columns with those columns' tables, each table's data product, and the edges
+// leaving it (ontology._term_edges, read with the term) -- turned into the graph's nodes and edges.
+// (Amended 2026-10-29, THE ONTOLOGY VIEW DRAWS ONLY WHAT A TERM REACHES:) every read is nested under
+// the terms, so the query returns only what a term reaches: no table, column or product apart.
 
 import { termRole, type TermGrounding } from "../../api/glossary";
 import { NEIGHBOURHOOD } from "./neighbourhood";
@@ -45,11 +46,6 @@ import {
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
 
-/** A relationship declared from a table: its name is the Cypher type it is served under
- * (relationships.cypher_type), as the Relationships page shows it. Its id is configuration, never
- * a label. */
-const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
-
 /** The term standings ``hidden`` leaves out, as conditions on the ontology's status column
  * (REQ-1387: set by people). */
 const notStatus = (st: TermStatus): Where => ({
@@ -63,20 +59,19 @@ const all = (conds: Where[]): Where | undefined =>
 const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
   domains.length === 0 ? undefined : { [column]: { in: domains } };
 
-/** A relationship served under one of the Cypher ``types``. */
-const named = (types: string[]): Where | undefined =>
-  types.length === 0 ? undefined : { cypher_type: { in: types } };
+/** Whether a reached table's data product is named: under Data, and for the 2D lane diagram,
+ * whose product lane names it (REQ-2174). */
+const productsNamed = (s: QueryScope) => s.layers.has("data") || s.lanes === true;
 
-function relationships(s: QueryScope): Selection["rels"] {
-  return s.layers.has("ownerTables") && s.layers.has("columns")
-    ? {
-        source_relationships: {
-          alias: "sourceRelationships",
-          sel: RELATIONSHIP,
-          where: named(s.edgeTypes),
-        },
-      }
-    : {};
+/** A reached table's data product: named (productsNamed), else read for the look of its columns
+ * alone, with no product node. */
+function productOf(s: QueryScope): NonNullable<Selection["rels"]> {
+  return {
+    product: {
+      alias: "product",
+      sel: { fields: productsNamed(s) ? ["id", "name", "domain_id", ...PRODUCT_FACTS] : ["id"] },
+    },
+  };
 }
 
 /** The terms ``s`` keeps by their own columns: their standing and their domains. */
@@ -199,7 +194,11 @@ function termSelection(s: QueryScope, level: number): Selection {
     if (s.layers.has("ontology"))
       rels.tables = {
         alias: "tables",
-        sel: { fields: ["id", "table_name", "domain_id"] },
+        // A class term's table has no columns drawn: its product is read only to be named.
+        sel: {
+          fields: ["id", "table_name", "domain_id"],
+          ...(productsNamed(s) ? { rels: productOf(s) } : {}),
+        },
         where: inDomains(s.domains),
       };
     if (s.layers.has("domains"))
@@ -226,21 +225,7 @@ function termSelection(s: QueryScope, level: number): Selection {
               to: "registered_tables",
               sel: {
                 fields: ["id", ...TABLE_FACTS.fields],
-                rels: {
-                  ...TABLE_FACTS.rels,
-                  // With Data off, a column's product is read for its look alone: no product
-                  // node -- but for the 2D lane diagram, whose product lane names it (REQ-2174).
-                  product: {
-                    alias: "product",
-                    sel: {
-                      fields:
-                        s.layers.has("data") || s.lanes
-                          ? ["id", "name", "domain_id", ...PRODUCT_FACTS]
-                          : ["id"],
-                    },
-                  },
-                  ...relationships(s),
-                },
+                rels: { ...TABLE_FACTS.rels, ...productOf(s) },
               },
             },
           },
@@ -308,48 +293,12 @@ export function overviewGraph(
   };
 }
 
-function productsField(m: MetaReader, s: QueryScope): string | null {
-  return rootField(
-    m,
-    "data_products",
-    {
-      fields: ["id", "name", "domain_id", ...PRODUCT_FACTS],
-      rels: {
-        member_tables: {
-          alias: "memberTables",
-          sel: {
-            fields: ["id", "domain_id", "table_name", ...TABLE_FACTS.fields],
-            rels: {
-              ...TABLE_FACTS.rels,
-              table_columns: {
-                to: "table_columns",
-                sel: {
-                  fields: ["column_name", "column_key", ...COLUMN_FACTS],
-                  rels: { glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } } },
-                },
-              },
-              ...relationships(s),
-            },
-          },
-          where: inDomains(s.domains),
-        },
-      },
-    },
-    inDomains(s.domains),
-  );
-}
-
 /** The Ontology View's one query for ``s``: its terms, each with the edges leaving it under the
- * Ontology layer, and the data products under Data; null when the role cannot read the terms. A part the
- * role cannot read is left out. */
+ * Ontology layer, what it grounds, and those tables' data products under Data; null when the role
+ * cannot read the terms. A part the role cannot read is left out. */
 export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
   const terms = termsField(m, s);
-  if (terms === null) return null;
-  const products = s.layers.has("data") ? productsField(m, s) : null;
-  return operation(
-    "Ontology",
-    [terms, products].filter((f): f is string => f !== null),
-  );
+  return terms === null ? null : operation("Ontology", [terms]);
 }
 
 /** Every term the query read, at whatever level of a search's neighbourhood, once: a term read at
@@ -383,11 +332,26 @@ export function termEdges(terms: TermRow[]): TermEdgeRow[] {
   return [...out.values()];
 }
 
-/** What the Ontology View's query answers: a part not read is absent. */
+/** What the Ontology View's query answers. */
 export interface OntologyRows {
   _terms: TermRow[];
-  data_products?: ProductRow[];
 }
+
+/** The graph the Ontology View's query answer draws: each term once (a search's neighbourhood is
+ * read nested, a level to each hop), with its edges. */
+export function ontologyGraph(rows: OntologyRows): GraphData {
+  const terms = flatTerms(rows._terms);
+  return glossaryGraph(terms, termEdges(terms));
+}
+
+/** A reached table's data product, as read: its id alone with Data off (see productOf). */
+type ProductRef = {
+  id: string;
+  name?: string;
+  domain_id?: string;
+  status?: string | null;
+  owner_role?: string | null;
+} | null;
 
 export interface TermRow {
   id: number;
@@ -412,7 +376,7 @@ export interface TermRow {
   edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
   edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
-  tables?: { id: number; table_name: string; domain_id: string }[] | null;
+  tables?: { id: number; table_name: string; domain_id: string; product?: ProductRef }[] | null;
   refs?:
     | {
         column_key: string;
@@ -422,17 +386,7 @@ export interface TermRow {
         domain_id: string;
         column?: (ColumnFactsRow & { sensitivity?: { tags: string }[] | null }) | null;
         table?:
-          | (TableFactsRow & {
-              id: number;
-              product?: {
-                id: string;
-                name?: string;
-                domain_id?: string;
-                status?: string | null;
-                owner_role?: string | null;
-              } | null;
-              source_relationships?: RelationshipRow[] | null;
-            })
+          | (TableFactsRow & { id: number; product?: ProductRef })
           | null;
       }[]
     | null;
@@ -441,37 +395,6 @@ export interface TermRow {
 /** A column's facts (COLUMN_FACTS) and a table's (TABLE_FACTS), as productGraphData reads them. */
 type ColumnFactsRow = Parameters<typeof columnFacts>[0];
 type TableFactsRow = Parameters<typeof tableFacts>[0];
-
-interface RelationshipRow {
-  id: string;
-  // Every relationship has its served type stored (relationship_names.store_effective_names).
-  cypher_type: string;
-  target_table_id: number | null;
-}
-
-export interface ProductRow {
-  id: string;
-  name: string;
-  domain_id: string;
-  status?: string | null;
-  owner_role?: string | null;
-  // One-to-many: null when there are none (see rowsOf).
-  member_tables?:
-    | (TableFactsRow & {
-        id: number;
-        domain_id: string;
-        table_name: string;
-        table_columns?:
-          | (ColumnFactsRow & {
-              column_name: string;
-              column_key: string;
-              glossary_ref?: { term_id: number }[] | null;
-            })[]
-          | null;
-        source_relationships?: RelationshipRow[] | null;
-      })[]
-    | null;
-}
 
 export interface TermEdgeRow {
   id: number;
@@ -487,21 +410,16 @@ export function standing(t: TermRow): TermStatus {
 }
 
 /**
- * The glossary's graph. Each node and edge says which layers draw it where its kind's own layer is
- * not the whole answer:
- * - a column a term IS is Columns'; a data product's column is Data's too, and its datasets' other
- *   columns are Data's alone;
- * - a table is drawn only through a column drawn (Tables, with Columns) or as a product's dataset
- *   (Data); the relationships declared between the tables drawn are Tables' (ownerTables).
+ * The glossary's graph: the terms, and what each reaches (REQ-2130, amended 2026-10-29) -- the
+ * terms its edges reach, the domains it is in, the table it grounds (Ontology) or the columns it IS
+ * (Columns) with each column's table, and each such table's data product (Data). Its edges are the
+ * terms' relationships and that grounding chain only: no relationship between tables is drawn.
+ * A table is drawn through the edge reaching it, never by a layer of its own.
  */
-export function glossaryGraph(
-  terms: TermRow[],
-  edges: TermEdgeRow[],
-  products: ProductRow[] = [],
-): GraphData {
+export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData {
   const nodes = new Map<string, GraphNode>();
   const out = new Map<string, GraphEdge>();
-  // A node or edge met again (a term's column that is also a product's) is drawn by either's layers.
+  // A node or edge met again (a class term's table that is also a column's) is drawn by either's layers.
   const widen = (into: { layers?: LayerId[] }, layers: LayerId[] | undefined) => {
     if (!layers || !into.layers) return;
     into.layers = [...new Set([...into.layers, ...layers])];
@@ -511,7 +429,6 @@ export function glossaryGraph(
     if (!seen) nodes.set(n.id, n);
     else {
       widen(seen, n.layers);
-      if (n.inProduct) seen.inProduct = true;
       // Met first where its facts were not read (a class term's table): they are read here.
       if (n.info && !seen.info) seen.info = n.info;
     }
@@ -529,43 +446,18 @@ export function glossaryGraph(
       out.set(id, { id, a, b, kind, ...(label ? { label } : {}), ...(layers ? { layers } : {}) });
     else widen(seen, layers);
   };
-  const table = (
-    id: number,
-    domain: string,
-    name: string,
-    dataset: boolean,
-    row: TableFactsRow | null | undefined,
-  ) =>
+  // A reached table's data product (Data): read named under Data, else for its columns' look alone
+  // (no node).
+  const productOf = (tid: string, p: ProductRef | undefined) => {
+    if (p?.name === undefined || p.domain_id === undefined) return;
     node({
-      id: `t:${id}`,
-      type: "table",
-      label: `${domain}.${name}`,
-      domains: [domain],
-      stored: true,
-      layers: dataset ? ["data"] : [],
-      ...(row ? facts(tableFacts(row)) : {}),
-    });
-  // A product is in its domain, as on the data product graph: drawn beside the domain's terms
-  // even when none of its tables' columns is drawn.
-  const product = (
-    id: string,
-    name: string,
-    domain: string,
-    row: { status?: string | null; owner_role?: string | null },
-  ) => {
-    node({
-      id: `p:${id}`,
+      id: `p:${p.id}`,
       type: "product",
-      label: name,
-      domains: [domain],
-      ...facts({ status: row.status ?? undefined, owner: row.owner_role ?? undefined }),
+      label: p.name,
+      domains: [p.domain_id],
+      ...facts({ status: p.status ?? undefined, owner: p.owner_role ?? undefined }),
     });
-    if (nodes.has(`d:${domain}`)) edge(`p:${id}`, `d:${domain}`, "in_domain");
-  };
-  const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
-    for (const r of rows ?? [])
-      if (r.target_table_id !== null)
-        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, ["ownerTables"]);
+    edge(`p:${p.id}`, tid, "member");
   };
 
   const named = new Set<string>();
@@ -605,23 +497,32 @@ export function glossaryGraph(
     // REQ-2130: the term IS each table it grounds (a class term): the table a cylinder, drawn
     // with the ontology.
     for (const g of t.tables ?? []) {
+      const tid = `t:${g.id}`;
       node({
-        id: `t:${g.id}`,
+        id: tid,
         type: "table",
         label: `${g.domain_id}.${g.table_name}`,
         domains: [g.domain_id],
         stored: true,
         layers: ["ontology"],
       });
-      edge(id, `t:${g.id}`, "term_binding", "IS", ["ontology"]);
+      edge(id, tid, "term_binding", "IS", ["ontology"]);
+      productOf(tid, g.product);
     }
     for (const r of t.refs ?? []) {
       const tid = `t:${r.table_id}`;
       const cid = `c:${r.column_key}`;
       const p = r.table?.product;
-      // A column whose table a data product holds is the Data layer's too.
-      const held: LayerId[] = p ? ["columns", "data"] : ["columns"];
-      table(r.table_id, r.domain_id, r.table_name, p != null, r.table);
+      // The column's table: drawn through the column, never by a layer of its own.
+      node({
+        id: tid,
+        type: "table",
+        label: `${r.domain_id}.${r.table_name}`,
+        domains: [r.domain_id],
+        stored: true,
+        layers: [],
+        ...(r.table ? facts(tableFacts(r.table)) : {}),
+      });
       // Its sensitivity: its row in sensitive_coverage when sensitive; absent when not read.
       const sensitivity = r.column ? rowsOf(r.column.sensitivity) : undefined;
       node({
@@ -630,8 +531,8 @@ export function glossaryGraph(
         label: `${r.table_name}.${r.column_name}`,
         parent: tid,
         domains: [r.domain_id],
+        // A column whose table a data product holds is coloured apart (nodeLook).
         inProduct: p != null,
-        layers: held,
         // A fact, not a filter: the glossary's query is not narrowed by sensitivity.
         ...(r.column
           ? facts({
@@ -640,51 +541,12 @@ export function glossaryGraph(
             })
           : {}),
       });
-      edge(tid, cid, "has_column", undefined, p ? ["data", "ownerTables"] : ["ownerTables"]);
+      // The grounding chain runs term, column, table: from the column, so a layered layout hangs
+      // the table below it.
+      edge(cid, tid, "has_column");
       // glossary.py's physical refs: the term IS this column.
-      edge(id, cid, "term_binding", "IS", held);
-      // A product read for its column's look alone (Data off) has neither name nor domain and is
-      // no node; under Data both are read.
-      if (p?.name !== undefined && p.domain_id !== undefined) {
-        product(p.id, p.name, p.domain_id, p);
-        edge(`p:${p.id}`, tid, "member");
-      }
-      relationships(r.table_id, r.table?.source_relationships);
-    }
-  }
-  for (const p of products) {
-    product(p.id, p.name, p.domain_id, p);
-    for (const m of p.member_tables ?? []) {
-      const tid = `t:${m.id}`;
-      table(m.id, m.domain_id, m.table_name, true, m);
-      edge(`p:${p.id}`, tid, "member");
-      for (const c of m.table_columns ?? []) {
-        const cid = `c:${c.column_key}`;
-        const bound = (c.glossary_ref ?? []).map((g) => `term:${g.term_id}`);
-        // A dataset's column is the Data layer's; one a term IS is Columns' as well.
-        node({
-          id: cid,
-          type: "column",
-          label: `${m.table_name}.${c.column_name}`,
-          parent: tid,
-          domains: [m.domain_id],
-          inProduct: true,
-          layers: bound.length > 0 ? ["data", "columns"] : ["data"],
-          ...facts(columnFacts(c)),
-        });
-        // Tables joins only the columns drawn by Columns: a column no term is stays Data's.
-        edge(
-          tid,
-          cid,
-          "has_column",
-          undefined,
-          bound.length > 0 ? ["data", "ownerTables"] : ["data"],
-        );
-        // A term the role cannot read has no end to draw.
-        for (const term of bound)
-          if (nodes.has(term)) edge(term, cid, "term_binding", "IS", ["data", "columns"]);
-      }
-      relationships(m.id, m.source_relationships);
+      edge(id, cid, "term_binding", "IS");
+      productOf(tid, p);
     }
   }
   for (const e of edges) {

@@ -77,7 +77,6 @@
     "ontologyView": "Visão de ontologia",
     "orphans": "Órfãos",
     "columnsToggle": "Colunas",
-    "tablesToggle": "Tabelas",
     "allEdgeTypes": "Todos os tipos de aresta",
     "someEdgeTypes": "{{count}} de {{total}} tipos de aresta",
     "allDomains": "Todos os domínios",
