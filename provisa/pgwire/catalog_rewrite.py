@@ -825,8 +825,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.column(node.name, table=tname)
         return node
 
-    from provisa.pgwire.catalog_regs import project_reg_values
+    from provisa.pgwire.catalog_regs import coerce_reg_comparisons, project_reg_values
 
+    coerce_reg_comparisons(tree)  # REQ-2167: 'pg_class'::regclass = 'pg_class'
     project_reg_values(tree)  # REQ-2167: a result column that is a reg* value
     try:
         rewritten = tree.transform(_transform)

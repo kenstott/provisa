@@ -21,6 +21,8 @@ as the query engine so clients can send arbitrary JOINs and WHERE clauses.
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
 import functools
 import logging
 import re
@@ -469,8 +471,35 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     )
 
 
-def answer(sql: str, role_id: str, state):  # REQ-532
-    """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
+@dataclasses.dataclass(frozen=True)
+class CatalogSession:
+    """The connection a catalog statement is answered for: what pg_stat_activity lists of it
+    (REQ-2167). ``backend_start`` is when the connection was made."""
+
+    pid: int
+    application_name: str = ""
+    backend_start: datetime.datetime | None = None
+
+
+def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
+    """Make ``session`` the one row of pg_stat_activity, for this statement's cursor alone: a
+    temporary table of the same name shadows the shared, empty one, and goes with the cursor
+    (REQ-2167). The row is the session as PostgreSQL shows a backend running a statement."""
+    cur.execute(
+        "CREATE TEMPORARY TABLE _pg_stat_activity AS SELECT * FROM main._pg_stat_activity LIMIT 0"
+    )
+    cur.execute(
+        "INSERT INTO _pg_stat_activity (datid, datname, pid, usesysid, usename, application_name, "
+        "backend_start, xact_start, query_start, state_change, state, query, backend_type) "
+        "SELECT d.oid, d.datname, ?, (SELECT r.oid FROM _pg_roles r WHERE r.rolname = ?), ?, ?, ?, "
+        "now(), now(), now(), 'active', ?, 'client backend' FROM _pg_database d",
+        [session.pid, role_id, role_id, session.application_name, session.backend_start, sql],
+    )
+
+
+def answer(sql: str, role_id: str, state, session: CatalogSession | None = None):  # REQ-532
+    """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries. ``session`` is the
+    connection asking, which pg_stat_activity lists; a statement with none lists no session."""
     from provisa.executor.result import QueryResult
 
     stripped = sql.strip().rstrip(";")
@@ -527,6 +556,8 @@ def answer(sql: str, role_id: str, state):  # REQ-532
     try:
         # REQ-2167: the role's kept catalog DB, on a cursor of this statement's own.
         cur = catalog_db_for(role_id, state).cursor()
+        if session is not None and "pg_stat_activity" in stripped.lower():
+            _list_session(cur, role_id, session, stripped)
         # Substitute $N params before rewriting so SQLGlot can parse the SQL.
         # Queries with $N::type[] (e.g. asyncpg type introspection) would otherwise
         # fail to parse, preventing table-name rewrites.

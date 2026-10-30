@@ -725,6 +725,13 @@ def _subscript_handler(oid: int, category: str, base: int) -> int:
     return _ARRAY_SUBSCRIPT_HANDLER if category == "A" else 0
 
 
+def _element_type(oid: int) -> int:
+    """pg_type.typelem: the element type of an array type (oidvector and int2vector too), as
+    PostgreSQL 17 records it; 0 for any other type."""
+    entry = TYPES.get(oid)
+    return 0 if entry is None or entry[4] != "A" else entry[10]
+
+
 def _populate_pg_type(db) -> None:
     create_relation(db, "pg_catalog", "pg_type")
     db.executemany(
@@ -744,7 +751,7 @@ def _populate_pg_type(db) -> None:
                 ",",
                 0,
                 _subscript_handler(oid, cat, base),
-                0,
+                _element_type(oid),
                 0,
                 # regproc: no I/O functions are listed (0, whose text form is "-").
                 0,
@@ -789,6 +796,10 @@ def served_database_name(state) -> str:  # REQ-1235
     return DEFAULT_DATABASE
 
 
+#: What pg_roles shows of every role's password, whatever it is.
+_MASKED = "********"
+
+
 def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
     create_relation(db, "pg_catalog", "pg_roles")
 
@@ -804,19 +815,19 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         seen_names.add(rname)
         roid = 10 + i
         rows.append(
-            (roid, rname, False, True, False, False, True, False, -1, None, None, False, None)
+            (roid, rname, False, True, False, False, True, False, -1, _MASKED, None, False, None)
         )
     # Ensure the connected role is present even if state.roles is empty
     if role_id not in seen_names:
         rows.append(
-            (10, role_id, False, True, False, False, True, False, -1, None, None, False, None)
+            (10, role_id, False, True, False, False, True, False, -1, _MASKED, None, False, None)
         )
         seen_names.add(role_id)
     # Standard PG system roles
     for oid, name, sup, inh, crrole, crdb, login, repl, conn, byp in _PG_SYSTEM_ROLES:
         if name not in seen_names:
             rows.append(
-                (oid, name, sup, inh, crrole, crdb, login, repl, conn, None, None, byp, None)
+                (oid, name, sup, inh, crrole, crdb, login, repl, conn, _MASKED, None, byp, None)
             )
             seen_names.add(name)
 
@@ -829,7 +840,7 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
     create_relation(db, "pg_catalog", "pg_user")
     db.execute(
         "INSERT INTO _pg_user SELECT rolname, oid, rolcreatedb, rolsuper, rolreplication, "
-        "rolbypassrls, '********', rolvaliduntil, rolconfig FROM _pg_roles WHERE rolcanlogin"
+        "rolbypassrls, rolpassword, rolvaliduntil, rolconfig FROM _pg_roles WHERE rolcanlogin"
     )
     create_relation(db, "pg_catalog", "pg_database")
     # A libc-provider database (datlocale and daticurules are NULL) with no login event trigger
