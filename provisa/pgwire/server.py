@@ -1844,6 +1844,18 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         else:
             self.role_id = ensure_meta_role(state, list(self.role_set))
 
+    def _catalog_read(self, read):
+        """A catalog statement's read, as this connection: its org, its principal, its loop."""
+        if self.user_id is None:
+            raise RuntimeError("Authenticated session has no principal")
+        from provisa.audit.context import with_audit_identity
+        from provisa.core.connection_loop import current_connection_loop
+
+        return current_connection_loop().run(
+            _run_with_org(self.org_id, with_audit_identity(self.user_id, "pgwire", read)),
+            timeout=request_timeout_for("pgwire"),
+        )
+
     def _execute_sql_bound(
         self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
     ) -> ProvisaQueryResult:
@@ -1882,6 +1894,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 self.role_id or "",
                 state,
                 session=CatalogSession(self.process_id, self.application_name, self.backend_start),
+                run=self._catalog_read,
             )
             log.debug(
                 "[RESULT] cols=%r rows=%r",

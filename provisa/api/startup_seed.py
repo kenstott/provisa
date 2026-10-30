@@ -58,6 +58,7 @@ from provisa.api._catalog_descriptions import (
 )
 from provisa.core.db import init_schema
 from provisa.security.default_grant import VIEWER_ROLE
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from provisa.core.environments import org_schema
 from provisa.core.repositories import source as _source_repo
 from provisa.core.repositories import table as _table_repo
@@ -246,6 +247,25 @@ async def _drop_sibling_environment_registrations(
     )
 
 
+async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
+    """REQ-2190: what a client's catalog SQL runs as and may call. The role reads meta's views and
+    nothing else of this schema, and holds no predefined role: PostgreSQL then refuses it a
+    server file and hides other connections from it. A view reads as its owner, so a role needs
+    no grant on what a view reads. provisa_raise is how a form answers PostgreSQL's own error."""
+    await conn.execute(
+        f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+    )
+    await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
+    await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
+    await conn.execute(f"GRANT SELECT ON {', '.join(sorted(_META_TABLE_VIEWS))} TO {CLIENT_ROLE}")
+    await conn.execute(
+        "CREATE OR REPLACE FUNCTION provisa_raise(sqlstate TEXT, message TEXT) RETURNS TEXT "
+        "LANGUAGE plpgsql AS $$ BEGIN "
+        "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
+    )
+
+
 async def _register_admin_view(
     conn: "Connection",
     domain_id: str,
@@ -348,6 +368,7 @@ async def _seed_meta_domain(
     schema_name = org_schema(org_id, env)
     for ddl in _META_TABLE_VIEWS.values():
         await _seed_view(conn, ddl)
+    await _seed_catalog_client(conn, schema_name)
 
     await _drop_sibling_environment_registrations(conn, "meta", org_id, schema_name)
 

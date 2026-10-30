@@ -233,6 +233,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         served_across_domains,
     )
 
+    from provisa.transpiler.metadata_views import SCOPE_COLUMN
+
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
     gov.can_write = has_capability(role, Capability.WRITE)
     # table_id → domain_id, so meta (catalog) tables can be governed by the tiered rule (REQ-1132)
@@ -257,6 +259,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # input the payload never carries -- REQ-301).
             if (table_id, c["column_name"]) not in ctx.columns_outside_relation
             and not c.get("native_filter_type")
+            # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
+            and c["column_name"] != SCOPE_COLUMN
         ]
         embeddings = {
             c["column_name"]: c["embedding_model"]

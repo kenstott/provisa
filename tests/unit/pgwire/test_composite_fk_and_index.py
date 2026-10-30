@@ -91,6 +91,27 @@ def test_composite_fk_collapsed_to_one_row():
     assert next_oid == 40001
 
 
+def test_composite_fk_survives_another_relationship_between_the_tables():
+    """REQ-2190: as meta.table_keys has it. The key was dropped for one row each when a further
+    relationship joined the same two tables."""
+    ctx = _composite_ctx()
+    orders = ctx.joins[("OrderItem", "order")].target
+    ctx.joins[("OrderItem", "reorder")] = SimpleNamespace(
+        source_column="reorder_id",
+        target_column="order_id",
+        cardinality="many-to-one",
+        target=orders,
+        source_constant=None,
+        source_expr=None,
+    )
+    idx = _idx()
+    idx.col_attnum = {**idx.col_attnum, (101, "reorder_id"): 3}
+    rows, _ = _build_fk_constraint_rows(ctx, idx, 40000)
+    assert sorted(r[18] for r in rows) == [[1, 2], [3]]
+    composite = next(r for r in rows if len(r[18]) == 2)
+    assert composite[19] == [1, 2]
+
+
 def test_two_independent_fks_to_same_table_not_merged():
     users = _tm(1, "Users")
     friendship = _tm(2, "Friendship")

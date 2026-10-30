@@ -30,16 +30,17 @@ never sent to the control plane to answer about itself."""
 
 from __future__ import annotations
 
-import functools
 from dataclasses import dataclass
+from typing import cast
 
 import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
-from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import key_id_sql
+from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -262,12 +263,14 @@ def pg_typmod_sql(spelling: str) -> str:
 
 @dataclass(frozen=True)
 class Form:
-    """One overload of a function on a catalog: its parameters, its form, the facts it reads."""
+    """One overload of a function on a catalog: its parameters, its form, the facts it reads, and
+    the type each argument is read as where it is not written in as it is."""
 
     name: str
     params: tuple[str, ...]
     sql: str
     facts: frozenset[str] = frozenset()
+    reads_as: tuple[str, ...] = ()
 
 
 def _named(schema: str, table: str) -> str:
@@ -461,45 +464,54 @@ _FORMS: tuple[Form, ...] = (
     *(_form(name, _unused_params(arity), "TRUE") for name, arity in _ALWAYS),
 )
 
-FORMS: dict[tuple[str, int], Form] = {(f.name, len(f.params)): f for f in _FORMS}
+FORMS: dict[tuple[str, int], Form] = {
+    **{
+        (name, arity): Form(
+            name, tuple(p for p, _ in params), sql, reads_as=tuple(t for _, t in params)
+        )
+        for (name, arity), (params, sql) in SCALAR_FORMS.items()
+    },
+    **{(f.name, len(f.params)): f for f in _FORMS},
+}
+#: The forms of a function called in FROM, where it has columns of its own.
+RELATION_FORMS: dict[tuple[str, int], Form] = {
+    (name, arity): Form(
+        name, tuple(p for p, _ in params), sql, reads_as=tuple(t for _, t in params)
+    )
+    for (name, arity), (params, sql) in TABLE_FORMS.items()
+}
 
-#: A function that reads a server's catalog with no form yet: refused, never run on the control
-#: plane (it would answer about the control plane's own objects).
+#: A function that would read the server, with no form: refused by name, never run on the control
+#: plane. These run SQL they are given, or read what a server keeps, on the connection that calls
+#: them: the role a client's SQL runs as (metadata_settings.CLIENT_ROLE) would otherwise take a
+#: statement past governance.
 READS_THE_SERVER = frozenset(
     {
-        "has_database_privilege",
-        "has_foreign_data_wrapper_privilege",
-        "has_function_privilege",
-        "has_language_privilege",
-        "has_schema_privilege",
-        "has_sequence_privilege",
-        "has_server_privilege",
-        "has_tablespace_privilege",
-        "has_type_privilege",
-        "oidvectortypes",
-        "pg_describe_object",
-        "pg_get_object_address",
-        "pg_identify_object",
-        "pg_identify_object_as_address",
-        "pg_partition_ancestors",
-        "pg_partition_root",
-        "pg_partition_tree",
-        "pg_relation_filenode",
-        "pg_relation_filepath",
-        "pg_sequence_last_value",
-        "pg_sequence_parameters",
-        "to_regclass",
-        "to_regcollation",
-        "to_regnamespace",
-        "to_regoper",
-        "to_regoperator",
-        "to_regproc",
-        "to_regprocedure",
-        "to_regrole",
-        "to_regtype",
-        "to_regtypemod",
+        "cursor_to_xml",
+        "cursor_to_xmlschema",
+        "database_to_xml",
+        "database_to_xml_and_xmlschema",
+        "database_to_xmlschema",
+        "dblink",
+        "pg_cancel_backend",
+        "pg_notify",
+        "pg_terminate_backend",
+        "query_to_xml",
+        "query_to_xml_and_xmlschema",
+        "query_to_xmlschema",
+        "schema_to_xml",
+        "schema_to_xml_and_xmlschema",
+        "schema_to_xmlschema",
+        "table_to_xml",
+        "table_to_xml_and_xmlschema",
+        "table_to_xmlschema",
+        "ts_rewrite",
+        "ts_stat",
     }
 )
+#: The statistics of a server: a count is 0 and anything else NULL, as where nothing has happened.
+#: Answered by prefix, which covers each function PostgreSQL adds under it.
+STATISTICS_PREFIXES = ("pg_stat_get_", "pg_statio_")
 
 
 #: The overloads naming a user first, each answered for the session role alone.
@@ -522,16 +534,22 @@ class MetadataFunctionRefused(ValueError):
         super().__init__(f"{function}() has no form over the meta domain")
 
 
-@functools.lru_cache(maxsize=None)
-def _parsed(name: str, arity: int) -> exp.Expr:
-    return sqlglot.parse_one(FORMS[(name, arity)].sql, read="postgres")
-
-
 #: An argument that needs no parentheses wherever a form writes it.
 _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp.Boolean)
 
 
-def _argument(value: exp.Expr) -> exp.Expr:
+def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
+    if reads_as == "text":
+        return exp.cast(value, "TEXT")
+    if reads_as:
+        # An argument of any type, as the form reads it: a value of a type no form operates on
+        # (xid8, pg_lsn) still has its text.
+        return exp.Paren(
+            this=exp.Cast(
+                this=exp.cast(value, "TEXT"),
+                to=exp.DataType.build(reads_as, dialect="postgres", udt=True),
+            )
+        )
     if isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower() == "pg_node_tree":
         value = value.this  # the cast names pg_get_expr's argument type; a catalog keeps text
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
@@ -540,13 +558,14 @@ def _argument(value: exp.Expr) -> exp.Expr:
 def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
     """The form with each parameter its argument, which is evaluated wherever the form names it."""
     values = dict(zip(form.params, args))
+    reads_as = dict(zip(form.params, form.reads_as))
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name]).copy()
+            return _argument(values[node.name], reads_as.get(node.name, "")).copy()
         return node
 
-    return _parsed(form.name, len(args)).copy().transform(bound)
+    return sqlglot.parse_one(form.sql, read="postgres").transform(bound)
 
 
 def _call(node: exp.Expr) -> exp.Anonymous | None:
@@ -569,6 +588,8 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     needed: set[str] = set()
 
     def rewrite(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Table) and isinstance(node.this, exp.Anonymous):
+            return _relation_form(node, rewrite)
         call = _call(node)
         if call is None:
             return node
@@ -582,9 +603,13 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
             if (name, len(args)) not in FORMS:
                 if name in READS_THE_SERVER:
                     raise MetadataFunctionRefused(name)
+                if name.startswith(STATISTICS_PREFIXES):
+                    return (
+                        exp.alias_(_statistic(name), name) if _is_column(node) else _statistic(name)
+                    )
                 return node
             written = _expanded_form(name, args, rewrite, needed)
-        if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
+        if _is_column(node):
             return exp.alias_(written, name)  # the column is named for the function
         return written
 
@@ -594,6 +619,46 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     for name in sorted(needed):
         out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
     return out
+
+
+def _is_column(node: exp.Expr) -> bool:
+    return isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+
+
+#: The types a statistic is 0 of; of any other it is NULL.
+_COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
+
+
+def _statistic(name: str) -> exp.Expr:
+    returns = FUNCTION_RETURNS.get(name, "text")
+    if returns == "record":
+        return exp.cast(exp.null(), "TEXT")
+    return exp.Cast(
+        this=exp.Literal.number(0) if returns in _COUNTS else exp.null(),
+        to=exp.DataType.build(returns, dialect="postgres", udt=True),
+    )
+
+
+def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
+    """A function in FROM: its rows, under the name the statement gives them, a form of one column
+    taking that name for its column as PostgreSQL's does."""
+    call = table.this
+    name, args = call.name.lower(), list(call.expressions)
+    form = RELATION_FORMS.get((name, len(args)))
+    alias = table.args.get("alias") or exp.TableAlias(this=exp.to_identifier(name))
+    if form is None:
+        if name in READS_THE_SERVER:
+            raise MetadataFunctionRefused(name)
+        value = FORMS.get((name, len(args)))
+        if value is None:
+            return table
+        # A function of a value, as FROM reads one: a row of it.
+        select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
+    else:
+        select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
+    if not alias.columns and len(select.selects) == 1:
+        alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
+    return exp.Subquery(this=select, alias=alias)
 
 
 def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:

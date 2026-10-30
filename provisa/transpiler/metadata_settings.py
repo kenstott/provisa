@@ -41,6 +41,17 @@ _PREFIX = "provisa.catalog"
 _WRITES_SETTINGS = re.compile(r"\bset_config\b", re.IGNORECASE)
 
 
+#: The role a client's SQL runs as on the control plane: it may read the views and call what
+#: PostgreSQL gives every role, and it is no member of pg_read_server_files, pg_read_all_stats or
+#: anything else. Its schema grants are written with the views' (provisa.api.startup_seed).
+CLIENT_ROLE = "provisa_catalog_client"
+
+
+def enter_client_role() -> str:
+    """The statement that makes the rest of this transaction's SQL the client role's."""
+    return f"SET LOCAL ROLE {CLIENT_ROLE}"
+
+
 def setting(name: str) -> str:
     """SQL reading setting ``name``: NULL or empty on a statement that was not given it."""
     assert name in NAMES, name

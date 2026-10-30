@@ -673,9 +673,12 @@ def _buffered(result: Any) -> Any:
     if not result.returns_rows:
         return result
     rowcount = result.rowcount
+    # The cursor closes with its last row: what it described is kept with the replay.
+    described = result.cursor.description
     rows = result.fetchall()
     result._rewind(rows)
     result.__dict__["rowcount"] = rowcount
+    result.__dict__["described"] = described
     return result
 
 
@@ -970,6 +973,17 @@ class Connection:
         rows = [Row(r) for r in result.fetchall()]
         self._commit_if_autocommit()
         return columns, rows
+
+    async def fetch_described(
+        self, sql: str, *args: Any, bind_as_given: bool = False
+    ) -> tuple[list[str], list[int], list[Row]]:
+        """:meth:`fetch_with_columns` with each column's type oid, as PostgreSQL described it."""
+        result = self._run(sql, args, bind_as_given=bind_as_given)
+        columns = list(result.keys())
+        oids = [int(d[1]) for d in result.__dict__["described"]]
+        rows = [Row(r) for r in result.fetchall()]
+        self._commit_if_autocommit()
+        return columns, oids, rows
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetchrow(self, sql: str, *args: Any) -> Row | None:

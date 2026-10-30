@@ -40,6 +40,7 @@ from provisa.pgwire.catalog_macros import populate_catalog_macros
 from provisa.security.rights import SQL_CATALOG_TABLES, Capability, has_capability
 from provisa.pgwire.catalog_privileges import populate_privilege_macros, populate_table_privileges
 from provisa.pgwire.catalog_data import (
+    served_database_name,
     UNQUERIED_RELATIONS,
     _TABLE_MAP,
     _PG_OID_ATTR_META,
@@ -784,18 +785,6 @@ def _populate_pg_extension(db) -> None:
     rows = extension_rows()
     if rows:
         db.executemany("INSERT INTO _pg_extension VALUES (?,?,?,?,?,?,?,?)", rows)
-
-
-def served_database_name(state) -> str:  # REQ-1235
-    """The database a pgwire client is connected to. Under multi-tenancy that is the bound org,
-    which the client named (database name or TLS hostname); a single-tenant deployment has one
-    database, ``provisa``."""
-    from provisa.api.org_resolve import DEFAULT_DATABASE
-    from provisa.core.request_context import require_current_org
-
-    if getattr(state, "multitenancy", False):
-        return require_current_org()
-    return DEFAULT_DATABASE
 
 
 #: What pg_roles shows of every role's password, whatever it is.

@@ -624,3 +624,15 @@ def pg_type_rows() -> list[tuple]:
     # REQ-2171: the PostGIS surface declares types the subtypes already hold; each OID once.
     held = {row[0] for row in _PG_TYPE_ROWS}
     return [*_PG_TYPE_ROWS, *(row for row in surface_pg_type_rows() if row[0] not in held)]
+
+
+def served_database_name(state) -> str:  # REQ-1235
+    """The database a pgwire client is connected to. Under multi-tenancy that is the bound org,
+    which the client named (database name or TLS hostname); a single-tenant deployment has one
+    database, ``provisa``."""
+    from provisa.api.org_resolve import DEFAULT_DATABASE
+    from provisa.core.request_context import require_current_org
+
+    if getattr(state, "multitenancy", False):
+        return require_current_org()
+    return DEFAULT_DATABASE

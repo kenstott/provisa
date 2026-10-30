@@ -84,6 +84,8 @@ class QueryResult:  # REQ-028
     rows: list[tuple]
     column_names: list[str]
     column_types: list[str] | None = None
+    # REQ-2190: the type oid PostgreSQL gave each column, where it ran the statement itself.
+    column_type_oids: list[int] | None = None
     # REQ-1194/REQ-1195: when the ONE pipeline materialized the result to a sink instead of
     # returning rows, this carries the delivery handle ({sink, url|table_name, row_count, ...}) that
     # every transport reports in its own envelope. None for an inline row result.
