@@ -180,6 +180,26 @@ _KIND_TYPES = {
 }
 
 
+def _schema_procedure_rows(
+    call: ProcedureCall, column: str, values: list[str], alias: exp.TableAlias
+) -> exp.Expression:  # REQ-572
+    """A schema procedure's values (CypherLabelMap.schema_procedure) as a relation of what the
+    call yields, under its alias."""
+    wrong = [yielded for yielded, _ in call.yields if yielded != column]
+    if wrong or not call.yields:
+        raise CypherTranslateError(
+            f"CALL {call.name}: it yields {column}: CALL {call.name}() YIELD {column}"
+        )
+    width = len(call.yields)
+    if not values:
+        empty = [exp.cast(exp.Null(), "TEXT") for _ in range(width)]
+        return exp.Subquery(this=exp.select(*empty).where(exp.false()), alias=alias)
+    rows = [
+        exp.Tuple(expressions=[exp.Literal.string(value) for _ in range(width)]) for value in values
+    ]
+    return exp.Values(expressions=rows, alias=alias)
+
+
 def _map_key_types(source: CypherExpr) -> dict[str, str]:
     """For an UNWIND of map literals written in the statement, each key whose every value is of
     one type, other than a string, -> that type's engine type."""
@@ -1889,22 +1909,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         alias = f"_call{self._unwind_count}"
         self._unwind_count += 1
         variables = [var for _, var in call.yields]
-        values = [self._call_value(a, call, i + 1) for i, a in enumerate(call.args)]
-        marker = exp.Anonymous(
-            this=CALL_MARKER,
-            expressions=[
-                exp.Literal.string(call.name),
-                exp.Literal.string(json.dumps([col for col, _ in call.yields])),
-                exp.Literal.string(json.dumps(values, default=str)),
-            ],
+        table_alias = exp.TableAlias(
+            this=exp.Identifier(this=alias),
+            columns=[exp.Identifier(this=v, quoted=True) for v in variables],
         )
-        table = exp.Table(
-            this=marker,
-            alias=exp.TableAlias(
-                this=exp.Identifier(this=alias),
-                columns=[exp.Identifier(this=v, quoted=True) for v in variables],
-            ),
-        )
+        schema = self._lm.schema_procedure(call.name)
+        table: exp.Expression
+        if schema is not None:
+            table = _schema_procedure_rows(call, *schema, table_alias)
+        else:
+            values = [self._call_value(a, call, i + 1) for i, a in enumerate(call.args)]
+            marker = exp.Anonymous(
+                this=CALL_MARKER,
+                expressions=[
+                    exp.Literal.string(call.name),
+                    exp.Literal.string(json.dumps([col for col, _ in call.yields])),
+                    exp.Literal.string(json.dumps(values, default=str)),
+                ],
+            )
+            table = exp.Table(this=marker, alias=table_alias)
         for var in variables:
             self._var_table[var] = (alias, None)
         self._unwind_aliases.add(alias)

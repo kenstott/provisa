@@ -131,9 +131,7 @@ def _in_one_connection(boot, role: str, *statements: LiteralString) -> list[list
     return answers
 
 
-def test_session_nodes_are_read_back_in_their_connection_alone(server):
-    from neo4j.exceptions import ClientError
-
+def test_session_nodes_are_read_back_on_every_connection_of_their_principal(server):
     *_, notes = _in_one_connection(
         server,
         "org_admin",
@@ -141,9 +139,12 @@ def test_session_nodes_are_read_back_in_their_connection_alone(server):
         "MATCH (n:Note) RETURN n.text AS text ORDER BY text",
     )
     assert notes == [{"text": "x"}, {"text": "y"}]
-    # Another connection holds no session nodes: the label is none it can read.
-    with pytest.raises(ClientError):
-        _in_one_connection(server, "org_admin", "MATCH (n:Note) RETURN n.text AS text")
+    # REQ-2176 (2026-10-27, ONE GRAPH SESSION PER PRINCIPAL): every Bolt connection of a principal
+    # runs in its one graph session, so another connection reads them as well.
+    *_, again = _in_one_connection(
+        server, "org_admin", "MATCH (n:Note) RETURN n.text AS text ORDER BY text"
+    )
+    assert again == notes
 
 
 def test_a_value_from_model_data_passes_its_governance(server):
