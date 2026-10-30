@@ -23,6 +23,9 @@ import pytest
 from psycopg import pq
 
 from provisa.federation import duckdb_pg_scalars as scalars
+from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+from tests.unit.pgwire.pg17_signatures import SIGNATURES
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 BOOL, BYTEA, NAME, INT8, INT4, TEXT, OID = 16, 17, 19, 20, 23, 25, 26
@@ -490,5 +493,44 @@ def test_a_bad_identifier_is_refused(text):
         scalars.parse_ident(text, True)
 
 
+def test_a_cast_alone_stays_the_engines():
+    from provisa.pgwire.catalog import classify
+
+    assert classify("SELECT '(1,2)'::point AS v") == "PASS_THROUGH"
+    assert classify("SELECT '1'::money AS v") == "PASS_THROUGH"
+    assert classify("SELECT center('<(1,2),3>'::circle) AS v") == "INTERCEPT"
+
+
+def test_a_statement_with_no_rewrite_is_returned_as_written():
+    from provisa.transpiler.pg_functions import typed_calls
+
+    sql = "select  length( a ) , sum(b)  from t"
+    assert typed_calls(sql) == sql
+
+
 def test_a_bytea_substring_before_its_start_uses_up_the_length():
     assert scalars.bytea_substr(b"\x01\x02\x03", -1, 3) == b"\x01"
+
+
+def _expected_oid(name: str, args: tuple[str, ...]) -> int | None:
+    returns = {r for params, r in FUNCTION_OVERLOADS.get(name, ()) if params == args}
+    if len(returns) != 1:
+        return None
+    return next((oid for oid, entry in TYPES.items() if entry[-1] == next(iter(returns))), None)
+
+
+@pytest.mark.parametrize(
+    ("name", "args", "strict"),
+    SIGNATURES,
+    ids=[f"{n}({', '.join(a)})" for n, a, _ in SIGNATURES],
+)
+def test_every_signature_is_served_with_postgresqls_type(conn: Any, name, args, strict):
+    # As the conformance probe calls it: every argument a NULL of its type.
+    listed = ", ".join(f"NULL::{t}" for t in args)
+    res = _run(conn, f'SELECT pg_catalog."{name}"({listed}) AS v')
+    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+    expected = _expected_oid(name, args)
+    if expected is not None and expected != 2283:  # anyelement: the argument's own type
+        assert res.ftype(0) == expected
+    if strict and args:
+        assert all(v is None for v in _rows(res))

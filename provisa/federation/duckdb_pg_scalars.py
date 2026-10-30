@@ -992,9 +992,10 @@ _MACROS: tuple[str, ...] = (
     "ELSE 'cidr' END)",
     "CREATE MACRO nameconcatoid(name, oid) AS "
     "CAST(left(name, 63 - length('_' || oid)) || '_' || oid AS VARCHAR)",
-    "CREATE MACRO jsonb_typeof(value) AS CASE json_type(value) WHEN 'OBJECT' THEN 'object' "
+    "CREATE MACRO jsonb_typeof(value) AS CASE WHEN value IS NULL THEN CAST(NULL AS VARCHAR) "
+    "ELSE CASE json_type(value) WHEN 'OBJECT' THEN 'object' "
     "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
-    "WHEN 'NULL' THEN 'null' WHEN NULL THEN NULL ELSE 'number' END",
+    "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
     *(
         f"CREATE MACRO {name}(value) AS provisa_{target}(CAST(value AS VARCHAR))"
         for name, target in (

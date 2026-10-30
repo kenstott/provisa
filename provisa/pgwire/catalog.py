@@ -38,6 +38,7 @@ from provisa.pgwire.catalog_data import (
     typeinfo,
 )
 from provisa.pgwire.catalog_populate import catalog_db_for
+from provisa.pgwire.constant_arguments import is_constant_sql
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES, REWRITTEN
 from provisa.core.pg_error import from_engine
@@ -214,19 +215,9 @@ def _calls_a_catalog_function_alone(tree) -> bool:
 
 #: The types only the catalog has (name, and the object identifier types): a statement reading no
 #: table that casts to one is answered by the catalog (REQ-2167).
-_CATALOG_ONLY_TYPES = frozenset(
-    {
-        "name",
-        "regclass",
-        "regtype",
-        "regnamespace",
-        "regproc",
-        "xid",
-        "tid",
-        "oidvector",
-        *PG_ONLY_TYPE_NAMES,
-    }
-)
+_CATALOG_ONLY_TYPES = frozenset({"name", "regclass", "regtype", "regnamespace"})
+#: The types only the catalog DB can hold as a function's argument (REQ-2167).
+_FUNCTION_ARGUMENT_TYPES = frozenset({"regproc", "xid", "tid", "oidvector", *PG_ONLY_TYPE_NAMES})
 
 
 def _casts_to_a_catalog_type_alone(tree) -> bool:
@@ -234,11 +225,16 @@ def _casts_to_a_catalog_type_alone(tree) -> bool:
 
     if any(True for _ in tree.find_all(exp.Table)):
         return False
-    return any(
+    types = {
         cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.").removesuffix("[]")
-        in _CATALOG_ONLY_TYPES
         for cast in tree.find_all(exp.Cast)
-    )
+    }
+    if types & _CATALOG_ONLY_TYPES:
+        return True
+    # A value of a type only the catalog DB holds, given to a function: the engine cannot read the
+    # argument. A cast alone is the engine's, which sends the type in its own wire form.
+    calls = any(not isinstance(f, exp.Cast) for f in tree.find_all(exp.Func))
+    return calls and bool(types & _FUNCTION_ARGUMENT_TYPES)
 
 
 @functools.lru_cache(maxsize=4096)
@@ -351,9 +347,9 @@ def _handle_scalar(sql: str, role_id: str, state):
         return QueryResult(rows=[(next_txid(),)], column_names=["txid_current"])
     if "pg_advisory_unlock_all()" in s:
         # asyncpg's pool connection-release reset query (Connection.get_reset_query()) always
-        # includes this — Provisa never grants real advisory locks, so releasing "all of them" is
-        # trivially satisfied. A void-returning function answers with one row, one NULL column,
-        # same as _handle_scalar's other functions.
+        # includes this. A connection's own call releases its locks in the server
+        # (server._advisory_answer); answered here it has none: one row, one NULL column, same as
+        # _handle_scalar's other functions.
         return QueryResult(rows=[(None,)], column_names=["pg_advisory_unlock_all"])
     return None
 
@@ -473,6 +469,10 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     from provisa.executor.result import QueryResult
 
     arg = match["arg"]
+    if not is_constant_sql(arg):
+        raise NotImplementedError(
+            f"{match['name']}: an argument that is not a constant expression is not supported"
+        )
     seconds = {
         "pg_sleep": f"CAST(({arg}) AS DOUBLE PRECISION)",
         "pg_sleep_for": f"EXTRACT(EPOCH FROM ({arg}))",

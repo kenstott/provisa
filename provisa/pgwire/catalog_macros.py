@@ -198,7 +198,7 @@ _MACROS = (
     "CASE WHEN type IS NOT NULL AND priv IS NOT NULL THEN true END, "
     "(role, type, priv) AS "
     "CASE WHEN role IS NOT NULL AND type IS NOT NULL AND priv IS NOT NULL THEN true END",
-    # No connection ever waits on a lock: Provisa holds none.
+    # Advisory locks are the only locks a connection takes here, and pg_locks does not list them.
     "CREATE MACRO pg_blocking_pids(pid) AS "
     "CASE WHEN pid IS NOT NULL THEN CAST([] AS INTEGER[]) END",
     # No log file: as PostgreSQL answers with the logging collector off.

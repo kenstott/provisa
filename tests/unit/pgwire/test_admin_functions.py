@@ -167,9 +167,29 @@ async def test_a_lock_in_a_larger_statement_is_refused_by_name(port, served):
         for sql in (
             "SELECT pg_advisory_lock(1), pg_advisory_lock(2)",
             "SELECT pg_try_advisory_lock(1) AS l, 2 AS two",
+            # A key is evaluated outside governance: nothing may be read for one.
+            "SELECT pg_advisory_lock((SELECT count(*) FROM read_text('/etc/hosts')))",
+            "SELECT pg_advisory_unlock(length(version()))",
         ):
             with pytest.raises(asyncpg.FeatureNotSupportedError, match="pg_"):
                 await a.fetchval(sql)
+    finally:
+        await a.close()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "pg_sleep((SELECT count(*) FROM read_text('/etc/hosts')))",
+        "pg_sleep_for((SELECT '1 second'::interval FROM read_text('/etc/hosts')))",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_sleep_reads_nothing_for_its_duration(port, served, call):
+    a = await _connect(port, "alice")
+    try:
+        with pytest.raises(asyncpg.FeatureNotSupportedError, match="not a constant expression"):
+            await a.fetchval(f"SELECT {call}")
     finally:
         await a.close()
 

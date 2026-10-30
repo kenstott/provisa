@@ -417,7 +417,7 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:
         return f"CASE WHEN {written[0]} IS NOT NULL THEN TRUE END"
     if name == "date_add" and len(args) == 2:  # noqa: PLR2004
         return f"CAST({written[0]} AS TIMESTAMPTZ) + {written[1]}"
-    if name == "date_add" and len(args) == 3:  # noqa: PLR2004 -- added in the named time zone
+    if name == "date_add" and len(args) == 3 and _is_text(args[2]):  # noqa: PLR2004 -- a zone
         zone = written[2]
         return f"TIMEZONE({zone}, TIMEZONE({zone}, {written[0]}) + {written[1]})"
     if name == "timezone" and len(args) == 2 and _cast_to(args[0], interval):  # noqa: PLR2004
@@ -529,6 +529,8 @@ def readable(pg_sql: str) -> str:
     statement that parses is left as it is. ``bit varying``, which sqlglot reads as a bit and an
     alias, is the bit string the engine holds it as."""
     pg_sql = _JSON_OBJECT_OF_ARRAYS.sub("pg_json_object(", _BIT_VARYING.sub("::bit", pg_sql))
+    if _UNPARSED_CALLS.search(pg_sql) is None:
+        return pg_sql
     try:
         sqlglot.parse_one(pg_sql, read="postgres")
     except ParseError:
@@ -541,13 +543,16 @@ def typed_calls(pg_sql: str) -> str:
     pg_sql = readable(pg_sql)
     if _CALLED.search(pg_sql) is None and _BIT_STRING.search(pg_sql) is None:
         return pg_sql
-    tree = sqlglot.parse_one(pg_sql, read="postgres")
-    out = tree.transform(_call)
-    return (
-        pg_sql
-        if out.sql(dialect="postgres") == tree.sql(dialect="postgres")
-        else out.sql(dialect="postgres")
-    )
+    rewritten = False
+
+    def _watched(node: exp.Expr) -> exp.Expr:
+        nonlocal rewritten
+        out = _call(node)
+        rewritten = rewritten or out is not node
+        return out
+
+    tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched)
+    return tree.sql(dialect="postgres") if rewritten else pg_sql
 
 
 def before(pg_sql: str) -> str:

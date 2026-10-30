@@ -67,6 +67,7 @@ from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
 from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire import advisory_locks
+from provisa.pgwire.constant_arguments import is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -740,6 +741,7 @@ _ADVISORY_UNLOCKS = {
     "pg_advisory_unlock_shared": advisory_locks.SHARED,
 }
 _ADVISORY_FUNCTIONS = frozenset({*_ADVISORY_LOCKS, *_ADVISORY_UNLOCKS, "pg_advisory_unlock_all"})
+_ADVISORY_NAME = re.compile(r"\bpg_(?:try_)?advisory_", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -758,46 +760,72 @@ class _PostgresWarning:
     message: str
 
 
-def _advisory_call(sql: str) -> _AdvisoryCall | None:  # REQ-2167
-    """The advisory lock function ``sql`` only calls; None for any other statement."""
-    if "advisory" not in sql.lower():
-        return None
-    import sqlglot
+def _advisory_function(call: Any) -> Any:
+    """The call of an advisory lock function ``call`` is, under a pg_catalog qualifier; or None."""
     import sqlglot.expressions as exp
 
-    tree = sqlglot.parse_one(sql, read="postgres")
+    if isinstance(call, exp.Dot):
+        call = call.expression
+    is_one = isinstance(call, exp.Anonymous) and call.name.lower() in _ADVISORY_FUNCTIONS
+    return call if is_one else None
+
+
+def _advisory_tree(sql: str) -> Any:
+    """``sql``'s parse if it names an advisory lock function; None if it names none."""
+    import sqlglot
+    from sqlglot.errors import SqlglotError
+
+    if _ADVISORY_NAME.search(sql) is None:
+        return None
+    try:
+        return sqlglot.parse_one(sql, read="postgres")
+    except SqlglotError:
+        return None  # the statement's own path reports what it cannot read
+
+
+def _advisory_call(sql: str) -> _AdvisoryCall | None:  # REQ-2167
+    """The advisory lock function ``sql`` only calls, with constant keys; None for any other
+    statement. Its keys are evaluated outside governance, so anything else is not one."""
+    import sqlglot.expressions as exp
+
+    tree = _advisory_tree(sql)
     if not isinstance(tree, exp.Select) or tree.find(exp.From) is not None:
         return None
     if len(tree.selects) != 1:
         return None
     select = tree.selects[0]
-    call = select.unalias()
-    if isinstance(call, exp.Dot):
-        call = call.expression
-    if not isinstance(call, exp.Anonymous) or call.name.lower() not in _ADVISORY_FUNCTIONS:
+    call = _advisory_function(select.unalias())
+    if call is None or not all(_is_key(a) for a in call.expressions):
         return None
     name = call.name.lower()
     args = tuple(a.sql(dialect="postgres") for a in call.expressions)
     return _AdvisoryCall(name, args, select.alias or name)
 
 
+def _is_key(arg: Any) -> bool:
+    import sqlglot.expressions as exp
+
+    bound = isinstance(arg, (exp.Parameter, exp.Placeholder))
+    return bound or is_constant(arg)
+
+
 def refuse_server_function(sql: str) -> None:  # REQ-2167
-    """Refuse a statement that takes an advisory lock while it does anything else, naming the
-    function: a lock is taken by a statement that only calls it, whose argument is a value."""
-    lowered = sql.lower()
-    if "advisory" not in lowered or _advisory_call(sql) is not None:
-        return
-    import sqlglot
+    """Refuse a statement that takes an advisory lock while it does anything else, or with a key
+    that is not a constant, naming the function: a lock is taken by a statement that only calls
+    it, and its key is evaluated outside governance."""
     import sqlglot.expressions as exp
 
     from provisa.compiler.definitions import NotAvailableHere
 
-    for fn in sqlglot.parse_one(sql, read="postgres").find_all(exp.Anonymous):
+    tree = _advisory_tree(sql)
+    if tree is None or _advisory_call(sql) is not None:
+        return
+    for fn in tree.find_all(exp.Anonymous):
         name = fn.name.lower()
         if name in _ADVISORY_FUNCTIONS:
             raise NotAvailableHere(
                 f"{name} is not available through Provisa in a statement that does more than "
-                "call it"
+                "call it with constant keys"
             )
 
 
@@ -1610,7 +1638,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         stripped = sql.strip()
         refuse_server_function(stripped)  # REQ-2167
         advisory = _advisory_call(stripped)
-        if advisory is not None and "$" in stripped:
+        if advisory is not None and _placeholder_count(stripped):
             # Described with example values: the lock is taken by the Execute, with the Bind's.
             return ProvisaQueryResult(self._advisory_shape(advisory), stripped)
         if advisory is not None or _SERVER_FUNCTION_RE.match(stripped):
