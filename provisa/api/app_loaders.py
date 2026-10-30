@@ -2046,6 +2046,9 @@ _META_TABLES = [
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only
     "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
+    "table_details",  # REQ-2190: a table's catalog entry; view-only, served to SQL alone
+    "column_details",  # REQ-2190: a column's catalog entry; view-only, served to SQL alone
+    "table_keys",  # REQ-2190: each table's keys, a row per column; view-only, served to SQL alone
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

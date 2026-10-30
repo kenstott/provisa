@@ -624,6 +624,11 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_columns_meta": ("table_id",),
     # REQ-2145: a column's tags are seen where the column is.
     "effective_column_tags": ("table_id",),
+    # REQ-2190: a table's catalog entry, its columns' and its keys'; a foreign key is read where
+    # the table it references is too.
+    "table_details": ("id",),
+    "column_details": ("table_id",),
+    "table_keys": ("table_id", "referenced_table_id"),
 }
 
 
@@ -648,7 +653,14 @@ GLOSSARY_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
 # languages reach them only where a language means to, as SPARQL lowers its RDFS/OWL/SKOS
 # patterns to ontology._axioms). Each is (domain id, table name).
 SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset(
-    {(ONTOLOGY_DOMAIN_ID, "_axioms"), (ONTOLOGY_DOMAIN_ID, "_closure")}
+    {
+        (ONTOLOGY_DOMAIN_ID, "_axioms"),
+        (ONTOLOGY_DOMAIN_ID, "_closure"),
+        # REQ-2190: what a SQL catalog reads of the model.
+        (META_DOMAIN_ID, "table_details"),
+        (META_DOMAIN_ID, "column_details"),
+        (META_DOMAIN_ID, "table_keys"),
+    }
 )
 
 
