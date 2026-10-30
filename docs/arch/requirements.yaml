@@ -90605,7 +90605,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
     (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
     base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
-    binary wire forms. It is native on PostgreSQL and emulated elsewhere.'
+    binary wire forms. It is native on PostgreSQL and emulated elsewhere. (Amended 2026-10-29, A SHAPE FUNCTION
+    WITH NO GEOMETRY FUNCTION IS INLINE ARITHMETIC:) Maintainer 2026-10-30, correcting SHAPE FUNCTIONS MAP
+    TO THE GEOMETRY FUNCTIONS: geometry stays the IR under the shapes, and a shape function still maps to
+    a geometry function where one answers as PostgreSQL does. A shape function with no such mapping is no
+    longer limited to PostgreSQL: it compiles to an inline expression that extracts the coordinates from
+    the shape''s text and does the arithmetic, in that dialect''s SQL. It is refused by name only where
+    the dialect cannot express it. These are per-dialect rewrites in the compiler, so they add no set of
+    functions.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
