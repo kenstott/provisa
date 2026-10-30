@@ -90291,7 +90291,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     recorded for each group names the missing type. (Amended 2026-10-29, EACH MISSING TYPE IS DECIDED ONE
     BY ONE:) Maintainer 2026-10-30, replacing the skip in WHAT IS SERVED AND WHAT WAITS ON A TYPE: geometric,
     text search, range and multirange, XML and money are not settled. The maintainer reviews each type and
-    decides; until then they stay open, not skipped by design. Everything else in that amendment stands.'
+    decides; until then they stay open, not skipped by design. Everything else in that amendment stands.
+    (Amended 2026-10-29, LOCKS, FLOATS AND SERVER ANSWERS:) Maintainer 2026-10-30: advisory locks are real
+    locks held per process for now, and the docs say two Provisa processes do not exclude each other. float8
+    text form matches PostgreSQL: 2, not 2.0, and NaN, not nan. Server functions with nothing to act on
+    answer as PostgreSQL does on a server so configured: pg_create_restore_point and pg_backup_start as
+    wal_level minimal, slot and origin creation as max_replication_slots 0, lo_create as a read-only transaction,
+    pg_read_file as a role without pg_read_server_files.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
