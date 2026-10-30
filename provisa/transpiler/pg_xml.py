@@ -311,7 +311,18 @@ def _call(name: str, args: list[exp.Expr], sql: Callable[[exp.Expr], str]) -> st
         return f"PROVISA_XMLCONCAT({_text_list([_as_xml(a, sql) for a in args])})"
     if name == "xmlagg" and len(args) == 1:
         return _agg(args, sql)
+    if name == "pg_typeof" and len(args) == 1:
+        return _typeof(args[0])
     return None
+
+
+def _typeof(value: exp.Expr) -> str | None:
+    """pg_typeof of an xml value: the engine holds it as text, and would say so."""
+    if is_xml(value):
+        return "CAST('xml' AS REGTYPE)"
+    called = value.expression if isinstance(value, exp.Dot) else value
+    is_array = isinstance(called, exp.Anonymous) and called.name.lower() == "xpath"
+    return "CAST('xml[]' AS REGTYPE)" if is_array else None
 
 
 def _refused_aggregate(node: exp.Expr) -> None:

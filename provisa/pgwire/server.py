@@ -724,7 +724,10 @@ def _register_reg_types() -> None:
     BVTYPE_TO_PGTYPE[BVType.REGNAMESPACE] = (4089, _named_text, _named_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _reg_binary)
     BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY] = _array_entry(BVType.REGTYPE, 2211)
-    BVTYPE_TO_PGTYPE[XML_ARRAY] = _array_entry(BVType.XML, 143)
+    oid, text, binary = _array_entry(BVType.XML, 143)
+    # array_send of an empty array: no dimensions, no null flag, the element's OID.
+    empty = struct.pack("!iii", 0, 0, 142)
+    BVTYPE_TO_PGTYPE[XML_ARRAY] = (oid, text, lambda values: binary(values) if values else empty)
 
 
 _register_reg_types()

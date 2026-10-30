@@ -756,9 +756,9 @@ def _check_masked_in_xmltable(  # REQ-040, REQ-2167
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
-    """Reject a masked column anywhere in XMLTABLE: its document, a path or a default. Masks are
-    written on the statement's projections, and XMLTABLE is in FROM, so its rows would come from
-    the plaintext."""
+    """Reject a masked or hidden column anywhere in XMLTABLE: its document, a path or a default.
+    Masks are written on the statement's projections and visibility checked on its select lists,
+    and XMLTABLE is in FROM, so its rows would come from the plaintext."""
     violations = []
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
@@ -766,14 +766,21 @@ def _check_masked_in_xmltable(  # REQ-040, REQ-2167
             for col in table.find_all(exp.Column):
                 tids = [am[col.table]] if col.table in am else []
                 tids = tids if col.table else list(am.values())
+                written = col.sql(dialect="postgres")
                 if any(_filters_plaintext(gov_ctx, tid, col.name) for tid in tids):
                     violations.append(
                         ValidationViolation(
-                            "V005",
-                            f"Column {col.sql(dialect='postgres')} is masked and may not be read "
-                            "by XMLTABLE",
+                            "V005", f"Column {written} is masked and may not be read by XMLTABLE"
                         )
                     )
+                for tid in tids:
+                    vis = gov_ctx.visible_columns.get(tid)
+                    if vis is not None and registered_name(gov_ctx, tid, col.name) not in vis:
+                        violations.append(
+                            ValidationViolation(
+                                "V003", f"Column {written} is not visible to this role"
+                            )
+                        )
     return violations
 
 

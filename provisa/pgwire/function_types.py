@@ -135,6 +135,7 @@ def _fits(argument: str | None, parameter: str) -> bool:
         argument is None
         or argument == parameter
         or (argument == "text" and parameter == "character varying")
+        or (parameter == "anyarray" and argument.endswith("[]"))
     )
 
 

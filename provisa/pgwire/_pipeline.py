@@ -1808,6 +1808,8 @@ async def govern_statement(
                     lambda: sqlglot.parse_one(_validated_sql, read="postgres")
                 )
                 for tbl in parsed_tree.find_all(exp.Table):
+                    if isinstance(tbl.this, exp.XMLTable):
+                        continue  # REQ-2167: no relation; what it reads is the statement's own
                     tbl_name = tbl.name
                     tbl_db = tbl.db
                     full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name

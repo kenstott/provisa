@@ -23,6 +23,7 @@ must be constants, the one thing here PostgreSQL does not ask of them (see ``_co
 from __future__ import annotations
 
 import base64
+import dataclasses
 import datetime
 import decimal
 import functools
@@ -448,6 +449,15 @@ _WRITES = {
 }
 
 
+#: The statements that are no read, by the word they open with.
+_COMMANDS = frozenset(
+    {
+        "ALTER", "ANALYZE", "CALL", "COPY", "CREATE", "DELETE", "DO", "DROP", "GRANT", "INSERT",
+        "LOCK", "MERGE", "REFRESH", "REINDEX", "REVOKE", "SET", "TRUNCATE", "UPDATE", "VACUUM",
+    }
+)  # fmt: skip
+
+
 def _read_only(query: str) -> None:
     """Refuse what is not one read: PostgreSQL's SPI_execute(query, read_only = true)."""
     if not query.strip():
@@ -467,25 +477,44 @@ def _read_only(query: str) -> None:
         if isinstance(node, exp.Into):
             raise _refused("0A000", "SELECT INTO is not allowed in a non-volatile function")
     if not isinstance(tree, (exp.Query, exp.Values)):
-        verb = " ".join(words[:2] if words[0].upper() in ("CREATE", "DROP", "ALTER") else words[:1])
+        first = words[0].upper()
+        if first not in _COMMANDS:  # sqlglot reads a bare expression; PostgreSQL's grammar does not
+            raise _refused("42601", f'syntax error at or near "{words[0]}"')
+        verb = " ".join(words[:2]) if first in ("CREATE", "DROP", "ALTER") else first
         raise _refused("0A000", f"{verb.upper()} is not allowed in a non-volatile function")
+
+
+def _named_as_postgresql(query: str, columns: list[Column]) -> list[Column]:
+    """The columns with PostgreSQL's name for an unnamed constant, which is ?column?: the
+    engine's is the constant's text, and here the name is in the document."""
+    tree = sqlglot.parse_one(query, read="postgres")
+    selects = tree.selects if isinstance(tree, exp.Select) else []
+    if len(selects) != len(columns):
+        return columns
+    return [
+        dataclasses.replace(column, name="?column?") if isinstance(select, exp.Literal) else column
+        for select, column in zip(selects, columns)
+    ]
 
 
 def _query_to_xml(reads: Reads, query: str, nulls: bool, forest: bool, namespace: str) -> str:
     _read_only(query)
     columns, rows = reads.rows(query)
-    return _read(columns, rows, None, None, nulls, forest, namespace, True)
+    named = _named_as_postgresql(query, columns)
+    return _read(named, rows, None, None, nulls, forest, namespace, True)
 
 
 def _query_to_xmlschema(reads: Reads, query: str, nulls: bool, forest: bool, namespace: str) -> str:
     _read_only(query)
-    return _table_schema(reads.shape(query), None, nulls, forest, namespace, reads.database)
+    columns = _named_as_postgresql(query, reads.shape(query))
+    return _table_schema(columns, None, nulls, forest, namespace, reads.database)
 
 
 def _query_to_both(reads: Reads, query: str, nulls: bool, forest: bool, namespace: str) -> str:
     schema = _query_to_xmlschema(reads, query, nulls, forest, namespace)
     columns, rows = reads.rows(query)
-    return _read(columns, rows, None, schema, nulls, forest, namespace, True)
+    named = _named_as_postgresql(query, columns)
+    return _read(named, rows, None, schema, nulls, forest, namespace, True)
 
 
 def _table_read(  # noqa: PLR0913 -- table_to_xml_internal's arguments
