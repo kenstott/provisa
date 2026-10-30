@@ -17,7 +17,7 @@ from provisa.core.catalog import TrinoCatalogNotCreated, _build_catalog_properti
 from provisa.core.models import Source, SourceType
 
 
-def _clickhouse(port: int | None = 8123) -> Source:
+def _clickhouse(port: int = 8123) -> Source:
     return Source(
         id="bench-clickhouse",
         type=SourceType.clickhouse,
@@ -34,7 +34,7 @@ def test_clickhouse_jdbc_url_uses_the_http_port():
 
 
 def test_clickhouse_jdbc_url_defaults_to_8123():
-    assert _clickhouse(port=None).jdbc_url() == "jdbc:clickhouse://clickhouse:8123/analytics"
+    assert _clickhouse(port=0).jdbc_url() == "jdbc:clickhouse://clickhouse:8123/analytics"
 
 
 def test_clickhouse_catalog_properties():
