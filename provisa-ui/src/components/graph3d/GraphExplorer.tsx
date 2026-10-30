@@ -64,6 +64,7 @@ import { OpenAsQuery } from "./OpenAsQuery";
 import { nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
+import { BreakableName } from "../list/BreakableName";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -84,6 +85,7 @@ export function GraphExplorer({
   settingsKey,
   exportName,
   query,
+  within = null,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -115,6 +117,10 @@ export function GraphExplorer({
      * narrows the graph to it. */
     overview?: boolean;
   };
+  /** REQ-1723: the navbar's checked domains (useViewDomains), null for no narrowing. The graph
+   * holds only what is in them; its own domain filter chooses among them, narrowing further and
+   * never past them. */
+  within?: ReadonlySet<string> | null;
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -125,7 +131,11 @@ export function GraphExplorer({
   };
   const every = query?.all ?? data;
   const offered = useMemo(() => availableLayers(every, scope), [every, scope]);
-  const choices = useMemo(() => filterChoices(every), [every]);
+  // The domain filter offers the navbar's domains alone (REQ-1723).
+  const choices = useMemo(() => {
+    const c = filterChoices(every);
+    return within ? { ...c, domains: c.domains.filter((d) => within.has(d)) } : c;
+  }, [every, within]);
   const edgeTypes = useMemo(
     () =>
       [
@@ -267,13 +277,15 @@ export function GraphExplorer({
   const narrowed = useMemo(() => {
     const all = (chosen: string[], among: string[]) =>
       among.length > 0 && among.every((v) => chosen.includes(v)) ? [] : chosen;
+    // Inside the navbar's domains: the filter's choice among them, or all of them.
+    const chosen = all(filters.domains, choices.domains);
     return {
-      domains: all(filters.domains, choices.domains),
+      domains: within && chosen.length === 0 ? [...within].sort() : chosen,
       edgeTypes: all(filters.edgeTypes, edgeTypes),
       tags: all(filters.tags, choices.tags),
       sensitivities: all(filters.sensitivities, choices.sensitivities),
     };
-  }, [filters, choices, edgeTypes]);
+  }, [filters, choices, edgeTypes, within]);
   // The scope the query reads, reported whenever it changes (a key, so an equal one is not news).
   const onScope = query?.onScope;
   const scopeKey = JSON.stringify([
@@ -730,13 +742,14 @@ function GraphDetail({
                 <Link
                   key={e.id}
                   to={nodeHref(otherNode)}
-                  className="p3d-row p3d-row-link"
+                  className="p3d-row p3d-row-compact"
                   onMouseEnter={() => setHover({ kind: "edge", id: e.id })}
                   onMouseLeave={() => setHover(null)}
                   data-testid={`${testId}-link-${e.id}`}
                 >
-                  <span className="p3d-row-name">
-                    {e.a === node.id ? "→" : "←"} {name(other)}
+                  <span className="p3d-row-name is-wrap">
+                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>
                   {(e.paths ?? 1) > 1 && (
@@ -773,9 +786,9 @@ function GraphDetail({
         <div className="p3d-list">
           {counts.map(({ key, type, count }) => (
             <div key={key} className="p3d-row p3d-row-compact">
-              <span className="p3d-row-name">
+              <span className="p3d-row-name is-wrap">
                 <i className={`p3d-dot g3d-sw-${type}`} />
-                {t(key)}
+                <BreakableName name={t(key)} />
               </span>
               <span className="p3d-num">{count}</span>
             </div>

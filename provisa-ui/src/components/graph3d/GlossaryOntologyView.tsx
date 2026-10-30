@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useViewDomains } from "../../lib/viewDomains";
 import { dataGraphql } from "../../api/metaGraph";
 import { GraphExplorer } from "./GraphExplorer";
 import { GLOSSARY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
@@ -106,6 +107,8 @@ export function OntologyToggle({
 export function GlossaryOntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
+  // REQ-1723: the navbar's checked domains bound the graph, as they do the term list.
+  const within = useViewDomains();
   const said = useCallback(
     (domain: string, count: number) =>
       t("graph3d.domainCount", {
@@ -223,6 +226,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
         testId="ontology"
       />
       <GraphModal
@@ -237,6 +241,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         search={search}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
       />
     </div>
   );

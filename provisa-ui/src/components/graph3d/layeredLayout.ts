@@ -10,9 +10,10 @@
 
 // REQ-2174: the layered layout. Each edge kind RANKS (one end above the other), FLOWS (one end
 // before the other) or is LATERAL (neither). A layered layout puts each node one level below the
-// deepest node ranking or flowing into it, keeps every parent, orders each level by barycenter
-// sweeps, and ignores an edge that closes a cycle. Ranks run top-down, flows left-to-right.
-// Lateral edges place nothing: the scene draws them as arcs over the rest.
+// deepest node ranking or flowing into it, keeps every parent, orders each level to cut crossings
+// (orderLevels: median sweeps, transposes, the best order kept), and ignores an edge that closes a
+// cycle. Ranks run top-down, flows left-to-right. Lateral edges place nothing and count no
+// crossing: the scene draws them as arcs over the rest.
 
 import type { EdgeKind, GraphData, GraphEdge } from "./graphModel";
 
@@ -112,44 +113,320 @@ export interface Levels {
   edges: [string, string][];
 }
 
+// Crossing minimisation: alternating down / up sweeps ordering each level by the median (or the
+// mean) place of its neighbours on the side just settled, then an adjacent-swap (transpose) pass
+// and a sifting pass (each node moved to the place in its level where its edges cross least), the
+// best order seen kept. It starts from the order given and from two that put the nodes sharing a
+// neighbour together (one from above, one from below), with each key, and keeps the best of the
+// six. A search stops at no crossing, after SWEEPS sweeps, or when STALE sweeps in a row found
+// nothing better; the best order is then polished by transposes and sifting until they gain
+// nothing. An edge spanning more than one level passes each level between through a stand-in, so
+// its crossings count like any other's.
 const SWEEPS = 24;
+const STALE = 6;
+/** Adjacent-swap passes over one level at most, per transpose. */
+const TRANSPOSE_PASSES = 8;
+/** Polishing rounds at most, after the sweeps. */
+const POLISH = 8;
+/** Sifting tries every place in a level: a level longer than this is left to the sweeps and
+ * transposes (its cost grows with the square of the level). */
+const SIFT_MAX = 400;
 
-/** Crossings between the edges of adjacent levels. */
-export function crossings(levels: string[][], edges: [string, string][]): number {
+/** A long edge's stand-in on a level it passes. Real ids never start with NUL. */
+const standIn = (edge: number, level: number) => `\u0000${edge}:${level}`;
+const isStandIn = (id: string) => id.startsWith("\u0000");
+
+/** Levels and one-level edges: each long edge cut at the levels it passes. */
+interface Proper {
+  levels: string[][];
+  /** Each node's neighbours one level up and one level down. */
+  up: Map<string, string[]>;
+  down: Map<string, string[]>;
+}
+
+function properLevels(levels: string[][], edges: [string, string][]): Proper {
   const level = new Map<string, number>();
-  const pos = new Map<string, number>();
-  levels.forEach((l, i) =>
-    l.forEach((id, j) => {
-      level.set(id, i);
-      pos.set(id, j);
-    }),
-  );
-  const between = new Map<number, [number, number][]>();
-  for (const [f, t] of edges) {
-    const lf = level.get(f) as number;
-    if (level.get(t) !== lf + 1) continue;
-    between.set(lf, [...(between.get(lf) ?? []), [pos.get(f) as number, pos.get(t) as number]]);
-  }
+  levels.forEach((row, i) => row.forEach((id) => level.set(id, i)));
+  const out = levels.map((row) => [...row]);
+  const up = new Map<string, string[]>();
+  const down = new Map<string, string[]>();
+  const link = (f: string, t: string) => {
+    down.set(f, [...(down.get(f) ?? []), t]);
+    up.set(t, [...(up.get(t) ?? []), f]);
+  };
+  edges.forEach(([f, t], k) => {
+    const lf = level.get(f);
+    const lt = level.get(t);
+    if (lf === undefined || lt === undefined) throw new Error(`edge ${f}>${t} names a node on no level`);
+    if (lt <= lf) throw new Error(`edge ${f}>${t} does not run to a lower level`);
+    let prev = f;
+    for (let l = lf + 1; l < lt; l++) {
+      const s = standIn(k, l);
+      out[l].push(s);
+      link(prev, s);
+      prev = s;
+    }
+    link(prev, t);
+  });
+  return { levels: out, up, down };
+}
+
+/** Pairs of one-level edges that cross, between every two adjacent levels. */
+function countProper(p: Proper): number {
   let n = 0;
-  for (const list of between.values())
-    for (let i = 0; i < list.length; i++)
-      for (let j = i + 1; j < list.length; j++)
-        if ((list[i][0] - list[j][0]) * (list[i][1] - list[j][1]) < 0) n++;
+  for (let l = 0; l + 1 < p.levels.length; l++) {
+    const below = new Map(p.levels[l + 1].map((id, i) => [id, i]));
+    // Each edge as (upper place, lower place), sorted; crossings are the inversions of the lower
+    // places, counted with a Fenwick tree.
+    const pairs: [number, number][] = [];
+    p.levels[l].forEach((id, i) => {
+      for (const t of p.down.get(id) ?? []) pairs.push([i, below.get(t) as number]);
+    });
+    pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const size = p.levels[l + 1].length;
+    const tree = new Array<number>(size + 1).fill(0);
+    let seen = 0;
+    for (const [, lo] of pairs) {
+      let greater = seen;
+      for (let i = lo + 1; i > 0; i -= i & -i) greater -= tree[i];
+      n += greater;
+      for (let i = lo + 1; i <= size; i += i & -i) tree[i] += 1;
+      seen += 1;
+    }
+  }
   return n;
 }
 
-/** The levels of ``g`` and the order within each, by barycenter sweeps. */
+/** Crossings between the edges of adjacent levels, an edge spanning levels counted at each one it
+ * passes. */
+export function crossings(levels: string[][], edges: [string, string][]): number {
+  return countProper(properLevels(levels, edges));
+}
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 === 1 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/** The order ``p`` starts in, each level after the first in the order its upper neighbours reach
+ * it: nodes sharing a neighbour side by side. Nodes nothing above reaches keep their order, last. */
+function grouped(p: Proper, fixed: ReadonlySet<number>): string[][] {
+  const out = [p.levels[0]];
+  for (let l = 1; l < p.levels.length; l++) {
+    if (fixed.has(l)) {
+      out.push(p.levels[l]);
+      continue;
+    }
+    const here = new Set(p.levels[l]);
+    const seen = new Set<string>();
+    const row: string[] = [];
+    for (const id of out[l - 1])
+      for (const t of p.down.get(id) ?? [])
+        if (here.has(t) && !seen.has(t)) {
+          seen.add(t);
+          row.push(t);
+        }
+    for (const id of p.levels[l]) if (!seen.has(id)) row.push(id);
+    out.push(row);
+  }
+  return out;
+}
+
+/** The order ``p`` starts in, each free level after the first sorted by the mean key of its
+ * upper neighbours (a node's key: its place, on the first level or a fixed one, else that mean),
+ * then each free level above the last regrouped in the order its lower neighbours sit: nodes
+ * sharing a lower neighbour (a table's columns) side by side. Nodes with no lower neighbour keep
+ * their order, last. */
+function groupedBelow(p: Proper, fixed: ReadonlySet<number>): string[][] {
+  const out = p.levels.map((row) => [...row]);
+  const key = new Map<string, number>();
+  const own = (l: number) => out[l].forEach((id, i) => key.set(id, (i + 0.5) / out[l].length));
+  own(0);
+  for (let l = 1; l < out.length; l++) {
+    if (fixed.has(l)) {
+      own(l);
+      continue;
+    }
+    const was = new Map(out[l].map((id, i) => [id, i]));
+    out[l].forEach((id, i) => {
+      const ns = p.up.get(id) ?? [];
+      key.set(
+        id,
+        ns.length === 0
+          ? (i + 0.5) / out[l].length
+          : ns.reduce((sum, n) => sum + (key.get(n) as number), 0) / ns.length,
+      );
+    });
+    out[l].sort(
+      (x, y) =>
+        (key.get(x) as number) - (key.get(y) as number) ||
+        (was.get(x) as number) - (was.get(y) as number),
+    );
+  }
+  for (let l = out.length - 2; l >= 0; l--) {
+    if (fixed.has(l)) continue;
+    // Each lower node's upper neighbours on this level, in this level's order.
+    const ups = new Map<string, string[]>();
+    for (const id of out[l])
+      for (const t of p.down.get(id) ?? []) ups.set(t, [...(ups.get(t) ?? []), id]);
+    const seen = new Set<string>();
+    const row: string[] = [];
+    for (const t of out[l + 1])
+      for (const id of ups.get(t) ?? [])
+        if (!seen.has(id)) {
+          seen.add(id);
+          row.push(id);
+        }
+    for (const id of out[l]) if (!seen.has(id)) row.push(id);
+    out[l] = row;
+  }
+  return out;
+}
+
+/** Sweeps, transposes and sifting from ``start``, levels keyed by ``key``: the best order seen
+ * and its crossings. */
+function search(
+  p: Proper,
+  start: string[][],
+  fixed: ReadonlySet<number>,
+  key: "median" | "mean",
+): { order: string[][]; crossings: number } {
+  let order = start.map((row) => [...row]);
+  const place = new Map<string, number>();
+  const setPlaces = (l: number) => order[l].forEach((id, i) => place.set(id, i));
+  order.forEach((_, l) => setPlaces(l));
+  const frac = (id: string, l: number) => ((place.get(id) as number) + 0.5) / order[l].length;
+  const count = () => countProper({ ...p, levels: order });
+  const last = order.length - 1;
+  const free = (l: number) => !fixed.has(l);
+
+  // A level sorted by its nodes' key (then the other one) among their neighbours on ``side``,
+  // ``nb`` levels away; a node with none there keeps its own place. Ties keep the current order.
+  const sweep = (l: number, side: Map<string, string[]>, nb: number) => {
+    const keyed = order[l].map((id, i) => {
+      const ns = side.get(id) ?? [];
+      if (ns.length === 0) {
+        const own = frac(id, l);
+        return { id, a: own, b: own, i };
+      }
+      const ps = ns.map((n) => frac(n, nb));
+      const med = median(ps);
+      const mean = ps.reduce((sum, v) => sum + v, 0) / ps.length;
+      return key === "median" ? { id, a: med, b: mean, i } : { id, a: mean, b: med, i };
+    });
+    keyed.sort((x, y) => x.a - y.a || x.b - y.b || x.i - y.i);
+    order[l] = keyed.map((k) => k.id);
+    setPlaces(l);
+  };
+
+  // Crossings between v's and w's edges (both sides) with v placed before w.
+  const pairCross = (v: string, w: string) => {
+    let n = 0;
+    for (const side of [p.up, p.down]) {
+      const vs = side.get(v) ?? [];
+      const ws = side.get(w) ?? [];
+      for (const a of vs)
+        for (const b of ws) if ((place.get(a) as number) > (place.get(b) as number)) n++;
+    }
+    return n;
+  };
+  const transpose = (l: number) => {
+    for (let pass = 0; pass < TRANSPOSE_PASSES; pass++) {
+      let swapped = false;
+      const row = order[l];
+      for (let i = 0; i + 1 < row.length; i++) {
+        const v = row[i];
+        const w = row[i + 1];
+        if (pairCross(w, v) < pairCross(v, w)) {
+          row[i] = w;
+          row[i + 1] = v;
+          place.set(w, i);
+          place.set(v, i + 1);
+          swapped = true;
+        }
+      }
+      if (!swapped) return;
+    }
+  };
+  // Each node in turn moved to the first place in its level where its edges cross least.
+  const sift = (l: number) => {
+    if (order[l].length > SIFT_MAX) return;
+    for (const v of [...order[l]]) {
+      const row = order[l].filter((id) => id !== v);
+      let cost = row.reduce((sum, u) => sum + pairCross(v, u), 0);
+      let bestAt = 0;
+      let bestCost = cost;
+      row.forEach((u, j) => {
+        cost += pairCross(u, v) - pairCross(v, u);
+        if (cost < bestCost) {
+          bestCost = cost;
+          bestAt = j + 1;
+        }
+      });
+      row.splice(bestAt, 0, v);
+      order[l] = row;
+      setPlaces(l);
+    }
+  };
+  const refine = () => {
+    for (let l = 0; l <= last; l++)
+      if (free(l)) {
+        transpose(l);
+        sift(l);
+      }
+  };
+
+  let best = order.map((row) => [...row]);
+  let bestCross = count();
+  const keep = () => {
+    const c = count();
+    if (c >= bestCross) return false;
+    bestCross = c;
+    best = order.map((row) => [...row]);
+    return true;
+  };
+  let stale = 0;
+  for (let s = 0; s < SWEEPS && bestCross > 0 && stale < STALE; s++) {
+    for (let l = 1; l <= last; l++) if (free(l)) sweep(l, p.up, l - 1);
+    for (let l = last - 1; l >= 0; l--) if (free(l)) sweep(l, p.down, l + 1);
+    refine();
+    stale = keep() ? 0 : stale + 1;
+  }
+  order = best.map((row) => [...row]);
+  order.forEach((_, l) => setPlaces(l));
+  for (let r = 0; r < POLISH && bestCross > 0; r++) {
+    refine();
+    if (!keep()) break;
+  }
+  return { order: best, crossings: bestCross };
+}
+
+/** ``levels`` reordered to cut the crossings of ``edges`` (each [upper, lower], spanning one level
+ * or more); the levels in ``fixed`` keep their order. Same input, same order. */
+export function orderLevels(
+  levels: string[][],
+  edges: [string, string][],
+  fixed: ReadonlySet<number>,
+): string[][] {
+  const p = properLevels(levels, edges);
+  let won: { order: string[][]; crossings: number } | null = null;
+  for (const start of [p.levels, grouped(p, fixed), groupedBelow(p, fixed)])
+    for (const key of ["median", "mean"] as const) {
+      const found = search(p, start, fixed, key);
+      if (won === null || found.crossings < won.crossings) won = found;
+    }
+  return (won as { order: string[][] }).order.map((row) => row.filter((id) => !isStandIn(id)));
+}
+
+/** The levels of ``g`` and the order within each, crossings cut (orderLevels). */
 export function layerLevels(g: GraphData): Levels {
   const directed = directedEdges(g);
   const ids = g.nodes.map((n) => n.id).sort();
   const back = backEdges(ids, directed);
   const kept = directed.filter((e) => !back.has(e.id));
   const parents = new Map<string, string[]>();
-  const children = new Map<string, string[]>();
-  for (const e of kept) {
-    parents.set(e.to, [...(parents.get(e.to) ?? []), e.from]);
-    children.set(e.from, [...(children.get(e.from) ?? []), e.to]);
-  }
+  for (const e of kept) parents.set(e.to, [...(parents.get(e.to) ?? []), e.from]);
   // One level below the deepest parent.
   const depth = new Map<string, number>();
   const depthOf = (id: string): number => {
@@ -165,31 +442,11 @@ export function layerLevels(g: GraphData): Levels {
   for (const id of ids) levels[depth.get(id) as number].push(id);
 
   const edges = kept.map((e) => [e.from, e.to] as [string, string]);
-  let best = levels.map((l) => [...l]);
-  let bestCross = crossings(best, edges);
-  const order = levels.map((l) => [...l]);
-  // A node's key is the mean place, as a fraction of its level, of its neighbours on one side.
-  const sweep = (l: number, side: Map<string, string[]>) => {
-    const place = new Map<string, number>();
-    for (const row of order) row.forEach((id, i) => place.set(id, (i + 0.5) / row.length));
-    const keyed = order[l].map((id, i) => {
-      const nb = side.get(id) ?? [];
-      const key = nb.length === 0 ? place.get(id) as number : nb.reduce((s, n) => s + (place.get(n) as number), 0) / nb.length;
-      return { id, key, i };
-    });
-    keyed.sort((x, y) => x.key - y.key || x.i - y.i);
-    order[l] = keyed.map((k) => k.id);
+  return {
+    levels: orderLevels(levels, edges, new Set()),
+    across: kept.length > 0 && kept.every((e) => e.cls === "flow"),
+    edges,
   };
-  for (let s = 0; s < SWEEPS && bestCross > 0; s++) {
-    if (s % 2 === 0) for (let l = 1; l <= deepest; l++) sweep(l, parents);
-    else for (let l = deepest - 1; l >= 0; l--) sweep(l, children);
-    const c = crossings(order, edges);
-    if (c < bestCross) {
-      bestCross = c;
-      best = order.map((r) => [...r]);
-    }
-  }
-  return { levels: best, across: kept.length > 0 && kept.every((e) => e.cls === "flow"), edges };
 }
 
 /** Non-decreasing fit of ``want`` with at least ``gap`` between neighbours (pool adjacent violators

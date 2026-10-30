@@ -88,6 +88,7 @@ import {
 } from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
+import { useViewDomains } from "../../lib/viewDomains";
 import type {
   GlossaryTermDetail,
   GlossaryTermSummary,
@@ -155,14 +156,11 @@ export function GlossaryTab() {
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
   const { activeOrgId } = useAuth();
-  const { domains: filterDomains, checkedDomains, domainsEnabled } = useDomainFilter();
+  const { domains: filterDomains, domainsEnabled } = useDomainFilter();
   // REQ-1591: the navbar selection is a VIEW preference, so it narrows the list and nothing else —
-  // the server intersects it with role authority and can never widen. Held as the context's own Set
-  // rather than a fresh array so its identity is stable enough to be a refresh dependency.
-  const viewDomains =
-    domainsEnabled && checkedDomains.size > 0 && checkedDomains.size < filterDomains.length
-      ? checkedDomains
-      : null;
+  // the server intersects it with role authority and can never widen (useViewDomains, the rule the
+  // Ontology View follows too).
+  const viewDomains = useViewDomains();
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [query, setQueryState] = useState(

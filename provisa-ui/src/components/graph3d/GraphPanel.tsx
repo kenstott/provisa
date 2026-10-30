@@ -56,6 +56,7 @@ export function GraphModal({
   settingsKey,
   exportName,
   query,
+  within = null,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -72,6 +73,8 @@ export function GraphModal({
   exportName: string;
   /** The view's query scope, as GraphExplorer takes it (the Ontology View's). */
   query?: ComponentProps<typeof GraphExplorer>["query"];
+  /** The navbar's checked domains, as GraphExplorer takes them (the Ontology View's). */
+  within?: ReadonlySet<string> | null;
 }) {
   return (
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
@@ -85,6 +88,7 @@ export function GraphModal({
           settingsKey={settingsKey}
           exportName={exportName}
           query={query}
+          within={within}
           testId="graph3d"
         />
       )}
