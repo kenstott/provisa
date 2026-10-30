@@ -926,6 +926,8 @@ class _Writer:
         """An aggregate of a group's texts, joined by commas."""
         if self.dialect == "clickhouse":  # groupConcat is of later servers
             return _call("arrayStringConcat", _call("groupArray", text), _string(","))
+        if self.dialect in ("trino", "athena"):  # its LISTAGG asks a WITHIN GROUP
+            return _call("array_join", _call("array_agg", text), _string(","))
         return exp.GroupConcat(this=text.copy(), separator=_string(","))
 
     def _matches(self, text: exp.Expr, pattern: str) -> exp.Expr:
@@ -1021,21 +1023,22 @@ class _Writer:
         return side, _substring(state, _int(1), comma)
 
     def _appended(self, state: exp.Expr, range_text: exp.Expr) -> exp.Expr:
-        """A multirange text with a range after its last."""
-        return _case(
-            [
-                (
-                    _eq(state, _string(_EMPTY_MULTIRANGE)),
-                    _concat(_string("{"), range_text, _string("}")),
-                )
-            ],
-            _concat(
-                _substring(state, _int(1), _minus(_length(state), _int(1))),
-                _string(","),
-                range_text,
-                _string("}"),
-            ),
+        """A multirange text with a range after its last. The range is named once: it is the
+        largest thing in a fold, and a compiler counts each naming."""
+        opening = _case(
+            [(_eq(state, _string(_EMPTY_MULTIRANGE)), _string("{"))],
+            _concat(_substring(state, _int(1), _minus(_length(state), _int(1))), _string(",")),
         )
+        return _concat(opening, range_text, _string("}"))
+
+    def _lower_written(self, held: exp.Expr) -> exp.Expr:
+        """A range's text up to its comma: its bracket and lower bound, as held."""
+        return _substring(held, _int(1), _minus(_strpos(held, ","), _int(1)))
+
+    def _upper_written(self, held: exp.Expr) -> exp.Expr:
+        """A range's text after its comma: its upper bound and bracket, as held."""
+        comma = _strpos(held, ",")
+        return _substring(held, _plus(comma, _int(1)), _minus(_length(held), comma))
 
     def _absorbed(self, state: exp.Expr, item: exp.Expr, rtype: RangeType) -> exp.Expr:
         """multirange_canonicalize's step: the next range in order, merged into the last it
@@ -1088,9 +1091,17 @@ class _Writer:
             first = self.parsed(x, rtype)
 
             def piece(held: exp.Expr, y: exp.Expr) -> exp.Expr:
+                # Each side of the overlap is one range's, chosen once from the text held.
                 second = self.parsed(y, rtype)
-                meet = self.intersect(first, second)
-                written = self.text(replace(meet, null=exp.false(), empty=exp.false()))
+                lower = _case(
+                    [(_gte0(_ll(first, second)), self._lower_written(x))],
+                    self._lower_written(y),
+                )
+                upper = _case(
+                    [(_lte0(_uu(first, second)), self._upper_written(x))],
+                    self._upper_written(y),
+                )
+                written = _concat(lower, _string(","), upper)
                 return _case([(_overlaps(first, second), self._appended(held, written))], held)
 
             return self.reduce(self._ranges_list(b), state, piece, rtype, operation)
@@ -1166,8 +1177,9 @@ class _Writer:
             return _or(*(test(self.literal(r)) for r in value.literal.ranges))
         name = f"_r{depth}"
         var = exp.column(name)
-        # A multirange of no range splits to one empty item, which NULLIF leaves out: no test of it
-        # holds, and no dialect's WHERE is promised to stop before a substring of it.
+        # A multirange of no range splits to one empty item. It is no range, so it passes no test
+        # (even a negated one); NULLIF keeps it from a substring, as no WHERE is promised to stop
+        # first.
         if self.dialect == "tsql":
             alias = f"_s{depth}"
             item = exp.column("value", table=alias)
@@ -1180,7 +1192,7 @@ class _Writer:
                         alias=exp.TableAlias(this=exp.to_identifier(alias)),
                     )
                 )
-                .where(test(self.parsed(item, value.rtype)))
+                .where(_and(_not(_is_null(item)), test(self.parsed(item, value.rtype))))
             )
             return exp.Exists(this=found)
         if self.dialect in ("mysql", "oracle"):
@@ -1194,7 +1206,11 @@ class _Writer:
                 a=json_list,
             )
             item = exp.Nullif(this=item, expression=_string(""))
-            found = exp.select(_int(1)).from_(table).where(test(self.parsed(item, value.rtype)))
+            found = (
+                exp.select(_int(1))
+                .from_(table)
+                .where(_and(_not(_is_null(item)), test(self.parsed(item, value.rtype))))
+            )
             return exp.Exists(this=found)
         if self.dialect not in _REGEX_LIST:
             raise SubtypeOperationRefused(value.rtype.multirange, operation, self.dialect)

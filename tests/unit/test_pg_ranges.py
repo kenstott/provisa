@@ -362,6 +362,71 @@ def test_a_trino_zoned_statement_stays_near_the_size_of_a_plain_one():
     assert size("tstzrange") < size("tsrange") * 1.5
 
 
+# What each engine itself refused, or answered differently, when the corpus ran on it: Trino 481,
+# ClickHouse 24.3, MariaDB 11, SQL Server 2022.
+
+
+def test_a_multirange_built_from_columns_stays_small_enough_for_trinos_compiler():
+    """Trino refused these (QUERY_EXCEEDED_COMPILER_LIMIT) when each bound's fields were chosen
+    apart and the piece was written twice: a side is chosen once, from the text held."""
+    for sql in ("SELECT a.m * a.m FROM s.t AS a", "SELECT a.m - a.m FROM s.t AS a"):
+        assert len(_written(sql, "trino")) < 8000
+
+
+def test_clickhouses_list_of_a_nullable_text_is_of_its_text():
+    # Nested type Array(String) cannot be inside Nullable type.
+    assert "extractAll(ifNull(a.m, '')" in _written(
+        "SELECT a.i FROM s.t AS a WHERE a.m && '[1,5)'", "clickhouse"
+    )
+
+
+@pytest.mark.parametrize(
+    ("dialect", "fragment"),
+    [
+        ("clickhouse", "arrayStringConcat(groupArray("),  # no groupConcat on 24.3
+        ("trino", "ARRAY_JOIN(ARRAY_AGG("),  # its LISTAGG asks a WITHIN GROUP
+    ],
+)
+def test_a_group_of_ranges_is_joined_in_the_dialects_own_form(dialect, fragment):
+    assert fragment in _written("SELECT range_agg(a.v) FROM s.t AS a", dialect)
+
+
+def test_clickhouse_reads_an_offset_with_its_own_reader():
+    columns = {("s", "t"): {"z": "tstzrange"}}
+    written = transpile(
+        mark_subtype_operations("SELECT a.i FROM s.t AS a WHERE a.z && a.z", columns), "clickhouse"
+    )
+    assert "parseDateTime64BestEffortOrNull(" in written
+
+
+@pytest.mark.parametrize(
+    ("dialect", "split"), [("tsql", "STRING_SPLIT("), ("mysql", "JSON_TABLE(")]
+)
+def test_the_empty_item_of_a_multirange_of_no_range_is_no_range(dialect, split):
+    """Splitting '{}' gives one empty item: on SQL Server a substring of it failed, and read as a
+    range it held everything. It is kept from both."""
+    written = _written("SELECT a.i FROM s.t AS a WHERE a.m && '[1,5)'", dialect)
+    assert split in written
+    assert "IS NULL" in written and "NULLIF(" in written
+
+
+def test_a_literal_cast_beside_a_range_is_never_cast_again_on_the_engine():
+    """'...+00'::timestamptz is no value of SQL Server's DATETIMEOFFSET or ClickHouse's DateTime."""
+    columns = {("s", "t"): {"z": "tstzrange"}}
+    marked = mark_subtype_operations(
+        "SELECT a.z @> '2020-01-10 00:00:00+00'::timestamptz AS r FROM s.t AS a", columns
+    )
+    assert "'2020-01-10 00:00:00+00' AS DATETIMEOFFSET" not in transpile(marked, "tsql")
+
+
+@pytest.mark.parametrize("dialect", ("mysql", "clickhouse"))
+def test_a_timestamp_bound_read_as_text_is_the_text_held(dialect):
+    columns = {("s", "t"): {"w": "tsrange"}}
+    marked = mark_subtype_operations("SELECT lower(a.w)::text AS r FROM s.t AS a", columns)
+    # Neither engine's cast writes PostgreSQL's form: no timestamp type at all.
+    assert "DATETIME" not in transpile(marked, dialect).upper()
+
+
 # --- literals, as PostgreSQL reads them ----------------------------------------------------------
 
 
