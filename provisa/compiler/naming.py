@@ -480,6 +480,11 @@ def active_gql_convention() -> str:  # REQ-471
     return _gql_convention
 
 
+def active_sql_form() -> str:  # REQ-2190
+    """The output form of the SQL convention in force, as :func:`_canonical_convention` names it."""
+    return _canonical_convention(_sql_convention)
+
+
 _GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
 
 

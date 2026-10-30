@@ -19,6 +19,12 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Any, cast
 
+from provisa.transpiler.metadata_views import (
+    CATALOG_ROW_SCOPES,
+    CATALOG_VIEW_NAMES,
+    NEUTRAL_VIEW_NAMES,
+)
+
 # Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
 
 # The catalog (meta) domain id and its GOVERNANCE column set (REQ-1132/REQ-1134). Defined here in the
@@ -630,6 +636,9 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "column_details": ("table_id",),
     "table_keys": ("table_id", "referenced_table_id"),
 }
+#: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
+#: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).
+META_CATALOG_ROW_SCOPES = CATALOG_ROW_SCOPES
 
 
 #: REQ-2153: the meta view of listed names; a reader sees those of domains it does not reach.
@@ -659,11 +668,7 @@ SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset(
 # serves them, and neither the admin catalog nor anything built on it (the tables page, the ERD)
 # lists them.
 SQL_CATALOG_TABLES: frozenset[tuple[str, str]] = frozenset(
-    {
-        (META_DOMAIN_ID, "table_details"),
-        (META_DOMAIN_ID, "column_details"),
-        (META_DOMAIN_ID, "table_keys"),
-    }
+    (META_DOMAIN_ID, name) for name in (*CATALOG_VIEW_NAMES, *NEUTRAL_VIEW_NAMES)
 )
 SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 

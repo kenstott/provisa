@@ -16,12 +16,12 @@ a dialect is its native name, else existing functions, else inline operators, el
 
 ``FORMS`` are functions on what a catalog holds. None of them is native anywhere: a statement about
 the model runs on the control plane, whose own pg_get_indexdef reads the control plane's catalog, a
-different one with oids of its own. A form is SQL in PostgreSQL's dialect over the meta domain and
-the statement's facts (provisa.transpiler.metadata_facts), and :func:`expand` writes it into a
-statement BEFORE governance, so the meta tables it reads are governed as any other read: a role
-gets what it may list, and a key's definition is NULL for one it may not. Each reads one registered
-table, so no form relates two of them (REQ-603). What the dialect then runs is the ordinary
-transpile of the statement.
+different one with oids of its own. A form is SQL in PostgreSQL's dialect over the meta domain's
+views, and :func:`expand` writes it into a statement BEFORE governance, so the views it reads are
+governed as any other read: a role gets what it may list, and a key's definition is NULL for one it
+may not. The privilege functions also read the statement's facts
+(provisa.transpiler.metadata_facts). What the dialect then runs is the ordinary transpile of the
+statement.
 
 :data:`READS_THE_SERVER` are the functions on a server's catalog with no form yet: refused by name,
 never sent to the control plane to answer about itself."""
@@ -38,8 +38,8 @@ import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import TYPES
-from provisa.transpiler.metadata_facts import COLUMNS, PRIVILEGES, TABLES, CatalogFacts, relation
-from provisa.transpiler.metadata_oids import FIRST_USER_OID, key_id_sql, table_id_sql
+from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
+from provisa.transpiler.metadata_oids import key_id_sql
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -270,32 +270,20 @@ class Form:
     facts: frozenset[str] = frozenset()
 
 
-#: A table's name, as a definition names it: with its schema unless that is on the search path.
-def _named(alias: str) -> str:
-    bare = f"QUOTE_IDENT({alias}.table_name)"
-    schema = f"QUOTE_IDENT({alias}.schema_name)"
-    return f"CASE WHEN {alias}.schema_name IN {_ON_THE_PATH} THEN {bare} ELSE {schema} || '.' || {bare} END"
+def _named(schema: str, table: str) -> str:
+    """A table's name as a definition names it: with its schema unless that is on the path."""
+    bare = f"QUOTE_IDENT({table})"
+    return f"CASE WHEN {schema} IN {_ON_THE_PATH} THEN {bare} ELSE QUOTE_IDENT({schema}) || '.' || {bare} END"
 
 
-def _key_columns(column: str, alias: str, fact: str, table: str) -> str:
-    """A key's columns, each as a statement names it."""
-    return (
-        f"STRING_AGG(QUOTE_IDENT(COALESCE((SELECT {fact}.sql_name FROM {COLUMNS} {fact} "
-        f"WHERE {fact}.table_id = {table} AND {fact}.column_name = {column}), {alias}, {column})), "
-        "', ' ORDER BY k.position)"
-    )
-
-
-_KEY_COLUMNS = _key_columns("k.column_name", "k.column_alias", "_cf", "k.table_id")
-_REFERENCED_COLUMNS = _key_columns(
-    "k.referenced_column", "k.referenced_column_alias", "_rf", "k.referenced_table_id"
+_KEY_COLUMNS = "STRING_AGG(QUOTE_IDENT(k.column_sql_name), ', ' ORDER BY k.position)"
+_REFERENCED_COLUMNS = (
+    "STRING_AGG(QUOTE_IDENT(k.referenced_column_sql_name), ', ' ORDER BY k.position)"
 )
 
 
 def _constraint_definition(key: str) -> str:
-    target = (
-        f"(SELECT {_named('_t')} FROM {TABLES} _t WHERE _t.table_id = MIN(k.referenced_table_id))"
-    )
+    target = _named("MIN(k.referenced_schema_name)", "MIN(k.referenced_table_name)")
     return (
         f"(SELECT CASE MIN(k.kind) WHEN 'p' THEN 'PRIMARY KEY (' || {_KEY_COLUMNS} || ')' "
         f"WHEN 'u' THEN 'UNIQUE (' || {_KEY_COLUMNS} || ')' "
@@ -307,12 +295,10 @@ def _constraint_definition(key: str) -> str:
 
 def _index_definition(key: str) -> str:
     """As pg_get_indexdef writes a key's index: PostgreSQL always names the table's schema."""
-    table = "(SELECT QUOTE_IDENT(_t.schema_name) || '.' || QUOTE_IDENT(_t.table_name) FROM "
-    table += f"{TABLES} _t WHERE _t.table_id = MIN(k.table_id))"
-    name = f"(SELECT _t.table_name FROM {TABLES} _t WHERE _t.table_id = MIN(k.table_id))"
     return (
         "(SELECT 'CREATE UNIQUE INDEX ' || QUOTE_IDENT(COALESCE(MIN(k.key_name), 'pk_' || "
-        f"{name})) || ' ON ' || {table} || ' USING btree (' || {_KEY_COLUMNS} || ')' "
+        "MIN(k.table_name))) || ' ON ' || QUOTE_IDENT(MIN(k.schema_name)) || '.' || "
+        f"QUOTE_IDENT(MIN(k.table_name)) || ' USING btree (' || {_KEY_COLUMNS} || ')' "
         f"FROM meta.table_keys k WHERE k.key_id = {key_id_sql(key)} AND k.kind IN ('p', 'u') "
         "GROUP BY k.key_id)"
     )
@@ -321,46 +307,66 @@ def _index_definition(key: str) -> str:
 def _index_column(key: str, position: str) -> str:
     """pg_get_indexdef(index, column, pretty) of a key column: that column's name."""
     return (
-        f"(SELECT QUOTE_IDENT(COALESCE((SELECT _cf.sql_name FROM {COLUMNS} _cf "
-        "WHERE _cf.table_id = k.table_id AND _cf.column_name = k.column_name), k.column_alias, "
-        f"k.column_name)) FROM meta.table_keys k WHERE k.key_id = {key_id_sql(key)} "
-        f"AND k.kind IN ('p', 'u') AND k.position = {position})"
+        "(SELECT QUOTE_IDENT(k.column_sql_name) FROM meta.table_keys k "
+        f"WHERE k.key_id = {key_id_sql(key)} AND k.kind IN ('p', 'u') AND k.position = {position})"
     )
 
 
-_RELATION_COMMENT = (
-    f"(SELECT _d.comment FROM meta.table_details _d WHERE _d.id = {table_id_sql('object_oid')})"
+_OBJECT_COMMENT = (
+    "(SELECT MIN(_d.description) FROM meta.pg_description _d "
+    "WHERE _d.objoid = object_oid AND _d.objsubid = 0)"
 )
-_SCHEMA_COMMENT = (
-    "(SELECT NULLIF(MIN(_d.description), '') FROM meta.domains _d WHERE _d.id IN "
-    f"(SELECT _t.domain_id FROM {TABLES} _t WHERE _t.schema_oid = object_oid))"
+#: PostgreSQL's oid of the catalog obj_description is asked about, by the name it is asked with.
+_COMMENT_IN_CATALOG = (
+    "(SELECT _d.description FROM meta.pg_description _d WHERE _d.objoid = object_oid "
+    "AND _d.objsubid = 0 AND _d.classoid = CASE catalog WHEN 'pg_class' THEN 1259 "
+    "WHEN 'pg_namespace' THEN 2615 END)"
+)
+_COLUMN_COMMENT = (
+    "(SELECT _d.description FROM meta.pg_description _d WHERE _d.objoid = relation_oid "
+    "AND _d.classoid = 1259 AND _d.objsubid = attnum)"
 )
 
-#: PostgreSQL's oid of the catalogs obj_description is asked about, by the name it is asked with.
-_COMMENTS_BY_CATALOG = f"""
-    CASE catalog WHEN 'pg_class' THEN {_RELATION_COMMENT}
-                 WHEN 'pg_namespace' THEN {_SCHEMA_COMMENT} END
-"""
-
-_LISTED = f"(SELECT TRUE FROM {TABLES} _t WHERE _t.table_oid = relation_oid)"
-
-_NAMED_TABLE = (
-    f"FROM {TABLES} _t WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN "
-    "(CAST(_t.table_oid AS TEXT), _t.schema_name || '.' || _t.table_name, "
-    "CASE WHEN _t.schema_name = 'public' THEN _t.table_name END)"
+_LISTED = "(SELECT TRUE FROM meta.pg_class _c WHERE _c.oid = relation_oid)"
+_PUBLISHABLE = (
+    "COALESCE((SELECT _c.relkind IN ('r', 'p') AND _c.relnamespace NOT IN (11, 12) "
+    "FROM meta.pg_class _c WHERE _c.oid = relation_oid), FALSE)"
 )
+
+#: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
+#: its schema; the path's first where both hold the name.
+_NAMED_RELATION = (
+    "FROM meta.pg_class _c JOIN meta.pg_namespace _n ON _n.oid = _c.relnamespace "
+    "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
+    "_n.nspname || '.' || _c.relname, "
+    f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
+)
+_PATH_FIRST = " ORDER BY _n.nspname = 'pg_catalog' DESC LIMIT 1"
 
 
 def _held(privileges: str) -> str:
-    """Whether the role holds any privilege of the list ``privileges``, on the table of ``_t``."""
+    """Whether the role holds any privilege of the list ``privileges`` on the relation of
+    ``_c``: on a system relation, SELECT, which PostgreSQL grants every role."""
     listed = f"',' || REPLACE(UPPER({privileges}), ' ', '') || ','"
     return (
-        f"EXISTS (SELECT 1 FROM {PRIVILEGES} _p WHERE _p.table_id = _t.table_id "
-        f"AND POSITION(',' || _p.privilege || ',' IN {listed}) > 0)"
+        f"CASE WHEN _c.relnamespace IN (11, 12) THEN POSITION(',SELECT,' IN {listed}) > 0 "
+        f"ELSE EXISTS (SELECT 1 FROM {PRIVILEGES} _p WHERE _p.relation_oid = _c.oid "
+        f"AND POSITION(',' || _p.privilege || ',' IN {listed}) > 0) END"
     )
 
 
-_TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_TABLE})"
+_TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_RELATION}{_PATH_FIRST})"
+#: A listed column the role is not served is false: its table is read, and it is not.
+_COLUMN_PRIVILEGE = (
+    f"(SELECT NOT EXISTS (SELECT 1 FROM {UNSERVED} _u WHERE _u.relation_oid = _c.oid "
+    f"AND _u.column_name = _a.attname) AND {_held('priv')} "
+    "FROM meta.pg_class _c JOIN meta.pg_namespace _n ON _n.oid = _c.relnamespace "
+    "JOIN meta.pg_attribute _a ON _a.attrelid = _c.oid "
+    "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
+    "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
+    "_n.nspname || '.' || _c.relname, "
+    f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
+)
 _OWN_TYPE_NAMES = " ".join(
     f"WHEN {subtype.pg_oid} THEN '{name}'"
     for name, subtype in sorted(SUBTYPES.items())
@@ -427,44 +433,26 @@ _FORMS: tuple[Form, ...] = (
     # A catalog keeps a default's expression as its text.
     _form("pg_get_expr", "expression, relation", "CAST(expression AS TEXT)"),
     _form("pg_get_expr", "expression, relation, pretty", "CAST(expression AS TEXT)"),
-    _form("pg_get_constraintdef", "conoid", _constraint_definition("conoid"), TABLES, COLUMNS),
-    _form(
-        "pg_get_constraintdef",
-        "conoid, pretty",
-        _constraint_definition("conoid"),
-        TABLES,
-        COLUMNS,
-    ),
-    _form("pg_get_indexdef", "indexoid", _index_definition("indexoid"), TABLES, COLUMNS),
+    _form("pg_get_constraintdef", "conoid", _constraint_definition("conoid")),
+    _form("pg_get_constraintdef", "conoid, pretty", _constraint_definition("conoid")),
+    _form("pg_get_indexdef", "indexoid", _index_definition("indexoid")),
     _form(
         "pg_get_indexdef",
         "indexoid, position, pretty",
         f"CASE WHEN position = 0 THEN {_index_definition('indexoid')} "
         f"ELSE {_index_column('indexoid', 'position')} END",
-        TABLES,
-        COLUMNS,
     ),
-    _form(
-        "obj_description", "object_oid", f"COALESCE({_RELATION_COMMENT}, {_SCHEMA_COMMENT})", TABLES
-    ),
-    _form("obj_description", "object_oid, catalog", _COMMENTS_BY_CATALOG, TABLES),
-    _form(
-        "col_description",
-        "relation_oid, attnum",
-        "(SELECT _c.comment FROM meta.column_details _c "
-        f"WHERE _c.table_id = {table_id_sql('relation_oid')} AND _c.ordinal_position = attnum)",
-    ),
+    _form("obj_description", "object_oid", _OBJECT_COMMENT),
+    _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG),
+    _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT),
     # Every table has one owner, the role a client is shown as owning it (pg_class.relowner).
     _form("pg_get_userbyid", "role_oid", "CASE WHEN role_oid IS NOT NULL THEN 'provisa' END"),
-    _form(
-        "pg_table_is_visible",
-        "relation_oid",
-        f"CASE WHEN relation_oid < {FIRST_USER_OID} THEN TRUE ELSE {_LISTED} END",
-        TABLES,
-    ),
-    _form("pg_relation_is_publishable", "relation_oid", f"COALESCE({_LISTED}, FALSE)", TABLES),
+    _form("pg_table_is_visible", "relation_oid", _LISTED),
+    _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE),
     _form("pg_is_other_temp_schema", "schema_oid", "FALSE"),
-    _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, TABLES, PRIVILEGES),
+    _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
+    _form("has_any_column_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
+    _form("has_column_privilege", "tbl, col, priv", _COLUMN_PRIVILEGE, PRIVILEGES, UNSERVED),
     *(
         _form(name, _unused_params(arity), f"CAST(NULL AS {sql_type})")
         for name, arities, sql_type in _NOTHING_KEPT
@@ -479,8 +467,6 @@ FORMS: dict[tuple[str, int], Form] = {(f.name, len(f.params)): f for f in _FORMS
 #: plane (it would answer about the control plane's own objects).
 READS_THE_SERVER = frozenset(
     {
-        "has_any_column_privilege",
-        "has_column_privilege",
         "has_database_privilege",
         "has_foreign_data_wrapper_privilege",
         "has_function_privilege",
@@ -512,6 +498,16 @@ READS_THE_SERVER = frozenset(
         "to_regrole",
         "to_regtype",
         "to_regtypemod",
+    }
+)
+
+
+#: The overloads naming a user first, each answered for the session role alone.
+_OF_A_USER = frozenset(
+    {
+        ("has_table_privilege", 3),
+        ("has_any_column_privilege", 3),
+        ("has_column_privilege", 4),
     }
 )
 
@@ -577,18 +573,17 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         if call is None:
             return node
         name, args = call.name.lower(), list(call.expressions)
-        if name == "has_table_privilege" and len(args) == 3:
+        if (name, len(args)) in _OF_A_USER:
             user, *args = args
-            written = _privilege_of_user(user, args, facts, rewrite, needed)
+            written = _of_session_role(
+                user, _expanded_form(name, args, rewrite, needed), facts, rewrite
+            )
         else:
-            form = FORMS.get((name, len(args)))
-            if form is None:
+            if (name, len(args)) not in FORMS:
                 if name in READS_THE_SERVER:
                     raise MetadataFunctionRefused(name)
                 return node
-            needed.update(form.facts)
-            # transform does not revisit what a replaced node holds: a call in an argument.
-            written = _written(form, [a.transform(rewrite) for a in args])
+            written = _expanded_form(name, args, rewrite, needed)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
             return exp.alias_(written, name)  # the column is named for the function
         return written
@@ -601,19 +596,21 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     return out
 
 
-def _privilege_of_user(
-    user: exp.Expr, args: list[exp.Expr], facts: CatalogFacts, rewrite, needed: set[str]
-) -> exp.Expr:
-    form = FORMS[("has_table_privilege", 2)]
+def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
+    form = FORMS[(name, len(args))]
     needed.update(form.facts)
-    role = exp.Literal.string(facts.role_id)
+    # transform does not revisit what a replaced node holds: a call in an argument.
+    return _written(form, [a.transform(rewrite) for a in args])
+
+
+def _of_session_role(user: exp.Expr, answer: exp.Expr, facts: CatalogFacts, rewrite) -> exp.Expr:
+    """``answer`` where ``user`` is the session role; NULL for another, whose grants a statement
+    does not hold."""
+    named = exp.cast(_argument(user.transform(rewrite)), "TEXT")
     return exp.Case(
         ifs=[
             exp.If(
-                this=exp.EQ(
-                    this=exp.cast(_argument(user.transform(rewrite)), "TEXT"), expression=role
-                ),
-                true=_written(form, [a.transform(rewrite) for a in args]),
+                this=exp.EQ(this=named, expression=exp.Literal.string(facts.role_id)), true=answer
             )
-        ],
+        ]
     )

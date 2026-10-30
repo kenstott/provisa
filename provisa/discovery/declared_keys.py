@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """The keys a source declares for a table (REQ-2170): its primary key, its unique (alternate)
-keys and its foreign keys, read from the source's own catalog over its pooled driver.
+keys and its foreign keys, read from the source's own catalog over its pooled driver, with the
+columns it declares NOT NULL (REQ-2190).
 
 Registration records them into the model (``table_columns.is_primary_key`` and
 ``is_alternate_key``) and discovery offers the foreign keys as relationship candidates, so every
@@ -51,6 +52,8 @@ class DeclaredKeys:
     primary_key: tuple[str, ...] = ()
     unique: tuple[UniqueKey, ...] = ()
     foreign: tuple[ForeignKey, ...] = ()
+    # REQ-2190: the columns it declares NOT NULL.
+    not_null: frozenset[str] = frozenset()
 
     @property
     def alternate_columns(self) -> frozenset[str]:
@@ -59,6 +62,17 @@ class DeclaredKeys:
 
 
 Reader = Callable[[Any, str, str, str], Awaitable[DeclaredKeys]]
+
+#: The columns a source declares NOT NULL, from the standard information_schema.
+_INFO_SCHEMA_NOT_NULL = """
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = {schema} AND table_name = {table} AND is_nullable = 'NO'
+"""
+
+
+async def _info_schema_not_null(pool: Any, source_id: str, args: dict[str, str]) -> frozenset[str]:
+    rows = (await pool.execute(source_id, _INFO_SCHEMA_NOT_NULL.format(**args), [])).rows
+    return frozenset(row[0] for row in rows)
 
 
 def _grouped(rows: list) -> tuple[UniqueKey, ...]:
@@ -116,6 +130,7 @@ def _info_schema_reader(dialect: str, paired: str) -> Reader:
             primary_key=tuple(col for _name, col in primary),
             unique=_grouped(unique),
             foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+            not_null=await _info_schema_not_null(pool, source_id, args),
         )
 
     return read
@@ -163,6 +178,7 @@ async def _pg_catalog(pool: Any, source_id: str, schema: str, table: str) -> Dec
         primary_key=tuple(col for _name, col in primary),
         unique=_grouped(unique),
         foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+        not_null=await _info_schema_not_null(pool, source_id, args),
     )
 
 
@@ -200,6 +216,7 @@ async def _mysql(pool: Any, source_id: str, schema: str, table: str) -> Declared
         primary_key=tuple(col for _name, col in primary),
         unique=_grouped(unique),
         foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+        not_null=await _info_schema_not_null(pool, source_id, args),
     )
 
 
@@ -231,7 +248,12 @@ async def _sqlite(pool: Any, source_id: str, _schema: str, table: str) -> Declar
             keyed = sorted((r[5], r[1]) for r in target_info.rows if r[5])
             target = keyed[row[1]][1]
         foreign.append(ForeignKey(row[3], row[2], target))
-    return DeclaredKeys(primary_key=tuple(primary), unique=tuple(unique), foreign=tuple(foreign))
+    return DeclaredKeys(
+        primary_key=tuple(primary),
+        unique=tuple(unique),
+        foreign=tuple(foreign),
+        not_null=frozenset(row[1] for row in info.rows if row[3]),
+    )
 
 
 # --- DuckDB: its constraints table function -------------------------------------------------------
@@ -247,13 +269,8 @@ ORDER BY constraint_index
 
 
 async def _duckdb(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
-    rows = await pool.execute(
-        source_id,
-        _DUCKDB_CONSTRAINTS.format(
-            schema=sql_literal(schema, "duckdb"), table=sql_literal(table, "duckdb")
-        ),
-        [],
-    )
+    args = {"schema": sql_literal(schema, "duckdb"), "table": sql_literal(table, "duckdb")}
+    rows = await pool.execute(source_id, _DUCKDB_CONSTRAINTS.format(**args), [])
     primary: tuple[str, ...] = ()
     unique: list[UniqueKey] = []
     foreign: list[ForeignKey] = []
@@ -267,7 +284,12 @@ async def _duckdb(pool: Any, source_id: str, schema: str, table: str) -> Declare
                 ForeignKey(column, referenced_table, target)
                 for column, target in zip(columns, referenced_columns, strict=True)
             )
-    return DeclaredKeys(primary_key=primary, unique=tuple(unique), foreign=tuple(foreign))
+    return DeclaredKeys(
+        primary_key=primary,
+        unique=tuple(unique),
+        foreign=tuple(foreign),
+        not_null=await _info_schema_not_null(pool, source_id, args),
+    )
 
 
 #: The source kinds whose catalog is read here, by the reader that reads it.

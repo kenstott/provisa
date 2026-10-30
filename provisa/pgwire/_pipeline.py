@@ -249,6 +249,9 @@ class _Plan:
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
     role_id: str | None = field(default=None)
     table_ids: tuple[int, ...] = field(default=())
+    # REQ-2190: what the admin terminal tells a statement's catalog views, set in the statement's
+    # own transaction (provisa.transpiler.metadata_settings). None for every other statement.
+    catalog_settings: dict[str, str] | None = field(default=None)
     # REQ-1942: a mutation in a Reversible environment, kept in its change log rather than run on
     # the source (provisa.pgwire.kept_mutations). None for every other plan.
     kept: Any = field(default=None)
@@ -733,6 +736,32 @@ def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
         )
         memo["probe_bounds"] = bounds
     return bounds
+
+
+def _catalog_settings(
+    gov_ctx: Any, ctx: Any, state: Any, source_id: str, table_ids: Any
+) -> dict[str, str] | None:
+    """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
+    request; None for any other, which pays no round trip."""
+    from provisa.pgwire.catalog_populate import served_database_name
+    from provisa.security.rights import SQL_CATALOG_TABLES
+    from provisa.transpiler.metadata_settings import statement_settings
+
+    if source_id != "provisa-admin":
+        return None
+    read = set(table_ids)
+    if not any(
+        tm.table_id in read
+        and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES
+        for tm in ctx.tables.values()
+    ):
+        return None
+    return statement_settings(
+        gov_ctx.role_id,
+        gov_ctx.can_write,
+        served_database_name(state),
+        bool(state.schema_build_cache.get("domain_prefix", False)),
+    )
 
 
 def _direct_terminal_serves(decision: Any, state: Any) -> bool:
@@ -2897,6 +2926,7 @@ async def route_governed(
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            catalog_settings=_catalog_settings(gov_ctx, ctx, state, _direct_sid, _table_ids),
             semantic_sql=_metric_semantic_sql,  # REQ-1322
             auto_deliver=auto_deliver,  # REQ-1224: probed at the terminal
             engine_landing=_engine_landing if _probe_direct else None,
@@ -4424,6 +4454,9 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
         # That store serves this source and no other: a statement for any other source reaching
         # it would be read from, or written into, the control plane.
+        from provisa.transpiler.metadata_settings import refuse_client_settings, set_statement
+
+        refuse_client_settings(plan.sql)  # REQ-2190: what a catalog view trusts is this terminal's
         tenant_db = state.model_db
         if tenant_db is None:
             raise RuntimeError("Admin model_db not available")
@@ -4440,9 +4473,18 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 # Column names come from the result itself, so an empty result still has them.
                 # The statement's bound values, as the client gave them: its ANY($2) list is an
                 # array, not the control plane's jsonb. exec_params is None when it has none.
-                col_names, _rows = await _conn.fetch_with_columns(
-                    plan.sql, *(plan.exec_params or ()), bind_as_given=True
-                )
+                if plan.catalog_settings is None:
+                    col_names, _rows = await _conn.fetch_with_columns(
+                        plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                    )
+                else:
+                    # REQ-2190: the settings last as long as the statement's transaction.
+                    _setting, _values = set_statement(plan.catalog_settings)
+                    async with _conn.transaction():
+                        await _conn.fetch(_setting, *_values)
+                        col_names, _rows = await _conn.fetch_with_columns(
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                        )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
         result = QueryResult(rows=rows, column_names=col_names)

@@ -32,7 +32,13 @@ import json as _json
 
 from provisa.compiler.sql_literals import sql_literal
 from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
-from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS
+from provisa.api._pg_catalog_views import (
+    CATALOG_BASE_VIEWS,
+    CATALOG_COLUMN_VIEWS,
+    CATALOG_KEY_VIEWS,
+    CATALOG_VIEWS,
+)
+from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
 
 
 def _system_tag_rows_sql() -> str:
@@ -495,11 +501,18 @@ def _table_keys_sql() -> str:
     foreign key, its columns in the primary key's order; any other is one foreign key where its
     target column is a one-column key. A relationship to any other column is a semantic join,
     and no key. Each row names its columns' aliases, so a reader needs no join to table_columns,
-    which a relationship would have to approve (REQ-603)."""
+    which a relationship would have to approve (REQ-603). A table's link to its registration is
+    the foreign key slot 1024 holds, as catalog_constraints publishes it."""
     return f"""
         CREATE OR REPLACE VIEW table_keys AS
         WITH served AS (
-            SELECT id FROM registered_tables WHERE NOT draft
+            SELECT table_id AS id FROM catalog_tables WHERE table_id IS NOT NULL
+        ),
+        registrations AS (
+            SELECT t.table_id
+            FROM catalog_tables t
+            JOIN registered_tables rt ON rt.id = t.table_id
+            WHERE rt.domain_id = 'meta' AND rt.table_name = 'registered_tables'
         ),
         primary_keys AS (
             SELECT c.table_id, c.column_name,
@@ -517,11 +530,11 @@ def _table_keys_sql() -> str:
                    u.definition ->> 'name' AS key_name, k.column_name,
                    CAST(k.position AS INTEGER) AS position
             FROM registered_tables t
+            JOIN served d ON d.id = t.id
             CROSS JOIN LATERAL jsonb_array_elements(CAST(t.unique_constraints AS JSONB))
                 WITH ORDINALITY AS u(definition, slot)
             CROSS JOIN LATERAL jsonb_array_elements_text(u.definition -> 'columns')
                 WITH ORDINALITY AS k(column_name, position)
-            WHERE NOT t.draft
         ),
         single_column_keys AS (
             SELECT table_id, column_name FROM primary_keys
@@ -588,16 +601,36 @@ def _table_keys_sql() -> str:
                        PARTITION BY table_id ORDER BY relationship_id) AS INTEGER),
                    'f', NULL, target_table_id, position, source_column, target_column
             FROM foreign_keys
+            UNION ALL
+            -- Each registration's key, the pair every table's _meta link matches, and that link.
+            SELECT table_id, {UNIQUE_QUERY_NAME_SLOT}, 'u',
+                   'uq_registered_tables_table_query_name', table_id, q.position, q.column_name,
+                   NULL
+            FROM registrations
+            CROSS JOIN (VALUES (1, 'domain_id'), (2, 'table_query_name'))
+                AS q(position, column_name)
+            UNION ALL
+            SELECT t.table_id, {FOREIGN_KEY_SLOT}, 'f', NULL, r.table_id, q.position,
+                   q.column_name, q.referenced_column
+            FROM catalog_tables t
+            CROSS JOIN registrations r
+            CROSS JOIN (VALUES (1, '_domain_', 'domain_id'), (2, '_name_', 'table_query_name'))
+                AS q(position, column_name, referenced_column)
+            WHERE t.table_id IS NOT NULL AND t.domain_id <> 'meta'
         )
         SELECT CAST(k.table_id * {KEY_SLOTS} + k.slot AS TEXT) || ':' || CAST(k.position AS TEXT)
                    AS id,
                k.table_id * {KEY_SLOTS} + k.slot AS key_id, k.kind, k.key_name, k.table_id,
-               k.referenced_table_id, k.position, k.column_name, c.alias AS column_alias,
-               k.referenced_column, rc.alias AS referenced_column_alias
+               t.schema_name, t.table_name, k.referenced_table_id,
+               r.schema_name AS referenced_schema_name, r.table_name AS referenced_table_name,
+               k.position, k.column_name, c.sql_name AS column_sql_name, k.referenced_column,
+               rc.sql_name AS referenced_column_sql_name
         FROM all_keys k
-        LEFT JOIN table_columns c
+        JOIN catalog_tables t ON t.table_id = k.table_id
+        JOIN catalog_tables r ON r.table_id = k.referenced_table_id
+        JOIN catalog_columns c
           ON c.table_id = k.table_id AND c.column_name = k.column_name
-        LEFT JOIN table_columns rc
+        LEFT JOIN catalog_columns rc
           ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
     """
 
@@ -857,7 +890,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # table_columns_meta's (security.rights.META_ROW_SCOPED_VIEWS).
     "table_details": _table_details_sql(),
     "column_details": _column_details_sql(),
+    **CATALOG_BASE_VIEWS,
+    **CATALOG_COLUMN_VIEWS,
     "table_keys": _table_keys_sql(),
+    **CATALOG_KEY_VIEWS,
+    # REQ-2190: meta is a superset of pg_catalog and information_schema, each relation a view.
+    **CATALOG_VIEWS,
 }
 
 # REQ-884: Internal operational/observability logs exposed as first-class tables in

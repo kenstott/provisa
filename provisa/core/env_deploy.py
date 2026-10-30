@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Table, delete, select
 
 from provisa.core import schema_org as org
+from provisa.core.naming_rule_check import refuse_divergent_rule
 from provisa.core.env_classes import (
     BINDING_COLUMN,
     CARRIED,
@@ -287,6 +288,11 @@ async def land(
     )
     if not apply:
         return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
+
+    # REQ-2190: the catalog's views apply a naming rule too, in PostgreSQL's regex engine.
+    names = [row["table_name"] for row in rows.get("registered_tables", [])]
+    for rule in rows.get("naming_rules", []):
+        await refuse_divergent_rule(conn, rule["pattern"], rule["replacement"], names)
 
     ordered = [t for t in org_metadata.sorted_tables if t.name in scope]
     await _apply(conn, ordered, schema, rows, delta)

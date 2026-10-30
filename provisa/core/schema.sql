@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     data_type   TEXT,
     masks        JSONB NOT NULL DEFAULT '[]',  -- REQ-2059: the ordered mask list
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
+    not_null BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
     -- REQ-1965: the hidden attributes of a natively array/struct/map column, from its source
     array_depth  INTEGER NOT NULL DEFAULT 0,

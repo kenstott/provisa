@@ -16,7 +16,6 @@ of a model registered from real tables, answers what the real function answers o
 from __future__ import annotations
 
 import pytest
-import sqlalchemy as sa
 import sqlglot
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
@@ -25,6 +24,8 @@ from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.transpiler.metadata_facts import catalog_facts
 from provisa.transpiler.metadata_functions import VALUE_FORMS, expand
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, table_oid
+from provisa.transpiler.metadata_settings import set_statement, statement_settings
+from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
 
 _REAL_MODEL = """
     CREATE ROLE analyst;
@@ -76,6 +77,9 @@ _COLUMNS = (
     (3, "ra", False, None),
     (3, "rb", False, None),
 )
+
+
+_ORG_SCHEMA = "org_default"
 
 
 def _insert(conn, table, **values):
@@ -165,60 +169,48 @@ def _register(conn) -> None:
 
 
 @pytest.fixture(scope="module")
-def live(embedded_postgres):
-    """A real model, and a control plane in schema ``cp`` it is registered in, with the real meta
-    views and the meta schema a statement reads them by."""
-    engine = sa.create_engine(
-        embedded_postgres.url(), connect_args={"options": "-c search_path=cp,public"}
-    )
+def live(embedded_postgres, control_plane_template):
+    """A real model, and the control plane of org ``default`` it is registered in, with the real
+    meta views and the meta schema a statement reads them by."""
+    from tests.pg_control_plane import clone
+
+    plane = clone(embedded_postgres, control_plane_template)
+    engine = plane.engine(f"{plane.url}?options=-csearch_path%3D{_ORG_SCHEMA},public")
     with engine.begin() as conn:
-        for statement in ("DROP SCHEMA IF EXISTS cp CASCADE", "DROP SCHEMA IF EXISTS meta CASCADE"):
-            conn.exec_driver_sql(statement)
-        for statement in ("DROP SCHEMA IF EXISTS sales CASCADE", "DROP TABLE IF EXISTS customers"):
-            conn.exec_driver_sql(statement)
         conn.exec_driver_sql("DROP ROLE IF EXISTS analyst")
-        conn.exec_driver_sql(_REAL_MODEL)
-        conn.exec_driver_sql("CREATE SCHEMA cp")
+        for statement in _REAL_MODEL.split(";"):
+            if statement.strip():
+                conn.exec_driver_sql(statement)
         conn.exec_driver_sql("CREATE SCHEMA meta")
-        schema_org.metadata.create_all(conn)
         _register(conn)
-        for name in ("table_details", "column_details", "table_keys"):
-            conn.exec_driver_sql(_META_TABLE_VIEWS[name])
-            conn.exec_driver_sql(f"CREATE VIEW meta.{name} AS SELECT * FROM cp.{name}")
-        conn.exec_driver_sql("CREATE VIEW meta.domains AS SELECT * FROM cp.domains")
+        for ddl in _META_TABLE_VIEWS.values():
+            conn.exec_driver_sql(ddl.replace("%", "%%"))
+        for name in (*NEUTRAL_VIEW_NAMES, *CATALOG_VIEW_NAMES, "domains"):
+            conn.exec_driver_sql(f"CREATE VIEW meta.{name} AS SELECT * FROM {_ORG_SCHEMA}.{name}")
     yield engine
-    engine.dispose()
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP OWNED BY analyst")
+        conn.exec_driver_sql("DROP ROLE analyst")
+    plane.close()
 
 
-def _raw_tables() -> list[dict]:
-    return [
-        {
-            "id": table_id,
-            "domain_id": schema,
-            "schema_name": schema,
-            "table_name": name,
-            "alias": None,
-            "columns": [{"column_name": c, "alias": a} for t, c, _, a in _COLUMNS if t == table_id],
-        }
-        for table_id, (schema, name) in _TABLES.items()
-    ]
-
-
-def _facts(held: dict[int, set[str]] | None = None, role: str = "analyst"):
+def _facts(held: dict[int, set[str]] | None = None, role: str = "analyst", unserved=()):
     return catalog_facts(
-        role,
-        _raw_tables(),
-        {},
-        set(),
-        held if held is not None else {3: {"SELECT"}, 2: {"INSERT"}},
-        listed=None,
-        naming_rules=[],
-        domain_prefix=False,
+        role, held if held is not None else {3: {"SELECT"}, 2: {"INSERT"}}, unserved
     )
+
+
+def _told(conn) -> None:
+    """What the admin terminal tells a statement's views, in this transaction."""
+    sql, values = set_statement(statement_settings("analyst", True, "provisa", False))
+    for n, value in enumerate(values, 1):
+        sql = sql.replace(f"${n}", f"'{value}'", 1)
+    conn.exec_driver_sql(sql)
 
 
 def _one(conn, sql: str):
-    return conn.exec_driver_sql(sql).scalar()
+    _told(conn)
+    return conn.exec_driver_sql(sql.replace("%", "%%")).scalar()
 
 
 def _form(conn, call: str, facts=None):
@@ -229,7 +221,7 @@ def _form(conn, call: str, facts=None):
 def _real(conn, call: str):
     conn.exec_driver_sql("SET LOCAL search_path = public")
     answer = _one(conn, f"SELECT {call}")
-    conn.exec_driver_sql("SET LOCAL search_path = cp, public")
+    conn.exec_driver_sql(f"SET LOCAL search_path = {_ORG_SCHEMA}, public")
     return answer
 
 
@@ -306,9 +298,11 @@ def test_an_oid_naming_no_key_has_no_definition(live):
 
 def test_the_views_list_only_what_a_catalog_lists_as_keys(live):
     with live.begin() as conn:
+        _told(conn)
         rows = conn.exec_driver_sql(
             "SELECT kind, table_id, referenced_table_id, position, column_name, referenced_column "
-            "FROM meta.table_keys WHERE kind = 'f' ORDER BY key_id, position"
+            "FROM meta.table_keys WHERE kind = 'f' AND column_name NOT IN ('_domain_', '_name_') "
+            "ORDER BY key_id, position"
         ).fetchall()
         # A composite key in the target's order; no semantic join; nothing on a draft.
         assert [tuple(r) for r in rows] == [
@@ -363,9 +357,8 @@ def test_a_column_comment_is_the_real_one(live, attnum, real_column):
 
 
 def test_a_schema_comment_comes_from_its_domain(live):
-    facts = _facts()
-    sales_oid = next(row[3] for row in facts.tables if row[2] == "sales")
     with live.begin() as conn:
+        sales_oid = _one(conn, "SELECT oid FROM meta.pg_namespace WHERE nspname = 'sales'")
         assert _form(conn, f"obj_description({sales_oid}, 'pg_namespace')") == "The sales domain"
 
 

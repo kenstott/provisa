@@ -26,6 +26,10 @@ meta tables (their views are registered under it), the view name for the ops rep
 from __future__ import annotations
 
 from provisa.api._ontology_quality_views import HUB_MIN_REACHERS
+from provisa.transpiler.metadata_views import (
+    column_descriptions as catalog_column_descriptions,
+    table_descriptions as catalog_table_descriptions,
+)
 
 _TENANT = "Owning org — control-plane rows are isolated per tenant by this column"
 
@@ -179,9 +183,11 @@ _OPS_OWN = (
 TABLE_DESCRIPTIONS: dict[str, str] = {
     **{name: text + _META_OWN for name, text in _META.items()},
     **{name: text + _OPS_OWN for name, text in _OPS.items()},
+    **catalog_table_descriptions(),  # REQ-2190
 }
 
 COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    **catalog_column_descriptions(),  # REQ-2190
     "registered_tables": {
         "id": "Surrogate key — what relationships, rls_rules, and the audit log reference",
         "source_id": "The registered source this table is read from",
@@ -243,12 +249,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "kind": "p for a primary key, u for a unique key, f for a foreign key",
         "key_name": "The name a unique key was declared with",
         "table_id": "Table the key is on",
+        "schema_name": "The schema that table is queried under",
+        "table_name": "The name that table is queried by",
         "referenced_table_id": "Table a foreign key references; the key's own table otherwise",
+        "referenced_schema_name": "The schema the referenced table is queried under",
+        "referenced_table_name": "The name the referenced table is queried by",
         "position": "The column's position in the key, from 1",
         "column_name": "Physical name of the key's column",
-        "column_alias": "That column's alias, when it has one",
+        "column_sql_name": "The name a statement queries that column by",
         "referenced_column": "Physical name of the column a foreign key column references",
-        "referenced_column_alias": "That column's alias, when it has one",
+        "referenced_column_sql_name": "The name a statement queries that column by",
     },
     # REQ-2126
     "data_product_edges": {

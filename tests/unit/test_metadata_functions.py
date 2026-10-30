@@ -18,6 +18,7 @@ served to SQL alone."""
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -25,12 +26,12 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._pg_catalog_views import CATALOG_VIEWS
 from provisa.api.app_loaders import _META_TABLES
-from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import domain_to_sql_name
-from provisa.compiler.sql_rewrite import semantic_table_name
+from provisa.pgwire.catalog_pg17 import RELATIONS
 from provisa.pgwire.catalog_populate import _physical_to_pg_name, _physical_to_pg_oid
 from provisa.security.rights import (
+    META_CATALOG_ROW_SCOPES,
     META_DOMAIN_ID,
     META_ROW_SCOPED_VIEWS,
     SQL_CATALOG_TABLES,
@@ -39,14 +40,12 @@ from provisa.security.rights import (
 from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.transpiler.function_macros import MACROS, outcome
 from provisa.transpiler.metadata_facts import (
-    COLUMNS,
     PRIVILEGES,
-    TABLES,
+    UNSERVED,
     CatalogFacts,
     catalog_facts,
     relation,
     role_privileges,
-    table_sql_name,
 )
 from provisa.transpiler.metadata_functions import (
     FORMS,
@@ -59,11 +58,17 @@ from provisa.transpiler.metadata_functions import (
     pg_type_oid_sql,
     pg_typmod_sql,
 )
-from provisa.transpiler.metadata_oids import KEY_OID_BASE, schema_oid, table_oid
+from provisa.transpiler.metadata_oids import KEY_OID_BASE, metric_oid, table_oid
+from provisa.transpiler.metadata_views import (
+    CATALOG_VIEW_NAMES,
+    SCOPE_COLUMN,
+    SCOPED_BY_COLUMN,
+    catalog_view_name,
+)
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 
 _VIEWS = ("table_details", "column_details", "table_keys")
-_FACTS = CatalogFacts("analyst", tables=((1, 16385, "sales", 7, "orders", "sales"),))
+_FACTS = CatalogFacts("analyst", privileges=((16385, "SELECT"),))
 
 
 def _expanded(sql: str) -> str:
@@ -123,7 +128,7 @@ def test_no_form_is_left_native_on_the_control_plane():
 
 def test_every_form_that_reads_facts_says_so():
     for form in FORMS.values():
-        for fact in (TABLES, COLUMNS, PRIVILEGES):
+        for fact in (PRIVILEGES, UNSERVED):
             assert (fact in form.sql) == (fact in form.facts), (form.name, fact)
 
 
@@ -135,10 +140,18 @@ def test_the_call_is_replaced_and_its_column_named_for_it():
     assert not [f for f in out.find_all(exp.Anonymous) if f.name.lower() == "pg_get_constraintdef"]
 
 
-def test_a_form_reads_the_meta_tables_a_statement_is_governed_on():
-    sql = _expanded(f"SELECT pg_get_indexdef({KEY_OID_BASE})")
-    assert "meta.table_keys" in sql
-    assert f"WITH {COLUMNS}" in sql and TABLES in sql
+def test_a_form_reads_the_meta_views_a_statement_is_governed_on():
+    assert "meta.table_keys" in _expanded(f"SELECT pg_get_indexdef({KEY_OID_BASE})")
+    assert "meta.pg_description" in _expanded("SELECT col_description(16385, 1)")
+    assert "meta.pg_class" in _expanded("SELECT pg_table_is_visible(16385)")
+
+
+def test_only_what_a_privilege_function_reads_is_carried():
+    assert "WITH" not in _expanded("SELECT pg_table_is_visible(16385)")
+    sql = _expanded("SELECT has_table_privilege('orders', 'SELECT')")
+    assert f"WITH {PRIVILEGES}" in sql and UNSERVED not in sql
+    sql = _expanded("SELECT has_column_privilege('orders', 'id', 'SELECT')")
+    assert PRIVILEGES in sql and UNSERVED in sql
 
 
 def test_a_call_in_an_argument_is_written_too():
@@ -147,9 +160,9 @@ def test_a_call_in_an_argument_is_written_too():
 
 
 def test_a_statement_with_a_cte_of_its_own_keeps_it():
-    sql = _expanded("WITH x AS (SELECT 1 AS a) SELECT pg_get_constraintdef(a) FROM x")
+    sql = _expanded("WITH x AS (SELECT 1 AS a) SELECT has_table_privilege(a, 'SELECT') FROM x")
     tree = sqlglot.parse_one(sql, read="postgres")
-    assert {cte.alias for cte in tree.find_all(exp.CTE)} >= {"x", TABLES, COLUMNS}
+    assert "x" in {cte.alias for cte in tree.find_all(exp.CTE)}
 
 
 def test_a_statement_calling_none_gets_no_facts():
@@ -181,107 +194,19 @@ def test_what_a_catalog_keeps_nothing_of_is_null(call):
 
 def test_an_oid_is_a_function_of_a_key_the_model_holds():
     assert table_oid(5) == 16389
-    assert schema_oid("public") == 2200
-    assert schema_oid("sales") == schema_oid("sales")
-    assert schema_oid("sales") != schema_oid("hr")
-    assert 16384 <= schema_oid("sales") < 2**31
+    assert metric_oid("revenue") == metric_oid("revenue")
+    assert metric_oid("revenue") != metric_oid("cost")
+    assert 3_000_000_000 <= metric_oid("revenue") < 2**32
 
 
-def _table(**over) -> dict:
-    return {
-        "id": 1,
-        "domain_id": "sales",
-        "schema_name": "public",
-        "table_name": "CustomerOrders",
-        "alias": None,
-        "columns": [
-            {"column_name": "id", "alias": None},
-            {"column_name": "OrderDate", "alias": None},
-            {"column_name": "x", "alias": "the_x"},
-            {"column_name": "plain", "alias": None},
-            {"column_name": "ref", "alias": None},
-        ],
-        **over,
-    }
-
-
-def _types() -> dict:
-    return {
-        1: [
-            ColumnMetadata("id", "integer", False),
-            ColumnMetadata("OrderDate", "date", True),
-            ColumnMetadata("plain", "varchar", True),
-        ]
-    }
-
-
-@pytest.mark.parametrize(
-    "table",
-    (
-        _table(),
-        _table(alias="Purchases"),
-        _table(table_name="sales__orders"),
-        _table(gql_naming_convention="snake"),
-    ),
-)
-def test_a_table_is_named_as_a_served_table_is(table):
-    from provisa.compiler.naming import active_gql_convention, generate_name
-    from provisa.compiler.sql_gen import TableMeta
-
-    prefixed = "sales__"
-    alias = table["alias"]
-    base = table["table_name"].removeprefix(prefixed) if not alias else table["table_name"]
-    field = generate_name(
-        base,
-        [],
-        alias=alias,
-        convention=table.get("gql_naming_convention") or active_gql_convention(),
+def test_a_roles_facts_are_by_relation_oid():
+    facts = catalog_facts("analyst", {1: {"INSERT", "SELECT"}}, [(1, "secret")], [metric_oid("m")])
+    assert facts.privileges == (
+        (16385, "INSERT"),
+        (16385, "SELECT"),
+        (metric_oid("m"), "SELECT"),
     )
-    served = TableMeta(
-        table_id=1,
-        field_name=f"{prefixed}{field}",
-        type_name="T",
-        source_id="s",
-        catalog_name="c",
-        schema_name="public",
-        table_name=table["table_name"],
-        domain_id="sales",
-        display_name=alias or "",
-    )
-    assert table_sql_name(table, [], domain_prefix=True) == semantic_table_name(served)
-
-
-def test_only_a_column_a_statement_cannot_name_from_meta_has_a_fact():
-    facts = catalog_facts(
-        "analyst",
-        [_table()],
-        _types(),
-        {(1, "ref")},
-        {},
-        listed=None,
-        naming_rules=[],
-        domain_prefix=False,
-    )
-    assert facts.columns == (
-        (1, "id", "id", True, False),
-        (1, "OrderDate", "order_date", False, False),
-        (1, "ref", "ref", False, True),
-    )
-    assert facts.tables[0][:3] == (1, table_oid(1), domain_to_sql_name("sales"))
-
-
-def test_a_statement_sees_only_the_tables_its_role_lists():
-    facts = catalog_facts(
-        "analyst",
-        [_table(), _table(id=2, table_name="hidden")],
-        _types(),
-        set(),
-        {},
-        listed={1},
-        naming_rules=[],
-        domain_prefix=False,
-    )
-    assert [row[0] for row in facts.tables] == [1]
+    assert facts.unserved == ((16385, "secret"),)
 
 
 def test_a_role_holds_select_on_what_it_is_served_and_what_its_grants_and_the_source_take():
@@ -302,15 +227,14 @@ def test_a_role_holds_select_on_what_it_is_served_and_what_its_grants_and_the_so
 
 
 def test_facts_with_no_rows_are_an_empty_relation_of_their_columns():
-    select = relation(TABLES, ())
-    assert [s.alias for s in select.selects][:2] == ["table_id", "table_oid"]
+    select = relation(UNSERVED, ())
+    assert [s.alias for s in select.selects] == ["relation_oid", "column_name"]
     assert "FALSE" in select.sql(dialect="postgres").upper()
 
 
 @pytest.mark.parametrize("dialect", ("postgres", "duckdb"))
 def test_facts_are_values_a_dialect_reads(dialect):
-    sql = relation(TABLES, _FACTS.tables).sql(dialect=dialect)
-    assert "orders" in sql
+    assert "SELECT" in relation(PRIVILEGES, _FACTS.privileges).sql(dialect=dialect)
 
 
 # --- the type a column is listed as, one source -------------------------------------------------
@@ -446,7 +370,120 @@ def test_a_catalog_view_names_no_governance_column():
         assert not columns & GOVERNANCE_META_COLUMNS, name
 
 
-def test_no_catalog_view_is_a_postgresql_shape():
-    """The PostgreSQL shape belongs to the mapping onto meta: no view holds an oid."""
-    for name in _VIEWS:
-        assert "oid" not in _META_TABLE_VIEWS[name].lower().replace("void", "")
+def test_a_catalog_view_has_the_columns_of_its_relation_and_no_more():
+    """Meta is a superset of the PostgreSQL catalog (REQ-2190): a client's name is all the routing
+    a relation needs, so each view is its relation's columns in PostgreSQL 17's order. The one
+    column beyond them is the scope of a relation with no oid to scope by, last."""
+    for (schema, name), columns in RELATIONS.items():
+        view = catalog_view_name(schema, name)
+        assert view in CATALOG_VIEWS, view
+        select = sqlglot.parse_one(CATALOG_VIEWS[view], read="postgres").expression
+        while select.key == "union":
+            select = select.this
+        written = [e.output_name for e in select.expressions]
+        expected = [column for column, _, _ in columns]
+        if view in SCOPED_BY_COLUMN:
+            expected.append(SCOPE_COLUMN)
+        assert written == expected, view
+
+
+def test_every_relation_is_a_registered_view_served_to_sql_alone():
+    assert len(CATALOG_VIEW_NAMES) == len(RELATIONS)
+    for name in CATALOG_VIEW_NAMES:
+        assert name in _META_TABLES
+        assert (META_DOMAIN_ID, name) in SQL_ONLY_TABLES
+        assert (META_DOMAIN_ID, name) in SQL_CATALOG_TABLES
+
+
+def test_a_client_name_is_addressed_by_name_alone():
+    assert catalog_view_name("pg_catalog", "pg_class") == "pg_class"
+    assert catalog_view_name("information_schema", "domains") == "is_domains"
+    assert "domains" not in CATALOG_VIEW_NAMES and "roles" not in CATALOG_VIEW_NAMES
+
+
+_MODEL_READS = re.compile(
+    r"\b(catalog_tables|catalog_columns|catalog_keys|column_defaults|table_keys|column_details|"
+    r"table_details|registered_tables|table_columns)\b"
+)
+
+
+def test_a_view_of_model_rows_names_how_its_rows_are_scoped():
+    """A view left out of the scope maps would list every table to every role: nothing else would
+    say so. Every relation reading the model has an entry; every entry is a relation."""
+    reads_model = {name for name, ddl in CATALOG_VIEWS.items() if _MODEL_READS.search(ddl)}
+    missing = reads_model - set(META_CATALOG_ROW_SCOPES) - set(META_ROW_SCOPED_VIEWS)
+    assert missing == set()
+    assert set(META_CATALOG_ROW_SCOPES) <= set(CATALOG_VIEWS)
+
+
+@pytest.mark.parametrize("name", ("pg_class", "pg_attribute", "is_columns"))
+def test_the_check_above_catches_a_view_dropped_from_the_map(name):
+    scoped = dict(META_CATALOG_ROW_SCOPES)
+    del scoped[name]
+    reads_model = {n for n, ddl in CATALOG_VIEWS.items() if _MODEL_READS.search(ddl)}
+    assert reads_model - set(scoped) - set(META_ROW_SCOPED_VIEWS) == {name}
+
+
+def _meta_context(*names: str):
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
+    ctx = CompilationContext(role_id="analyst")
+    for table_id, name in enumerate(names, 10):
+        ctx.tables[name] = TableMeta(
+            table_id=table_id,
+            field_name=name,
+            type_name=name,
+            source_id="provisa-admin",
+            catalog_name="provisa_admin",
+            schema_name="public",
+            table_name=name,
+            domain_id=META_DOMAIN_ID,
+        )
+    return ctx
+
+
+_ROLE = {"id": "analyst", "capabilities": [], "domain_access": ["sales"]}
+_TABLES = [
+    {
+        "id": 1,
+        "domain_id": "sales",
+        "source_id": "s",
+        "schema_name": "public",
+        "table_name": "orders",
+        "columns": [{"column_name": "id", "visible_to": ["analyst"]}],
+    }
+]
+
+
+def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
+    from provisa.compiler.stage2 import build_governance_context
+
+    ctx = _meta_context("pg_class", "is_tables", "pg_constraint")
+    gov = build_governance_context(
+        "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
+    )
+    assert "IS NULL OR" in gov.rls_rules[10]
+    assert "IN (1)" in gov.rls_rules[10]
+    assert gov.rls_rules[11] == ("((provisa_table_id) IS NULL OR (provisa_table_id) IN (1))")
+    assert gov.rls_rules[12].count("IN (1)") == 2  # both ends of a foreign key
+
+
+def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
+    from provisa.compiler.stage2 import build_governance_context
+
+    ctx = _meta_context("pg_attribute", "is_columns")
+    ctx.columns_outside_relation = {(1, "Pets")}
+    gov = build_governance_context(
+        "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
+    )
+    assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[10]
+    assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[11]
+
+
+def test_a_whole_catalog_role_is_not_scoped():
+    from provisa.compiler.stage2 import build_governance_context
+
+    ctx = _meta_context("pg_class")
+    role = {**_ROLE, "domain_access": ["*"]}
+    gov = build_governance_context("analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, role, [])
+    assert 10 not in gov.rls_rules

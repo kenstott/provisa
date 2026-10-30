@@ -121,6 +121,41 @@ async def _marks(db) -> dict[str, tuple[bool, bool]]:
     return {r.column_name: (r.is_primary_key, r.is_alternate_key) for r in rows}
 
 
+async def _not_null(db) -> set[str]:
+    async with db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(table_columns.c.column_name).where(table_columns.c.not_null)
+            )
+        ).fetchall()
+    return {r.column_name for r in rows}
+
+
+async def test_registration_records_what_the_source_declares_not_null(org_plane):
+    """REQ-2190: NOT NULL is the column's as its type is: recorded when it is registered, with a
+    primary key's, and kept by a registration that does not read the source."""
+    declared = DeclaredKeys(primary_key=("id",), not_null=frozenset({"tag"}))
+    async with org_plane.acquire() as conn:
+        await table_repo.upsert(conn, _pets_table(), declared=declared)
+    assert await _not_null(org_plane) == {"id", "tag"}
+    async with org_plane.acquire() as conn:
+        await table_repo.upsert(conn, _pets_table())
+    assert await _not_null(org_plane) == {"id", "tag"}
+
+
+async def test_sqlite_says_what_it_declares_not_null(tmp_path):
+    path = tmp_path / "strict.db"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE t (a INTEGER NOT NULL, b TEXT)")
+    pool = SourcePool()
+    await pool.add("strict", "sqlite", "", 0, str(path), "", "")
+    try:
+        declared = await declared_keys(pool, "sqlite", "strict", "main", "t")
+    finally:
+        await pool.close_all()
+    assert declared is not None and declared.not_null == {"a"}
+
+
 async def test_registration_records_the_keys_the_source_declares(org_plane, sqlite_pool):
     """The registration's input marks nothing; the source's declaration is recorded."""
     declared = await declared_keys(sqlite_pool, "sqlite", "pets", "main", "pets")

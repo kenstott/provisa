@@ -8,15 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What a statement about the model needs that only a model build knows (REQ-2190), as relations
-the statement carries: the name each table and column is queried by (the compiler's naming, which
-is not SQL), each column's nullability and whether its relation holds it (read from the source
-when the model is built; the store keeps neither), and what the role holds on each table (its
-grants and what each source takes).
-
-They are computed here from what the build holds, so there is one source; a statement sees only
-the rows of tables its role may list. A column whose facts are the defaults has no row: named
-``COALESCE(alias, column_name)``, nullable, in its relation."""
+"""What the privilege functions read that no view can give (REQ-2190): what a role holds on each
+relation and which of a listed table's columns it is not served. Both come from the role's
+governance context: what a source takes is decided in code from its type and the engine, and a
+column's grant rule is the compiler's. They are relations of the statement that asks, not of meta:
+every other fact a catalog shows is a view."""
 
 # Requirements: REQ-2190
 
@@ -28,86 +24,27 @@ from typing import Any
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.metadata_oids import schema_oid, table_oid
+from provisa.transpiler.metadata_oids import table_oid
 
-TABLES = "_provisa_tables"
-COLUMNS = "_provisa_columns"
 PRIVILEGES = "_provisa_privileges"
+UNSERVED = "_provisa_unserved_columns"
 
 _RELATIONS: Mapping[str, tuple[tuple[str, str], ...]] = {
-    TABLES: (
-        ("table_id", "INTEGER"),
-        ("table_oid", "BIGINT"),
-        ("schema_name", "TEXT"),
-        ("schema_oid", "BIGINT"),
-        ("table_name", "TEXT"),
-        ("domain_id", "TEXT"),
-    ),
-    COLUMNS: (
-        ("table_id", "INTEGER"),
-        ("column_name", "TEXT"),
-        ("sql_name", "TEXT"),
-        ("not_null", "BOOLEAN"),
-        ("outside_relation", "BOOLEAN"),
-    ),
-    PRIVILEGES: (("table_id", "INTEGER"), ("privilege", "TEXT")),
+    PRIVILEGES: (("relation_oid", "BIGINT"), ("privilege", "TEXT")),
+    UNSERVED: (("relation_oid", "BIGINT"), ("column_name", "TEXT")),
 }
 
 
 @dataclass(frozen=True)
 class CatalogFacts:
-    """A role's facts: rows of ``TABLES``, ``COLUMNS`` and ``PRIVILEGES``, and the role."""
+    """A role's facts: rows of ``PRIVILEGES`` and ``UNSERVED``, and the role."""
 
     role_id: str
-    tables: tuple[tuple[Any, ...], ...] = ()
-    columns: tuple[tuple[Any, ...], ...] = ()
     privileges: tuple[tuple[Any, ...], ...] = ()
+    unserved: tuple[tuple[Any, ...], ...] = ()
 
     def rows(self, relation: str) -> tuple[tuple[Any, ...], ...]:
-        return {TABLES: self.tables, COLUMNS: self.columns, PRIVILEGES: self.privileges}[relation]
-
-
-def table_sql_name(row: Mapping[str, Any], naming_rules: list[dict], domain_prefix: bool) -> str:
-    """The name a statement queries ``row``, a raw table of the model, by: what
-    schema_gen._assign_names and sql_rewrite.semantic_table_name give it, for a table any role is
-    served or none is, since a role lists tables it is not served."""
-    from provisa.compiler.naming import (
-        active_gql_convention,
-        apply_sql_name,
-        domain_to_sql_name,
-        generate_name,
-    )
-
-    alias, name = row.get("alias"), row["table_name"]
-    prefix = f"{domain_to_sql_name(row['domain_id'])}__"
-    base = name[len(prefix) :] if domain_prefix and not alias and name.startswith(prefix) else name
-    return apply_sql_name(
-        alias
-        or generate_name(
-            base,
-            naming_rules,
-            convention=row.get("gql_naming_convention")
-            or row.get("source_gql_naming_convention")
-            or active_gql_convention(),
-        )
-    )
-
-
-def _column_rows(
-    table: Mapping[str, Any],
-    types: Iterable[Any],
-    outside: Collection[tuple[int, str]],
-) -> Iterable[tuple[Any, ...]]:
-    from provisa.compiler.naming import apply_sql_name
-
-    required = {t.column_name for t in types if not t.is_nullable}
-    for column in table.get("columns", []):
-        name, alias = column["column_name"], column.get("alias")
-        sql_name = alias or apply_sql_name(name)
-        not_null = name in required
-        away = (table["id"], name) in outside
-        if sql_name != (alias or name) or not_null or away:
-            yield (table["id"], name, sql_name, not_null, away)
+        return {PRIVILEGES: self.privileges, UNSERVED: self.unserved}[relation]
 
 
 def role_privileges(
@@ -136,67 +73,35 @@ def role_privileges(
 
 def catalog_facts(
     role_id: str,
-    raw_tables: Iterable[Mapping[str, Any]],
-    column_types: Mapping[int, Iterable[Any]],
-    outside_relation: Collection[tuple[int, str]],
     privileges: Mapping[int, Collection[str]],
-    *,
-    listed: Collection[int] | None,
-    naming_rules: list[dict],
-    domain_prefix: bool,
+    unserved: Iterable[tuple[int, str]] = (),
+    metric_oids: Iterable[int] = (),
 ) -> CatalogFacts:
-    """``role_id``'s facts, from the model's raw tables and what its build read. ``listed`` is the
-    table ids the role may list (rights.compute_meta_row_scope; None is all of them)."""
-    from provisa.compiler.naming import domain_to_sql_name
-
-    tables: list[tuple[Any, ...]] = []
-    columns: list[tuple[Any, ...]] = []
-    for table in raw_tables:
-        table_id = table["id"]
-        if listed is not None and table_id not in listed:
-            continue
-        domain = table["domain_id"]
-        schema = domain_to_sql_name(domain or table["schema_name"] or "public")
-        tables.append(
-            (
-                table_id,
-                table_oid(table_id),
-                schema,
-                schema_oid(schema),
-                table_sql_name(table, naming_rules, domain_prefix),
-                domain,
-            )
-        )
-        columns.extend(_column_rows(table, column_types.get(table_id, ()), outside_relation))
+    """``role_id``'s facts. ``privileges`` is :func:`role_privileges`'; ``unserved`` is each
+    (table id, SQL name) of a listed table's column the role is not served; ``metric_oids`` the
+    metrics it reads, each of which it holds SELECT on."""
     return CatalogFacts(
         role_id=role_id,
-        tables=tuple(tables),
-        columns=tuple(columns),
-        privileges=tuple(
-            (table_id, privilege)
-            for table_id, held in sorted(privileges.items())
-            for privilege in sorted(held)
+        privileges=(
+            *(
+                (table_oid(table_id), privilege)
+                for table_id, held in sorted(privileges.items())
+                for privilege in sorted(held)
+            ),
+            *((oid, "SELECT") for oid in sorted(metric_oids)),
         ),
+        unserved=tuple(sorted((table_oid(table_id), name) for table_id, name in unserved)),
     )
 
 
 def _literal(value: Any) -> exp.Expr:
-    if value is None:
-        return exp.null()
-    if isinstance(value, bool):
-        return exp.true() if value else exp.false()
-    if isinstance(value, int):
-        return exp.Literal.number(value)
-    return exp.Literal.string(str(value))
+    return exp.Literal.number(value) if isinstance(value, int) else exp.Literal.string(str(value))
 
 
 def relation(name: str, rows: tuple[tuple[Any, ...], ...]) -> exp.Select:
     """The select a statement's CTE ``name`` holds: ``rows``, each column of its type; none where
     there are no rows."""
     columns = _RELATIONS[name]
-    typed = [
-        exp.alias_(exp.cast(exp.column(column), sql_type), column) for column, sql_type in columns
-    ]
     if not rows:
         return exp.select(
             *(exp.alias_(exp.cast(exp.null(), sql_type), column) for column, sql_type in columns)
@@ -208,4 +113,7 @@ def relation(name: str, rows: tuple[tuple[Any, ...], ...]) -> exp.Select:
             columns=[exp.to_identifier(column) for column, _ in columns],
         ),
     )
+    typed = [
+        exp.alias_(exp.cast(exp.column(column), sql_type), column) for column, sql_type in columns
+    ]
     return exp.select(*typed).from_(values)
