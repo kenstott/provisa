@@ -26316,7 +26316,7 @@ CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
-A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right in layers: the terms whose relationships point to this term, the term itself, the terms this term's relationships point to, then what the term refers to (the columns it is applied to, and for a Class term the tables). Each arrow is labelled with its relationship type, and the graph reaches one hop each way. Nodes are named by their catalog names only. It reads the same metadata query the view already reads, with no request of its own. It is compact by default, and an expand control shows it at full size.
+A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right in layers: the terms whose relationships point to this term, the term itself, the terms this term's relationships point to, then what the term refers to (the columns it is applied to, and for a Class term the tables). Each arrow is labelled with its relationship type, and the graph reaches one hop each way. Nodes are named by their catalog names only. It reads the same metadata query the view already reads, with no request of its own. It is compact by default, and an expand control shows it at full size. (Amended 2026-10-29, A TERM GRAPH REACHES THE GROUND:) Maintainer 2026-10-30: a term's graph extends along its edges until each path is grounded, ending at the columns or tables that ground it, where that is possible. A path that does not ground ends where it ends.
 
 **Code:** —
 
