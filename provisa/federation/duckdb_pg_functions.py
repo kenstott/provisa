@@ -64,7 +64,10 @@ def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
     from provisa.federation.duckdb_pg_scalars import register as register_scalars
 
+    from provisa.federation.duckdb_pg_ranges import register as register_ranges
+
     register_scalars(con)
+    register_ranges(con)
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )

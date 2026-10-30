@@ -31,6 +31,7 @@ from typing import Any
 from dateutil.relativedelta import relativedelta
 
 from provisa.core.native_types import PG_CHARACTER_TYPES, NativeType, parse_native_type
+from provisa.core.pg_range import RANGE_TYPES
 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import (
@@ -139,12 +140,16 @@ class Subtype:  # REQ-2171
 # REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
 # types would hide. A subtype's name is its PostgreSQL type name; its values are held in
 # PostgreSQL's own text form on a text base.
-_RANGE = frozenset({"duckdb", "trino"})  # the dialects a range's bounds are emulated on
 _EVERY_DIALECT = frozenset({"*"})
 
 
 def _range(name: str, oid: int) -> Subtype:
-    return Subtype("text", oid, "range", {"postgres": name.upper()}, _RANGE)
+    """A range is emulated on every dialect (provisa.transpiler.pg_ranges)."""
+    return Subtype("text", oid, "range", {"postgres": name.upper()}, _EVERY_DIALECT)
+
+
+def _multirange(name: str, oid: int) -> Subtype:
+    return Subtype("text", oid, "multirange", {"postgres": name.upper()}, _EVERY_DIALECT)
 
 
 def _shape(name: str, oid: int) -> Subtype:
@@ -203,6 +208,8 @@ SUBTYPES: dict[str, Subtype] = {
     "tsrange": _range("tsrange", 3908),
     "tstzrange": _range("tstzrange", 3910),
     "daterange": _range("daterange", 3912),
+    # The multirange types, in PostgreSQL's multirange text form ("{[1,3),[5,7)}").
+    **{r.multirange: _multirange(r.multirange, r.multirange_oid) for r in RANGE_TYPES.values()},
     # Bit strings, in PostgreSQL's text form ("0101"): ordered as text orders them.
     "bit": Subtype("text", 1560),
     "varbit": Subtype("text", 1562),

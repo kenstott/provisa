@@ -66,6 +66,12 @@ _FIRST_SET = {
     "tsrange": ("text", 3908),
     "tstzrange": ("text", 3910),
     "daterange": ("text", 3912),
+    "int4multirange": ("text", 4451),
+    "int8multirange": ("text", 4536),
+    "nummultirange": ("text", 4532),
+    "tsmultirange": ("text", 4533),
+    "tstzmultirange": ("text", 4534),
+    "datemultirange": ("text", 4535),
     "bit": ("text", 1560),
     "varbit": ("text", 1562),
     "tsvector": ("text", 3614),
@@ -491,6 +497,15 @@ def test_pgwire_sends_the_shapes_ranges_bit_strings_and_tsvector_in_binary_form(
     )
     assert _binary("int8range", "(,10)") == bytes([0x08]) + struct.pack("!iq", 8, 10)
     assert _binary("int4range", "empty") == bytes([0x01])
+    # multirange_send, as PostgreSQL 17 sent these.
+    assert _binary("int4multirange", "{[1,3),[5,7)}") == bytes.fromhex(
+        "00000002000000110200000004000000010000000400000003"
+        "000000110200000004000000050000000400000007"
+    )
+    assert _binary("int4multirange", "{}") == bytes.fromhex("00000000")
+    assert _binary("datemultirange", "{[2026-01-01,2026-02-01)}") == bytes.fromhex(
+        "00000001000000110200000004000025190000000400002538"
+    )
     assert _binary("daterange", "[2026-01-01,2026-02-01)") == (
         bytes([0x02])
         + struct.pack("!i", 4)

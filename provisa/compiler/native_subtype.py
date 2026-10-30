@@ -39,7 +39,26 @@ from provisa.transpiler.native_subtype import (
 SubtypeColumns = dict[tuple[str, str], dict[str, str]]
 
 # The semantics a comparison, a membership or an ordering on a column changes.
-_ORDERED = frozenset({"address", "mac", "range"})
+_ORDERED = frozenset({"address", "mac", "range", "multirange"})
+_RANGED = frozenset({"range", "multirange"})
+# A range's own value operators, which on any other column are arithmetic.
+_RANGE_OPERATORS = (exp.Add, exp.Sub, exp.Mul)
+# What reads a range's parts or takes one as its argument: the functions of the name, which on a
+# text column are something else or nothing.
+_RANGE_FUNCTIONS = (exp.Lower, exp.Upper, exp.Explode, exp.Unnest)
+_RANGE_FUNCTION_NAMES = frozenset(
+    {
+        "isempty",
+        "lower_inc",
+        "upper_inc",
+        "lower_inf",
+        "upper_inf",
+        "range_merge",
+        "multirange",
+        "range_agg",
+        "range_intersect_agg",
+    }
+)
 
 
 def _resolve(
@@ -69,6 +88,8 @@ def _touches(col: exp.Column, subtype: str) -> bool:
         return True
     if semantics == "spatial":
         return is_spatial_call(parent)
+    if semantics in _RANGED and _reads_a_range(parent):
+        return True
     if semantics not in _ORDERED:
         return False
     if isinstance(parent, exp.Ordered):
@@ -76,6 +97,15 @@ def _touches(col: exp.Column, subtype: str) -> bool:
     if isinstance(parent, (*COMPARISONS, exp.Between)):
         return True
     return isinstance(parent, exp.In) and parent.this is node
+
+
+def _reads_a_range(parent: exp.Expr | None) -> bool:
+    if isinstance(parent, (*_RANGE_OPERATORS, *_RANGE_FUNCTIONS)):
+        return True
+    if not isinstance(parent, exp.Anonymous):
+        return False
+    name = parent.name.lower()
+    return name in _RANGE_FUNCTION_NAMES or name.startswith(("range_", "multirange_"))
 
 
 def mark_subtype_operations(sql: str, subtype_columns: SubtypeColumns) -> str:

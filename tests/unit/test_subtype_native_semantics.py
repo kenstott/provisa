@@ -115,7 +115,6 @@ def test_a_spatial_predicate_gives_the_column_and_its_wkt_the_native_type():
     ("where", "order", "dialect", "subtype", "operation"),
     [
         ("h.ip = '10.0.0.1'", "", "clickhouse", "inet", "="),
-        ("TRUE", " ORDER BY h.span", "duckdb", "int4range", "ORDER BY"),
         ("ST_Contains(h.area, 'POINT(1 1)')", "", "clickhouse", "geometry", "ST_CONTAINS"),
         ("h.words @@ to_tsquery('a')", "", "duckdb", "tsvector", "@@"),
     ],
@@ -127,6 +126,14 @@ def test_an_operation_the_dialect_cannot_answer_natively_is_refused_by_name(
         transpile(_marked(where, order), dialect)
     assert refused.value.code == "query.subtype_operation_unsupported"
     assert refused.value.params == {"subtype": subtype, "operation": operation, "dialect": dialect}
+
+
+def test_a_range_is_refused_on_no_dialect():
+    """REQ-2171, RANGES ARE EMULATED ON EVERY ENGINE; tests/unit/test_pg_ranges.py proves the
+    emulation."""
+    for dialect in ("duckdb", "trino", "clickhouse", "tsql", "mysql", "bigquery"):
+        written = transpile(_marked("TRUE", " ORDER BY h.span"), dialect)
+        assert "nullif(h.span, 'empty')" in written.lower()
 
 
 # --- each emulation answers as the native type does ----------------------------------------------

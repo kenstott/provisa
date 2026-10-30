@@ -30,6 +30,8 @@ from typing import Any, Callable
 
 from buenavista.core import BVType
 
+from provisa.core.pg_range import RANGE_TYPES
+
 #: The header PostgreSQL adds to a typmod that carries a length or a precision (VARHDRSZ).
 _VARHDRSZ = 4
 
@@ -62,6 +64,20 @@ def _padded(length: int) -> Callable[[Any], Any]:
     return pad
 
 
+#: A range or multirange, computed as its text in PostgreSQL's form, by its name and sqlglot's.
+_RANGE_TYPES: dict[str, CastType] = {
+    **{
+        r.name: CastType(r.oid, -1, BVType[r.name.upper()], _TEXT_FORMS)
+        for r in RANGE_TYPES.values()
+    },
+    **{
+        r.multirange: CastType(r.multirange_oid, -1, BVType[r.multirange.upper()], _TEXT_FORMS)
+        for r in RANGE_TYPES.values()
+    },
+}
+RANGE_CASTS = {name.upper(): cast for name, cast in _RANGE_TYPES.items()}
+
+
 def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one return per cast type
     import sqlglot.expressions as exp
 
@@ -89,6 +105,9 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
         return CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}))
     if kind == t.JSONB:
         return CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB}))
+    ranged = RANGE_CASTS.get(kind.name) if isinstance(kind, exp.DataType.Type) else None
+    if ranged is not None:
+        return ranged
     if isinstance(data_type, exp.ObjectIdentifier) and data_type.name.lower() == "oid":
         integers = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID})
         return CastType(26, -1, BVType.OID, integers)
@@ -131,7 +150,7 @@ _RETURNED: dict[str, CastType] = {
     "character varying": CastType(1043, -1, BVType.TEXT, _TEXT_FORMS),
     "bit": CastType(1560, -1, BVType.BIT, frozenset({BVType.BIT, BVType.TEXT})),
     "bit varying": CastType(1562, -1, BVType.VARBIT, frozenset({BVType.BIT, BVType.TEXT})),
-    "numrange": CastType(3906, -1, BVType.NUMRANGE, _TEXT_FORMS),
+    **_RANGE_TYPES,
     "tsvector": CastType(3614, -1, BVType.TSVECTOR, _TEXT_FORMS),
     "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB})),
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
@@ -148,6 +167,19 @@ def bit_varying_read(sql: str) -> str:
     return _BIT_VARYING.sub("::varbit", sql)
 
 
+def _operand_type(operand: Any) -> CastType | None:
+    """A range operator's result (a + b, a * b, a - b) is its operand's range or multirange."""
+    import sqlglot.expressions as exp
+
+    while isinstance(operand, exp.Paren):
+        operand = operand.this
+    if isinstance(operand, exp.Cast) and isinstance(operand.to.this, exp.DataType.Type):
+        return RANGE_CASTS.get(operand.to.this.name)
+    if isinstance(operand, (exp.Add, exp.Sub, exp.Mul)):
+        return _operand_type(operand.this) or _operand_type(operand.expression)
+    return None
+
+
 def _result_type(expression: Any) -> CastType | None:
     """How a result column is described by its root: a cast by the cast's type, a call of a
     pg_catalog function by the type that function returns; None for any other column."""
@@ -157,6 +189,8 @@ def _result_type(expression: Any) -> CastType | None:
 
     if isinstance(expression, exp.Cast):
         return _cast_type(expression.to)
+    if isinstance(expression, (exp.Add, exp.Sub, exp.Mul)):
+        return _operand_type(expression.this) or _operand_type(expression.expression)
     returned = call_result_type(expression)
     return None if returned is None else _RETURNED.get(returned)
 
