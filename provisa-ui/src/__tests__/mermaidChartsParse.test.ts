@@ -20,7 +20,7 @@ describe("server-built Mermaid charts", () => {
   const cases = Object.entries(charts as Record<string, string>);
 
   it("covers the maintainer's term_edges statement", () => {
-    expect(cases.map(([name]) => name)).toContain("analyze: term_edges projection (maintainer)");
+    expect(cases.map(([name]) => name)).toContain("analyze: ontology term search (maintainer)");
   });
 
   it.each(cases)("%s parses", async (_name, chart) => {

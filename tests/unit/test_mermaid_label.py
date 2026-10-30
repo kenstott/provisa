@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from provisa.api.data.endpoint_helpers import _build_mermaid
-from provisa.executor.explain import ExplainNode, build_explain_mermaid
+from provisa.executor.explain import MAX_DRAWN_OPERATORS, ExplainNode, build_explain_mermaid
 from provisa.executor.mermaid_label import MAX_LABEL, label, node_id
 from provisa.executor.plan_stats import build_plan_mermaid
 
@@ -122,6 +122,51 @@ class TestChartsEscapeEveryLabel:
         )
         assert 'n_pg_main["orders#124;x\\n(pg-main)"]' in chart
         assert 'n_join_end["end\\n(petstore)"]' in chart
+
+
+class TestLargePlans:
+    """Mermaid refuses a flowchart past 500 edges; a large statement's plan is past that."""
+
+    @staticmethod
+    def _chain(n: int) -> ExplainNode:
+        root = node = ExplainNode(op="PROJECTION")
+        for _ in range(n - 1):
+            child = ExplainNode(op="LEFT_DELIM_JOIN")
+            node.children.append(child)
+            node = child
+        return root
+
+    def test_a_plan_past_the_cap_draws_the_cap_and_counts_the_rest(self):
+        chart = build_explain_mermaid([self._chain(1500)], route="ENGINE", route_reason=None)
+        assert chart.count(" --> ") + chart.count(" -.-> ") < 500
+        assert f"p{MAX_DRAWN_OPERATORS}[" in chart or f"p{MAX_DRAWN_OPERATORS}(" in chart
+        assert f"p{MAX_DRAWN_OPERATORS + 1}" not in chart
+        assert (
+            f'more("+{1500 - MAX_DRAWN_OPERATORS} more operators, in the operator list")' in chart
+        )
+        assert "route -.-> more" in chart
+
+    def test_a_plan_within_the_cap_is_drawn_whole(self):
+        chart = build_explain_mermaid(
+            [self._chain(MAX_DRAWN_OPERATORS)], route="ENGINE", route_reason=None
+        )
+        assert "more(" not in chart
+
+    def test_the_maintainers_term_search_plan_is_past_mermaids_edge_limit(self):
+        """The regression fixture exercises the cap: its whole plan has over 500 edges."""
+        spec = importlib.util.spec_from_file_location(
+            "gen_mermaid_chart_fixtures", _REPO / "scripts" / "gen_mermaid_chart_fixtures.py"
+        )
+        assert spec is not None and spec.loader is not None
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        chart = gen.cases()["analyze: ontology term search (maintainer)"]
+        drawn = chart.count(" --> ") + chart.count(" -.-> ")
+        more = re.search(r"\+(\d+) more operators", chart)
+        assert more is not None
+        total = int(more.group(1)) + MAX_DRAWN_OPERATORS
+        assert total > 500
+        assert drawn < 500
 
 
 def test_the_ui_fixture_matches_the_builders():

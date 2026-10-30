@@ -360,6 +360,22 @@ def _node_label(node: ExplainNode) -> str:
     return "\\n".join(parts)
 
 
+# Mermaid refuses a flowchart past 500 edges ("Edge limit exceeded", which it draws as its generic
+# syntax-error graphic), and a large statement's plan is past that: one with a few dozen lateral
+# subqueries plans to hundreds of operators. The chart draws the first operators, top-down and depth-first,
+# and one node saying how many more the operator list beside it holds.
+MAX_DRAWN_OPERATORS = 150
+
+
+def _subtree_size(node: ExplainNode) -> int:
+    """Operators in ``node``'s subtree, counted without recursion: an omitted subtree can be deep."""
+    size, stack = 0, [node]
+    while stack:
+        size += 1
+        stack.extend(stack.pop().children)
+    return size
+
+
 def build_explain_mermaid(
     nodes: list[ExplainNode],
     *,
@@ -375,8 +391,12 @@ def build_explain_mermaid(
     """
     lines = ["flowchart TD"]
     counter = [0]
+    omitted = [0]
 
     def emit(node: ExplainNode, parent: str | None) -> None:
+        if counter[0] >= MAX_DRAWN_OPERATORS:
+            omitted[0] += _subtree_size(node)
+            return
         counter[0] += 1
         nid = f"p{counter[0]}"
         shape = (
@@ -392,6 +412,10 @@ def build_explain_mermaid(
     lines.append(f'  route{{{{"{route.lower()} route{reason}"}}}}')
     for root in nodes:
         emit(root, "route")
+    if omitted[0]:
+        more = mermaid_label.label(f"+{omitted[0]} more operators, in the operator list")
+        lines.append(f'  more("{more}")')
+        lines.append("  route -.-> more")
 
     for i, label in enumerate(optimizations):
         kind, _, relation = label.partition(": ")
