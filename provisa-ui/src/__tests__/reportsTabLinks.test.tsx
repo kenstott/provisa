@@ -35,11 +35,20 @@ vi.mock("../components/GovernedTableViewer", () => ({
   }) => <div data-testid="viewer" data-href={cellHref?.("term_id", 7) ?? ""} />,
 }));
 
+vi.mock("../components/admin/OntologyDriftPanel", () => ({
+  OntologyDriftPanel: () => <div data-testid="ontology-drift" />,
+}));
+
 import { ReportsTab } from "../components/admin/ReportsTab";
 
 describe("ReportsTab", () => {
   it("links a report's term cells to the term", () => {
     render(<ReportsTab />);
     expect(screen.getByTestId("viewer")).toHaveAttribute("data-href", "/admin/ontology?term=7");
+  });
+
+  it("shows drift with the Ontology quality report", () => {
+    render(<ReportsTab />);
+    expect(screen.getByTestId("ontology-drift")).toBeInTheDocument();
   });
 });
