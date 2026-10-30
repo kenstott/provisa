@@ -77,7 +77,6 @@
     "ontologyView": "本體檢視",
     "orphans": "孤立項",
     "columnsToggle": "欄",
-    "tablesToggle": "資料表",
     "allEdgeTypes": "所有邊類型",
     "someEdgeTypes": "{{total}} 種邊類型中的 {{count}} 種",
     "allDomains": "所有域",

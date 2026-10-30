@@ -77,7 +77,6 @@
     "ontologyView": "オントロジービュー",
     "orphans": "孤立",
     "columnsToggle": "列",
-    "tablesToggle": "テーブル",
     "allEdgeTypes": "すべてのエッジ種別",
     "someEdgeTypes": "{{total}} 件中 {{count}} 件のエッジ種別",
     "allDomains": "すべてのドメイン",

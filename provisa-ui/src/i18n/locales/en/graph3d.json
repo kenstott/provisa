@@ -77,7 +77,6 @@
     "ontologyView": "Ontology view",
     "orphans": "Orphans",
     "columnsToggle": "Columns",
-    "tablesToggle": "Tables",
     "allEdgeTypes": "All edge types",
     "someEdgeTypes": "{{count}} of {{total}} edge types",
     "allDomains": "All domains",

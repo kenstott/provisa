@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The Ontology View's Tables checkbox, beside Columns: off at first and offered only with Columns
-// on; ticked, it draws the tables owning the columns drawn, and unticked takes them away. The
-// relationships between those tables are in the edge-type filter by name.
+// The Ontology View's tables (REQ-2130, amended 2026-10-29): no Tables layer of their own; Columns
+// draws each column with its table, and unticked takes both away. No relationship between tables is
+// drawn, so none is in the edge-type filter.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
@@ -53,18 +53,7 @@ const ref = (table: number, column: string) => ({
   table_id: table,
   table_name: `t${table}`,
   domain_id: "sales",
-  table: {
-    id: table,
-    product: null,
-    source_relationships:
-      table === 11
-        ? [
-            // One a steward named, one served under its derived type; neither shown by its id.
-            { id: "orders_customer", cypher_type: "PLACED_BY", target_table_id: 10 },
-            { id: "orders-to-customers", cypher_type: "BELONGS_TO_CUSTOMER", target_table_id: 10 },
-          ]
-        : [],
-  },
+  table: { id: table, product: null },
 });
 const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow => ({
   id,
@@ -100,11 +89,9 @@ async function layer(value: string): Promise<HTMLElement> {
   return screen.findByTestId(id);
 }
 const ticked = async (value: string) => (await layer(value)).hasAttribute("data-combobox-active");
-const enabled = async (value: string) =>
-  !(await layer(value)).hasAttribute("data-combobox-disabled");
 
-describe("the Ontology View's Tables layer", () => {
-  it("goes with Columns, and draws the owning tables while it is ticked", async () => {
+describe("the Ontology View's tables", () => {
+  it("are no layer of their own: Columns draws them with their columns", async () => {
     render(
       <GraphExplorer
         data={data}
@@ -116,22 +103,17 @@ describe("the Ontology View's Tables layer", () => {
       />,
     );
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(await ticked("ownerTables")).toBe(false);
-    expect(tablesDrawn()).toEqual([]);
+    expect(await ticked("columns")).toBe(true);
+    expect(screen.queryByTestId("x-layers-menu-option-ownerTables")).toBeNull();
+    expect(tablesDrawn()).toEqual(["t:10", "t:11"]);
 
-    // Columns off: Tables cannot be ticked.
     fireEvent.click(await layer("columns"));
-    await waitFor(async () => expect(await enabled("ownerTables")).toBe(false));
-    fireEvent.click(await layer("columns"));
-    await waitFor(async () => expect(await enabled("ownerTables")).toBe(true));
-
-    fireEvent.click(await layer("ownerTables"));
-    await waitFor(() => expect(tablesDrawn()).toEqual(["t:10", "t:11"]));
-    fireEvent.click(await layer("ownerTables"));
     await waitFor(() => expect(tablesDrawn()).toEqual([]));
+    fireEvent.click(await layer("columns"));
+    await waitFor(() => expect(tablesDrawn()).toEqual(["t:10", "t:11"]));
   });
 
-  it("lists the relationships by their served Cypher types among the edge types", async () => {
+  it("lists only the term edge types among the edge types", async () => {
     render(
       <GraphExplorer
         data={data}
@@ -143,16 +125,20 @@ describe("the Ontology View's Tables layer", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("x-filter-edge-type"));
-    expect(await screen.findByTestId("x-filter-edge-type-option-PLACED_BY")).toBeInTheDocument();
-    expect(screen.getByTestId("x-filter-edge-type-option-BELONGS_TO_CUSTOMER")).toBeInTheDocument();
-    expect(screen.getByTestId("x-filter-edge-type-option-PART_OF")).toBeInTheDocument();
-    // A relationship's id is configuration, never an option.
-    expect(screen.queryByTestId("x-filter-edge-type-option-orders_customer")).toBeNull();
-    expect(screen.queryByTestId("x-filter-edge-type-option-orders-to-customers")).toBeNull();
+    expect(await screen.findByTestId("x-filter-edge-type-option-PART_OF")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByTestId(/^x-filter-edge-type-option-/)
+        .map((o) => o.getAttribute("data-testid")),
+    ).toEqual(["x-filter-edge-type-option-PART_OF"]);
   });
 
-  it("is remembered with the graph's other settings", async () => {
-    const view = () => (
+  it("ignore a remembered Tables layer", async () => {
+    setStored(
+      "graph3d.ontology.org",
+      JSON.stringify({ layers: ["ontology", "domains", "columns", "ownerTables"] }),
+    );
+    render(
       <GraphExplorer
         data={data}
         scope={GLOSSARY_SCOPE}
@@ -160,15 +146,11 @@ describe("the Ontology View's Tables layer", () => {
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
-      />
+      />,
     );
-    const first = render(view());
-    fireEvent.click(await layer("ownerTables"));
-    await waitFor(async () => expect(await ticked("ownerTables")).toBe(true));
-    first.unmount();
-
-    render(view());
-    expect(await ticked("ownerTables")).toBe(true);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(tablesDrawn()).toEqual(["t:10", "t:11"]);
+    // Domains and Columns: the layers this graph has, both on.
     expect(screen.getByTestId("x-layers-menu")).toHaveTextContent("Layers: all");
   });
 
