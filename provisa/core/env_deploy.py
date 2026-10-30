@@ -65,6 +65,24 @@ if TYPE_CHECKING:
     from provisa.core.env_conflicts import Conflict
 
 
+def _rights_in_two_rules(rules: list[dict[str, Any]]) -> list[str]:  # REQ-2188
+    """A right is in at most one rule of a role on a target: a deploy writes rows, past the save
+    that holds to it, so it is read from the tree here."""
+    seen: set[tuple[Any, ...]] = set()
+    problems: list[str] = []
+    for rule in rules:
+        target = (rule.get(k) for k in ("table_id", "domain_id", "action_name", "tag_id"))
+        scope = (rule.get("role_id"), *target)
+        for right in rule.get("rights", "R"):
+            if (*scope, right) in seen:
+                problems.append(
+                    f"role {rule.get('role_id')!r} has right {right!r} in two row rules on one "
+                    "target; a right is in at most one rule"
+                )
+            seen.add((*scope, right))
+    return problems
+
+
 class DeployError(Exception):
     """The tree does not hold: a reference resolves to nothing, or two files claim one address.
 
@@ -678,6 +696,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
     not_a_tree = tree_problem(parent_map(rows["domains"]))
     if not_a_tree is not None:
         problems.append(not_a_tree)
+    problems.extend(_rights_in_two_rules(rows["rls_rules"]))  # REQ-2188
     if problems:
         raise DeployError(problems)
     return rows

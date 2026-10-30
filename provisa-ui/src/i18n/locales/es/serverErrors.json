@@ -357,6 +357,7 @@
       "request_rejected": "Solicitud de creación #{{id}} rechazada",
       "rls_rule_deleted": "Regla de RLS eliminada",
       "rls_rule_not_found": "No se encontró la regla de RLS",
+      "rls_rule_right_taken": "El permiso {{right}} del rol '{{role}}' ya está en la regla {{rule}}. Un permiso está como máximo en una regla: quítelo de esa regla o edite esa regla.",
       "rls_rule_saved_domain": "Regla de RLS para el dominio '{{domain}}' / rol '{{role}}' guardada",
       "rls_rule_saved_table": "Regla de RLS para la tabla {{table}} / rol '{{role}}' guardada",
       "rls_rule_saved_tag": "Regla de RLS para la etiqueta '{{tag}}' / rol '{{role}}' guardada",

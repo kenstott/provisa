@@ -337,7 +337,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             "domain_id": row["domain_id"],
             "action_name": row["action_name"],
             "why": row.get("why"),  # REQ-2094
-            "right": row["right"],  # REQ-2188
+            "rights": list(row["rights"]),  # REQ-2188
         }
         rls_rules.append(_written(RLSRule.model_validate(rule)))
 

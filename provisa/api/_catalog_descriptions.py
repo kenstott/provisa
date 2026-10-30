@@ -338,7 +338,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "action_name": "Tracked function or webhook whose response rows the predicate filters",
         "tag_id": "Tag whose tables the predicate is applied to, beside each table's own rule",
         # REQ-2188
-        "right": "What the rule narrows: R reading a row, U updating it, D deleting it",
+        "rights": "What the rule narrows: R reading a row, U updating it, D deleting it",
         # REQ-2094
         "why": "Why the rule is what it is: reason, bases, review-by date, who decided it, when "
         "and on what profile evidence (JSON)",

@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2188: a row rule has a right. The list and the detail show it, the form sets it, an action
-// offers none (its rows are only read), an existing rule keeps its own (another right is another
-// rule), and deleting a rule names its right.
+// REQ-2188: a row rule carries a set of rights. The list and the detail show them, three checkboxes
+// set them, an action offers none (its rows are only read), an edit saves that rule by its id, a
+// right already in another rule is refused with the server's words, and a delete names the rule.
 
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
@@ -65,7 +65,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
         roleId: "pets_team",
         filterExpr: "owner_role IN (current_setting('provisa.acting_roles'))",
         description: "Its own products.",
-        right: "U",
+        rights: ["U", "D"],
       },
     ],
     loading: false,
@@ -89,61 +89,101 @@ async function selectOption(combobox: HTMLElement, name: string | RegExp) {
   await userEvent.click(option);
 }
 
-async function fillIn(right?: RegExp) {
+async function fillIn(...toggle: string[]) {
   fireEvent.click(screen.getByTestId("toggle-rule-form"));
   await selectOption(screen.getByTestId("rule-apply-to"), /Domain/);
   await selectOption(screen.getByTestId("rule-domain-select"), "pets");
   await selectOption(screen.getByTestId("rule-role-select"), "pets_team");
-  if (right) await selectOption(screen.getByTestId("rule-right-select"), right);
+  for (const right of toggle) fireEvent.click(screen.getByTestId(`rule-right-${right}`));
   fireEvent.change(screen.getByLabelText("Filter Expression"), { target: { value: "1 = 1" } });
   fireEvent.change(screen.getByTestId("rule-description"), { target: { value: "For the test." } });
   fireEvent.click(screen.getByTestId("save-rule"));
-  await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
 }
 
-describe("SecurityPage: a row rule's right (REQ-2188)", () => {
-  it("shows the right in the list", () => {
+describe("SecurityPage: a row rule's rights (REQ-2188)", () => {
+  it("shows every right in the list", () => {
     render(<SecurityRlsPage />);
-    expect(screen.getByTestId("rule-right-7")).toHaveTextContent("Update");
+    expect(screen.getByTestId("rule-right-7")).toHaveTextContent("Update, Delete");
   });
 
-  it("shows the right in the rule's detail", async () => {
+  it("shows every right in the rule's detail", async () => {
     render(<SecurityRlsPage />);
     fireEvent.click(screen.getByTestId("rule-right-7"));
-    expect((await screen.findByTestId("rule-read-7")).textContent).toContain("Update");
+    expect((await screen.findByTestId("rule-read-7")).textContent).toContain("Update, Delete");
+  });
+
+  it("offers three checkboxes, Read alone ticked on a new rule", () => {
+    render(<SecurityRlsPage />);
+    fireEvent.click(screen.getByTestId("toggle-rule-form"));
+    expect(screen.getByTestId("rule-right-R")).toBeChecked();
+    expect(screen.getByTestId("rule-right-U")).not.toBeChecked();
+    expect(screen.getByTestId("rule-right-D")).not.toBeChecked();
   });
 
   it("saves a new rule as a read rule unless told otherwise", async () => {
     upsertRlsRuleSpy.mockClear();
     render(<SecurityRlsPage />);
     await fillIn();
-    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({ right: "R" });
+    await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
+    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({ rights: ["R"], id: null });
   });
 
-  it("sets the right a rule is saved with", async () => {
+  it("saves one filter with several rights, in their one order", async () => {
     upsertRlsRuleSpy.mockClear();
     render(<SecurityRlsPage />);
-    await fillIn(/Delete/);
-    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({ right: "D", domainId: "pets" });
+    await fillIn("D", "U");
+    await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
+    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({
+      rights: ["R", "U", "D"],
+      domainId: "pets",
+    });
   });
 
-  it("offers an action no right, and saves it a read rule", async () => {
+  it("names the rights in the footer when none is ticked, and saves nothing", async () => {
+    upsertRlsRuleSpy.mockClear();
+    render(<SecurityRlsPage />);
+    await fillIn("R");
+    expect(await screen.findByTestId("form-problem")).toHaveTextContent("Right");
+    expect(upsertRlsRuleSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows the refusal when a right is already in another rule", async () => {
+    upsertRlsRuleSpy.mockClear();
+    upsertRlsRuleSpy.mockResolvedValueOnce({
+      success: false,
+      message: "taken",
+      code: "schema.rls_rule_right_taken",
+      params: { role: "pets_team", right: "U", rule: 7 },
+    } as never);
+    render(<SecurityRlsPage />);
+    await fillIn("U");
+    expect(await screen.findByTestId("form-problem")).toHaveTextContent(
+      "Right U of role 'pets_team' is already in rule 7",
+    );
+  });
+
+  it("offers an action no rights", async () => {
     render(<SecurityRlsPage />);
     fireEvent.click(screen.getByTestId("toggle-rule-form"));
-    await selectOption(screen.getByTestId("rule-right-select"), /Update/);
+    fireEvent.click(screen.getByTestId("rule-right-U"));
     await selectOption(screen.getByTestId("rule-apply-to"), /Action/);
-    expect(screen.queryByTestId("rule-right-select")).toBeNull();
+    expect(screen.queryByTestId("rule-right-U")).toBeNull();
   });
 
-  it("keeps an existing rule's right: another right is another rule", async () => {
+  it("edits an existing rule's rights, saving that rule by its id", async () => {
+    upsertRlsRuleSpy.mockClear();
     render(<SecurityRlsPage />);
     fireEvent.click(screen.getByTestId("rule-right-7"));
     fireEvent.click(await screen.findByTestId("edit-rule-7"));
-    expect(screen.getByTestId("rule-right-select")).toBeDisabled();
-    expect(screen.getByTestId("rule-right-select")).toHaveValue("Update");
+    expect(screen.getByTestId("rule-right-U")).toBeChecked();
+    expect(screen.getByTestId("rule-right-D")).toBeChecked();
+    fireEvent.click(screen.getByTestId("rule-right-D"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
+    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({ rights: ["U"], id: 7 });
   });
 
-  it("deletes the rule of its own right", async () => {
+  it("deletes the one rule by its id", async () => {
     deleteRlsRuleSpy.mockClear();
     render(<SecurityRlsPage />);
     fireEvent.click(screen.getByTestId("rule-right-7"));
@@ -151,7 +191,7 @@ describe("SecurityPage: a row rule's right (REQ-2188)", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() =>
-      expect(deleteRlsRuleSpy).toHaveBeenCalledWith("pets_team", null, "pets", null, null, "U"),
+      expect(deleteRlsRuleSpy).toHaveBeenCalledWith("pets_team", null, "pets", null, null, 7),
     );
   });
 });

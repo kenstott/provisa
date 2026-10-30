@@ -24,7 +24,7 @@ const rule = (over: Partial<RLSRule>): RLSRule => ({
   roleId: "analyst",
   filterExpr: "region = 'east'",
   description: "Analysts read only the east region's rows.",
-  right: "R",
+  rights: ["R"],
   ...over,
 });
 

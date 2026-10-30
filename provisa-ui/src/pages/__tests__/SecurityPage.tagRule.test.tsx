@@ -100,7 +100,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
         tagId: "regional",
         roleId: "analyst",
         filterExpr: "region = 'east'",
-        right: "R",
+        rights: ["R"],
       },
     ],
     loading: false,
@@ -182,6 +182,6 @@ describe("SecurityPage — RLS rules on tags (REQ-1384)", () => {
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(deleteRlsRuleSpy).toHaveBeenCalled());
-    expect(deleteRlsRuleSpy.mock.calls[0]).toEqual(["analyst", null, null, null, "regional", "R"]);
+    expect(deleteRlsRuleSpy.mock.calls[0]).toEqual(["analyst", null, null, null, "regional", 12]);
   });
 });

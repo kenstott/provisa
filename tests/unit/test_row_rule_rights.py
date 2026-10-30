@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A row rule has a right: R, U or D, one of each per role and model (REQ-2188).
+"""A row rule holds one predicate and a set of rights, any of R, U and D (REQ-2188).
 
-R or RW on a model is the ceiling. A rule only narrows: it gives no right the role does not hold,
+Each right is in at most one rule of a role on a model, and resolves to one plain predicate; two
+rules may share a predicate. R or RW on a model is the ceiling. A rule only narrows: it gives no right the role does not hold,
 and a role with no rule for a right is not narrowed. Reads read R rules alone; a data write ANDs
 the role's U or D rule in beside its grant; the model store applies them to every write of a
 semantic object, by whatever route it came, and a write refused so changes nothing."""
@@ -31,6 +32,7 @@ from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.compiler.write_admission import WriteNotAdmitted
 from provisa.core import model_row_rules
 from provisa.core.model_row_rules import ModelRowRefused, ModelRule
+from provisa.core.env_deploy import _rights_in_two_rules
 from provisa.core.models import DataProduct, RLSRule
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import rls as rls_repo
@@ -63,17 +65,25 @@ def _rule(role="sales", filter_expr="region = 'eu'", **fields):
 
 
 def test_a_rule_saved_with_no_right_is_an_r_rule():
-    assert RLSRule(table_id="orders", role_id="r", filter="1 = 1", description="d").right == "R"
+    assert RLSRule(table_id="orders", role_id="r", filter="1 = 1", description="d").rights == ["R"]
 
 
-def test_a_rule_refuses_a_right_that_is_not_r_u_or_d():
-    with pytest.raises(ValueError, match="right"):
-        RLSRule(table_id="orders", role_id="r", filter="1 = 1", description="d", right="X")
+@pytest.mark.parametrize("rights", [["X"], ["R", "X"], []])
+def test_a_rule_refuses_rights_that_are_not_some_of_r_u_and_d(rights):
+    with pytest.raises(ValueError, match="rights"):
+        RLSRule(table_id="orders", role_id="r", filter="1 = 1", description="d", rights=rights)
+
+
+def test_a_rules_rights_have_one_order_and_no_repeats():
+    rule = RLSRule(
+        table_id="orders", role_id="r", filter="1 = 1", description="d", rights=["D", "R", "D"]
+    )
+    assert rule.rights == ["R", "D"]
 
 
 def test_an_action_rule_has_no_row_to_update():
     with pytest.raises(ValueError, match="action"):
-        RLSRule(action_name="a", role_id="r", filter="1 = 1", description="d", right="U")
+        RLSRule(action_name="a", role_id="r", filter="1 = 1", description="d", rights=["U"])
 
 
 # --- reads ---------------------------------------------------------------------------------------
@@ -106,17 +116,25 @@ _TABLES = [{"id": 1, "domain_id": "sales", "source_id": "pg", "table_name": "ord
 
 def test_each_right_resolves_on_its_own():
     rules = [
-        {"role_id": "a", "table_id": 1, "filter_expr": "x = 1", "right": "R"},
-        {"role_id": "a", "table_id": 1, "filter_expr": "x = 2", "right": "U"},
-        {"role_id": "a", "domain_id": "sales", "filter_expr": "x = 3", "right": "D"},
+        {"role_id": "a", "table_id": 1, "filter_expr": "x = 1", "rights": "R"},
+        {"role_id": "a", "table_id": 1, "filter_expr": "x = 2", "rights": "U"},
+        {"role_id": "a", "domain_id": "sales", "filter_expr": "x = 3", "rights": "D"},
     ]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     by_right = {r["right"]: r["filter_expr"] for r in out if r.get("table_id") == 1}
     assert by_right == {"R": "x = 1", "U": "x = 2", "D": "x = 3"}
 
 
+def test_one_rule_of_several_rights_is_one_plain_predicate_for_each():
+    rules = [{"role_id": "a", "table_id": 1, "filter_expr": "x = 1", "rights": "RUD"}]
+    out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
+    ctx = build_rls_context(out, "a")
+    assert ctx.rules == {1: "x = 1"}  # a plain filter, never a CASE
+    assert ctx.write_rules == {"update": {1: "x = 1"}, "delete": {1: "x = 1"}}
+
+
 def test_a_domain_u_rule_reaches_the_tables_of_the_domain_as_an_r_rule_does():
-    rules = [{"role_id": "a", "domain_id": "sales", "filter_expr": "x = 3", "right": "U"}]
+    rules = [{"role_id": "a", "domain_id": "sales", "filter_expr": "x = 3", "rights": "U"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     ctx = build_rls_context(out, "a")
     assert ctx.write_rules["update"] == {1: "x = 3"}
@@ -124,14 +142,14 @@ def test_a_domain_u_rule_reaches_the_tables_of_the_domain_as_an_r_rule_does():
 
 
 def test_a_tag_d_rule_reaches_the_tables_carrying_the_tag():
-    rules = [{"role_id": "a", "tag_id": "regional", "filter_expr": "x = 4", "right": "D"}]
+    rules = [{"role_id": "a", "tag_id": "regional", "filter_expr": "x = 4", "rights": "D"}]
     tagged = [{"object_type": "table", "table_id": 1, "base_tag_id": "regional"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, tagged, {})
     assert build_rls_context(out, "a").write_rules["delete"] == {1: "x = 4"}
 
 
 def test_a_child_inherits_its_parents_u_rule_and_not_as_a_read_rule():
-    rules = [{"role_id": "p", "table_id": 1, "filter_expr": "x = 5", "right": "U"}]
+    rules = [{"role_id": "p", "table_id": 1, "filter_expr": "x = 5", "rights": "U"}]
     chains = {"p": ["p"], "c": ["c", "p"]}
     out = resolve_rules_by_right(rules, _TABLES, {"p": [], "c": ["p"]}, [], chains, [], {})
     ctx = build_rls_context(out, "c")
@@ -695,47 +713,153 @@ def test_a_write_in_an_org_with_no_runtime_built_has_no_rule_to_read():
 # --- the rule store ------------------------------------------------------------------------------
 
 
-async def test_one_rule_of_each_right_per_role_and_model(plane):
+def _save(role="rule_holder", filter_="1 = 1", rights=("R",), rule_id=None):
+    return RLSRule(
+        domain_id="pets",
+        role_id=role,
+        filter=filter_,
+        description="d",
+        rights=list(rights),
+        id=rule_id,
+    )
+
+
+async def _rules(conn):
+    return {r["rights"]: r for r in await rls_repo.list_for_role(conn, "rule_holder")}
+
+
+async def test_one_rule_carries_several_rights_with_one_predicate(plane):
     async with plane.acquire() as conn:
-        for right, expr in (("R", "1 = 1"), ("U", "2 = 2"), ("D", "3 = 3")):
-            await rls_repo.upsert(
-                conn,
-                RLSRule(
-                    domain_id="pets",
-                    role_id="rule_holder",
-                    filter=expr,
-                    description="d",
-                    right=right,
-                ),
+        await rls_repo.upsert(conn, _save(rights=["U", "D"]))
+        held = await _rules(conn)
+    assert list(held) == ["UD"]
+
+
+async def test_a_right_in_a_second_rule_is_refused_by_name(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(filter_="1 = 1", rights=["U", "D"]))
+        with pytest.raises(rls_repo.RuleRightTaken, match="'D'") as refused:
+            await rls_repo.upsert(conn, _save(filter_="2 = 2", rights=["R", "D"]))
+        held = await _rules(conn)
+    assert refused.value.right == "D" and refused.value.rule_id == held["UD"]["id"]
+    assert list(held) == ["UD"]  # the refused save wrote nothing
+
+
+async def test_rules_of_different_rights_stand_side_by_side(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(filter_="1 = 1", rights=["R"]))
+        await rls_repo.upsert(conn, _save(filter_="2 = 2", rights=["U", "D"]))
+        held = await _rules(conn)
+    assert {k: v["filter_expr"] for k, v in held.items()} == {"R": "1 = 1", "UD": "2 = 2"}
+
+
+async def test_two_rules_may_share_a_predicate(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(filter_="1 = 1", rights=["R"]))
+        await rls_repo.upsert(conn, _save(filter_="1  =  1", rights=["U"]))
+        await rls_repo.upsert(conn, _save(filter_="1 = 1", rights=["D"]))
+        assert sorted(await _rules(conn)) == ["D", "R", "U"]
+
+
+async def test_a_right_is_refused_per_role_and_target_only(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(rights=["U"]))
+        await rls_repo.upsert(conn, _save(role="pets_team", rights=["U"]))
+
+
+async def test_a_save_with_no_id_replaces_the_rule_of_exactly_those_rights(plane):
+    """A config load re-applied finds its own rule."""
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(filter_="1 = 1", rights=["U", "D"]))
+        await rls_repo.upsert(conn, _save(filter_="9 = 9", rights=["U", "D"]))
+        held = await _rules(conn)
+    assert {k: v["filter_expr"] for k, v in held.items()} == {"UD": "9 = 9"}
+
+
+async def test_an_edit_changes_the_rights_of_the_rule_it_names(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(rights=["U", "D"]))
+        rule_id = (await _rules(conn))["UD"]["id"]
+        await rls_repo.upsert(conn, _save(rights=["R", "U"], rule_id=rule_id))
+        held = await _rules(conn)
+    assert list(held) == ["RU"] and held["RU"]["id"] == rule_id
+
+
+async def test_an_edit_cannot_take_a_right_another_rule_holds(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(rights=["R"]))
+        await rls_repo.upsert(conn, _save(rights=["U"]))
+        rule_id = (await _rules(conn))["U"]["id"]
+        with pytest.raises(rls_repo.RuleRightTaken):
+            await rls_repo.upsert(conn, _save(rights=["R", "U"], rule_id=rule_id))
+
+
+async def test_an_edit_naming_no_rule_of_the_role_is_refused(plane):
+    async with plane.acquire() as conn:
+        with pytest.raises(ValueError, match="99999"):
+            await rls_repo.upsert(conn, _save(rule_id=99999))
+
+
+async def test_deleting_one_rule_leaves_the_roles_others(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(rights=["R"]))
+        await rls_repo.upsert(conn, _save(rights=["U"]))
+        rule_id = (await _rules(conn))["U"]["id"]
+        assert await rls_repo.delete(conn, "rule_holder", domain_id="pets", rule_id=rule_id) is True
+        rows = (await conn.execute_core(select(rls_rules.c.rights))).fetchall()
+    assert [r[0] for r in rows] == ["R"]
+
+
+async def test_a_rule_with_the_right_is_found_among_its_rights(plane):
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(registered_tables).values(
+                id=7, source_id="pg", domain_id="pets", schema_name="public", table_name="o"
             )
-        # The same right again replaces its own rule and leaves the others.
+        )
         await rls_repo.upsert(
             conn,
             RLSRule(
-                domain_id="pets", role_id="rule_holder", filter="4 = 4", description="d", right="U"
+                table_id="o",
+                role_id="rule_holder",
+                filter="1 = 1",
+                description="d",
+                rights=["R", "D"],
             ),
         )
-        rows = await rls_repo.list_for_role(conn, "rule_holder")
-    assert {r["right"]: r["filter_expr"] for r in rows} == {
-        "R": "1 = 1",
-        "U": "4 = 4",
-        "D": "3 = 3",
-    }
+        assert (await rls_repo.get_for_table_role(conn, 7, "rule_holder", "D")) is not None
+        assert (await rls_repo.get_for_table_role(conn, 7, "rule_holder", "U")) is None
 
 
-async def test_deleting_a_rule_of_one_right_leaves_the_others(plane):
+async def test_the_mutation_answers_a_taken_right_by_its_code(plane):
+    from provisa.api.admin._table_settings import right_taken
+
     async with plane.acquire() as conn:
-        for right in ("R", "U"):
-            await rls_repo.upsert(
-                conn,
-                RLSRule(
-                    domain_id="pets",
-                    role_id="rule_holder",
-                    filter="1 = 1",
-                    description="d",
-                    right=right,
-                ),
-            )
-        assert await rls_repo.delete(conn, "rule_holder", domain_id="pets", right="U") is True
-        rows = (await conn.execute_core(select(rls_rules.c.right))).fetchall()
-    assert [r[0] for r in rows] == ["R"]
+        await rls_repo.upsert(conn, _save(rights=["U"]))
+        with pytest.raises(rls_repo.RuleRightTaken) as refused:
+            await rls_repo.upsert(conn, _save(rights=["U", "D"]))
+    result = right_taken(refused.value)
+    assert not result.success and result.code == "schema.rls_rule_right_taken"
+    assert result.params["right"] == "U" and result.params["role"] == "rule_holder"
+
+
+async def test_a_config_load_is_held_to_it_by_the_same_save(plane):
+    """config_loader applies every rule through rls_repo.upsert."""
+    import inspect
+
+    from provisa.core import config_loader
+
+    assert "rls_repo.upsert(conn, rule)" in inspect.getsource(config_loader)
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(rights=["R", "U"]))
+        with pytest.raises(rls_repo.RuleRightTaken):
+            await rls_repo.upsert(conn, _save(rights=["U"]))
+
+
+def test_a_deployed_tree_is_held_to_it_too():
+    one = {"role_id": "a", "domain_id": "d", "rights": "RU"}
+    assert _rights_in_two_rules([one, {"role_id": "a", "domain_id": "d", "rights": "D"}]) == []
+    assert _rights_in_two_rules([one, {"role_id": "b", "domain_id": "d", "rights": "R"}]) == []
+    clash = _rights_in_two_rules([one, {"role_id": "a", "domain_id": "d", "rights": "UD"}])
+    assert len(clash) == 1 and "'U'" in clash[0]
+    assert len(_rights_in_two_rules([one, {"role_id": "a", "domain_id": "d"}])) == 1  # default R

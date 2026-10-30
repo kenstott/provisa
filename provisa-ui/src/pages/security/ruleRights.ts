@@ -10,6 +10,9 @@
 
 import type { RuleRight } from "../../types/admin";
 
+/** What a rule's rights are called, in their one order (REQ-2188). */
+export const RULE_RIGHTS: readonly RuleRight[] = ["R", "U", "D"];
+
 /** The label of each right a row rule may have (REQ-2188). */
 export const RULE_RIGHT_LABEL: Record<RuleRight, string> = {
   R: "securityPage.ruleRightRead",

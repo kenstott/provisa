@@ -357,6 +357,7 @@
       "request_rejected": "Erstellungsanfrage #{{id}} abgelehnt",
       "rls_rule_deleted": "RLS-Regel gelöscht",
       "rls_rule_not_found": "RLS-Regel nicht gefunden",
+      "rls_rule_right_taken": "Das Recht {{right}} der Rolle „{{role}}“ ist bereits in Regel {{rule}} enthalten. Ein Recht steht in höchstens einer Regel: Entfernen Sie es aus dieser Regel oder bearbeiten Sie diese Regel.",
       "rls_rule_saved_domain": "RLS-Regel für Domäne '{{domain}}' / Rolle '{{role}}' gespeichert",
       "rls_rule_saved_table": "RLS-Regel für Tabelle {{table}} / Rolle '{{role}}' gespeichert",
       "rls_rule_saved_tag": "RLS-Regel für Tag '{{tag}}' / Rolle '{{role}}' gespeichert",

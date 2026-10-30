@@ -805,7 +805,7 @@ export interface RLSRule {
   roleId: string;
   filterExpr: string;
   description: string; // REQ-2081: what the rule is for
-  right: RuleRight; // REQ-2188: what the rule narrows
+  rights: RuleRight[]; // REQ-2188: what the rule narrows; each in at most one rule
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.

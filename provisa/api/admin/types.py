@@ -1013,7 +1013,8 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     action_name: str | None = None  # REQ-1679
     tag_id: str | None = None  # REQ-1384: the rule applies to every table carrying this tag
     why: JsonScalar | None = None  # REQ-2094: reason, bases, review_on; who decided it and when
-    right: str = "R"  # REQ-2188: what the rule narrows: R read, U update, D delete
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
 
 
 # --- Input types for mutations ---
@@ -1769,7 +1770,9 @@ class RLSRuleInput:  # REQ-041, REQ-402
     description: str = ""  # REQ-2081: required; an empty one is refused
     # REQ-2094: reason, bases and review_on given; left out, the stored ones stand.
     why: JsonScalar | None = None
-    right: str = "R"  # REQ-2188: what the rule narrows: R read, U update, D delete
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
+    id: int | None = None  # the rule this save edits; None: a new rule, or its rights' own
 
 
 @strawberry.type

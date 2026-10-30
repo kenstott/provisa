@@ -2287,24 +2287,29 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     filter: str
     # REQ-2081: what the rule is for, as an access review reads it. Required, as a role's is.
     description: str
-    # REQ-2188: what the rule narrows: R reading a row, U updating it, D deleting it. It only
-    # narrows: the role's R or RW on the model is the ceiling, and a U or D rule on a role with
-    # only R does nothing.
-    right: str = "R"
+    # REQ-2188: the rights this one predicate narrows: R reading a row, U updating it, D deleting
+    # it. A rule only narrows: the role's R or RW on the model is the ceiling, and U or D on a role
+    # with only R does nothing. Each right is in at most one rule of a role on a target.
+    rights: list[str] = Field(default_factory=lambda: ["R"])
+    # The stored rule a save replaces. None: the rule of this target and role holding exactly
+    # these rights, or a new one.
+    id: int | None = None
 
-    @field_validator("right")
+    @field_validator("rights", mode="before")
     @classmethod
-    def _a_right(cls, value: str) -> str:  # REQ-2188
-        if value not in ("R", "U", "D"):
-            raise ValueError(f"A row rule's right is R, U or D, not {value!r}")
-        return value
+    def _rights(cls, value: Any) -> list[str]:  # REQ-2188
+        held = list(value)
+        unknown = [r for r in held if r not in ("R", "U", "D")]
+        if unknown or not held:
+            raise ValueError(f"A row rule's rights are some of R, U and D, not {value!r}")
+        return [r for r in ("R", "U", "D") if r in held]
 
     @model_validator(mode="after")
     def _action_rule_reads(self) -> "RLSRule":  # REQ-2188
-        if self.action_name and self.right != "R":
+        if self.action_name and self.rights != ["R"]:
             raise ValueError(
-                f"The row rule for {self.role_id!r} on action {self.action_name!r} has right "
-                f"{self.right!r}: an action's rows are read, so it takes only an R rule"
+                f"The row rule for {self.role_id!r} on action {self.action_name!r} has rights "
+                f"{self.rights!r}: an action's rows are read, so it takes only R"
             )
         return self
 

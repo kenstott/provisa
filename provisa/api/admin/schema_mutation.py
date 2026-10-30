@@ -91,6 +91,7 @@ from provisa.api.admin._table_settings import (
     invalid_replicate as _invalid_replicate,
     naming_refusal,
     role_ttl_refusal,
+    right_taken,
     row_rule_refusal,
     save_carried_after_store,
     save_naming,
@@ -4659,7 +4660,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # is refused with the reason here rather than by the role_id foreign key at insert.
         async with pool.acquire() as _rconn:
             _rule_refusal = await row_rule_refusal(
-                cast("Connection", _rconn), input.role_id, input.description, input.right
+                cast("Connection", _rconn), input.role_id, input.description, input.rights
             )
         if _rule_refusal is not None:
             return _rule_refusal
@@ -4713,11 +4714,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             filter=input.filter_expr,
             description=input.description,
             why=input.why,  # REQ-2094
-            right=input.right,  # REQ-2188
+            rights=input.rights,  # REQ-2188
+            id=input.id,
         )
         try:
             async with pool.acquire() as conn:
                 await rls_repo.upsert(cast("Connection", conn), model)
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -4747,7 +4751,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
         tag_id: Optional[str] = None,
-        right: str = "R",  # REQ-2188
+        id: Optional[int] = None,  # REQ-2188: this rule; none, every rule of the role here
     ) -> MutationResult:  # REQ-1531, REQ-1679, REQ-1384
         from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
@@ -4791,7 +4795,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 domain_id=domain_id,
                 action_name=action_name,
                 tag_id=tag_id,
-                right=right,
+                rule_id=id,
             )
         if deleted:
             # See upsert_rls_rule's matching rebuild — a deleted rule must stop being enforced
@@ -6505,17 +6509,21 @@ async def _upsert_tag_rls_rule(
                 code="schema.rls_rule_invalid",
                 params={"reason": problem},
             )
-        await rls_repo.upsert(
-            cast("Connection", conn),
-            RLSRuleModel(
-                tag_id=tag_id,
-                role_id=input.role_id,
-                filter=input.filter_expr,
-                description=input.description,
-                why=input.why,  # REQ-2094
-                right=input.right,  # REQ-2188
-            ),
-        )
+        try:
+            await rls_repo.upsert(
+                cast("Connection", conn),
+                RLSRuleModel(
+                    tag_id=tag_id,
+                    role_id=input.role_id,
+                    filter=input.filter_expr,
+                    description=input.description,
+                    why=input.why,  # REQ-2094
+                    rights=input.rights,  # REQ-2188
+                    id=input.id,
+                ),
+            )
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
     await _rebuild_schemas()
     return MutationResult(
         success=True,
@@ -6548,7 +6556,7 @@ async def _upsert_action_rls_rule(
     from provisa.core.models import RLSRule as RLSRuleModel
 
     name = input.action_name or ""
-    if input.right != "R":  # REQ-2188
+    if input.rights != ["R"]:  # REQ-2188
         return MutationResult(
             success=False,
             message=f"Action {name!r} takes only an R row rule: its rows are read",

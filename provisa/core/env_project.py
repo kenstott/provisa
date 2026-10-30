@@ -212,8 +212,8 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
     columns = await _rows(conn, org.table_columns, schema)
     relationships = await _rows(conn, org.relationships, schema)
     # REQ-2188: a role holds up to three rules on a target, and children sort by role alone: in
-    # the order of their right, not of the ids they arrived with, which differ between environments.
-    rls = sorted(await _rows(conn, org.rls_rules, schema), key=lambda r: r["right"])
+    # the order of their rights, not of the ids they arrived with, which differ across environments.
+    rls = sorted(await _rows(conn, org.rls_rules, schema), key=lambda r: r["rights"])
     # REQ-2074: ordered by role then operation, so two environments holding the same grants
     # write them in the same order (the child sort is by role alone, and stable).
     write_grants = sorted(

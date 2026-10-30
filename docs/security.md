@@ -300,20 +300,20 @@ rls_rules:
 
 The filter is ANDed into the query's `WHERE` clause, for reads and for `UPDATE` and `DELETE` alike.
 
-### A rule's right
+### A rule's rights
 
-Every rule has a `right`: `R`, `U` or `D`, the three things that can be done to an existing row. A rule that states none is an `R` rule. A role has at most one rule of each right on a table, a domain, a tag or an action.
+Every rule holds one predicate and a set of `rights`, any of `R`, `U` and `D`, the three things that can be done to an existing row. A rule that states none is an `R` rule. A right is in at most one rule of a role on a table, a domain, a tag or an action, and a save that puts it in a second is refused by name, whatever route it came by. Two rules may share a predicate.
 
 ```yaml
 rls_rules:
   - table_id: orders
     role_id: analyst
-    right: U
+    rights: [U, D]
     filter: "owner_role IN (current_setting('provisa.acting_roles'))"
     description: Analysts update only the orders their own role owns.
 ```
 
-A rule only narrows. The role's R or RW on the model is the ceiling, and RW includes create, which has no row to narrow. Reads compile `R` rules alone. A role's `U` rule is ANDed into its `UPDATE`, and its `D` rule into its `DELETE`, beside its write grant. A `U` or `D` rule on a role with only R does nothing. A role with no rule for a right does that to every row its grant allows, so a `U` rule doesn't narrow a delete. A domain rule and a tag rule reach their tables as an `R` rule does, and a child role takes its parents' rules of the same right. An action's rows are only read, so an action takes only an `R` rule. A `TRUNCATE`, a `MERGE` and an `INSERT ... ON CONFLICT DO UPDATE` can't carry a `U` or `D` rule, so a role that has one is refused them by name.
+A rule only narrows. The role's R or RW on the model is the ceiling, and RW includes create, which has no row to narrow. Each right resolves to one plain predicate, so a read is still a pushed-down filter. Reads compile `R` rules alone. A role's `U` rule is ANDed into its `UPDATE`, and its `D` rule into its `DELETE`, beside its write grant. A `U` or `D` rule on a role with only R does nothing. A role with no rule for a right does that to every row its grant allows, so a `U` rule doesn't narrow a delete. A domain rule and a tag rule reach their tables as an `R` rule does, and a child role takes its parents' rules of the same right. An action's rows are only read, so an action's rule holds only `R`. A `TRUNCATE`, a `MERGE` and an `INSERT ... ON CONFLICT DO UPDATE` can't carry a `U` or `D` rule, so a role that has one is refused them by name.
 
 Semantic objects are models too. The model tables of the meta domain take `U` and `D` rules, and the model store applies them to every write of one, whatever route it came by: GraphQL, REST or MCP. The write is refused by name when a row it touches is outside the rule, and it writes nothing. A rule's columns are the model's, and a column only its `*_meta` view holds is read from the view. Only a person is narrowed: a config load, a rebuild, a deployment and the scheduler have no acting person, and no rule holds them.
 

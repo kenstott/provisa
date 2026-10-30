@@ -357,6 +357,7 @@
       "request_rejected": "已拒絕建立請求 #{{id}}",
       "rls_rule_deleted": "行級安全規則已刪除",
       "rls_rule_not_found": "找不到行級安全規則",
+      "rls_rule_right_taken": "角色「{{role}}」的權限 {{right}} 已在規則 {{rule}} 中。一項權限最多屬於一條規則：請將其從該規則中移除，或編輯該規則。",
       "rls_rule_saved_domain": "領域「{{domain}}」／角色「{{role}}」的行級安全規則已儲存",
       "rls_rule_saved_table": "資料表 {{table}}／角色「{{role}}」的行級安全規則已儲存",
       "rls_rule_saved_tag": "標籤「{{tag}}」／角色「{{role}}」的行級安全規則已儲存",

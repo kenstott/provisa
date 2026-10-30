@@ -136,13 +136,15 @@ def resolve_rules_by_right(
     """Each right's rules resolved on their own, as a read's are: child precedence
     (``materialize_rls``), then one predicate per (role, table) over the table, its domain and its
     tags (:func:`resolve_table_rules`). A U rule never stands in for an R rule, or the reverse:
-    a role with no rule for a right is not narrowed by a rule for another. Every row comes back
-    naming its right, and a stored rule with none is an R rule."""
+    a role with no rule for a right is not narrowed by a rule for another. One rule carrying
+    several rights is read once for each, so every right is one plain predicate: a read stays a
+    pushed-down filter, never a CASE. Every row comes back naming the one right it stands for,
+    and a stored rule with none is an R rule."""
     from provisa.security.inheritance import materialize_rls
 
     out: list[dict] = []
     for right in RIGHTS:
-        own = [r for r in rls_rules if r.get("right", "R") == right]
+        own = [r for r in rls_rules if right in r.get("rights", "R")]
         if right != "R" and not own:
             continue
         materialized = materialize_rls(own, tables, parents, actions)

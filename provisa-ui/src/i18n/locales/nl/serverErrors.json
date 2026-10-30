@@ -357,6 +357,7 @@
       "request_rejected": "Aanmaakverzoek #{{id}} afgewezen",
       "rls_rule_deleted": "RLS-regel verwijderd",
       "rls_rule_not_found": "RLS-regel niet gevonden",
+      "rls_rule_right_taken": "Recht {{right}} van rol '{{role}}' staat al in regel {{rule}}. Een recht staat in hoogstens één regel: haal het uit die regel of bewerk die regel.",
       "rls_rule_saved_domain": "RLS-regel voor domein '{{domain}}' / rol '{{role}}' opgeslagen",
       "rls_rule_saved_table": "RLS-regel voor tabel {{table}} / rol '{{role}}' opgeslagen",
       "rls_rule_saved_tag": "RLS-regel voor tag '{{tag}}' / rol '{{role}}' opgeslagen",

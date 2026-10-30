@@ -66,7 +66,12 @@ export function RlsRuleRead({
         // REQ-2188: what the rule narrows. An action's rows are only read: its form offers none.
         ...(scope === "action"
           ? []
-          : [{ label: t("securityPage.ruleRight"), value: t(RULE_RIGHT_LABEL[r.right]) }]),
+          : [
+              {
+                label: t("securityPage.ruleRight"),
+                value: r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", "),
+              },
+            ]),
         {
           label: t("securityPage.filterExpression"),
           value: (
