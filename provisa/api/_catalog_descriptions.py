@@ -976,8 +976,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "enterprise",
         "steward": "The domain's steward: its own, else its nearest stewarded parent's",
         "status": "draft or approved, set by people",
-        "grounding": "grounded, grounded_pending or not_grounded, computed from the model "
-        "(REQ-1387)",
+        "grounding": "grounded, grounded_pending or not_grounded, computed from the model",
         "defined": "True when the term has a definition",
         "related_to": "RELATED_TO edges the term is on, either end",
         "only_related_to": "True when the term is not grounded and its only links are RELATED_TO",
