@@ -90255,7 +90255,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
     GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
     server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
-    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.'
+    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.
+    (Amended 2026-10-29, CLIENT-CALLED SERVER FUNCTIONS ANSWER LIKE POSTGRESQL:) Maintainer 2026-10-30:
+    pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are called by
+    clients, so they are served, not refused. Each answers as a PostgreSQL server with no such file or sequence
+    would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise PostgreSQL''s own
+    error. None reads a server file or changes anything.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
