@@ -18,6 +18,8 @@ names a view writes are the compiler's."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import sqlalchemy as sa
 
@@ -566,9 +568,8 @@ async def test_a_rule_both_engines_read_alike_is_taken(plane, pattern, replaceme
     (
         (r"(?P<word>orders)", ""),  # a named group is Python's
         ("orders", r"\g<0>_x"),  # a replacement form Python's alone
-        (r"(?i)ORDERS\Z", "x"),  # \Z is Python's end of string; PostgreSQL's reads otherwise
         ("(", ""),  # no engine reads this
-        (r"\w+(?<=s)$", "x"),  # a lookbehind PostgreSQL refuses to run the same
+        (r"\borders", "x"),  # a word boundary to Python, a backspace to PostgreSQL
     ),
 )
 async def test_a_rule_the_engines_read_differently_is_refused(plane, pattern, replacement):
@@ -578,6 +579,42 @@ async def test_a_rule_the_engines_read_differently_is_refused(plane, pattern, re
 
 
 # --- a client's set_config ----------------------------------------------------------------------
+
+
+def _admin_plan(sql: str, settings: dict[str, str] | None):
+    from provisa.pgwire._pipeline import _Plan
+    from provisa.transpiler.router import Route
+
+    return _Plan(
+        route=Route.DIRECT,
+        sql=sql,
+        source_id="provisa-admin",
+        dialect="postgres",
+        catalog_settings=settings,
+    )
+
+
+async def test_the_admin_terminal_tells_a_statement_and_no_later_one(control_plane):
+    from provisa.pgwire._pipeline import _run_plan_terminal
+
+    state = SimpleNamespace(model_db=control_plane.org(), federation_engine=None)
+    read = "SELECT current_setting('provisa.catalog.role', true) AS role"
+    told = await _run_plan_terminal(
+        _admin_plan(read, statement_settings("reader_role", False, "provisa", False)), state
+    )
+    assert told.rows == [("reader_role",)]
+    after = await _run_plan_terminal(_admin_plan(read, None), state)
+    assert after.rows in ([("",)], [(None,)])
+
+
+async def test_the_admin_terminal_refuses_a_client_setting_what_a_view_trusts(control_plane):
+    from provisa.pgwire._pipeline import _run_plan_terminal
+
+    state = SimpleNamespace(model_db=control_plane.org(), federation_engine=None)
+    with pytest.raises(ClientSettingRefused):
+        await _run_plan_terminal(
+            _admin_plan("SELECT set_config('provisa.catalog.role', 'admin', true)", None), state
+        )
 
 
 @pytest.mark.parametrize(

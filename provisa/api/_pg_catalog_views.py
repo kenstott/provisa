@@ -825,7 +825,7 @@ def _pg_group() -> str:
         relation,
         _select(
             relation,
-            {"groname": "r.rolname", "grosysid": "r.oid", "grolist": "ARRAY[]::oid[]"},
+            {"groname": "r.rolname", "grosysid": "r.oid", "grolist": "'{}'"},
             "FROM catalog_roles r WHERE NOT r.rolcanlogin",
         ),
     )
