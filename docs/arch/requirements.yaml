@@ -90288,7 +90288,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     calls: the functions behind operators, casts spelled as functions, wire format functions and ordinary
     functions. That no client calls one is not a reason to skip it. Functions over a type the engine does
     not hold stay skipped by design: geometric, text search, range and multirange, XML and money. The reason
-    recorded for each group names the missing type.'
+    recorded for each group names the missing type. (Amended 2026-10-29, EACH MISSING TYPE IS DECIDED ONE
+    BY ONE:) Maintainer 2026-10-30, replacing the skip in WHAT IS SERVED AND WHAT WAITS ON A TYPE: geometric,
+    text search, range and multirange, XML and money are not settled. The maintainer reviews each type and
+    decides; until then they stay open, not skipped by design. Everything else in that amendment stands.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
