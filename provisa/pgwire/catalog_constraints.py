@@ -65,9 +65,9 @@ def _build_pk_constraint_rows(
                 0,
                 0,
                 0,
-                None,
-                None,
-                None,
+                " ",  # confupdtype: a key has no action, which PostgreSQL writes as a space
+                " ",  # confdeltype
+                " ",  # confmatchtype
                 True,
                 0,
                 True,
@@ -130,9 +130,9 @@ def _build_unique_constraint_rows(  # REQ-1093
                     0,
                     0,
                     0,
-                    None,
-                    None,
-                    None,
+                    " ",  # confupdtype: a key has no action, which PostgreSQL writes as a space
+                    " ",  # confdeltype
+                    " ",  # confmatchtype
                     True,
                     0,
                     True,

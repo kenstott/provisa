@@ -1381,6 +1381,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2167: the server's connections, by backend process id -- what pg_cancel_backend and
         # pg_terminate_backend name. A session made outside a server has none.
         self.peers: dict = {} if peers is None else peers
+        # REQ-2167: what pg_stat_activity lists of this connection.
+        self.backend_start = datetime.datetime.now(datetime.timezone.utc)
+        self.application_name = ""
         self.role_id: str | None = None
         # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
         # their meta-role, made again in this session's org before each statement (a model rebuild
@@ -1691,7 +1694,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def _execute_sql_bound(
         self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
     ) -> ProvisaQueryResult:
-        from provisa.pgwire.catalog import answer, classify
+        from provisa.pgwire.catalog import CatalogSession, answer, classify
 
         # REQ-589: the statement keeps its $N placeholders and the client's values stay BOUND all
         # the way to the engine/source (govern_pgwire_plan(params=...)) — never spliced in here, so
@@ -1715,7 +1718,12 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             from provisa.api.app import state
 
             stripped = _substitute_params(stripped, params)
-            result = answer(stripped, self.role_id or "", state)
+            result = answer(
+                stripped,
+                self.role_id or "",
+                state,
+                session=CatalogSession(self.process_id, self.application_name, self.backend_start),
+            )
             log.debug(
                 "[RESULT] cols=%r rows=%r",
                 result.column_names,
@@ -2384,6 +2392,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             )
             ctx = BVContext(conn.create_session(), None, params)
             self._session = ctx.session  # type: ignore[assignment]
+            ctx.session.application_name = params.get("application_name", "")  # type: ignore[attr-defined]
             try:
                 # REQ-1194: provisa.redirect / provisa.redirect_format named at connect.
                 ctx.session.apply_redirect_settings(startup_redirect_settings(params))  # type: ignore[attr-defined]
