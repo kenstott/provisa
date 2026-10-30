@@ -184,7 +184,7 @@ A node's property is its column's published name: the column's alias when it has
 
 A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way: null, with no sign that it exists. A write is never silent: `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
 
-Every node has one built-in property, `_id`: its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned node carries it among its properties. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
+Every node has one built-in property, `_id`: its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned model node carries it among its properties. A node a graph session created has no key a statement wrote: it is answered with the properties it was given (`CREATE (:X {prop: 42})` returns `(:X {prop: 42})`), and its `_id` is the session's own handle on it. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
 
 Rules:
 

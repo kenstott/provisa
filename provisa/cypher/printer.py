@@ -210,10 +210,10 @@ def statement_lines(ast: CypherAST) -> list[str]:
             "ORDER BY "
             + ", ".join(f"{expression(o.expression)} {o.direction}" for o in ast.order_by)
         )
-    if ast.skip is not None:
-        lines.append(f"SKIP {int(ast.skip)}")
-    if ast.limit is not None:
-        lines.append(f"LIMIT {int(ast.limit)}")
+    for clause, count in (("SKIP", ast.skip), ("LIMIT", ast.limit)):
+        if count is not None:
+            # A count written, or the expression giving it ($n).
+            lines.append(f"{clause} {count if isinstance(count, int) else expression(count)}")
     return lines
 
 

@@ -20,13 +20,16 @@ into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlat
 
 from __future__ import annotations
 
+import json
+
 import copy
 import dataclasses
 from collections import ChainMap
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import sqlglot.expressions as exp
 
+from provisa.gql.label_map import LABELS_COLUMN, SESSION_REL_ID, NodeMapping
 from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_identity, node_key
 from provisa.gql.expr_ast import (
     CypherExpr,
@@ -47,13 +50,14 @@ from provisa.gql.translator_types import (
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
+    refused_when_read,
     via_alias_for,
 )
 from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
 
 if TYPE_CHECKING:
+    from provisa.gql.expr_ast import ListComprehension
     from provisa.gql.ir import CypherAST, PathPattern
-    from provisa.gql.label_map import NodeMapping
     from provisa.gql.translator import _Translator
 
 
@@ -291,11 +295,25 @@ class TranslatorExprContext:
             if isinstance(obj, exp.Column)
             and obj.table
             and t._all_rels_var_alias.get(obj.name) == obj.table
-            and obj.name in t._cte_sources
+            and (obj.name in t._cte_sources or obj.table in t._unwind_aliases)
             else None
         )
         if carried_in is not None:
             var = obj.name
+        if (
+            carried_in is None
+            and isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._union_columns
+            and obj.name in t._cte_sources
+            and t._var_table.get(obj.name, (None, None))[0] == obj.table
+        ):
+            # A node of a union of labels' rows a WITH carries (not as the JSON value a read of
+            # every relationship holds, read below): its union's columns are columns of that
+            # WITH's rows, a property no label of it has null (J199).
+            if name in t._union_columns[obj.name]:
+                return _col(name, obj.table)
+            return exp.Null()
         if var is not None:
             if var in t._all_rels_rel_vars:
                 # The edge's own properties, never its JSON: that carries an id built from both
@@ -311,14 +329,27 @@ class TranslatorExprContext:
                 held = attribute_type(name, t._all_rels_mappings)
                 return value if held is None else exp.Cast(this=value, to=held)
             if var in t._all_rels_node_vars:
-                from provisa.gql.translator_union import union_type
+                from provisa.gql.translator_union import held_by_any, union_type
 
-                value = _anon(
-                    "JSON_EXTRACT_SCALAR",
-                    exp.column(var, table=carried_in),
-                    exp.Literal.string(f"$.properties.{name}"),
-                )
-                held = union_type(name, t._all_rels_ends.get(var, []), t._lm)
+                ends = t._all_rels_ends.get(var, [])
+                if ends and not held_by_any(name, ends, t._lm):
+                    # No label the node may have holds the property: null, of no type -- read
+                    # from its JSON it is text, which an aggregate of numbers refuses.
+                    return exp.Null()
+                held = union_type(name, ends, t._lm)
+                path = exp.Literal.string(f"$.properties.{name}")
+                value = _anon("JSON_EXTRACT_SCALAR", exp.column(var, table=carried_in), path)
+                if held is not None and held.is_type(exp.DataType.Type.JSON):
+                    # A property held as one JSON value (values of several kinds): that value,
+                    # null where the node has none.
+                    return exp.Case(
+                        ifs=[
+                            exp.If(this=exp.Is(this=value, expression=exp.Null()), true=exp.Null())
+                        ],
+                        default=_anon(
+                            "JSON_EXTRACT", exp.column(var, table=carried_in), path.copy()
+                        ),
+                    )
                 return value if held is None else exp.Cast(this=value, to=held)
             if var in t._map_unwind_vars:
                 cast = exp.Cast(
@@ -362,6 +393,17 @@ class TranslatorExprContext:
                 # name the label does not give it.
                 return exp.Null()
             return _col(name, info[0] if info else var)
+        if (
+            isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._union_columns
+            and t._var_table.get(obj.name, ("", None))[0] == obj.table
+        ):
+            # A node of a union of labels a WITH carries: its union's columns are that WITH's,
+            # a property one of them; one no label of it has is null.
+            if name not in t._union_columns[obj.name]:
+                return exp.Null()
+            return _col(name, obj.table)
         if isinstance(obj, exp.Column) and obj.table and obj.name in t._map_vars:
             # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
             if name not in t._map_vars[obj.name]:
@@ -376,6 +418,19 @@ class TranslatorExprContext:
                 to=exp.DataType.build("json"),
             )
             return _anon("JSON_EXTRACT_SCALAR", cast, exp.Literal.string("$"))
+        if (
+            isinstance(obj, exp.Column)
+            and obj.table
+            and obj.name in t._map_array_vars
+            and obj.name in t._cte_sources
+        ):
+            # A map a WITH carries out of collected maps (head(collect({k: v}))): its values are
+            # JSON-encoded, so its key is read as JSON, which the answer decodes (null where it
+            # has none).
+            path = "$." + json.dumps(name)
+            return exp.Paren(
+                this=_anon("JSON_EXTRACT", _anon("TO_JSON", obj.copy()), exp.Literal.string(path))
+            )
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)
@@ -415,6 +470,13 @@ class TranslatorExprContext:
             from provisa.gql.translator_union import union_labels, union_type
 
             held = union_type(name, union_labels(self._t._lm, domain), self._t._lm)
+            return held.sql(dialect="postgres") if held is not None else None
+        if var is not None and var in self._t._all_rels_node_vars:
+            # A node a read of every relationship holds as its value: the one type the labels
+            # it is drawn from read the property as.
+            from provisa.gql.translator_union import union_type
+
+            held = union_type(name, self._t._all_rels_ends.get(var, []), self._t._lm)
             return held.sql(dialect="postgres") if held is not None else None
         if not self.property_is_table_column(obj, name):
             return None
@@ -557,6 +619,97 @@ class TranslatorExprContext:
         _, nm = t._var_table.get(name, (name, None))
         return "node" if nm is not None else None
 
+    def resolve_element_rows(
+        self, node: "ListComprehension", source: exp.Expression
+    ) -> exp.Expression:
+        """``[x IN source WHERE p | e]`` over a list of graph elements whose ``p`` or ``e`` reads
+        a subquery (a pattern comprehension of ``x``): one row per item, in the list's order,
+        ``x`` its node as a value a statement embedded in ``e`` is tied to by its identity."""
+        from provisa.gql.expr_visitor import ExprLowering
+
+        t = self._t
+        t._element_row_count += 1
+        alias = f"_lc{t._element_row_count}"
+        var = node.var
+        held = (t._var_table.get(var), var in t._cte_sources, var in t._all_rels_node_vars)
+        t._var_table[var] = (alias, None)
+        t._cte_sources.add(var)
+        t._all_rels_node_vars.add(var)
+        try:
+            lowering = ExprLowering(self)
+            kind = self.element_list_kind(node.source)
+            assert kind is not None  # only a list of graph elements is read row by row
+            lowering._element_vars[var] = kind
+            lowering._element_sources[var] = node.source
+            pred = lowering.lower(node.predicate) if node.predicate is not None else None
+            proj = (
+                lowering.lower(node.projection) if node.projection is not None else _col(var, alias)
+            )
+        finally:
+            before, was_source, was_value = held
+            if before is None:
+                t._var_table.pop(var, None)
+            else:
+                t._var_table[var] = before
+            if not was_source:
+                t._cte_sources.discard(var)
+            if not was_value:
+                t._all_rels_node_vars.discard(var)
+        at = exp.column("_o", table="_g")
+        items = exp.select(
+            exp.alias_(_anon("list_extract", source.copy(), at), var, quoted=True),
+            exp.alias_(at.copy(), "_o"),
+        ).from_(
+            exp.Table(
+                this=_anon(
+                    "generate_series", exp.Literal.number(1), _anon("cardinality", source.copy())
+                ),
+                alias=exp.TableAlias(
+                    this=exp.to_identifier("_g"), columns=[exp.to_identifier("_o")]
+                ),
+            )
+        )
+        rows = exp.select(proj).from_(exp.alias_(exp.Subquery(this=items), alias))
+        if pred is not None:
+            rows = rows.where(pred)
+        rows = rows.order_by(exp.column("_o", table=alias))
+        return _anon("ARRAY", rows)
+
+    def is_bound(self, name: str) -> bool:
+        t = self._t
+        return (
+            name in t._var_table
+            or name in t._rel_var_types
+            or name in t._all_rels_rel_vars
+            or name in t._path_vars
+            or name in t._varlen_rel_vars
+            or name in t._call_var_to_lateral
+            or name in t._lateral_bound
+            or name in t._drawn_vars
+        )
+
+    def is_json_property(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a property held as one JSON value: a column of type json, as a
+        session label holds a property written with values of several kinds (REQ-2176: 0 on one
+        node, 'xx' on another)."""
+        from provisa.gql.expr_ast import Paren, Property
+
+        while isinstance(expr, Paren):
+            expr = expr.inner
+        if not (isinstance(expr, Property) and isinstance(expr.obj, Variable)):
+            return False
+        held = self.property_type(exp.column(expr.obj.name), expr.name)
+        return held is not None and held.lower() == "json"
+
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        return self._t._element_list_kind(expr)
+
+    def element_property_type(self, expr: CypherExpr, name: str) -> exp.DataType | None:
+        from provisa.gql.translator_union import union_type
+
+        labels = self._t._element_list_types(expr)
+        return union_type(name, labels, self._t._lm) if labels else None
+
     def is_json_value(self, expr: CypherExpr) -> bool:
         from provisa.gql.expr_ast import Index, Paren
 
@@ -565,6 +718,14 @@ class TranslatorExprContext:
         if isinstance(expr, Index):
             # An item of a variable bound to a list of several types.
             return isinstance(expr.obj, Variable) and expr.obj.name in self._t._json_list_vars
+        if (
+            isinstance(expr, Property)
+            and isinstance(expr.obj, Variable)
+            and expr.obj.name in self._t._map_array_vars
+            and expr.obj.name in self._t._cte_sources
+        ):
+            # A key of a map a WITH carries out of collected maps (resolve_property): its JSON.
+            return True
         return isinstance(expr, Variable) and expr.name in self._t._json_value_vars
 
     def holds_list_items(self, expr: CypherExpr) -> bool:
@@ -588,12 +749,23 @@ class TranslatorExprContext:
         )
 
     def temporal_zone(self, expr: CypherExpr) -> str | None:
-        """The zone a time or date time the query builds names (REQ-2173), or None."""
+        """The zone a time or date time the query builds names (REQ-2173), or a graph session's
+        date time property was written in (REQ-2176), or None."""
         from provisa.gql import temporal
 
+        if isinstance(expr, Property) and isinstance(expr.obj, Variable):
+            written = self._property_zone(expr.obj.name, expr.name)
+            if written is not None:
+                return written
         return temporal.zone_of(
             expr, ChainMap(self._t._temporal_zones, self._t._param_zones), self.temporal_kind
         )
+
+    def _property_zone(self, var: str, prop: str) -> str | None:
+        """The zone the session's date times of the node ``var``'s property ``prop`` were all
+        written in (NodeMapping.property_zones), or None."""
+        nm = self._t._var_table.get(var, (None, None))[1]
+        return dict(nm.property_zones).get(prop) if isinstance(nm, NodeMapping) else None
 
     def temporal_element_zone(self, expr: CypherExpr) -> str | None:
         """The zone every item of a list literal names (an UNWIND's variable), or None."""
@@ -637,7 +809,7 @@ class TranslatorExprContext:
         if lname in _GRAPH_FUNCTIONS or lname == "length":
             return self._graph_fn(lname, args)
         if lname in ("count", "collect") and len(args) == 1:
-            agg = self._agg_node(lname, args[0])
+            agg = self._agg_node(lname, args[0], distinct=distinct)
             if agg is not None:
                 return agg
         if lname == "group_concat":
@@ -663,21 +835,69 @@ class TranslatorExprContext:
         """The variable name a graph function is applied to (its single bare-column argument)."""
         return arg.name if isinstance(arg, exp.Column) and not arg.table else None
 
-    def _agg_node(self, fn: str, arg: exp.Expression) -> exp.Expression | None:
-        """COUNT(n)/COLLECT(n) on a node variable → aggregate over its id column (COUNT dedupes, since
-        JOINs can repeat a node); on a relationship variable COUNT(r) → COUNT(*). None if not a var."""
+    def _agg_node(
+        self, fn: str, arg: exp.Expression, *, distinct: bool = False
+    ) -> exp.Expression | None:
+        """COUNT(x)/COLLECT(x) of a node, relationship or path variable (openCypher): count(x)
+        counts the rows where x is bound (DISTINCT, the distinct elements), each row of a join
+        once -- MATCH (a:A), (b:X) counts a once per X; collect(x) is the list of the elements
+        themselves, as RETURN x answers each, the rows where x is unbound left out. None where
+        ``arg`` is no such variable."""
         var = self._arg_var(arg)
         if var is None:
             return None
+        found = self._element_of(var)
+        if found is None:
+            return None
+        identity, value = found
+        if fn == "count":
+            if identity is None:
+                return exp.Count(this=exp.Star())
+            return exp.Count(this=exp.Distinct(expressions=[identity]) if distinct else identity)
+        if value is None:
+            return None
+        if identity is not None:
+            value = exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.Is(this=identity.copy(), expression=exp.Null()), true=exp.Null()
+                    )
+                ],
+                default=value,
+            )
+        return _anon("collect", exp.Distinct(expressions=[value]) if distinct else value)
+
+    def _element_of(self, var: str) -> tuple[exp.Expression | None, exp.Expression | None] | None:
+        """The graph element ``var`` names in the rows: its identity (null where it is unbound;
+        None where every row binds it) and its value (its JSON, as RETURN answers it); None for
+        a variable that names no node, relationship or path."""
         t = self._t
-        if var in t._rel_var_types or var in t._all_rels_rel_vars:
-            return exp.Count(this=exp.Star()) if fn == "count" else None
+        if var in t._path_vars:
+            return None, t._build_path_object(var)
+        if var in t._all_rels_node_vars or var in t._all_rels_rel_vars:
+            # A node or edge a read of every relationship holds as its value.
+            identity = graph_identity(t, var) if var in t._all_rels_node_vars else None
+            alias = t._var_table.get(var, (var, None))[0]
+            table = (
+                alias
+                if var in t._cte_sources
+                else t._all_rels_var_alias.get(var, t._all_rels_alias)
+            )
+            column = exp.column(var, table=table) if table else exp.column(var)
+            if identity is None:
+                identity = _anon("JSON_EXTRACT_SCALAR", column.copy(), exp.Literal.string("$.id"))
+            return identity, column
+        if var in t._rel_var_types:
+            return None, self.resolve_graph_element(var)
         info = t._var_table.get(var)
-        if info and info[1] is not None:
-            id_ref = _col(info[1].id_column, var)
-            if fn == "count":
-                return exp.Count(this=exp.Distinct(expressions=[id_ref]))
-            return _anon("collect", id_ref)
+        nm = info[1] if info else None
+        if info and nm is not None:
+            return _col(nm.id_column, info[0]), self.resolve_graph_element(var)
+        if var in t._domain_nodes or var in t._union_columns:
+            # A node of a union of labels' rows: its identity, null where an OPTIONAL MATCH found
+            # none, and its JSON, the union's node column.
+            alias = info[0] if info else var
+            return _col("__id", alias), _col("__node", alias)
         return None
 
     def _graph_fn(self, name: str, args: list[exp.Expression]) -> exp.Expression:
@@ -698,6 +918,8 @@ class TranslatorExprContext:
             # keys() of a map -- a literal, a parameter, a variable bound to one, or null -- is the
             # map's own keys, in order (null for null).
             return _anon("map_keys", args[0])
+        if var is None and name in ("labels", "type") and len(args) == 1:
+            return self._element_fn(name, args[0])
         if var is None:
             raise NotImplementedError(f"graph function {name!r} needs a variable argument")
         if result is None:
@@ -709,6 +931,9 @@ class TranslatorExprContext:
         t = self._t
         nm = (t._var_table.get(var) or (None, None))[1]
         if name == "length":
+            if var in t._path_vars and var in t._walk_trails:
+                # A path of a session's pattern of several hops: its relationships, counted.
+                return _anon("cardinality", t._walk_trails[var][1].copy())
             # A recursive walk counts its hops (#309); shortestPath reads the same column.
             recursive = var in t._path_vars and t._path_vars[var][2]
             return (
@@ -721,21 +946,58 @@ class TranslatorExprContext:
                 return _col(nm.id_column, var)
             return _col("__id", var) if var in t._domain_nodes else None
         if name == "labels":
+            # REQ-2176: a graph session's node carries every label the session holds for it
+            # (ephemeral.read), as its relation or its union names them.
+            held = self._session_labels(var, t._var_table.get(var))
+            if held is not None:
+                return held
             if nm is not None:
                 return exp.Array(expressions=[exp.Literal.string(nm.label)])
             # A node matched with no label: the label of the table its row is from.
-            return exp.Array(expressions=[_col("__label", var)]) if var in t._domain_nodes else None
+            if var in t._domain_nodes:
+                return exp.Array(expressions=[_col("__label", var)])
+            if var in t._all_rels_node_vars:
+                # An end of a read of every relationship: the label its JSON names, none where it
+                # names none (a session node with no label).
+                label = _anon("JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.label"))
+                unlabelled = exp.EQ(
+                    this=exp.Coalesce(this=label.copy(), expressions=[exp.Literal.string("")]),
+                    expression=exp.Literal.string(""),
+                )
+                return exp.Case(
+                    ifs=[
+                        exp.If(
+                            this=unlabelled,
+                            true=exp.Cast(
+                                this=exp.Array(expressions=[]), to=exp.DataType.build("TEXT[]")
+                            ),
+                        )
+                    ],
+                    default=exp.Array(expressions=[label]),
+                )
+            return None
         if name == "keys":
             if nm is None and var in t._domain_nodes:
                 return self._union_keys(var)
+            if nm is None and var in t._all_rels_rel_vars:
+                # A relationship of a read of every relationship: the properties it holds set.
+                return self._set_keys(exp.column(edge_properties_column(var)), of_relationship=True)
             if nm is None:
                 # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
                 via_bound = t._rel_var_via.get(var)
                 if via_bound is not None:
+                    if self._in_session(via_bound[1].catalog_name):
+                        # REQ-2176: a session relationship's columns are its type's: the keys
+                        # are those it holds set.
+                        return self._set_keys(self._held_properties(var))
                     return exp.Array(
                         expressions=[exp.Literal.string(k) for k in sorted(via_bound[1].attributes)]
                     )
                 return None
+            if self._in_session(nm.catalog_name):
+                # REQ-2176: a session node's columns are its label's: the keys are those it holds
+                # set (a property removed, or another node's, is none of its).
+                return self._set_keys(self._held_properties(var))
             return exp.Array(expressions=[exp.Literal.string(k) for k in sorted(nm.properties)])
         if name == "type":
             if var in t._all_rels_rel_vars:
@@ -753,6 +1015,48 @@ class TranslatorExprContext:
             return _type_literal(var, rel_type)
         return None
 
+    @staticmethod
+    def _element_fn(name: str, element: exp.Expression) -> exp.Expression:
+        """labels() or type() of a node or relationship a list or map holds: its JSON object,
+        read for what it says (a node's every label where it names them, else its one label; a
+        relationship's type). Of null, null; of any other value, a type error when it is read."""
+        key = "$.type" if name == "type" else "$.label"
+        refused = refused_when_read(
+            f"{name}() takes a {'relationship' if name == 'type' else 'node'}, and was given "
+            f"another value",
+            "JSON",
+        )
+        checked = exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.Is(
+                        this=_anon("JSON_EXTRACT", element.copy(), exp.Literal.string(key)),
+                        expression=exp.Null(),
+                    ),
+                    true=refused,
+                )
+            ],
+            default=element.copy(),
+        )
+        if name == "type":
+            return _anon("JSON_EXTRACT_SCALAR", checked, exp.Literal.string("$.type"))
+        every = exp.Cast(
+            this=_anon("JSON_EXTRACT", checked.copy(), exp.Literal.string("$.labels")),
+            to=exp.DataType.build("ARRAY<TEXT>"),
+        )
+        one = exp.Array(
+            expressions=[_anon("JSON_EXTRACT_SCALAR", checked, exp.Literal.string("$.label"))]
+        )
+        return exp.Case(
+            ifs=[exp.If(this=exp.Is(this=element, expression=exp.Null()), true=exp.Null())],
+            default=exp.Coalesce(this=every, expressions=[one]),
+        )
+
+    def _in_session(self, catalog: str) -> bool:
+        """Whether a relation of ``catalog`` is a graph session's (REQ-2176)."""
+        walk = self._t._lm.session_walk
+        return walk is not None and catalog == walk.catalog_name
+
     def _union_properties(self, var: str) -> exp.Expression:
         """The properties of a node of a union of labels: those its row's value holds
         (NODE_COLUMN), as JSON."""
@@ -762,12 +1066,19 @@ class TranslatorExprContext:
     def resolve_element_properties(self, name: str) -> exp.Expression | None:
         if name in self._t._domain_nodes and self._t._var_table.get(name, (name, None))[1] is None:
             return self._union_properties(name)
+        if name in self._t._all_rels_rel_vars:
+            # A relationship of a read of every relationship: its own properties, held beside
+            # its JSON (translator_union._build_all_rels_union).
+            return exp.column(edge_properties_column(name))
         return self._properties_object(name)
 
     def _union_keys(self, var: str) -> exp.Expression:
         """keys(n) of a node of a union of labels: the keys of the properties its row's value
         holds (NODE_COLUMN) that are set -- a property null on the row is no property of it."""
-        props = self._union_properties(var)
+        return self._set_keys(self._union_properties(var))
+
+    def _set_keys(self, props: exp.Expression, of_relationship: bool = False) -> exp.Expression:
+        """The keys of a properties JSON object whose values are set (not null)."""
         key = exp.to_identifier("_k")
         path = exp.DPipe(
             this=exp.DPipe(this=exp.Literal.string('$."'), expression=exp.column("_k")),
@@ -775,10 +1086,18 @@ class TranslatorExprContext:
         )
         # Set: a value of any kind but null (each property keeps its type, a list one included,
         # which no engine reads as a scalar).
-        is_set = exp.NEQ(
+        is_set: exp.Expression = exp.NEQ(
             this=_anon("JSON_KIND", _anon("JSON_EXTRACT", props.copy(), path)),
             expression=exp.Literal.string("null"),
         )
+        if of_relationship:
+            # A session relationship's id, read as a property while a rest runs, is no key.
+            is_set = exp.And(
+                this=is_set,
+                expression=exp.NEQ(
+                    this=exp.column("_k"), expression=exp.Literal.string(SESSION_REL_ID)
+                ),
+            )
         return _anon(
             "filter", _anon("JSON_KEYS", props), exp.Lambda(this=is_set, expressions=[key])
         )
@@ -791,6 +1110,18 @@ class TranslatorExprContext:
         if trail is not None and name in ("relationships", "relationship", "nodes"):
             # REQ-751: a session walk's path, read from its trail.
             return (trail[0] if name == "nodes" else trail[1]).copy()
+        hops = t._every_rel_paths.get(var) if hasattr(t, "_every_rel_paths") else None
+        if hops and name in ("relationships", "relationship", "nodes"):
+            # A path of hops read from unions of relationships: its nodes or edges, in order.
+            from provisa.gql.path_walk import _json_list
+
+            aliases = t._all_rels_var_alias
+            cols = (
+                [hops[0][0], *(last for _, _, last in hops)]
+                if name == "nodes"
+                else [edge for _, edge, _ in hops]
+            )
+            return _json_list([exp.column(c, table=aliases[c]) for c in cols])
         if name in ("relationships", "relationship"):
             steps = t._path_steps.get(var) or t._path_steps.get(t._varlen_rel_vars.get(var, ""))
             if steps is None:
@@ -810,8 +1141,14 @@ class TranslatorExprContext:
         if name == "endnode":
             return self._path_endpoint(var, start=False)
         if name == "properties":
-            return self._properties_object(var)
+            return self.resolve_element_properties(var)
         return None
+
+    def _held_properties(self, var: str) -> exp.Expression:
+        """The properties JSON object of ``var``, a node or relationship the read resolved."""
+        held = self._properties_object(var)
+        assert held is not None, f"{var} is a resolved node or relationship"
+        return held
 
     def _properties_object(self, var: str) -> exp.Expression | None:
         info = self._t._var_table.get(var)
@@ -829,6 +1166,8 @@ class TranslatorExprContext:
                 via_alias, via_map = via_bound
                 via_exprs: list[exp.Expression] = []
                 for prop_name, col_name in via_map.attributes.items():
+                    if prop_name == SESSION_REL_ID:
+                        continue  # a session relationship's id, read while a rest runs
                     via_exprs.append(exp.Literal.string(prop_name))
                     via_exprs.append(_via_column(via_alias, col_name))
                 return exp.Anonymous(this="JSON_OBJECT", expressions=via_exprs)
@@ -852,14 +1191,71 @@ class TranslatorExprContext:
             if node_info and node_info[1] is not None:
                 return t._build_node_object_expr(node_alias, node_info[1])
             return exp.Column(this=exp.Star(), table=exp.to_identifier(node_alias))
+        if var in t._all_rels_rel_vars:
+            # A relationship of a read of every relationship (or a session hop): the end its
+            # edge's JSON carries, its own start or end whichever way the pattern read it.
+            key = "$.startNode" if start else "$.endNode"
+            return _anon("JSON_EXTRACT", exp.column(var), exp.Literal.string(key))
         raise NotImplementedError(f"endpoint of {var!r} unresolved")
+
+    def _session_labels(self, var: str | None, info: tuple | None) -> exp.Expression | None:
+        """The labels column of a graph session's node ``var`` (bound as ``info``) reads, every
+        label it has: its node relation's, or a union's holding session nodes; None for a model
+        node, whose labels are its type's."""
+        from provisa.gql.label_map import is_session_node
+
+        if var is None or info is None:
+            return None
+        if var in self._t._all_rels_node_vars:
+            if self._t._lm.session_walk is None:
+                return None
+            # A node read as its JSON value: the labels it names, else the one its type is.
+            named = exp.Cast(
+                this=_anon("JSON_EXTRACT", exp.column(var), exp.Literal.string("$.labels")),
+                to=exp.DataType.build("VARCHAR[]", dialect="postgres"),
+            )
+            own = exp.Array(
+                expressions=[
+                    _anon("JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.label"))
+                ]
+            )
+            return exp.Coalesce(this=named, expressions=[own])
+        alias, nm = info
+        if nm is not None:
+            return _col(LABELS_COLUMN, alias) if is_session_node(nm) else None
+        if var in self._t._labels_unions:
+            # Its union's row, or the WITH's carrying it.
+            return _col(LABELS_COLUMN, alias)
+        return None
 
     def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:
         # Labels are Provisa's fixed types, and a variable's type is fixed by its MATCH binding, so a
         # label test is a compile-time constant: does the bound node's type match the requested label?
         var = operand.name if isinstance(operand, exp.Column) else None
+        if var is not None and self.graph_kind(var) == "relationship":
+            # A relationship's one label is its type, as written (T2 is not t2): r:T holds where
+            # its type is T, r:T:U where it is each of them.
+            rel_type = self._graph_scalar_fn("type", var)
+            if rel_type is not None:
+                is_type: exp.Expression = exp.true()
+                for x in labels:
+                    same = exp.EQ(this=rel_type.copy(), expression=exp.Literal.string(x))
+                    is_type = (
+                        same
+                        if isinstance(is_type, exp.Boolean)
+                        else exp.And(this=is_type, expression=same)
+                    )
+                return is_type
         info = self._t._var_table.get(var) if var else None
         nm = info[1] if info else None
+        held = self._session_labels(var, info)
+        if held is not None:
+            # A graph session's node has the labels its row names, every one (REQ-2176).
+            wanted = [self._t._lm.canonical_label(label) for label in labels]
+            return exp.ArrayContainsAll(
+                this=held,
+                expression=exp.Array(expressions=[exp.Literal.string(w) for w in wanted]),
+            )
         if nm is None:
             # A node of no one table: its domain's name holds of every row; any other label holds
             # where the row's own type is one it names (the label a union's row carries).
@@ -871,7 +1267,8 @@ class TranslatorExprContext:
                     "JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string("$.label")
                 )
             elif domain is not None and var is not None:
-                row_label = _col("__label", var)
+                # Its union's row, or the WITH's carrying it.
+                row_label = _col("__label", info[0] if info else var)
             else:
                 return exp.false()
             named = sorted(m.label for m in self._t._lm.nodes.values() if _label_names(m, labels))
@@ -918,7 +1315,16 @@ class TranslatorExprContext:
             from provisa.gql.select_builder import node_json
 
             return node_json(alias, nm)
+        if name in t._all_rels_rel_vars or name in t._all_rels_node_vars:
+            # A node or relationship a union of relationships carries: its value, as it is.
+            return exp.column(name, table=t._all_rels_var_alias.get(name))
         return None
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:
+        """The JSON object of the node, relationship or path ``name`` as a list, a map or
+        collect() holds it (_element_of's value); None for any other variable."""
+        found = self._element_of(name)
+        return None if found is None else found[1]
 
     def resolve_graph_identity(
         self, name: str
@@ -1029,7 +1435,9 @@ class TranslatorExprContext:
             return self._comprehension_as_collect(node)
         src_var, rel_type, tgt_var, tgt_label = hop
         t = self._t
-        rel = t._lm.relationships.get(rel_type.upper()) if rel_type else None
+        if self._comprehension_reads_several(src_var, rel_type, tgt_label):
+            return self._comprehension_as_collect(node)
+        rel = t._lm.relationships.get(rel_type) if rel_type else None
         if rel is None and rel_type and rel_type not in t._lm.aliases:
             # REQ-603: a type that is not registered is refused, never read as some other
             # relationship of the source.
@@ -1141,6 +1549,29 @@ class TranslatorExprContext:
         select = exp.select(proj).from_(exp.alias_(tgt_table, tgt_alias)).where(where)
         return _anon("ARRAY", select)
 
+    def _comprehension_reads_several(
+        self, src_var: str, rel_type: str | None, tgt_label: str | None
+    ) -> bool:
+        """Whether a comprehension's one hop reads more than one pair of tables, which the
+        one-hop read does not: from a node of no one table, in a graph session (its one
+        relationships relation, REQ-2176), or of a type reaching several labels from its source
+        (J198). Such a comprehension is read as its embedded statement."""
+        from provisa.gql.label_map import is_session_node
+
+        t = self._t
+        src_nm = (t._var_table.get(src_var) or (None, None))[1]
+        if t._lm.session_walk is not None and (src_nm is None or is_session_node(src_nm)):
+            return True
+        if src_nm is None or rel_type is None:
+            return False
+        reached = {
+            m.target_label
+            for m in t._lm.aliases.get(rel_type, [])
+            if m.source_label == src_nm.type_name
+            and (tgt_label is None or t._lm.canonical_label(tgt_label) == m.target_label)
+        }
+        return len(reached) > 1
+
     def _comprehension_as_collect(self, node: PatternComprehension) -> exp.Expression:
         """A comprehension the one-hop read does not take (an unnamed end, a named relationship,
         several types, a path variable) is ``COLLECT { MATCH pattern WHERE p RETURN proj }``: the
@@ -1163,18 +1594,27 @@ class TranslatorExprContext:
             skip=None,
             limit=None,
         )
-        return _anon("ARRAY", self._translate_embedded(body, "COLLECT"))
+        inner, kinds = self._translate_embedded_kinds(body, "COLLECT")
+        rows = inner if isinstance(inner, exp.Select) and not inner.args.get("with_") else None
+        if rows is not None and len(rows.expressions) == 1:
+            (row,) = rows.expressions
+            name = row.alias_or_name
+            if name and name.lower() in kinds and isinstance(row, exp.Alias):
+                # A path, node or relationship each row is: its JSON, which the answer decodes
+                # (GraphVarKind.JSON_LIST), as a one-hop comprehension's is.
+                row.set("this", _anon("to_json", row.this))
+        return _anon("ARRAY", inner)
 
     # -- recursion helper -------------------------------------------------- #
 
     def _translate_embedded(self, body: CypherAST, kind: str) -> exp.Expression:
+        return self._translate_embedded_kinds(body, kind)[0]
+
+    def _translate_embedded_kinds(self, body: CypherAST, kind: str) -> tuple[exp.Expression, dict]:
         """Translate an embedded statement against the correlated outer scope: a fresh
         ``_Translator`` over its own copy, seeded with the outer ``_var_table``, parameters merged
         back; returns the inner SELECT as an AST."""
-        from provisa.gql.translator import _Translator
-
         outer = self._t
-        inner_ast = copy.deepcopy(body)
         # An outer node drawn from several tables (no label, a domain, a read of every
         # relationship, such a node a WITH carries) is no one table's row the inner statement can
         # go on from: the inner statement matches it under a name of its own, tied to the outer
@@ -1190,18 +1630,23 @@ class TranslatorExprContext:
             )
             and graph_identity(outer, v) is not None
         }
-        _rename_variables(inner_ast, drawn)
-        inner_tr = _Translator(inner_ast, outer._lm, outer._params)
-        inner_tr._var_table.update({v: b for v, b in outer._var_table.items() if v not in drawn})
-        # A node a WITH carries is held in that WITH's rows, under its name there.
-        inner_tr._cte_sources = set(outer._cte_sources)
-        # The outer statement's nodes are its row, which the inner statement goes on from (#160),
-        # a WITH's carried nodes included.
-        inner_tr._lateral_bound = {v for v, (_, nm) in outer._var_table.items() if nm is not None}
-        inner_select, inner_params, _ = inner_tr.translate()
+        inner_tr, inner_select, inner_params, inner_kinds = self._embedded(body, drawn)
+        # An outer node of one table the inner statement reads as an end of a read of every
+        # relationship (its pattern's other end has no label, as in [(n)--() | 1]) is matched
+        # there as a node drawn from several tables is: under a name of its own, tied to the
+        # outer row by its identity -- never every node of the read, nor its own name, which
+        # the read's column of that name would hide.
+        reread = {
+            v: f"__outer_{v}"
+            for v, (_, nm) in outer._var_table.items()
+            if nm is not None and v not in drawn and v in inner_tr._all_rels_node_vars
+        }
+        if reread:
+            drawn |= reread
+            inner_tr, inner_select, inner_params, inner_kinds = self._embedded(body, drawn)
         same = [
-            exp.EQ(this=inner_id, expression=graph_identity(outer, v))
-            for v, w in drawn.items()
+            exp.EQ(this=inner_id, expression=e.copy())
+            for w, e in inner_tr._outer_identities.items()
             if (inner_id := graph_identity(inner_tr, w)) is not None
         ]
         if same:
@@ -1212,4 +1657,37 @@ class TranslatorExprContext:
             if p not in self._t._param_seen:
                 self._t._param_order.append(p)
                 self._t._param_seen.add(p)
-        return inner_select
+        return inner_select, inner_kinds
+
+    def _embedded(self, body: CypherAST, drawn: dict[str, str]) -> tuple[Any, Any, list[str], dict]:
+        """The embedded statement ``body`` translated over the outer scope, each variable of
+        ``drawn`` matched under its new name: (its translator, its SELECT, its parameters, its
+        graph columns' kinds)."""
+        from provisa.gql.translator import _Translator
+
+        outer = self._t
+        inner_ast = copy.deepcopy(body)
+        _rename_variables(inner_ast, drawn)
+        inner_tr = _Translator(inner_ast, outer._lm, outer._params)
+        # The outer nodes it matches under names of its own are bound where it reads them.
+        inner_tr._drawn_vars = set(drawn.values()) | outer._drawn_vars
+        # Each such name's outer identity, and those the outer statement was handed and binds
+        # no node of: a statement nested deeper binds them, tied there to the outer row.
+        tied: dict[str, exp.Expression] = {  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            w: e for w, e in outer._outer_identities.items() if graph_identity(outer, w) is None
+        }
+        for v, w in drawn.items():
+            identity = graph_identity(outer, v)
+            assert identity is not None  # drawn holds only the nodes that have one
+            tied[w] = identity
+        inner_tr._outer_identities = tied
+        inner_tr._var_table.update({v: b for v, b in outer._var_table.items() if v not in drawn})
+        # A node a WITH carries is held in that WITH's rows, under its name there.
+        inner_tr._cte_sources = set(outer._cte_sources)
+        # The outer statement's nodes are its row, which the inner statement goes on from (#160),
+        # a WITH's carried nodes included.
+        inner_tr._lateral_bound = {
+            v for v, (_, nm) in outer._var_table.items() if nm is not None and v not in drawn
+        }
+        inner_select, inner_params, inner_kinds = inner_tr.translate()
+        return inner_tr, inner_select, inner_params, inner_kinds

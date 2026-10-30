@@ -91,6 +91,13 @@ def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
     return out
 
 
+def answered_columns(column_names: list[str]) -> list[str]:
+    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
+    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135). The
+    same on every Cypher surface: what a read of no rows names (Bolt's fields, HTTP's columns)."""
+    return [c for c in column_names if c != CUT_COLUMN]
+
+
 def assemble_rows(  # REQ-349, REQ-350
     raw_rows: list[dict],
     graph_vars: dict[str, GraphVarKind],
@@ -169,6 +176,14 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
             return json.loads(value) if isinstance(value, str) else value
         except json.JSONDecodeError as exc:
             raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
+    if kind == GraphVarKind.PROPERTIES:
+        try:
+            held = json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError as exc:
+            raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
+        if not isinstance(held, dict):
+            raise CypherAssemblyError(f"properties() in {col!r} is no map: {held!r}")
+        return {k: v for k, v in held.items() if v is not None}
     if kind == GraphVarKind.DURATION:  # REQ-2173
         from provisa.gql.temporal import Duration
 
@@ -447,10 +462,11 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
             if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
                 new_v["end"] = id_map[new_v["end"]]
             return new_v
-        if "nodes" in v and "edges" in v:
-            # Path dict — recurse into both lists so node IDs get replaced.
-            return {k: _apply_id_map(val, id_map) for k, val in v.items()}
-        return v
+        if "label" in v and "properties" in v:
+            return v
+        # A path, or a map holding nodes ({node1: n, rel: r}): each value's node IDs are
+        # replaced, so two nodes a map holds are never one id (0) to the client.
+        return {k: _apply_id_map(val, id_map) for k, val in v.items()}
     if isinstance(v, list):
         return [_apply_id_map(item, id_map) for item in v]
     return v

@@ -229,6 +229,8 @@ class SubqueryExpr(CypherExpr):
 
     kind: str  # EXISTS | COUNT | COLLECT
     body: CypherAST
+    #: A pattern written as a predicate, ``(n)-[:R]->()``: it introduces no variable.
+    predicate: bool = False
 
 
 # --- RDF values (REQ-2135) ----------------------------------------------- #

@@ -945,3 +945,54 @@ def test_a_relationship_s_join_is_accepted_whichever_way_round_it_is_written(con
         f"SELECT c.name FROM customers c JOIN visits v ON {condition}",
     ):
         assert _v002(sql) == [], sql
+
+
+# --- a pattern of unions over tables no registered table is ---------------------------------------
+
+
+def _hops(arms: int, hops: int, table: str) -> str:
+    """``hops`` derived tables joined, each a UNION of ``arms`` reads of ``table``: the shape of a
+    graph session's pattern of unlabelled hops."""
+    union = " UNION ALL ".join(f"SELECT {i} AS k, x.id AS id FROM {table} x" for i in range(arms))
+    joined = f"SELECT h0.id FROM ({union}) h0"
+    for n in range(1, hops):
+        joined += f" JOIN ({union}) h{n} ON h{n}.id = h{n - 1}.id"
+    return joined
+
+
+def test_branches_reading_no_registered_table_are_one_alternative():
+    # TCK WithWhere2 [1], MatchWhere2 [1]: a session's tables are no registered table, so each
+    # union arm is the same empty alternative, and the guard enumerated arms ** hops of them in
+    # Python, past the request's 60 s, while the SQL itself takes milliseconds.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(_hops(3, 4, "session_table"), read="postgres")
+    resolver = _Resolver(lambda _table: None, lambda _table_id: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 1
+
+
+def test_a_pattern_of_many_unions_is_judged_at_once():
+    # 6 ** 7 alternatives (279936) before they were one.
+    assert _v002(_hops(6, 7, "session_table")) == []
+
+
+def test_branches_of_registered_tables_stay_alternatives():
+    # Different instances are different choices: each is still judged, and combining orders with
+    # customers on no relationship is still refused through a union.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(
+        "SELECT * FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u", read="postgres"
+    )
+    resolver = _Resolver(lambda table: {"orders": 1, "visits": 3}[table.name], lambda _i: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 2
+    assert _v002(
+        "SELECT u.id FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u "
+        "JOIN customers c ON TRUE"
+    )
