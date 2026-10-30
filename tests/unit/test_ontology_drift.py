@@ -17,8 +17,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from fastapi import Request
 from sqlalchemy import insert
 
 from provisa.api.admin import glossary_router
@@ -41,6 +43,8 @@ ENV = "prod"
 # The month before last's reports close on 2026-09-01: ``NOW`` is in October.
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
 CUTOFF = datetime(2026, 9, 1, tzinfo=UTC)
+# The route's gates are stubbed, so nothing reads the request.
+_REQUEST = cast(Request, SimpleNamespace())
 
 
 @pytest.fixture
@@ -279,13 +283,13 @@ def test_a_term_absent_at_the_base_is_new(repository, monkeypatch):
     )
     found = term_drift.drift(ORG, ENV, NOW)
     assert _rows(found) == {
-        "bound": (None, "grounded", "gained"),
+        "bound": (None, "grounded", "new"),
         "loose": (None, "not_grounded", "new"),
     }
-    assert found["counts"] == {"lost": 0, "gained": 1, "new": 2}
+    assert found["counts"] == {"lost": 0, "gained": 0, "new": 2}
 
 
-def test_a_renamed_term_is_one_lost_and_one_gained(repository, monkeypatch):
+def test_a_renamed_term_is_one_lost_and_one_new(repository, monkeypatch):
     _commit(
         repository,
         monkeypatch,
@@ -300,7 +304,7 @@ def test_a_renamed_term_is_one_lost_and_one_gained(repository, monkeypatch):
     )
     assert _rows(term_drift.drift(ORG, ENV, NOW)) == {
         "amount": ("grounded", None, "lost"),
-        "total": (None, "grounded", "gained"),
+        "total": (None, "grounded", "new"),
     }
 
 
@@ -415,7 +419,7 @@ async def test_the_route_links_each_term_that_still_exists(monkeypatch):
     _wired(monkeypatch, allowed=None)
     _live_terms(monkeypatch, {"amount": 7, "payroll": 8, "fresh": 9}, {})
     _drifted(monkeypatch, _FOUND)
-    told = await glossary_router.ontology_drift(object())
+    told = await glossary_router.ontology_drift(_REQUEST)
     assert {t["name"]: t["term_id"] for t in told["terms"]} == {
         "amount": 7,
         "payroll": 8,
@@ -434,7 +438,7 @@ async def test_the_route_tells_only_the_terms_the_caller_reads(monkeypatch):
         {7: {"sales"}, 8: {"hr"}, 9: {"sales"}},
     )
     _drifted(monkeypatch, _FOUND)
-    told = await glossary_router.ontology_drift(object())
+    told = await glossary_router.ontology_drift(_REQUEST)
     assert [t["name"] for t in told["terms"]] == ["amount", "fresh"]
     assert told["counts"] == {"lost": 1, "gained": 0, "new": 1}
 
@@ -449,7 +453,7 @@ async def test_the_route_says_no_history_rather_than_narrowing_nothing(monkeypat
         "counts": None,
     }
     _drifted(monkeypatch, none)
-    assert await glossary_router.ontology_drift(object()) == none
+    assert await glossary_router.ontology_drift(_REQUEST) == none
 
 
 def test_the_route_is_published_under_the_glossary():
