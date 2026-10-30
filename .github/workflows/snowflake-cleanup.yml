@@ -48,7 +48,10 @@ jobs:
           exit 1
       - name: List
         if: env.MODE == 'list'
-        run: python scripts/snowflake_cleanup.py list --out snowflake-inventory.json | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          python scripts/snowflake_cleanup.py list --out snowflake-inventory.json > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Upload inventory
         if: env.MODE == 'list'
         uses: actions/upload-artifact@v4
@@ -58,4 +61,7 @@ jobs:
           if-no-files-found: error
       - name: Delete
         if: env.MODE == 'delete'
-        run: python scripts/snowflake_cleanup.py delete --items "$ITEMS" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          python scripts/snowflake_cleanup.py delete --items "$ITEMS" > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"

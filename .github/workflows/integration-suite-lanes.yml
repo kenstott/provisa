@@ -399,6 +399,18 @@ jobs:
     name: warehouse (live cloud warehouses)
     needs: plan
     if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)) && needs.plan.outputs.warehouse == 'true'
+    # REQ-254: one run at a time on the live compute every run shares (the Databricks SQL
+    # warehouse, the Snowflake warehouse, the Fabric capacity). This job wakes them and stops them
+    # again at its end; so does the warehouse UI job below (warehouse-ui; until the maintainer's
+    # 2026-10-29 rule, the core UI lane's playwright job). Run side by side, one run's stop took the warehouse from under the other's
+    # tests, and the other's queries restarted it, so the stop never took (run 40861830409:
+    # "RUNNING after 600s, not STOPPED", while run 40861827715's warehouse lane was using it).
+    # The group is repo-wide and shared by both jobs: a run waits for the other to finish, and is
+    # never cancelled by it; `queue: max` keeps every waiting run (the default keeps one and
+    # cancels the rest).
+    concurrency:
+      group: live-cloud-warehouses
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -515,6 +527,7 @@ jobs:
                    DATABRICKS_TOKEN GOOGLE_CLOUD_PROJECT GOOGLE_APPLICATION_CREDENTIALS_JSON \
                    BIGQUERY_LOCATION BIGQUERY_TEST_GCS_BUCKET GSHEETS_TEST_SHEET_ID \
                    FABRIC_SQL_SERVER FABRIC_DATABASE FABRIC_WORKSPACE_ID \
+                   FABRIC_CAPACITY_NAME FABRIC_RESOURCE_GROUP \
                    REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
                    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
                    SINGLESTORE_HOST SINGLESTORE_PORT SINGLESTORE_USERNAME SINGLESTORE_PASSWORD \
@@ -547,6 +560,15 @@ jobs:
 
       # GovData's JDBC driver is the calcite engine's govdata jar, from the engine release
       # provisa/runtime_deps/pgwire_bundles.py pins (CONNECTOR_RELEASE["govdata"]); the test loads lib/calcite-govdata-*.jar.
+      # Maintainer 2026-10-29: CI must not run up the warehouse bill. The Snowflake warehouse
+      # suspends itself after 60 idle seconds, set before any test runs, so a run that dies before
+      # its teardown (crash, timeout, cancel) cannot leave it billing. Set every night: the
+      # setting is the warehouse's own and nothing else in CI changes it.
+      - name: Snowflake warehouse suspends after 60 idle seconds
+        run: |
+          uv run python -c \
+            "import os; from tests.integration.snowflake_warehouse import set_auto_suspend as a; print('the Snowflake warehouse suspends after', a(os.environ['SNOWFLAKE_WAREHOUSE'], 60), 'idle seconds')"
+
       - name: GovData engine jar (engine-v0.123.2)
         run: |
           mkdir -p lib
@@ -564,6 +586,38 @@ jobs:
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
 
+      # REQ-254: no run leaves the Fabric capacity (billable compute) running. Each Fabric test
+      # pauses what it resumed in its own teardown, which does not run when the lane dies or the
+      # job is cut short (timeout, cancel). Its state is READ here: paused is done, Active is
+      # suspended, a transition is waited out; only a capacity that does not end paused fails the
+      # step, and it says so. The same as the core UI lane's (scripts/ci/lanes/ui-core-after.sh).
+      - name: Leave the Fabric capacity paused
+        if: always()
+        run: |
+          uv run python -c \
+            "from tests.integration.fabric_capacity import ensure_capacity_paused as p; print('the Fabric capacity is', p())" \
+            || { echo "::error::the Fabric capacity could not be confirmed paused: check it, it may be billing"; exit 1; }
+
+      # The Databricks SQL warehouse and the Snowflake warehouse, likewise: each test stops what it
+      # started (tests/integration/databricks_warehouse.py, snowflake_warehouse.py), which does not
+      # run when a test dies or the job is cut short. Stopped / suspended here whatever happened;
+      # one that does not end so fails the step, and says so (REQ-254).
+      - name: Leave the Databricks warehouse stopped
+        if: always()
+        run: |
+          uv run python -c \
+            "from tests.integration.databricks_warehouse import stop_warehouse as s, warehouse_state as w; s(); print('the Databricks warehouse is', w())" \
+            || { echo "::error::the Databricks warehouse could not be confirmed stopped: check it, it may be billing"; exit 1; }
+
+      # Maintainer 2026-10-29: SHOW WAREHOUSES is read first and a warehouse already suspended is
+      # left as it is (suspend_warehouse); any other failure fails the step.
+      - name: Leave the Snowflake warehouse suspended
+        if: always()
+        run: |
+          uv run python -c \
+            "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ['SNOWFLAKE_WAREHOUSE']))" \
+            || { echo "::error::the Snowflake warehouse could not be confirmed suspended: check it, it may be billing"; exit 1; }
+
       - name: Cache Trino plugins
         if: always()
         uses: ./.github/actions/trino-plugins
@@ -578,6 +632,70 @@ jobs:
           name: lane-warehouse
           path: results/
           if-no-files-found: error
+
+  # The UI specs that register live cloud warehouses (playwright.config.ts WAREHOUSE_SPECS and
+  # WAREHOUSE_TITLES: Snowflake, Databricks, BigQuery, Fabric, Google Sheets), as the Playwright
+  # project "warehouse". Maintainer 2026-10-29: the UI core lane never touches a live warehouse;
+  # these run only with the warehouse lane -- nightly, and on a dispatch that includes it. A
+  # targeted run (inputs.tests names pytest tests) leaves them out.
+  # It holds the live-cloud-warehouses group with the warehouse job: both wake and stop the same
+  # shared compute, so one waits for the other and neither cancels the other. Its after-script
+  # (ui-core-after.sh) leaves the Fabric capacity paused, the Databricks warehouse stopped and
+  # the Snowflake warehouse suspended, whatever happened.
+  warehouse-ui:
+    name: warehouse UI (live cloud warehouses, Playwright)
+    needs: plan
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)) && inputs.tests == ''
+    concurrency:
+      group: live-cloud-warehouses
+      queue: max
+    uses: ./.github/workflows/lane.yml
+    with:
+      name: ui-warehouse
+      ref: ${{ inputs.ref || github.sha }}
+      timeout: 60
+      # Fabric's SQL endpoint is reached through ODBC Driver 18.
+      odbc: true
+      # The same environment as the core UI lane: playwright.config.ts's webServers run the core
+      # backend from the repo-root .venv.
+      python-extras: dev cassandra saphana gx soda
+      ui: chromium
+      ui-timeout: 12
+      env: |
+        CI=true
+        PROVISA_E2E_LANE=core
+        PROVISA_E2E_WORKERS=2
+      working-directory: provisa-ui
+      # Playwright stops itself after 50 minutes, inside the job's bound, so it still writes its
+      # reports.
+      run: >-
+        PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
+        npx playwright test --project=warehouse --global-timeout=3000000 --reporter=line,html,json
+      prepare: scripts/ci/lanes/ui-core-prepare.sh
+      after: bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json
+      artifact-name: playwright-report-warehouse
+      artifact-path: |
+        provisa-ui/playwright-report/
+        provisa-ui/playwright-results.json
+      artifact-retention: 7
+    secrets:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
+      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+      FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+      FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
   # The live Salesforce org. A cold run describes every sObject of the org -- about 2,450 API calls
   # of the 15,000 the org is allowed a day -- so this job runs only when a dispatch asks for it.

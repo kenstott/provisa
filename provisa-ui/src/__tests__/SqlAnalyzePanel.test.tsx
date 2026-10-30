@@ -20,9 +20,12 @@ const renderChart = vi.fn(async (id: string, chart: string) => ({
   svg: `<svg data-testid="${id}" data-chart="${chart.split("\n")[0]}"></svg>`,
 }));
 
+const parseChart = vi.fn(async (_chart: string) => ({ diagramType: "flowchart-v2" }));
+
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
+    parse: (chart: string) => parseChart(chart),
     render: (id: string, chart: string) => renderChart(id, chart),
   },
 }));
@@ -86,6 +89,7 @@ function renderAnalyze(analyzePlan: ExplainResponse | null, analyzeError = "") {
 describe("SQL analyze panel", () => {
   beforeEach(() => {
     renderChart.mockClear();
+    parseChart.mockClear();
   });
 
   it("draws the plan tree and lists every operator under its parent", async () => {
@@ -139,6 +143,65 @@ describe("SQL analyze panel", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog.querySelector("table")).not.toBeNull();
     expect(dialog.querySelector(".stats-mermaid")).not.toBeNull();
+  });
+
+  it("reports a chart Mermaid cannot parse in the diagram pane, the rest of the panel intact", async () => {
+    const before = document.body.childElementCount;
+    parseChart.mockRejectedValueOnce(
+      new Error("Parse error on line 3: Expecting 'SQE', got 'STR'"),
+    );
+    renderAnalyze(PLAN);
+    const box = await screen.findByTestId("mermaid-error");
+    expect(box.textContent).toContain("Diagram unavailable");
+    expect(box.querySelector("pre")?.textContent).toBe(
+      "Parse error on line 3: Expecting 'SQE', got 'STR'",
+    );
+    const panes = screen.getByTestId("analyze-panes");
+    const [listPane, , diagramPane] = Array.from(panes.children);
+    expect(diagramPane.contains(box)).toBe(true);
+    expect(listPane.querySelector("table")).not.toBeNull();
+    expect(screen.getByText("Seq Scan orders")).not.toBeNull();
+    expect(screen.getByText("hot-table inline: currencies")).not.toBeNull();
+    expect(renderChart).not.toHaveBeenCalled();
+    expect(document.body.childElementCount).toBe(before + 1);
+  });
+
+  it("caps a deep plan's indent and names each deeper row's depth", async () => {
+    let deep: ExplainResponse["plan"][number] = {
+      op: "SEQ_SCAN depth 12",
+      detail: {},
+      rows: 1,
+      cost: null,
+      actual_ms: null,
+      children: [],
+    };
+    for (let d = 11; d >= 0; d--) {
+      deep = {
+        op: `LEFT_DELIM_JOIN depth ${d}`,
+        detail: {},
+        rows: 1,
+        cost: null,
+        actual_ms: null,
+        children: [deep],
+      };
+    }
+    renderAnalyze({ ...PLAN, plan: [deep] });
+    await screen.findByText("LEFT_DELIM_JOIN depth 0");
+    const opCell = (op: string) =>
+      Array.from(document.querySelectorAll("td")).find((td) =>
+        td.textContent?.endsWith(op),
+      ) as HTMLElement;
+    const cell = opCell("SEQ_SCAN depth 12");
+    const eight = opCell("LEFT_DELIM_JOIN depth 8");
+    expect(cell.style.paddingInlineStart).toBe(eight.style.paddingInlineStart);
+    expect(cell.textContent).toBe("↳12SEQ_SCAN depth 12");
+    expect(eight.querySelector('[data-testid="analyze-depth"]')).toBeNull();
+    expect(screen.getAllByTestId("analyze-depth").map((e) => e.textContent)).toEqual([
+      "↳9",
+      "↳10",
+      "↳11",
+      "↳12",
+    ]);
   });
 
   it("shows the refusal when the server would not describe the statement", async () => {

@@ -23,6 +23,8 @@ role. The location URL scheme selects which.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlparse
@@ -50,17 +52,46 @@ def _sanitize(s: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in s).strip("_").lower()
 
 
-class _UC:
-    """Thin Unity Catalog REST client (bearer token). Uses the ambient CA bundle via requests env."""
+THROTTLE_WAITS = 5  # waits of 1, 2, 4, 8, 16s unless Unity Catalog names its own
 
-    def __init__(self, host: str, token: str) -> None:
+
+def send_waiting(send: Callable[[], Any], call: str, *, sleep: Callable[[float], None]) -> Any:
+    """REQ-987: run ``send()`` (returns a response with ``status_code`` and ``headers``), waiting
+    out a 429 as Unity Catalog asks (``Retry-After``, else a doubling wait from one second) and
+    sending again, up to ``THROTTLE_WAITS`` waits. Any other status is returned for the caller to
+    judge. Raises ``ExternalLinkError`` naming ``call`` when the waits run out."""
+    for attempt in range(THROTTLE_WAITS + 1):
+        resp = send()
+        if resp.status_code != HTTPStatus.TOO_MANY_REQUESTS:
+            return resp
+        if attempt == THROTTLE_WAITS:
+            break
+        retry_after = resp.headers.get("Retry-After")
+        sleep(float(retry_after) if retry_after else float(2**attempt))
+    raise ExternalLinkError(f"UC {call} still throttled (429) after {THROTTLE_WAITS} waits")
+
+
+class _UC:
+    """Thin Unity Catalog REST client (bearer token). Uses the ambient CA bundle via requests env.
+    Every call waits out a 429 through ``send_waiting``; ``sleep`` is injectable for tests."""
+
+    def __init__(
+        self, host: str, token: str, *, sleep: Callable[[float], None] = time.sleep
+    ) -> None:
         self._base = f"https://{host}"
         self._h = {"Authorization": f"Bearer {token}"}
+        self._sleep = sleep
 
     def _call(self, method: str, path: str, body: dict | None = None) -> tuple[int, Any]:
         import requests
 
-        r = requests.request(method, self._base + path, headers=self._h, json=body, timeout=60)
+        r = send_waiting(
+            lambda: requests.request(
+                method, self._base + path, headers=self._h, json=body, timeout=60
+            ),
+            f"{method} {path}",
+            sleep=self._sleep,
+        )
         try:
             payload = r.json()
         except ValueError:
@@ -100,16 +131,26 @@ def _credential_body(name: str, scheme: str, cred: dict) -> dict:
 
 
 def _covering_location(uc: "_UC", location: str) -> str | None:
-    """An existing UC external location whose URL is a prefix of ``location`` (already governs it), or
-    None. UC permits only one external location per path, so coverage — not name — is what matters."""
-    st, payload = uc.get("/api/2.1/unity-catalog/external-locations")
-    if st != HTTPStatus.OK or not isinstance(payload, dict):
-        return None
-    for loc in payload.get("external_locations", []):
-        url = loc.get("url") or ""
-        if url and location.startswith(url):
-            return url
-    return None
+    """An existing UC external location at a parent directory of ``location`` (already governs it),
+    or None. UC permits only one external location per path, so coverage — not name — is what
+    matters. Coverage is by path segment: a location at ``.../run`` covers ``.../run/x.parquet``,
+    never ``.../run_2/x.parquet``. Every page of the listing is read (``max_results=0`` asks UC to
+    page it), and a listing UC does not answer raises: an unread listing is not "not covered"."""
+    token: str | None = None
+    while True:
+        path = "/api/2.1/unity-catalog/external-locations?max_results=0"
+        if token:
+            path += f"&page_token={token}"
+        st, payload = uc.get(path)
+        if st != HTTPStatus.OK or not isinstance(payload, dict):
+            raise ExternalLinkError(f"UC external-location listing failed ({st}): {payload}")
+        for loc in payload.get("external_locations", []):
+            url = loc.get("url") or ""
+            if url and location.startswith(url.rstrip("/") + "/"):
+                return url
+        token = payload.get("next_page_token")
+        if not token:
+            return None
 
 
 def ensure_external_link(host: str, token: str, *, location: str, credential: dict) -> str:

@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
@@ -19,7 +20,7 @@ import { RegionSelector } from "../components/RegionSelector";
 import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, FileSpreadsheet, Network, X } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, Network, X, Layers, Table2 } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -31,7 +32,6 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { fetchSettings, profileTable, runSql } from "../api/admin";
@@ -1007,9 +1007,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       {/* Anchor the tour waits on before highlighting a step whose element lives in the shell —
           tables-add is absent in viewsOnly, so the header is the one marker both modes render. */}
       <div className="page-header" data-tour="tables-header">
-        <Title order={2}>
+        <PageTitle icon={viewsOnly ? Layers : Table2}>
           {viewsOnly ? translate("tablesPage.titleViews") : translate("tablesPage.titleTables")}
-        </Title>
+        </PageTitle>
         <FilterInput
           value={tableSearch}
           onChange={setTableSearch}

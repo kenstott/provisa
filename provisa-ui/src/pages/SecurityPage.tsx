@@ -8,11 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { Tip } from "../components/Tip";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, Shield } from "lucide-react";
 import {
   Alert,
   Button,
@@ -26,7 +27,6 @@ import {
   Text,
   TextInput,
   Textarea,
-  Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
@@ -583,7 +583,7 @@ export function SecurityRolesPage() {
       )}
 
       <Group justify="space-between" wrap="wrap">
-        <Title order={2}>{t("securityPage.rolesHeading")}</Title>
+        <PageTitle icon={Shield}>{t("securityPage.rolesHeading")}</PageTitle>
         <FilterInput
           value={roleSearch}
           onChange={setRoleSearch}

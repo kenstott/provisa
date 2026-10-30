@@ -8,11 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Sparkles, Code2, Network, X } from "lucide-react";
+import { ArrowLeft, Sparkles, Code2, Network, X, Link2 } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -22,7 +23,6 @@ import {
   Pagination,
   Table,
   Text,
-  Title,
 } from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
@@ -649,7 +649,7 @@ export function RelationshipsPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("relationshipsPage.title")}</Title>
+        <PageTitle icon={Link2}>{t("relationshipsPage.title")}</PageTitle>
         <FilterInput
           value={relSearch}
           onChange={updateSearch}
