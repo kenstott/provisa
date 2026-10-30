@@ -26,6 +26,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.core.pg_error import raising
 
 #: The object identifier types a projected value of is its oid and its name together.
 NAMED_REG_TYPES = frozenset({"regclass", "regnamespace"})
@@ -93,10 +94,15 @@ def _quoted(name_sql: str) -> str:
     return quoted_identifier(name_sql)
 
 
+#: A kind of object's undefined_table (relation), undefined_schema or undefined_object SQLSTATE.
+_UNDEFINED = {"relation": "42P01", "schema": "3F000", "type": "42704"}
+
+
 def _required(lookup: str, kind: str, written: str) -> str:
     """``lookup``, or PostgreSQL's error when it names nothing."""
     message = _literal(f'{kind} "{written}" does not exist')
-    return f"CASE WHEN ({lookup}) IS NULL THEN error({message}) ELSE ({lookup}) END"
+    missing = raising(_UNDEFINED[kind], message)
+    return f"CASE WHEN ({lookup}) IS NULL THEN {missing} ELSE ({lookup}) END"
 
 
 def _catalog_class_oids() -> dict[str, int]:
@@ -198,7 +204,8 @@ def reg_value(reg: str, operand: exp.Expr) -> exp.Expr:
     oid_sql = _oid_of(reg, operand)
     if reg not in NAMED_REG_TYPES:
         return _duckdb(oid_sql)
-    return _duckdb(f"struct_pack(oid := ({oid_sql}), name := {_name_of(reg, f'({oid_sql})')})")
+    pair = f"struct_pack(oid := ({oid_sql}), name := {_name_of(reg, f'({oid_sql})')})"
+    return _duckdb(f"CASE WHEN ({oid_sql}) IS NOT NULL THEN {pair} END")
 
 
 _COMPARISONS = (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)

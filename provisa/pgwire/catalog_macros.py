@@ -17,8 +17,10 @@ a select list too, a scalar macro of the same name unnests its rows."""
 
 from __future__ import annotations
 
+from provisa.federation.duckdb_pg_functions import register as register_pg_functions
 from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
-from provisa.pgwire.catalog_rewrite import _PG_TYPE_DISPLAY_NAMES
+from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS, _PG_TYPE_DISPLAY_NAMES, next_txid
+from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPES, macros as server_macros
 
 # The schemas on the search path (catalog_data's search_path, and pg_catalog): an object in one is
 # named unqualified, as PostgreSQL names a visible object.
@@ -120,19 +122,12 @@ _TOKENS_SELECT = (
 )
 _SETTINGS_SELECT = "SELECT * FROM _pg_settings"
 
-_BACKSLASH = "\\"
-
 _MACROS = (
     # The database's encoding, and an encoding's number: UTF8 is 6, a name naming none -1.
     "CREATE MACRO getdatabaseencoding() AS 'UTF8'",
     "CREATE MACRO pg_char_to_encoding(name) AS CASE "
     "WHEN lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) IN ('utf8', 'unicode') THEN 6 "
     "WHEN name IS NOT NULL THEN -1 END",
-    # A literal as PostgreSQL quotes it: an E'' string, its backslashes doubled, when it holds one.
-    "CREATE MACRO quote_literal(value) AS CAST(CASE "
-    f"WHEN contains(CAST(value AS VARCHAR), '{_BACKSLASH}') THEN 'E''' || "
-    f"replace(replace(CAST(value AS VARCHAR), '{_BACKSLASH}', '{_BACKSLASH * 2}'), '''', '''''') "
-    "|| '''' ELSE '''' || replace(CAST(value AS VARCHAR), '''', '''''') || '''' END AS VARCHAR)",
     "CREATE MACRO pg_statistics_obj_is_visible(oid) AS true",
     # Provisa keeps no ACLs, no sequences and no cursors.
     "CREATE MACRO acldefault(objtype, owner) AS CAST(NULL AS VARCHAR[])",
@@ -171,6 +166,9 @@ _MACROS = (
     "CREATE MACRO pg_available_extensions() AS unnest((SELECT list(struct_pack(name := _e.name, "
     "default_version := _e.default_version, comment := _e.comment)) "
     "FROM _pg_available_extensions _e))",
+    "CREATE MACRO pg_partition_root(rel) AS ("
+    + _partition_relation("struct_pack(oid := _c.oid, name := _c.relname)")
+    + ")",
     "CREATE MACRO pg_partition_ancestors_named(rel) AS unnest(("
     + _partition_relation("list(struct_pack(oid := _c.oid, name := _c.relname))")
     + "))",
@@ -200,7 +198,7 @@ _MACROS = (
     "CASE WHEN type IS NOT NULL AND priv IS NOT NULL THEN true END, "
     "(role, type, priv) AS "
     "CASE WHEN role IS NOT NULL AND type IS NOT NULL AND priv IS NOT NULL THEN true END",
-    # No connection ever waits on a lock: Provisa holds none.
+    # Advisory locks are the only locks a connection takes here, and pg_locks does not list them.
     "CREATE MACRO pg_blocking_pids(pid) AS "
     "CASE WHEN pid IS NOT NULL THEN CAST([] AS INTEGER[]) END",
     # No log file: as PostgreSQL answers with the logging collector off.
@@ -217,6 +215,28 @@ _MACROS = (
     + _type_names("types", ", ", False)
     + " END",
 )
+
+
+def _catalog_relations() -> str:
+    """Whether an oid is one of PostgreSQL's own relations, tables the catalog DB answers."""
+    oids = ", ".join(str(oid) for oid in _CATALOG_CLASS_OIDS.values())
+    return f"CREATE MACRO provisa_is_catalog_relation(rel) AS rel IN ({oids})"
+
+
+def _catalog_relation_oids() -> str:
+    """A relation's oid: PostgreSQL's own for its catalog relations, which the catalog DB numbers
+    otherwise."""
+    known = " ".join(f"WHEN '{name}' THEN {oid}" for name, oid in _CATALOG_CLASS_OIDS.items())
+    return f"CREATE MACRO provisa_relation_oid(name, oid) AS CASE name {known} ELSE oid END"
+
+
+def _type_spellings() -> str:
+    """A type's internal name from the name format_type writes, for to_regtype."""
+    spelled = " ".join(
+        f"WHEN '{display}' THEN '{internal}'"
+        for internal, display in _PG_TYPE_DISPLAY_NAMES.items()
+    )
+    return f"CREATE MACRO provisa_type_name(n) AS CASE n {spelled} ELSE n END"
 
 
 def _named_in_path(schema: str, name: str) -> str:
@@ -311,5 +331,17 @@ def _identify_object() -> str:
 
 def populate_catalog_macros(db) -> None:  # REQ-2167
     """Create the macros, over the catalog relations they read (created before)."""
-    for macro in (*_MACROS, _describe_object(), _identify_object()):
+    for alias in PG_ONLY_TYPES:
+        db.execute(alias)
+    register_pg_functions(db)
+    db.create_function("provisa_next_xid", next_txid, [], "BIGINT", side_effects=True)
+    for macro in (
+        *_MACROS,
+        _describe_object(),
+        _identify_object(),
+        _type_spellings(),
+        _catalog_relations(),
+        _catalog_relation_oids(),
+        *server_macros(),
+    ):
         db.execute(macro)

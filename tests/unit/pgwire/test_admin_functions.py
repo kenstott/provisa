@@ -12,8 +12,9 @@
 
 pg_backend_pid is the connection's own process id; pg_cancel_backend and pg_terminate_backend act
 on a pgwire session the caller owns, or any session of the caller's org for a caller with the
-user_management right; pg_reload_conf, the server-file functions, pg_create_restore_point and the
-advisory locks are refused by name. pg_advisory_unlock_all is answered: no lock is ever held."""
+user_management right; the advisory locks are PostgreSQL's, on this server's sessions, and refused
+by name in a statement that does more than call one. The other server functions answer as
+PostgreSQL does (test_server_answers)."""
 
 from __future__ import annotations
 
@@ -159,30 +160,128 @@ async def test_another_users_session_is_refused_by_name_and_open_to_user_managem
             await c.close()
 
 
-_REFUSED = [
-    "pg_reload_conf()",
-    "pg_read_file('postgresql.conf')",
-    "pg_read_binary_file('postgresql.conf')",
-    "pg_stat_file('postgresql.conf')",
-    "pg_create_restore_point('p')",
-    "pg_advisory_lock(1)",
-    "pg_try_advisory_lock(1)",
-    "pg_advisory_lock_shared(1)",
-    "pg_advisory_xact_lock(1)",
-    "pg_advisory_unlock(1)",
-    "pg_catalog.pg_advisory_unlock_shared(1)",
-]
+@pytest.mark.asyncio
+async def test_a_lock_in_a_larger_statement_is_refused_by_name(port, served):
+    a = await _connect(port, "alice")
+    try:
+        for sql in (
+            "SELECT pg_advisory_lock(1), pg_advisory_lock(2)",
+            "SELECT pg_try_advisory_lock(1) AS l, 2 AS two",
+            # A key is evaluated outside governance: nothing may be read for one.
+            "SELECT pg_advisory_lock((SELECT count(*) FROM read_text('/etc/hosts')))",
+            "SELECT pg_advisory_unlock(length(version()))",
+        ):
+            with pytest.raises(asyncpg.FeatureNotSupportedError, match="pg_"):
+                await a.fetchval(sql)
+    finally:
+        await a.close()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "pg_sleep((SELECT count(*) FROM read_text('/etc/hosts')))",
+        "pg_sleep_for((SELECT '1 second'::interval FROM read_text('/etc/hosts')))",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_sleep_reads_nothing_for_its_duration(port, served, call):
+    a = await _connect(port, "alice")
+    try:
+        with pytest.raises(asyncpg.FeatureNotSupportedError, match="not a constant expression"):
+            await a.fetchval(f"SELECT {call}")
+    finally:
+        await a.close()
 
 
 @pytest.mark.asyncio
-async def test_a_server_function_is_refused_by_name(port, served):
-    a = await _connect(port, "alice")
+async def test_an_advisory_lock_excludes_another_session_and_ends_with_its_own(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
     try:
-        for call in _REFUSED:
-            name = call.split("(")[0].removeprefix("pg_catalog.")
-            with pytest.raises(asyncpg.FeatureNotSupportedError, match=name):
-                await a.fetchval(f"SELECT {call}")
-        # asyncpg's own connection reset: Provisa holds no advisory lock, so all are released.
-        assert await a.fetchval("SELECT pg_advisory_unlock_all()") is None
+        assert await a.fetchval("SELECT pg_try_advisory_lock(7001)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7001)") is False
+        # Its two-argument key is another lock; a shared lock conflicts with the exclusive one.
+        assert await b.fetchval("SELECT pg_try_advisory_lock(0, 7001)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock_shared(7001)") is False
+        # Re-entrant: held twice, released twice.
+        assert await a.fetchval("SELECT pg_try_advisory_lock(7001)") is True
+        assert await a.fetchval("SELECT pg_advisory_unlock(7001)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7001)") is False
+        assert await a.fetchval("SELECT pg_advisory_unlock(7001)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7001)") is True
+        # Nothing held by a: false, with PostgreSQL's warning.
+        assert await a.fetchval("SELECT pg_advisory_unlock(7001)") is False
     finally:
         await a.close()
+        await b.close()
+    c = await _connect(port, "alice")
+    try:
+        assert await c.fetchval("SELECT pg_try_advisory_lock(7001)") is True  # b's ended with it
+        assert await c.fetchval("SELECT pg_advisory_unlock_all()") is None
+        assert await c.fetchval("SELECT pg_advisory_unlock(7001)") is False
+    finally:
+        await c.close()
+
+
+@pytest.mark.asyncio
+async def test_shared_advisory_locks_share(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
+    try:
+        assert await a.fetchval("SELECT pg_try_advisory_lock_shared(7002)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock_shared(7002)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7002)") is False
+        assert await a.fetchval("SELECT pg_advisory_unlock_shared(7002)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7002)") is True
+    finally:
+        await a.close()
+        await b.close()
+
+
+@pytest.mark.asyncio
+async def test_a_transaction_lock_ends_with_its_transaction(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
+    try:
+        await a.execute("BEGIN")
+        assert await a.fetchval("SELECT pg_try_advisory_xact_lock(7003)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7003)") is False
+        await a.execute("COMMIT")
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7003)") is True
+        # No block: the statement was its transaction, and the lock ended with it.
+        assert await b.fetchval("SELECT pg_advisory_unlock(7003)") is True
+        assert await a.fetchval("SELECT pg_try_advisory_xact_lock(7003)") is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7003)") is True
+    finally:
+        await a.close()
+        await b.close()
+
+
+@pytest.mark.asyncio
+async def test_a_blocking_lock_waits_for_the_holder(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
+    try:
+        assert await a.fetchval("SELECT pg_try_advisory_lock(7004)") is True
+        waiting = asyncio.create_task(b.fetchval("SELECT pg_advisory_lock(7004)"))
+        await asyncio.sleep(0.2)
+        assert not waiting.done()
+        assert await a.fetchval("SELECT pg_advisory_unlock(7004)") is True
+        await asyncio.wait_for(waiting, 5)
+        assert await a.fetchval("SELECT pg_try_advisory_lock(7004)") is False
+    finally:
+        await a.close()
+        await b.close()
+
+
+@pytest.mark.asyncio
+async def test_a_lock_is_taken_once_with_the_binds_key_and_a_null_key_takes_none(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
+    try:
+        # A prepared statement: Describe's example value takes no lock, the Bind's does.
+        assert await a.fetchval("SELECT pg_try_advisory_lock($1)", 7005) is True
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7005)") is False
+        assert await a.fetchval("SELECT pg_advisory_unlock($1)", 7005) is True
+        assert await a.fetchval("SELECT pg_advisory_unlock(7005)") is False
+        assert await a.fetchval("SELECT pg_try_advisory_lock(NULL::bigint)") is None
+        assert await a.fetchval("SELECT pg_advisory_lock(NULL::bigint)") is None
+    finally:
+        await a.close()
+        await b.close()
