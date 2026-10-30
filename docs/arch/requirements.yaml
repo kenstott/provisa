@@ -89844,7 +89844,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     its differences from the one before it, and a difference that can break a consumer (a field removed
     or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
     is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
-    in force, and its Versions and changes card lists the versions and shows each one''s differences.'
+    in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
+    2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
+    change is not yet in force while its version''s status is proposed or draft, meaning every version after
+    the last one in neither status. Who saved a version is visible to anyone who can read the data product.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
