@@ -674,7 +674,7 @@ def _buffered(result: Any) -> Any:
         return result
     rowcount = result.rowcount
     # The cursor closes with its last row: what it described is kept with the replay.
-    described = result.cursor.description
+    described = result.cursor.description if result.cursor is not None else None
     rows = result.fetchall()
     result._rewind(rows)
     result.__dict__["rowcount"] = rowcount

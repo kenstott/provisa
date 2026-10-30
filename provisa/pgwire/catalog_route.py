@@ -42,6 +42,35 @@ _META = "meta"
 _PG = "pg_catalog"
 _IS = "information_schema"
 
+#: The set-returning functions a client's catalog SQL reads in FROM, each of its arguments alone or
+#: of what every PostgreSQL ships. Any other function in FROM is refused as a relation (V006).
+CLIENT_TABLE_FUNCTIONS = frozenset(
+    {
+        "_pg_expandarray",
+        "aclexplode",
+        "generate_subscripts",
+        "json_array_elements",
+        "json_array_elements_text",
+        "json_each",
+        "json_each_text",
+        "json_object_keys",
+        "jsonb_array_elements",
+        "jsonb_array_elements_text",
+        "jsonb_each",
+        "jsonb_each_text",
+        "jsonb_object_keys",
+        "pg_get_keywords",
+        "pg_options_to_table",
+        "pg_timezone_abbrevs",
+        "pg_timezone_names",
+        "regexp_matches",
+        "regexp_split_to_table",
+        "string_to_table",
+        "ts_token_type",
+        "unnest",
+    }
+)
+
 #: System columns: a view has none, and a catalog keeps no row versions.
 _ROW_VERSION_COLUMNS = frozenset({"xmin", "xmax", "cmin", "cmax", "ctid"})
 

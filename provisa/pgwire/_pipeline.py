@@ -42,6 +42,7 @@ from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
+from provisa.pgwire.catalog_route import CLIENT_TABLE_FUNCTIONS
 from provisa.pgwire.catalog_route import current_request as current_catalog_request
 
 if TYPE_CHECKING:
@@ -1843,6 +1844,11 @@ async def govern_statement(
         state.schema_version,
         _bypass_guard,
     )
+    from provisa.security.rights import IMPLICIT_DOMAINS
+
+    _table_functions = (
+        CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
+    )
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,
@@ -1852,6 +1858,9 @@ async def govern_statement(
             getattr(state, "tables", []),
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
+            table_functions=_table_functions,
+            # REQ-127: every role lists what meta's rights show it, and its row scope holds.
+            also_reaches=IMPLICIT_DOMAINS if _table_functions else frozenset(),
         )
 
         _role_domain_access = role["domain_access"]
@@ -1861,7 +1870,15 @@ async def govern_statement(
                 parsed_tree = await _off_loop(
                     lambda: sqlglot.parse_one(_validated_sql, read="postgres")
                 )
+                _statement_ctes = (
+                    {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
+                )
                 for tbl in parsed_tree.find_all(exp.Table):
+                    if (
+                        isinstance(tbl.this, exp.Anonymous)
+                        and tbl.this.name.lower() in _table_functions
+                    ) or (not tbl.db and tbl.name in _statement_ctes):
+                        continue
                     tbl_name = tbl.name
                     tbl_db = tbl.db
                     full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name

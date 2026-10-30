@@ -82,6 +82,8 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     *,
     bypass_relationship_guard: bool = False,
     bypass_uncovered_relationships: bool = False,
+    table_functions: frozenset[str] = frozenset(),
+    also_reaches: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
@@ -91,7 +93,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
 
     violations: list[ValidationViolation] = []
     cte_names_set = cte_names(tree)
-    violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set)
+    violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set, table_functions)
 
     # Build reverse maps
     table_id_to_meta: dict[int, TableMeta] = {}
@@ -101,7 +103,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     domain_access: list[str] = role["domain_access"]
 
     violations += _check_domain_access(
-        tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
+        tree, gov_ctx, table_id_to_meta, [*domain_access, *also_reaches], cte_names_set
     )
     if not bypass_relationship_guard:
         valid_joins = approved_joins(ctx)
@@ -141,6 +143,7 @@ def _check_registered_relations(  # REQ-001, REQ-266
     gov_ctx: GovernanceContext,
     ctx: CompilationContext,
     cte_names_set: frozenset[str] = frozenset(),
+    table_functions: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     """Every relation the statement reads is a registered table, a CTE, or a row generator.
 
@@ -154,6 +157,8 @@ def _check_registered_relations(  # REQ-001, REQ-266
         target = tbl.this
         if isinstance(target, _ROW_GENERATORS):
             continue
+        if isinstance(target, exp.Anonymous) and target.name.lower() in table_functions:
+            continue  # REQ-2190: a statement of the catalog, on the role that runs client SQL
         if not isinstance(target, exp.Identifier):
             fn = target.sql(dialect="postgres").split("(", 1)[0] if target is not None else "?"
             violations.append(

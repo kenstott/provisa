@@ -40,8 +40,13 @@ from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.pgwire.constant_arguments import is_constant_sql
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES, REWRITTEN
-from provisa.core.pg_error import postgres_error
-from provisa.transpiler.metadata_functions import FORMS, RELATION_FORMS
+from provisa.core.pg_error import PostgresError, postgres_error
+from provisa.transpiler.metadata_functions import (
+    FORMS,
+    READS_THE_SERVER,
+    RELATION_FORMS,
+    MetadataFunctionRefused,
+)
 
 log = logging.getLogger(__name__)
 
@@ -198,7 +203,7 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
 
 #: What is written in its form in any statement: a call left in a statement reading a table would
 #: run on that table's store, answering about the server under it.
-_FORM_NAMES = frozenset(name for name, _ in (*FORMS, *RELATION_FORMS))
+_FORM_NAMES = frozenset({*(name for name, _ in (*FORMS, *RELATION_FORMS)), *READS_THE_SERVER})
 
 
 def _calls_a_catalog_function_alone(tree) -> bool:
@@ -613,7 +618,10 @@ def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, ru
     request = _catalog_request(sql, role_id, state, session)
     # A $N a value was not bound for (Describe of an unbound statement): any value describes it.
     bare = re.sub(r"\$\d+", "NULL", sql)
-    addressed = addressed_statement(bare, request)
+    try:
+        addressed = addressed_statement(bare, request)
+    except MetadataFunctionRefused as exc:
+        raise PostgresError("0A000", str(exc)) from exc
 
     async def read():
         plan = await govern_catalog_plan(addressed, role_id, request)
