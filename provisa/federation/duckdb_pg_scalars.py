@@ -1068,8 +1068,6 @@ _MACROS: tuple[str, ...] = (
     "CREATE MACRO pt_contained_poly(p, poly) AS "
     "provisa_point_in_polygon(CAST(p AS VARCHAR), CAST(poly AS VARCHAR))",
     "CREATE MACRO strip(value) AS provisa_tsvector_strip(CAST(value AS VARCHAR))",
-    "CREATE MACRO flt4_mul_cash(a, b) AS CAST(round(a * b, 2) AS DECIMAL(18,2))",
-    "CREATE MACRO flt8_mul_cash(a, b) AS CAST(round(a * b, 2) AS DECIMAL(18,2))",
     "CREATE MACRO mul_d_interval(d, i) AS "
     "to_microseconds(CAST(round(epoch(i) * 1000000 * d) AS BIGINT))",
     "CREATE MACRO oidvectorsend(v) AS CASE WHEN v IS NOT NULL THEN unhex("
@@ -1134,6 +1132,9 @@ def _null_for_a_required_argument(function: Any) -> Any:
 
 def register(con: Any) -> None:
     """Create the UDFs and macros on DuckDB connection ``con``."""
+    from provisa.federation.duckdb_pg_money import register as register_money
+
+    register_money(con)
     for name, function, parameters, returns in _UDFS:
         con.create_function(name, function, parameters, returns, side_effects=False)
     special = (

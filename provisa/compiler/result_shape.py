@@ -28,6 +28,7 @@ it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import sqlglot
@@ -35,6 +36,7 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.ir_types import base_type
+from provisa.transpiler.pg_money import money_type, statement_columns
 
 # Dialects a registered type string may be spelled in: the registry stores what the bound engine or
 # the source reported, or what the config declared.
@@ -288,6 +290,18 @@ def _single_table_shape(
     return _plain_projection_shape(tree.expressions, table_columns(table_id, ctx, column_types))
 
 
+def _registered_money(
+    registered: dict[tuple[str, str], dict[str, str]],
+) -> Callable[[exp.Table, str], str | None]:
+    """What a registered table's column is to money's operators (REQ-2171)."""
+
+    def typed(table: exp.Table, name: str) -> str | None:
+        columns = registered.get((table.db, table.name))
+        return "money" if columns is not None and _lookup(columns, name) == "money" else None
+
+    return typed
+
+
 def _annotated_shape(
     tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict, *, each: bool = False
 ) -> list[tuple[str, str]]:
@@ -343,6 +357,7 @@ def _annotated_shape(
         ) from exc
 
     root = build_scope(annotated)
+    money_of = statement_columns(annotated, _registered_money(registered))
     selects = list(annotated.selects)
     # Positions line up with the statement's own projections unless a star was expanded.
     aligned = original if len(original) == len(selects) else None
@@ -365,6 +380,8 @@ def _annotated_shape(
                 columns = registered.get((source.db, source.name))
                 if columns is not None:
                     col_type = _lookup(columns, inner.name)  # the registry's own spelling
+        if col_type is None:
+            col_type = money_type(inner, money_of)  # REQ-2171: its operators' result, not its base
         if col_type is None:
             derived = sel.type
             if derived is not None and derived.this not in _UNDETERMINED:

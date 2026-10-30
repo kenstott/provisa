@@ -36,6 +36,7 @@ from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
 from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.pg_literals import postgres_literals
+from provisa.transpiler.pg_money import lowered
 from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
@@ -514,6 +515,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 
     sql = to_char_for_duckdb(sql)  # REQ-2167
+    sql = lowered(sql, "duckdb")  # REQ-2171: the catalog DB holds money as the engine does
     try:
         sql = typed_calls(sql)  # REQ-2167
         if "::bytea" in sql:
