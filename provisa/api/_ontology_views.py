@@ -222,7 +222,9 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     # term, named by its name (the answer writes its IRI); an object is a term, an IRI or a literal.
     # A retired term states nothing. Class terms are owl:Class and Property terms owl:*Property; a
     # kind-of edge from a Class is rdfs:subClassOf, from a Property rdfs:subPropertyOf. A
-    # Property's rdfs:domain is the Class of each table it binds a column of. It is an
+    # Property's rdfs:domain is the Class term of each table it binds a column of, and also (as
+    # object_table_id, which SPARQL answers as the table's class IRI for the tables its role reads)
+    # each such table's own class. It is an
     # owl:ObjectProperty when every column it binds is a many-to-one key to a table with a Class,
     # whose Class is then its rdfs:range; otherwise an owl:DatatypeProperty ranging over its
     # columns' xsd types. Every term has its name as skos:prefLabel and its definition, when it
@@ -235,6 +237,7 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         ),
         bound AS (
             SELECT r.term_id, rt.class_term_id AS domain_term_id, tc.data_type,
+                   r.table_id AS bound_table_id, r.column_name AS bound_column,
                    (SELECT MIN(tt.class_term_id)
                     FROM relationships rel
                     JOIN registered_tables tt ON tt.id = rel.target_table_id
@@ -249,45 +252,51 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         object_properties AS (
             SELECT term_id FROM bound GROUP BY term_id HAVING COUNT(*) = COUNT(range_term_id)
         ),
-        x (subject_id, predicate, object_id, object_iri, object_literal) AS (
-            -- The first branch types the columns: an object term's id, and a literal's text.
-            SELECT id, '{RDF}type', CAST(NULL AS INTEGER), '{OWL}Class', CAST(NULL AS TEXT)
+        x (subject_id, predicate, object_id, object_iri, object_literal, object_table_id) AS (
+            -- The first branch types the columns: an object term's id, a literal's text, and a
+            -- table's id (the table class of an rdfs:domain, which SPARQL names by its IRI).
+            SELECT id, '{RDF}type', CAST(NULL AS INTEGER), '{OWL}Class', CAST(NULL AS TEXT),
+                   CAST(NULL AS INTEGER)
             FROM t WHERE is_class
             UNION
             SELECT id, '{RDF}type', NULL,
                    CASE WHEN id IN (SELECT term_id FROM object_properties)
                         THEN '{OWL}ObjectProperty' ELSE '{OWL}DatatypeProperty' END,
-                   NULL
+                   NULL, NULL
             FROM t WHERE is_property
             UNION
             SELECT e.from_term_id,
                    CASE WHEN f.is_class THEN '{RDFS}subClassOf' ELSE '{RDFS}subPropertyOf' END,
-                   e.to_term_id, NULL, NULL
+                   e.to_term_id, NULL, NULL, NULL
             FROM glossary_term_edges e
             JOIN t f ON f.id = e.from_term_id
             WHERE e.rel_type = 'KIND_OF' AND (f.is_class OR f.is_property)
             UNION
-            SELECT term_id, '{RDFS}domain', domain_term_id, NULL, NULL
+            SELECT term_id, '{RDFS}domain', domain_term_id, NULL, NULL, NULL
             FROM bound WHERE domain_term_id IS NOT NULL
             UNION
-            SELECT term_id, '{RDFS}range', range_term_id, NULL, NULL
+            SELECT term_id, '{RDFS}domain', NULL, NULL, NULL, bound_table_id
+            FROM bound WHERE bound_column IS NOT NULL
+            UNION
+            SELECT term_id, '{RDFS}range', range_term_id, NULL, NULL, NULL
             FROM bound WHERE term_id IN (SELECT term_id FROM object_properties)
             UNION
-            SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL
+            SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL, NULL
             FROM bound
             WHERE term_id NOT IN (SELECT term_id FROM object_properties) AND data_type IS NOT NULL
             UNION
-            SELECT id, '{SKOS}prefLabel', NULL, NULL, name FROM t
+            SELECT id, '{SKOS}prefLabel', NULL, NULL, name, NULL FROM t
             UNION
-            SELECT id, '{SKOS}definition', NULL, NULL, definition
+            SELECT id, '{SKOS}definition', NULL, NULL, definition, NULL
             FROM t WHERE TRIM(COALESCE(definition, '')) <> ''
         )
         SELECT CAST(x.subject_id AS TEXT) || ' ' || x.predicate || ' '
-                   || COALESCE(CAST(x.object_id AS TEXT), x.object_iri, '"' || x.object_literal)
+                   || COALESCE(CAST(x.object_id AS TEXT), x.object_iri, 'table ' || CAST(x.object_table_id AS TEXT),
+                              '"' || x.object_literal)
                    AS id,
                x.subject_id AS subject_term_id, s.name AS subject, x.predicate,
                x.object_id AS object_term_id, o.name AS object, x.object_iri, x.object_literal,
-               s.term_domains AS subject_domains, o.term_domains AS object_domains, s.tenant_id
+               x.object_table_id, s.term_domains AS subject_domains, o.term_domains AS object_domains, s.tenant_id
         FROM x
         JOIN t s ON s.id = x.subject_id
         LEFT JOIN t o ON o.id = x.object_id

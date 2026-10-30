@@ -264,9 +264,11 @@ class TermIri(CypherExpr):
 @dataclass
 class AxiomObject(CypherExpr):
     """The object of the ontology._axioms row ``node`` binds: a term (answered as its IRI), an
-    IRI or a literal, whichever the row holds (REQ-2163)."""
+    IRI or a literal, whichever the row holds (REQ-2163). ``table_iris`` is the class IRI of each
+    table (by id) an rdfs:domain row's ``object_table_id`` names, for the tables the role reads."""
 
     node: str
+    table_iris: dict[int, str] = field(default_factory=dict)
 
 
 @dataclass

@@ -15,8 +15,13 @@ woken.
 
 * ``list`` (read-only): every external location (name, url, credential, owner, created) and every
   table and volume whose storage location is the location's url or beneath it.
+  ``list --catalog-prefix P`` also prints every catalog whose name starts with P.
 * ``delete --names '["x"]'``: deletes exactly the named external locations. A location that a table
   or volume still uses is refused, naming them; each deletion is read back and must be gone.
+* ``delete-catalogs --names '["x"]'``: drops exactly the named catalogs with their schemas and
+  tables (``DELETE .../catalogs/{name}?force=true``) and reads each back gone. ``--if-exists``
+  (a test teardown, where the run may have failed before it landed anything) skips a name that is
+  already absent; without it an absent name is refused.
 """
 
 from __future__ import annotations
@@ -120,6 +125,48 @@ def report(locations: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def catalogs_with_prefix(client: httpx.Client, prefix: str) -> list[str]:
+    if not prefix:
+        raise SystemExit("--catalog-prefix must not be empty")
+    names = (c["name"] for c in _pages(client, "/catalogs", "catalogs"))
+    return sorted(n for n in names if n.startswith(prefix) and n not in _OWN_CATALOGS)
+
+
+def catalog_report(prefix: str, names: list[str]) -> str:
+    lines = [f"{len(names)} catalog(s) starting with {prefix!r}"]
+    lines.extend(f"- {n}" for n in names)
+    return "\n".join(lines)
+
+
+def delete_catalogs(client: httpx.Client, names: list[str], *, if_exists: bool = False) -> str:
+    """Drop exactly ``names`` (force: schemas and tables go with them); each is read back gone."""
+    protected = [n for n in names if n in _OWN_CATALOGS]
+    if protected:
+        raise SystemExit(f"refusing Databricks-provided catalogs: {protected}")
+    lines = []
+    for name in names:
+        check = client.get(_API + f"/catalogs/{name}")
+        if check.status_code == 404:
+            if not if_exists:
+                raise SystemExit(f"no such catalog: {name}")
+            lines.append(f"{name} absent; nothing to delete")
+            continue
+        check.raise_for_status()
+        client.delete(_API + f"/catalogs/{name}", params={"force": "true"}).raise_for_status()
+        after = client.get(_API + f"/catalogs/{name}")
+        if after.status_code != 404:
+            raise SystemExit(f"catalog {name} still exists after delete (HTTP {after.status_code})")
+        lines.append(f"deleted catalog {name}; read back: gone")
+    return "\n".join(lines)
+
+
+def _names_arg(raw: str) -> list[str]:
+    names = json.loads(raw)
+    if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+        raise SystemExit("--names must be a non-empty JSON list of strings")
+    return names
+
+
 def delete(client: httpx.Client, names: list[str]) -> str:
     existing = {loc["name"]: loc for loc in inventory(client)}
     missing = [n for n in names if n not in existing]
@@ -141,22 +188,25 @@ def delete(client: httpx.Client, names: list[str]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("list")
+    lst = sub.add_parser("list")
+    lst.add_argument("--catalog-prefix", help="also list catalogs whose name starts with this")
     dele = sub.add_parser("delete")
     dele.add_argument("--names", required=True, help="JSON list of external location names")
+    delc = sub.add_parser("delete-catalogs")
+    delc.add_argument("--names", required=True, help="JSON list of catalog names")
+    delc.add_argument("--if-exists", action="store_true")
     args = parser.parse_args(argv)
+    names = _names_arg(args.names) if args.cmd != "list" else []
     with _client() as client:
         if args.cmd == "list":
             print(report(inventory(client)))
-        else:
-            names = json.loads(args.names)
-            if (
-                not isinstance(names, list)
-                or not names
-                or not all(isinstance(n, str) for n in names)
-            ):
-                raise SystemExit("--names must be a non-empty JSON list of strings")
+            if args.catalog_prefix is not None:
+                found = catalogs_with_prefix(client, args.catalog_prefix)
+                print(catalog_report(args.catalog_prefix, found))
+        elif args.cmd == "delete":
             print(delete(client, names))
+        else:
+            print(delete_catalogs(client, names, if_exists=args.if_exists))
     return 0
 
 

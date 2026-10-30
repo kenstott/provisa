@@ -36,15 +36,21 @@ import pytest
 
 from provisa.api.metadata_export.dataplex import DataplexExport, resource_id
 from provisa.federation.replica_address import export_schema, replica_schema, replica_table_name
-from tests.integration.dataplex_catalog import API, numbered, remove_glossary, remove_product
+from tests.integration.dataplex_catalog import (
+    API,
+    numbered,
+    remove_glossary,
+    remove_product,
+    send,
+)
 from tests.integration.live_teardown import run_name
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     DOMAIN,
-    GLOSSARY_TERM,
     PRODUCT_FIELDS,
     SCHEMA,
     SOURCE,
+    approve_terms,
     publish,
     published_server,
     refused,
@@ -79,17 +85,6 @@ def _token(key: str) -> str:
     )
     credentials.refresh(Request())
     return credentials.token
-
-
-async def _approve_terms(client: httpx.AsyncClient) -> None:
-    """The org's two terms approved, as a steward does: only an approved term publishes
-    (REQ-1387), and a config-declared term starts as a draft."""
-    listed = await client.get("/admin/glossary/terms")
-    assert listed.status_code == 200, listed.text
-    ids = {t["name"]: t["id"] for t in listed.json()}
-    for name in (GLOSSARY_TERM, CLASS_TERM):
-        approved = await client.post(f"/admin/glossary/terms/{ids[name]}/approve")
-        assert approved.status_code == 200, approved.text
 
 
 async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
@@ -189,7 +184,7 @@ async def published():
                 assert read.status_code == 200, read.text
             owner_email = json.loads(key)["client_email"]
             await _hold_owner_role(client, owner_email)
-            await _approve_terms(client)
+            await approve_terms(client)
             result = await publish(
                 client,
                 {
@@ -205,12 +200,14 @@ async def published():
             headers = {"Authorization": f"Bearer {_token(key)}"}
             name = f"projects/{project}/locations/{region}/dataProducts/{product_id}"
             with httpx.Client(headers=headers, timeout=60) as http:
-                found = http.get(f"{API}/{name}")
-                assets = http.get(f"{API}/{name}/dataAssets")
+                found = send(http, "GET", f"{API}/{name}")
+                assets = send(http, "GET", f"{API}/{name}/dataAssets")
                 glossary = _glossary_name(f"projects/{project}/locations/{region}")
-                term = http.get(f"{API}/{glossary}/terms/{resource_id(CLASS_TERM)}")
+                term = send(http, "GET", f"{API}/{glossary}/terms/{resource_id(CLASS_TERM)}")
                 links = (
-                    http.get(
+                    send(
+                        http,
+                        "GET",
                         f"{API}/projects/{project}/locations/{region}:lookupEntryLinks",
                         params={
                             "entry": DataplexExport._term_entry(

@@ -569,6 +569,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object": "That term's name",
         "object_iri": "The object when it is an IRI: an OWL class or an XML Schema datatype",
         "object_literal": "The object when it is a literal: a label or a definition",
+        "object_table_id": "The registered table whose class is the object, for an rdfs:domain "
+        "of a table a Property term's column binds; its class IRI is built from the table",
         "subject_domains": "Synthesized: the subject term's domains as |a|b| — what its "
         "readable-term scope tests",
         "object_domains": "Synthesized: the object term's domains as |a|b|; empty when the "
