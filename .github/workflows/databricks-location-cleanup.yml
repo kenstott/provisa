@@ -1,18 +1,24 @@
 # Inventory and removal of stale Unity Catalog external locations left by tests (REQ-254).
 # Manual only: `list` is read-only (REST, wakes no SQL warehouse); `delete` removes exactly the
-# external locations named and refuses one that a table or volume still uses.
+# external locations named and refuses one that a table or volume still uses. `list` with a catalog
+# prefix also names the matching catalogs; `delete-catalogs` drops exactly the catalogs named
+# (REST force delete, wakes no SQL warehouse) and reads each back gone.
 name: Databricks location cleanup
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: list (read-only) or delete (exactly the names given)
+        description: list (read-only), delete (external locations) or delete-catalogs (exactly the names given)
         type: choice
-        options: [list, delete]
+        options: [list, delete, delete-catalogs]
         required: true
       names:
-        description: 'JSON list of external location names from a list run (required for delete)'
+        description: 'JSON list of external location or catalog names from a list run (required for delete and delete-catalogs)'
+        type: string
+        required: false
+      catalog_prefix:
+        description: list also names the catalogs starting with this prefix (optional)
         type: string
         required: false
 
@@ -32,6 +38,7 @@ jobs:
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       MODE: ${{ inputs.mode }}
       NAMES: ${{ inputs.names }}
+      CATALOG_PREFIX: ${{ inputs.catalog_prefix }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,19 +47,29 @@ jobs:
       - name: Install httpx
         run: python -m pip install httpx
       - name: Require names for delete
-        if: env.MODE == 'delete' && env.NAMES == ''
+        if: (env.MODE == 'delete' || env.MODE == 'delete-catalogs') && env.NAMES == ''
         run: |
           echo "delete needs the names input" >&2
           exit 1
       - name: List
         if: env.MODE == 'list'
         run: |
-          python scripts/databricks_location_cleanup.py list > report.txt
+          if [ -n "$CATALOG_PREFIX" ]; then
+            python scripts/databricks_location_cleanup.py list --catalog-prefix "$CATALOG_PREFIX" > report.txt
+          else
+            python scripts/databricks_location_cleanup.py list > report.txt
+          fi
           cat report.txt
           cat report.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Delete
         if: env.MODE == 'delete'
         run: |
           python scripts/databricks_location_cleanup.py delete --names "$NAMES" > report.txt
+          cat report.txt
+          cat report.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Delete catalogs
+        if: env.MODE == 'delete-catalogs'
+        run: |
+          python scripts/databricks_location_cleanup.py delete-catalogs --names "$NAMES" > report.txt
           cat report.txt
           cat report.txt >> "$GITHUB_STEP_SUMMARY"
