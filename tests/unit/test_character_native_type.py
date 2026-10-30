@@ -169,3 +169,31 @@ async def test_a_character_column_registered_as_another_type_carries_no_native_t
     assert await _table_ops._settle_nested_columns(_Pool(), _INPUT, columns) is None
 
     assert columns[0].native_type is None
+
+
+@pytest.mark.parametrize("native_type", ["address", "json_cols_c5f2a959.address", "address[]"])
+def test_a_composite_column_is_still_landed_as_json(native_type):
+    """A named composite's type is recorded by its name, which states no shape (REQ-1965): it is
+    nested all the same, and only a character type's recorded name is not."""
+    from provisa.core.native_types import natively_nested
+    from provisa.transpiler.native_json import source_projection
+
+    assert natively_nested(native_type)
+    column = Column(
+        name="ship_to",
+        data_type="json",
+        native_type=native_type,
+        native_platform="postgresql",
+        visible_to=[],
+    )
+    assert source_projection([column], "postgres") != '"ship_to"'
+
+
+@pytest.mark.parametrize(
+    "native_type", ["varchar", "character varying(20)", "character(5)", "bpchar", "char(3)"]
+)
+def test_a_character_type_is_no_nested_type(native_type):
+    from provisa.core.native_types import natively_nested
+
+    assert not natively_nested(native_type)
+    assert natively_nested(f"{native_type}[]")

@@ -242,15 +242,23 @@ def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-4
 
 def domain_alias_map(domains: list[dict]) -> dict[str, str]:  # REQ-471
     """Each domain's alias (:func:`domain_gql_alias`), every one its own: a computed alias another
-    domain's alias also is -- ontology's and ops's are both "o" -- is the domain's own name
-    instead, so no domain's tables are named, typed or grouped as another's. A stored alias is the
-    domain's, as written."""
+    domain's alias also is is the domain's own name instead, so no domain's tables are named, typed
+    or grouped as another's. A stored alias is the domain's, as written. A system schema
+    (ontology, ops) is named in the SDL by its own prefix (``SYSTEM_SCHEMA_GQL_PREFIX``, REQ-2163),
+    never by an alias, so its computed alias is its own name and takes no model domain's: opioids
+    keeps "o" beside ops."""
     aliases = {d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias")) for d in domains}
-    taken = [a for a in aliases.values() if a]
+    system = {
+        d["id"]
+        for d in domains
+        if d["id"] in SYSTEM_SCHEMA_GQL_PREFIX and not d.get("graphql_alias")
+    }
+    taken = [a for domain_id, a in aliases.items() if a and domain_id not in system]
     return {
         d["id"]: (
             domain_to_sql_name(d["id"])
-            if not d.get("graphql_alias") and taken.count(aliases[d["id"]]) > 1
+            if d["id"] in system
+            or (not d.get("graphql_alias") and taken.count(aliases[d["id"]]) > 1)
             else aliases[d["id"]]
         )
         for d in domains

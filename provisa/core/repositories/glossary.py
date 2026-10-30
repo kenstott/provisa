@@ -1584,7 +1584,7 @@ async def axioms(conn: "Connection") -> list[dict]:  # REQ-2163
     rows = await conn.execute_core(
         text(
             "SELECT subject_term_id, predicate, object_term_id, object_iri, object_literal "
-            "FROM _axioms_ontology ORDER BY id"
+            "FROM _axioms_ontology WHERE object_table_id IS NULL ORDER BY id"
         )
     )
     return [dict(r._mapping) for r in rows.fetchall()]

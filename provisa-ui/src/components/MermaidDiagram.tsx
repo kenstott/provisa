@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { fitSvgToWidth } from "./mermaidFit";
 import "./MermaidDiagram.css";
 
 let _mermaidDagSeq = 0;
@@ -41,7 +42,10 @@ export function MermaidDiagram({ chart }: { chart: string }) {
         const svgs = await Promise.all(
           charts.map((c, i) => mermaid.render(ids[i], c).then(({ svg }) => svg)),
         );
-        if (!cancelled && ref.current) ref.current.innerHTML = svgs.join("");
+        if (!cancelled && ref.current) {
+          ref.current.innerHTML = svgs.join("");
+          ref.current.querySelectorAll("svg").forEach(fitSvgToWidth);
+        }
       } catch (e) {
         if (cancelled) return;
         if (ref.current) ref.current.innerHTML = "";

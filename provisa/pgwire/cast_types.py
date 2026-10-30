@@ -138,6 +138,8 @@ def described_type(spelling: str) -> CastType | None:
     except (SqlglotError, ValueError):
         return None  # no PostgreSQL type: its wire type describes it
     kind = data_type.this
+    if not isinstance(kind, exp.DataType.Type):
+        return None  # an object identifier type (oid, regclass): sqlglot names it by a string
     if kind == exp.DataType.Type.DECIMAL and numeric_size_of(spelling) is None:
         return None  # an unsized numeric has no typmod
     if kind != exp.DataType.Type.DECIMAL and kind.name not in _CHARACTER_KINDS:

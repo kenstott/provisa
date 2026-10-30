@@ -36,6 +36,10 @@ tables:
     data_type: text
     visible_to:
     - viewer
+  - name: object_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: object_term_id
     data_type: integer
     visible_to:

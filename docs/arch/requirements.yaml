@@ -89838,7 +89838,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     product uses (details, fields promised, SLAs and freshness, quality promises, consumers, versions and
     changes); several may be open at once, and a contract''s details are read when its row opens. The contracts
     are no longer a card in the product''s top panels; the product''s other cards, its output ports among
-    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.'
+    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.
+    (Amended 2026-10-29, A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29:
+    every saved version of a contract is kept, with when and by whom it was saved. Each version records
+    its differences from the one before it, and a difference that can break a consumer (a field removed
+    or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
+    is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
+    in force, and its Versions and changes card lists the versions and shows each one''s differences.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 

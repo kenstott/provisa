@@ -323,6 +323,19 @@ async def entitle(client: httpx.AsyncClient, org_id: str) -> None:
     assert response.status_code == 200, response.text
 
 
+async def approve_terms(
+    client: httpx.AsyncClient, names: tuple[str, ...] = (GLOSSARY_TERM, CLASS_TERM)
+) -> None:
+    """The org's terms ``names`` approved, as a steward does: a config-declared term starts as a
+    draft and only an approved term publishes (REQ-1387)."""
+    listed = await client.get("/admin/glossary/terms")
+    assert listed.status_code == 200, listed.text
+    ids = {t["name"]: t["id"] for t in listed.json()}
+    for name in names:
+        approved = await client.post(f"/admin/glossary/terms/{ids[name]}/approve")
+        assert approved.status_code == 200, approved.text
+
+
 @asynccontextmanager
 async def published_server(
     org_id: str,
