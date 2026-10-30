@@ -227,6 +227,9 @@ _FIXTURE: list[tuple[str, str, str, ColumnMetadata]] = [
         "'ab   '",
         ColumnMetadata("c_bpchar_5", "text", True, native_type="character(5)"),
     ),
+    # An oid column registers as oid (the conformance fixture's c_oid): it is described as oid,
+    # and the catalog listing it is built.
+    ("c_oid", "INTEGER", "12345", ColumnMetadata("c_oid", "oid", True)),
 ]
 
 #: column -> (type OID, typmod, text, binary hex).
@@ -239,6 +242,7 @@ REGISTERED: dict[str, tuple[int, int, str, str]] = {
     "c_varchar": (1043, -1, "varchar value", "varchar value".encode().hex()),
     "c_varchar_20": (1043, 24, "bounded", "bounded".encode().hex()),
     "c_bpchar_5": (1042, 9, "ab   ", "6162202020"),
+    "c_oid": (26, -1, "12345", "00003039"),
 }
 
 
@@ -369,4 +373,5 @@ def test_the_catalog_lists_a_registered_column_with_its_type_and_typmod(register
         ("c_varchar", 1043, -1, "character varying"),
         ("c_varchar_20", 1043, 24, "character varying(20)"),
         ("c_bpchar_5", 1042, 9, "character(5)"),
+        ("c_oid", 26, -1, "oid"),
     ]
