@@ -60,12 +60,17 @@ _CYPHER_DEFINITIONS = [
 # REQ-2176 (2026-10-28, CYPHER INDEX STATEMENTS ARE SESSION INDEXES): a CREATE INDEX acts on the
 # graph session, and one on a model label is refused by name. Any other definition is refused as
 # on every surface.
+_INDEX_REFUSAL = (
+    "Orders is a model label: its table is governed, not in the graph session's "
+    "scratch store, and CREATE INDEX indexes only the session's own"
+)
 _CYPHER_REFUSAL = {
-    "CREATE INDEX": (
-        "Orders is a model label: its table is governed, not in the graph session's "
-        "scratch store, and CREATE INDEX indexes only the session's own"
-    ),
+    "CREATE INDEX": _INDEX_REFUSAL,
     "DROP CONSTRAINT": f"DROP CONSTRAINT {_HOW}",
+}
+_CYPHER_ERROR = {
+    "CREATE INDEX": ("cypher.refused", {"reason": _INDEX_REFUSAL}),
+    "DROP CONSTRAINT": ("data.definition_not_available", {"statement": "DROP CONSTRAINT"}),
 }
 
 
@@ -230,8 +235,7 @@ def test_cypher_over_http_refuses_a_definition(server, statement, kind):
     status, body = _http(server, "POST", "/data/cypher", {"query": statement})
     assert status == 400, body
     assert body["detail"] == _CYPHER_REFUSAL[kind]
-    assert body["code"] == "data.definition_not_available"
-    assert body["params"] == {"statement": kind}
+    assert (body["code"], body["params"]) == _CYPHER_ERROR[kind]
 
 
 @pytest.mark.parametrize("statement,kind", _CYPHER_DEFINITIONS)
