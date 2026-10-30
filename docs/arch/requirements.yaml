@@ -90569,7 +90569,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     emulation if one exists. (Amended 2026-10-29, RANGES ARE EMULATED ON EVERY ENGINE:) Maintainer 2026-10-30:
     a range type works on every federation engine, not only DuckDB and Trino, whose emulations are the template.
     Native on PostgreSQL, emulated on every other engine, for all six range types, never refused by name
-    for want of an emulation. Bounds compare as the range''s element type, not as text.'
+    for want of an emulation. Bounds compare as the range''s element type, not as text. (Amended 2026-10-29,
+    TSVECTOR AND SHAPES ARE NATIVE TO POSTGRESQL:) Maintainer 2026-10-30: tsvector and PostgreSQL''s shapes
+    are supported where the statement routes to a dialect with a native form, today PostgreSQL. A table
+    homed to a PostgreSQL store is how a model gets them. Elsewhere an operation on one is refused by name,
+    saying it needs PostgreSQL, and a read of the column as a value still works in its text form. They are
+    not emulated. This settles the types left open in REQ-2167: money and xml are served, ranges emulated
+    everywhere, tsvector and shapes native to PostgreSQL.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
