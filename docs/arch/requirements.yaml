@@ -90599,7 +90599,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     refused by name elsewhere. Shapes get no parallel set of functions. (Amended 2026-10-29, HOW THE LIMITS
     ARE TESTED:) Maintainer 2026-10-30: conformance runs on two engines, the default and PostgreSQL, because
     running every engine is not practical. A compile-only test covers every function on every dialect: each
-    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.'
+    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
+    (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
+    base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
+    binary wire forms. It is native on PostgreSQL and emulated elsewhere.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
