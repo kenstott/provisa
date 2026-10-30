@@ -196,6 +196,7 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,
@@ -216,6 +217,7 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,
@@ -236,6 +238,7 @@ const MARGIN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "deprecated",
   status_reason: null,
@@ -258,6 +261,7 @@ const DANGLING: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "draft",
   status_reason: null,
@@ -370,8 +374,8 @@ describe("GlossaryTab", () => {
 
     // A concept names no column: its role says so, and no count is shown.
     const churn = screen.getByTestId("glossary-item-2");
-    expect(within(churn).getByTestId("glossary-role-2")).toHaveTextContent(
-      t("glossaryTab.role_concept"),
+    expect(within(churn).getByRole("img", { name: t("glossaryTab.role_concept") })).toBe(
+      within(churn).getByTestId("glossary-role-2"),
     );
     expect(within(churn).queryByText("Abstract")).toBeNull();
 
@@ -386,7 +390,7 @@ describe("GlossaryTab", () => {
   it("badges a draft term Draft in the list", async () => {
     mockList.mockResolvedValue([REVENUE, DANGLING]);
     render(<GlossaryTab />);
-    expect(await screen.findByTestId("glossary-status-4")).toHaveTextContent(
+    expect(await screen.findByTestId("glossary-status-4")).toHaveAccessibleName(
       t("glossaryTab.status_draft"),
     );
   });
@@ -467,7 +471,7 @@ describe("GlossaryTab", () => {
     const orphan = screen.getByTestId("glossary-item-4");
     const badge = within(orphan).getByTestId("glossary-role-4");
     expect(badge).toHaveAttribute("data-dangling", "true");
-    expect(badge).toHaveTextContent(t("glossaryTab.role_concept"));
+    expect(badge).toHaveAccessibleName(t("glossaryTab.role_concept"));
   });
 
   it("explains what the glossary is for next to the add button", async () => {
@@ -518,7 +522,7 @@ describe("GlossaryTab", () => {
     mockList.mockResolvedValue([{ ...REVENUE, findings: 1 }, CHURN]);
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-2");
-    expect(screen.getByTestId("glossary-review-1")).toHaveTextContent(t("glossaryTab.toReview"));
+    expect(screen.getByTestId("glossary-review-1")).toHaveAccessibleName(t("glossaryTab.toReview"));
     fireEvent.click(screen.getByTestId("glossary-to-review-only"));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
@@ -640,18 +644,23 @@ describe("GlossaryTab", () => {
 
     const listbox = await openSelect("glossary-edge-rel-select");
     const options = within(listbox).getAllByRole("option", { hidden: true });
-    expect(options.map((o) => o.textContent)).toEqual([
-      t("glossaryTab.rel_KIND_OF"),
-      t("glossaryTab.rel_RELATED_TO"),
-      t("glossaryTab.rel_PART_OF"),
-      t("glossaryTab.rel_SYNONYM_OF"),
-      t("glossaryTab.rel_VALID_VALUE_OF"),
-      t("glossaryTab.rel_DERIVED_FROM"),
-      t("glossaryTab.rel_REPLACES"),
-      t("glossaryTab.rel_PREFERRED_TERM_FOR"),
-      t("glossaryTab.rel_TRANSLATION_OF"),
-      t("glossaryTab.rel_ANTONYM_OF"),
+    // Exactly the closed set, the grounding types first and RELATED_TO last (REQ-1387); each
+    // option reads its label, then its test where it has one.
+    expect(options.map((o) => o.getAttribute("value"))).toEqual([
+      "KIND_OF",
+      "PART_OF",
+      "VALID_VALUE_OF",
+      "SYNONYM_OF",
+      "DERIVED_FROM",
+      "REPLACES",
+      "PREFERRED_TERM_FOR",
+      "TRANSLATION_OF",
+      "ANTONYM_OF",
+      "RELATED_TO",
     ]);
+    for (const o of options) {
+      expect(o.textContent?.startsWith(t(`glossaryTab.rel_${o.getAttribute("value")}`))).toBe(true);
+    }
   });
 
   it("adds and removes relationships in the form, sent on Save", async () => {
@@ -1083,7 +1092,7 @@ describe("GlossaryTab", () => {
   });
 
   it("bulk-generates relationships and shows a count notification", async () => {
-    mockBulkRelationships.mockResolvedValue({ added: 1 });
+    mockBulkRelationships.mockResolvedValue({ added: 1, review: [] });
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 

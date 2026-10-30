@@ -62,7 +62,6 @@ import os
 import secrets
 import string
 import subprocess
-import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -371,32 +370,49 @@ def _wait_gone(workspace: str, group: str) -> None:
 
 def _teardown(lane: dict[str, str]) -> None:
     """Delete what ``_provision`` created inside the resource group: the workspace, then the
-    storage account's role assignments and the account. The group itself is not this lane's."""
+    storage account's role assignments and the account, each read back gone. The group itself is
+    not this lane's. Every step is attempted and every failure raised together (REQ-254): a
+    workspace or account left behind bills, so a failed delete fails the lane rather than being
+    logged away."""
+    from tests.integration.live_teardown import run_every
+
     group, workspace, storage = lane["resource_group"], lane["workspace"], lane["storage"]
     print(f"== teardown: {workspace} + {storage} in {group} ==", flush=True)
-    steps = [
+
+    def delete_workspace() -> None:
         # --no-wait, then poll the workspace itself: az's own wait reads the operation's status at
         # subscription scope, which the CI principal (rights on the group only) may not, so the
         # delete went through while the step reported a failure.
-        ("synapse", "workspace", "delete", "-n", workspace, "-g", group, "--yes", "--no-wait"),
-        ("role", "assignment", "delete", "--scope", lane.get("storage_scope", "")),
-        ("storage", "account", "delete", "-n", storage, "-g", group, "--yes"),
-    ]
-    for step in steps:
-        if not lane.get("storage_scope") and step[0] == "role":
-            continue  # provisioning stopped before the account had an id to scope a role to
-        try:
-            _az(*step)
-            if step[:3] == ("synapse", "workspace", "delete"):
-                _wait_gone(workspace, group)
-        except (RuntimeError, subprocess.TimeoutExpired) as exc:
-            print(
-                f"teardown step `az {' '.join(step[:3])}` failed ({exc}) -- DELETE {workspace} "
-                f"AND {storage} IN {group} MANUALLY; the storage account bills while it exists",
-                file=sys.stderr,
-                flush=True,
+        _az("synapse", "workspace", "delete", "-n", workspace, "-g", group, "--yes", "--no-wait")
+        _wait_gone(workspace, group)
+
+    def delete_storage() -> None:
+        _az("storage", "account", "delete", "-n", storage, "-g", group, "--yes")
+        _storage_gone(storage, group)
+
+    steps = [(f"delete workspace {workspace}", delete_workspace)]
+    if lane.get("storage_scope"):
+        # Provisioning that stopped before the account had an id made no role assignment on it.
+        steps.append(
+            (
+                f"delete role assignments on {storage}",
+                lambda: _az("role", "assignment", "delete", "--scope", lane["storage_scope"]),
             )
+        )
+    steps.append((f"delete storage account {storage}", delete_storage))
+    run_every(steps)
     print(f"== teardown done: {workspace} + {storage} ==", flush=True)
+
+
+def _storage_gone(storage: str, group: str) -> None:
+    """Raise unless the storage account no longer exists."""
+    try:
+        _az("storage", "account", "show", "-n", storage, "-g", group, "-o", "none", timeout=120)
+    except RuntimeError as exc:
+        if "NotFound" in str(exc) or "Not Found" in str(exc) or "ResourceNotFound" in str(exc):
+            return
+        raise
+    raise RuntimeError(f"storage account {storage} still exists after its delete")
 
 
 def _signed_in_principal() -> tuple[str, str, str, str]:

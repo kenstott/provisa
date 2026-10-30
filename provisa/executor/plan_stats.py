@@ -22,9 +22,8 @@ from __future__ import annotations
 
 from typing import Any
 
-
-def _node_id(s: str) -> str:
-    return "n_" + "".join(ch if ch.isalnum() else "_" for ch in s)
+from provisa.executor.mermaid_label import label as _label
+from provisa.executor.mermaid_label import node_id as _node_id
 
 
 def _optimization_note(label: str) -> tuple[str, str]:
@@ -56,26 +55,26 @@ def build_plan_mermaid(
 
     route_label = "direct" if route == "DIRECT" else route.lower()
     if route == "DIRECT" and direct_source_id:
-        route_node = f'route["{route_label}\\n({direct_source_id})"]'
+        route_node = f'route["{route_label}\\n({_label(direct_source_id)})"]'
     else:
         route_node = f'route["{route_label}"]'
 
     for src_id in sorted(sources):
         src_type = source_types.get(src_id, "")
         nid = _node_id(src_id)
-        type_suffix = f"\\n{src_type}" if src_type else ""
-        lines.append(f'    {nid}["{src_id}{type_suffix}"]')
+        type_suffix = f"\\n{_label(src_type)}" if src_type else ""
+        lines.append(f'    {nid}["{_label(src_id)}{type_suffix}"]')
         lines.append(f"    {nid} --> route")
 
     for label in optimizations:
         kind, relation = _optimization_note(label)
         nid = _node_id(f"opt_{relation or kind}")
-        lines.append(f'    {nid}[/"{kind}\\n{relation}"/]')
+        lines.append(f'    {nid}[/"{_label(kind)}\\n{_label(relation)}"/]')
         lines.append(f"    {nid} --> route")
 
     lines.append(f"    {route_node}")
     lines.append(f'    result(["{rows} rows"])')
-    edge_label = route_reason or f"{round(elapsed_ms)}ms"
+    edge_label = _label(route_reason) if route_reason else f"{round(elapsed_ms)}ms"
     lines.append(f'    route -->|"{edge_label}"| result')
     if optimized_relations:
         for label in optimizations:

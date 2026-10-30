@@ -21,6 +21,7 @@ import {
 } from "../../pages/tables/profile3d/baseScene";
 import { labelFit, loosen, type ViewNode } from "../../pages/tables/profile3d/bestView";
 import { edgeClass } from "./layeredLayout";
+import { hiddenLabels, labelPx, LABEL_FONT_PX } from "./labelSize";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
 import { groundClass, labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
 
@@ -77,9 +78,8 @@ const LABEL_RANK: Record<NodeType, number> = {
   column: 9,
 };
 
-/** A label's font size at full size (profile3d.css .p3d-label), and a character's width in it: the
- * label font is monospace, a character 0.6 of the size. */
-const LABEL_FONT_PX = 10.5;
+/** A character's width in a label at its resting size: the label font is monospace, a character
+ * 0.6 of the size. */
 const LABEL_CHAR_PX = LABEL_FONT_PX * 0.6;
 
 const SIZE: Record<NodeType, number> = {
@@ -138,8 +138,14 @@ export class GraphScene extends BaseScene<GraphHover> {
   private extentY = 8;
   /** The farthest node from the centre. */
   private reach = 8;
-  /** REQ-2174: nodes and labels drawn at this share of full size, set against the best view. */
+  /** REQ-2174: nodes drawn at this share of full size, set against the best view. Labels are
+   * not: they keep a readable size that follows the zoom (labelPx). */
   private sized = 1;
+  /** The labels' font size last set, in px. */
+  private labelSize = 0;
+  /** How far the 3D camera stood from its target at the resting view (resetView): labels are at
+   * their resting size there. */
+  private restDistance = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -201,6 +207,8 @@ export class GraphScene extends BaseScene<GraphHover> {
       this.fitOrtho();
     }
     this.flyTo(view.dir.clone().multiplyScalar(this.fitDistance()), centre, instant, view.up);
+    // Where the camera comes to rest: the orbit controls hold it within their farthest distance.
+    this.restDistance = Math.min(this.fitDistance(), this.controls.maxDistance);
   }
 
   focus(id: string) {
@@ -272,15 +280,17 @@ export class GraphScene extends BaseScene<GraphHover> {
     return Math.max(1, height) / across;
   }
 
-  /** Nodes and labels sized so the smallest gap at the best view holds a label; the pairs sizing
-   * cannot part are moved apart in the view's plane, and the graph is drawn again from there. */
+  /** Nodes sized so the smallest gap at the best view holds a label. In 2D the pairs sizing
+   * cannot part are moved apart in the view's plane, and the graph is drawn again from there; in
+   * 3D the layout is left as it is (moving pairs in the view's plane flattens it), and a label
+   * still colliding is hidden (onLabelsPlaced). */
   private fitLabels() {
     const view = this.settleView();
     if (!view) return;
     const content = this.viewContent();
     const { scale, crowded } = labelFit(content.nodes, view.dir, view.up);
     this.sized = scale;
-    if (crowded.length > 0) {
+    if (this.flat && crowded.length > 0) {
       const moved = loosen(content.nodes, crowded, view.dir, view.up, scale);
       this.at = new Map(this.nodes.map((n, i) => [n.node.id, moved[i].toArray()]));
     }
@@ -289,10 +299,25 @@ export class GraphScene extends BaseScene<GraphHover> {
 
   // ---------- BaseScene ----------
 
-  /** No two labels drawn over each other: a label colliding with one ranked ahead of it is hidden
-   * (its node's full name is in the hover card). The selected and hovered nodes rank first, then
-   * the node types the graph is about, nearest the camera first. */
+  /** How near the camera is, against the resting view: 1 there, 2 at half the distance (in 2D,
+   * the orthographic camera's zoom). */
+  private zoomNow(): number {
+    if (this.flat) return this.ortho.zoom;
+    // Before the first resting view, and with the camera on its target, the resting size.
+    const d = this.camera.position.distanceTo(this.controls.target);
+    return this.restDistance > 0 && d > 0 ? this.restDistance / d : 1;
+  }
+
+  /** Labels at a readable size that follows the zoom (labelPx), never shrunk to fit; no two drawn
+   * over each other: a label colliding with one ranked ahead of it is hidden (its node's full
+   * name is in the hover card). The selected and hovered nodes rank first, then the node types
+   * the graph is about, nearest the camera first. */
   protected onLabelsPlaced() {
+    const px = labelPx(this.zoomNow());
+    if (px !== this.labelSize) {
+      this.labelSize = px;
+      for (const n of this.nodes) n.label.style.fontSize = `${px}px`;
+    }
     const lead = (n: NodeMesh) =>
       n.node.id === this.selected || (this.hover?.kind === "node" && this.hover.id === n.node.id)
         ? -1
@@ -301,20 +326,10 @@ export class GraphScene extends BaseScene<GraphHover> {
       .filter((n) => n.label.style.visibility !== "hidden")
       .map((n) => ({ n, rank: lead(n), d: n.mesh.position.distanceTo(this.camera.position) }))
       .sort((a, b) => a.rank - b.rank || a.d - b.d);
-    const kept: DOMRect[] = [];
-    for (const { n } of ranked) {
-      const r = n.label.getBoundingClientRect();
-      // Kept apart by a gap that reads as one, not two names run together.
-      const hit = kept.some(
-        (k) =>
-          r.left < k.right + 8 &&
-          r.right > k.left - 8 &&
-          r.top < k.bottom + 3 &&
-          r.bottom > k.top - 3,
-      );
-      if (hit) n.label.style.visibility = "hidden";
-      else kept.push(r);
-    }
+    const hidden = hiddenLabels(ranked.map(({ n }) => n.label.getBoundingClientRect()));
+    ranked.forEach(({ n }, i) => {
+      if (hidden[i]) n.label.style.visibility = "hidden";
+    });
   }
 
   protected applyTheme() {
@@ -524,7 +539,7 @@ export class GraphScene extends BaseScene<GraphHover> {
         () =>
           mesh.position.clone().add(this.camera.up.clone().multiplyScalar(r * this.sized + 0.3)),
       );
-      label.style.fontSize = `${LABEL_FONT_PX * this.sized}px`;
+      label.style.fontSize = `${labelPx(this.zoomNow())}px`;
       this.nodes.push({ node, mesh, radius: r, label });
     }
     this.extentX = extentX;

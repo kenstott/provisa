@@ -77,7 +77,6 @@
     "ontologyView": "Vue ontologie",
     "orphans": "Orphelins",
     "columnsToggle": "Colonnes",
-    "tablesToggle": "Tables",
     "allEdgeTypes": "Tous les types d’arêtes",
     "someEdgeTypes": "{{count}} sur {{total}} types d’arêtes",
     "allDomains": "Tous les domaines",

@@ -18,16 +18,15 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useViewDomains } from "../../lib/viewDomains";
 import { dataGraphql } from "../../api/metaGraph";
 import { GraphExplorer } from "./GraphExplorer";
 import { GLOSSARY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
 import {
-  flatTerms,
-  glossaryGraph,
   ontologyCountQuery,
+  ontologyGraph,
   ontologyQuery,
   overviewGraph,
-  termEdges,
   type CountRow,
   type OntologyRows,
 } from "./glossaryGraphData";
@@ -68,9 +67,7 @@ async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | n
   const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
-  // A search's neighbourhood is read nested, a level to each hop: each term once, flat.
-  const terms = flatTerms(rows._terms);
-  return { data: glossaryGraph(terms, termEdges(terms), rows.data_products), query };
+  return { data: ontologyGraph(rows), query };
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
@@ -106,6 +103,8 @@ export function OntologyToggle({
 export function GlossaryOntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
+  // REQ-1723: the navbar's checked domains bound the graph, as they do the term list.
+  const within = useViewDomains();
   const said = useCallback(
     (domain: string, count: number) =>
       t("graph3d.domainCount", {
@@ -223,6 +222,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
         testId="ontology"
       />
       <GraphModal
@@ -237,6 +237,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         search={search}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
       />
     </div>
   );

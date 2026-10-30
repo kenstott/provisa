@@ -77,7 +77,6 @@
     "ontologyView": "Ontologieweergave",
     "orphans": "Wezen",
     "columnsToggle": "Kolommen",
-    "tablesToggle": "Tabellen",
     "allEdgeTypes": "Alle randtypen",
     "someEdgeTypes": "{{count}} van {{total}} randtypen",
     "allDomains": "Alle domeinen",

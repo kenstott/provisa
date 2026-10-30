@@ -37,6 +37,7 @@ from tests.integration.metadata_export_server import (
     GLOSSARY_DEFINITION,
     GLOSSARY_TERM,
     PRODUCT_FIELDS,
+    approve_terms,
     publish,
     published_server,
     refused,
@@ -159,6 +160,7 @@ async def published():
     product = f"provisa_e2e_{uuid.uuid4().hex[:8]}"
     name = f"{PRODUCT_FIELDS['name']} {product}"
     async with published_server(ORG, with_view=False, product=product, product_name=name) as client:
+        await approve_terms(client)
         result = await publish(
             client,
             {

@@ -43,6 +43,11 @@ vi.mock("../graphScene", () => ({
   },
 }));
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
+// REQ-1723: the navbar's domain filter; every test but the navbar's own leaves it unnarrowed.
+const nav = vi.hoisted(() => ({
+  value: { domains: [] as string[], checkedDomains: new Set<string>(), domainsEnabled: true },
+}));
+vi.mock("../../../context/DomainFilterContext", () => ({ useDomainFilter: () => nav.value }));
 const reads = vi.hoisted(() => ({ roles: [] as string[] }));
 vi.mock("../useProductGraph", () => ({
   metaReader: async (role: string) => {
@@ -173,6 +178,7 @@ function Page() {
 }
 
 beforeEach(() => {
+  nav.value = { domains: [], checkedDomains: new Set(), domainsEnabled: true };
   made.scenes.length = 0;
   reads.roles.length = 0;
   asked.scopes.length = 0;
@@ -208,7 +214,7 @@ describe("the Glossary page's Ontology View", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // Every layer and no filter, for the controls' choices; then the defaults: retired hidden.
     expect(asked.scopes[0]).toEqual({
-      layers: ["ontology", "domains", "data", "columns", "ownerTables"],
+      layers: ["ontology", "domains", "data", "columns"],
       domains: [],
       edgeTypes: [],
       hiddenStatuses: [],
@@ -254,6 +260,7 @@ describe("the Glossary page's Ontology View", () => {
       "c:10:email",
       "d:finance",
       "d:sales",
+      "t:10",
       "term:1",
       "term:10",
       "term:2",
@@ -300,14 +307,14 @@ describe("the Glossary page's Ontology View", () => {
       drawn()
         .edges.filter((e) => e.kind === "term_binding")
         .map((e) => [e.a, e.label, e.b]);
-    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent(
-      "Layers: Domains, Columns",
-    );
+    // Domains and Columns: the layers this graph has, both on.
+    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent("Layers: all");
     expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]);
     expect(node(drawn(), "c:10:email")).toMatchObject({ type: "column", label: "customers.email" });
     await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([]));
     expect(ids(drawn())).not.toContain("c:10:email");
+    expect(ids(drawn())).not.toContain("t:10");
     await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]));
   });
@@ -406,5 +413,51 @@ describe("the Glossary page's Ontology View", () => {
     fireEvent.click(screen.getByTestId("ontology-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     expect(await screen.findByTestId("graph3d-modal")).toBeInTheDocument();
+  });
+});
+
+describe("the Ontology View under the navbar's domains (REQ-1723)", () => {
+  const navbar = (all: string[], checked: string[]) => {
+    nav.value = { domains: all, checkedDomains: new Set(checked), domainsEnabled: true };
+  };
+
+  it("holds only what is in the domains the navbar checks", async () => {
+    navbar(["sales", "finance", "hr"], ["finance"]);
+    render(<GlossaryOntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: ["finance"] }));
+    await waitFor(() => expect(ids(drawn())).toContain("term:5"));
+    // Nothing of sales: its terms, its column and its domain.
+    for (const id of ["term:1", "term:6", "c:10:email", "d:sales"])
+      expect(ids(drawn())).not.toContain(id);
+    // The view's own filter offers the navbar's domains alone.
+    fireEvent.click(screen.getByTestId("ontology-filter-domain"));
+    expect(await screen.findByTestId("ontology-filter-domain-option-finance")).toBeInTheDocument();
+    expect(screen.queryByTestId("ontology-filter-domain-option-sales")).not.toBeInTheDocument();
+  });
+
+  it("narrows further inside the navbar's domains with its own filter, never past them", async () => {
+    navbar(["sales", "finance", "hr"], ["sales", "finance"]);
+    render(<GlossaryOntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    await waitFor(() =>
+      expect(asked.scopes.at(-1)).toMatchObject({ domains: ["finance", "sales"] }),
+    );
+    fireEvent.click(screen.getByTestId("ontology-filter-domain"));
+    fireEvent.click(await screen.findByTestId("ontology-filter-domain-option-finance"));
+    await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: ["sales"] }));
+    await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
+  });
+
+  it("is no narrowing with every domain checked, or none", async () => {
+    for (const checked of [["sales", "finance"], []]) {
+      navbar(["sales", "finance"], checked);
+      const { unmount } = render(<GlossaryOntologyView search="" />);
+      await waitFor(() => expect(asked.scopes.length).toBeGreaterThanOrEqual(2));
+      await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: [] }));
+      unmount();
+      asked.scopes.length = 0;
+      made.scenes.length = 0;
+    }
   });
 });

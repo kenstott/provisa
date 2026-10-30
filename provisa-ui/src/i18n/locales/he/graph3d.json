@@ -77,7 +77,6 @@
     "ontologyView": "תצוגת אונטולוגיה",
     "orphans": "יתומים",
     "columnsToggle": "עמודות",
-    "tablesToggle": "טבלאות",
     "allEdgeTypes": "כל סוגי הקשתות",
     "someEdgeTypes": "{{count}} מתוך {{total}} סוגי קשתות",
     "allDomains": "כל התחומים",

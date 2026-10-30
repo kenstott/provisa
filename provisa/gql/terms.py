@@ -80,6 +80,25 @@ def _json(**pairs: exp.Expression) -> exp.JSONObject:  # pyright: ignore[reportP
     )
 
 
+def axiom_table_iri(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    table_id: exp.Expression, table_iris: dict[int, str]
+) -> exp.Expression:
+    """The class IRI of the table ``table_id`` names (REQ-2163), NULL for a row of no table or of a
+    table the role does not read."""
+    if not table_iris:
+        return exp.null()
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=table_id.copy(), expression=exp.Literal.number(i)),
+                true=exp.Literal.string(iri),
+            )
+            for i, iri in table_iris.items()
+        ],
+        default=exp.null(),
+    )
+
+
 def _present(value: exp.Expression, term) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """``term(value)``, NULL where ``value`` is (an OPTIONAL that matched nothing)."""
     return exp.Case(
@@ -156,7 +175,11 @@ class TermsMixin:  # REQ-2135
             def col(name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 return self._lower_expr(Property(Variable(value.node), name))
 
-            term, iri = col("object"), col("object_iri")
+            term = col("object")
+            iri = exp.Coalesce(
+                this=col("object_iri"),
+                expressions=[axiom_table_iri(col("object_table_id"), value.table_iris)],
+            )
             return exp.Case(
                 ifs=[
                     exp.If(

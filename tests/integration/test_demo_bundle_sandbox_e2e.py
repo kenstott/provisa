@@ -373,9 +373,11 @@ def test_a_server_started_on_a_bundle_in_an_older_format_refuses_it_by_name(tmp_
         server.start(timeout=120)
     try:
         log = server.dump_stderr_debug()
+        from provisa.core.demo_bundles import DEMO_FORMAT
+
         assert (
-            "demo weblogs 202610141838-c48b72e45 is in demo format 1; this Provisa reads format 2: "
-            "pull its latest (start-ui-install.sh --demo weblogs)"
+            "demo weblogs 202610141838-c48b72e45 is in demo format 1; this Provisa reads format "
+            f"{DEMO_FORMAT}: pull its latest (start-ui-install.sh --demo weblogs)"
         ) in log, log[-4000:]
     finally:
         server.stop_process()

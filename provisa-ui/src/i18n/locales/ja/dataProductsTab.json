@@ -214,6 +214,23 @@
         "customProperties_other": "カスタムプロパティ {{count}} 件",
         "tags_one": "タグ {{count}} 件",
         "tags_other": "タグ {{count}} 件"
+      },
+      "empty": "このプロダクトにはデータコントラクトを持つ出力ポートがありません。",
+      "consumers_one": "コンシューマー: {{count}}",
+      "consumers_other": "コンシューマー: {{count}}",
+      "freshness": "{{seconds}} 秒以内に最新",
+      "loadedOnce": "一度だけ読み込み、更新しない",
+      "noSla": "サービスレベルの宣言なし",
+      "checkedAt": "確認日時 {{when}}",
+      "neverChecked": "未確認",
+      "draftWarning": "下書き: まだ有効ではありません",
+      "card": {
+        "details": "詳細",
+        "fields": "約束されたフィールド",
+        "sla": "SLA と鮮度",
+        "quality": "品質の約束",
+        "consumers": "コンシューマー",
+        "versions": "バージョンと変更"
       }
     }
   }

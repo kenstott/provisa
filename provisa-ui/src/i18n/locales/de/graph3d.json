@@ -77,7 +77,6 @@
     "ontologyView": "Ontologie-Ansicht",
     "orphans": "Verwaiste",
     "columnsToggle": "Spalten",
-    "tablesToggle": "Tabellen",
     "allEdgeTypes": "Alle Kantentypen",
     "someEdgeTypes": "{{count}} von {{total}} Kantentypen",
     "allDomains": "Alle Domänen",

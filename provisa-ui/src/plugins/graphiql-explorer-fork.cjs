@@ -1948,7 +1948,7 @@ var defaultStyles = {
  * expand/collapse to avoid React state interfering with the
  * Explorer's query manipulation.
  */
-function _renderGroupedFields(fields, renderField, selections, domainLabels) {
+function _renderGroupedFields(fields, renderField, selections, domainLabels, systemSchemaPrefixes) {
   var fieldNames = Object.keys(fields).sort();
 
   // Build set of currently-selected top-level field names from AST selections
@@ -1961,21 +1961,44 @@ function _renderGroupedFields(fields, renderField, selections, domainLabels) {
     });
   }
 
-  // Group by domain
-  var domains = {};
+  // A system schema's root field (REQ-2163): "<prefix>_<name>". Model tables can't take such
+  // names, so the prefix alone identifies it.
+  function systemSchemaOf(fieldName) {
+    var ids = Object.keys(systemSchemaPrefixes || {});
+    for (var i = 0; i < ids.length; i++) {
+      var prefix = systemSchemaPrefixes[ids[i]];
+      if (fieldName.indexOf(prefix + '_') === 0) return ids[i];
+    }
+    return null;
+  }
+
+  // Group by domain alias ("sa__orders") or system schema ("on_terms")
+  var folders = {};
   var ungrouped = [];
   fieldNames.forEach(function (fieldName) {
     var sepIdx = fieldName.indexOf('__');
-    if (sepIdx > 0) {
-      var domain = fieldName.slice(0, sepIdx);
-      if (!domains[domain]) domains[domain] = [];
-      domains[domain].push(fieldName);
+    var system = systemSchemaOf(fieldName);
+    var key;
+    var name;
+    if (system) {
+      key = '__system__' + system;
+      name = system;
+    } else if (sepIdx > 0) {
+      name = fieldName.slice(0, sepIdx);
+      key = '__domain__' + name;
     } else {
       ungrouped.push(fieldName);
+      return;
     }
+    if (!folders[key]) folders[key] = { key: key, name: name, system: !!system, fields: [] };
+    folders[key].fields.push(fieldName);
   });
 
-  var domainKeys = Object.keys(domains).sort();
+  var domainKeys = Object.keys(folders).sort(function (x, y) {
+    return folders[x].name < folders[y].name ? -1 : folders[x].name > folders[y].name ? 1 : x < y ? -1 : 1;
+  });
+  var domains = {};
+  domainKeys.forEach(function (k) { domains[k] = folders[k].fields; });
 
   // If no domains found, render flat (original behavior)
   if (domainKeys.length === 0) {
@@ -1991,7 +2014,7 @@ function _renderGroupedFields(fields, renderField, selections, domainLabels) {
       React.createElement(
         'details',
         {
-          key: '__domain__' + domain,
+          key: domain,
           className: 'graphiql-explorer-domain',
           open: domainOpen,
         },
@@ -2025,7 +2048,7 @@ function _renderGroupedFields(fields, renderField, selections, domainLabels) {
             },
             '\u25B6'
           ),
-          (domainLabels && domainLabels[domain]) || domain
+          (domainLabels && domainLabels[folders[domain].name]) || folders[domain].name
         ),
         React.createElement(
           'div',
@@ -2239,7 +2262,7 @@ var RootView = function (_React$PureComponent8) {
             definition: _this13.props.definition,
             availableFragments: _this13.props.availableFragments
           });
-        }, selections, _this13.props.domainLabels)
+        }, selections, _this13.props.domainLabels, _this13.props.systemSchemaPrefixes)
       );
     }
   }]);
@@ -2748,7 +2771,8 @@ var Explorer = function (_React$PureComponent9) {
               },
               styleConfig: styleConfig,
               availableFragments: availableFragments,
-              domainLabels: _this15.props.domainLabels
+              domainLabels: _this15.props.domainLabels,
+              systemSchemaPrefixes: _this15.props.systemSchemaPrefixes
             });
           }),
           attribution

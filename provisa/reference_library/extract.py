@@ -263,7 +263,14 @@ def _read_word(content: bytes, name: str) -> Document:
         text = _clean(block.text)
         if not text:
             continue
-        style = block.style.name if block.style is not None else ""
+        style = ""
+        if block.style is not None:
+            if block.style.name is None:
+                raise UnreadableDocument(
+                    f"{name!r} is not a Word document that can be read: "
+                    f"a paragraph uses a style with no name ({block.style.style_id!r})"
+                )
+            style = block.style.name
         if style == "Title":
             title = title or text
         elif style.startswith("Heading"):

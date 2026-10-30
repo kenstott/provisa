@@ -40,7 +40,6 @@
     "remove": "削除",
     "refresh": "URL から更新",
     "uploadVersion": "新しいバージョンをアップロード",
-    "saveDomains": "ドメインを保存",
     "passagesHeading": "パッセージ",
     "loadingPassages": "パッセージを読み込んでいます...",
     "page": "{{page}} ページ",

@@ -30,6 +30,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -39,6 +40,8 @@ from provisa.gql import temporal
 from provisa.gql.expr_ast import (
     Binary,
     CypherExpr,
+    FunctionCall,
+    Index,
     Literal as ExprLiteral,
     MapLiteral,
     Parameter as ExprParameter,
@@ -67,11 +70,12 @@ from provisa.gql.path_functions import PathFunctionsMixin
 from provisa.gql.path_walk import SessionWalkMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
-from provisa.gql.group_by import GroupByMixin
+from provisa.gql.group_by import GroupByMixin, _has_aggregate
 from provisa.gql.translator_helpers import (
     _json_valued,
     _collects_maps,
     _properties_of,
+    _required_properties,
     _fold_where_into_optional_joins,
     _optional_step_matches_whole,
     _node_table_expr,
@@ -253,18 +257,33 @@ def _order_collects(
             agg.set("expressions", [exp.Order(this=value, expressions=keys)])
 
 
-def _is_mixed_list(expr: CypherExpr, json_lists: set[str]) -> bool:
+def _is_mixed_list(
+    expr: CypherExpr,
+    json_lists: set[str],
+    is_graph_element: Callable[[str], bool] = lambda _name: False,
+) -> bool:
     """Whether ``expr`` is a list of values of several types: a list literal of them, or a
-    variable bound to one."""
+    variable bound to one. A node, relationship or path ([n, r, p, 1, 'a']) is a type beside any
+    other item: the list holds each as its JSON (ExprLowering._lower_ListLiteral)."""
     from provisa.gql.expr_ast import ListLiteral
     from provisa.gql.expr_visitor import _mixed_literal_kinds
 
     if isinstance(expr, Variable):
         return expr.name in json_lists
-    return isinstance(expr, ListLiteral) and _mixed_literal_kinds(expr.items)
+    if not isinstance(expr, ListLiteral):
+        return False
+    graph = [isinstance(i, Variable) and is_graph_element(i.name) for i in expr.items]
+    if any(graph) and not all(graph):
+        return True
+    return _mixed_literal_kinds(expr.items)
 
 
-def _lists_mixed_lists(expr: CypherExpr, json_lists: set[str], json_list_lists: set[str]) -> bool:
+def _lists_mixed_lists(
+    expr: CypherExpr,
+    json_lists: set[str],
+    json_list_lists: set[str],
+    is_graph_element: Callable[[str], bool] = lambda _name: False,
+) -> bool:
     """Whether ``expr`` is a list of lists of several types: a collect() of one, or a variable
     bound to one."""
     from provisa.gql.expr_ast import FunctionCall
@@ -275,7 +294,7 @@ def _lists_mixed_lists(expr: CypherExpr, json_lists: set[str], json_list_lists: 
         isinstance(expr, FunctionCall)
         and expr.name.lower() == "collect"
         and len(expr.args) == 1
-        and _is_mixed_list(expr.args[0], json_lists)
+        and _is_mixed_list(expr.args[0], json_lists, is_graph_element)
     )
 
 
@@ -388,6 +407,84 @@ def _of_branch(node: _E, rel_types: dict[str, str]) -> _E:
 
 
 _FLIPPED = {"right": "left", "left": "right", "none": "none"}
+
+
+def _inlined(node: Any, values: dict[str, CypherExpr]) -> Any:
+    """``node`` (an IR tree) with each variable ``values`` holds read as its expression there."""
+    if isinstance(node, Variable) and node.name in values:
+        return copy.deepcopy(values[node.name])
+    if isinstance(node, list):
+        return [_inlined(item, values) for item in node]
+    if isinstance(node, tuple):
+        return tuple(_inlined(item, values) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return node
+    changed = {
+        f.name: _inlined(getattr(node, f.name), values) for f in dataclasses.fields(node) if f.init
+    }
+    return replace(node, **changed)
+
+
+def _reads_before_with(with_clause: WithClause) -> set[str]:  # REQ-347
+    """The variables the WITH's WHERE reads that the WITH does not carry: openCypher's WHERE of a
+    WITH sees the scope before the WITH as well as the names it gives (WithWhere7). A name a
+    comprehension, quantifier, reduce or pattern comprehension binds is its own, not read."""
+    from provisa.gql.expr_ast import (
+        ListComprehension,
+        MapProjection,
+        PatternComprehension,
+        Quantifier,
+        Reduce,
+    )
+
+    if with_clause.where is None:
+        return set()
+    read: set[str] = set()
+    bound: set[str] = set()
+    for node in walk(with_clause.where.expression):
+        if isinstance(node, Variable):
+            read.add(node.name)
+        elif isinstance(node, MapProjection):
+            read.add(node.var)
+        elif isinstance(node, (ListComprehension, Quantifier)):
+            bound.add(node.var)
+        elif isinstance(node, Reduce):
+            bound.update((node.var, node.accumulator))
+        elif isinstance(node, PatternComprehension):
+            pattern = node.pattern
+            bound.update(p.variable for p in [*pattern.nodes, *pattern.rels] if p.variable)
+            if node.path_var:
+                bound.add(node.path_var)
+    carried = {
+        i.alias or (i.expression.name if isinstance(i.expression, Variable) else i.name)
+        for i in with_clause.items
+    }
+    return read - bound - carried
+
+
+def _properties_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads the variable ``var``'s properties by name at run
+    time: keys(var), or var[key] of a key that is not a literal."""
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "keys"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if (
+        isinstance(node, Index)
+        and isinstance(node.obj, Variable)
+        and node.obj.name == var
+        and not isinstance(node.index, ExprLiteral)
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(_properties_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(_properties_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
 
 
 def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
@@ -659,8 +756,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
-        # REQ-348: a session walk's path variable -> its start's and end's identities (path_walk)
+        # A path a WITH carries on: one column of its CTE, its path object (WITH p)
+        self._carried_paths: set[str] = set()
+        # REQ-348: a model walk's path variable -> its start's and end's identities (path_functions)
         self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'
+        # and its relationships' lists (path_walk)
+        self._walk_trails: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-348: the node unions that name each node's graph identity (translator_union)
         self._graph_id_unions: set[str] = set()
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
@@ -771,6 +873,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 )
                 where_expr = _and(where_expr, kept)
             joins = _optional_step_matches_whole(joins, step_vars)
+        before_with = _reads_before_with(with_clause)
+        aggregates = any(_has_aggregate(i.expression) for i in with_clause.items)
+        filters_read_rows = bool(before_with) and not aggregates
+        if filters_read_rows:
+            assert with_clause.where is not None
+            if with_clause.skip is not None or with_clause.limit is not None:
+                # Its WHERE keeps rows after the SKIP/LIMIT picks them, and reads variables only
+                # the rows before them hold.
+                raise CypherTranslateError(
+                    "A WITH with SKIP or LIMIT whose WHERE reads a variable the WITH does not "
+                    f"carry ({', '.join(sorted(before_with))}) is not supported; carry it"
+                )
+            # The WHERE reads the variables before the WITH, so it filters the rows the WITH
+            # reads, a name the WITH gives read as its value. DISTINCT and ORDER BY then act on
+            # the rows it keeps.
+            given = {
+                i.alias: i.expression
+                for i in with_clause.items
+                if i.alias
+                and not (isinstance(i.expression, Variable) and i.expression.name == i.alias)
+            }
+            read_rows = WhereClause(expression=_inlined(with_clause.where.expression, given))
+            where_expr = _and(where_expr, self._lower_where(read_rows))
 
         stage_query = exp.select(*select_exprs)
         if from_clause is not None:
@@ -797,7 +922,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.limit(with_clause.limit)
         if with_clause.skip is not None:
             stage_query = stage_query.offset(with_clause.skip)
-        if with_clause.where is not None:
+        if with_clause.where is not None and not filters_read_rows:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
             before = (
                 self._var_table,
@@ -1571,9 +1696,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             and r.expression.name != r.alias
             and r.alias not in self._var_table
         }
+        # A name the clause gives a value that a variable already has (RETURN n.num AS n): the
+        # ORDER BY reads the value, not the variable, which the engine would bind it to.
+        shadowing = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and r.alias in self._var_table
+            and not (isinstance(r.expression, Variable) and r.expression.name == r.alias)
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
-            target = item.expression
+            target = _inlined(item.expression, shadowing)
             if (
                 isinstance(target, Property)
                 and isinstance(target.obj, Variable)
@@ -1591,7 +1725,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 # A key null for every row (a property the label has not) orders nothing, and an
                 # engine refuses a literal one.
                 continue
-            if isinstance(target, Variable) and target.name in self._json_value_vars:
+            if (
+                isinstance(item.expression, Variable)
+                and item.expression.name in self._json_value_vars
+            ):
                 # Values of several types, each its JSON, in openCypher's order (json_order_key).
                 inner = exp.Anonymous(this="json_order_key", expressions=[inner])
             # Cypher orders null as the largest value: last ascending, first descending.
@@ -1616,6 +1753,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             exp.alias_(self._lower_expr(value), map_key_column(alias, n), quoted=True)
             for n, (_key, value) in enumerate(expr.entries)
         ]
+
+    def _is_graph_element(self, name: str) -> bool:
+        """Whether ``name`` is a node, relationship or path of the query."""
+        return self._temporal_context().resolve_graph_element(name) is not None
 
     def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping | None]:
         """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
@@ -1703,6 +1844,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         )
                     )
                 continue
+            if bare is not None and bare in self._path_vars and bare not in self._var_table:
+                # A path goes on as its object, as RETURN p answers it: its nodes and edges are
+                # read here, where the pattern that matched them is in scope.
+                path = self._build_path_object(bare)
+                exprs.append(exp.alias_(path, alias or bare, quoted=True))
+                continue
             if bare is not None and bare in self._var_table:
                 expr_text = bare
                 held_in, meta = self._var_table[expr_text]
@@ -1777,6 +1924,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 bound_params[name] = self._param_vars[i.expression.name]
         split = self._carried_nodes(items)
         self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
+        carried_paths: set[str] = set()
         union_columns: dict[str, list[str]] = {}
         for item in items:
             name = item.alias or (
@@ -1786,10 +1934,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 texts.add(name)
             if name and self._temporal_context().is_list(item.expression):
                 lists.add(name)
-            if name and _is_mixed_list(item.expression, self._json_list_vars):
+            if name and _is_mixed_list(
+                item.expression, self._json_list_vars, self._is_graph_element
+            ):
                 json_lists.add(name)
             if name and _lists_mixed_lists(
-                item.expression, self._json_list_vars, self._json_list_lists
+                item.expression, self._json_list_vars, self._json_list_lists, self._is_graph_element
             ):
                 json_list_lists.add(name)
             if name and self._temporal_context().is_json_value(item.expression):
@@ -1807,6 +1957,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
             if bare is not None and bare in self._union_columns:
                 union_columns[key] = self._union_columns[bare]
+            if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
+                # From here on the path is the column its WITH carries, not its pattern.
+                carried_paths.add(key)
             if key in split:
                 # Read as its own row of the carried columns, under its own name.
                 new_var_table[key] = (key, split[key])
@@ -1833,6 +1986,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 self._all_rels_node_vars.add(key)
                 self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
             self._all_rels_var_alias[key] = cte_name
+        for path in carried_paths:
+            self._path_vars.pop(path, None)
+        self._carried_paths = carried_paths
         self._var_table = new_var_table
         self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
@@ -1928,6 +2084,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         statement embedded in it (EXISTS { ... }) too, which reads them from this one's row."""
         return _properties_of(var, _statement_exprs(self._ast))
 
+    def _required_var_props(self, var: str) -> list[str]:
+        """The properties of ``var`` a MATCH's WHERE filters its rows on (_required_properties):
+        a node of a type lacking one of them is never matched. An OPTIONAL MATCH's WHERE removes
+        no row (REQ-347), so it requires none."""
+        wheres = [
+            step.where.expression
+            for step in self._ast.pipeline
+            if isinstance(step, MatchStep)
+            and step.where
+            and not any(m.optional for m in step.matches)
+        ]
+        return _required_properties(var, wheres)
+
     def _node_as_one_value(self, var: str) -> bool:
         """Whether ``var`` is a domain node the statement returns, or a WITH carries, bare: each
         type's arm of its union then carries the node as one JSON value of its own properties, not
@@ -1935,10 +2104,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         statement reads."""
         if var not in self._domain_nodes:
             return False
+        if var in self._zero_hop_paths().values():
+            # The one node of a path of no hops (MATCH p = (a)): the path's value is the node's.
+            return True
+        if _properties_read(self._ast, var):
+            # keys(n), n[key]: read from the properties its value holds (expr_context).
+            return True
         items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
         if self._ast.return_clause:
             items.extend(self._ast.return_clause.items)
         return any(isinstance(i.expression, Variable) and i.expression.name == var for i in items)
+
+    def _zero_hop_paths(self) -> dict[str, str]:
+        """Each path of no hops the statement names (MATCH p = (a)), to its one node's variable."""
+        return {
+            m.variable: m.pattern.nodes[0].variable
+            for s in self._ast.pipeline
+            if isinstance(s, MatchStep)
+            for m in s.matches
+            if m.variable
+            and isinstance(m.pattern, PathPattern)
+            and not m.pattern.rels
+            and m.pattern.nodes[0].variable
+        }
 
     def _collect_var_props(self, var: str) -> list[str]:
         """Return ordered list of property names referenced as var.prop in the AST.

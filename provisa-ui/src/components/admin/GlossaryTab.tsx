@@ -13,6 +13,7 @@
 // this tab carries the human curation — rename, definitions, ref moves,
 // experts, abstract terms and their typed edges.
 
+import { PageTitle } from "../PageTitle";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -32,7 +33,6 @@ import {
   Text,
   TextInput,
   Textarea,
-  Title,
 } from "@mantine/core";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
@@ -56,7 +56,8 @@ import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
 import { StewardshipSummary } from "./StewardshipSummary";
-import { tableNames, toReview } from "./termFindings";
+import { defaultFindDomains, tableNames, toReview } from "./termFindings";
+import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
@@ -80,9 +81,15 @@ import {
 import { fetchOrgMembers } from "../../api/admin";
 import type { OrgMember } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
-import { ENTERPRISE_DOMAIN } from "../../api/glossary";
+import {
+  ENTERPRISE_DOMAIN,
+  onlyRelatedTo,
+  orderRelTypes,
+  type RelatedToReview,
+} from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
+import { useViewDomains } from "../../lib/viewDomains";
 import type {
   GlossaryTermDetail,
   GlossaryTermSummary,
@@ -150,14 +157,11 @@ export function GlossaryTab() {
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
   const { activeOrgId } = useAuth();
-  const { domains: filterDomains, checkedDomains, domainsEnabled } = useDomainFilter();
+  const { domains: filterDomains, domainsEnabled } = useDomainFilter();
   // REQ-1591: the navbar selection is a VIEW preference, so it narrows the list and nothing else —
-  // the server intersects it with role authority and can never widen. Held as the context's own Set
-  // rather than a fresh array so its identity is stable enough to be a refresh dependency.
-  const viewDomains =
-    domainsEnabled && checkedDomains.size > 0 && checkedDomains.size < filterDomains.length
-      ? checkedDomains
-      : null;
+  // the server intersects it with role authority and can never widen (useViewDomains, the rule the
+  // Ontology View follows too).
+  const viewDomains = useViewDomains();
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [query, setQueryState] = useState(
@@ -197,6 +201,17 @@ export function GlossaryTab() {
     setToReviewOnlyState(on);
     writeStoredBool("glossary.toReview", on);
   };
+  // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
+  // links that want review.
+  const [relatedToOnly, setRelatedToOnlyState] = useState(() =>
+    readStoredBool("glossary.relatedTo", false),
+  );
+  const setRelatedToOnly = (on: boolean) => {
+    setRelatedToOnlyState(on);
+    writeStoredBool("glossary.relatedTo", on);
+  };
+  // The RELATED_TO edges the assistant just added, each with the shapes that may resolve it.
+  const [review, setReview] = useState<RelatedToReview[]>([]);
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
@@ -456,11 +471,12 @@ export function GlossaryTab() {
     setBulkGeneratingRelationships(true);
     setActionError("");
     try {
-      const { added } = await generateGlossaryRelationships();
+      const { added, review: toResolve } = await generateGlossaryRelationships();
       notifications.show({
         color: "green",
         message: t("glossaryTab.relationshipsGenerated", { count: added }),
       });
+      setReview(toResolve);
       if (selectedId !== null) await loadDetail(selectedId);
       await refreshList();
     } catch (e) {
@@ -492,7 +508,12 @@ export function GlossaryTab() {
 
   // Kept from render to render: the term graph (REQ-2150) is drawn again only when its words change.
   const relTypeOptions = useMemo(
-    () => GLOSSARY_REL_TYPES.map((rt) => ({ value: rt, label: t(`glossaryTab.rel_${rt}`) })),
+    // REQ-1387: the grounding types first, RELATED_TO last.
+    () =>
+      orderRelTypes(GLOSSARY_REL_TYPES).map((rt) => ({
+        value: rt,
+        label: t(`glossaryTab.rel_${rt}`),
+      })),
     [t],
   );
   const kindOptions = GLOSSARY_EXPERT_KINDS.map((k) => ({
@@ -512,7 +533,8 @@ export function GlossaryTab() {
     (term) =>
       (!statusFilter || term.status === statusFilter) &&
       (!groundingFilter || term.grounding === groundingFilter) &&
-      (!toReviewOnly || toReview(term)),
+      (!toReviewOnly || toReview(term)) &&
+      (!relatedToOnly || term.related_to > 0),
   );
   const statusOptions = (["draft", "approved", "deprecated", "retired"] as const).map((st) => ({
     value: st,
@@ -528,15 +550,8 @@ export function GlossaryTab() {
       {/* Same heading row as the other admin tabs: title, filter, actions. The list/detail split
           below it is this tab's own layout. */}
       <Group justify="space-between" wrap="wrap">
-        <Group gap="xs" align="center" wrap="nowrap">
-          <BookOpen size={22} style={{ display: "block", flexShrink: 0 }} />
-          {/* Order 2: AdminPage suppresses its own page title for this tab, so this is the page
-              heading, not a section heading. mb=0 drops the `.page h2` bottom margin, which would
-              otherwise push the text up off the icon's centre line. */}
-          <Title order={2} mb={0} lh={1}>
-            {t("glossaryTab.title")}
-          </Title>
-        </Group>
+        {/* AdminPage suppresses its own page title for this tab, so this is the page heading. */}
+        <PageTitle icon={BookOpen}>{t("glossaryTab.title")}</PageTitle>
         <FilterInput
           value={query}
           onChange={setQuery}
@@ -587,10 +602,7 @@ export function GlossaryTab() {
                 </Tip>
               </Menu.Target>
               <Menu.Dropdown>
-                <Menu.Item
-                  onClick={() => setFindTermsOpen(true)}
-                  data-testid="glossary-find-terms-btn"
-                >
+                <Menu.Item onClick={() => setFindTermsOpen(true)} data-testid="glossary-find-terms-btn">
                   {t("findTerms.menuItem")}
                 </Menu.Item>
                 <Menu.Item
@@ -662,6 +674,7 @@ export function GlossaryTab() {
                 styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-to-review-only"
               />
+              <RelatedToFilter checked={relatedToOnly} onChange={setRelatedToOnly} />
             </Group>
             <Group gap={6} px="xs" pb={6} wrap="nowrap" grow>
               <Select
@@ -750,6 +763,9 @@ export function GlossaryTab() {
                       {t("glossaryTab.draftUngrounded")}
                     </Alert>
                   )}
+                {/* REQ-1387 (RELATED_TO IS THE LAST RESORT): held only by RELATED_TO, which does
+                    not ground, so the pair may want a term between. Guidance, never a block. */}
+                {onlyRelatedTo(detail) && <RelatedToHint />}
                 {detail.grounding === "grounded_pending" && detail.pending_on.length > 0 && (
                   <Alert color="yellow" variant="outline" data-testid="glossary-pending-on">
                     {t("glossaryTab.groundingValue_grounded_pending")} —{" "}
@@ -959,6 +975,7 @@ export function GlossaryTab() {
                     navigateToTerm={navigateToTerm}
                     onSaved={handleSaved}
                     onCancel={() => setEditing(false)}
+                    onTermCreated={() => void refreshList()}
                   />
                 ) : (
                   <TermReadView
@@ -1049,14 +1066,7 @@ export function GlossaryTab() {
           terms={terms}
           domainOptions={addDomainOptions}
           domainsEnabled={domainsEnabled}
-          // The domains the steward is working in: the navbar's selection, where one is made.
-          defaultDomains={
-            viewDomains
-              ? [...viewDomains].filter((d) =>
-                  addDomainOptions.some((o) => (typeof o === "string" ? o : o.value) === d),
-                )
-              : []
-          }
+          defaultDomains={defaultFindDomains(viewDomains, addDomainOptions)}
           onClose={() => setFindTermsOpen(false)}
           onGlossaryChanged={() => void refreshList()}
         />
@@ -1112,6 +1122,14 @@ export function GlossaryTab() {
           </Stack>
         </Modal>
       )}
+      <RelatedToReviewModal
+        review={review}
+        onClose={() => setReview([])}
+        onShowTerm={(termId) => {
+          setReview([]);
+          navigateToTerm(termId);
+        }}
+      />
     </Stack>
   );
 }

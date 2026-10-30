@@ -36,6 +36,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.json_refusal import NON_FINITE, JsonRefused
+from provisa.core.native_types import natively_nested
 
 MARKER = "provisa_native_json"
 
@@ -334,8 +335,8 @@ def source_projection(columns: list, dialect: str, left_out: frozenset[str] = fr
                 )
             parts.append(f"{form.format(col=quoted)} AS {quoted}")
             continue
-        if not native:
-            parts.append(quoted)
+        if not natively_nested(native):
+            parts.append(quoted)  # none recorded, or a character column's (REQ-1961)
             continue
         nested = NestedColumn(native, getattr(c, "array_depth", 0) or 0, c.element_type)
         parts.append(f"{to_json_sql(quoted, nested, dialect, c.name)} AS {quoted}")

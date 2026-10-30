@@ -60,6 +60,7 @@ const APPROVED: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,
@@ -81,6 +82,7 @@ const DRAFT: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "draft",
   status_reason: null,
@@ -124,14 +126,9 @@ describe("glossary status and grounding filters", () => {
     await screen.findByTestId("glossary-item-1");
     // An approved term is the ordinary case: the list marks only its grounding.
     expect(screen.queryByTestId("glossary-status-1")).toBeNull();
-    // Grounded: the green ground symbol, named by how far it reaches (its one column).
-    const grounded = screen.getByTestId("glossary-grounding-1");
-    expect(grounded).toHaveAttribute("data-grounding", "grounded");
-    expect(grounded).not.toHaveTextContent("grounded");
-    const groundedIcon = within(grounded).getByRole("img");
-    expect(groundedIcon).toHaveAttribute("data-ground-state", "grounded");
-    expect(groundedIcon).toHaveAttribute("aria-label", "Grounded: reaches data in 1 column");
-    expect(screen.getByTestId("glossary-status-2")).toHaveTextContent("Draft");
+    // A Property (bound to a column) is always grounded: no ground symbol on its row.
+    expect(screen.queryByTestId("glossary-grounding-1")).toBeNull();
+    expect(screen.getByTestId("glossary-status-2")).toHaveAccessibleName("Draft");
     // Pending: the same symbol, muted, saying its path awaits approval.
     const pending = screen.getByTestId("glossary-grounding-2");
     expect(pending).toHaveAttribute("data-grounding", "grounded_pending");
@@ -142,6 +139,29 @@ describe("glossary status and grounding filters", () => {
       "Reaches data, but only through terms not yet approved",
     );
     // Not grounded: no chip.
+    expect(screen.queryByTestId("glossary-grounding-3")).toBeNull();
+  });
+
+  it("shows the ground symbol on Concepts only", async () => {
+    const CLASS: GlossaryTermSummary = { ...APPROVED, id: 4, name: "Customer", ref_count: 0, table_count: 1 };
+    const CONCEPT: GlossaryTermSummary = { ...APPROVED, id: 5, name: "Loyalty", ref_count: 0, table_count: 0 };
+    mockList.mockResolvedValue([APPROVED, CLASS, CONCEPT, DRAFT, RETIRED]);
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-5");
+    expect(screen.getByTestId("glossary-role-1")).toHaveAttribute("data-role", "property");
+    expect(screen.getByTestId("glossary-role-4")).toHaveAttribute("data-role", "class");
+    expect(screen.queryByTestId("glossary-grounding-1")).toBeNull();
+    expect(screen.queryByTestId("glossary-grounding-4")).toBeNull();
+    // A Concept grounded through relationships: the green symbol.
+    const grounded = screen.getByTestId("glossary-grounding-5");
+    expect(grounded).toHaveAttribute("data-grounding", "grounded");
+    expect(within(grounded).getByRole("img")).toHaveAttribute("data-ground-state", "grounded");
+    // Pending through a draft term: muted.
+    expect(within(screen.getByTestId("glossary-grounding-2")).getByRole("img")).toHaveAttribute(
+      "data-ground-state",
+      "grounded_pending",
+    );
+    // Not grounded: none.
     expect(screen.queryByTestId("glossary-grounding-3")).toBeNull();
   });
 

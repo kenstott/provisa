@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} מאפיינים מותאמים",
         "tags_one": "{{count}} תגית",
         "tags_other": "{{count}} תגיות"
+      },
+      "empty": "למוצר זה אין Output Port עם חוזה נתונים.",
+      "consumers_one": "צרכנים: {{count}}",
+      "consumers_other": "צרכנים: {{count}}",
+      "freshness": "עדכני בתוך {{seconds}} שניות",
+      "loadedOnce": "נטען פעם אחת, לעולם אינו מתעדכן",
+      "noSla": "לא הוצהרה רמת שירות",
+      "checkedAt": "נבדק {{when}}",
+      "neverChecked": "מעולם לא נבדק",
+      "draftWarning": "טיוטה: עדיין לא בתוקף",
+      "card": {
+        "details": "פרטים",
+        "fields": "שדות מובטחים",
+        "sla": "SLA ועדכניות",
+        "quality": "הבטחות איכות",
+        "consumers": "צרכנים",
+        "versions": "גרסאות ושינויים"
       }
     }
   }

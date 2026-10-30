@@ -70,17 +70,69 @@ def _range_step(step: exp.Expression, raise_with: str) -> exp.Expression:  # pyr
     )
 
 
+def _type_refused(message: exp.Expression, raise_with: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """type_refused('...'), a value of a kind a function refuses (expr_visitor: openCypher's
+    TypeError): the engine's own error (``raise_with``: DuckDB's error, Trino's fail) with the
+    message, raised where the branch holding it is reached."""
+    return exp.Anonymous(this=raise_with, expressions=[message.copy()])
+
+
+def _json_has_keys(value: exp.Expression, *keys: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """True where the JSON object ``value`` holds every one of ``keys``."""
+    held = [
+        exp.Not(
+            this=exp.Is(
+                this=exp.Anonymous(
+                    this="json_extract", expressions=[value.copy(), exp.Literal.string(f"$.{k}")]
+                ),
+                expression=exp.Null(),
+            )
+        )
+        for k in keys
+    ]
+    return exp.and_(*held)  # pyright: ignore[reportReturnType]
+
+
 def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """json_order_key(x), a JSON value's place in openCypher's order (expr_visitor): its kind --
-    a map, a list, a string, a boolean, a number, read from the first character of ``text``, its
-    JSON text -- then its number, then its text."""
+    read from the first character of ``text``, its JSON text, and for an object from its keys --
+    then its number, then its text.
+
+    openCypher's orderability (Cypher Manual, "Ordering and comparison of values"; openCypher 9
+    spec, "Orderability"), ascending: MAP, NODE, RELATIONSHIP, LIST, PATH, STRING, BOOLEAN,
+    NUMBER, then null last. A node, a relationship and a path are each a JSON object, told from a
+    map by the keys the result assembler (gql/assembler.py) and Bolt packstream
+    (bolt/packstream.py: _is_node_dict, _is_rel_dict, _is_path_dict) recognise them by."""
     first = exp.Anonymous(
         this="substr", expressions=[text, exp.Literal.number(1), exp.Literal.number(1)]
     )
-    ranks = [("{", 0), ("[", 3), ('"', 5), ("t", 6), ("f", 6)]
+    is_path = _json_has_keys(value, "nodes", "edges")
+    is_rel = _json_has_keys(value, "type", "startNode", "endNode")
+    is_node = exp.and_(
+        _json_has_keys(value, "id", "label", "properties"),
+        exp.Is(
+            this=exp.Anonymous(
+                this="json_extract", expressions=[value.copy(), exp.Literal.string("$.startNode")]
+            ),
+            expression=exp.Null(),
+        ),
+    )
+    # Packstream tests a node, then a relationship, then a path; a path holds no node's keys.
+    as_object = exp.Case(
+        ifs=[
+            exp.If(this=is_path, true=exp.Literal.number(4)),
+            exp.If(this=is_rel, true=exp.Literal.number(2)),
+            exp.If(this=is_node, true=exp.Literal.number(1)),
+        ],
+        default=exp.Literal.number(0),
+    )
+    ranks = [("[", 3), ('"', 5), ("t", 6), ("f", 6)]
     rank = exp.Case(
         this=first,
-        ifs=[exp.If(this=exp.Literal.string(c), true=exp.Literal.number(r)) for c, r in ranks],
+        ifs=[
+            exp.If(this=exp.Literal.string("{"), true=as_object),
+            *(exp.If(this=exp.Literal.string(c), true=exp.Literal.number(r)) for c, r in ranks),
+        ],
         default=exp.Literal.number(7),
     )
     number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
@@ -129,12 +181,94 @@ def _json_kind(text: exp.Expression) -> exp.Expression:  # pyright: ignore[repor
     )
 
 
+#: Deepest list-in-list nesting json_list_compare compares; a deeper pair is refused by name.
+_LIST_COMPARE_DEPTH = 4
+LIST_COMPARE_TOO_DEEP = "list comparison: lists nested deeper than %d levels" % _LIST_COMPARE_DEPTH
+
+
+def _json_list_compare(
+    left: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    right: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    dialect: str,
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_list_compare(a, b), two JSON lists compared element by element (expr_visitor;
+    openCypher 9, "Comparability and orderability"): -1, 0 or 1, null where the first element
+    pair that differs cannot be compared. The first pair that is not equal decides; with every
+    common pair equal the shorter list is smaller. A pair compares by value where both are
+    numbers, both strings or both booleans, and recurses where both are lists; any other pair
+    (two kinds, a null, a map) is incomparable. Each item is read by its own kind, never by one
+    cast of the whole array. ``dialect`` is "duckdb" or "trino"."""
+    duck = dialect == "duckdb"
+    text = "CAST({} AS VARCHAR)" if duck else "json_format({})"
+    scalar = "json_extract_string({}, '$')" if duck else "json_extract_scalar({}, '$')"
+    items = "CAST({} AS JSON[])" if duck else "CAST({} AS ARRAY(JSON))"
+    refuse = "error" if duck else "fail"
+
+    def kind(value: str) -> str:
+        parsed = sqlglot.parse_one(text.format(value), read=dialect)
+        return _json_kind(parsed).sql(dialect=dialect)  # pyright: ignore[reportArgumentType]
+
+    def sign(a: str, b: str) -> str:
+        return f"CASE WHEN {a} < {b} THEN -1 WHEN {a} > {b} THEN 1 ELSE 0 END"
+
+    def pair(a: str, b: str, depth: int) -> str:
+        """-1, 0, 1, or 2 for a pair that cannot be compared."""
+        ka, kb = kind(a), kind(b)
+        num = [f"CAST({scalar.format(v)} AS DOUBLE)" for v in (a, b)]
+        txt = [scalar.format(v) for v in (a, b)]
+        boo = [f"CAST({scalar.format(v)} AS BOOLEAN)" for v in (a, b)]
+        if depth == 0:
+            # Written over the pair, so the engine does not fold the refusal away before the
+            # branch is reached (DuckDB evaluates a constant error() at plan time).
+            nested = f"{refuse}('{LIST_COMPARE_TOO_DEEP}' || substr({text.format(a)}, 1, 0))"
+        else:
+            nested = lists(a, b, depth)
+        return (
+            f"CASE WHEN {ka} = 'number' AND {kb} = 'number' THEN {sign(*num)} "
+            f"WHEN {ka} = 'string' AND {kb} = 'string' THEN {sign(*txt)} "
+            f"WHEN {ka} = 'boolean' AND {kb} = 'boolean' THEN {sign(*boo)} "
+            f"WHEN {ka} = 'list' AND {kb} = 'list' THEN {nested} ELSE 2 END"
+        )
+
+    def lists(a: str, b: str, depth: int) -> str:
+        arr_a, arr_b = items.format(a), items.format(b)
+        p, c = f"_p{depth}", f"_c{depth}"
+        shorter = (
+            f"CASE WHEN len({arr_a}) < len({arr_b}) THEN -1 "
+            f"WHEN len({arr_a}) > len({arr_b}) THEN 1 ELSE 0 END"
+            if duck
+            else f"CASE WHEN cardinality({arr_a}) < cardinality({arr_b}) THEN -1 "
+            f"WHEN cardinality({arr_a}) > cardinality({arr_b}) THEN 1 ELSE 0 END"
+        )
+        body = pair(f"{p}[1]", f"{p}[2]", depth - 1)
+        if duck:
+            zipped = f"list_zip({arr_a}, {arr_b}, true)"
+            decided = f"list_filter(list_transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+            return f"list_extract(list_append({decided}, {shorter}), 1)"
+        zipped = (
+            f"slice(zip({arr_a}, {arr_b}), 1, least(cardinality({arr_a}), cardinality({arr_b})))"
+        )
+        decided = f"filter(transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+        return f"element_at(concat({decided}, ARRAY[{shorter}]), 1)"
+
+    result = lists(left.sql(dialect=dialect), right.sql(dialect=dialect), _LIST_COMPARE_DEPTH)
+    return sqlglot.parse_one(f"NULLIF({result}, 2)", read=dialect)  # pyright: ignore[reportReturnType]
+
+
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
     if not any(
         name in sql.upper()
-        for name in ("JSON_SIZE", "JSON_ORDER_KEY", "JSON_KIND", "RANGE_STEP", "JSON_KEYS")
+        for name in (
+            "JSON_SIZE",
+            "JSON_ORDER_KEY",
+            "JSON_KIND",
+            "JSON_LIST_COMPARE",
+            "RANGE_STEP",
+            "TYPE_REFUSED",
+            "JSON_KEYS",
+        )
     ):
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
@@ -152,6 +286,9 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
         if isinstance(node, exp.Anonymous) and node.name.upper() == "RANGE_STEP":
             (step,) = node.expressions
             return _range_step(step, "fail")
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "TYPE_REFUSED":
+            (message,) = node.expressions
+            return _type_refused(message, "fail")
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_ORDER_KEY":
             (value,) = node.expressions
             return _json_order_key(
@@ -160,6 +297,9 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_KIND":
             (value,) = node.expressions
             return _json_kind(exp.Anonymous(this="json_format", expressions=[value.copy()]))
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_LIST_COMPARE":
+            left, right = node.expressions
+            return _json_list_compare(left, right, "trino")
         if not (isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_SIZE"):
             return node
         (value,) = node.expressions
@@ -637,7 +777,9 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "JSON_SIZE",
         "JSON_ORDER_KEY",
         "JSON_KIND",
+        "JSON_LIST_COMPARE",
         "RANGE_STEP",
+        "TYPE_REFUSED",
     }
 )
 
@@ -703,6 +845,9 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
         if name == "RANGE_STEP":
             (step,) = args
             return _range_step(step, "error")
+        if name == "TYPE_REFUSED":
+            (message,) = args
+            return _type_refused(message, "error")
         if name == "JSON_ORDER_KEY":
             (value,) = args
             return _json_order_key(
@@ -711,6 +856,9 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
         if name == "JSON_KIND":
             (value,) = args
             return _json_kind(exp.Cast(this=value.copy(), to=exp.DataType.build("VARCHAR")))
+        if name == "JSON_LIST_COMPARE":
+            left, right = args
+            return _json_list_compare(left, right, "duckdb")
         if name == "JSON_SIZE":
             # A JSON value's size: a list's items, a string's characters (expr_visitor).
             (value,) = args
@@ -1009,6 +1157,15 @@ def transpile(
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
+    if target_dialect in ("trino", "athena") and pg_sql.lstrip().upper().startswith(
+        ("INSERT", "UPDATE")
+    ):
+        # REQ-1981: Trino's INSERT and UPDATE grammar has no target alias (``UPDATE t AS x SET``
+        # is a syntax error, verified live on Athena); a DIRECT write reaches here with the
+        # pipeline's self-alias on its target.
+        from provisa.compiler.sql_rewrite import unalias_write_target
+
+        pg_sql = unalias_write_target(pg_sql)
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)

@@ -19,6 +19,10 @@ registered or is not the caller's to use.
 
 What is read here and refused by name when it cannot be honoured:
 
+* ``CALL name`` without parentheses (implicit arguments, REQ-2001 amended 2026-10-28) — each of
+  the command's arguments is bound from the request parameter of the same name, once the command
+  is known (``action_exec.bind_command_args``); a parameter the request does not carry is refused
+  by name;
 * arguments — split on top-level commas (quotes and brackets respected); each is a literal
   (string, number, boolean, null, list of these) or a ``$parameter``, bound from the request's
   parameters; a parameter the request does not carry is refused, as is anything else (an
@@ -39,6 +43,11 @@ from dataclasses import dataclass
 from typing import Any
 
 _CALL_HEAD_RE = re.compile(r"^\s*CALL\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(", re.IGNORECASE)
+# A call without parentheses: the name, then the end, YIELD or RETURN.
+_IMPLICIT_HEAD_RE = re.compile(
+    r"^\s*CALL\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?=\s*$|\s+(?:YIELD|RETURN)\b)",
+    re.IGNORECASE,
+)
 # Neo4j's own procedure namespaces and Provisa's, answered before a command call is read.
 _ANSWERED_ELSEWHERE = ("db.", "dbms.", "provisa.")
 _ITEM_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*(?:\s+AS\s+([A-Za-z_]\w*))?\s*$", re.IGNORECASE)
@@ -56,10 +65,17 @@ class CommandCallRefused(ValueError):
     """A command call that cannot be honoured as written — said by name, never run otherwise."""
 
 
+class ImplicitArguments(dict):
+    """The request's parameters of a ``CALL name`` written without parentheses: each of the
+    command's arguments is bound from the one of the same name (REQ-2001)."""
+
+
 @dataclass(frozen=True)
 class CommandCall:
     name: str
-    values: list[Any]  # positional, in the order written
+    # positional, in the order written; or, for a call without parentheses, the parameters its
+    # arguments are bound from by name
+    values: list[Any] | ImplicitArguments
     yields: list[tuple[str, str]] | None  # (column, alias); None = no YIELD (every column)
     returns: list[tuple[str, str]] | None  # (name, alias); None = no RETURN
 
@@ -202,19 +218,27 @@ def parse_command_call(query: str, params: dict) -> CommandCall | None:
     """The command call ``query`` is, or None when it is no ``CALL <bare name>(…)``."""
     text = query.strip().rstrip(";").rstrip()
     head = _CALL_HEAD_RE.match(text)
-    if head is None:
+    implicit = _IMPLICIT_HEAD_RE.match(text) if head is None else None
+    if head is None and implicit is None:
         return None
-    name = head.group(1)
+    name = (head or implicit).group(1)  # type: ignore[union-attr]
     if name.lower().startswith(_ANSWERED_ELSEWHERE):
         return None
-    close = _scan_parens(text, head.end())
-    rest = text[close + 1 :]
-    if _COMPOSED_RE.match(rest):
-        return None  # REQ-2168: composed in a statement; the translator reads its arguments
-    values = [
-        _value(tok, params, name, i + 1)
-        for i, tok in enumerate(_split_top_level(text[head.end() : close]))
-    ]
+    if implicit is not None:
+        rest = text[implicit.end() :]
+        if _COMPOSED_RE.match(rest):
+            return None  # composed in a statement: the translator refuses it there
+        values: list[Any] | ImplicitArguments = ImplicitArguments(params)
+    else:
+        assert head is not None
+        close = _scan_parens(text, head.end())
+        rest = text[close + 1 :]
+        if _COMPOSED_RE.match(rest):
+            return None  # REQ-2168: composed in a statement; the translator reads its arguments
+        values = [
+            _value(tok, params, name, i + 1)
+            for i, tok in enumerate(_split_top_level(text[head.end() : close]))
+        ]
     yields: list[tuple[str, str]] | None = None
     returns: list[tuple[str, str]] | None = None
     m = _YIELD_RE.match(rest)

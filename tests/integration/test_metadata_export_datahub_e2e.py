@@ -47,6 +47,7 @@ from tests.integration.metadata_export_server import (
     SCHEMA,
     SOURCE,
     VIEW,
+    approve_terms,
     publish,
     published_server,
     refused,
@@ -190,6 +191,7 @@ async def _provisa_assigns_its_terms_attributed_to_its_actor(published: dict) ->
 # every check reads the catalog the one production publish wrote.
 async def test_datahub_holds_what_the_production_publish_sent():
     async with published_server(ORG) as client:
+        await approve_terms(client)
         published = await publish(client, {"provider": "datahub", "endpoint": _gms()})
     assert published["ok"], refused(published)
     for check in (

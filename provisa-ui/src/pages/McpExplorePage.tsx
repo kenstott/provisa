@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { useEffect, useRef, useState } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Code, Group, Loader, Modal, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, Loader, Modal, Text, TextInput } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import {
   MainContainer,
@@ -24,7 +25,7 @@ import {
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, Trash2 } from "lucide-react";
+import { Check, Copy, Trash2, Compass } from "lucide-react";
 import { HelpBubble } from "../components/HelpBubble";
 import { useAuth } from "../context/AuthContext";
 import { Tip } from "../components/Tip";
@@ -435,9 +436,9 @@ export function McpExplorePage() {
       data-testid="mcp-explore"
       data-answered={answered ? "" : undefined}
     >
-      <Title order={2} mb={4}>
+      <PageTitle icon={Compass} mb={4}>
         {t("mcpExplore.title")}
-      </Title>
+      </PageTitle>
       <Text c="dimmed" size="sm" mb="xs">
         {t("mcpExplore.intro")}
       </Text>
