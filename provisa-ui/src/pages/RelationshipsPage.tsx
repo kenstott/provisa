@@ -137,6 +137,8 @@ export function RelationshipsPage() {
   const updateSearch = (v: string) => {
     setRelSearch(v);
     setRelPage(0);
+    // REQ-2187: on the ERD the filter box is not part of the link (a focus is what is shared).
+    if (erd.on) return;
     setSearchParams(
       (p) => {
         const n = new URLSearchParams(p);

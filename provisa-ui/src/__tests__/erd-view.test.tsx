@@ -624,6 +624,7 @@ describe("the page's filter box on the ERD", () => {
     expect(dimmed("t:1")).toBe(false); // the line's source
     expect(dimmed("t:2")).toBe(false); // its target
     expect(dimmed("t:3")).toBe(true);
+    expect(param("search")).toBeNull(); // not in the link
     type("t3"); // a source that is no table's name matches nothing
     await waitFor(() => expect(dimmed("r:orders-customers")).toBe(true));
   });
