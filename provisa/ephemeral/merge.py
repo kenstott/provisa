@@ -160,6 +160,14 @@ def merge_of(statement: str, keep: tuple[str, ...] = ()) -> MergeOf | None:
     )
     p = pattern.paths_pattern([merge.pattern], undirected=True)
     bound = pattern.bound_by(ast.pipeline[:at])
+    from provisa.ephemeral.then import scope_of
+
+    if not p.rels and p.nodes[0].variable in scope_of(ast.pipeline[:at]):
+        # openCypher's VariableAlreadyBound: a MERGE of a node alone makes or matches that node,
+        # which a variable in scope is already. A name an earlier WITH dropped is free again.
+        raise CypherParseError(
+            f"Variable `{p.nodes[0].variable}` already declared: a MERGE of one node binds it"
+        )
     for i, node in enumerate(p.nodes):
         if node.variable is None:
             node.variable = f"_m{i}"

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import store
 from provisa.ephemeral.merge import merge_of
 from tests.unit.ephemeral_harness import Session
@@ -313,3 +314,12 @@ def test_a_merge_binds_the_path_of_a_relationship_it_made(monkeypatch):
     assert [e["type"] for e in row["p"]["edges"]] == ["R"]
     again = s.run("MERGE p = (a {num: 1})-[:R]->(b {num: 2}) RETURN p")
     assert again.counters["relationships"] == 0 and len(again.rows) == 1
+
+
+def test_a_merge_of_a_node_already_bound_is_refused(monkeypatch):
+    # TCK Merge1 [15]: VariableAlreadyBound. Refused only by accident until MATCH (a) MATCH (a)
+    # read its table twice; the read now runs, so the MERGE refuses it by name.
+    s = _empty(monkeypatch)
+    s.run("CREATE (:A)")
+    with pytest.raises(CypherParseError, match="Variable `a` already declared"):
+        s.run("MATCH (a) MERGE (a)")
