@@ -223,6 +223,13 @@ def _catalog_relations() -> str:
     return f"CREATE MACRO provisa_is_catalog_relation(rel) AS rel IN ({oids})"
 
 
+def _catalog_relation_oids() -> str:
+    """A relation's oid: PostgreSQL's own for its catalog relations, which the catalog DB numbers
+    otherwise."""
+    known = " ".join(f"WHEN '{name}' THEN {oid}" for name, oid in _CATALOG_CLASS_OIDS.items())
+    return f"CREATE MACRO provisa_relation_oid(name, oid) AS CASE name {known} ELSE oid END"
+
+
 def _type_spellings() -> str:
     """A type's internal name from the name format_type writes, for to_regtype."""
     spelled = " ".join(
@@ -334,6 +341,7 @@ def populate_catalog_macros(db) -> None:  # REQ-2167
         _identify_object(),
         _type_spellings(),
         _catalog_relations(),
+        _catalog_relation_oids(),
         *server_macros(),
     ):
         db.execute(macro)

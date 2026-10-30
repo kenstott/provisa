@@ -477,6 +477,16 @@ def test_sind_and_tand_are_exact_where_postgresql_is(degrees, sine, tangent):
         assert scalars.tand(degrees) == tangent
 
 
+def test_tand_is_never_minus_zero():
+    assert str(scalars.tand(180.0)) == "0.0"
+    assert str(scalars.tand(-180.0)) == "0.0"
+
+
+def test_a_catalog_relation_has_postgresqls_oid(conn: Any):
+    res = conn.conn.pgconn.exec_params(b"SELECT to_regclass('pg_class') AS v", [], result_format=1)
+    assert (res.ftype(0), res.get_value(0, 0).hex()) == (2205, "000004eb")
+
+
 def test_tand_of_a_right_angle_is_infinite():
     assert scalars.tand(90.0) == float("inf")
     assert scalars.tand(270.0) == float("-inf")

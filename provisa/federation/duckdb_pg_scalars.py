@@ -94,7 +94,8 @@ def tand(degrees: float) -> float:
     cosine = _cosd_q1(x)
     if cosine == 0.0:
         return math.inf * sign
-    return ((_sind_q1(x) / cosine) / _TAN_45) * sign
+    result = ((_sind_q1(x) / cosine) / _TAN_45) * sign
+    return 0.0 if result == 0.0 else result  # never minus zero, as float.c forces it
 
 
 # --- bytea ----------------------------------------------------------------------------------------

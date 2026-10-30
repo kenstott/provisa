@@ -159,7 +159,6 @@ _OBJECT_STATS = "('database', 'relation', 'function', 'replslot', 'subscription'
 _RESET_TARGETS = (
     "('archiver', 'bgwriter', 'checkpointer', 'io', 'recovery_prefetch', 'slru', 'wal')"
 )
-_LO = ("lo_close", "lo_tell", "lo_tell64", "lo_lseek", "lo_lseek64", "lo_truncate", "lo_truncate64")
 _LO_WRITES = (
     ("lo_creat", "mode", "BIGINT"),
     ("lo_create", "lobj", "BIGINT"),
@@ -854,8 +853,8 @@ def _to_reg(a: _Answers) -> None:
         "to_regclass",
         "name",
         _NAMED_STRUCT,
-        "(SELECT struct_pack(oid := _c.oid, name := _c.relname) FROM _pg_class _c "
-        "JOIN _pg_namespace _n ON _n.oid = _c.relnamespace "
+        "(SELECT struct_pack(oid := provisa_relation_oid(_c.relname, _c.oid), name := _c.relname) "
+        "FROM _pg_class _c JOIN _pg_namespace _n ON _n.oid = _c.relnamespace "
         f"WHERE _c.relname = {_last_part('name')} AND (_n.nspname = {_qualifier('name')} "
         f"OR ({_qualifier('name')} IS NULL AND _n.nspname IN {in_path})) LIMIT 1)",
     )
