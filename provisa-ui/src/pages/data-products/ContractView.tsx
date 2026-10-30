@@ -375,6 +375,14 @@ export function ContractView({
             </Collapsibles>
           </Stack>
         </DetailCard>
+        <DetailCard {...card("versions")}>
+          <Stack gap={2}>
+            <Element name="version" value={contract.version} />
+            <Element name="status" value={status} />
+            <Element name="contractCreatedTs" value={contract.contractCreatedTs} />
+            <Versions versions={versions} tableId={tableId} />
+          </Stack>
+        </DetailCard>
         <DetailCard {...card("fields")}>
           <Stack gap={2}>
             <Element name="name" value={object?.name} />
@@ -416,14 +424,6 @@ export function ContractView({
             <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
           </DetailCard>
         )}
-        <DetailCard {...card("versions")}>
-          <Stack gap={2}>
-            <Element name="version" value={contract.version} />
-            <Element name="status" value={status} />
-            <Element name="contractCreatedTs" value={contract.contractCreatedTs} />
-            <Versions versions={versions} tableId={tableId} />
-          </Stack>
-        </DetailCard>
       </div>
     </div>
   );
