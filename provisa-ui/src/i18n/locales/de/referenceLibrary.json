@@ -47,6 +47,13 @@
     "removeTitle": "Dieses Dokument entfernen?",
     "removeConsequence": "Ab jetzt stützt sich kein Assistent mehr auf „{{title}}“. Begriffe und Definitionen, die es zitieren, behalten ihre Zitate.",
     "discardTitle": "Dieses vorgeschlagene Dokument verwerfen?",
-    "discardConsequence": "„{{title}}“ verlässt die Bibliothek, und kein Assistent stützt sich darauf."
+    "discardConsequence": "„{{title}}“ verlässt die Bibliothek, und kein Assistent stützt sich darauf.",
+    "reembed": "Neu einbetten",
+    "reembedAll": "Alle neu einbetten ({{n}})",
+    "needsReembedding": "Neu einbetten erforderlich",
+    "needsReembeddingHelp": "Eingebettet mit {{model}}, nicht mit dem aktuellen Vektormodell der Organisation.",
+    "reembedDone": "Neu eingebettete Dokumente: {{n}}",
+    "reembedFailedHeading": "Diese Dokumente konnten nicht neu eingebettet werden und sind unverändert:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

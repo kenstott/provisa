@@ -113,7 +113,9 @@ def test_a_relation_is_its_own_partition_tree_and_ancestor():
     ) == [(1,)]
     # psql \d of a table: the foreign keys referencing it or an ancestor.
     assert _rows(f"SELECT * FROM pg_catalog.pg_partition_ancestors('{oid}')") == [(oid,)]
-    assert _rows(f"SELECT pg_catalog.pg_partition_ancestors({oid})") == [(oid,)]
+    # In a select list it is a regclass: the oid and name a regclass result column is sent by.
+    ((ancestor,),) = _rows(f"SELECT pg_catalog.pg_partition_ancestors({oid})")
+    assert ancestor["oid"] == oid
     assert (
         _rows(
             "SELECT conname FROM pg_catalog.pg_constraint WHERE confrelid IN "

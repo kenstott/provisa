@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -313,7 +313,7 @@ def check_definition(check: dict, checker: str) -> str:
     return json.dumps(body, sort_keys=True)
 
 
-def check_severity(check: dict, checker: str) -> str:
+def check_severity(check: dict, checker: str) -> Literal["fail", "warn"]:
     """``'fail'`` or ``'warn'`` for one check row from :func:`contract_checks` (REQ-1443).
 
     Soda spells severity as ``threshold.level`` and defaults an unstated level to ``fail``

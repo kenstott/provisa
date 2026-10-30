@@ -608,6 +608,47 @@ class ContractTerms(BaseModel):  # REQ-2158
     notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
 
 
+class ContractCheck(BaseModel):  # REQ-2158
+    """One check the product promised on the member, as a contract version saved it: promises are
+    read live, so what a version promised is kept with it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    column: str | None = None  # None: a check of the table
+    severity: Literal["fail", "warn"] = "fail"
+    definition: str = ""
+
+
+class ContractChange(BaseModel):  # REQ-2158
+    """One difference of a contract version from the one before it. ``breaking``: it can break a
+    consumer (provisa.core.contract_versions)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[
+        "field_added",
+        "field_removed",
+        "field_renamed",
+        "field_type_changed",
+        "field_required",
+        "field_optional",
+        "field_described",
+        "sla_added",
+        "sla_removed",
+        "sla_changed",
+        "check_added",
+        "check_removed",
+        "check_changed",
+        "description_changed",
+        "terms_changed",
+    ]
+    subject: str = Field(min_length=1)
+    before: str | None = None
+    after: str | None = None
+    breaking: bool = False
+
+
 class DataContract(BaseModel):  # REQ-2158
     """A data product member's ODCS contract: its output port, versioned on its own. Its promises
     are the checks the product owns on the member (REQ-2157), read when the contract is."""
@@ -623,6 +664,26 @@ class DataContract(BaseModel):  # REQ-2158
     # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
     # every later version (data_contracts.for_save).
     created_at: datetime | None = None
+    # Every saved version, oldest first, the last this one (contract_versions.recorded). The
+    # store's record, as created_at is: a save replaces whatever it declares here.
+    versions: list["ContractVersion"] = Field(default_factory=list)
+
+
+class ContractVersion(BaseModel):  # REQ-2158
+    """A saved version of a contract: what it was, what it promised, how it differs from the one
+    before it, and when and by whom it was saved. ``saved_by`` None is the system (a configuration
+    load, a boot), as model_change.actor() says."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract: DataContract
+    checks: list[ContractCheck] = Field(default_factory=list)
+    changes: list[ContractChange] = Field(default_factory=list)
+    saved_at: datetime
+    saved_by: str | None = None
+
+
+DataContract.model_rebuild()
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641

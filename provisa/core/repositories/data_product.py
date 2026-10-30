@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete as _delete, func, select, update
 
 from provisa.core import model_change
-from provisa.core.models import DataContract, DataProduct
+from provisa.core.models import ContractCheck, DataContract, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
+    checker_targets,
     data_products,
     registered_tables,
+    sources,
     table_columns,
     tracked_functions,
 )
@@ -153,13 +155,47 @@ async def member_contracts(conn: "Connection", product_id: str | None = None) ->
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def promised_checks(  # REQ-2158
+    conn: "Connection", product_id: str, table_id: int
+) -> list[ContractCheck]:
+    """What the product promises of a member: the checks of the checker tables it owns that scan
+    it (REQ-2157), each as a contract version keeps it. A check another product owns, or none does,
+    is no promise of this one."""
+    from provisa.dq.contract import check_severity
+
+    rows = (
+        await conn.execute_core(
+            select(registered_tables.c.dq_rules, sources.c.type)
+            .join(sources, sources.c.id == registered_tables.c.source_id)
+            .join(checker_targets, checker_targets.c.table_id == registered_tables.c.id)
+            .where(
+                checker_targets.c.checked_table_id == table_id,
+                registered_tables.c.product_id == product_id,
+                registered_tables.c.dq_rules.is_not(None),
+            )
+            .order_by(registered_tables.c.id)
+        )
+    ).fetchall()
+    return [
+        ContractCheck(
+            name=rule["check_type"],
+            column=rule["column_name"] or None,
+            severity=check_severity(rule, row.type),
+            definition=rule["definition"],
+        )
+        for row in rows
+        for rule in row.dq_rules
+    ]
+
+
 async def save_contract(  # REQ-2158
     conn: "Connection", table_id: int, contract: DataContract
 ) -> dict:
-    """A member's contract replaced: refused (data_contracts.ContractRefused) when the table is no
-    product's output port, when it stops promising a column at the same version, or when it
-    promises a column the member does not hold as that type. The member's row, as it is now."""
-    from provisa.core import data_contracts
+    """A member's contract replaced, the version saved recorded on it: refused
+    (data_contracts.ContractRefused) when the table is no product's output port, when it stops
+    promising a column at the same version, or when it promises a column the member does not hold
+    as that type. The member's row, as it is now."""
+    from provisa.core import contract_versions, data_contracts
 
     async with conn.transaction():
         row = (
@@ -188,6 +224,9 @@ async def save_contract(  # REQ-2158
             ).fetchall()
         }
         data_contracts.require_provided(cid, contract, types)
+        contract = contract_versions.recorded(
+            previous, contract, await promised_checks(conn, row.product_id, table_id)
+        )
         await conn.execute_core(
             update(registered_tables)
             .where(registered_tables.c.id == table_id)

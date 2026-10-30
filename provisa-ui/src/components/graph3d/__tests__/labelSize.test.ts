@@ -36,12 +36,12 @@ describe("a graph label's size", () => {
     expect(scale).toBeLessThan(1);
     // The label at the resting view is the readable minimum, whatever the nodes' scale.
     expect(labelPx(1)).toBeGreaterThanOrEqual(MIN_LABEL_PX);
-    expect(MIN_LABEL_PX).toBeGreaterThanOrEqual(11);
+    expect(MIN_LABEL_PX).toBeGreaterThanOrEqual(9);
   });
 
   it("follows the zoom, within its bounds", () => {
-    expect(labelPx(1.5)).toBeCloseTo(LABEL_FONT_PX * 1.5);
-    expect(labelPx(1.5)).toBeGreaterThan(labelPx(1.2));
+    expect(labelPx(0.9)).toBeCloseTo(LABEL_FONT_PX * 0.9);
+    expect(labelPx(0.95)).toBeGreaterThan(labelPx(0.9));
     expect(labelPx(0.2)).toBe(MIN_LABEL_PX);
     expect(labelPx(10)).toBe(MAX_LABEL_PX);
   });

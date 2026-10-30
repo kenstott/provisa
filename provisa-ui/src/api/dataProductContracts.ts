@@ -12,6 +12,7 @@
 // declared or derived -- the one document a catalog pulls, read by the product's contracts list.
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import type { ContractVersion } from "../types/admin";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -76,6 +77,21 @@ export async function fetchProductContract(
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(serverMessage(data, requestFailed("Product contract", resp.status)));
+  }
+  return resp.json();
+}
+
+/** One output port's saved versions, oldest first: read with its contract when its row opens. */
+export async function fetchContractVersions(
+  productId: string,
+  member: string,
+): Promise<ContractVersion[]> {
+  const resp = await fetch(
+    `${API_BASE}/data-products/${encodeURIComponent(productId)}/contracts/${encodeURIComponent(member)}/versions.json`,
+  );
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Contract versions", resp.status)));
   }
   return resp.json();
 }

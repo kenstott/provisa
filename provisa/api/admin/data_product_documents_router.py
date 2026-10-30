@@ -16,7 +16,8 @@ publishes (``publishing.org_snapshot``), so a catalog that pulls reads what one 
 was told. Reading them asks what reading a data product asks (``data_product_read``), and they are
 part of the metadata export, so the org's tier must include it (REQ-1073; nothing gates it on a
 self-hosted install, REQ-1066). The product's own Contracts panel reads the same contracts as JSON,
-asking only what reading the product asks (REQ-2158).
+asking only what reading the product asks, and each contract's saved versions, which the standard
+has no element for (REQ-2158).
 """
 
 # Requirements: REQ-2118, REQ-1073
@@ -103,6 +104,31 @@ async def data_product_contract_json(product_id: str, member: str, request: Requ
     port's row opens (REQ-2158): asking what reading the product asks, as contracts.json does."""
     _, contracts = await _documents(request, product_id, export=False)
     return _port_contract(product_id, member, contracts)
+
+
+@router.get("/data-products/{product_id}/contracts/{member}/versions.json")
+async def data_product_contract_versions(
+    product_id: str, member: str, request: Request
+) -> list[dict]:
+    """One output port's saved contract versions, oldest first, each with when and by whom it was
+    saved and its differences from the one before (REQ-2158): read with the port's contract when
+    its row opens, asking what reading the product asks."""
+    require_capability_request(request, "data_product_read")
+    require_active_org_id(request)
+    from provisa.api.app import state
+    from provisa.core.models import DataContract
+    from provisa.core.repositories import data_product as data_product_repo
+
+    assert state.model_db is not None  # the org's model store is bound with its runtime
+    async with state.model_db.acquire() as conn:
+        rows = await data_product_repo.member_contracts(conn, product_id)
+    contracts = {
+        f"{r['source_id']}.{r['schema_name']}.{r['table_name']}": r["contract"] for r in rows
+    }
+    contract = DataContract.model_validate(_port_contract(product_id, member, contracts))
+    return [
+        v.model_dump(mode="json", exclude={"contract": {"versions"}}) for v in contract.versions
+    ]
 
 
 @router.get("/data-products/{product_id}/contracts/{member}.yaml")

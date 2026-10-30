@@ -218,6 +218,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
         register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method
+        from provisa.federation.duckdb_pg_functions import register as register_pg_functions
+
+        register_pg_functions(self._con)  # REQ-2167: what DuckDB has no equivalent of
         self._engine = build_duckdb_engine()
         # REQ-1922: the FederationEngine whose store this runtime lands in — the backend's own, so
         # the store an org lane pins on it (``pin_materialize_store``) is the one attached. A

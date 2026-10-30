@@ -55,6 +55,7 @@ vi.mock("../api/actions", () => ({
 // REQ-2158: the open product's ODCS contracts; none here.
 vi.mock("../api/dataProductContracts", () => ({
   fetchProductContract: () => Promise.resolve({}),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 vi.mock("../api/lineage", () => ({
   fetchProductLineage: () =>

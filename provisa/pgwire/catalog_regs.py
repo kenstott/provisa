@@ -32,6 +32,9 @@ NAMED_REG_TYPES = frozenset({"regclass", "regnamespace"})
 #: The object identifier types this module resolves.
 REG_TYPES = NAMED_REG_TYPES | {"regtype"}
 
+#: pg_partition_ancestors as a result column: each ancestor's oid and name together.
+NAMED_ANCESTORS = "pg_partition_ancestors_named"
+
 #: The schemas on PostgreSQL's search path here, pg_catalog first.
 _SEARCH_PATH = ("pg_catalog", "public")
 
@@ -223,6 +226,11 @@ def project_reg_values(tree: exp.Expr) -> None:
         return
     for select in tree.selects:
         target = select.this if isinstance(select, exp.Alias) else select
+        call = target.expression if isinstance(target, exp.Dot) else target
+        if isinstance(call, exp.Anonymous) and call.name.lower() == "pg_partition_ancestors":
+            # A regclass result column: the oid its FROM form joins on is the macro's own.
+            target.replace(exp.Anonymous(this=NAMED_ANCESTORS, expressions=call.expressions))
+            continue
         if not isinstance(target, exp.Cast):
             continue
         reg = reg_type_of(target.to)

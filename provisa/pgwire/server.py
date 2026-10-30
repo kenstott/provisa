@@ -704,7 +704,8 @@ _register_reg_types()
 # Provisa answers on its own connections.
 _SERVER_FUNCTION_RE = re.compile(
     r'^\s*SELECT\s+(?:pg_catalog\s*\.\s*)?"?(?P<name>pg_backend_pid|pg_cancel_backend|'
-    r'pg_terminate_backend)"?\s*\((?P<args>[^()]*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
+    r"pg_terminate_backend|inet_client_addr|inet_client_port|inet_server_addr|inet_server_port)"
+    r'"?\s*\((?P<args>[^()]*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
     re.IGNORECASE,
 )
 
@@ -1384,6 +1385,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2167: what pg_stat_activity lists of this connection.
         self.backend_start = datetime.datetime.now(datetime.timezone.utc)
         self.application_name = ""
+        # REQ-2167: this connection's two ends, (host, port), set when it starts.
+        self.client_end: tuple = ()
+        self.server_end: tuple = ()
         self.role_id: str | None = None
         # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
         # their meta-role, made again in this session's org before each statement (a model rebuild
@@ -1590,6 +1594,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         name = match["name"].lower()
         column = match["alias"] or name
+        if name.startswith("inet_"):
+            # This connection's own ends, as PostgreSQL answers them for a TCP connection.
+            host, port = (self.client_end if "client" in name else self.server_end)[:2]
+            answer = (host, "INET") if name.endswith("addr") else (port, "INTEGER")
+            return QueryResult(rows=[(answer[0],)], column_names=[column], column_types=[answer[1]])
         if name == "pg_backend_pid":
             return QueryResult(
                 rows=[(self.process_id,)], column_names=[column], column_types=["INTEGER"]
@@ -2393,6 +2402,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx = BVContext(conn.create_session(), None, params)
             self._session = ctx.session  # type: ignore[assignment]
             ctx.session.application_name = params.get("application_name", "")  # type: ignore[attr-defined]
+            ctx.session.client_end = self.client_address  # type: ignore[attr-defined]
+            ctx.session.server_end = self.request.getsockname()  # type: ignore[attr-defined]
             try:
                 # REQ-1194: provisa.redirect / provisa.redirect_format named at connect.
                 ctx.session.apply_redirect_settings(startup_redirect_settings(params))  # type: ignore[attr-defined]
