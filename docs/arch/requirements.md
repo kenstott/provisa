@@ -26787,3 +26787,15 @@ Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building 
 **Code:** —
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-2190 · JDBC/ODBC Integration {#REQ-2190}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-10-30: all metadata pgwire presents lives in the meta domain. pg_catalog and information_schema are answered from it, so there is one source of what a table, column, type or relationship is, and no second store of metadata. pgwire may still rewrite a client's statement and add what true PostgreSQL shows and the model does not hold, such as additional roles, so a client sees PostgreSQL, but it holds none of the details itself.
+
+**Code:** —
+
+**Tests:** —
