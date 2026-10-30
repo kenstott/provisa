@@ -16,14 +16,21 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
 import type { ContractVersion } from "../../types/admin";
 import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
+import { tableSqlRef } from "../../naming";
 import { DetailCard } from "./DetailCard";
-import "./ContractView.css";
-import { ClaimsCallout, ConsumersList } from "./dataProductDq";
+import { ConsumersList, OutcomeBadge } from "./dataProductDq";
+import { modelName } from "./productCore";
+
+// The contract's cards flow in columns this wide, as the product's own do; the Promises card runs
+// the panel's full width beneath them, its items flowing in columns of the same width.
+const COLUMN_WIDTH = "320px";
+const COLUMN_GAP = "var(--mantine-spacing-sm)";
 
 /** The Details card's further ODCS sections, each a row collapsed to a one-line summary. */
 const DETAIL_SECTIONS = ["support", "servers", "pricing", "custom"] as const;
@@ -257,6 +264,37 @@ function qualityRules(contract: OdcsContract): OdcsRecord[] {
   ]);
 }
 
+/** One promise, kept whole in its column: what it claims, the dataset it covers and its latest
+ * outcome; it opens that outcome's rows in the SQL page. */
+function PromiseItem({ check, testId }: { check: ProductDqEntry; testId: string }) {
+  const navigate = useNavigate();
+  const results = tableSqlRef({
+    domainId: check.domain_id,
+    tableName: check.table_name,
+    alias: check.alias,
+  });
+  return (
+    <Stack
+      gap={2}
+      data-testid={testId}
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate("/sql", { state: { sql: `select * from ${results}`, autoRun: true } })}
+      style={{ breakInside: "avoid", cursor: "pointer", marginBottom: COLUMN_GAP, minWidth: 0 }}
+    >
+      <Text size="sm" fw={500} style={{ overflowWrap: "anywhere" }}>
+        {check.description || modelName(check)}
+      </Text>
+      <Text size="xs" ff="monospace" c="var(--text-muted)" style={{ overflowWrap: "anywhere" }}>
+        {modelName(check)} · {modelName(check.checked_table)}
+      </Text>
+      <Group gap={6}>
+        <OutcomeBadge outcome={check.latest_outcome} />
+      </Group>
+    </Stack>
+  );
+}
+
 export function ContractView({
   contract,
   versions,
@@ -330,8 +368,8 @@ export function ContractView({
     label: t(`dataProductsTab.contract.card.${key}`),
   });
   return (
-    <div className="contract-cards" data-testid={`data-contract-${tableId}`}>
-      <div className="contract-cards__grid">
+    <div data-testid={`data-contract-${tableId}`}>
+      <div style={{ columnWidth: COLUMN_WIDTH, columnGap: COLUMN_GAP }}>
         <DetailCard {...card("details")}>
           <Stack gap={2}>
             <Element name="id" value={contract.id} />
@@ -406,25 +444,34 @@ export function ContractView({
             <Records name="slaProperties" items={sla} testId={`data-contract-sla-${tableId}`} />
           </Stack>
         </DetailCard>
-        <DetailCard {...card("quality")} span={2}>
-          <Stack gap={4}>
-            {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
-            {promises && (
-              <ClaimsCallout
-                kind="promises"
-                checks={promises}
-                testId={`data-contract-promises-${tableId}`}
-              />
-            )}
-            <Records name="quality" items={rules} />
-          </Stack>
-        </DetailCard>
         {consumers && (
           <DetailCard {...card("consumers")}>
             <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
           </DetailCard>
         )}
       </div>
+      <DetailCard {...card("quality")} wide>
+        <Stack gap={4}>
+          {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
+          {promises && promises.length > 0 && (
+            <div data-testid={`data-contract-promises-${tableId}`}>
+              <Text size="sm" fw={500} mb="xs">
+                {t("dataProductCore.promises", { count: promises.length })}
+              </Text>
+              <div style={{ columnWidth: COLUMN_WIDTH, columnGap: COLUMN_GAP }}>
+                {promises.map((c) => (
+                  <PromiseItem
+                    key={c.checker_table_id}
+                    check={c}
+                    testId={`data-contract-promises-${tableId}-item-${c.checker_table_id}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          <Records name="quality" items={rules} />
+        </Stack>
+      </DetailCard>
     </div>
   );
 }
