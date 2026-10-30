@@ -8,12 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Plus } from "lucide-react";
+import { Plus, Package } from "lucide-react";
 import {
   useDomains,
   useReadTableDetails,
@@ -40,7 +41,6 @@ import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchProductLineage, type ProductLineage } from "../api/lineage";
-import { fetchProductContracts, type OdcsContract } from "../api/dataProductContracts";
 import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
@@ -171,6 +171,8 @@ export function DataProductsPage() {
         const n = new URLSearchParams(p);
         if (id) n.set("product", id);
         else n.delete("product");
+        // REQ-2158: a linked contract is the linked product's; another product leaves it behind.
+        if (id !== p.get("product")) n.delete("contract");
         return n;
       },
       { replace: true },
@@ -199,16 +201,6 @@ export function DataProductsPage() {
   const [lineageGraph, setLineageGraph] = useState<ProductLineage | null>(null);
   const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError] = useState("");
-  // REQ-2158: the expanded product's ODCS contracts, declared and derived; read again after the
-  // product is saved. They are read only for a product whose panel shows a Contracts card: one
-  // with no contract has nothing to show, and the server has no document for a product with no
-  // exported member.
-  const contractsOf =
-    expanded !== null && core.data?.product.id === expanded && contracts.length > 0
-      ? expanded
-      : null;
-  const [odcs, setOdcs] = useState<Record<string, OdcsContract> | null>(null);
-  const [odcsError, setOdcsError] = useState("");
 
   useEffect(() => {
     // REQ-1634: command <-> data product membership lives on the (REST-served) Function row.
@@ -239,25 +231,6 @@ export function DataProductsPage() {
       cancelled = true;
     };
   }, [expanded, membersVersion]);
-
-  useEffect(() => {
-    if (contractsOf === null) return;
-    let cancelled = false;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect --
-       clears the last product's contracts synchronously before the async fetch starts */
-    setOdcs(null);
-    setOdcsError("");
-    fetchProductContracts(contractsOf)
-      .then((documents) => {
-        if (!cancelled) setOdcs(documents);
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setOdcsError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [contractsOf, membersVersion]);
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
@@ -529,7 +502,9 @@ export function DataProductsPage() {
       data-tour="data-products-content"
     >
       <Group justify="space-between" mb="md">
-        <Title order={3}>{t("dataProductsTab.title")}</Title>
+        <PageTitle icon={Package} order={3}>
+          {t("dataProductsTab.title")}
+        </PageTitle>
         <FilterInput
           value={search}
           onChange={updateSearch}
@@ -681,8 +656,7 @@ export function DataProductsPage() {
                                 lineageLoading={lineageLoading}
                                 lineageError={lineageError}
                                 lineageGraph={lineageGraph}
-                                odcs={odcs}
-                                odcsError={odcsError}
+                                contractsVersion={membersVersion}
                                 lineageMembers={lineageMembers}
                                 describeColumn={describeColumn}
                                 relationLabel={relationLabel}

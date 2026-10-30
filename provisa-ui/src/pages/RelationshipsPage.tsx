@@ -8,11 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Sparkles, Code2, Network, X } from "lucide-react";
+import { ArrowLeft, Sparkles, Code2, Network, X, Link2 } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -22,7 +23,6 @@ import {
   Pagination,
   Table,
   Text,
-  Title,
 } from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
@@ -96,10 +96,13 @@ export function RelationshipsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
-  const { relationships: allRels } = useAllRelationships();
+  const { relationships: allRels, loading: allRelsLoading } = useAllRelationships();
   const { tables, loading: tablesLoading } = useTables();
-  const { domains } = useDomains();
-  const [showErd, setShowErd] = useState(false);
+  const { domains, loading: domainsLoading } = useDomains();
+  // `?erd=<table id>` (the Ontology's "Open in ERD", lib/entityHref) opens the ERD centred on that
+  // table, on a direct load too; closing it drops the parameter.
+  const erdTableId = searchParams.get("erd") ?? undefined;
+  const [showErd, setShowErd] = useState(() => erdTableId !== undefined);
   const { upsertRelationship } = useUpsertRelationship();
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
@@ -649,7 +652,7 @@ export function RelationshipsPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("relationshipsPage.title")}</Title>
+        <PageTitle icon={Link2}>{t("relationshipsPage.title")}</PageTitle>
         <FilterInput
           value={relSearch}
           onChange={updateSearch}
@@ -932,13 +935,21 @@ export function RelationshipsPage() {
           />
         </div>
       )}
-      {showErd && (
+      {showErd && !tablesLoading && !allRelsLoading && !domainsLoading && (
         <ErdModal
+          focusTableId={erdTableId}
           tables={tables}
           relationships={allRels}
           domains={domains}
           checkedDomains={erdCheckedDomains}
-          onClose={() => setShowErd(false)}
+          onClose={() => {
+            setShowErd(false);
+            setSearchParams((p) => {
+              const n = new URLSearchParams(p);
+              n.delete("erd");
+              return n;
+            });
+          }}
         />
       )}
       {refusal.dialog}

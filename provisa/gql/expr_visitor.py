@@ -63,6 +63,7 @@ from provisa.gql.expr_ast import (
     walk,
 )
 from provisa.gql import spatial, temporal
+from provisa.gql.terms import axiom_table_iri
 from provisa.gql.translator_helpers import _and_all, _json_valued
 from provisa.gql.translator_types import UNION_NODE, CypherTranslateError
 
@@ -1889,6 +1890,9 @@ class ExprLowering:
             this=self.lower(Property(Variable(node.node), "object")),
             expressions=[
                 self.lower(Property(Variable(node.node), "object_iri")),
+                axiom_table_iri(
+                    self.lower(Property(Variable(node.node), "object_table_id")), node.table_iris
+                ),
                 self.lower(Property(Variable(node.node), "object_literal")),
             ],
         )

@@ -31,6 +31,7 @@ from provisa.dq.contract import CHECKERS
 import json as _json
 
 from provisa.compiler.sql_literals import sql_literal
+from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
 
 
 def _system_tag_rows_sql() -> str:
@@ -1040,4 +1041,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         WHERE q.logged_at >= now() - INTERVAL '1 hour'
         HAVING COUNT(*) > 0
     """,
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): the glossary measured from the model, by
+    # domain and by steward. They read the ontology schema's views, which the seed creates first.
+    **ONTOLOGY_QUALITY_VIEWS,
 }

@@ -13,6 +13,7 @@
 // this tab carries the human curation — rename, definitions, ref moves,
 // experts, abstract terms and their typed edges.
 
+import { PageTitle } from "../PageTitle";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -32,7 +33,6 @@ import {
   Text,
   TextInput,
   Textarea,
-  Title,
 } from "@mantine/core";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
@@ -58,6 +58,7 @@ import { TermImpactPreview } from "./TermImpactPreview";
 import { StewardshipSummary } from "./StewardshipSummary";
 import { tableNames, toReview } from "./termFindings";
 import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
+import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
@@ -88,6 +89,7 @@ import {
 } from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
+import { useViewDomains } from "../../lib/viewDomains";
 import type {
   GlossaryTermDetail,
   GlossaryTermSummary,
@@ -155,14 +157,11 @@ export function GlossaryTab() {
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
   const { activeOrgId } = useAuth();
-  const { domains: filterDomains, checkedDomains, domainsEnabled } = useDomainFilter();
+  const { domains: filterDomains, domainsEnabled } = useDomainFilter();
   // REQ-1591: the navbar selection is a VIEW preference, so it narrows the list and nothing else —
-  // the server intersects it with role authority and can never widen. Held as the context's own Set
-  // rather than a fresh array so its identity is stable enough to be a refresh dependency.
-  const viewDomains =
-    domainsEnabled && checkedDomains.size > 0 && checkedDomains.size < filterDomains.length
-      ? checkedDomains
-      : null;
+  // the server intersects it with role authority and can never widen (useViewDomains, the rule the
+  // Ontology View follows too).
+  const viewDomains = useViewDomains();
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [query, setQueryState] = useState(
@@ -204,8 +203,9 @@ export function GlossaryTab() {
   };
   // REQ-1387 (RELATED_TO HOLDS THE PLACE): narrow the list to the terms on a RELATED_TO edge, the
   // links that want review.
-  const [relatedToOnly, setRelatedToOnlyState] = useState(() =>
-    readStoredBool("glossary.relatedTo", false),
+  // A report's placeholder row opens the list with it on (REQ-1386: ?relatedTo=1).
+  const [relatedToOnly, setRelatedToOnlyState] = useState(
+    () => searchParams.get(RELATED_TO_PARAM) === "1" || readStoredBool("glossary.relatedTo", false),
   );
   const setRelatedToOnly = (on: boolean) => {
     setRelatedToOnlyState(on);
@@ -549,15 +549,8 @@ export function GlossaryTab() {
       {/* Same heading row as the other admin tabs: title, filter, actions. The list/detail split
           below it is this tab's own layout. */}
       <Group justify="space-between" wrap="wrap">
-        <Group gap="xs" align="center" wrap="nowrap">
-          <BookOpen size={22} style={{ display: "block", flexShrink: 0 }} />
-          {/* Order 2: AdminPage suppresses its own page title for this tab, so this is the page
-              heading, not a section heading. mb=0 drops the `.page h2` bottom margin, which would
-              otherwise push the text up off the icon's centre line. */}
-          <Title order={2} mb={0} lh={1}>
-            {t("glossaryTab.title")}
-          </Title>
-        </Group>
+        {/* AdminPage suppresses its own page title for this tab, so this is the page heading. */}
+        <PageTitle icon={BookOpen}>{t("glossaryTab.title")}</PageTitle>
         <FilterInput
           value={query}
           onChange={setQuery}

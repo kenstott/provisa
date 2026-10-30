@@ -22,6 +22,8 @@ const api = vi.hoisted(() => ({
   setLibraryDomains: vi.fn(),
   keepLibraryDocument: vi.fn(),
   refreshLibraryDocument: vi.fn(),
+  reembedLibraryDocument: vi.fn(),
+  reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
 }));
@@ -42,6 +44,7 @@ const URL_DOC = {
   status: "kept",
   domains: ["sales"],
   embedding_model: "embed-small",
+  needs_reembedding: false,
   passages: 2,
   added_by: "ada",
   added_at: "2026-10-20T09:12:00Z",
@@ -135,5 +138,51 @@ describe("ReferenceLibraryTab", () => {
       await screen.findByText("Choose at least one domain, or the whole organization."),
     ).toBeInTheDocument();
     expect(api.addLibraryDocument).not.toHaveBeenCalled();
+  });
+
+  it("names a document embedded with another model and re-embeds it from its stored text", async () => {
+    const old = { ...URL_DOC, embedding_model: "embed-old", needs_reembedding: true };
+    api.fetchLibrary.mockResolvedValue([old, PROPOSED]);
+    api.fetchLibraryDocument.mockResolvedValue({ ...old, passage_list: [] });
+    api.reembedLibraryDocument.mockResolvedValue({ ...URL_DOC, embedding_model: "embed-small" });
+    render(<ReferenceLibraryTab />);
+    expect(await screen.findByTestId("reflib-stale-3")).toHaveTextContent("Needs re-embedding");
+    expect(screen.queryByTestId("reflib-stale-2")).toBeNull();
+    fireEvent.click(screen.getByTestId("reflib-row-3"));
+    expect(await screen.findByTestId("reflib-read-3")).toHaveTextContent("embed-old");
+    fireEvent.click(screen.getByTestId("reflib-reembed"));
+    await waitFor(() => expect(api.reembedLibraryDocument).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(screen.queryByTestId("reflib-stale-3")).toBeNull());
+    expect(screen.queryByTestId("reflib-reembed")).toBeNull();
+    expect(api.refreshLibraryDocument).not.toHaveBeenCalled();
+  });
+
+  it("re-embeds all and reports each document that failed", async () => {
+    const old = { ...URL_DOC, embedding_model: "embed-old", needs_reembedding: true };
+    const old2 = { ...PROPOSED, embedding_model: "embed-old", needs_reembedding: true };
+    api.fetchLibrary.mockResolvedValueOnce([old, old2]).mockResolvedValueOnce([URL_DOC, old2]);
+    api.reembedLibrary.mockResolvedValue({
+      embedding_model: "embed-small",
+      reembedded: [3],
+      failed: [{ document_id: 2, title: "Payments standard", reason: "quota exceeded" }],
+    });
+    render(<ReferenceLibraryTab />);
+    const all = await screen.findByTestId("reflib-reembed-all");
+    expect(all).toHaveTextContent("Re-embed all (2)");
+    fireEvent.click(all);
+    const result = await screen.findByTestId("reflib-reembed-result");
+    expect(result).toHaveTextContent("Documents re-embedded: 1");
+    expect(screen.getByTestId("reflib-reembed-failures")).toHaveTextContent(
+      "Payments standard: quota exceeded",
+    );
+    await waitFor(() => expect(screen.getByTestId("reflib-reembed-all")).toHaveTextContent("(1)"));
+    expect(screen.queryByTestId("reflib-stale-3")).toBeNull();
+    expect(screen.getByTestId("reflib-stale-2")).toBeInTheDocument();
+  });
+
+  it("offers no Re-embed when every document is on the current model", async () => {
+    render(<ReferenceLibraryTab />);
+    await screen.findByTestId("reflib-row-3");
+    expect(screen.queryByTestId("reflib-reembed-all")).toBeNull();
   });
 });

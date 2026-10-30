@@ -45,14 +45,20 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context  
 from provisa.core.catalog import _to_catalog_name  # noqa: E402
 from provisa.federation.databricks_runtime import DatabricksFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
-from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
+from tests.integration import databricks_uc, r2_objects  # noqa: E402
+from tests.integration.databricks_warehouse import warehouse_running  # noqa: E402
+from tests.integration.live_teardown import run_every, run_name  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows  # noqa: E402
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def _warehouse_awake():
-    """A suspended serverless warehouse rejects OpenSession outright — wake it first."""
-    ensure_warehouse_running()
+    """A suspended serverless warehouse rejects OpenSession outright -- wake it before anything in
+    this module connects, and stop it again after the module however it ends, if this module
+    started it (REQ-254). Module-scoped autouse: set up before, and torn down after, every other
+    fixture of the module, so the stop never cuts a connection still in use."""
+    with warehouse_running():
+        yield
 
 
 _ADMIN = {
@@ -61,7 +67,9 @@ _ADMIN = {
     "capabilities": ALL_DATA_CAPABILITIES,
     "domain_access": ["*"],
 }
-_SRC = "e2e-dbx"  # source id → Unity Catalog e2e_dbx (compiler naming: hyphen → underscore)
+# source id → the module's own Unity Catalog (compiler naming: hyphen → underscore), carrying the
+# run's suffix (REQ-254) so teardown drops exactly this run's catalog.
+_SRC = run_name("e2e-dbx", "-")
 _SCHEMA = "public"
 _TABLE = "orders"
 
@@ -117,6 +125,7 @@ def runtime():
         # the suite's own Unity Catalog — the name the governed SQL gives the table's catalog
         f"&catalog={_to_catalog_name(_SRC)}"
     )
+    credential_existed = _HAVE_R2 and databricks_uc.credential_exists(r2_objects.bucket())
     rt = DatabricksFederationRuntime(url=url)
     try:
         yield rt
@@ -124,13 +133,32 @@ def runtime():
         # Clean the e2e catalog so runs are repeatable and nothing is left behind. Drop the whole
         # per-source Unity Catalog (CASCADE takes its schema + table) — dropping only the table would
         # leak the catalog the engine auto-created on first write.
+        # Then the external locations the COPY-INTO stage installed over the run's stage prefix
+        # (its catalog names the staged objects' directory), the bucket's storage credential if
+        # this run created it, and the run's staged objects. Every step attempted, read back.
         cat = _to_catalog_name(_SRC)
-        cur = rt.connection.cursor()
-        try:
-            cur.execute(f"DROP CATALOG IF EXISTS `{cat}` CASCADE")
-        finally:
-            cur.close()
-        rt.close()
+        steps = [
+            (f"drop catalog {cat}", lambda: databricks_uc.drop_catalog(rt.connection, cat)),
+            ("close the runtime", rt.close),
+        ]
+        if _HAVE_R2:
+            bucket = r2_objects.bucket()
+            stage_root = _stage_url() + f"{cat}/"
+            steps += [
+                (
+                    f"delete external locations under {stage_root}",
+                    lambda: databricks_uc.remove_locations_under(stage_root),
+                ),
+                (
+                    f"delete storage credential for {bucket} if this run created it",
+                    lambda: databricks_uc.remove_credential(bucket, existed=credential_existed),
+                ),
+                (
+                    f"delete R2 objects under {_STAGE_PREFIX}{cat}/",
+                    lambda: r2_objects.remove_prefix(f"{_STAGE_PREFIX}{cat}/"),
+                ),
+            ]
+        run_every(steps)
 
 
 _ROWS = [
@@ -180,6 +208,14 @@ _R2 = (
 )
 _HAVE_R2 = all(os.environ.get(v) for v in _R2)
 _COPY_SCHEMA = f"{_SCHEMA}_copy"  # its own schema so the COPY-INTO test never collides
+_STAGE_PREFIX = "provisa_stage/"
+
+
+def _stage_url() -> str:
+    """The COPY-INTO stage root. The product stages each batch under ``<catalog>/<schema>/<table>/``
+    of it (databricks_store._land_via_copy_into), so the run's catalog makes the run's prefix."""
+    acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    return f"r2://{r2_objects.bucket()}@{acct}.r2.cloudflarestorage.com/{_STAGE_PREFIX}"
 
 
 @pytest.mark.asyncio
@@ -190,11 +226,7 @@ async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
     warehouse. Below-threshold batches take the INSERT path (covered in unit); this pins the bulk seam."""
     from provisa.federation.databricks_store import COPY_INTO_ROW_THRESHOLD
 
-    bucket = os.environ.get("PROVISA_R2_TEST_BUCKET", "pubs")
-    acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-    os.environ["PROVISA_DATABRICKS_STAGE_URL"] = (
-        f"r2://{bucket}@{acct}.r2.cloudflarestorage.com/provisa_stage/"
-    )
+    os.environ["PROVISA_DATABRICKS_STAGE_URL"] = _stage_url()
 
     n = COPY_INTO_ROW_THRESHOLD + 500  # comfortably above the gate → COPY INTO, not INSERT
     rows = [{"id": i, "region": "west" if i % 2 else "east", "amount": float(i)} for i in range(n)]
@@ -210,11 +242,7 @@ async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
         assert table.column("n").to_pylist()[0] == n
         assert table.column("mx").to_pylist()[0] == float(n - 1)
     finally:
-        cur = runtime.connection.cursor()
-        try:
-            cur.execute(f"DROP TABLE IF EXISTS `{cat}`.`{_COPY_SCHEMA}`.`{_TABLE}`")
-        finally:
-            cur.close()
+        # The table goes with the run's catalog in the fixture's teardown.
         os.environ.pop("PROVISA_DATABRICKS_STAGE_URL", None)
 
 

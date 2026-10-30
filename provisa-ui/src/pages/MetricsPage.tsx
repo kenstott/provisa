@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { Gauge } from "lucide-react";
+import { PageTitle } from "../components/PageTitle";
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -21,7 +23,6 @@ import {
   Text,
   Textarea,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { useMetrics, useTables, useUpsertMetric, useDeleteMetric } from "../hooks/useAdminQueries";
@@ -408,7 +409,7 @@ export function MetricsPage() {
     // The list and its panel share the height the heading leaves; each scrolls by itself.
     <div className="page-sticky-head" style={{ padding: "1rem 1.25rem" }}>
       <Group justify="space-between" mb="md">
-        <Title order={3}>{t("metricsPage.title")}</Title>
+        <PageTitle icon={Gauge} order={3}>{t("metricsPage.title")}</PageTitle>
         <Group gap="xs">
           {/* The opener is hidden while a metric form is open (the form ends in Save, Cancel). */}
           {!creating && editingName === null && (

@@ -17,6 +17,7 @@ a select list too, a scalar macro of the same name unnests its rows."""
 
 from __future__ import annotations
 
+from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
 from provisa.pgwire.catalog_rewrite import _PG_TYPE_DISPLAY_NAMES
 
 # The schemas on the search path (catalog_data's search_path, and pg_catalog): an object in one is
@@ -88,6 +89,37 @@ def _partition_relation(columns: str) -> str:
     )
 
 
+def _set_returning(name: str, params: str, select: str, columns: str) -> tuple[str, str]:
+    """A set-returning function's two macros (its FROM form and its select-list form, unnesting
+    its rows), over ``select``, whose columns are ``columns``."""
+    fields = ", ".join(f"{c} := _r.{c}" for c in columns.split(", "))
+    return (
+        f"CREATE MACRO {name}({params}) AS TABLE {select}",
+        f"CREATE MACRO {name}({params}) AS unnest((SELECT list(struct_pack({fields})) "
+        f"FROM ({select}) _r))",
+    )
+
+
+def _literal(value: object) -> str:
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    return str(value).lower()
+
+
+def _values(rows: tuple[tuple, ...]) -> str:
+    return ", ".join("(" + ", ".join(_literal(v) for v in row) + ")" for row in rows)
+
+
+_KEYWORDS_SELECT = (
+    f"SELECT * FROM (VALUES {_values(PG_KEYWORDS)}) _k(word, catcode, barelabel, catdesc, baredesc)"
+)
+# The default parser, the one parser PostgreSQL ships, by its oid or its name.
+_TOKENS_SELECT = (
+    f"SELECT * FROM (VALUES {_values(TS_TOKEN_TYPES)}) _t(tokid, alias, description) "
+    "WHERE CAST(parser AS VARCHAR) IN ('3722', 'default', 'pg_catalog.default')"
+)
+_SETTINGS_SELECT = "SELECT * FROM _pg_settings"
+
 _BACKSLASH = "\\"
 
 _MACROS = (
@@ -115,18 +147,71 @@ _MACROS = (
     "CAST(NULL AS BOOLEAN) AS is_grantable WHERE false",
     "CREATE MACRO aclexplode(acl) AS unnest(CAST([] AS STRUCT(grantor INTEGER, grantee INTEGER, "
     "privilege_type VARCHAR, is_grantable BOOLEAN)[]))",
-    "CREATE MACRO pg_options_to_table(options) AS TABLE SELECT "
-    "CAST(NULL AS VARCHAR) AS option_name, CAST(NULL AS VARCHAR) AS option_value WHERE false",
-    "CREATE MACRO pg_partition_tree(rel) AS TABLE "
-    + _partition_relation(
-        "_c.oid AS relid, CAST(NULL AS INTEGER) AS parentrelid, "
-        "_c.relkind NOT IN ('p', 'I') AS isleaf, 0 AS level"
+    *_set_returning(
+        "pg_options_to_table",
+        "options",
+        "SELECT CAST(NULL AS VARCHAR) AS option_name, CAST(NULL AS VARCHAR) AS option_value "
+        "WHERE false",
+        "option_name, option_value",
+    ),
+    *_set_returning(
+        "pg_partition_tree",
+        "rel",
+        _partition_relation(
+            "_c.oid AS relid, CAST(NULL AS INTEGER) AS parentrelid, "
+            "_c.relkind NOT IN ('p', 'I') AS isleaf, 0 AS level"
+        ),
+        "relid, parentrelid, isleaf, level",
     ),
     "CREATE MACRO pg_partition_ancestors(rel) AS TABLE " + _partition_relation("_c.oid AS relid"),
     "CREATE MACRO pg_partition_ancestors(rel) AS unnest(("
     + _partition_relation("list(_c.oid)")
     + "))",
-    "CREATE MACRO pg_show_all_settings() AS TABLE SELECT * FROM _pg_settings",
+    # pgAdmin's extension list; its FROM form is DuckDB's own (catalog_rewrite).
+    "CREATE MACRO pg_available_extensions() AS unnest((SELECT list(struct_pack(name := _e.name, "
+    "default_version := _e.default_version, comment := _e.comment)) "
+    "FROM _pg_available_extensions _e))",
+    "CREATE MACRO pg_partition_ancestors_named(rel) AS unnest(("
+    + _partition_relation("list(struct_pack(oid := _c.oid, name := _c.relname))")
+    + "))",
+    # No table has a replica identity index, no statistics object an expression.
+    "CREATE MACRO pg_get_replica_identity_index(rel) AS "
+    "CAST(NULL AS STRUCT(oid INTEGER, name VARCHAR))",
+    "CREATE MACRO pg_get_statisticsobjdef_expressions(stat) AS CAST(NULL AS VARCHAR[])",
+    *_set_returning(
+        "pg_show_all_settings",
+        "",
+        _SETTINGS_SELECT,
+        "name, setting, unit, category, short_desc, extra_desc, context, vartype, source, "
+        "min_val, max_val, enumvals, boot_val, reset_val, sourcefile, sourceline, pending_restart",
+    ),
+    *_set_returning(
+        "pg_get_keywords",
+        "",
+        _KEYWORDS_SELECT,
+        "word, catcode, barelabel, catdesc, baredesc",
+    ),
+    *_set_returning("ts_token_type", "parser", _TOKENS_SELECT, "tokid, alias, description"),
+    # A character value of a "char".
+    "CREATE MACRO bpchar(value) AS CAST(value AS VARCHAR)",
+    # Every type is usable by every role: PostgreSQL grants USAGE on a type to PUBLIC, and
+    # Provisa keeps no ACLs. The function is strict.
+    "CREATE MACRO has_type_privilege(type, priv) AS "
+    "CASE WHEN type IS NOT NULL AND priv IS NOT NULL THEN true END, "
+    "(role, type, priv) AS "
+    "CASE WHEN role IS NOT NULL AND type IS NOT NULL AND priv IS NOT NULL THEN true END",
+    # No connection ever waits on a lock: Provisa holds none.
+    "CREATE MACRO pg_blocking_pids(pid) AS "
+    "CASE WHEN pid IS NOT NULL THEN CAST([] AS INTEGER[]) END",
+    # No log file: as PostgreSQL answers with the logging collector off.
+    "CREATE MACRO pg_current_logfile() AS CAST(NULL AS VARCHAR), (format) AS CAST(NULL AS VARCHAR)",
+    # Provisa keeps no statistics: there is nothing to reset (void, its empty text).
+    "CREATE MACRO pg_stat_reset_single_table_counters(tbl) AS "
+    "CASE WHEN tbl IS NOT NULL THEN '' END",
+    # Strict; on a value PostgreSQL refuses this form: a record needs a column definition list.
+    "CREATE MACRO json_to_record(value) AS CASE WHEN value IS NOT NULL THEN "
+    "error('function returning record called in context that cannot accept type record') "
+    "ELSE CAST(NULL AS VARCHAR) END",
     # A vector of type oids, as its types' names.
     "CREATE MACRO oidvectortypes(types) AS CASE WHEN types IS NOT NULL THEN "
     + _type_names("types", ", ", False)

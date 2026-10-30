@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphData } from "../../../../components/graph3d/graphModel";
 import { TURN_IDLE_MS } from "../turnPause";
+import { MIN_LABEL_PX } from "../../../../components/graph3d/labelSize";
 
 vi.mock("three", async (actual) => {
   const real = await actual<typeof import("three")>();
@@ -239,19 +240,42 @@ describe("a network graph's best view", () => {
     scene.dispose();
   });
 
-  it("sizes nodes and labels down until the smallest gap holds a label", async () => {
+  it("sizes nodes down until the smallest gap holds a label, the labels kept readable", async () => {
     const { scene, labels } = await stage();
     const roomy = planeGraph(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), 6);
     scene.setData(roomy.graph, roomy.at, true);
+    const meshScale = () =>
+      (scene as unknown as { nodes: { mesh: THREE.Mesh }[] }).nodes[0].mesh.scale.x;
     const full = (labels.firstElementChild as HTMLElement).style.fontSize;
+    const fullMesh = meshScale();
     // The same graph with two nodes all but on one spot: their labels would run into each other
-    // at any size, so they are drawn smaller and the pair is moved apart, the rest left in place.
+    // at any size, so the nodes are drawn smaller. In 3D nothing moves (moving the pair in the
+    // view's plane would flatten the layout), and the labels are not shrunk: one that still
+    // collides is hidden (labelSize.ts).
     const tight = new Map(roomy.at);
     const [x, y, z] = roomy.at.get("term:0-0") as [number, number, number];
     tight.set("term:0-1", [x + 0.05, y, z]);
     scene.setData(roomy.graph, tight, true);
-    const small = (labels.firstElementChild as HTMLElement).style.fontSize;
-    expect(parseFloat(small)).toBeLessThan(parseFloat(full));
+    expect(meshScale()).toBeLessThan(fullMesh);
+    const kept = (labels.firstElementChild as HTMLElement).style.fontSize;
+    expect(parseFloat(kept)).toBe(parseFloat(full));
+    expect(parseFloat(kept)).toBeGreaterThanOrEqual(MIN_LABEL_PX);
+    const inside = scene as unknown as { at: Map<string, [number, number, number]> };
+    const a = new THREE.Vector3(...(inside.at.get("term:0-0") as [number, number, number]));
+    const b = new THREE.Vector3(...(inside.at.get("term:0-1") as [number, number, number]));
+    expect(a.distanceTo(b)).toBeCloseTo(0.05);
+    expect(inside.at.get("term:4-4")).toEqual(roomy.at.get("term:4-4"));
+    scene.dispose();
+  });
+
+  it("moves a crowded pair apart in 2D, the rest left in place", async () => {
+    const { scene } = await stage();
+    const roomy = planeGraph(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), 6);
+    scene.setFlat(true);
+    const tight = new Map(roomy.at);
+    const [x, y, z] = roomy.at.get("term:0-0") as [number, number, number];
+    tight.set("term:0-1", [x + 0.05, y, z]);
+    scene.setData(roomy.graph, tight, true);
     const inside = scene as unknown as { at: Map<string, [number, number, number]> };
     const a = new THREE.Vector3(...(inside.at.get("term:0-0") as [number, number, number]));
     const b = new THREE.Vector3(...(inside.at.get("term:0-1") as [number, number, number]));

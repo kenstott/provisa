@@ -63017,7 +63017,10 @@
     it reads) shows only the checked domains'' fields: their tables, commands, subscriptions and, for meta,
     its resolver; meta, ops and ontology filter like any domain. In the SPARQL vocabulary panel a glossary
     term or SKOS concept is shown when one of its domains is checked, and a term with no domain is always
-    shown, as REQ-2163''s readable-term rule reads it.'
+    shown, as REQ-2163''s readable-term rule reads it. (Amended 2026-10-29, THE ONTOLOGY GRAPH FOLLOWS THE
+    CHECKED DOMAINS:) Maintainer 2026-10-29: the Ontology view''s graph follows the navbar''s checked domains
+    by the same rule as the term list (filter when some but not all are checked); its own domain choice
+    only narrows within them.'
   code:
   - provisa-ui/src/pages/SqlPage.tsx
   - provisa-ui/src/pages/sql/SchemaBrowser.tsx
@@ -89826,7 +89829,25 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     tags. The version stepper and Save, Save version and Cancel sit in its header. In the Schema tab the
     versioned, declared fields and the live fields (physical type, required, keys) are separate column groups,
     the live group marked live. Clicking a schema property or a quality check opens its detail in the same
-    stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.'
+    stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.
+    (Amended 2026-10-29, A PRODUCT''S CONTRACTS ARE A LIST BENEATH IT:) Maintainer 2026-10-29: every output
+    port other than a command port has exactly one contract. In the data products list, an expanded product
+    shows its contracts as a secondary list beneath its Lineage panel, one row per contract (output port,
+    contract version, status, consumers, SLA headline, last checked, and a warning where one applies), collapsed
+    at first. Expanding a row shows that contract''s details beneath it in the same dense card panels a
+    product uses (details, fields promised, SLAs and freshness, quality promises, consumers, versions and
+    changes); several may be open at once, and a contract''s details are read when its row opens. The contracts
+    are no longer a card in the product''s top panels; the product''s other cards, its output ports among
+    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.
+    (Amended 2026-10-29, A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29:
+    every saved version of a contract is kept, with when and by whom it was saved. Each version records
+    its differences from the one before it, and a difference that can break a consumer (a field removed
+    or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
+    is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
+    in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
+    2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
+    change is not yet in force while its version''s status is proposed or draft, meaning every version after
+    the last one in neither status. Who saved a version is visible to anyone who can read the data product.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -90237,7 +90258,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
     GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
     server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
-    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.'
+    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.
+    (Amended 2026-10-29, CLIENT-CALLED SERVER FUNCTIONS ANSWER LIKE POSTGRESQL:) Maintainer 2026-10-30:
+    pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are called by
+    clients, so they are served, not refused. Each answers as a PostgreSQL server with no such file or sequence
+    would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise PostgreSQL''s own
+    error. None reads a server file or changes anything.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90706,7 +90732,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the one ontology graph in 2D and 3D, the lane view and their snippets), an edge that conducts grounding
     under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from broader to narrower, SYNONYM_OF, and a term''s
     binding to a column) is drawn solid, and an edge that does not (RELATED_TO and every other type, and
-    a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground.'
+    a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground.
+    (Amended 2026-10-29, LABELS STAY READABLE; COLLIDING LABELS HIDE:) Maintainer 2026-10-29 (labels too
+    small; the 3D graph not round): a label never shrinks below a readable size (11.5px) and grows with
+    zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node''s full name stays
+    in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the
+    layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
+    the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
+    Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
+    between 9px and 10px, replacing 11.5px and 20px.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -91553,18 +91587,23 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: connector-catalog-files-and-lake
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-10-29: a file source can read the lists in its HTML pages (ul and ol)
-    as tables, as it reads their tables. It is a source option, off by default. Only lists inside the
-    page''s content are read, by the same rule the crawler uses to follow only links within content (REQ-1960),
+  description: 'Maintainer 2026-10-29: a file source can read the lists in its HTML pages (ul and ol) as
+    tables, as it reads their tables. It is a source option, off by default. Only lists inside the page''s
+    content are read, by the same rule the crawler uses to follow only links within content (REQ-1960),
     and a list of fewer than 3 items is not read. A nested list is flattened into its outer list''s table:
-    its items are rows of that table, in document order, and every list''s table has a level column, 1
-    for a top-level item and one more for each list it is nested in; a nested list is not a table of its
-    own. A list whose items have no link is a table of one column, value, the item''s text. A list in
-    which any item is a link is a table of two columns, value and uri: value is the item''s text and uri
-    the link''s address made absolute against the page''s address, empty for an item with no link. A numbered
-    list (ol) also has a position column, the item''s number within its own list from 1. Each list''s
-    table is named by the heading above it, as a page''s tables are, numbered when two names collide.
-    HTML comes first; Markdown, DOCX and PPTX lists may follow with the same table shapes.'
+    its items are rows of that table, in document order, and every list''s table has a level column, 1 for
+    a top-level item and one more for each list it is nested in; a nested list is not a table of its own.
+    A list whose items have no link is a table of one column, value, the item''s text. A list in which any
+    item is a link is a table of two columns, value and uri: value is the item''s text and uri the link''s
+    address made absolute against the page''s address, empty for an item with no link. A numbered list (ol)
+    also has a position column, the item''s number within its own list from 1. Each list''s table is named
+    by the heading above it, as a page''s tables are, numbered when two names collide. HTML comes first;
+    Markdown, DOCX and PPTX lists may follow with the same table shapes. (Amended 2026-10-29, LISTS IN LOCAL
+    PAGES TOO; LANDMARK LISTS NEVER:) Lead 2026-10-29, under the maintainer''s agreed design: the option
+    reads lists in a file source''s own HTML files as well as in crawled pages, with the same content rule.
+    A list inside a page''s nav, header, footer or aside element is never content and gives no table, whatever
+    the source''s content selectors. The option is generateTablesFromHtmlLists, beside generateTablesFromHtml.
+    A list with no heading above it is named list_N, as an unnamed table is table_N.'
   scenario: 'Given a file source over a web page whose content has a heading "Member states" above a numbered
     list of 27 country names, each a link to the country''s page, and the source''s list option is on
 
@@ -91578,5 +91617,57 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And the page''s navigation menu list gives no table'
   related_reqs:
   - REQ-1960
+  stakeholders:
+  - data-engineer
+- id: REQ-2187
+  value: The ERD is a view of the Tables page, and a link or a table's panel can focus it on chosen domains
+    and tables.
+  status: accepted
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with the list
+    in place by an icon in the page''s toolbar, filled while on, the way the Ontology view is; it is no
+    longer a modal. The Relationships page''s ERD icon goes to that view. Clicking a table in the ERD opens
+    the Tables page''s own right-hand detail panel, and the diagram narrows beside it. The panel''s head
+    has a Focus action, and while a focus is on an Add to focus action. Focus restricts the ERD to that
+    table''s domain and highlights the table; Add to focus adds the table, and its domain if new. A focus
+    is a deep link: /tables?view=erd&domains=a,b&objects=x,y, where domains are the only domains shown and
+    objects the tables highlighted and fitted into view. Only objects given: their own domains are shown.
+    Only domains given: nothing is highlighted. The link never changes the page''s domain filter. The URL
+    always states the focus, so a view can be copied and shared. A bar names the focus and has Show all,
+    which clears both lists. A domain or table the link names that does not exist is named in the bar and
+    the rest of the link still works. The Ontology''s Open in ERD opens this view focused on its table with
+    the table''s panel open. (Amended 2026-10-29, ONE ERD VIEW ON BOTH PAGES, EACH WITH ITS OWN PANEL:)
+    Maintainer 2026-10-30, replacing the ERD on Tables only and the Relationships icon going there: the
+    ERD is one view hosted in place on both the Tables and the Relationships page, each swapping it with
+    its list by the same toolbar icon, and it is a modal on neither. The pages differ only in the detail
+    panel. On Tables a click on a table opens the table panel, which has Focus and Add to focus. On Relationships
+    a click on a relationship line opens the relationship panel. A click on the other kind of item goes
+    to the other page''s ERD with that item''s panel open: a line clicked on Tables goes to the Relationships
+    ERD, a table clicked on Relationships goes to the Tables ERD. The focus carries across, because both
+    pages read the same view, domains and objects parameters.'
+  scenario: 'Given the Tables page with the domain filter on one domain
+
+    When the ERD icon is clicked
+
+    Then the ERD replaces the list in place and no modal opens
+
+    When a table is clicked and Focus chosen in its panel
+
+    Then only that table''s domain is shown, the table is highlighted, and the URL names the domain and
+    the table
+
+    And opening that URL afresh shows the same view
+
+    When Show all is clicked
+
+    Then the focus clears and the page''s domain filter still stands'
+  related_reqs:
+  - REQ-518
+  - REQ-1387
   stakeholders:
   - data-engineer

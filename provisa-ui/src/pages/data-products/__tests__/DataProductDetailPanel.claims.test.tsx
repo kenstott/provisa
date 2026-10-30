@@ -110,6 +110,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       table_name: "revenue_daily",
       alias: null,
       product_id: null,
+      reads: ["sales.orders"],
     },
     {
       relation: "finance.ledger",
@@ -119,6 +120,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       table_name: "ledger",
       alias: "gl",
       product_id: "billing",
+      reads: ["sales.orders"],
     },
   ],
   inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
@@ -147,8 +149,7 @@ function panel() {
       coreError={null}
       reader={null}
       lineageLoading={false}
-      odcs={null}
-      odcsError=""
+      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
       canEdit={false}
@@ -223,8 +224,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={lineage({ ...DQ, related: [...DQ.related, partner] })}
         canEdit={false}
@@ -278,8 +278,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
@@ -325,8 +324,7 @@ describe("editing a data product follows the right to edit it, not the view (REQ
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
@@ -415,8 +413,7 @@ describe("Related Tables (REQ-2126)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={null}
         canEdit={false}

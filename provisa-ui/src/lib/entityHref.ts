@@ -25,7 +25,8 @@ export type EntityKind =
   | "tag"
   | "checker"
   | "profile"
-  | "lineage";
+  | "lineage"
+  | "erd";
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
@@ -58,5 +59,8 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
       return `/admin/tags?tag=${q(id)}`;
     case "lineage":
       return `/lineage?focus=${q(id)}`;
+    case "erd":
+      // The ERD opened centred on, and with selected, the table ``id``.
+      return `/relationships?erd=${q(id)}`;
   }
 }

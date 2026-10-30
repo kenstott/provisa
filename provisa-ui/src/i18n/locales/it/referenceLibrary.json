@@ -47,6 +47,13 @@
     "removeTitle": "Rimuovere questo documento?",
     "removeConsequence": "Da ora nessun assistente si basa su «{{title}}». Termini e definizioni che lo citano mantengono le loro citazioni.",
     "discardTitle": "Scartare questo documento proposto?",
-    "discardConsequence": "«{{title}}» esce dalla biblioteca e nessun assistente vi si basa."
+    "discardConsequence": "«{{title}}» esce dalla biblioteca e nessun assistente vi si basa.",
+    "reembed": "Reincorpora",
+    "reembedAll": "Reincorpora tutto ({{n}})",
+    "needsReembedding": "Da reincorporare",
+    "needsReembeddingHelp": "Incorporato con {{model}}, non con il modello vettoriale attuale dell'organizzazione.",
+    "reembedDone": "Documenti reincorporati: {{n}}",
+    "reembedFailedHeading": "Questi documenti non sono stati reincorporati e restano invariati:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

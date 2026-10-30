@@ -68,12 +68,23 @@ async def _embedder() -> library.Embedder:
         raise ApiError(409, "reference_library.no_vector_model", str(exc)) from None
 
 
+async def _current_model() -> str | None:
+    """The org's vector model; None when the org has none enabled (nothing is then compared)."""
+    try:
+        return (await _embedder()).model
+    except ApiError as exc:
+        if exc.code == "reference_library.no_vector_model":
+            return None
+        raise
+
+
 def _iso(value: Any) -> str | None:
     return None if value is None else value.isoformat()
 
 
-def _document(d: store.DocumentRow) -> dict[str, Any]:
+def _document(d: store.DocumentRow, current_model: str | None = None) -> dict[str, Any]:
     return {
+        "needs_reembedding": current_model is not None and d.embedding_model != current_model,
         "id": d.id,
         "title": d.title,
         "source_kind": d.source_kind,
@@ -116,8 +127,12 @@ def _user_id(request: Request) -> str | None:
 @router.get("/documents")
 async def list_documents(request: Request) -> dict:
     _guard(request)
+    model = await _current_model()
     async with _pool().acquire() as conn:
-        return {"documents": [_document(d) for d in await store.documents(conn)]}
+        return {
+            "embedding_model": model,
+            "documents": [_document(d, model) for d in await store.documents(conn)],
+        }
 
 
 @router.get("/documents/{document_id}")
@@ -129,7 +144,7 @@ async def get_document(document_id: int, request: Request) -> dict:
             raise _refused(library.DocumentNotFound(document_id))
         passages = await store.passages(conn, document_id)
     return {
-        **_document(found),
+        **_document(found, await _current_model()),
         "passage_list": [
             {"ordinal": o, "section": s, "page": p, "text": t} for o, s, p, t in passages
         ],
@@ -168,7 +183,7 @@ async def add_document(body: dict, request: Request) -> dict:
     except library.LibraryRefused as exc:
         raise _refused(exc) from None
     assert found is not None
-    return _document(found)
+    return _document(found, await _current_model())
 
 
 @router.patch("/documents/{document_id}")
@@ -198,7 +213,7 @@ async def change_document(document_id: int, body: dict, request: Request) -> dic
                 raise library.DocumentNotFound(document_id)
     except library.LibraryRefused as exc:
         raise _refused(exc) from None
-    return _document(found)
+    return _document(found, await _current_model())
 
 
 @router.post("/documents/{document_id}/refresh")
@@ -212,7 +227,39 @@ async def refresh_document(document_id: int, request: Request) -> dict:
     except library.LibraryRefused as exc:
         raise _refused(exc) from None
     assert found is not None
-    return _document(found)
+    return _document(found, await _current_model())
+
+
+@router.post("/documents/{document_id}/reembed")
+async def reembed_document(document_id: int, request: Request) -> dict:
+    """Re-embed a document's stored passages with the org's current vector model."""
+    _guard(request)
+    try:
+        embedder = await _embedder()
+        async with _pool().acquire() as conn:
+            await library.reembed(conn, document_id, embedder)
+            found = await store.document(conn, document_id)
+    except library.LibraryRefused as exc:
+        raise _refused(exc) from None
+    assert found is not None
+    return _document(found, embedder.model)
+
+
+@router.post("/reembed")
+async def reembed_documents(request: Request) -> dict:
+    """Re-embed every document embedded by an earlier model; each failed one is named."""
+    _guard(request)
+    embedder = await _embedder()
+    async with _pool().acquire() as conn:
+        outcome = await library.reembed_all(conn, embedder)
+    return {
+        "embedding_model": embedder.model,
+        "reembedded": outcome.reembedded,
+        "failed": [
+            {"document_id": f.document_id, "title": f.title, "reason": f.reason}
+            for f in outcome.failed
+        ],
+    }
 
 
 @router.post("/documents/{document_id}/version")
@@ -227,7 +274,7 @@ async def upload_version(document_id: int, body: dict, request: Request) -> dict
     except library.LibraryRefused as exc:
         raise _refused(exc) from None
     assert found is not None
-    return _document(found)
+    return _document(found, await _current_model())
 
 
 @router.delete("/documents/{document_id}")

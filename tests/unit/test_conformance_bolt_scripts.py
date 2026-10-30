@@ -251,3 +251,28 @@ def test_the_job_declares_the_edition_the_database_selection_example_runs_under(
         if s.get("name") == "Run the driver's integration tests"
     )
     assert run["env"]["TEST_NEO4J_EDITION"] == "enterprise"
+
+
+def test_junit_summary_main_prints_the_counts_line(tmp_path, capsys):
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        "<testsuites><testsuite>"
+        '<testcase classname="a.b" name="ok"/>'
+        '<testcase classname="a.b" name="bad"><failure message="boom">t</failure></testcase>'
+        "</testsuite></testsuites>"
+    )
+    junit_summary.main(
+        [
+            str(xml),
+            "flight-sql",
+            "suite",
+            "1",
+            "tests",
+            str(tmp_path / "o.json"),
+            str(tmp_path / "o.md"),
+        ]
+    )
+    assert capsys.readouterr().out.splitlines() == [
+        "CONFORMANCE-COUNTS surface=flight-sql passed=1 by_design=0 failed=1 total=2",
+        "CONFORMANCE-FAILURE a.b :: bad",
+    ]

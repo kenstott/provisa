@@ -19,6 +19,7 @@ import re
 
 import sqlglot
 
+from provisa.transpiler import pg_functions
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
@@ -567,16 +568,20 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _postgres_semantics_for_duckdb(
-        _lengths_for_duckdb(
-            _null_order_as_key(
-                _rewrite_list_functions_for_duckdb(
-                    _rewrite_json_agg_for_duckdb(
-                        transpile(
-                            _catalog_functions_unqualified(
-                                to_char_for_duckdb(postgres_literals(pg_sql))
-                            ),
-                            "duckdb",
+    return pg_functions.after(
+        _postgres_semantics_for_duckdb(
+            _lengths_for_duckdb(
+                _null_order_as_key(
+                    _rewrite_list_functions_for_duckdb(
+                        _rewrite_json_agg_for_duckdb(
+                            transpile(
+                                pg_functions.before(
+                                    _catalog_functions_unqualified(
+                                        to_char_for_duckdb(postgres_literals(pg_sql))
+                                    )
+                                ),
+                                "duckdb",
+                            )
                         )
                     )
                 )

@@ -29,6 +29,8 @@ export interface LibraryDocument {
   status: DocumentStatus;
   domains: string[];
   embedding_model: string;
+  /** True when the document was embedded by a model other than the org's current one. */
+  needs_reembedding: boolean;
   passages: number;
   added_by: string | null;
   added_at: string;
@@ -116,6 +118,27 @@ export async function uploadLibraryVersion(id: number, file: File): Promise<Libr
     await fetch(`${BASE}/${id}/version`, send("POST", await upload(file))),
     "Upload new version",
   );
+}
+
+/** A document the re-embedding of all could not do, and why; it is unchanged. */
+export interface ReembedFailure {
+  document_id: number;
+  title: string;
+  reason: string;
+}
+
+export interface ReembedOutcome {
+  embedding_model: string;
+  reembedded: number[];
+  failed: ReembedFailure[];
+}
+
+export async function reembedLibraryDocument(id: number): Promise<LibraryDocument> {
+  return ok(await fetch(`${BASE}/${id}/reembed`, send("POST")), "Re-embed document");
+}
+
+export async function reembedLibrary(): Promise<ReembedOutcome> {
+  return ok(await fetch(`${API_BASE}/admin/reference-library/reembed`, send("POST")), "Re-embed");
 }
 
 export async function removeLibraryDocument(id: number): Promise<void> {

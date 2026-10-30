@@ -482,7 +482,7 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_settings"): "_pg_settings",
     ("pg_catalog", "pg_tables"): "_pg_tables",
     ("pg_catalog", "pg_stat_user_tables"): "_pg_stat_user_tables",
-    ("pg_catalog", "pg_statio_user_tables"): "_pg_stat_user_tables",
+    ("pg_catalog", "pg_statio_user_tables"): "_pg_statio_user_tables",
     ("pg_catalog", "pg_am"): "_pg_am",
     ("pg_catalog", "pg_tablespace"): "_pg_tablespace",
     ("pg_catalog", "pg_conversion"): "_pg_conversion",

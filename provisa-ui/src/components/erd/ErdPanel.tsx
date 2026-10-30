@@ -26,6 +26,7 @@ import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
 import { buildErdElements, erdJson } from "./erd-model";
+import { focusErdTable } from "./erd-focus";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent } from "../graph/cytoscape-types";
@@ -66,6 +67,7 @@ export function ErdPanel({
   relationships,
   domains,
   checkedDomains,
+  focusTableId,
   onClose,
 }: ErdPanelProps) {
   const { t } = useTranslation();
@@ -125,6 +127,11 @@ export function ErdPanel({
     title: "",
     body: "",
   });
+
+  // The table the ERD was opened on is centred once, on the first layout; a later rebuild (a domain
+  // collapsed, say) leaves the view where the user put it.
+  const focusedRef = useRef(false);
+  const [focusResult, setFocusResult] = useState<"found" | "missing" | null>(null);
 
   const [hoveredDomainId, setHoveredDomainId] = useState<string | null>(null);
   const [resizeHandleBox, setResizeHandleBox] = useState<{
@@ -189,7 +196,9 @@ export function ErdPanel({
 
   // ── initialise / rebuild on structural changes ────────────────────────────
   useEffect(() => {
-    if (!containerRef.current) return;
+    // Built once the canvas has attached (containerReady): a diagram built on the commit before it
+    // is destroyed by the rebuild that follows, with its ELK layout still computing.
+    if (!containerReady || !containerRef.current) return;
     const visibleTables = tables;
     const elements = buildErdElements(
       visibleTables,
@@ -431,6 +440,10 @@ export function ErdPanel({
       resolveCompoundOverlaps(cy);
 
       cy.fit(undefined, 10);
+      if (focusTableId !== undefined && !focusedRef.current) {
+        focusedRef.current = true;
+        setFocusResult(focusErdTable(cy, focusTableId) ? "found" : "missing");
+      }
 
       // Apply current edge routing (handles rebuilds triggered by showOrphans etc.)
       cy.$(".erd-rel").style("curve-style", edgeRoutingRef.current);
@@ -831,6 +844,7 @@ export function ErdPanel({
   return (
     <div
       data-testid="erd-panel"
+      data-focus={focusResult ?? undefined}
       style={{
         height: "100%",
         display: "flex",
@@ -840,6 +854,11 @@ export function ErdPanel({
       }}
     >
       <>
+        {focusResult === "missing" && (
+          <Text size="sm" c="red" p="0.5rem 0.75rem" data-testid="erd-table-not-found">
+            {t("erdModal.tableNotFound", { id: focusTableId })}
+          </Text>
+        )}
         {/* ── header ── */}
         <Group
           gap="0.5rem"

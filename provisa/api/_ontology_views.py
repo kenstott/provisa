@@ -41,6 +41,45 @@ ONTOLOGY_BASE_TABLE: dict[str, str | None] = {
     "_experts": "glossary_term_experts",
 }
 
+#: REQ-1387: the edges grounding follows, as common table expressions every view that walks the
+#: term graph starts from, so grounding has one definition in SQL: ``in_service`` (the terms a
+#: chain passes through), ``rooted`` (in-service terms holding a column or a whole table) and
+#: ``conducting_edges`` (a, b, hop). Read after ``WITH RECURSIVE``; it ends with a comma.
+GROUNDING_EDGES_CTES = """in_service AS (
+            SELECT id FROM glossary_terms
+            WHERE retired = FALSE AND deprecated = FALSE AND deprecation_asserted = FALSE
+        ),
+        rooted AS (
+            SELECT r.term_id AS id
+            FROM (SELECT term_id FROM glossary_term_refs
+                  UNION
+                  SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
+            JOIN in_service s ON s.id = r.term_id
+        ),
+        -- Each conducting edge as (a, b): b is directly above a on a path down to data. A kind,
+        -- part or valid value (from_term_id) sits below the term it narrows (to_term_id); a
+        -- synonym conducts both ways; every other edge type conducts nothing (the same rule as
+        -- provisa.core.glossary.NARROWING_EDGE_TYPES and
+        -- EQUIVALENCE_EDGE_TYPES). hop is the step's move toward narrower meaning: 1 for a kind,
+        -- part or valid value, 0 for a synonym (the same meaning).
+        conducting_edges AS (
+            SELECT e.from_term_id AS a, e.to_term_id AS b,
+                   CASE WHEN e.rel_type = 'SYNONYM_OF' THEN 0 ELSE 1 END AS hop
+            FROM glossary_term_edges e
+            JOIN in_service sa ON sa.id = e.from_term_id
+            JOIN in_service sb ON sb.id = e.to_term_id
+            WHERE e.rel_type IN ('KIND_OF', 'PART_OF', 'VALID_VALUE_OF', 'SYNONYM_OF')
+              AND e.from_term_id <> e.to_term_id
+            UNION ALL
+            SELECT e.to_term_id, e.from_term_id, 0
+            FROM glossary_term_edges e
+            JOIN in_service sa ON sa.id = e.from_term_id
+            JOIN in_service sb ON sb.id = e.to_term_id
+            WHERE e.rel_type = 'SYNONYM_OF'
+              AND e.from_term_id <> e.to_term_id
+        ),
+"""
+
 ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     # REQ-1591: each term's domains by the one rule (provisa.core.repositories.glossary.
     # term_domains): the domains of the tables its refs point at while it holds refs, its declared
@@ -87,40 +126,9 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     # retired and export_excluded are COLUMNS, never predicates — ontology is an internal surface and
     # withholding is the export's job; a view that filtered them would disagree with the admin
     # surface it mirrors.
-    "_terms": """
+    "_terms": f"""
         CREATE OR REPLACE VIEW _terms_ontology AS
-        WITH RECURSIVE in_service AS (
-            SELECT id FROM glossary_terms
-            WHERE retired = FALSE AND deprecated = FALSE AND deprecation_asserted = FALSE
-        ),
-        rooted AS (
-            SELECT r.term_id AS id
-            FROM (SELECT term_id FROM glossary_term_refs
-                  UNION
-                  SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
-            JOIN in_service s ON s.id = r.term_id
-        ),
-        -- Each conducting edge as (a, b): b is directly above a on a path down to data. A kind,
-        -- part or valid value (from_term_id) sits below the term it narrows (to_term_id); a
-        -- synonym conducts both ways; every other edge type conducts nothing (the same rule as
-        -- provisa.core.glossary.NARROWING_EDGE_TYPES and
-        -- EQUIVALENCE_EDGE_TYPES).
-        conducting_edges AS (
-            SELECT e.from_term_id AS a, e.to_term_id AS b
-            FROM glossary_term_edges e
-            JOIN in_service sa ON sa.id = e.from_term_id
-            JOIN in_service sb ON sb.id = e.to_term_id
-            WHERE e.rel_type IN ('KIND_OF', 'PART_OF', 'VALID_VALUE_OF', 'SYNONYM_OF')
-              AND e.from_term_id <> e.to_term_id
-            UNION ALL
-            SELECT e.to_term_id, e.from_term_id
-            FROM glossary_term_edges e
-            JOIN in_service sa ON sa.id = e.from_term_id
-            JOIN in_service sb ON sb.id = e.to_term_id
-            WHERE e.rel_type = 'SYNONYM_OF'
-              AND e.from_term_id <> e.to_term_id
-        ),
-        grounded AS (
+        WITH RECURSIVE {GROUNDING_EDGES_CTES}        grounded AS (
             SELECT id FROM rooted
             UNION
             SELECT ce.b
@@ -222,7 +230,9 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     # term, named by its name (the answer writes its IRI); an object is a term, an IRI or a literal.
     # A retired term states nothing. Class terms are owl:Class and Property terms owl:*Property; a
     # kind-of edge from a Class is rdfs:subClassOf, from a Property rdfs:subPropertyOf. A
-    # Property's rdfs:domain is the Class of each table it binds a column of. It is an
+    # Property's rdfs:domain is the Class term of each table it binds a column of, and also (as
+    # object_table_id, which SPARQL answers as the table's class IRI for the tables its role reads)
+    # each such table's own class. It is an
     # owl:ObjectProperty when every column it binds is a many-to-one key to a table with a Class,
     # whose Class is then its rdfs:range; otherwise an owl:DatatypeProperty ranging over its
     # columns' xsd types. Every term has its name as skos:prefLabel and its definition, when it
@@ -235,6 +245,7 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         ),
         bound AS (
             SELECT r.term_id, rt.class_term_id AS domain_term_id, tc.data_type,
+                   r.table_id AS bound_table_id, r.column_name AS bound_column,
                    (SELECT MIN(tt.class_term_id)
                     FROM relationships rel
                     JOIN registered_tables tt ON tt.id = rel.target_table_id
@@ -249,45 +260,51 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
         object_properties AS (
             SELECT term_id FROM bound GROUP BY term_id HAVING COUNT(*) = COUNT(range_term_id)
         ),
-        x (subject_id, predicate, object_id, object_iri, object_literal) AS (
-            -- The first branch types the columns: an object term's id, and a literal's text.
-            SELECT id, '{RDF}type', CAST(NULL AS INTEGER), '{OWL}Class', CAST(NULL AS TEXT)
+        x (subject_id, predicate, object_id, object_iri, object_literal, object_table_id) AS (
+            -- The first branch types the columns: an object term's id, a literal's text, and a
+            -- table's id (the table class of an rdfs:domain, which SPARQL names by its IRI).
+            SELECT id, '{RDF}type', CAST(NULL AS INTEGER), '{OWL}Class', CAST(NULL AS TEXT),
+                   CAST(NULL AS INTEGER)
             FROM t WHERE is_class
             UNION
             SELECT id, '{RDF}type', NULL,
                    CASE WHEN id IN (SELECT term_id FROM object_properties)
                         THEN '{OWL}ObjectProperty' ELSE '{OWL}DatatypeProperty' END,
-                   NULL
+                   NULL, NULL
             FROM t WHERE is_property
             UNION
             SELECT e.from_term_id,
                    CASE WHEN f.is_class THEN '{RDFS}subClassOf' ELSE '{RDFS}subPropertyOf' END,
-                   e.to_term_id, NULL, NULL
+                   e.to_term_id, NULL, NULL, NULL
             FROM glossary_term_edges e
             JOIN t f ON f.id = e.from_term_id
             WHERE e.rel_type = 'KIND_OF' AND (f.is_class OR f.is_property)
             UNION
-            SELECT term_id, '{RDFS}domain', domain_term_id, NULL, NULL
+            SELECT term_id, '{RDFS}domain', domain_term_id, NULL, NULL, NULL
             FROM bound WHERE domain_term_id IS NOT NULL
             UNION
-            SELECT term_id, '{RDFS}range', range_term_id, NULL, NULL
+            SELECT term_id, '{RDFS}domain', NULL, NULL, NULL, bound_table_id
+            FROM bound WHERE bound_column IS NOT NULL
+            UNION
+            SELECT term_id, '{RDFS}range', range_term_id, NULL, NULL, NULL
             FROM bound WHERE term_id IN (SELECT term_id FROM object_properties)
             UNION
-            SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL
+            SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL, NULL
             FROM bound
             WHERE term_id NOT IN (SELECT term_id FROM object_properties) AND data_type IS NOT NULL
             UNION
-            SELECT id, '{SKOS}prefLabel', NULL, NULL, name FROM t
+            SELECT id, '{SKOS}prefLabel', NULL, NULL, name, NULL FROM t
             UNION
-            SELECT id, '{SKOS}definition', NULL, NULL, definition
+            SELECT id, '{SKOS}definition', NULL, NULL, definition, NULL
             FROM t WHERE TRIM(COALESCE(definition, '')) <> ''
         )
         SELECT CAST(x.subject_id AS TEXT) || ' ' || x.predicate || ' '
-                   || COALESCE(CAST(x.object_id AS TEXT), x.object_iri, '"' || x.object_literal)
+                   || COALESCE(CAST(x.object_id AS TEXT), x.object_iri, 'table ' || CAST(x.object_table_id AS TEXT),
+                              '"' || x.object_literal)
                    AS id,
                x.subject_id AS subject_term_id, s.name AS subject, x.predicate,
                x.object_id AS object_term_id, o.name AS object, x.object_iri, x.object_literal,
-               s.term_domains AS subject_domains, o.term_domains AS object_domains, s.tenant_id
+               x.object_table_id, s.term_domains AS subject_domains, o.term_domains AS object_domains, s.tenant_id
         FROM x
         JOIN t s ON s.id = x.subject_id
         LEFT JOIN t o ON o.id = x.object_id

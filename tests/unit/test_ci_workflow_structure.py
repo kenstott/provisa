@@ -176,6 +176,8 @@ def test_every_job_that_runs_the_container_suite_or_playwright_is_the_lane_workf
     assert callers == {
         "amd64-engines.yml:exasol",
         "integration-suite-lanes.yml:suite",
+        # Maintainer 2026-10-29: the UI specs on live cloud warehouses run only here, nightly.
+        "integration-suite-lanes.yml:warehouse-ui",
         "ui-e2e-core.yml:playwright",
         "ui-e2e-core.yml:provisioning",
         "ui-e2e-swap-amd64.yml:playwright",
@@ -238,7 +240,9 @@ def test_a_lane_script_fails_loud(script):
 
 
 # What the lane workflow may be handed, by caller. The four every lane kind may need, and the
-# live sources' credentials, which ONLY the core UI workflow passes.
+# live sources' credentials, which ONLY the UI lanes pass: the live cloud warehouses' only the
+# nightly warehouse UI job (maintainer 2026-10-29: the core UI lane never touches a live
+# warehouse), the live APIs' and SharePoint's the core UI workflow.
 _LANE_SECRETS = {
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
@@ -246,20 +250,25 @@ _LANE_SECRETS = {
     "SPLUNKBASE_PASSWORD",
     "SP_CERT_P12_BASE64",
 }
-_LIVE_SOURCE_SECRETS = {
+_WAREHOUSE_SECRETS = {
     "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE",
     "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN",
     "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON", "GSHEETS_TEST_SHEET_ID",
     "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
+}  # fmt: skip
+_LIVE_SOURCE_SECRETS = _WAREHOUSE_SECRETS | {
     "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
     "FREE_ASKAMERICA_KEY", "KAGGLE_API_TOKEN", "STRIPE_API_KEY",
 }  # fmt: skip
+_WAREHOUSE_UI = ("integration-suite-lanes.yml", "warehouse-ui")
 
 
 def test_the_lane_workflow_is_passed_its_secrets_by_name():
     """It declares each secret it can be given and inherits none; a lane job reads only what its
-    caller passed. The live sources' credentials are passed by the core UI workflow alone."""
+    caller passed. The live sources' credentials are passed by the UI lanes alone, and the live
+    cloud warehouses' by the nightly warehouse UI job alone (maintainer 2026-10-29: the core UI
+    lane never touches a live warehouse)."""
     path = REPO / ".github" / "workflows" / "lane.yml"
     lane = yaml.safe_load(path.read_text())
     declared = set(lane[True]["workflow_call"]["secrets"])
@@ -270,11 +279,19 @@ def test_the_lane_workflow_is_passed_its_secrets_by_name():
         passed = body.get("secrets", {})
         assert passed != "inherit", f"{workflow}:{job} hands the lane every secret"
         assert set(passed) <= declared, f"{workflow}:{job}"
-        if workflow != "ui-e2e-core.yml":
+        if (workflow, job) == _WAREHOUSE_UI:
+            assert set(passed) == _WAREHOUSE_SECRETS, f"{workflow}:{job}"
+        elif workflow == "ui-e2e-core.yml":
+            # Maintainer 2026-10-29: no live warehouse's credential reaches the core UI lane.
+            assert not set(passed) & _WAREHOUSE_SECRETS, f"{workflow}:{job}"
+        else:
             assert not set(passed) & _LIVE_SOURCE_SECRETS, f"{workflow}:{job}"
-    core = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
+    core_path = REPO / ".github/workflows/ui-e2e-core.yml"
+    core = yaml.safe_load(core_path.read_text())["jobs"]
     passed = set(core["playwright"]["secrets"]) | set(core["provisioning"]["secrets"])
-    assert _LIVE_SOURCE_SECRETS <= passed
+    assert _LIVE_SOURCE_SECRETS - _WAREHOUSE_SECRETS <= passed
+    # ... nor is declared by it, or named anywhere in it (maintainer 2026-10-29).
+    assert not set(re.findall(r"secrets\.([A-Z0-9_]+)", core_path.read_text())) & _WAREHOUSE_SECRETS
     # A secret reaches the lane's own commands and no other step: no action, no upload.
     steps = lane["jobs"]["lane"]["steps"]
     with_secrets = [
@@ -325,10 +342,139 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     # The Fabric capacity is left paused whatever the lane's outcome -- by reading its state,
     # not by a bare suspend, which is refused in every state but Active (run 38050265191).
     assert "ensure_capacity_paused" in after and "suspend_capacity()" not in after
+    # REQ-254: the warehouses the cloud-warehouse spec wakes are stopped again, whatever happened.
+    assert "stop_warehouse" in after and "suspend_warehouse" in after
     assert "it may be billing" in after
     lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())["jobs"]["lane"]
     after_step = next(s for s in lane["steps"] if s.get("name") == "After the lane")
     assert "always()" in after_step["if"]
+
+
+def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happened():
+    """REQ-254: a test stops what it started, which does not run when the lane dies or the job is
+    cut short -- so the warehouse job itself pauses or stops every billable compute it runs on,
+    in steps that run whatever the outcome, and fails when one does not end stopped."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse"]
+    steps = {s.get("name"): s for s in job["steps"]}
+    run_lane = [s.get("name") for s in job["steps"]].index("Run lane")
+    for name, call in (
+        ("Leave the Fabric capacity paused", "ensure_capacity_paused"),
+        ("Leave the Databricks warehouse stopped", "stop_warehouse"),
+        ("Leave the Snowflake warehouse suspended", "suspend_warehouse"),
+    ):
+        step = steps[name]
+        assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
+        assert step["if"] == "always()", name
+        assert call in step["run"] and "exit 1" in step["run"], name
+
+
+def test_the_warehouse_lane_sets_snowflake_auto_suspend_before_any_test():
+    """Maintainer 2026-10-29: CI must not run up the warehouse bill. Before any test runs, the
+    Snowflake warehouse is set to suspend after 60 idle seconds (a run that dies before its
+    teardown cannot leave it billing). No resource monitor: creating one needs ACCOUNTADMIN, which
+    the CI user lacks (maintainer 2026-10-29), so the lane never tries."""
+    text = (REPO / ".github/workflows/integration-suite-lanes.yml").read_text()
+    job = yaml.safe_load(text)["jobs"]["warehouse"]
+    names = [s.get("name") for s in job["steps"]]
+    steps = {s.get("name"): s for s in job["steps"]}
+    auto = steps["Snowflake warehouse suspends after 60 idle seconds"]
+    assert names.index(auto["name"]) < names.index("Run lane")
+    assert "if" not in auto
+    assert "set_auto_suspend" in auto["run"] and "['SNOWFLAKE_WAREHOUSE'], 60)" in auto["run"]
+    assert "RESOURCE MONITOR" not in text.upper()
+    # The warehouse the steps act on is the secret's, with no default in its place.
+    for name in (auto["name"], "Leave the Snowflake warehouse suspended"):
+        assert "os.environ['SNOWFLAKE_WAREHOUSE']" in steps[name]["run"], name
+        assert "COMPUTE_WH" not in steps[name]["run"], name
+
+
+def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane():
+    """Maintainer 2026-10-29: pushes run only unit tests, lint and requirements checks; the UI
+    core lane never touches a live warehouse; the warehouse specs are the Playwright project
+    "warehouse", which only the warehouse lane's UI job runs, on the nightly schedule or a
+    dispatch that includes the warehouse lane."""
+    config = (REPO / "provisa-ui" / "playwright.config.ts").read_text()
+    assert 'const WAREHOUSE_SPECS = ["**/source-to-query-cloud-warehouse.spec.ts"];' in config
+    core = config[config.index('name: "core",') :]
+    core = core[: core.index("},")]
+    assert "...WAREHOUSE_SPECS," in core and "grepInvert: WAREHOUSE_TITLES" in core
+    assert 'name: "warehouse",' in config
+    workflows = REPO / ".github" / "workflows"
+    for path in sorted(workflows.glob("*.yml")):
+        if "--project=warehouse" in path.read_text():
+            assert path.name == _WAREHOUSE_UI[0], path.name
+    lanes = yaml.safe_load((workflows / _WAREHOUSE_UI[0]).read_text())
+    job = lanes["jobs"][_WAREHOUSE_UI[1]]
+    assert "--project=warehouse" in job["with"]["run"]
+    assert job["if"] == lanes["jobs"]["warehouse"]["if"].replace(
+        "needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''"
+    )
+    assert "ui-core-after.sh" in job["with"]["after"]
+    # The lanes workflow is started by the nightly schedule and on request, never by a push.
+    suite = yaml.safe_load((workflows / "integration-suite.yml").read_text())
+    assert set(suite[True]) == {"schedule", "workflow_dispatch"}
+    core_ui = yaml.safe_load((workflows / "ui-e2e-core.yml").read_text())
+    assert set(core_ui[True]) == {"workflow_dispatch", "workflow_call"}
+    for name in ("playwright", "provisioning"):
+        assert "--project=core" in core_ui["jobs"][name]["with"]["run"], name
+        assert "--project=warehouse" not in core_ui["jobs"][name]["with"]["run"], name
+
+
+# The calls that stop the live compute every run shares (tests/integration/databricks_warehouse.py,
+# snowflake_warehouse.py, fabric_capacity.py), and the credentials that reach it.
+_SHARED_COMPUTE_STOPS = ("stop_warehouse", "suspend_warehouse", "ensure_capacity_paused")
+_SHARED_COMPUTE_SECRETS = ("DATABRICKS_TOKEN", "SNOWFLAKE_PASSWORD", "FABRIC_CAPACITY_NAME")
+
+
+def _stops_shared_compute(body: dict) -> bool:
+    """A job that stops the shared live compute: in a step of its own, or through the `after`
+    script of the lane workflow it calls, when it is passed the credentials that reach it."""
+    if any(
+        call in (step.get("run") or "")
+        for step in body.get("steps") or []
+        for call in _SHARED_COMPUTE_STOPS
+    ):
+        return True
+    after = (body.get("with") or {}).get("after") or ""
+    script = re.search(r"scripts/ci/lanes/[\w.-]+\.sh", after)
+    if script is None:
+        return False
+    stops = any(call in (REPO / script.group(0)).read_text() for call in _SHARED_COMPUTE_STOPS)
+    passed = body.get("secrets") or {}
+    return stops and any(passed.get(name) for name in _SHARED_COMPUTE_SECRETS)
+
+
+def test_jobs_that_stop_shared_live_compute_never_run_side_by_side():
+    """REQ-254. Two runs on the same live warehouse fought: one run's stop took it from under the
+    other's tests, and the other's queries restarted it, so the stop failed (run 40861830409's
+    after-script: "RUNNING after 600s, not STOPPED" while run 40861827715's warehouse lane used
+    it). Every job that stops the shared compute takes one repo-wide concurrency group that waits
+    and never cancels (a cancelled run would still hold the compute it woke until its own stop),
+    and keeps every waiting run."""
+    stoppers = {
+        f"{workflow}:{job}": body for workflow, job, body in _jobs() if _stops_shared_compute(body)
+    }
+    # Maintainer 2026-10-29: the core UI lane (ui-e2e-core.yml) is passed no warehouse's
+    # credentials and stops nothing; the nightly warehouse UI job took its place.
+    assert set(stoppers) == {
+        "integration-suite-lanes.yml:warehouse",
+        "integration-suite-lanes.yml:warehouse-ui",
+    }
+    for where, body in stoppers.items():
+        group = body.get("concurrency")
+        assert isinstance(group, dict), f"{where} takes no concurrency group"
+        assert group.get("group") == "live-cloud-warehouses", where
+        assert group.get("cancel-in-progress") in (None, False), where
+        assert group.get("queue") == "max", where
+    # Both core UI jobs run the same after-script, but are passed none of the compute's
+    # credentials (maintainer 2026-10-29), so they stop nothing and run beside the others.
+    core = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
+    for job in ("playwright", "provisioning"):
+        assert "ui-core-after.sh" in core[job]["with"]["after"], job
+        assert not _stops_shared_compute(core[job]), job
+        assert "concurrency" not in core[job], job
 
 
 def test_no_two_lanes_share_a_name_or_an_artifact():
@@ -352,6 +498,119 @@ def test_reusable_workflows_nest_no_deeper_than_github_allows():
 
     # A caller and the workflows nested under it: four levels in all.
     assert max(depth(w) for w in calls) <= 4
+
+
+# --- verification of one surface ------------------------------------------------------------------
+
+_VERIFY = "verify-surface.yml"
+_VERIFY_SUITES = {
+    "conformance-bolt", "conformance-cypher", "conformance-flight-sql", "conformance-graphql",
+    "conformance-pgwire", "ui-unit", "ui-e2e-core", "ui-swap",
+}  # fmt: skip
+
+
+def _verify() -> tuple[str, dict]:
+    path = REPO / ".github" / "workflows" / _VERIFY
+    return path.read_text(), yaml.safe_load(path.read_text())
+
+
+def test_verification_is_dispatched_for_a_surface_and_is_never_cancelled():
+    _text, workflow = _verify()
+    trigger = workflow[True]
+    assert set(trigger) == {"workflow_dispatch"}
+    inputs = trigger["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {"surface", "full"}
+    assert inputs["surface"]["required"] is True
+    assert (inputs["full"]["type"], inputs["full"]["default"]) == ("boolean", False)
+    assert workflow["concurrency"] == {
+        "group": "verify-surface-${{ inputs.surface }}",
+        "cancel-in-progress": False,
+    }
+
+
+def test_verification_calls_every_suite_and_copies_none():
+    _text, workflow = _verify()
+    jobs = workflow["jobs"]
+    assert {job for job, body in jobs.items() if "steps" in body} == {"plan", "summary"}
+    called = {job: body["uses"] for job, body in jobs.items() if "uses" in body}
+    assert called == {
+        "lint": "./.github/workflows/lint.yml",
+        "unit": "./.github/workflows/unit-tests.yml",
+        "conformance-bolt": "./.github/workflows/conformance-bolt.yml",
+        "conformance-cypher": "./.github/workflows/conformance-cypher.yml",
+        "conformance-flight-sql": "./.github/workflows/conformance-flight-sql.yml",
+        "conformance-graphql": "./.github/workflows/conformance-graphql.yml",
+        "conformance-pgwire": "./.github/workflows/conformance-pgwire.yml",
+        "ui-unit": "./.github/workflows/ui-unit-tests.yml",
+        "ui-e2e-core": "./.github/workflows/ui-e2e-core.yml",
+        "ui-swap": "./.github/workflows/ui-e2e-swap-amd64.yml",
+        "integration": "./.github/workflows/integration-suite-lanes.yml",
+    }
+    # Lint and Unit always; a surface's own suite when the plan names it, by a whole name.
+    for job in ("lint", "unit"):
+        assert jobs[job]["needs"] == "plan" and "if" not in jobs[job], job
+    for job in _VERIFY_SUITES:
+        assert jobs[job]["if"] == f"contains(needs.plan.outputs.suites, ',{job},')", job
+
+
+def test_verification_never_reaches_a_live_lane():
+    """Maintainer 2026-10-29: the paid warehouse lane is only the nightly. Its jobs run only on a
+    schedule or for an include_ input, none is passed, and no live credential is handed over."""
+    text, workflow = _verify()
+    jobs = workflow["jobs"]
+    given = jobs["integration"]["with"]
+    assert set(given) == {"lanes", "tests"}
+    assert "include_" not in text
+    assert "schedule" not in workflow[True]
+    assert set(jobs["integration"]["secrets"]) == {
+        "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD",
+    }  # fmt: skip
+    read = set(re.findall(r"secrets\.([A-Z0-9_]+)", text))
+    assert not read & (
+        _WAREHOUSE_SECRETS | {"SF_PASSWORD", "ATHENA_S3_BUCKET", "SERVICENOW_PASSWORD"}
+    )
+    assert "--project=warehouse" not in text
+
+
+def test_verification_of_whole_lanes_queues_with_the_suites_full_runs():
+    """integration-suite.yml: full runs of different branches do not overlap."""
+    _text, workflow = _verify()
+    group = workflow["jobs"]["integration"]["concurrency"]
+    suite = yaml.safe_load((REPO / ".github/workflows/integration-suite.yml").read_text())
+    assert group["group"].startswith("${{ needs.plan.outputs.tests == '' && 'integration-suite' ||")
+    assert "'integration-suite-targeted-{0}'" in group["group"]
+    assert group["queue"] == suite["jobs"]["lanes"]["concurrency"]["queue"] == "max"
+
+
+def test_verification_summarises_whatever_every_job_did():
+    _text, workflow = _verify()
+    jobs = workflow["jobs"]
+    summary = jobs["summary"]
+    assert summary["if"] == "always()"
+    assert set(summary["needs"]) == set(jobs) - {"summary"}
+    assert "verify_summary.py" in summary["steps"][-1]["run"]
+    # The unit shards leave what it reads; a test's name is nowhere else.
+    shard = yaml.safe_load((REPO / ".github/workflows/unit-tests.yml").read_text())["jobs"]["shard"]
+    run = next(s for s in shard["steps"] if s.get("name") == "Run unit tests")
+    assert "--junitxml=unit-junit.xml" in run["run"]
+    uploads = [s["with"] for s in shard["steps"] if "upload-artifact" in s.get("uses", "")]
+    assert {"name": "unit-junit-${{ matrix.shard }}", "path": "unit-junit.xml"}.items() <= next(
+        u for u in uploads if u["path"] == "unit-junit.xml"
+    ).items()
+
+
+def test_verifications_wording_stays_with_the_product():
+    words = re.compile(r"\b(agent|agents|swarm|worker job|lead|train|trains)\b", re.I)
+    sources = [
+        REPO / ".github/workflows" / _VERIFY,
+        REPO / "scripts/ci/surfaces.toml",
+        REPO / "scripts/ci/surface_map.py",
+        REPO / "scripts/ci/verify_summary.py",
+    ]
+    for path in sources:
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            found = words.search(line)
+            assert found is None, f"{path.name}:{number}: {found.group(0)}"
 
 
 # --- the release: an orchestrator and its legs (stage 3) ------------------------------------------

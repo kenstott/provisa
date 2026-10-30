@@ -22,6 +22,10 @@ gatekeeper is still settling the warehouse out of idle (``DENY_NEW_AND_EXISTING_
 ``denyReason: INACTIVE``, same "try again later" wording). That is the gatekeeper asking for a
 retry, not a refusal, so the start call is retried on 4xx until it either succeeds or the
 timeout budget below is exhausted.
+
+A running warehouse bills. A test that starts it stops it again in teardown, however the test
+ends (REQ-254): ``warehouse_running()`` reads the state first, starts it, and stops it after only
+if it was not already running.
 """
 
 from __future__ import annotations
@@ -29,11 +33,16 @@ from __future__ import annotations
 import os
 import re
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
 
 import httpx
 
 _START_TIMEOUT_S = 600.0
+_STOP_TIMEOUT_S = 600.0
 _POLL_S = 10.0
+# States in which the warehouse was started by someone other than the test about to use it.
+_ALREADY_RUNNING = ("RUNNING", "STARTING")
 
 
 def _warehouse_id() -> str:
@@ -48,10 +57,7 @@ def _warehouse_id() -> str:
     return match.group(1)
 
 
-def ensure_warehouse_running() -> None:
-    """Start the configured warehouse if it is not already serving, and block until it is."""
-    warehouse_id = _warehouse_id()
-    base = f"https://{os.environ['DATABRICKS_SERVER_HOSTNAME']}/api/2.0/sql/warehouses"
+def _client() -> httpx.Client:
     headers = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}"}
     # The REST client honours the same CA trust the connector does; a proxy that intercepts one
     # intercepts the other. verify=False only when TLS verification is explicitly disabled.
@@ -64,9 +70,30 @@ def ensure_warehouse_running() -> None:
         or os.environ.get("SSL_CERT_FILE")
     ):
         verify = ca_file
+    return httpx.Client(headers=headers, verify=verify, timeout=60.0)
 
-    with httpx.Client(headers=headers, verify=verify, timeout=60.0) as client:
-        state = client.get(f"{base}/{warehouse_id}").raise_for_status().json()["state"]
+
+def _base() -> str:
+    return f"https://{os.environ['DATABRICKS_SERVER_HOSTNAME']}/api/2.0/sql/warehouses"
+
+
+def _state(client: httpx.Client, warehouse_id: str) -> str:
+    return client.get(f"{_base()}/{warehouse_id}").raise_for_status().json()["state"]
+
+
+def warehouse_state() -> str:
+    """The configured warehouse's state as Databricks reports it (RUNNING, STOPPED, ...)."""
+    with _client() as client:
+        return _state(client, _warehouse_id())
+
+
+def ensure_warehouse_running() -> None:
+    """Start the configured warehouse if it is not already serving, and block until it is."""
+    warehouse_id = _warehouse_id()
+    base = _base()
+
+    with _client() as client:
+        state = _state(client, warehouse_id)
         if state == "RUNNING":
             return
 
@@ -97,3 +124,66 @@ def ensure_warehouse_running() -> None:
         f"Databricks warehouse {warehouse_id} did not reach RUNNING within "
         f"{_START_TIMEOUT_S:.0f}s (last state {state})"
     )
+
+
+def stop_warehouse() -> None:
+    """Stop the configured warehouse and block until Databricks reports it STOPPED. A warehouse
+    still running when the bound passes may be billing, and that raises.
+
+    An accepted stop is not a stop: Databricks can answer it 200 and leave the warehouse RUNNING
+    (run 40910302654: every query finished, no other client on the warehouse, and it ran on to
+    its own 10-minute auto-stop). So the stop is sent again on each poll that still finds the
+    warehouse STARTING or RUNNING, until Databricks reports it STOPPING.
+
+    A warehouse that was STOPPING and then runs again was restarted by a query from someone
+    else -- another run on the same warehouse -- and that raises at once, naming it: stopping it
+    again would fight that user, and waiting would only reach the bound. CI keeps runs off each
+    other's warehouse (the live-cloud-warehouses concurrency group), so this is a user outside
+    it, and the warehouse is left for a person to check."""
+    warehouse_id = _warehouse_id()
+    with _client() as client:
+        state = _state(client, warehouse_id)
+        deadline = time.monotonic() + _STOP_TIMEOUT_S
+        seen_stopping = False
+        while state != "STOPPED":
+            if state in ("DELETED", "DELETING"):
+                raise RuntimeError(f"Databricks warehouse {warehouse_id} is {state}, not STOPPED")
+            if state == "STOPPING":
+                seen_stopping = True
+            if state in ("STARTING", "RUNNING") and seen_stopping:
+                raise RuntimeError(
+                    f"Databricks warehouse {warehouse_id} is {state} again after it was stopping: "
+                    "something else restarted it with a query (another run on the same "
+                    "warehouse?), not STOPPED: it may be billing"
+                )
+            if state in ("STARTING", "RUNNING"):
+                client.post(f"{_base()}/{warehouse_id}/stop").raise_for_status()
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Databricks warehouse {warehouse_id} is {state} after "
+                    f"{_STOP_TIMEOUT_S:.0f}s, not STOPPED: it may be billing"
+                )
+            time.sleep(_POLL_S)
+            state = _state(client, warehouse_id)
+
+
+@contextmanager
+def warehouse_running() -> Generator[None, None, None]:
+    """The configured warehouse RUNNING for the block, and stopped again after it however the
+    block ends (REQ-254: a test stops the compute it starts) -- if the block started it.
+
+    The state is read before anything else: a warehouse already RUNNING or STARTING was started
+    by someone else (another session, a dashboard, a scheduled job), and stopping it would take
+    it from under them, so it is left as it was found (REQ-254 covers only what the test
+    started). The start is inside the guarded block, so a start that fails or times out still
+    stops whatever it set going."""
+    found = warehouse_state()
+    try:
+        ensure_warehouse_running()
+        yield
+    finally:
+        if found in _ALREADY_RUNNING:
+            # REQ-254: the test did not start it; leave it running as it was found.
+            print(f"Databricks warehouse was {found} before the test: left running", flush=True)
+        else:
+            stop_warehouse()

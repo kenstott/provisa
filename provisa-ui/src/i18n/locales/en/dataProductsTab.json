@@ -187,6 +187,28 @@
       "slaRemove": "Remove service level",
       "slaAdd": "Add service level",
       "notDeclared": "Not declared",
+      "breakingWarning": "Breaking change in v{{version}}, not yet in force",
+      "breaking": "Breaking",
+      "savedBy": "Saved {{when}} by {{who}}",
+      "savedBySystem": "the system",
+      "noChanges": "First version: nothing to compare it with",
+      "change": {
+        "field_added": "Field {{subject}} added, {{after}}",
+        "field_removed": "Field {{subject}} removed, was {{before}}",
+        "field_renamed": "Field {{subject}} renamed to {{after}}",
+        "field_type_changed": "Field {{subject}} changed from {{before}} to {{after}}",
+        "field_required": "Field {{subject}} made required",
+        "field_optional": "Field {{subject}} no longer required",
+        "field_described": "Field {{subject}} described differently",
+        "sla_added": "Service level {{subject}} added, {{after}}",
+        "sla_removed": "Service level {{subject}} removed, was {{before}}",
+        "sla_changed": "Service level {{subject}} changed from {{before}} to {{after}}",
+        "check_added": "Quality check {{subject}} added",
+        "check_removed": "Quality check {{subject}} removed",
+        "check_changed": "Quality check {{subject}} changed",
+        "description_changed": "Description changed",
+        "terms_changed": "Terms changed: {{subject}}"
+      },
       "loadError": "Could not read the contracts: {{error}}",
       "notExported": "{{member}} has no exported contract",
       "section": {
@@ -214,6 +236,23 @@
         "customProperties_other": "{{count}} custom properties",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "This product has no output port with a contract.",
+      "consumers_one": "{{count}} consumer",
+      "consumers_other": "{{count}} consumers",
+      "freshness": "Fresh within {{seconds}}s",
+      "loadedOnce": "Loaded once, never refreshed",
+      "noSla": "No service level declared",
+      "checkedAt": "Checked {{when}}",
+      "neverChecked": "Never checked",
+      "draftWarning": "Draft: not yet in force",
+      "card": {
+        "details": "Details",
+        "fields": "Fields promised",
+        "sla": "SLAs & freshness",
+        "quality": "Quality promises",
+        "consumers": "Consumers",
+        "versions": "Versions & changes"
       }
     }
   }

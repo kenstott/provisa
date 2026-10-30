@@ -213,6 +213,38 @@ def counts_line(doc: dict, noun: str = "cases") -> str:
     )
 
 
+def _escaped(text: str) -> str:
+    """One line's text: backslash, newline, carriage return and colon each escaped with a
+    backslash, so a name never breaks its line or the `` :: `` separator."""
+    return (
+        str(text)
+        .replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace(":", "\\:")
+    )
+
+
+def log_lines(doc: dict) -> list[str]:
+    """The result as lines a job log carries (REQ-2167), parseable without the artifact:
+
+    ``CONFORMANCE-COUNTS surface=<s> passed=<n> by_design=<n> failed=<n> total=<n>``
+    ``CONFORMANCE-GROUP <group name>``                   one per skipped-by-design group
+    ``CONFORMANCE-FAILURE <feature> :: <scenario>``     one per failed case
+
+    Names are escaped (backslash, newline, CR and colon get a backslash), so a bare `` :: ``
+    is only ever the separator."""
+    return [
+        f"CONFORMANCE-COUNTS surface={doc['surface']} passed={doc['passed']} "
+        f"by_design={doc['by_design']} failed={doc['failed']} total={doc['total']}",
+        *(f"CONFORMANCE-GROUP {_escaped(g['group'])}" for g in doc["by_design_groups"]),
+        *(
+            f"CONFORMANCE-FAILURE {_escaped(f['feature'])} :: {_escaped(f['scenario'])}"
+            for f in doc["failures"]
+        ),
+    ]
+
+
 def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], list[dict]]:
     """(the failures no group excludes, each group that excluded any: its name, kind,
     requirement, decision, the kind's evidence, count and cases -- the cases skipped by design,

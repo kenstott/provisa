@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { ttlText } from "../components/form/cacheTtl";
 import { useSetSourceRegion, useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
@@ -33,12 +34,11 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { TipSurface } from "../components/Tip";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Database } from "lucide-react";
 import { fetchSettings, fetchSourceReach } from "../api/admin";
 import type { PlatformSettings, SourceReach } from "../api/admin";
 import {
@@ -1592,7 +1592,7 @@ export function SourcesPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("sourcesPage.title")}</Title>
+        <PageTitle icon={Database}>{t("sourcesPage.title")}</PageTitle>
         <FilterInput
           value={sourceSearch}
           onChange={updateSearch}

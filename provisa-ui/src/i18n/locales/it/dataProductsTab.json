@@ -187,6 +187,28 @@
       "slaRemove": "Rimuovi livello di servizio",
       "slaAdd": "Aggiungi livello di servizio",
       "notDeclared": "Non dichiarato",
+      "breakingWarning": "Modifica incompatibile in v{{version}}, non ancora in vigore",
+      "breaking": "Incompatibile",
+      "savedBy": "Salvato {{when}} da {{who}}",
+      "savedBySystem": "il sistema",
+      "noChanges": "Prima versione: nulla con cui confrontarla",
+      "change": {
+        "field_added": "Campo {{subject}} aggiunto, {{after}}",
+        "field_removed": "Campo {{subject}} rimosso, era {{before}}",
+        "field_renamed": "Campo {{subject}} rinominato in {{after}}",
+        "field_type_changed": "Campo {{subject}} modificato da {{before}} a {{after}}",
+        "field_required": "Campo {{subject}} reso obbligatorio",
+        "field_optional": "Campo {{subject}} non più obbligatorio",
+        "field_described": "Campo {{subject}} descritto diversamente",
+        "sla_added": "Livello di servizio {{subject}} aggiunto, {{after}}",
+        "sla_removed": "Livello di servizio {{subject}} rimosso, era {{before}}",
+        "sla_changed": "Livello di servizio {{subject}} modificato da {{before}} a {{after}}",
+        "check_added": "Controllo di qualità {{subject}} aggiunto",
+        "check_removed": "Controllo di qualità {{subject}} rimosso",
+        "check_changed": "Controllo di qualità {{subject}} modificato",
+        "description_changed": "Descrizione modificata",
+        "terms_changed": "Termini modificati: {{subject}}"
+      },
       "loadError": "Impossibile leggere i contratti: {{error}}",
       "notExported": "{{member}} non ha un contratto esportato",
       "section": {
@@ -214,6 +236,23 @@
         "customProperties_other": "{{count}} proprietà personalizzate",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tag"
+      },
+      "empty": "Questo prodotto non ha alcun output port con un contratto dati.",
+      "consumers_one": "{{count}} consumatore",
+      "consumers_other": "{{count}} consumatori",
+      "freshness": "Aggiornato entro {{seconds}} s",
+      "loadedOnce": "Caricato una volta, mai aggiornato",
+      "noSla": "Nessun livello di servizio dichiarato",
+      "checkedAt": "Verificato {{when}}",
+      "neverChecked": "Mai verificato",
+      "draftWarning": "Bozza: non ancora in vigore",
+      "card": {
+        "details": "Dettagli",
+        "fields": "Campi promessi",
+        "sla": "SLA e aggiornamento",
+        "quality": "Promesse di qualità",
+        "consumers": "Consumatori",
+        "versions": "Versioni e modifiche"
       }
     }
   }

@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "एंटिटी रिलेशनशिप डायग्राम",
+    "tableNotFound": "ERD में आईडी {{id}} वाली कोई तालिका नहीं है।",
     "domains": "डोमेन",
     "domainsTooltip": "डोमेन दिखाएँ / छिपाएँ",
     "columnDetailLabel": "कॉलम विवरण",

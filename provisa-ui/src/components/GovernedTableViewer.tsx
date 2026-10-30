@@ -62,9 +62,16 @@ interface GovernedTableViewerProps {
   /** The role the rows are read as -- one role, or the "Role: All" set (REQ-1620): a DRAFT's
    * pages from the admin preview (REQ-1921), a table in service's by its statement. */
   role: string | null;
+  /** REQ-1386: the page a cell opens (a report's term links); without it every cell is text. */
+  cellHref?: (column: string, value: unknown) => string | null;
 }
 
-export function GovernedTableViewer({ table, showTitle = false, role }: GovernedTableViewerProps) {
+export function GovernedTableViewer({
+  table,
+  showTitle = false,
+  role,
+  cellHref,
+}: GovernedTableViewerProps) {
   const { t, i18n } = useTranslation();
   const requiredCols = requiredParamColumns(table);
   const optionalCols = optionalParamColumns(table);
@@ -318,6 +325,7 @@ export function GovernedTableViewer({ table, showTitle = false, role }: Governed
             provenance={provenanceFor(activeParams)}
             fetchAllRows={fetchAllRows}
             exportName={table.alias || table.tableName}
+            cellHref={cellHref}
           />
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "Diagramme entité-relation",
+    "tableNotFound": "Aucune table d'identifiant {{id}} n'est dans l'ERD.",
     "domains": "Domaines",
     "domainsTooltip": "Afficher / masquer les domaines",
     "columnDetailLabel": "Détail des colonnes",

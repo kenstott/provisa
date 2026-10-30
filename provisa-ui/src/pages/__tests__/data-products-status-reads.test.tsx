@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../test-utils/render";
 
-const fetchProductContracts = vi.fn((_id: string) => Promise.resolve({}));
+const fetchProductContract = vi.fn((_id: string, _member: string) => Promise.resolve({}));
 const fetchProductLineage = vi.fn(() =>
   Promise.resolve({
     nodes: [],
@@ -68,7 +68,8 @@ vi.mock("../../api/actions", () => ({
   saveFunction: vi.fn(),
 }));
 vi.mock("../../api/dataProductContracts", () => ({
-  fetchProductContracts: (id: string) => fetchProductContracts(id),
+  fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 vi.mock("../../api/lineage", () => ({
   fetchProductLineage: () => fetchProductLineage(),
@@ -80,11 +81,14 @@ vi.mock("../data-products/DataProductDetailPanel", () => ({
   DataProductDetailPanel: ({
     p,
     onStatusChanged,
+    contractsVersion,
   }: {
     p: { id: string };
     onStatusChanged: (message: string, membersMoved: boolean) => void;
+    contractsVersion: number;
   }) => (
-    <div data-testid="detail-panel">
+    // REQ-2158: each open contract row reads its contract again when this version changes.
+    <div data-testid="detail-panel" data-contracts-version={contractsVersion}>
       {p.id}
       <button data-testid="published" onClick={() => onStatusChanged("published", false)} />
       <button data-testid="retired" onClick={() => onStatusChanged("retired", true)} />
@@ -112,7 +116,11 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
-  useDataProductFindings: () => ({ findings: new Map(), refetch: refetchFindings, error: undefined }),
+  useDataProductFindings: () => ({
+    findings: new Map(),
+    refetch: refetchFindings,
+    error: undefined,
+  }),
   useDataProductStatus: () => ({
     publish: vi.fn(),
     deprecate: vi.fn(),
@@ -152,7 +160,7 @@ const core = (tables: unknown[]) => ({
 });
 
 const reads = [
-  fetchProductContracts,
+  fetchProductContract,
   fetchProductLineage,
   fetchActions,
   refetchTables,
@@ -164,7 +172,6 @@ async function opened() {
   coreData = core([member({ version: "1.0.0", status: "active" })]);
   render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
   await screen.findByTestId("detail-panel");
-  await waitFor(() => expect(fetchProductContracts).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(fetchProductLineage).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(fetchActions).toHaveBeenCalledTimes(1));
   for (const read of reads) read.mockClear();
@@ -185,14 +192,19 @@ describe("a status change's reads (REQ-1634 STATUS)", () => {
     expect(refetchTables).not.toHaveBeenCalled();
     expect(fetchActions).not.toHaveBeenCalled();
     expect(fetchProductLineage).not.toHaveBeenCalled();
-    expect(fetchProductContracts).not.toHaveBeenCalled();
+    // The open contract rows are not asked to read their contracts again.
+    expect(screen.getByTestId("detail-panel")).toHaveAttribute("data-contracts-version", "0");
+    expect(fetchProductContract).not.toHaveBeenCalled();
   });
 
   it("after a retirement, which moves the members, reads them all again", async () => {
     await opened();
     fireEvent.click(screen.getByTestId("retired"));
     await waitFor(() => expect(fetchProductLineage).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(fetchProductContracts).toHaveBeenCalledTimes(1));
+    // The open contract rows read their contracts again.
+    await waitFor(() =>
+      expect(screen.getByTestId("detail-panel")).toHaveAttribute("data-contracts-version", "1"),
+    );
     expect(reloadProducts).toHaveBeenCalledTimes(1);
     expect(refetchFindings).toHaveBeenCalledTimes(1);
     expect(refetchTables).toHaveBeenCalledTimes(1);

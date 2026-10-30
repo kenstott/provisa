@@ -47,6 +47,13 @@
     "removeTitle": "Dit document verwijderen?",
     "removeConsequence": "Vanaf nu baseert geen assistent zich op ‘{{title}}’. Termen en definities die het citeren, behouden hun citaten.",
     "discardTitle": "Dit voorgestelde document verwerpen?",
-    "discardConsequence": "‘{{title}}’ verlaat de bibliotheek en geen assistent baseert zich erop."
+    "discardConsequence": "‘{{title}}’ verlaat de bibliotheek en geen assistent baseert zich erop.",
+    "reembed": "Opnieuw insluiten",
+    "reembedAll": "Alles opnieuw insluiten ({{n}})",
+    "needsReembedding": "Moet opnieuw worden ingesloten",
+    "needsReembeddingHelp": "Ingesloten met {{model}}, niet met het huidige vectormodel van de organisatie.",
+    "reembedDone": "Opnieuw ingesloten documenten: {{n}}",
+    "reembedFailedHeading": "Deze documenten konden niet opnieuw worden ingesloten en zijn ongewijzigd:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

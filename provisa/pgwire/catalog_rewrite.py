@@ -289,19 +289,21 @@ def _rewrite_pg_cast(node, _transform):
         # REQ-2167: the oid of the type or schema a name names.
         return reg_oid(dtype_str, _reg_operand(node.this, _transform))
     if dtype_str in _REG_CAST_TYPES:
-        # `'[schema.]name'::regclass` → unqualified `'name'`. Provisa's synthetic
-        # pg_description stores classoid as the short relation name (e.g.
-        # 'pg_class'), and DataGrip's comment queries filter
-        # `classoid = 'pg_catalog.pg_class'::regclass`. Map the literal to its last
-        # dotted component so the comparison matches — else every table/column
-        # description drops. Non-literal operands (a real oid column, or a call
-        # like pg_get_serial_sequence(...)) pass through untouched by the
-        # top-down walk that got us here — transform explicitly so a rewrite
-        # inside the operand (e.g. pg_get_serial_sequence → NULL) is not lost.
+        # `'[schema.]name'::regclass` is the relation's oid: DataGrip's comment queries filter
+        # `classoid = 'pg_catalog.pg_class'::regclass`, and an oid column compares with an oid.
+        # Another reg type's name literal → unqualified `'name'`. Non-literal operands (a real
+        # oid column, or a call like pg_get_serial_sequence(...)) pass through untouched by the
+        # top-down walk that got us here — transform explicitly so a rewrite inside the operand
+        # (e.g. pg_get_serial_sequence → NULL) is not lost.
         inner = node.this
         if isinstance(inner, exp.Literal) and inner.is_string:
+            if dtype_str == "regclass":
+                return reg_oid("regclass", inner)
             return exp.Literal.string(inner.this.rsplit(".", 1)[-1])
         return inner.transform(_transform)
+    if dtype_str in ("oidvector", "int2vector"):
+        # A vector is an integer list in the catalog DB (REQ-2167).
+        return exp.cast(node.this.transform(_transform), "INTEGER[]")
     if dtype_str in ("oid", "xid", "tid", "cid"):
         # DuckDB has no oid/xid/tid/cid types. Preserve the operand's value by
         # re-casting to BIGINT instead of dropping it — e.g. DataGrip emits
@@ -404,6 +406,11 @@ _SIZES = {
     "pg_tablespace_size": "BIGINT",
     "pg_column_size": "INTEGER",
 }
+
+# REQ-2167: the pg_get_ functions the catalog's macros answer (catalog_macros).
+_ANSWERED_BY_MACRO = frozenset(
+    {"pg_get_keywords", "pg_get_replica_identity_index", "pg_get_statisticsobjdef_expressions"}
+)
 
 # REQ-2167: functions a client may call that Provisa has nothing to run them on, each refused by
 # name: it keeps no sequences, and creates no functions to validate.
@@ -575,18 +582,14 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 args = node.args.get("expressions", [])
                 return exp.Anonymous(this="len", expressions=[args[0]] if args else [exp.null()])
             if fn == "current_schemas":
+                # The search path's schemas, pg_catalog first where implicit ones are asked for.
                 args = node.args.get("expressions", [])
-                include_implicit = True
-                if args and isinstance(args[0], exp.Boolean):
-                    include_implicit = args[0].this
-                elif args and isinstance(args[0], exp.false().__class__):
-                    include_implicit = False
-                base = exp.select(
-                    exp.Anonymous(this="list", expressions=[exp.column("nspname")])
-                ).from_("_pg_namespace")
-                if not include_implicit:
-                    base = base.where("nspname NOT IN ('pg_catalog', 'information_schema')")
-                return exp.Subquery(this=base)
+                if not (args and isinstance(args[0], exp.Boolean)):
+                    return exp.cast(exp.null(), "VARCHAR[]")  # strict: a NULL argument
+                schemas = ("pg_catalog", "public") if args[0].this else ("public",)
+                return exp.cast(
+                    exp.Array(expressions=[exp.Literal.string(s) for s in schemas]), "VARCHAR[]"
+                )
             if "pg_get_userbyid" in fn or "pg_get_role_name" in fn:
                 return exp.Literal.string("provisa")
             if fn == "pg_relation_is_publishable" and len(args) == 1:
@@ -628,7 +631,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 ):
                     expr = expr.this  # the cast names the argument's type; adbin is held as text
                 return exp.cast(expr.transform(_transform), "VARCHAR")
-            if fn.startswith("pg_get_") or "pg_tablespace_location" in fn:
+            if (fn.startswith("pg_get_") and fn not in _ANSWERED_BY_MACRO) or (
+                "pg_tablespace_location" in fn
+            ):
                 return _emulated(fn, exp.null())
             if "pg_encoding_to_char" in fn:
                 return exp.Literal.string("UTF8")

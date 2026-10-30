@@ -47,6 +47,13 @@
     "removeTitle": "¿Quitar este documento?",
     "removeConsequence": "A partir de ahora ningún asistente se basa en «{{title}}». Los términos y definiciones que lo citan conservan sus citas.",
     "discardTitle": "¿Descartar este documento propuesto?",
-    "discardConsequence": "«{{title}}» sale de la biblioteca y ningún asistente se basa en él."
+    "discardConsequence": "«{{title}}» sale de la biblioteca y ningún asistente se basa en él.",
+    "reembed": "Reincrustar",
+    "reembedAll": "Reincrustar todo ({{n}})",
+    "needsReembedding": "Requiere reincrustación",
+    "needsReembeddingHelp": "Incrustado con {{model}}, no con el modelo vectorial actual de la organización.",
+    "reembedDone": "Documentos reincrustados: {{n}}",
+    "reembedFailedHeading": "Estos documentos no se pudieron reincrustar y no han cambiado:",
+    "reembedFailure": "{{title}}: {{reason}}"
   }
 }

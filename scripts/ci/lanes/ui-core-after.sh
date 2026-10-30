@@ -12,12 +12,24 @@
 #
 #   ui-core-after.sh <playwright json report>
 #
+# Run by the core UI lane (ui-e2e-core.yml), which is passed no live warehouse's credentials, so
+# steps 2 and 3 do nothing there (maintainer 2026-10-29), and by the nightly warehouse UI job
+# (integration-suite-lanes.yml warehouse-ui), which is.
+#
 # 1. Names every test that did not execute (never counted as passed).
 # 2. Leaves the Fabric capacity paused. The cloud-warehouse spec resumes it (a billable compute
 #    unit) and pauses it in its own teardown -- which does not run when the spec dies or the job
 #    is cut short. Its state is READ here: paused is done, Active is suspended, a transition is
 #    waited out; only a capacity that does not end paused fails the step, and it says so.
-# 3. Removes the credential files the prepare script wrote.
+# 3. Leaves the Databricks SQL warehouse stopped and the Snowflake warehouse suspended, for the
+#    same reason: the cloud-warehouse spec's seed wakes the Databricks warehouse and its statements
+#    resume Snowflake's, and nothing in the spec stops either (other workers may still be reading
+#    when one finishes). A warehouse that does not end stopped or suspended fails the step
+#    (REQ-254: compute a test starts or resumes is stopped again). No other run uses this
+#    compute meanwhile: the job holds the live-cloud-warehouses concurrency group, which the
+#    integration suite's warehouse lane holds too (integration-suite-lanes.yml), so a stop here
+#    never takes the compute from under another run, and another run's queries never restart it.
+# 4. Removes the credential files the prepare script wrote.
 # Each step runs even when an earlier one failed; the script fails if any did.
 set -euo pipefail
 set +x
@@ -30,6 +42,18 @@ if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ]; th
   ( cd "$GITHUB_WORKSPACE" && uv run python -c \
       "from tests.integration.fabric_capacity import ensure_capacity_paused as p; print('the Fabric capacity is', p())" ) \
     || { echo "::error::the Fabric capacity could not be confirmed paused: check it, it may be billing"; status=1; }
+fi
+
+if [ -n "${DATABRICKS_SERVER_HOSTNAME:-}" ] && [ -n "${DATABRICKS_HTTP_PATH:-}" ] && [ -n "${DATABRICKS_TOKEN:-}" ]; then
+  ( cd "$GITHUB_WORKSPACE" && uv run python -c \
+      "from tests.integration.databricks_warehouse import stop_warehouse as s, warehouse_state as w; s(); print('the Databricks warehouse is', w())" ) \
+    || { echo "::error::the Databricks warehouse could not be confirmed stopped: check it, it may be billing"; status=1; }
+fi
+
+if [ -n "${SNOWFLAKE_ACCOUNT:-}" ] && [ -n "${SNOWFLAKE_USER:-}" ] && [ -n "${SNOWFLAKE_PASSWORD:-}" ]; then
+  ( cd "$GITHUB_WORKSPACE" && uv run python -c \
+      "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ['SNOWFLAKE_WAREHOUSE']))" ) \
+    || { echo "::error::the Snowflake warehouse could not be confirmed suspended: check it, it may be billing"; status=1; }
 fi
 
 rm -rf "${RUNNER_TEMP:?}/lane-credentials" || status=1

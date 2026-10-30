@@ -21,11 +21,12 @@ chain, as a source with no key pair has).
 from __future__ import annotations
 
 import os
-import uuid
 from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+
+from tests.integration.live_teardown import none_remain, run_every_async, run_name
 
 pytestmark = [
     pytest.mark.integration,
@@ -34,15 +35,16 @@ pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
 ]
 
-_RUN = uuid.uuid4().hex[:8]
-_DB = f"provisa_itest_{_RUN}"
-_PREFIX = f"itest/{_RUN}"
+_DB = run_name("provisa_itest")
+# Everything the run writes to the bucket lies under this prefix: its tables' data and the results
+# Athena writes for each of its queries (REQ-254), so one prefix delete removes all of it.
+_PREFIX = f"itest/{_DB}"
 
 
 def _hints() -> dict[str, str]:
     return {
         "region": os.environ["ATHENA_REGION"],
-        "s3_staging_dir": f"s3://{os.environ['ATHENA_S3_BUCKET']}/results/",
+        "s3_staging_dir": f"s3://{os.environ['ATHENA_S3_BUCKET']}/{_PREFIX}/results/",
     }
 
 
@@ -76,13 +78,17 @@ async def driver():
 
     bucket = os.environ["ATHENA_S3_BUCKET"]
     s3 = _s3()
-    s3.put_object(
-        Bucket=bucket, Key=f"{_PREFIX}/pets/pets.csv", Body=b"1,rex,dog\n2,tom,cat\n3,ada,dog\n"
-    )
     d = AthenaDriver()
-    d.configure(_hints())
-    await d.connect("", 0, "default", *_key_pair())
+    connected = False
     try:
+        s3.put_object(
+            Bucket=bucket,
+            Key=f"{_PREFIX}/pets/pets.csv",
+            Body=b"1,rex,dog\n2,tom,cat\n3,ada,dog\n",
+        )
+        d.configure(_hints())
+        await d.connect("", 0, "default", *_key_pair())
+        connected = True
         await d.execute(f"CREATE DATABASE {_DB}")
         await d.execute(
             f"CREATE EXTERNAL TABLE {_DB}.pets (id int, name string, kind string) "
@@ -95,16 +101,43 @@ async def driver():
         )
         yield d
     finally:
-        for statement in (
-            f"DROP TABLE IF EXISTS {_DB}.notes",
-            f"DROP TABLE IF EXISTS {_DB}.pets",
-            f"DROP DATABASE IF EXISTS {_DB}",
-        ):
-            await d.execute(statement)
-        await d.close()
-        listed = s3.list_objects_v2(Bucket=bucket, Prefix=f"{_PREFIX}/").get("Contents", [])
-        for obj in listed:
-            s3.delete_object(Bucket=bucket, Key=obj["Key"])
+        # Every step attempted, every failure raised (REQ-254): the Glue database and its tables,
+        # then the run's prefix -- data and query results -- each read back gone.
+        steps = []
+        if connected:
+            steps += [
+                (statement, lambda statement=statement: d.execute(statement))
+                for statement in (
+                    f"DROP TABLE IF EXISTS {_DB}.notes",
+                    f"DROP TABLE IF EXISTS {_DB}.pets",
+                    f"DROP DATABASE IF EXISTS {_DB}",
+                )
+            ]
+            steps.append(("close the driver", d.close))
+        steps += [
+            (f"read back Glue database {_DB} gone", _no_database_left),
+            (f"delete s3://{bucket}/{_PREFIX}/", lambda: _remove_prefix(s3, bucket)),
+        ]
+        await run_every_async(steps)
+
+
+async def _no_database_left() -> None:
+    from provisa.federation import athena
+
+    none_remain("the run's Glue database", [db for db in athena.databases(_source()) if db == _DB])
+
+
+async def _remove_prefix(s3, bucket: str) -> None:
+    def keys() -> list[str]:
+        found: list[str] = []
+        pages = s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=f"{_PREFIX}/")
+        for page in pages:
+            found.extend(o["Key"] for o in page.get("Contents", []))
+        return found
+
+    for key in keys():
+        s3.delete_object(Bucket=bucket, Key=key)
+    none_remain(f"objects under s3://{bucket}/{_PREFIX}/", keys())
 
 
 async def test_its_catalog_is_read_through_the_metadata_api(driver):

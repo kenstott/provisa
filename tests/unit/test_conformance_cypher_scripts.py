@@ -1163,3 +1163,49 @@ def test_a_control_query_runs_after_the_query_in_its_session_and_is_checked(
     assert (setups, verb) == (["CREATE (:A {name: 'A'}), (:B {name: 'B'})"], "MATCH")
     assert control is not None and control.startswith("MATCH ()-[r:TYPE]->()")
     assert outcome.status == status
+
+
+_LOG_DOC = {
+    "surface": "cypher",
+    "passed": 7,
+    "by_design": 3,
+    "failed": 2,
+    "total": 12,
+    "by_design_groups": [{"group": "Unbounded paths"}, {"group": "Tabs\nand: colons"}],
+    "failures": [
+        {"feature": "Match1", "scenario": "Plain", "reason": "x"},
+        {"feature": "Odd\\Feature", "scenario": "a :: b\nc", "reason": "y"},
+    ],
+}
+
+
+def test_the_log_lines_have_the_counts_groups_and_failures_in_a_fixed_form():
+    assert by_design.log_lines(_LOG_DOC) == [
+        "CONFORMANCE-COUNTS surface=cypher passed=7 by_design=3 failed=2 total=12",
+        "CONFORMANCE-GROUP Unbounded paths",
+        "CONFORMANCE-GROUP Tabs\\nand\\: colons",
+        "CONFORMANCE-FAILURE Match1 :: Plain",
+        "CONFORMANCE-FAILURE Odd\\\\Feature :: a \\:\\: b\\nc",
+    ]
+
+
+def test_a_name_with_the_separator_or_a_newline_cannot_break_the_parse():
+    lines = by_design.log_lines(_LOG_DOC)
+    assert len(lines) == 5
+    assert all("\n" not in line and "\r" not in line for line in lines)
+    for line in lines[3:]:
+        assert line.removeprefix("CONFORMANCE-FAILURE ").count(" :: ") == 1
+
+
+def test_main_prints_the_log_lines_after_writing_the_result(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tck, "parse_feature", lambda path: [])
+    monkeypatch.setattr(tck, "select_scenarios", lambda scenarios, spec: [])
+    monkeypatch.setattr(tck, "report", lambda outcomes, version, spec="": _LOG_DOC)
+    monkeypatch.setattr(tck, "markdown", lambda doc: "md\n")
+    features = tmp_path / "tck" / "features"
+    features.mkdir(parents=True)
+    out = tmp_path / "out.json"
+    tck.main([str(features), "1", "http://x", "r", "Bearer t", str(out), str(tmp_path / "o.md")])
+    assert out.exists()
+    printed = capsys.readouterr().out.splitlines()
+    assert printed == by_design.log_lines(_LOG_DOC)
