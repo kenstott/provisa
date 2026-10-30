@@ -16,8 +16,13 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Group, Stack, Text } from "@mantine/core";
-import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
+import { Badge, Group, Stack, Text } from "@mantine/core";
+import type {
+  ContractVersion,
+  OdcsContract,
+  OdcsProperty,
+  OdcsRecord,
+} from "../../api/dataProductContracts";
 import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
 import { DetailCard } from "./DetailCard";
@@ -174,6 +179,77 @@ function Properties({
   );
 }
 
+/** The saved versions, newest first and the newest open: each row says when and by whom it was
+ * saved and whether it breaks a consumer, and opens to its differences from the one before it. */
+function Versions({ versions, tableId }: { versions: ContractVersion[]; tableId: number }) {
+  const { t, i18n } = useTranslation();
+  const newest = [...versions].reverse();
+  return (
+    <Collapsibles id={`data-product.contract.${tableId}.versions`}>
+      {newest.map((v, i) => {
+        const id = `data-contract-version-row-${tableId}-${v.contract.version}`;
+        const breaking = v.changes.some((c) => c.breaking);
+        return (
+          <CollapsibleItem
+            key={v.contract.version}
+            value={v.contract.version}
+            defaultOpen={i === 0}
+            mountWhenOpen
+            testId={id}
+            controlTestId={`${id}-toggle`}
+            title={
+              <Group gap={8} wrap="wrap" style={{ minWidth: 0 }}>
+                <Text size="sm" ff="monospace" style={{ flexShrink: 0 }}>
+                  {t("dataProductsTab.contract.versionBadge", { version: v.contract.version })}
+                </Text>
+                <Text size="xs" c="dimmed" data-testid={`${id}-status`}>
+                  {t(`dataProductsTab.contract.status.${v.contract.status}`)}
+                </Text>
+                <Text size="xs" c="dimmed" data-testid={`${id}-saved`}>
+                  {t("dataProductsTab.contract.savedBy", {
+                    when: new Date(v.saved_at).toLocaleString(i18n.language),
+                    who: v.saved_by ?? t("dataProductsTab.contract.savedBySystem"),
+                  })}
+                </Text>
+                {breaking && (
+                  <Badge size="xs" variant="light" color="red" data-testid={`${id}-breaking`}>
+                    {t("dataProductsTab.contract.breaking")}
+                  </Badge>
+                )}
+              </Group>
+            }
+          >
+            {v.changes.length === 0 ? (
+              <Text size="sm" c="dimmed" fs="italic" data-testid={`${id}-no-changes`}>
+                {t("dataProductsTab.contract.noChanges")}
+              </Text>
+            ) : (
+              <Stack gap={2} data-testid={`${id}-changes`}>
+                {v.changes.map((c, n) => (
+                  <Group key={n} gap={6} wrap="nowrap" align="baseline" justify="space-between">
+                    <Text size="sm" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                      {t(`dataProductsTab.contract.change.${c.kind}`, {
+                        subject: c.subject,
+                        before: c.before,
+                        after: c.after,
+                      })}
+                    </Text>
+                    {c.breaking && (
+                      <Badge size="xs" variant="light" color="red" style={{ flexShrink: 0 }}>
+                        {t("dataProductsTab.contract.breaking")}
+                      </Badge>
+                    )}
+                  </Group>
+                ))}
+              </Stack>
+            )}
+          </CollapsibleItem>
+        );
+      })}
+    </Collapsibles>
+  );
+}
+
 /** Each quality rule, with the property it is on where it is on one. */
 function qualityRules(contract: OdcsContract): OdcsRecord[] {
   return (contract.schema ?? []).flatMap((object) => [
@@ -186,11 +262,14 @@ function qualityRules(contract: OdcsContract): OdcsRecord[] {
 
 export function ContractView({
   contract,
+  versions,
   tableId,
   promises,
   consumers,
 }: {
   contract: OdcsContract;
+  /** Its saved versions, oldest first (REQ-2158). */
+  versions: ContractVersion[];
   tableId: number;
   /** The product's promises on this port (REQ-2132); null while the product's lineage is read. */
   promises: ProductDqEntry[] | null;
@@ -347,6 +426,7 @@ export function ContractView({
           <Element name="version" value={contract.version} />
           <Element name="status" value={status} />
           <Element name="contractCreatedTs" value={contract.contractCreatedTs} />
+          <Versions versions={versions} tableId={tableId} />
         </Stack>
       </DetailCard>
     </div>

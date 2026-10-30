@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { ProductCore } from "../productCore";
-import type { OdcsContract } from "../../../api/dataProductContracts";
+import type { ContractVersion, OdcsContract } from "../../../api/dataProductContracts";
 import type { ProductDqEntry, ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
@@ -25,8 +25,10 @@ import { lifecycleProps } from "./lifecycleProps";
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/GraphPanel", () => ({ GraphPanel: () => null }));
 const fetchProductContract = vi.fn<(id: string, member: string) => Promise<OdcsContract>>();
+const fetchContractVersions = vi.fn<(id: string, member: string) => Promise<ContractVersion[]>>();
 vi.mock("../../../api/dataProductContracts", () => ({
   fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchContractVersions: (id: string, member: string) => fetchContractVersions(id, member),
 }));
 
 const PRODUCT = {
@@ -36,11 +38,44 @@ const PRODUCT = {
   customProperties: {},
 } as unknown as DataProduct;
 
-const stored = (version: string, status: string, sla: unknown[] = []) => ({
+const stored = (
+  version: string,
+  status: string,
+  sla: unknown[] = [],
+  versions: ContractVersion[] = [],
+) => ({
   version,
   status,
   sla,
   columns: [{ name: "id", type: "INTEGER", required: true }],
+  versions,
+});
+
+const REMOVED = {
+  kind: "field_removed",
+  subject: "note",
+  before: "TEXT",
+  after: null,
+  breaking: true,
+};
+const ADDED = {
+  kind: "field_added",
+  subject: "age",
+  before: null,
+  after: "INTEGER",
+  breaking: false,
+};
+
+const saved = (
+  version: string,
+  status: string,
+  changes: ContractVersion["changes"] = [],
+  savedBy: string | null = "ken@example.com",
+): ContractVersion => ({
+  contract: { version, status },
+  changes,
+  saved_at: "2026-10-20T10:00:00Z",
+  saved_by: savedBy,
 });
 
 const port = (id: number, name: string, contract: unknown, cacheTtl: number | null = null) => ({
@@ -58,9 +93,9 @@ const port = (id: number, name: string, contract: unknown, cacheTtl: number | nu
 
 /** A product of ``count`` contracts (0, 1 or 3), with a command and a checker, neither a port with
  * a contract. */
-function core(count: 0 | 1 | 3): ProductCore {
+function core(count: 0 | 1 | 3, versions: ContractVersion[] = []): ProductCore {
   const ports = [
-    port(1, "pets", stored("1.2.0", "active"), 300),
+    port(1, "pets", stored("1.2.0", "active", [], versions), 300),
     port(
       2,
       "vets",
@@ -156,11 +191,15 @@ const odcs = (name: string): OdcsContract => ({
   slaProperties: [{ property: "latency", value: 300, unit: "s" }],
 });
 
-function panel(count: 0 | 1 | 3, link = "/data-products?product=pet_health") {
+function panel(
+  count: 0 | 1 | 3,
+  link = "/data-products?product=pet_health",
+  versions: ContractVersion[] = [],
+) {
   return render(
     <DataProductDetailPanel
       p={PRODUCT}
-      core={core(count)}
+      core={core(count, versions)}
       coreError={null}
       reader={null}
       canEdit={false}
@@ -181,6 +220,8 @@ function panel(count: 0 | 1 | 3, link = "/data-products?product=pet_health") {
 beforeEach(() => {
   localStorage.clear();
   fetchProductContract.mockReset();
+  fetchContractVersions.mockReset();
+  fetchContractVersions.mockResolvedValue([]);
   fetchProductContract.mockImplementation((_id, member) =>
     Promise.resolve(odcs(member.split(".")[2])),
   );
@@ -293,5 +334,84 @@ describe("a product's contracts list (REQ-2158)", () => {
       expect(fetchProductContract).toHaveBeenCalledWith("pet_health", "pg.public.visits"),
     );
     expect(await screen.findByTestId("data-contract-3")).toBeInTheDocument();
+  });
+
+  const LINK = "/data-products?product=pet_health";
+
+  it("warns of a breaking change not yet in force, naming its version", () => {
+    panel(3, LINK, [saved("1.0.0", "active"), saved("2.0.0", "draft", [REMOVED])]);
+    expect(screen.getByTestId("data-contract-breaking-1")).toHaveTextContent(
+      "Breaking change in v2.0.0, not yet in force",
+    );
+  });
+
+  it("does not warn of a breaking change once it is in force", () => {
+    panel(3, LINK, [saved("1.0.0", "active"), saved("2.0.0", "active", [REMOVED])]);
+    expect(screen.queryByTestId("data-contract-breaking-1")).toBeNull();
+  });
+
+  it("does not warn of a change not yet in force that breaks nothing", () => {
+    panel(3, LINK, [saved("1.0.0", "active"), saved("1.1.0", "proposed", [ADDED])]);
+    expect(screen.queryByTestId("data-contract-breaking-1")).toBeNull();
+  });
+
+  it("warns of the breaking version behind a later draft", () => {
+    panel(3, LINK, [
+      saved("1.0.0", "active"),
+      saved("2.0.0", "draft", [REMOVED]),
+      saved("2.1.0", "draft", [ADDED]),
+    ]);
+    expect(screen.getByTestId("data-contract-breaking-1")).toHaveTextContent("v2.0.0");
+  });
+
+  it("lists the versions newest first, with when, by whom and whether each breaks", async () => {
+    fetchContractVersions.mockResolvedValue([
+      saved("0.1.0", "active", [], null),
+      saved("1.0.0", "active", [ADDED]),
+      saved("2.0.0", "draft", [REMOVED]),
+    ]);
+    panel(3);
+    fireEvent.click(screen.getByTestId("data-contract-item-1-toggle"));
+    await screen.findByTestId("data-contract-1");
+    expect(fetchContractVersions).toHaveBeenCalledWith("pet_health", "pg.public.pets");
+    const card = screen.getByTestId("data-contract-1-versions");
+    const shown = [...card.querySelectorAll("[data-testid$='-saved']")].map((e) => e.textContent);
+    const when = new Date("2026-10-20T10:00:00Z").toLocaleString("en");
+    expect(shown).toEqual([
+      `Saved ${when} by ken@example.com`,
+      `Saved ${when} by ken@example.com`,
+      `Saved ${when} by the system`,
+    ]);
+    expect(screen.getByTestId("data-contract-version-row-1-2.0.0-breaking")).toHaveTextContent(
+      "Breaking",
+    );
+    expect(screen.getByTestId("data-contract-version-row-1-2.0.0-status")).toHaveTextContent(
+      "Draft",
+    );
+    expect(screen.queryByTestId("data-contract-version-row-1-1.0.0-breaking")).toBeNull();
+  });
+
+  it("shows a version's differences, the newest open and the others on opening", async () => {
+    fetchContractVersions.mockResolvedValue([
+      saved("0.1.0", "active"),
+      saved("1.0.0", "active", [ADDED]),
+      saved("2.0.0", "draft", [REMOVED]),
+    ]);
+    panel(3);
+    fireEvent.click(screen.getByTestId("data-contract-item-1-toggle"));
+    expect(await screen.findByTestId("data-contract-version-row-1-2.0.0-changes")).toHaveTextContent(
+      "Field note removed, was TEXT",
+    );
+    expect(screen.queryByTestId("data-contract-version-row-1-1.0.0-changes")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("data-contract-version-row-1-1.0.0-toggle"));
+    expect(await screen.findByTestId("data-contract-version-row-1-1.0.0-changes")).toHaveTextContent(
+      "Field age added, INTEGER",
+    );
+
+    fireEvent.click(screen.getByTestId("data-contract-version-row-1-0.1.0-toggle"));
+    expect(await screen.findByTestId("data-contract-version-row-1-0.1.0-no-changes")).toHaveTextContent(
+      "First version",
+    );
   });
 });

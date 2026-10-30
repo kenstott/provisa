@@ -10,6 +10,7 @@
 
 /** Types matching provisa/api/admin/types.py */
 
+import type { ContractVersion } from "../api/dataProductContracts";
 import type { MaskEntry } from "../lib/masks";
 import type { LifecycleStatus } from "./lifecycle";
 import { domainToSqlName } from "../naming";
@@ -157,6 +158,8 @@ export interface DataContract {
   terms: ContractTerms;
   sla: ContractSlaProperty[];
   columns: ContractColumn[];
+  // Its saved versions, oldest first; the contract as a mutation or an export reads it has none.
+  versions?: ContractVersion[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.

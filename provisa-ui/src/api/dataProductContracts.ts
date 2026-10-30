@@ -79,3 +79,36 @@ export async function fetchProductContract(
   }
   return resp.json();
 }
+
+/** One difference of a contract version from the one before it (REQ-2158). */
+export interface ContractChange {
+  kind: string;
+  subject: string;
+  before: string | null;
+  after: string | null;
+  breaking: boolean;
+}
+
+/** A saved version of a contract, as the store keeps it (REQ-2158). */
+export interface ContractVersion {
+  contract: { version: string; status: string };
+  changes: ContractChange[];
+  saved_at: string;
+  /** Who saved it; null when the system did (a configuration load). */
+  saved_by: string | null;
+}
+
+/** One output port's saved versions, oldest first: read with its contract when its row opens. */
+export async function fetchContractVersions(
+  productId: string,
+  member: string,
+): Promise<ContractVersion[]> {
+  const resp = await fetch(
+    `${API_BASE}/data-products/${encodeURIComponent(productId)}/contracts/${encodeURIComponent(member)}/versions.json`,
+  );
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Contract versions", resp.status)));
+  }
+  return resp.json();
+}

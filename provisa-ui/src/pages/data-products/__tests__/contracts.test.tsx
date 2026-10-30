@@ -31,6 +31,7 @@ vi.mock("../../../components/graph3d/GraphPanel", () => ({
 const fetchProductContract = vi.fn<(id: string, member: string) => Promise<OdcsContract>>();
 vi.mock("../../../api/dataProductContracts", () => ({
   fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 
 const PRODUCT = {

@@ -34,6 +34,7 @@ import {
   type ProductRow as GraphProductRow,
   type TermEdgeRow,
 } from "../../components/graph3d/productGraphData";
+import type { ContractVersion } from "../../api/dataProductContracts";
 import type { GraphData } from "../../components/graph3d/graphModel";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataContract, DataProduct } from "../../types/admin";
@@ -218,6 +219,7 @@ export interface StoredContract {
   terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
   sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
   columns?: { name: string; type: string; description?: string | null; required?: boolean }[];
+  versions?: ContractVersion[];
 }
 
 /** REQ-2158: each output port's contract, in the order the members are read. */
@@ -255,9 +257,24 @@ export function coreContracts(core: ProductCore): DataContract[] {
           description: x.description ?? null,
           required: x.required ?? false,
         })),
+        versions: c.versions ?? [],
       },
     ];
   });
+}
+
+/** A contract status that is not yet in force: it has not been made active. */
+const NOT_IN_FORCE = ["proposed", "draft"];
+
+/** The newest versions not yet in force that carry a breaking change, newest first: the versions
+ * after the last one in force. */
+export function breakingNotInForce(versions: ContractVersion[]): ContractVersion[] {
+  const pending: ContractVersion[] = [];
+  for (const v of [...versions].reverse()) {
+    if (!NOT_IN_FORCE.includes(v.contract.status)) break;
+    pending.push(v);
+  }
+  return pending.filter((v) => v.changes.some((c) => c.breaking));
 }
 
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */

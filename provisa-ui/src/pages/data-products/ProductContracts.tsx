@@ -20,14 +20,25 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Alert, Badge, Group, Loader, Text } from "@mantine/core";
 import { TriangleAlert } from "lucide-react";
-import { fetchProductContract, type OdcsContract } from "../../api/dataProductContracts";
+import {
+  fetchContractVersions,
+  fetchProductContract,
+  type ContractVersion,
+  type OdcsContract,
+} from "../../api/dataProductContracts";
 import type { ProductLineage } from "../../api/lineage";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import { Tip } from "../../components/Tip";
 import { NEVER_EXPIRES } from "../../components/form/cacheTtl";
 import { relationName } from "../../naming";
 import type { DataContract } from "../../types/admin";
-import { coreContracts, modelName, type CoreTable, type ProductCore } from "./productCore";
+import {
+  breakingNotInForce,
+  coreContracts,
+  modelName,
+  type CoreTable,
+  type ProductCore,
+} from "./productCore";
 import { ContractView } from "./ContractView";
 import { Empty } from "./DetailCard";
 
@@ -88,6 +99,8 @@ function RowTitle({
             .join(" ")
         : t("dataProductsTab.contract.noSla");
   const name = modelName(port);
+  // REQ-2158: the newest version not yet in force that breaks a consumer, which the warning names.
+  const breaking = breakingNotInForce(contract.versions ?? [])[0];
   return (
     <Group gap={8} wrap="wrap" style={{ minWidth: 0 }} data-testid={`data-contract-row-${id}`}>
       <Tip text={name}>
@@ -134,6 +147,17 @@ function RowTitle({
           {t("dataProductsTab.contract.draftWarning")}
         </Badge>
       )}
+      {breaking && (
+        <Badge
+          size="sm"
+          variant="light"
+          color="red"
+          leftSection={<TriangleAlert size={12} aria-hidden />}
+          data-testid={`data-contract-breaking-${id}`}
+        >
+          {t("dataProductsTab.contract.breakingWarning", { version: breaking.contract.version })}
+        </Badge>
+      )}
     </Group>
   );
 }
@@ -157,15 +181,18 @@ function OpenContract({
   owner: boolean;
 }) {
   const { t } = useTranslation();
-  const [read, setRead] = useState<{ key: string; doc?: OdcsContract; error?: string } | null>(
-    null,
-  );
+  const [read, setRead] = useState<{
+    key: string;
+    doc?: OdcsContract;
+    versions?: ContractVersion[];
+    error?: string;
+  } | null>(null);
   const key = `${productId}\n${member}\n${version}`;
   useEffect(() => {
     let cancelled = false;
-    fetchProductContract(productId, member)
-      .then((doc) => {
-        if (!cancelled) setRead({ key, doc });
+    Promise.all([fetchProductContract(productId, member), fetchContractVersions(productId, member)])
+      .then(([doc, versions]) => {
+        if (!cancelled) setRead({ key, doc, versions });
       })
       .catch((e: Error) => {
         if (!cancelled) setRead({ key, error: e.message });
@@ -188,6 +215,7 @@ function OpenContract({
   return (
     <ContractView
       contract={read.doc as OdcsContract}
+      versions={read.versions as ContractVersion[]}
       tableId={tableId}
       promises={lineage ? lineage.dq.promises.filter((c) => c.checked_table_id === tableId) : null}
       consumers={
