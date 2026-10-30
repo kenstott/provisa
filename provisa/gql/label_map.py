@@ -709,7 +709,9 @@ def _build_node_mappings(
         _phys_id = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
         _table = registered.get(table_meta.table_id)
         _key = (
-            registered_key(table_meta.type_name, _table, target_pk) if _table is not None else None
+            registered_key(table_meta.type_name, _table, target_pk)
+            if _table is not None and _table.get("columns")
+            else None
         )
         key_readable = _key is None or set(_key) <= set(col_names)
         if _key is not None and key_readable:
