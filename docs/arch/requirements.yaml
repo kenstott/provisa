@@ -80640,7 +80640,10 @@
     and nothing more: no check anywhere tests a role''s name; every check asks whether the caller holds
     the right in the domain of what changes, so a copy with another name, or a role an organisation composes
     with the same rights, behaves identically. (Amended 2026-10-25, A STANDARD ROLE:) data_steward is one
-    of the standard roles of REQ-2155 and is defined there.'
+    of the standard roles of REQ-2155 and is defined there. (Amended 2026-10-29, A STEWARD DOES NOT EDIT
+    DATA PRODUCTS BY DEFAULT:) Maintainer 2026-10-30: data_product_rw leaves the standard data_steward role
+    (REQ-2188). An org admin who wants stewards to edit products gives a role of its own RW and a row rule
+    on domain.'
   use_case: The sales data steward sets the row rules, masks and sensitive tags on the sales tables, curates the
     sales glossary and data products, and audits sales data with full results, while having no say over marketing's
     governance and no access to sources, environments or users.
@@ -91698,16 +91701,23 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: row-security-and-masking-row-rules
   priority: MUST
   type: behavioral
-  description: 'Maintainer 2026-10-30: a role is given R or RW on a model, and that is the ceiling of
-    what it may do; RW includes create, which has no row to narrow. A row rule has a right, R, U or D,
-    the three things that can be done to an existing row, with at most one rule for each right per role
-    and model. A rule only narrows: it never gives a right the role does not hold, and U or D on a role
-    with only R does nothing. A role with no rule for a right does that to every row its grant allows.
-    Today''s rules are R rules. Semantic objects are models too: the model store applies a role''s U and
-    D rules to every write of one, whatever route the write came by. So a data product is edited only
-    by an org admin, who holds RW with no U or D rule, or by a role holding RW with U and D rules naming
-    the product''s owner role. data_product_owned_rw and its hand-written owner check go away. Every role
-    other than org_admin that holds data_product_rw carries those rules.'
+  description: 'Maintainer 2026-10-30: a role is given R or RW on a model, and that is the ceiling of what
+    it may do; RW includes create, which has no row to narrow. A row rule has a right, R, U or D, the three
+    things that can be done to an existing row, with at most one rule for each right per role and model.
+    A rule only narrows: it never gives a right the role does not hold, and U or D on a role with only R
+    does nothing. A role with no rule for a right does that to every row its grant allows. Today''s rules
+    are R rules. Semantic objects are models too: the model store applies a role''s U and D rules to every
+    write of one, whatever route the write came by. So a data product is edited only by an org admin, who
+    holds RW with no U or D rule, or by a role holding RW with U and D rules naming the product''s owner
+    role. data_product_owned_rw and its hand-written owner check go away. Every role other than org_admin
+    that holds data_product_rw carries those rules. (Amended 2026-10-29, THE OWNER FIELD DRIVES IT; AN ORG
+    ADMIN MAY WIDEN IT:) Maintainer 2026-10-30: nobody writes a rule to own a product. Naming a role in
+    a product''s Owner field gives that role RW on data products with the generated U and D rules naming
+    the product''s owner role; those rules are not edited in Security, the Owner field is how they change.
+    A role that no longer owns any product loses that grant. Org admin or named owner is the default, not
+    a limit: an org admin may still give a role of its own a grant and row rules, for example a data product
+    administrator with RW and no rules, or one narrowed to a domain. data_product_rw leaves the standard
+    data_steward role, and the sandbox keeps it as its own.'
   scenario: 'Given data products owned by role pets_team and role sales_team
 
     And pets_team holds RW on data_products with U and D rules naming the product''s owner role
