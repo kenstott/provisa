@@ -89856,7 +89856,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (Amended 2026-10-29, A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise
     means a data quality check a product makes on its output ports, and nothing else. Columns are never
     called promised, and fields is not a second name for them: a contract declares its columns. The contract
-    view''s card and the contract editor''s field are both Columns, and the quality card is Promises.'
+    view''s card and the contract editor''s field are both Columns, and the quality card is Promises. (Amended
+    2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
+    reference to a product''s expectations, the data quality checks on its input ports. They belong to the
+    consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
+    by ODPS outputPorts inputContracts.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
