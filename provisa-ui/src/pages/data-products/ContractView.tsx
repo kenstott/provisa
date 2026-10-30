@@ -22,8 +22,13 @@ import type { ContractVersion } from "../../types/admin";
 import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
 import { DetailCard } from "./DetailCard";
-import "./ContractView.css";
-import { ClaimsCallout, ConsumersList } from "./dataProductDq";
+import { ConsumersList } from "./dataProductDq";
+import { PromisesTable } from "./PromisesTable";
+
+// The contract's cards flow in columns this wide, as the product's own do; the Promises card runs
+// the panel's full width beneath them, its promises a table.
+const COLUMN_WIDTH = "320px";
+const COLUMN_GAP = "var(--mantine-spacing-sm)";
 
 /** The Details card's further ODCS sections, each a row collapsed to a one-line summary. */
 const DETAIL_SECTIONS = ["support", "servers", "pricing", "custom"] as const;
@@ -247,16 +252,6 @@ function Versions({ versions, tableId }: { versions: ContractVersion[]; tableId:
   );
 }
 
-/** Each quality rule, with the property it is on where it is on one. */
-function qualityRules(contract: OdcsContract): OdcsRecord[] {
-  return (contract.schema ?? []).flatMap((object) => [
-    ...(object.quality ?? []),
-    ...(object.properties ?? []).flatMap((p) =>
-      (p.quality ?? []).map((rule) => ({ property: p.name, ...rule })),
-    ),
-  ]);
-}
-
 export function ContractView({
   contract,
   versions,
@@ -278,7 +273,6 @@ export function ContractView({
   const notDeclared = t("dataProductsTab.contract.notDeclared");
   const object = contract.schema?.[0];
   const properties = object?.properties ?? [];
-  const rules = qualityRules(contract);
   const sla = contract.slaProperties ?? [];
   const price = contract.price;
   const custom = contract.customProperties ?? [];
@@ -330,8 +324,8 @@ export function ContractView({
     label: t(`dataProductsTab.contract.card.${key}`),
   });
   return (
-    <div className="contract-cards" data-testid={`data-contract-${tableId}`}>
-      <div className="contract-cards__grid">
+    <div data-testid={`data-contract-${tableId}`}>
+      <div style={{ columnWidth: COLUMN_WIDTH, columnGap: COLUMN_GAP }}>
         <DetailCard {...card("details")}>
           <Stack gap={2}>
             <Element name="id" value={contract.id} />
@@ -406,25 +400,25 @@ export function ContractView({
             <Records name="slaProperties" items={sla} testId={`data-contract-sla-${tableId}`} />
           </Stack>
         </DetailCard>
-        <DetailCard {...card("quality")} span={2}>
-          <Stack gap={4}>
-            {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
-            {promises && (
-              <ClaimsCallout
-                kind="promises"
-                checks={promises}
-                testId={`data-contract-promises-${tableId}`}
-              />
-            )}
-            <Records name="quality" items={rules} />
-          </Stack>
-        </DetailCard>
         {consumers && (
           <DetailCard {...card("consumers")}>
             <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
           </DetailCard>
         )}
       </div>
+      <DetailCard {...card("quality")} wide>
+        {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
+        {promises && promises.length > 0 ? (
+          <div data-testid={`data-contract-promises-${tableId}`}>
+            <Text size="sm" fw={500} mb="xs">
+              {t("dataProductCore.promises", { count: promises.length })}
+            </Text>
+            <PromisesTable promises={promises} testId={`data-contract-promises-table-${tableId}`} />
+          </div>
+        ) : (
+          <NotDeclared />
+        )}
+      </DetailCard>
     </div>
   );
 }

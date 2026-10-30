@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "適用対象",
+      "check": "チェック",
+      "details": "詳細",
+      "result": "最新の結果"
+    },
+    "level": {
+      "table": "テーブル",
+      "row": "行"
+    },
+    "check": {
+      "notNull": "NULLでない",
+      "unique": "一意",
+      "allowedValues": "許可される値",
+      "pattern": "パターン一致",
+      "valueRange": "値の範囲",
+      "textLength": "テキストの長さ",
+      "average": "平均の範囲",
+      "distinctCount": "異なる値の数",
+      "rowCount": "行数",
+      "columnOrder": "列の順序",
+      "unexpectedRows": "想定外の行がない",
+      "missing": "欠損値がない",
+      "valid": "有効な値",
+      "duplicate": "重複がない",
+      "aggregate": "集計",
+      "freshness": "鮮度",
+      "failedRows": "失敗した行がない"
+    },
+    "threshold": {
+      "eq": "{{value}}であること",
+      "ne": "{{value}}でないこと",
+      "gt": "{{value}}より大きい",
+      "gte": "{{value}}以上",
+      "lt": "{{value}}より小さい",
+      "lte": "{{value}}以下"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "{{min}}から{{max}}まで",
+      "atLeast": "{{value}}以上",
+      "atMost": "{{value}}以下",
+      "oneOf": "{{values}}のいずれか",
+      "matches": "{{pattern}}に一致",
+      "greater": "{{a}}は{{b}}より大きい",
+      "orEqual": "{{a}}は{{b}}以上",
+      "query": "想定外の行: {{query}}",
+      "expression": "失敗した行: {{expression}}",
+      "mostly": "行の{{percent}}%以上",
+      "alsoMissing": "欠損として扱う値: {{values}}",
+      "minLength": "{{value}}文字以上",
+      "maxLength": "{{value}}文字以下"
+    },
+    "aggregate": {
+      "avg": "平均",
+      "sum": "合計",
+      "min": "最小",
+      "max": "最大",
+      "minLength": "最短の長さ",
+      "maxLength": "最長の長さ",
+      "avgLength": "平均の長さ"
+    }
+  }
+}

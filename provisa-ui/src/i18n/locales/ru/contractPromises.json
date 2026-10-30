@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "Применяется к",
+      "check": "Проверка",
+      "details": "Подробности",
+      "result": "Последний результат"
+    },
+    "level": {
+      "table": "Таблица",
+      "row": "Строка"
+    },
+    "check": {
+      "notNull": "Не пусто",
+      "unique": "Уникальность",
+      "allowedValues": "Допустимые значения",
+      "pattern": "Соответствие шаблону",
+      "valueRange": "Диапазон значений",
+      "textLength": "Длина текста",
+      "average": "Диапазон среднего",
+      "distinctCount": "Различные значения",
+      "rowCount": "Количество строк",
+      "columnOrder": "Порядок столбцов",
+      "unexpectedRows": "Нет неожиданных строк",
+      "missing": "Нет пропущенных значений",
+      "valid": "Допустимые значения",
+      "duplicate": "Нет дубликатов",
+      "aggregate": "Агрегат",
+      "freshness": "Актуальность",
+      "failedRows": "Нет строк с ошибками"
+    },
+    "threshold": {
+      "eq": "Должно быть {{value}}",
+      "ne": "Не должно быть {{value}}",
+      "gt": "Больше {{value}}",
+      "gte": "Не менее {{value}}",
+      "lt": "Меньше {{value}}",
+      "lte": "Не более {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}} %",
+      "between": "От {{min}} до {{max}}",
+      "atLeast": "Не менее {{value}}",
+      "atMost": "Не более {{value}}",
+      "oneOf": "Одно из: {{values}}",
+      "matches": "Соответствует {{pattern}}",
+      "greater": "{{a}} больше {{b}}",
+      "orEqual": "{{a}} не меньше {{b}}",
+      "query": "Неожиданные строки: {{query}}",
+      "expression": "Строки с ошибками: {{expression}}",
+      "mostly": "Не менее {{percent}} % строк",
+      "alsoMissing": "Также пропущено: {{values}}",
+      "minLength": "Не менее {{value}} символов",
+      "maxLength": "Не более {{value}} символов"
+    },
+    "aggregate": {
+      "avg": "Среднее",
+      "sum": "Сумма",
+      "min": "Минимум",
+      "max": "Максимум",
+      "minLength": "Наименьшая длина",
+      "maxLength": "Наибольшая длина",
+      "avgLength": "Средняя длина"
+    }
+  }
+}

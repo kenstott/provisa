@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "इन पर लागू",
+      "check": "जाँच",
+      "details": "विवरण",
+      "result": "नवीनतम परिणाम"
+    },
+    "level": {
+      "table": "तालिका",
+      "row": "पंक्ति"
+    },
+    "check": {
+      "notNull": "शून्य नहीं",
+      "unique": "अद्वितीय",
+      "allowedValues": "अनुमत मान",
+      "pattern": "पैटर्न मिलान",
+      "valueRange": "मान की सीमा",
+      "textLength": "पाठ की लंबाई",
+      "average": "औसत की सीमा",
+      "distinctCount": "अलग-अलग मान",
+      "rowCount": "पंक्तियों की संख्या",
+      "columnOrder": "स्तंभों का क्रम",
+      "unexpectedRows": "कोई अप्रत्याशित पंक्ति नहीं",
+      "missing": "कोई मान गायब नहीं",
+      "valid": "मान्य मान",
+      "duplicate": "कोई डुप्लिकेट नहीं",
+      "aggregate": "समेकन",
+      "freshness": "ताज़गी",
+      "failedRows": "कोई विफल पंक्ति नहीं"
+    },
+    "threshold": {
+      "eq": "{{value}} होना चाहिए",
+      "ne": "{{value}} नहीं होना चाहिए",
+      "gt": "{{value}} से अधिक",
+      "gte": "कम से कम {{value}}",
+      "lt": "{{value}} से कम",
+      "lte": "अधिकतम {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "{{min}} से {{max}} तक",
+      "atLeast": "कम से कम {{value}}",
+      "atMost": "अधिकतम {{value}}",
+      "oneOf": "{{values}} में से एक",
+      "matches": "{{pattern}} से मेल खाता है",
+      "greater": "{{a}} {{b}} से अधिक",
+      "orEqual": "{{a}} कम से कम {{b}}",
+      "query": "अप्रत्याशित पंक्तियाँ: {{query}}",
+      "expression": "विफल पंक्तियाँ: {{expression}}",
+      "mostly": "कम से कम {{percent}}% पंक्तियाँ",
+      "alsoMissing": "साथ ही गायब: {{values}}",
+      "minLength": "कम से कम {{value}} अक्षर",
+      "maxLength": "अधिकतम {{value}} अक्षर"
+    },
+    "aggregate": {
+      "avg": "औसत",
+      "sum": "योग",
+      "min": "न्यूनतम",
+      "max": "अधिकतम",
+      "minLength": "सबसे छोटी लंबाई",
+      "maxLength": "सबसे लंबी लंबाई",
+      "avgLength": "औसत लंबाई"
+    }
+  }
+}

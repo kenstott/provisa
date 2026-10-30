@@ -129,9 +129,11 @@ describe("a product's contracts", () => {
     expect(screen.getByTestId("data-contract-sla-7")).toHaveTextContent(
       "property: availability · value: 99.9 · unit: %",
     );
-    expect(screen.getByTestId("data-contract-7-quality")).toHaveTextContent(
-      "type: library · metric: nullValues · mustBe: 0",
-    );
+    // The Promises card is a table of the product's promises, never a record of raw rules; this
+    // port has none, so it says so.
+    const promises = screen.getByTestId("data-contract-7-quality");
+    expect(promises).toHaveTextContent("Not declared");
+    expect(promises).not.toHaveTextContent("nullValues");
   });
 
   it("open to every element, declared, derived or not declared", async () => {

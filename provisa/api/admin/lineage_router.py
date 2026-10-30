@@ -729,11 +729,30 @@ async def _fetch_checkers(state) -> list[dict]:
                 "alias": r.checked_alias,
             },
             "rule_columns": [rule.get("column_name") or "" for rule in r.dq_rules or []],
+            "rules": [
+                {
+                    "check_type": rule["check_type"],
+                    "column_name": rule.get("column_name") or "",
+                    "args": _rule_args(rule),
+                }
+                for rule in r.dq_rules or []
+            ],
             "latest_outcome": r.outcome,
             "latest_run_at": r.scan_time.isoformat() if r.scan_time is not None else None,
         }
         for r in rows
     ]
+
+
+def _rule_args(rule: dict) -> dict:
+    """A check's arguments as authored (JSON for Great Expectations, YAML for Soda; JSON is YAML),
+    parsed so a reader never has to know the dialect."""
+    import yaml
+
+    args = yaml.safe_load(rule.get("definition") or "") or {}
+    if not isinstance(args, dict):
+        raise ValueError(f"check {rule.get('check_type')!r}: its arguments are not a mapping")
+    return args
 
 
 def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -> dict:
