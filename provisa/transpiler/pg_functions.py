@@ -284,6 +284,14 @@ def _is_kind(node: exp.Expr, *names: str) -> bool:
     return isinstance(node, exp.Cast) and node.to.sql(dialect="postgres").lower() in names
 
 
+_UNICODE_ESCAPE = re.compile(r"\\(\\|\+[0-9A-Fa-f]{6}|[0-9A-Fa-f]{4})")
+
+
+def _unicode_char(found: re.Match[str]) -> str:
+    digits = found[1]
+    return "\\" if digits == "\\" else chr(int(digits.removeprefix("+"), 16))
+
+
 def _text_array(node: exp.Expr) -> str:
     """A text[] argument: an unknown-type '{a,b}' literal is that array."""
     if not (isinstance(node, exp.Literal) and node.is_string):
@@ -412,11 +420,21 @@ def _bit_call(name: str, args: list[exp.Expr]) -> str | None:
 def _time_call(name: str, args: list[exp.Expr]) -> str | None:
     interval = exp.DataType.Type.INTERVAL
     written = [_sql(a) for a in args]
+    if (
+        name == "isfinite"
+        and len(args) == 1
+        and _cast_to(args[0], interval)
+        and args[0].this.name.lower().lstrip("+-") == "infinity"
+    ):
+        return "FALSE"  # DuckDB has no infinite interval to hold it in
     if name == "isfinite" and len(args) == 1 and _cast_to(args[0], interval):
         # DuckDB's intervals are finite.
         return f"CASE WHEN {written[0]} IS NOT NULL THEN TRUE END"
     if name == "date_add" and len(args) == 2:  # noqa: PLR2004
         return f"CAST({written[0]} AS TIMESTAMPTZ) + {written[1]}"
+    if name == "date_add" and len(args) == 3 and isinstance(args[2], exp.Var):  # noqa: PLR2004
+        zone = exp.Literal.string(args[2].name).sql(dialect="postgres")  # sqlglot's unit: a zone
+        return f"TIMEZONE({zone}, TIMEZONE({zone}, {written[0]}) + {written[1]})"
     if name == "date_add" and len(args) == 3 and _is_text(args[2]):  # noqa: PLR2004 -- a zone
         zone = written[2]
         return f"TIMEZONE({zone}, TIMEZONE({zone}, {written[0]}) + {written[1]})"
@@ -469,6 +487,9 @@ def _call(node: exp.Expr) -> exp.Expr:
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
         inner = _call(node.expression)
         return node if inner is node.expression else inner
+    if isinstance(node, exp.UnicodeString) and not node.args.get("escape"):
+        # U&'...': sqlglot writes it for DuckDB with its escapes unread.
+        return exp.Literal.string(_UNICODE_ESCAPE.sub(_unicode_char, node.this))
     if isinstance(node, exp.BitString):
         # A bit string's digits: sqlglot writes it for DuckDB as an integer, of another length.
         return exp.Cast(this=exp.Literal.string(node.this), to=exp.DataType.build("BIT"))
@@ -506,7 +527,7 @@ def _call(node: exp.Expr) -> exp.Expr:
     if written is None and (name, len(args)) in _UDF_CALLS:
         written = f"{_UDF_CALLS[(name, len(args))]}({', '.join(_sql(a) for a in args)})"
     if written is None and name == "regexp_split_to_table" and len(args) == 3:  # noqa: PLR2004
-        written = f"UNNEST(PROVISA_REGEXP_SPLIT({', '.join(_sql(a) for a in args)}))"
+        written = f"UNNEST(PROVISA_REGEXP_SPLIT_TABLE({', '.join(_sql(a) for a in args)}))"
     if written is None and name == "substring" and len(args) == 3 and _is_text(args[1]):  # noqa: PLR2004
         # substring(string SIMILAR pattern ESCAPE escape).
         written = (
@@ -521,7 +542,7 @@ def _call(node: exp.Expr) -> exp.Expr:
 _UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
 _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _JSON_OBJECT_OF_ARRAYS = re.compile(r"\bjson_object\s*\(\s*(?='\{|ARRAY\[)", re.IGNORECASE)
-_BIT_STRING = re.compile(r"\bB'[01]*'", re.IGNORECASE)
+_SPECIAL_LITERAL = re.compile(r"\bB'[01]*'|\bU&'", re.IGNORECASE)
 
 
 def readable(pg_sql: str) -> str:
@@ -541,7 +562,7 @@ def readable(pg_sql: str) -> str:
 def typed_calls(pg_sql: str) -> str:
     """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
     pg_sql = readable(pg_sql)
-    if _CALLED.search(pg_sql) is None and _BIT_STRING.search(pg_sql) is None:
+    if _CALLED.search(pg_sql) is None and _SPECIAL_LITERAL.search(pg_sql) is None:
         return pg_sql
     rewritten = False
 

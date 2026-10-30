@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from provisa.federation.duckdb_pg_functions import register as register_pg_functions
 from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
-from provisa.pgwire.catalog_rewrite import _PG_TYPE_DISPLAY_NAMES, next_txid
+from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS, _PG_TYPE_DISPLAY_NAMES, next_txid
 from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPES, macros as server_macros
 
 # The schemas on the search path (catalog_data's search_path, and pg_catalog): an object in one is
@@ -217,6 +217,12 @@ _MACROS = (
 )
 
 
+def _catalog_relations() -> str:
+    """Whether an oid is one of PostgreSQL's own relations, tables the catalog DB answers."""
+    oids = ", ".join(str(oid) for oid in _CATALOG_CLASS_OIDS.values())
+    return f"CREATE MACRO provisa_is_catalog_relation(rel) AS rel IN ({oids})"
+
+
 def _type_spellings() -> str:
     """A type's internal name from the name format_type writes, for to_regtype."""
     spelled = " ".join(
@@ -327,6 +333,7 @@ def populate_catalog_macros(db) -> None:  # REQ-2167
         _describe_object(),
         _identify_object(),
         _type_spellings(),
+        _catalog_relations(),
         *server_macros(),
     ):
         db.execute(macro)

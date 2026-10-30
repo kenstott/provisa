@@ -142,7 +142,7 @@ REFUSALS: list[tuple[str, str, str]] = [
         'relation "no_such_sequence" does not exist',
     ),
     ("SELECT setval(2147483000, 5)", "XX000", "could not open relation with OID 2147483000"),
-    ("SELECT setval('pg_class', 5)", "42809", '"pg_class" is not a sequence'),
+    ("SELECT setval('pg_class', 5)", "42809", 'cannot open relation "pg_class"'),
 ]
 
 

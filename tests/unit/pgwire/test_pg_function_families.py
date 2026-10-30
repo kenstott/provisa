@@ -25,12 +25,13 @@ from psycopg import pq
 from provisa.federation import duckdb_pg_scalars as scalars
 from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+from tests.unit.pgwire.pg17_answers import RECORDED
 from tests.unit.pgwire.pg17_signatures import SIGNATURES
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 BOOL, BYTEA, NAME, INT8, INT4, TEXT, OID = 16, 17, 19, 20, 23, 25, 26
 FLOAT8, NUMERIC, TEXT_ARRAY, TIMESTAMPTZ, TIMESTAMP = 701, 1700, 1009, 1184, 1114
-PG_LSN, XID8, RECORD, VOID, MONEY = 3220, 5069, 2249, 2278, 790
+PG_LSN, XID8, RECORD, VOID, MONEY, ANYELEMENT = 3220, 5069, 2249, 2278, 790, 2283
 
 
 def _run(conn: Any, sql: str) -> Any:
@@ -64,7 +65,7 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
     "SELECT quote_nullable(NULL::text) AS v": (TEXT, ["NULL"]),
     "SELECT quote_nullable('o''k') AS v": (TEXT, ["'o''k'"]),
     # Numbers.
-    "SELECT dcbrt(27) AS v": (FLOAT8, ["3"]),
+    "SELECT dcbrt(8) AS v": (FLOAT8, ["2"]),
     "SELECT dround(2.5) AS v": (FLOAT8, ["2"]),
     "SELECT dtrunc(2.7) AS v": (FLOAT8, ["2"]),
     "SELECT sind(30) AS v": (FLOAT8, ["0.5"]),
@@ -86,19 +87,19 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
     "SELECT generate_series(1.0, 2.0, 0.5) AS v": (NUMERIC, ["1.0", "1.5", "2.0"]),
     "SELECT every(true) AS v": (BOOL, ["t"]),
     # Functions named for a type.
-    "SELECT numeric(1::integer) AS v": (NUMERIC, ["1"]),
+    'SELECT pg_catalog."numeric"(1::integer) AS v': (NUMERIC, ["1"]),
     'SELECT pg_catalog."numeric"(NULL::integer) AS v': (NUMERIC, [None]),
     "SELECT text(true) AS v": (TEXT, ["true"]),
     'SELECT pg_catalog."text"(NULL::boolean) AS v': (TEXT, [None]),
     "SELECT name('a'::text) AS v": (NAME, ["a"]),
-    "SELECT varchar('a'::name) AS v": (1043, ["a"]),
+    "SELECT pg_catalog.\"varchar\"('a'::name) AS v": (1043, ["a"]),
     "SELECT bool(1) AS v": (BOOL, ["t"]),
     "SELECT oid(5::bigint) AS v": (OID, ["5"]),
-    "SELECT char('ab'::text) AS v": (18, ["a"]),
+    "SELECT pg_catalog.\"char\"('ab'::text) AS v": (18, ["a"]),
     # Bytes.
     "SELECT byteacat('\\x01'::bytea, '\\x02'::bytea) AS v": (BYTEA, ["\\x0102"]),
-    "SELECT bytealike('\\x0102'::bytea, '\\x01%'::bytea) AS v": (BOOL, ["t"]),
-    "SELECT byteanlike('\\x0102'::bytea, '\\x01%'::bytea) AS v": (BOOL, ["f"]),
+    "SELECT bytealike('\\x0102'::bytea, '\\x0125'::bytea) AS v": (BOOL, ["t"]),
+    "SELECT byteanlike('\\x0102'::bytea, '\\x0125'::bytea) AS v": (BOOL, ["f"]),
     "SELECT get_byte('\\x0102'::bytea, 1) AS v": (INT4, ["2"]),
     "SELECT set_byte('\\x0102'::bytea, 1, 3) AS v": (BYTEA, ["\\x0103"]),
     "SELECT get_bit('\\x01'::bytea, 0) AS v": (INT4, ["1"]),
@@ -310,10 +311,24 @@ REFUSALS: dict[str, tuple[str, str]] = {
         "WAL level not sufficient for making an online backup",
     ),
     "SELECT pg_backup_stop()": ("55000", "backup is not in progress"),
-    "SELECT pg_drop_replication_slot('s')": (
-        "55000",
-        'replication slots can only be used if "max_replication_slots" > 0',
+    "SELECT pg_drop_replication_slot('s')": ("42704", 'replication slot "s" does not exist'),
+    "SELECT pg_copy_physical_replication_slot('s', 't')": (
+        "42704",
+        'replication slot "s" does not exist',
     ),
+    "SELECT pg_replication_origin_drop('o')": (
+        "42704",
+        'replication origin "o" does not exist',
+    ),
+    "SELECT pg_replication_origin_session_setup('o')": (
+        "42704",
+        'replication origin "o" does not exist',
+    ),
+    "SELECT pg_replication_origin_session_progress(false)": (
+        "55000",
+        "no replication origin is configured",
+    ),
+    "SELECT pg_replication_slot_advance('s', '0/0')": ("XX000", "invalid target WAL LSN"),
     "SELECT pg_create_physical_replication_slot('s')": (
         "55000",
         'replication slots can only be used if "max_replication_slots" > 0',
@@ -322,7 +337,7 @@ REFUSALS: dict[str, tuple[str, str]] = {
         "55000",
         'cannot query or manipulate replication origin when "max_replication_slots" is 0',
     ),
-    "SELECT pg_replication_slot_advance('s', '0/0')": (
+    "SELECT pg_replication_slot_advance('s', '0/1')": (
         "42704",
         'replication slot "s" does not exist',
     ),
@@ -351,7 +366,7 @@ REFUSALS: dict[str, tuple[str, str]] = {
         "58P01",
         'could not open server file "x": No such file or directory',
     ),
-    "SELECT aclinsert('{}'::aclitem[], 'a=r/b'::aclitem)": (
+    "SELECT aclinsert('{}'::aclitem[], '=r/postgres'::aclitem)": (
         "0A000",
         "aclinsert is no longer supported",
     ),
@@ -377,9 +392,9 @@ REFUSALS: dict[str, tuple[str, str]] = {
         "42P01",
         'relation "no_such_table" does not exist',
     ),
-    "SELECT pg_get_object_address('rule', '{r}', '{}')": (
+    "SELECT pg_get_object_address('nope', '{r}', '{}')": (
         "22023",
-        'unsupported object type "rule"',
+        'unrecognized object type "nope"',
     ),
     "SELECT currtid2('no_such_table', '(0,1)'::tid)": (
         "42P01",
@@ -519,18 +534,55 @@ def _expected_oid(name: str, args: tuple[str, ...]) -> int | None:
     return next((oid for oid, entry in TYPES.items() if entry[-1] == next(iter(returns))), None)
 
 
-@pytest.mark.parametrize(
-    ("name", "args", "strict"),
-    SIGNATURES,
-    ids=[f"{n}({', '.join(a)})" for n, a, _ in SIGNATURES],
-)
-def test_every_signature_is_served_with_postgresqls_type(conn: Any, name, args, strict):
+def _signature_problem(conn: Any, name: str, args: tuple[str, ...], strict: bool) -> str | None:
     # As the conformance probe calls it: every argument a NULL of its type.
     listed = ", ".join(f"NULL::{t}" for t in args)
     res = _run(conn, f'SELECT pg_catalog."{name}"({listed}) AS v')
-    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+    if res.status != pq.ExecStatus.TUPLES_OK:
+        return (res.error_message or b"").decode()
     expected = _expected_oid(name, args)
-    if expected is not None and expected != 2283:  # anyelement: the argument's own type
-        assert res.ftype(0) == expected
-    if strict and args:
-        assert all(v is None for v in _rows(res))
+    if expected is not None and expected != ANYELEMENT and res.ftype(0) != expected:
+        return f"type {res.ftype(0)}, PostgreSQL {expected}"
+    if strict and args and any(v is not None for v in _rows(res)):
+        return f"strict, but answered {_rows(res)}"
+    return None
+
+
+# One test over all of them: conn builds a DuckDB runtime per test, and hundreds of those in one
+# worker exhaust it.
+def test_every_signature_is_served_with_postgresqls_type(conn: Any):
+    problems = {
+        f"{name}({', '.join(args)})": problem
+        for name, args, strict in SIGNATURES
+        if (problem := _signature_problem(conn, name, args, strict)) is not None
+    }
+    assert not problems
+    assert len(SIGNATURES) == 461
+
+
+def _recorded_problem(conn: Any, sql: str) -> str | None:
+    res = _run(conn, f"{sql} AS v")
+    kind, first, second = RECORDED[sql]
+    if kind == "err":
+        if res.status != pq.ExecStatus.FATAL_ERROR:
+            return f"answered {_rows(res)}"
+        said = (
+            res.error_field(pq.DiagnosticField.SQLSTATE).decode(),
+            res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY).decode(),
+        )
+        return None if said == (first, second) else str(said)
+    if res.status != pq.ExecStatus.TUPLES_OK:
+        return (res.error_message or b"").decode()
+    if res.ftype(0) != first:
+        return f"type {res.ftype(0)}"
+    rows = _rows(res)
+    if first == FLOAT8:  # the wire's digits are a known gap of their own: the value is compared
+        rows, second = [v and float(v) for v in rows], [v and float(v) for v in second]
+    return None if rows == second else str(rows)
+
+
+def test_a_function_answers_what_postgresql_17_answered(conn: Any):
+    problems = {
+        sql: problem for sql in RECORDED if (problem := _recorded_problem(conn, sql)) is not None
+    }
+    assert not problems

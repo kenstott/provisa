@@ -18,6 +18,9 @@ file or changes anything: Provisa has no server files, sequences or WAL a client
 
 from __future__ import annotations
 
+import re
+
+import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
@@ -30,8 +33,11 @@ _HELD_AS = {
         "tsvector", "pg_mcv_list", "pg_ndistinct", "pg_dependencies", "pg_node_tree",
         "box", "circle", "line", "lseg", "path", "polygon", "point", "xml", "varbit",
     ),
-    "BIGINT": ("xid8", "regcollation", "regconfig", "regdictionary", "regoper", "regoperator",
-               "regprocedure", "regrole"),
+    "UBIGINT": ("xid8",),
+    "BIGINT": (
+        "regcollation", "regconfig", "regdictionary", "regoper", "regoperator", "regprocedure",
+        "regrole",
+    ),
     "DECIMAL(18,2)": ("money",),
 }  # fmt: skip
 #: The aliases that let a statement name them in a cast.
@@ -120,7 +126,7 @@ def _setval(*args: str) -> str:
     return (
         f"CASE WHEN {nulls} THEN CAST(NULL AS BIGINT) "
         f"WHEN coalesce({catalog}, {relation}) IS NOT NULL THEN "
-        + raising("42809", f"'\"' || coalesce({catalog}, {relation}) || '\" is not a sequence'")
+        + raising("42809", f"'cannot open relation \"' || coalesce({catalog}, {relation}) || '\"'")
         + " ELSE "
         + raising("XX000", f"'could not open relation with OID ' || {named}")
         + " END"
@@ -306,16 +312,15 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
     # Replication: a server whose max_replication_slots is 0.
     a.strict("pg_replication_origin_oid", "name", "BIGINT", "CAST(NULL AS BIGINT)")
     a.body("pg_replication_origin_session_is_setup", "", "false")
-    for name, params, sql_type in (
-        ("pg_replication_origin_create", "name", "BIGINT"),
-        ("pg_replication_origin_drop", "name", "VARCHAR"),
-        ("pg_replication_origin_advance", "name, lsn", "VARCHAR"),
-        ("pg_replication_origin_progress", "name, flush", "VARCHAR"),
-        ("pg_replication_origin_session_progress", "flush", "VARCHAR"),
-        ("pg_replication_origin_session_setup", "name", "VARCHAR"),
-        ("pg_replication_origin_xact_setup", "lsn, ts", "VARCHAR"),
-    ):
-        a.strict(name, params, sql_type, _NO_ORIGINS)
+    no_origin = raising("42704", "'replication origin \"' || name || '\" does not exist'")
+    unconfigured = raising("55000", "'no replication origin is configured'")
+    a.strict("pg_replication_origin_create", "name", "BIGINT", _NO_ORIGINS)
+    a.strict("pg_replication_origin_drop", "name", "VARCHAR", no_origin)
+    a.strict("pg_replication_origin_advance", "name, lsn", "VARCHAR", no_origin)
+    a.strict("pg_replication_origin_progress", "name, flush", "VARCHAR", no_origin)
+    a.strict("pg_replication_origin_session_setup", "name", "VARCHAR", no_origin)
+    a.strict("pg_replication_origin_session_progress", "flush", "VARCHAR", unconfigured)
+    a.strict("pg_replication_origin_xact_setup", "lsn, ts", "VARCHAR", unconfigured)
     a.body("pg_replication_origin_xact_reset", "", _VOID)  # no origin is set up to reset
     a.rows(
         "pg_show_replication_origin_status",
@@ -329,6 +334,7 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         "false",
     )
     slot = (("slot_name", "VARCHAR"), ("lsn", "VARCHAR"))
+    no_slot = raising("42704", "'replication slot \"' || name || '\" does not exist'")
     for name, arities in (
         ("pg_create_physical_replication_slot", ("name", "name, reserve", "name, reserve, temp")),
         (
@@ -340,20 +346,25 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
                 "name, plugin, temp, two, failover",
             ),
         ),
-        ("pg_copy_physical_replication_slot", ("src, dst", "src, dst, temp")),
-        (
-            "pg_copy_logical_replication_slot",
-            ("src, dst", "src, dst, temp", "src, dst, temp, plugin"),
-        ),
     ):
         for params in arities:
             a.refused_record(name, params, slot, _NO_SLOTS)
-    a.strict("pg_drop_replication_slot", "name", "VARCHAR", _NO_SLOTS)
+    for name, arities in (
+        ("pg_copy_physical_replication_slot", ("name, dst", "name, dst, temp")),
+        (
+            "pg_copy_logical_replication_slot",
+            ("name, dst", "name, dst, temp", "name, dst, temp, plugin"),
+        ),
+    ):
+        for params in arities:
+            a.refused_record(name, params, slot, no_slot)
+    a.strict("pg_drop_replication_slot", "name", "VARCHAR", no_slot)
     a.refused_record(
         "pg_replication_slot_advance",
         "name, upto",
         (("slot_name", "VARCHAR"), ("end_lsn", "VARCHAR")),
-        raising("42704", "'replication slot \"' || name || '\" does not exist'"),
+        f"CASE WHEN upto = '0/0' THEN {raising('XX000', "'invalid target WAL LSN'")} "
+        f"ELSE {no_slot} END",
     )
     a.strict("pg_logical_emit_message", "tx, prefix, message", "VARCHAR", _NO_LSN)
     a.strict("pg_logical_emit_message", "tx, prefix, message, flush", "VARCHAR", _NO_LSN)
@@ -394,7 +405,7 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         "value",
         "VARCHAR",
         "CASE WHEN value < 0 OR value >= 18446744073709551616 THEN "
-        + raising("22003", "'pg_lsn out of range'")
+        + raising("22023", "'pg_lsn out of range'")
         + " ELSE upper(printf('%x/%x', CAST(value AS UBIGINT) >> 32, "
         "CAST(value AS UBIGINT) & 4294967295)) END",
     )
@@ -802,6 +813,25 @@ def _xid(a: _Answers) -> None:
     )
 
 
+_BTREE = 403
+_BTREE_BUILD_PHASES = (
+    (1, "initializing"),
+    (2, "scanning table"),
+    (3, "sorting live tuples"),
+    (4, "sorting dead tuples"),
+    (5, "loading tuples in tree"),
+)
+#: What each built-in index access method declares of itself (its IndexAmRoutine).
+_INDEXAM_PROPERTIES = {
+    "can_order": (_BTREE,),
+    "can_unique": (_BTREE,),
+    "can_multi_col": (_BTREE, 783, 2742, 3580),
+    "can_exclude": (_BTREE, 405, 783, 4000),
+    "can_include": (_BTREE, 783, 4000),
+}
+_BUILT_IN_ACCESS_METHODS = (_BTREE, 405, 783, 2742, 3580, 4000)
+_BUILT_IN_COLLATIONS = "(100, 811, 950, 951, 962, 963)"
+
 #: Each encoding's longest character in bytes, by its number (common/wchar.c's pg_wchar_table).
 _ENCODING_MAX_LENGTHS = (1, 3, 3, 3, 4, 3, 4, 4, *(1,) * 27, 2, 2, 2, 2, 4, 3, 2)
 _NAMED_STRUCT = "STRUCT(oid BIGINT, name VARCHAR)"
@@ -903,7 +933,11 @@ def _addresses(a: _Answers) -> None:
             f"CASE WHEN {identified}.identity IS NOT NULL "
             f"THEN string_split({identified}.identity, '.') END",
         ),
-        ("object_args", "VARCHAR[]", "CAST([] AS VARCHAR[])"),
+        (
+            "object_args",
+            "VARCHAR[]",
+            f"CASE WHEN {identified}.type IS NOT NULL THEN CAST([] AS VARCHAR[]) END",
+        ),
     )
     a.record("pg_identify_object_as_address", "classid, objid, objsubid", address)
     relation = (
@@ -917,12 +951,14 @@ def _addresses(a: _Answers) -> None:
         "schema": raising("3F000", f"'schema \"' || {named} || '\" does not exist'"),
         "type": raising("42704", f"'type \"' || {named} || '\" does not exist'"),
     }
+    one_name = raising("22023", "'name list length must be exactly 1'")
     found = (
+        f"CASE WHEN kind IN ('schema', 'type') AND len(names) <> 1 THEN {one_name} ELSE "
         f"CASE kind WHEN 'table' THEN coalesce({relation}, {missing['table']}) "
         f"WHEN 'schema' THEN coalesce({namespace}, {missing['schema']}) "
         f"WHEN 'type' THEN coalesce({_type_lookup('names[-1]')}, {missing['type']}) ELSE "
-        + raising("22023", "'unsupported object type \"' || kind || '\"'")
-        + " END"
+        + raising("22023", "'unrecognized object type \"' || kind || '\"'")
+        + " END END"
     )
     a.record(
         "pg_get_object_address",
@@ -1006,7 +1042,8 @@ def _catalog_objects(a: _Answers) -> None:
         "pg_collation_actual_version",
         "c",
         "VARCHAR",
-        "CASE WHEN c IN (SELECT _c.oid FROM _pg_collation _c) THEN CAST(NULL AS VARCHAR) ELSE "
+        f"CASE WHEN c IN (SELECT _c.oid FROM _pg_collation _c) OR c IN {_BUILT_IN_COLLATIONS} "
+        "THEN CAST(NULL AS VARCHAR) ELSE "
         + raising("42704", "'collation with OID ' || c || ' does not exist'")
         + " END",
     )
@@ -1018,7 +1055,10 @@ def _catalog_objects(a: _Answers) -> None:
         + raising("42704", "'database with OID ' || d || ' does not exist'")
         + " END",
     )
-    is_table = "(SELECT _c.relkind IN ('r', 'p') FROM _pg_class _c WHERE _c.oid = rel)"
+    is_table = (
+        "coalesce((SELECT _c.relkind IN ('r', 'p') FROM _pg_class _c WHERE _c.oid = rel), "
+        "provisa_is_catalog_relation(rel))"
+    )
     a.strict(
         "pg_relation_is_updatable",
         "rel, cascaded",
@@ -1038,7 +1078,13 @@ def _catalog_objects(a: _Answers) -> None:
     a.strict("pg_relation_filepath", "rel", "VARCHAR", "CAST(NULL AS VARCHAR)")
     a.strict("pg_get_function_arg_default", "f, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
     a.strict("pg_get_statisticsobjdef", "s", "VARCHAR", "CAST(NULL AS VARCHAR)")
-    a.strict("pg_indexam_progress_phasename", "am, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
+    phases = " ".join(f"WHEN {n} THEN '{name}'" for n, name in _BTREE_BUILD_PHASES)
+    a.strict(
+        "pg_indexam_progress_phasename",
+        "am, n",
+        "VARCHAR",
+        f"CASE WHEN am = {_BTREE} THEN CASE n {phases} END END",
+    )
     a.strict("pg_isolation_test_session_is_blocked", "pid, pids", "BOOLEAN", "false")
     a.strict("pg_safe_snapshot_blocking_pids", "pid", "INTEGER[]", "CAST([] AS INTEGER[])")
     a.strict("pg_log_backend_memory_contexts", "pid", "BOOLEAN", "false")
@@ -1078,7 +1124,7 @@ def _catalog_objects(a: _Answers) -> None:
         "pg_sequence_parameters",
         "seq",
         "VARCHAR",
-        raising("XX000", "'cache lookup failed for sequence ' || seq"),
+        raising("42P01", "'relation with OID ' || seq || ' does not exist'"),
     )
     a.rows(
         "pg_extension_update_paths",
@@ -1132,12 +1178,11 @@ def _catalog_objects(a: _Answers) -> None:
     )
     a.strict("aclitemeq", "a, b", "BOOLEAN", "a = b")
     a.strict("aclcontains", "acl, item", "BOOLEAN", "list_contains(acl, item)")
+    # Any role may set what the catalog holds: Provisa keeps no ACLs.
     privilege = (
         "CASE WHEN upper(priv) NOT IN ('SET', 'ALTER SYSTEM', 'SET WITH GRANT OPTION', "
         "'ALTER SYSTEM WITH GRANT OPTION') THEN "
         + raising("22023", "'unrecognized privilege type: \"' || priv || '\"'")
-        + " WHEN lower(param) NOT IN (SELECT _s.name FROM _pg_settings _s) THEN "
-        + raising("42704", "'unrecognized configuration parameter \"' || param || '\"'")
         + " ELSE true END"
     )
     a.strict("has_parameter_privilege", "param, priv", "BOOLEAN", privilege)
@@ -1211,17 +1256,50 @@ REWRITTEN = frozenset(
 )
 
 
+def indexam_property(am: exp.Expr, name: exp.Expr) -> exp.Expr:
+    """pg_indexam_has_property: strict; NULL for an access method or a property it has not."""
+    method, prop = am.sql(dialect="duckdb"), name.sql(dialect="duckdb")
+    cases = " ".join(
+        f"WHEN {prop} = '{p}' THEN ({method}) IN ({', '.join(map(str, ams))})"
+        for p, ams in _INDEXAM_PROPERTIES.items()
+    )
+    methods = ", ".join(map(str, _BUILT_IN_ACCESS_METHODS))
+    return sqlglot.parse_one(
+        f"CASE WHEN ({method}) IN ({methods}) THEN CASE {cases} END END", read="duckdb"
+    )
+
+
 def known_type(name: str) -> bool:
     """Whether PostgreSQL has a type of this name."""
     from provisa.pgwire.catalog_pg17 import TYPES
 
-    return any(name.lower() in (entry[1], entry[-1]) for entry in TYPES.values())
+    return any(name.lower().removesuffix("[]") in (e[1], e[-1]) for e in TYPES.values())
 
 
-def input_check(value: exp.Expr, type_name: exp.Expr) -> tuple[exp.Expr, str, str]:
-    """For pg_input_is_valid and pg_input_error_info: the value's check -- whether it reads as the
-    type -- and the SQL of the value and the type's name in messages. The type is named in the
-    statement: the check is a cast to it."""
+def _type_display(name: str) -> str:
+    from provisa.pgwire.catalog_pg17 import TYPES
+
+    lowered = name.lower()
+    return next((e[-1] for e in TYPES.values() if lowered in (e[1], e[-1])), lowered)
+
+
+#: The integer types: their input refuses a number out of range with an error of its own.
+_INTEGER_RANGES = {"smallint": 15, "integer": 31, "bigint": 63}
+
+
+def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
+    """What the type's input function says of a literal it refuses, and its SQLSTATE."""
+    display = _type_display(type_name.this)
+    text = value.name
+    bits = _INTEGER_RANGES.get(display)
+    if bits is not None and re.fullmatch(r"\s*[-+]?\d+\s*", text):
+        return f'value "{text}" is out of range for type {display}', "22003"
+    return f'invalid input syntax for type {display}: "{text}"', "22P02"
+
+
+def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:
+    """For pg_input_is_valid and pg_input_error_info: whether the value reads as the type. The
+    type is named in the statement: the check is a cast to it."""
     if not (isinstance(type_name, exp.Literal) and type_name.is_string):
         raise NotImplementedError(
             "pg_input_is_valid: a type that is not a literal is not supported; the cast is "
@@ -1234,5 +1312,6 @@ def input_check(value: exp.Expr, type_name: exp.Expr) -> tuple[exp.Expr, str, st
         raise missing from exc
     if to.this == exp.DataType.Type.USERDEFINED and not known_type(type_name.this):
         raise missing
-    check = exp.Not(this=exp.Is(this=exp.TryCast(this=value.copy(), to=to), expression=exp.null()))
-    return check, value.sql(dialect="duckdb"), type_name.sql(dialect="duckdb")
+    if to.is_type(exp.DataType.Type.ARRAY) and isinstance(value, exp.Literal):
+        value = exp.Literal.string(value.this.replace("{", "[").replace("}", "]"))
+    return exp.Not(this=exp.Is(this=exp.TryCast(this=value.copy(), to=to), expression=exp.null()))

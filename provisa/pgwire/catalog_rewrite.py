@@ -35,6 +35,7 @@ from provisa.pgwire.catalog_data import (
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
 from provisa.transpiler.pg_functions import typed_calls
+from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
@@ -426,7 +427,31 @@ def _array_literal(found) -> str:
     if found[2].lower() not in _TEXT_ELEMENTS:
         return "[" + found[1] + "]"
     elements = [e.strip().strip('"').replace("'", "''") for e in found[1].split(",") if e.strip()]
-    return "[" + ", ".join(f"'{e}'" for e in elements) + "]::TEXT[]"
+    written = ("NULL" if e.upper() == "NULL" else f"'{e}'" for e in elements)
+    return "[" + ", ".join(written) + "]::TEXT[]"
+
+
+def _resolved_regs(node, args: list):
+    """A call of a macro with each 'name'::regclass argument the oid it names: the catalog's
+    own cast keeps a name, for a comparison with a name, and a macro reads an oid."""
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire.catalog_regs import reg_oid, reg_type_of
+
+    def resolved(arg):
+        if not isinstance(arg, exp.Cast):
+            return None
+        reg = reg_type_of(arg.to)
+        if reg is None or not (isinstance(arg.this, exp.Literal) and arg.this.is_string):
+            return None
+        return reg_oid(reg, arg.this)
+
+    oids = [resolved(a) for a in args]
+    if not any(o is not None for o in oids):
+        return node
+    out = node.copy()
+    out.set("expressions", [a if o is None else o for a, o in zip(out.expressions, oids)])
+    return out
 
 
 def _input_answer(fn: str, args: list) -> exp.Expr:
@@ -434,7 +459,7 @@ def _input_answer(fn: str, args: list) -> exp.Expr:
     input function's verdict; the message is that of a value that does not read as the type."""
     import sqlglot.expressions as exp
 
-    from provisa.pgwire.catalog_server_answers import input_check
+    from provisa.pgwire.catalog_server_answers import input_check, input_failure
 
     value, type_name = args
     is_null = isinstance(value, exp.Null) or (
@@ -454,15 +479,16 @@ def _input_answer(fn: str, args: list) -> exp.Expr:
                 read="duckdb",
             )
         )
-    check, shown, named = input_check(value, type_name)
+    check = input_check(value, type_name)
     if fn == "pg_input_is_valid":
         return check
     verdict = check.sql(dialect="duckdb")
-    message = f"'invalid input syntax for type ' || {named} || ': \"' || {shown} || '\"'"
+    message, code = input_failure(value, type_name) if isinstance(value, exp.Literal) else ("", "")
+    said = exp.Literal.string(message).sql(dialect="duckdb")
     return sqlglot.parse_one(
-        f"struct_pack(message := CASE WHEN {verdict} THEN NULL ELSE {message} END, "
+        f"struct_pack(message := CASE WHEN {verdict} THEN NULL ELSE {said} END, "
         "detail := CAST(NULL AS VARCHAR), hint := CAST(NULL AS VARCHAR), "
-        f"sql_error_code := CASE WHEN {verdict} THEN NULL ELSE '22P02' END)",
+        f"sql_error_code := CASE WHEN {verdict} THEN NULL ELSE '{code}' END)",
         read="duckdb",
     )
 
@@ -477,6 +503,12 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     # bracket indexing, not array type), causing a silent fallback to original SQL.
     # '{a,b,c}'::type[] → [a,b,c]
     sql = _pre_re.sub(r"'\{([^}]*)\}'::(\w+)(?:\[\])+", _array_literal, sql)
+    # REQ-2167: an oidvector literal is its list.
+    sql = _pre_re.sub(
+        r"'([\d ]*)'::oidvector\b",
+        lambda m: "[" + ", ".join(m[1].split()) + "]::oidvector",
+        sql,
+    )
     # REQ-2167: the catalog holds a tid as an integer: its literal is that integer.
     sql = _pre_re.sub(r"'\(\d+,\d+\)'::tid\b", "0::tid", sql)
     # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
@@ -485,6 +517,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     sql = to_char_for_duckdb(sql)  # REQ-2167
     try:
         sql = typed_calls(sql)  # REQ-2167
+        if "::bytea" in sql:
+            sql = postgres_literals(sql)  # REQ-2167: a bytea literal is PostgreSQL's input of it
         tree = sqlglot.parse_one(sql, read="postgres")
     except Exception:
         return sql
@@ -598,8 +632,11 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
             args = node.args.get("expressions", [])
-            if fn in SERVER_ANSWERED and fn != "setval":
-                return node  # REQ-2167: a macro of its own (catalog_server_answers)
+            if (fn in SERVER_ANSWERED and fn != "setval") or (
+                fn.startswith("reg") and fn.endswith("send")
+            ):
+                # REQ-2167: a macro of its own (catalog_server_answers, duckdb_pg_scalars).
+                return cast("exp.Expression", _resolved_regs(node, args))
             if fn == "getpgusername":
                 return exp.Literal.string(role_id)
             if fn == "system_user":
@@ -818,15 +855,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 # PG encode(bytea, format) → return NULL; our catalog columns are VARCHAR not bytea
                 return exp.null()
             if fn == "pg_indexam_has_property" and len(args) == 2:
-                # No access method has an amcan* property here; strict in both arguments.
-                nulls = " OR ".join(f"({a.sql(dialect='duckdb')}) IS NULL" for a in args)
-                return cast(
-                    "exp.Expression",
-                    sqlglot.parse_one(
-                        f"CASE WHEN {nulls} THEN CAST(NULL AS BOOLEAN) ELSE false END",
-                        read="duckdb",
-                    ),
-                )
+                # REQ-2167: what each built-in access method declares (src/backend/access/*).
+                from provisa.pgwire.catalog_server_answers import indexam_property
+
+                return cast("exp.Expression", indexam_property(*args))
             if fn in (
                 "pg_am_has_property",
                 "pg_index_has_property",

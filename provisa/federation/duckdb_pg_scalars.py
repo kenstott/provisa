@@ -211,6 +211,10 @@ def _decoded(value: bytes, encoding: str, codec: str) -> str:
         raise _error("22021", f'invalid byte sequence for encoding "{encoding}": 0x{byte}') from exc
 
 
+def _byte_sequence(char: str) -> str:
+    return " ".join(f"0x{byte:02x}" for byte in char.encode())
+
+
 def convert(value: bytes, source: str, destination: str) -> bytes:
     """convert(bytea, source, destination)."""
     text = _decoded(value, source.upper(), _codec(source, "source"))
@@ -219,7 +223,7 @@ def convert(value: bytes, source: str, destination: str) -> bytes:
     except UnicodeEncodeError as exc:
         raise _error(
             "22P05",
-            f"character with byte sequence 0x{exc.object[exc.start].encode().hex()} in encoding "
+            f"character with byte sequence {_byte_sequence(exc.object[exc.start])} in encoding "
             f'"UTF8" has no equivalent in encoding "{destination.upper()}"',
         ) from exc
 
@@ -229,6 +233,17 @@ def encoded_length(value: bytes, encoding: str) -> int:
 
 
 # --- regular expressions --------------------------------------------------------------------------
+
+
+#: What Python's re says, as PostgreSQL's regcomp says it.
+_REGEX_ERRORS = (
+    ("missing )", "parentheses () not balanced"),
+    ("unbalanced parenthesis", "parentheses () not balanced"),
+    ("unterminated character set", "brackets [] not balanced"),
+    ("nothing to repeat", "quantifier operand invalid"),
+    ("multiple repeat", "quantifier operand invalid"),
+    ("bad character range", "invalid character range"),
+)
 
 
 def _flags(flags: str, function: str) -> int:
@@ -247,7 +262,8 @@ def _compiled(pattern: str, flags: int) -> re.Pattern[str]:
     try:
         return re.compile(pattern, flags)
     except re.error as exc:
-        raise _error("2201B", f"invalid regular expression: {exc}") from exc
+        said = next((pg for py, pg in _REGEX_ERRORS if py in str(exc)), str(exc))
+        raise _error("2201B", f"invalid regular expression: {said}") from exc
 
 
 def regexp_match(value: str, pattern: str, flags: str) -> list[str | None] | None:
@@ -288,8 +304,15 @@ def json_object(keys: list[str | None], values: list[str | None] | None) -> str:
     return "{" + ", ".join(fields) + "}"
 
 
+def regexp_split_table(value: str, pattern: str, flags: str) -> list[str]:
+    return _split(value, _compiled(pattern, _flags(flags, "regexp_split_to_table")))
+
+
 def regexp_split(value: str, pattern: str, flags: str) -> list[str]:
-    regex = _compiled(pattern, _flags(flags, "regexp_split_to_array"))
+    return _split(value, _compiled(pattern, _flags(flags, "regexp_split_to_array")))
+
+
+def _split(value: str, regex: re.Pattern[str]) -> list[str]:
     out: list[str] = []
     begin = 0
     position = 0
@@ -309,7 +332,7 @@ def _similar_escape(pattern: str | None, escape: str | None) -> str | None:
     if pattern is None:
         return None
     if escape is not None and len(escape) > 1:
-        raise _error("2200C", "invalid escape string")
+        raise _error("22025", "invalid escape string")
     esc = _BACKSLASH if escape is None else escape
     out = ["^(?:"]
     after_escape = in_bracket = False
@@ -370,7 +393,7 @@ def like_escape(pattern: str, escape: str) -> str:
     escaped = False
     for char in pattern:
         if escaped:
-            out.append(char if char == escape else _BACKSLASH + char)
+            out.append(_BACKSLASH + char)
             escaped = False
         elif char == escape:
             escaped = True
@@ -440,26 +463,51 @@ def unistr(value: str) -> str:
             continue
         found = _UNISTR_ESCAPE.match(value, position)
         if found is None:
-            raise _error("22P02", "invalid Unicode escape")
+            raise _error("42601", "invalid Unicode escape")
         digits = next((g for g in found.groups() if g is not None), None)
         out.append(_BACKSLASH if digits is None else chr(int(digits, 16)))
         position = found.end()
     return "".join(out)
 
 
+#: ascii.c's tables: an encoding's letters without accents, and the byte they begin at.
+_ASCII_TABLES: dict[str, tuple[str, int]] = {
+    "LATIN1": (
+        "  cL Y  \"Ca  -R     'u .,      ?AAAAAAACEEEEIIII NOOOOOxOUUUUYTBaaaaaaaceeeeiiii nooooo/ouuuuyty",
+        160,
+    ),
+    "LATIN2": (
+        ' A L LS "SSTZ-ZZ a,l\'ls ,sstz"zzRAAAALCCCEEEEIIDDNNOOOOxRUUUUYTBraaaalccceeeeiiddnnoooo/ruuuuyt.',
+        160,
+    ),
+    "LATIN9": (
+        "  cL YS sCa  -R     Zu .z   EeY?AAAAAAACEEEEIIII NOOOOOxOUUUUYTBaaaaaaaceeeeiiii nooooo/ouuuuyty",
+        160,
+    ),
+    "WIN1250": (
+        '  \' "    %S<STZZ `\'"".--  s>stzz   L A  "CS  -RZ  ,l\'u .,as L"lzRAAAALCCCEEEEIIDDNNOOOOxRUUUUYTBraaaalccceeeeiiddnnoooo/ruuuuyt ',
+        128,
+    ),
+}
+_ENCODING_NUMBERS = {"8": "LATIN1", "9": "LATIN2", "16": "LATIN9", "29": "WIN1250", "6": "UTF8"}
+
+
 def to_ascii(value: str, encoding: str) -> str:
-    """to_ascii(text, encoding): a LATIN1, LATIN2 or WIN1250 string's letters without accents,
-    any other non-ASCII character a space."""
-    if encoding.upper() not in ("LATIN1", "LATIN2", "WIN1250"):
-        raise _error("0A000", f"encoding conversion from {encoding.upper()} to ASCII not supported")
-    plain = unicodedata.normalize("NFKD", value)
-    kept = (c for c in plain if not unicodedata.combining(c))
-    return "".join(c if ord(c) < 128 else " " for c in kept)  # noqa: PLR2004 -- ASCII's range
+    """to_ascii(text, encoding): the string's bytes read as encoding, as pg_to_ascii reads
+    them: a byte from its table, a space below the table, any ASCII byte itself."""
+    name = _ENCODING_NUMBERS.get(encoding, encoding).upper()
+    if name not in _ASCII_TABLES:
+        raise _error("0A000", f"encoding conversion from {name} to ASCII not supported")
+    table, start = _ASCII_TABLES[name]
+    return "".join(
+        chr(byte) if byte < 128 else " " if byte < start else table[byte - start]  # noqa: PLR2004
+        for byte in value.encode()
+    )
 
 
 def parse_ident(value: str, strict: bool) -> list[str]:
     """parse_ident(str, strict): its dot-separated parts, as PostgreSQL's parser reads them."""
-    invalid = _error("22P02", f'string is not a valid identifier: "{value}"')
+    invalid = _error("22023", f'string is not a valid identifier: "{value}"')
     parts: list[str] = []
     position = 0
     while True:
@@ -470,10 +518,7 @@ def parse_ident(value: str, strict: bool) -> list[str]:
             chars: list[str] = []
             while True:
                 if end >= len(value):
-                    raise _error(
-                        "22P02",
-                        f'string is not a valid identifier: "{value}"',
-                    )
+                    raise invalid
                 if value[end] == '"':
                     if value[end + 1 : end + 2] != '"':
                         break
@@ -557,7 +602,7 @@ def typemod(name: str) -> int:
         return first + 4
     if base in ("bit", "varbit", "bit varying", "time", "timestamp", "timetz", "timestamptz"):
         return first
-    raise _error("22023", f'type modifier is not allowed for type "{base}"')
+    raise _error("42601", f'type modifier is not allowed for type "{base}"')
 
 
 _TSVECTOR_ITEM = re.compile(r"'((?:[^']|'')*)'(?::([0-9A-D,]+))?|(\S+?)(?::([0-9A-D,]+))?(?=\s|$)")
@@ -768,11 +813,10 @@ def numeric_series(start: str, stop: str, step: str | None) -> list[str]:
     first, last, by = Decimal(start), Decimal(stop), Decimal(1 if step is None else step)
     if by == 0:
         raise _error("22023", "step size cannot equal zero")
-    exponent = min(first.as_tuple().exponent, last.as_tuple().exponent, by.as_tuple().exponent, 0)  # type: ignore[type-var]
     out: list[str] = []
     value = first
     while (value <= last) if by > 0 else (value >= last):
-        out.append(str(value.quantize(Decimal(1).scaleb(exponent))))  # type: ignore[arg-type]
+        out.append(str(value))
         value += by
     return out
 
@@ -810,6 +854,7 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_encoded_length", encoded_length, ["BLOB", "VARCHAR"], "INTEGER"),
     ("provisa_similar_substring", similar_substring, ["VARCHAR"] * 3, "VARCHAR"),
     ("provisa_regexp_split", regexp_split, ["VARCHAR"] * 3, "VARCHAR[]"),
+    ("provisa_regexp_split_table", regexp_split_table, ["VARCHAR"] * 3, "VARCHAR[]"),
     ("provisa_like_escape", like_escape, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_bytea_like_escape", bytea_like_escape, ["BLOB", "BLOB"], "BLOB"),
     ("provisa_normalize", normalize, ["VARCHAR", "VARCHAR"], "VARCHAR"),
@@ -907,7 +952,7 @@ def _comparisons(prefix: str, *suffixes: str) -> tuple[str, ...]:
 
 #: oid_send: an oid's four bytes, for the send functions of the object identifier types.
 _OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
-_INT8_BYTES = "unhex(printf('%016x', CAST(v AS BIGINT)))"
+_INT8_BYTES = "unhex(printf('%016x', CAST(v AS UBIGINT)))"
 
 #: quote_literal: an E'' string, its backslashes doubled, when it holds one.
 _QUOTED_LITERAL = (
@@ -939,8 +984,10 @@ _MACROS: tuple[str, ...] = (
     "CREATE MACRO dcbrt(x) AS cbrt(x)",
     "CREATE MACRO dround(x) AS round_even(CAST(x AS DOUBLE), 0)",
     "CREATE MACRO dtrunc(x) AS trunc(CAST(x AS DOUBLE))",
-    "CREATE MACRO sind(x) AS provisa_sind(x)",
-    "CREATE MACRO tand(x) AS provisa_tand(x)",
+    "CREATE MACRO sind(x) AS CASE WHEN isnan(CAST(x AS DOUBLE)) THEN CAST(x AS DOUBLE) "
+    "ELSE provisa_sind(x) END",
+    "CREATE MACRO tand(x) AS CASE WHEN isnan(CAST(x AS DOUBLE)) THEN CAST(x AS DOUBLE) "
+    "ELSE provisa_tand(x) END",
     "CREATE MACRO every(x) AS bool_and(x)",
     "CREATE MACRO scale(x) AS CASE WHEN x IS NULL THEN CAST(NULL AS INTEGER) "
     "WHEN contains(CAST(x AS VARCHAR), '.') "
@@ -1032,7 +1079,7 @@ _MACROS: tuple[str, ...] = (
     "error('postgresql-error 22000: range lower bound must be less than or equal to range upper "
     "bound') "
     "WHEN a IS NOT NULL AND a = b THEN 'empty' "
-    "ELSE '[' || coalesce(CAST(a AS VARCHAR), '') || ',' || coalesce(CAST(b AS VARCHAR), '') "
+    "ELSE CASE WHEN a IS NULL THEN '(' ELSE '[' END || coalesce(CAST(a AS VARCHAR), '') || ',' || coalesce(CAST(b AS VARCHAR), '') "
     "|| ')' END",
     "CREATE MACRO varbit(value, n, explicit) AS CASE WHEN value IS NOT NULL AND n IS NOT NULL THEN "
     "CAST(CASE WHEN n < 0 THEN CAST(value AS VARCHAR) ELSE left(CAST(value AS VARCHAR), n) END "
