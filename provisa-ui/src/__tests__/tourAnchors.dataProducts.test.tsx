@@ -65,6 +65,7 @@ vi.mock("../api/lineage", () => ({
       outputs: [],
       members: [],
       inputs: [],
+      consumers: [],
       dq: { expectations: [], promises: [], related: [], unattached: [] },
     }),
 }));

@@ -112,8 +112,6 @@ async def plane(monkeypatch, control_plane):
     async with db.acquire() as conn:
         await conn.execute_core(insert(sources).values(id="provisa-admin", type="postgresql"))
         await conn.execute_core(insert(domains).values(id="pets"))
-        await conn.execute_core(insert(domains).values(id="meta"))
-        await conn.execute_core(insert(domains).values(id="ontology"))
         for table_id, domain, name in (
             (_META_TABLE_ID, "meta", "data_products"),
             (_TERMS_TABLE_ID, "ontology", "_terms"),
@@ -285,9 +283,11 @@ async def test_an_owner_deletes_and_publishes_its_own_product_only(plane):
     assert await _name(plane, "sales_p") == "sales_p"
 
 
-async def test_the_mcp_tool_is_held_to_the_same_rule(plane):
+async def test_the_mcp_tool_is_held_to_the_same_rule(plane, monkeypatch):
     from provisa.api.mcp import tools
 
+    # The role's built schema is not what this asks about; its rights and rows are.
+    monkeypatch.setattr(tools, "require_role", lambda _role, _state: None)
     request = _request("pets_team")
     state = types.SimpleNamespace(
         model_db=plane.db, roles=plane.roles, meta_roles={}, role_chains=plane.role_chains
@@ -382,18 +382,16 @@ async def test_no_generated_rule_is_stored_for_security_to_edit(plane):
 
 
 async def test_the_roles_listing_shows_what_the_owner_field_gives(plane):
-    org = current_org.set("acme")
     request = types.SimpleNamespace(
         state=types.SimpleNamespace(
-            identity=types.SimpleNamespace(user_id="u1", roles=["org_admin"]),
+            identity=types.SimpleNamespace(
+                user_id="u1", roles=["org_admin"], acting_roles=["org_admin"]
+            ),
             active_org_id="acme",
         ),
         app=types.SimpleNamespace(state=types.SimpleNamespace()),
     )
-    try:
-        listed = {r["id"]: r for r in await roles_router.list_roles(request)}
-    finally:
-        current_org.reset(org)
+    listed = {r["id"]: r for r in await roles_router.list_roles(request)}
     assert "data_product_rw" in listed["pets_team"]["effectiveCapabilities"]
     assert "data_product_rw" not in listed["pets_team"]["capabilities"]
     assert "data_product_rw" in listed["pets_lead"]["effectiveCapabilities"]

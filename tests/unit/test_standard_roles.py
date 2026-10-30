@@ -142,6 +142,7 @@ class TestTheSandbox:
             "create_view",
             "write",
             "environment_switch",
+            "data_product_rw",  # REQ-2188: its own, so a visitor can try products
         }
         assert _rights("developer") - _rights(SANDBOX) == {"environment_owned_management"}
         assert set(STANDARD_ROLES[SANDBOX].parents) == {
