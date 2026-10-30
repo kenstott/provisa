@@ -90612,7 +90612,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     longer limited to PostgreSQL: it compiles to an inline expression that extracts the coordinates from
     the shape''s text and does the arithmetic, in that dialect''s SQL. It is refused by name only where
     the dialect cannot express it. These are per-dialect rewrites in the compiler, so they add no set of
-    functions.'
+    functions. (Amended 2026-10-29, THE RULE FOR TYPES AND FUNCTIONS:) Maintainer 2026-10-30, for every
+    type and function on every dialect: a type the dialect does not support is held as varchar. A function
+    the dialect does not support is written with the functions it does have where that is possible, and
+    where they cannot express it, with inline operators. Geometry on Trino therefore uses Trino''s geometry
+    functions, not inline arithmetic. A refusal by name remains only for what the dialect can express neither
+    way.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
