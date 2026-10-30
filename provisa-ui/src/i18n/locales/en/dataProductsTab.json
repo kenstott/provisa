@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Open {{successor}}",
     "contract": {
       "label": "Contracts",
-      "hint": "Each output port's contract: what it promises, at its own version",
+      "hint": "Each output port's contract: what it declares, at its own version",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Proposed",
@@ -177,8 +177,8 @@
       "versionLabel": "Contract version",
       "statusLabel": "Contract status",
       "descriptionLabel": "What it is for",
-      "columnsLabel": "Promised columns",
-      "columnsHelp": "No longer promising a column, or changing its type, needs a new version.",
+      "columnsLabel": "Columns",
+      "columnsHelp": "Removing a column, or changing its type, needs a new version.",
       "requiredLabel": "Never null",
       "slaLabel": "Service levels",
       "slaProperty": "Property",
@@ -248,9 +248,9 @@
       "draftWarning": "Draft: not yet in force",
       "card": {
         "details": "Details",
-        "fields": "Fields promised",
+        "fields": "Columns",
         "sla": "SLAs & freshness",
-        "quality": "Quality promises",
+        "quality": "Promises",
         "consumers": "Consumers",
         "versions": "Versions & changes"
       }
