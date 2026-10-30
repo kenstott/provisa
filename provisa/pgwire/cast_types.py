@@ -164,6 +164,9 @@ _RETURNED: dict[str, CastType] = {
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
     "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET})),
     "void": CastType(2278, -1, BVType.TEXT, _TEXT_FORMS),
+    "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
+    # The engine holds money as its base; its encoder sends the value as money.
+    "money": CastType(790, -1, BVType.MONEY, _NUMBERS | {BVType.TEXT, BVType.MONEY}),
 }
 
 
@@ -210,13 +213,21 @@ def _operand_type(operand: Any) -> CastType | None:
     return None
 
 
-def _result_type(expression: Any) -> CastType | None:
-    """How a result column is described by its root: a cast by the cast's type, a call of a
-    pg_catalog function by the type that function returns; None for any other column."""
+def _result_type(expression: Any, columns: Any) -> CastType | None:
+    """How a result column is described by its root: a money expression as PostgreSQL's operators
+    type it, a cast by the cast's type, a call of a pg_catalog function by the type that function
+    returns; None for any other column."""
     import sqlglot.expressions as exp
 
     from provisa.pgwire.function_types import call_result_type
+    from provisa.transpiler.pg_money import money_type
 
+    # A column of a table only the plan's shape types: a part of the expression is not known here.
+    typed = None
+    if columns is not None and all(columns(c) for c in expression.find_all(exp.Column)):
+        typed = money_type(expression, columns)
+    if typed is not None:
+        return _RETURNED[typed]
     if isinstance(expression, exp.Cast):
         return _cast_type(expression.to)
     if isinstance(expression, (exp.Add, exp.Sub, exp.Mul)):
@@ -240,18 +251,21 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     import sqlglot.expressions as exp
     from sqlglot.errors import ParseError
 
+    from provisa.transpiler.pg_money import names_money, statement_columns
+
     try:
         tree = sqlglot.parse_one(bit_varying_read(sql), read="postgres")
     except ParseError:
         return None  # not PostgreSQL's grammar: the engine's own types describe it
     if not isinstance(tree, exp.Select):
         return None
+    columns = statement_columns(tree) if names_money(sql) else None
     out: list[CastType | None] = []
     for select in tree.selects:
         expression = select.unalias()
         if isinstance(expression, exp.Star):
             return None  # its columns are known only to the engine
-        out.append(_result_type(expression))
+        out.append(_result_type(expression, columns))
     return tuple(out)
 
 

@@ -40,6 +40,7 @@
     "copyErrorTitle": "העתקת השגיאה",
     "expandedDialogLabel": "תצוגת גרף מורחבת",
     "firstNodesShown": "מוצגים {{count}} הצמתים הראשונים; יש עוד. הגדילו את המגבלה בתפריט הצד.",
-    "deleteFrame": "מחיקת תוצאה זו"
+    "deleteFrame": "מחיקת תוצאה זו",
+    "sparqlNothingMore": "אין מידע נוסף על {{resource}}."
   }
 }

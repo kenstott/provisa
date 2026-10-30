@@ -99,6 +99,14 @@ export interface ProductInput {
   source_table: string | null;
 }
 
+/** One check of a checker table's contract: its type as the checker names it, the column it
+ *  applies to (empty when it applies to the table or its rows) and its arguments, parsed. */
+export interface ProductDqRule {
+  check_type: string;
+  column_name: string;
+  args: Record<string, unknown>;
+}
+
 /** REQ-2157: one checker table in one of a product's data-quality lists. */
 export interface ProductDqEntry {
   checker_table_id: number;
@@ -109,6 +117,7 @@ export interface ProductDqEntry {
   owner_product_id: string | null; // the product owning the check; null for none
   checked_table_id: number;
   checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
+  rules: ProductDqRule[]; // its checks, in the order authored
   latest_outcome: "pass" | "fail" | null; // null when it has never run
   latest_run_at: string | null;
 }

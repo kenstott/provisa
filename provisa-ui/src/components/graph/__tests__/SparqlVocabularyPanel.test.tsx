@@ -13,7 +13,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "../../../test-utils/render";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { labelColor } from "../graph-model";
 import { SparqlVocabularyPanel } from "../SparqlVocabularyPanel";
 import type { SparqlVocabulary } from "../sparql";
@@ -120,6 +120,126 @@ describe("the SPARQL vocabulary as the Cypher sidebar reads it", () => {
     expect(screen.queryByTestId("sparql-class-ops:shifts")).toBeNull();
     // An edge is in a domain where either of its labels is: hr has Employees.
     expect(screen.getByTestId("sparql-edge-rel:WORKS")).toBeInTheDocument();
+  });
+});
+
+// REQ-2135: a property is named by its local name; a column's own under its class, a Property term
+// once with its classes; the search reads the names across every class.
+const shop: SparqlVocabulary = {
+  base: BASE,
+  prefixes: { hr: `${BASE}/hr/`, term: `${BASE}/vocab/term/` },
+  classes: [
+    { iri: `${BASE}/hr/pets`, kind: "table", labels: ["PS__Pets"], superclasses: [] },
+    { iri: `${BASE}/hr/owners`, kind: "table", labels: ["PS__Owners"], superclasses: [] },
+  ],
+  predicates: [
+    {
+      iri: `${BASE}/hr/pets#status`,
+      kind: "column",
+      label: "PS__Pets",
+      property: "status",
+      datatype: "x",
+    },
+    { iri: `${BASE}/hr/pets#name`, kind: "column", label: "PS__Pets", property: "name", datatype: "x" },
+    {
+      iri: `${BASE}/hr/owners#name`,
+      kind: "column",
+      label: "PS__Owners",
+      property: "name",
+      datatype: "x",
+    },
+    {
+      iri: `${BASE}/vocab/term/email`,
+      kind: "term",
+      classes: [
+        { class: `${BASE}/hr/pets`, label: "PS__Pets", property: "contact", datatype: "x" },
+        { class: `${BASE}/hr/owners`, label: "PS__Owners", property: "mail", datatype: "x" },
+      ],
+      domains: [],
+    },
+  ],
+  edges: [],
+  concepts: [],
+};
+
+describe("the Properties list", () => {
+  const onPick = vi.fn();
+  const shopPanel = () =>
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={shop}
+        error={null}
+        onPick={onPick}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+  const search = (text: string) =>
+    fireEvent.change(screen.getByTestId("sparql-property-search"), { target: { value: text } });
+
+  it("names a pill by the property's local name, not its class", () => {
+    shopPanel();
+    expect(screen.getByTestId("sparql-predicate-PS__Pets.status")).toHaveTextContent(/^status$/);
+    expect(screen.getByTestId("sparql-predicate-PS__Owners.name")).toHaveTextContent(/^name$/);
+  });
+
+  it("groups columns under a collapsible header per class", () => {
+    shopPanel();
+    expect(screen.getByTestId("sparql-property-class-hr:pets")).toHaveTextContent("hr:pets (2)");
+    expect(screen.getByTestId("sparql-property-class-hr:owners")).toHaveTextContent(
+      "hr:owners (1)",
+    );
+    expect(screen.getByTestId("sparql-property-class-hr:pets")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    fireEvent.click(screen.getByTestId("sparql-property-class-hr:pets"));
+    expect(screen.getByTestId("sparql-property-class-hr:pets")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("shows a Property term once, by its name", () => {
+    shopPanel();
+    expect(screen.getAllByText("email")).toHaveLength(1);
+    expect(screen.getByTestId("sparql-predicate-term:email")).toHaveTextContent(/^email$/);
+  });
+
+  it("filters by property name across classes, opening what matches", () => {
+    shopPanel();
+    search("NAM");
+    expect(screen.getByTestId("sparql-predicate-PS__Pets.name")).toBeInTheDocument();
+    expect(screen.getByTestId("sparql-predicate-PS__Owners.name")).toBeInTheDocument();
+    expect(screen.queryByTestId("sparql-predicate-PS__Pets.status")).toBeNull();
+    expect(screen.queryByTestId("sparql-predicate-term:email")).toBeNull();
+    expect(screen.getByTestId("sparql-property-class-hr:owners")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("does not match a class's name, and says when nothing matches", () => {
+    shopPanel();
+    search("pets");
+    expect(screen.queryByTestId("sparql-predicate-PS__Pets.name")).toBeNull();
+    // Beside the two empty lists this vocabulary has anyway.
+    expect(screen.getAllByText("Nothing here for your role.")).toHaveLength(3);
+  });
+
+  it("picks the property's IRI", () => {
+    shopPanel();
+    fireEvent.click(screen.getByTestId("sparql-predicate-PS__Pets.status"));
+    expect(onPick).toHaveBeenCalledWith({ kind: "predicate", iri: `${BASE}/hr/pets#status` });
+  });
+
+  it("carries a class pill's IRI to a frame it is dropped on", () => {
+    shopPanel();
+    const pill = screen.getByTestId("sparql-class-hr:pets");
+    expect(pill).toHaveAttribute("draggable", "true");
+    const setData = vi.fn();
+    fireEvent.dragStart(pill, { dataTransfer: { setData } });
+    expect(setData).toHaveBeenCalledWith("text/x-provisa-label", `${BASE}/hr/pets`);
   });
 });
 

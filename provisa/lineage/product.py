@@ -107,8 +107,9 @@ def product_dq(
 
     ``checkers``: every checker table -- its id, names, description, owning ``product_id``, the
     ``checked_table_id`` its contract scans and that table's names (``checked_table``), the
-    ``rule_columns`` its checks name and its latest run. ``members`` and ``inputs`` are the product's member and nearest input table ids, as its
-    reader's lineage gives them; ``served`` what that reader is served (table id → physical
+    ``rule_columns`` its checks name, its ``rules`` (check type, column and arguments) and its
+    latest run. ``members`` and ``inputs`` are the product's member and nearest input table ids, as
+    its reader's lineage gives them; ``served`` what that reader is served (table id → physical
     columns). A promise is the product's check on a member, an expectation its check on an
     input; another owner's (or no owner's) check on either is related; the product's check on
     neither is unattached, a curation gap for its owner. A check the reader cannot read -- its
@@ -140,6 +141,7 @@ def product_dq(
                 "owner_product_id": c["product_id"],
                 "checked_table_id": checked,
                 "checked_table": c["checked_table"],
+                "rules": c["rules"],
                 "latest_outcome": c["latest_outcome"],
                 "latest_run_at": c["latest_run_at"],
             }

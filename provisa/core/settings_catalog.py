@@ -110,11 +110,12 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # read when a graph query is compiled
         # REQ-2135: the most branches a variable predicate's union over the mapped predicates may
-        # have; a query needing more is refused, naming the limit.
+        # have; a query needing more is refused, naming the limit. A query with a LIMIT and no
+        # ORDER BY, DISTINCT or aggregate is allowed ten times it.
         req="REQ-2135",
         env="PROVISA_GRAPH_UNION_LIMIT",
         config_path=("server", "limits", "graph_union_limit"),
-        default=64,
+        default=256,
         min=1,
         unit="branches",
     ),

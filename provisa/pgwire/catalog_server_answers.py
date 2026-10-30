@@ -25,6 +25,13 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError, raising
+from provisa.transpiler.function_macros import (
+    SERVER_VALUE_NAMES,
+    WAL_SEGMENT,
+    lsn_number,
+    strict,
+    wal_file,
+)
 
 #: PostgreSQL's types the catalog DB has no type for, each what its values are held as there.
 _HELD_AS = {
@@ -38,7 +45,6 @@ _HELD_AS = {
         "regcollation", "regconfig", "regdictionary", "regoper", "regoperator", "regprocedure",
         "regrole",
     ),
-    "DECIMAL(18,2)": ("money",),
 }  # fmt: skip
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(
@@ -179,7 +185,7 @@ class _Answers:
 
     def strict(self, name: str, params: str, sql_type: str, answer: str) -> None:
         """A strict function: a NULL argument is a NULL result of ``sql_type``."""
-        self.body(name, params, _strictly(params, sql_type, answer))
+        self.body(name, params, strict(params, sql_type, answer))
 
     def strict_all(self, name: str, arities: tuple[str, ...], sql_type: str, answer: str) -> None:
         for params in arities:
@@ -209,7 +215,7 @@ class _Answers:
         """A record-returning function: its one row, strict in ``params``."""
         struct = "STRUCT(" + ", ".join(f"{c} {t}" for c, t, _ in columns) + ")"
         fields = ", ".join(f"{c} := CAST({v} AS {t})" for c, t, v in columns)
-        value = _strictly(params, struct, f"struct_pack({fields})")
+        value = strict(params, struct, f"struct_pack({fields})")
         self.body(name, params, value)
         out = ", ".join(f"_s.{c} AS {c}" for c, _, _ in columns)
         self.table.setdefault(name, []).append(
@@ -221,7 +227,7 @@ class _Answers:
     ) -> None:
         """A record-returning function that refuses every non-NULL call."""
         struct = "STRUCT(" + ", ".join(f"{c} {t}" for c, t in columns) + ")"
-        value = _strictly(params, struct, refusal)
+        value = strict(params, struct, refusal)
         self.body(name, params, value)
         out = ", ".join(f"_s.{c} AS {c}" for c, _ in columns)
         self.table.setdefault(name, []).append(
@@ -232,33 +238,6 @@ class _Answers:
         scalar = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.scalar.items())
         table = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.table.items())
         return scalar + table
-
-
-def _strictly(params: str, sql_type: str, answer: str) -> str:
-    if not params:
-        return answer
-    nulls = " OR ".join(f"{p} IS NULL" for p in params.split(", "))
-    return f"CASE WHEN {nulls} THEN CAST(NULL AS {sql_type}) ELSE {answer} END"
-
-
-_LSN_NUMBER = (
-    "((CAST('0x' || split_part({l}, '/', 1) AS BIGINT) << 32) + "
-    "CAST('0x' || split_part({l}, '/', 2) AS BIGINT))"
-)
-_WAL_SEGMENT = 16777216
-_SEGMENTS_PER_ID = 256
-
-
-def _lsn(value: str) -> str:
-    return _LSN_NUMBER.format(l=value)
-
-
-def _wal_file(value: str) -> str:
-    segment = f"({_lsn(value)} // {_WAL_SEGMENT})"
-    return (
-        f"upper(printf('%08x%08x%08x', 1, {segment} // {_SEGMENTS_PER_ID}, "
-        f"{segment} % {_SEGMENTS_PER_ID}))"
-    )
 
 
 def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per function
@@ -384,29 +363,13 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
             "pg_backup_stop", params, stop, raising("55000", "'backup is not in progress'")
         )
     a.body("pg_rotate_logfile", "", "false")
-    a.strict("pg_walfile_name", "lsn", "VARCHAR", _wal_file("lsn"))
     a.record(
         "pg_walfile_name_offset",
         "lsn",
         (
-            ("file_name", "VARCHAR", _wal_file("lsn")),
-            ("file_offset", "INTEGER", f"{_lsn('lsn')} % {_WAL_SEGMENT}"),
+            ("file_name", "VARCHAR", wal_file("lsn")),
+            ("file_offset", "INTEGER", f"{lsn_number('lsn')} % {WAL_SEGMENT}"),
         ),
-    )
-    a.strict(
-        "pg_wal_lsn_diff",
-        "a, b",
-        "DECIMAL(38,0)",
-        f"CAST({_lsn('a')} AS DECIMAL(38,0)) - CAST({_lsn('b')} AS DECIMAL(38,0))",
-    )
-    a.strict(
-        "pg_lsn",
-        "value",
-        "VARCHAR",
-        "CASE WHEN value < 0 OR value >= 18446744073709551616 THEN "
-        + raising("22023", "'pg_lsn out of range'")
-        + " ELSE upper(printf('%x/%x', CAST(value AS UBIGINT) >> 32, "
-        "CAST(value AS UBIGINT) & 4294967295)) END",
     )
     a.record(
         "pg_split_walfile_name",
@@ -452,7 +415,7 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
             ("database_block_size", "INTEGER", "8192"),
             ("blocks_per_segment", "INTEGER", "131072"),
             ("wal_block_size", "INTEGER", "8192"),
-            ("bytes_per_wal_segment", "INTEGER", str(_WAL_SEGMENT)),
+            ("bytes_per_wal_segment", "INTEGER", str(WAL_SEGMENT)),
             ("max_identifier_length", "INTEGER", "64"),
             ("max_index_columns", "INTEGER", "32"),
             ("max_toast_chunk_size", "INTEGER", "1996"),
@@ -751,32 +714,6 @@ def _xid(a: _Answers) -> None:
     snapshot = "(SELECT _n || ':' || _n || ':' FROM (SELECT provisa_next_xid() AS _n))"
     a.body("pg_current_snapshot", "", snapshot)
     a.body("txid_current_snapshot", "", snapshot)
-    xip = (
-        "list_transform(string_split(nullif(split_part(s, ':', 3), ''), ','), "
-        "_x -> CAST(_x AS BIGINT))"
-    )
-    xmin, xmax = "CAST(split_part(s, ':', 1) AS BIGINT)", "CAST(split_part(s, ':', 2) AS BIGINT)"
-    for family, name in (
-        ("pg_snapshot", "pg_visible_in_snapshot"),
-        ("txid_snapshot", "txid_visible_in_snapshot"),
-    ):
-        a.strict(f"{family}_xmin", "s", "BIGINT", xmin)
-        a.strict(f"{family}_xmax", "s", "BIGINT", xmax)
-        a.body(f"{family}_xip", "s", f"unnest({xip})")
-        a.strict(
-            f"{family}_send",
-            "s",
-            "BLOB",
-            f"unhex(printf('%08x%016x%016x', coalesce(len({xip}), 0), {xmin}, {xmax}) || "
-            f"coalesce(array_to_string(list_transform({xip}, _x -> printf('%016x', _x)), ''), ''))",
-        )
-        a.strict(
-            name,
-            "x, s",
-            "BOOLEAN",
-            f"CASE WHEN x < {xmin} THEN true WHEN x >= {xmax} THEN false "
-            f"ELSE NOT coalesce(list_contains({xip}, x), false) END",
-        )
     status = (
         "CASE WHEN x >= provisa_next_xid() THEN "
         + raising("22023", "'transaction ID ' || x || ' is in the future'")
@@ -797,12 +734,6 @@ def _xid(a: _Answers) -> None:
         "x",
         "INTEGER",
         "CASE WHEN x < 3 THEN 2147483647 ELSE CAST(provisa_next_xid() - x AS INTEGER) END",
-    )
-    a.strict(
-        "mxid_age",
-        "x",
-        "INTEGER",
-        "CASE WHEN x = 0 THEN 2147483647 ELSE CAST(1 - x AS INTEGER) END",
     )
     a.rows("pg_get_multixact_members", "m", (("xid", "BIGINT"), ("mode", "VARCHAR")), "false")
     a.body(
@@ -831,8 +762,6 @@ _INDEXAM_PROPERTIES = {
 _BUILT_IN_ACCESS_METHODS = (_BTREE, 405, 783, 2742, 3580, 4000)
 _BUILT_IN_COLLATIONS = "(100, 811, 950, 951, 962, 963)"
 
-#: Each encoding's longest character in bytes, by its number (common/wchar.c's pg_wchar_table).
-_ENCODING_MAX_LENGTHS = (1, 3, 3, 3, 4, 3, 4, 4, *(1,) * 27, 2, 2, 2, 2, 4, 3, 2)
 _NAMED_STRUCT = "STRUCT(oid BIGINT, name VARCHAR)"
 
 
@@ -978,8 +907,6 @@ def _catalog_objects(a: _Answers) -> None:
     """The functions on what the catalog holds, answered from it."""
     _to_reg(a)
     _addresses(a)
-    lengths = ", ".join(str(n) for n in _ENCODING_MAX_LENGTHS)
-    a.strict("pg_encoding_max_length", "e", "INTEGER", f"[{lengths}][e + 1]")
     a.body(
         "pg_available_extension_versions",
         "",
@@ -1175,8 +1102,6 @@ def _catalog_objects(a: _Answers) -> None:
         "VARCHAR[]",
         raising("0A000", "'aclremove is no longer supported'"),
     )
-    a.strict("aclitemeq", "a, b", "BOOLEAN", "a = b")
-    a.strict("aclcontains", "acl, item", "BOOLEAN", "list_contains(acl, item)")
     # Any role may set what the catalog holds: Provisa keeps no ACLs.
     privilege = (
         "CASE WHEN upper(priv) NOT IN ('SET', 'ALTER SYSTEM', 'SET WITH GRANT OPTION', "
@@ -1233,8 +1158,8 @@ ANSWERED = frozenset(
         "pg_reload_conf",
         "pg_stat_file",
         "setval",
-        "money",
         "regclass",
+        *SERVER_VALUE_NAMES,
         *_answers().scalar,
         *_answers().table,
     }

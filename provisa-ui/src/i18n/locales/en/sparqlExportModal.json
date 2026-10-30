@@ -13,6 +13,7 @@
     },
     "download": "Download",
     "close": "Close",
-    "empty": "Run a query to export its result."
+    "empty": "Run a query to export its result.",
+    "unnamedEdges": "This graph's edges name no predicate, so it holds no triples to write as RDF."
   }
 }

@@ -34,13 +34,16 @@ from provisa.pgwire.catalog_data import (
 )
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
+from provisa.transpiler import function_macros
 from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.pg_literals import postgres_literals
+from provisa.transpiler.pg_money import lowered
 from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
-_TXID_COUNTER = itertools.count(1)
+#: PostgreSQL's FirstNormalTransactionId: xids 1 and 2 are the bootstrap's, always past.
+_TXID_COUNTER = itertools.count(3)
 
 
 def next_txid() -> int:
@@ -514,6 +517,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 
     sql = to_char_for_duckdb(sql)  # REQ-2167
+    sql = lowered(sql, "duckdb")  # REQ-2171: the catalog DB holds money as the engine does
     try:
         sql = typed_calls(sql)  # REQ-2167
         if "::bytea" in sql:
@@ -634,7 +638,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             if (fn in SERVER_ANSWERED and fn != "setval") or (
                 fn.startswith("reg") and fn.endswith("send")
             ):
-                # REQ-2167: a macro of its own (catalog_server_answers, duckdb_pg_scalars).
+                # REQ-2167: a macro of its own (catalog_server_answers, function_macros).
                 return cast("exp.Expression", _resolved_regs(node, args))
             if fn == "getpgusername":
                 return exp.Literal.string(role_id)
@@ -842,14 +846,6 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 )
             if "pg_has_role" in fn:
                 return exp.true()
-            if fn == "quote_ident" and len(args) == 1:
-                # REQ-2167: as PostgreSQL quotes an identifier: bare when it needs no quotes.
-                from provisa.pgwire.catalog_macros import quoted_identifier
-
-                name = f"CAST(({args[0].transform(_transform).sql(dialect='duckdb')}) AS VARCHAR)"
-                return cast(
-                    "exp.Expression", sqlglot.parse_one(quoted_identifier(name), read="duckdb")
-                )
             if fn == "encode":
                 # PG encode(bytea, format) → return NULL; our catalog columns are VARCHAR not bytea
                 return exp.null()
@@ -932,7 +928,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     coerce_reg_comparisons(tree)  # REQ-2167: 'pg_class'::regclass = 'pg_class'
     project_reg_values(tree)  # REQ-2167: a result column that is a reg* value
     try:
-        rewritten = tree.transform(_transform)
+        rewritten = function_macros.inline(tree.transform(_transform), "duckdb")
         # Move INNER JOINs before LEFT/RIGHT/FULL JOINs so DuckDB does not reject
         # forward alias references (e.g. `LEFT JOIN dsc ON c.oid=...` before
         # `INNER JOIN pg_class c` — c is not yet in scope).

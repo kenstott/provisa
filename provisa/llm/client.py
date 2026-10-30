@@ -13,7 +13,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, Optional, TypeVar
 
 # Requirements: REQ-355, REQ-356, REQ-358
 
@@ -27,6 +29,22 @@ _DEFAULTS: dict[str, dict] = {
     "sql_generation": {"vendor": "anthropic", "model": "claude-opus-4-6"},
     "table_selection": {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"},
 }
+
+
+_T = TypeVar("_T")
+
+
+@dataclass(frozen=True)
+class Completion:
+    """A completion with what produced it: the vendor and model that answered (the fallback's,
+    when the primary failed) and the usage the vendor reported (aisuite's CompletionUsage, OpenAI
+    shaped; None when the vendor reported none). A caller held to a role's LLM budget (REQ-1174)
+    counts the usage against that model."""
+
+    text: str
+    vendor: str
+    model: str
+    usage: Any
 
 
 class LLMEmptyResponseError(RuntimeError):
@@ -117,9 +135,22 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         messages.append({"role": "user", "content": prompt})
         return messages
 
+    @property
+    def vendor(self) -> str:
+        return self._vendor
+
+    @property
+    def model(self) -> str:
+        return self._model
+
     def _complete_sync(
         self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
     ) -> str:
+        return self._respond(vendor, model, prompt, system, max_tokens).text
+
+    def _respond(
+        self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
+    ) -> Completion:
         import os
 
         import aisuite as ai
@@ -168,19 +199,13 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
                 f"max_tokens={max_tokens}); a reasoning model can spend the whole token budget "
                 "before emitting text"
             )
-        return content.strip()
+        return Completion(content.strip(), vendor, model, getattr(response, "usage", None))
 
-    def complete_sync(
-        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
-    ) -> str:
-        """Complete a prompt synchronously.
-
-        Tries primary vendor/model first; on failure tries fallback if configured.
-        Returns plain text response.
-        """
+    def _with_fallback(self, call: Callable[[str, str], _T]) -> _T:
+        """``call(vendor, model)`` on the primary vendor/model, and on its failure on the
+        fallback when one is configured."""
         try:
-            result = self._complete_sync(self._vendor, self._model, prompt, system, max_tokens)
-            return result
+            return call(self._vendor, self._model)
         except Exception as primary_exc:
             log.warning(
                 "LLM primary vendor=%s model=%s failed: %s",
@@ -190,10 +215,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             )
             if self._fallback_vendor and self._fallback_model:
                 try:
-                    result = self._complete_sync(
-                        self._fallback_vendor, self._fallback_model, prompt, system, max_tokens
-                    )
-                    return result
+                    return call(self._fallback_vendor, self._fallback_model)
                 except Exception as fallback_exc:
                     log.warning(
                         "LLM fallback vendor=%s model=%s failed: %s",
@@ -203,6 +225,32 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
                     )
                     raise fallback_exc
             raise primary_exc
+
+    def complete_sync(
+        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
+    ) -> str:
+        """Complete a prompt synchronously.
+
+        Tries primary vendor/model first; on failure tries fallback if configured.
+        Returns plain text response.
+        """
+        return self._with_fallback(
+            lambda vendor, model: self._complete_sync(vendor, model, prompt, system, max_tokens)
+        )
+
+    async def complete_detailed(
+        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
+    ) -> Completion:
+        """:meth:`complete` with the vendor, model and usage of the answer (:class:`Completion`)."""
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self._with_fallback(
+                lambda vendor, model: self._respond(vendor, model, prompt, system, max_tokens)
+            ),
+        )
 
     async def complete(
         self,

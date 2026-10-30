@@ -9,14 +9,21 @@
 // permission from the copyright holder.
 
 // REQ-2135: the SPARQL tab's export, where the Cypher tab's is the Neo4j export. A frame's answer
-// is written in its own form's formats (sparqlExport.ts): a graph as RDF, rows as SPARQL results.
+// is written in its own form's formats (sparqlExport.ts): a graph as RDF, rows as SPARQL results,
+// and rows that hold triples as RDF too.
 
 import { useState } from "react";
 import { Alert, Button, Group, Input, Modal, SegmentedControl, Select, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { downloadBlob } from "./graph-export";
-import { fetchSparqlExport, SPARQL_EXPORT_FORMATS, type SparqlExportable } from "./sparqlExport";
+import {
+  exportFormats,
+  fetchSparqlExport,
+  tripleBlob,
+  TRIPLE_FORMATS,
+  type SparqlExportable,
+} from "./sparqlExport";
 
 interface SparqlExportModalProps {
   /** The frames' answers, newest first. */
@@ -29,7 +36,7 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
   const { t } = useTranslation();
   const [frameId, setFrameId] = useState<string | null>(frames[0]?.id ?? null);
   const frame = frames.find((f) => f.id === frameId) ?? null;
-  const formats = frame ? SPARQL_EXPORT_FORMATS[frame.form] : [];
+  const formats = frame ? exportFormats(frame) : [];
   const [formatKey, setFormatKey] = useState<string | null>(formats[0]?.key ?? null);
   // A frame of another form has formats of its own: its default until one is chosen.
   const format = formats.find((f) => f.key === formatKey) ?? formats[0];
@@ -41,7 +48,10 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
     setBusy(true);
     setError("");
     try {
-      const blob = await fetchSparqlExport(frame.query, format.media, roleHeader);
+      const written = frame.triples && TRIPLE_FORMATS.some((f) => f.key === format.key);
+      const blob = written
+        ? tripleBlob(frame.triples ?? [], format, frame.prefixes ?? {})
+        : await fetchSparqlExport(frame.query, format.media, roleHeader);
       downloadBlob(blob, `sparql-result.${format.ext}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -100,6 +110,11 @@ export function SparqlExportModal({ frames, roleHeader, onClose }: SparqlExportM
                 </div>
               </Input.Wrapper>
             </FormField>
+            {frame.unnamedEdges && (
+              <Text size="sm" c="dimmed" data-testid="sparql-export-unnamed">
+                {t("sparqlExportModal.unnamedEdges")}
+              </Text>
+            )}
             {error && (
               <Alert color="red" data-testid="sparql-export-error">
                 {error}

@@ -48,6 +48,13 @@ export interface CanvasProps {
   onToggleParentsBatch: (nodeKeys: string[], circular?: boolean) => void;
   showingParentsCircular: Set<string>;
   onToggleParentsCircular: (nodeKey: string) => void;
+  /** A node's expansion is its own (a SPARQL DESCRIBE): offered on every node, as one action. */
+  describable?: boolean;
+  /** A node the viewer moved (a SPARQL frame merges what is said of it). */
+  onNodeDragged?: (nodeKey: string) => void;
+  /** A new drawing keeps the nodes it shares with the last where they were, and lays out only the
+   *  new ones around them (a SPARQL frame's drawing grows as triples merge into it). */
+  keepPositions?: boolean;
   onCyReady?: (cy: CyInstance | null) => void;
   clusterLevel: ClusterLevel;
   /** A view a navigation asked for (Polly's navigate): its layout, and whether every group starts

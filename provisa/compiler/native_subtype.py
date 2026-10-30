@@ -86,6 +86,10 @@ def _touches(col: exp.Column, subtype: str) -> bool:
     parent = node.parent
     while isinstance(parent, exp.Paren):
         node, parent = parent, parent.parent
+    if semantics == "money":
+        # Read as a value it is its source's own; any use of it is money's. A source's form of it
+        # groups as its value does, and a grouped column is named as the projection names it.
+        return not isinstance(parent, (exp.Select, exp.Alias, exp.Group))
     if isinstance(parent, OPERATORS):
         return True
     if semantics == "spatial":

@@ -13,6 +13,7 @@
     },
     "download": "Herunterladen",
     "close": "Schließen",
-    "empty": "Führen Sie eine Abfrage aus, um ihr Ergebnis zu exportieren."
+    "empty": "Führen Sie eine Abfrage aus, um ihr Ergebnis zu exportieren.",
+    "unnamedEdges": "Die Kanten dieses Graphen nennen kein Prädikat, daher enthält er keine Tripel, die als RDF geschrieben werden könnten."
   }
 }

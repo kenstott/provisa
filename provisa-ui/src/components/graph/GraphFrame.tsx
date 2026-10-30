@@ -54,6 +54,8 @@ import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
 import { frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
+import { useSparqlExpansion } from "./frame/use-sparql-expansion";
+import { groupableAttributes } from "./frame/frame-meta";
 import {
   GraphViewIcon,
   TableViewIcon,
@@ -115,6 +117,11 @@ interface GraphFrameProps {
   /** The frame's query language (REQ-2135): its header's highlighting, and whether auto-impute,
    *  which rewrites a Cypher query, is offered. */
   language?: GraphLanguage;
+  /** The prefixes a SPARQL frame's terms show by. */
+  sparqlPrefixes?: Record<string, string>;
+  /** Merge what the model says of a resource into a SPARQL frame. ``toggle`` takes an expansion
+   *  back where there is one; a drag only ever adds. */
+  onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
 }
 
 export function GraphFrame({
@@ -146,10 +153,13 @@ export function GraphFrame({
   onStatement,
   onEffectiveDataChange,
   language = "cypher",
+  sparqlPrefixes,
+  onExpandResource,
 }: GraphFrameProps) {
   const { t } = useTranslation();
-  const sparqlDraw = useSparqlDraw(answered);
+  const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
   const frame = sparqlDraw.frame;
+  const sparql = language === "sparql";
   // The editors sit inside the app chrome, so they follow the app's scheme rather than staying
   // dark on a light page. undefined = CodeMirror's own light theme.
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
@@ -320,59 +330,11 @@ export function GraphFrame({
 
   useAutoImpute(frame, autoImpute && language === "cypher", setOverlayData);
 
+  const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
+
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
-  // Properties available for grouping: virtual schema_L1/L2/L3 (mapped to scl1/scl2/scl3)
-  // followed by any scalar property with more than one distinct value.
-  const groupableAttrs = useMemo(() => {
-    if (augmentedNodes.size === 0) return [];
-    const SKIP = new Set([
-      "scl1",
-      "scl2",
-      "scl3",
-      "l1Cluster",
-      "l2Cluster",
-      "l3Cluster",
-      "degIn",
-      "degOut",
-      "degTotal",
-    ]);
-    const schemaVirtuals: string[] = [];
-    for (const [virtName, prop] of [
-      ["schema_L1", "scl1"],
-      ["schema_L2", "scl2"],
-      ["schema_L3", "scl3"],
-    ] as const) {
-      const vals = new Set<string>();
-      augmentedNodes.forEach((n) => {
-        const v = n.properties[prop];
-        if (v !== null && v !== undefined) vals.add(String(v));
-      });
-      if (vals.size > 1) schemaVirtuals.push(virtName);
-    }
-    const degreeVirtuals: string[] = [];
-    for (const key of ["degIn", "degOut", "degTotal"] as const) {
-      const vals = new Set<string>();
-      augmentedNodes.forEach((n) => {
-        const v = n.properties[key];
-        if (v !== null && v !== undefined) vals.add(String(v));
-      });
-      if (vals.size > 1) degreeVirtuals.push(key);
-    }
-    const counts = new Map<string, Set<string>>();
-    augmentedNodes.forEach((n) => {
-      Object.entries(n.properties).forEach(([k, v]) => {
-        if (SKIP.has(k) || v === null || v === undefined) return;
-        if (typeof v === "object") return;
-        if (!counts.has(k)) counts.set(k, new Set());
-        counts.get(k)!.add(String(v));
-      });
-    });
-    const regularAttrs = [...counts.entries()].filter(([, vals]) => vals.size > 1).map(([k]) => k);
-    return ["domain", ...schemaVirtuals, ...degreeVirtuals, ...regularAttrs].sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [augmentedNodes]);
+  const groupableAttrs = useMemo(() => groupableAttributes(augmentedNodes), [augmentedNodes]);
   const activeView: "graph" | "table" | "json" | "graphstats" | "code" = hasGraph
     ? view
     : view === "json"
@@ -731,8 +693,12 @@ export function GraphFrame({
             key: "graph" as const,
             label: t("graphFrame.viewGraph"),
             Icon: GraphViewIcon,
-            show: hasGraph,
-            onClick: () => setView("graph"),
+            // A SELECT whose rows hold triples can show them as a graph.
+            show: hasGraph || frame.sparqlPairing !== undefined,
+            onClick: () => {
+              if (frame.sparqlPairing) sparqlDraw.setDrawSelect(true);
+              setView("graph");
+            },
           },
           {
             key: "table" as const,
@@ -814,9 +780,18 @@ export function GraphFrame({
               pkMap={pkMap}
               labelToTableLabel={labelToTableLabel}
               relationships={graphRelationships ?? []}
-              showingChildrenNatural={showingChildrenNatural}
-              onToggleChildren={handleToggleChildren}
-              onToggleChildrenBatch={handleToggleChildrenBatch}
+              showingChildrenNatural={sparql ? expandedNodes : showingChildrenNatural}
+              onToggleChildren={
+                sparql ? (nodeKey) => expandNode(nodeKey, true) : handleToggleChildren
+              }
+              onToggleChildrenBatch={
+                sparql
+                  ? (nodeKeys) => nodeKeys.forEach((k) => expandNode(k, true))
+                  : handleToggleChildrenBatch
+              }
+              describable={sparql}
+              keepPositions={sparql}
+              onNodeDragged={sparql ? (nodeKey) => expandNode(nodeKey, false) : undefined}
               showingChildrenCircular={showingChildrenCircular}
               onToggleChildrenCircular={handleToggleChildrenCircular}
               showingParents={showingParents}

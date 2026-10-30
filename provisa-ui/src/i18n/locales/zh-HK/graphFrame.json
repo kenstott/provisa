@@ -40,6 +40,7 @@
     "copyErrorTitle": "複製錯誤",
     "expandedDialogLabel": "展開的圖形檢視",
     "firstNodesShown": "顯示首 {{count}} 個節點；尚有更多。請在側邊選單中提高上限。",
-    "deleteFrame": "刪除此結果"
+    "deleteFrame": "刪除此結果",
+    "sparqlNothingMore": "沒有關於 {{resource}} 的更多資訊。"
   }
 }

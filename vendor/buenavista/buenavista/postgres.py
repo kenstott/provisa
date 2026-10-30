@@ -587,7 +587,7 @@ def _money_cents(v):
 
 
 def _money_text(v):
-    """cash_out under lc_monetary C: a dollar sign, comma thousands, two decimals."""
+    """cash_out under lc_monetary en_US.UTF-8: a dollar sign, comma thousands, two decimals."""
     if isinstance(v, str):
         return v
     cents = _money_cents(v)

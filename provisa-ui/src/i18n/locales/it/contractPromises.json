@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "Si applica a",
+      "check": "Controllo",
+      "details": "Dettagli",
+      "result": "Ultimo risultato"
+    },
+    "level": {
+      "table": "Tabella",
+      "row": "Riga"
+    },
+    "check": {
+      "notNull": "Non nullo",
+      "unique": "Univoco",
+      "allowedValues": "Valori consentiti",
+      "pattern": "Corrispondenza di pattern",
+      "valueRange": "Intervallo di valori",
+      "textLength": "Lunghezza del testo",
+      "average": "Intervallo della media",
+      "distinctCount": "Valori distinti",
+      "rowCount": "Numero di righe",
+      "columnOrder": "Ordine delle colonne",
+      "unexpectedRows": "Nessuna riga inattesa",
+      "missing": "Nessun valore mancante",
+      "valid": "Valori validi",
+      "duplicate": "Nessun duplicato",
+      "aggregate": "Aggregato",
+      "freshness": "Aggiornamento",
+      "failedRows": "Nessuna riga in errore"
+    },
+    "threshold": {
+      "eq": "Deve essere {{value}}",
+      "ne": "Non deve essere {{value}}",
+      "gt": "Maggiore di {{value}}",
+      "gte": "Almeno {{value}}",
+      "lt": "Minore di {{value}}",
+      "lte": "Al massimo {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "Da {{min}} a {{max}}",
+      "atLeast": "Almeno {{value}}",
+      "atMost": "Al massimo {{value}}",
+      "oneOf": "Uno tra {{values}}",
+      "matches": "Corrisponde a {{pattern}}",
+      "greater": "{{a}} maggiore di {{b}}",
+      "orEqual": "{{a}} almeno pari a {{b}}",
+      "query": "Righe inattese: {{query}}",
+      "expression": "Righe in errore: {{expression}}",
+      "mostly": "Almeno il {{percent}}% delle righe",
+      "alsoMissing": "Anche mancante: {{values}}",
+      "minLength": "Almeno {{value}} caratteri",
+      "maxLength": "Al massimo {{value}} caratteri"
+    },
+    "aggregate": {
+      "avg": "Media",
+      "sum": "Somma",
+      "min": "Minimo",
+      "max": "Massimo",
+      "minLength": "Lunghezza minima",
+      "maxLength": "Lunghezza massima",
+      "avgLength": "Lunghezza media"
+    }
+  }
+}

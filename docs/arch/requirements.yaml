@@ -13408,7 +13408,11 @@
   priority: SHOULD
   type: behavioral
   description: '`getTables()` returns registered tables and views visible to the authenticated role, by
-    their registered names.'
+    their registered names. (Amended 2026-10-29, VISIBILITY IS THE META DOMAIN''S:) Maintainer 2026-10-30:
+    what a role sees in getTables() and the rest of the catalog is what the meta domain''s rights show it.
+    Rights limit the metadata view as they do everywhere, as gRPC''s proto is the role''s own. A client
+    may be shown a table it cannot read, a relationship neighbour under meta''s rights, and be refused when
+    it reads it, as PostgreSQL refuses, with has_table_privilege answering false.'
   use_case: getTables() returning registered tables/views lets BI tools discover governed datasets through
     standard JDBC metadata.
   code:
@@ -90605,7 +90609,31 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
     (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
     base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
-    binary wire forms. It is native on PostgreSQL and emulated elsewhere.'
+    binary wire forms. It is native on PostgreSQL and emulated elsewhere. (Amended 2026-10-29, A SHAPE FUNCTION
+    WITH NO GEOMETRY FUNCTION IS INLINE ARITHMETIC:) Maintainer 2026-10-30, correcting SHAPE FUNCTIONS MAP
+    TO THE GEOMETRY FUNCTIONS: geometry stays the IR under the shapes, and a shape function still maps to
+    a geometry function where one answers as PostgreSQL does. A shape function with no such mapping is no
+    longer limited to PostgreSQL: it compiles to an inline expression that extracts the coordinates from
+    the shape''s text and does the arithmetic, in that dialect''s SQL. It is refused by name only where
+    the dialect cannot express it. These are per-dialect rewrites in the compiler, so they add no set of
+    functions. (Amended 2026-10-29, THE RULE FOR TYPES AND FUNCTIONS:) Maintainer 2026-10-30, for every
+    type and function on every dialect: a type the dialect does not support is held as varchar. A function
+    the dialect does not support is written with the functions it does have where that is possible, and
+    where they cannot express it, with inline operators. Geometry on Trino therefore uses Trino''s geometry
+    functions, not inline arithmetic. A refusal by name remains only for what the dialect can express neither
+    way. (Amended 2026-10-29, THE SAME TYPE UNDER ANOTHER NAME:) Maintainer 2026-10-30, adding to THE RULE
+    FOR TYPES AND FUNCTIONS: a dialect may support a type under a different name, and then that is the dialect''s
+    type for it, not varchar: Trino''s ipaddress is inet, and PostgreSQL''s shapes have a geometry equivalent
+    where one exists. The same holds for a function a dialect has under another name. Varchar and inline
+    operators apply only once no such variant exists. (Amended 2026-10-29, THE TYPES ARE A SUPERSET OF POSTGRESQL''S:)
+    Maintainer 2026-10-30: Provisa''s types are a superset of PostgreSQL''s. Every PostgreSQL 17 built-in
+    type is a Provisa type or subtype that keeps its identity, including where it is held as text, so jsonb
+    is not json and timetz keeps its offset. The varchar rule applies to a type a dialect does not support,
+    not to a PostgreSQL type Provisa has not named. A source''s type that maps to no Provisa type is read
+    as text. A value of a type the dialect does not support MUST be in PostgreSQL''s canonical text form,
+    the form pgwire sends, when it leaves the source, on a landing and on a direct read alike: the compiler''s
+    read form gives it, and nothing after that corrects it. An operation on such a value is chosen by its
+    type, not by the engine''s.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -91854,5 +91882,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2187
   - REQ-518
+  stakeholders:
+  - data-engineer
+- id: REQ-2190
+  value: Every metadata detail a PostgreSQL client sees comes from one place, the meta domain.
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: JDBC/ODBC Integration
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-10-30: all metadata pgwire presents lives in the meta domain. pg_catalog
+    and information_schema are answered from it, so there is one source of what a table, column, type or
+    relationship is, and no second store of metadata. pgwire may still rewrite a client''s statement and
+    add what true PostgreSQL shows and the model does not hold, such as additional roles, so a client sees
+    PostgreSQL, but it holds none of the details itself. (Amended 2026-10-29, META IS A SUPERSET OF THE
+    CATALOG:) Maintainer 2026-10-30: the meta domain is a superset of PostgreSQL''s catalog. What pg_catalog
+    and information_schema carry is in meta, and pgwire adds only a small routing step so a client can address
+    it as it expects. A real empty PostgreSQL database mirroring the model was considered and rejected:
+    it is a second copy of the metadata.'
+  scenario: 'Given a role connected over pgwire
+
+    When a client reads pg_class and pg_attribute
+
+    Then every model table and column it is shown comes from the meta domain
+
+    When a table is registered in the model
+
+    Then the next catalog read shows it, with no catalog rebuilt'
+  related_reqs:
+  - REQ-127
+  - REQ-2167
   stakeholders:
   - data-engineer

@@ -12,6 +12,9 @@
     "classTerm": "類術語 {{term}}",
     "tableClass": "資料表自身的類",
     "propertyTerm": "屬性術語 {{term}}",
-    "columnPredicate": "欄位 {{column}}"
+    "columnPredicate": "欄位 {{column}}",
+    "propertySearch": "搜尋屬性",
+    "propertyTerms": "屬性術語",
+    "termClasses": "類別：{{classes}}"
   }
 }

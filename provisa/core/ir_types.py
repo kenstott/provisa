@@ -168,8 +168,10 @@ SUBTYPES: dict[str, Subtype] = {
     "xml": Subtype("text", 142),
     "oid": Subtype("bigint", 26),
     # Sized so every source's money is held exactly: PostgreSQL's (int64 cents, 17 integer
-    # digits) and SQL Server's (int64 ten-thousandths, 4 decimals).
-    "money": Subtype("numeric(21,4)", 790),
+    # digits) and SQL Server's (int64 ten-thousandths, 4 decimals). Its operators are computed
+    # on that base, in cents as PostgreSQL computes them, on every dialect but PostgreSQL's own
+    # (transpiler.pg_money).
+    "money": Subtype("numeric(21,4)", 790, "money", {"postgres": "MONEY"}, _EVERY_DIALECT),
     # PostgreSQL's built-in shapes.
     "point": _shape("point", 600),
     "line": _shape("line", 628),
@@ -605,7 +607,7 @@ def infinite_timestamp(sign: int, *, aware: bool) -> datetime:
     return value
 
 
-def infinity_of(value: object) -> int:
+def infinity_of(value: object) -> int:  # object-ok: any value a result row holds
     """1 for an infinite date or timestamp, -1 for a negatively infinite one, else 0."""
     return getattr(value, "pg_infinity", 0)
 
