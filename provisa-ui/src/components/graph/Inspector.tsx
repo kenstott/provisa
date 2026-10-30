@@ -44,6 +44,8 @@ interface OverviewData {
 }
 
 interface InspectorProps {
+  /** Why a SPARQL node's properties could not be read, said where they would be listed. */
+  describeError?: string;
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   graphStats?: GraphStats;
   overviewData?: OverviewData;
@@ -79,6 +81,7 @@ const HIDDEN_PROPS = new Set([
 
 export function Inspector({
   selected,
+  describeError,
   graphStats,
   overviewData,
   highlight = null,
@@ -528,6 +531,11 @@ export function Inspector({
             </>
           )}
           <div className="gf-insp-section-label">{t("graphInspector.properties")}</div>
+          {describeError && (
+            <Text size="xs" c="red" role="alert" data-testid="inspector-describe-error">
+              {describeError}
+            </Text>
+          )}
           <Table className="gf-inspector-table">
             <Table.Tbody>
               {propRows.map(([k, v]) => {

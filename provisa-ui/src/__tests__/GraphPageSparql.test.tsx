@@ -44,6 +44,7 @@ const frameProps = vi.hoisted(() => ({
     | undefined
     | ((frameId: string, iri: string, toggle: boolean) => void),
   drop: undefined as undefined | ((frameId: string, iri: string) => void),
+  describe: undefined as undefined | ((frameId: string, iri: string) => void),
   prefixes: undefined as undefined | Record<string, string>,
 }));
 vi.mock("../components/graph/GraphFrame", () => ({
@@ -51,12 +52,14 @@ vi.mock("../components/graph/GraphFrame", () => ({
     frame,
     language,
     onExpandResource,
+    onDescribeResource,
     onTableDrop,
     sparqlPrefixes,
   }: {
     frame: FrameData;
     language?: string;
     onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
+    onDescribeResource?: (frameId: string, iri: string) => void;
     onTableDrop?: (frameId: string, iri: string) => void;
     sparqlPrefixes?: Record<string, string>;
   }) => {
@@ -64,6 +67,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     languagesSeen.push(language);
     frameProps.expand = onExpandResource;
     frameProps.drop = onTableDrop;
+    frameProps.describe = onDescribeResource;
     frameProps.prefixes = sparqlPrefixes;
     return null;
   },
@@ -389,6 +393,46 @@ describe("the SPARQL tab", () => {
     act(() => frameProps.expand?.(id, ORDER, false));
     expect(posted().slice(before)).toHaveLength(1);
     expect(lastFrame().sparqlExpansions?.[ORDER]).toBeDefined();
+  });
+
+  it("describes a selected node once, keeping the drawing as it is", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    const drawn = lastFrame();
+    act(() => frameProps.describe?.(id, ORDER));
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[ORDER]).toBeDefined());
+    expect(posted().slice(before)).toEqual([`DESCRIBE <${ORDER}>`]);
+    const post = sent.at(-1)!;
+    expect((post.init?.headers as Record<string, string>)["X-Provisa-Role"]).toBe("analyst");
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toHaveProperty("literals");
+    // Selection fills the panel only: nothing merged, nothing redrawn.
+    expect(lastFrame().sparqlExpansions).toBeUndefined();
+    expect(lastFrame().sparqlMerge).toBeUndefined();
+    expect(lastFrame().nodes).toBe(drawn.nodes);
+    expect(lastFrame().edges).toBe(drawn.edges);
+    act(() => frameProps.describe?.(id, ORDER));
+    expect(posted().slice(before)).toHaveLength(1);
+  });
+
+  it("keeps a refused DESCRIBE's error for the panel, with no merge notice", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not for you", code: "sparql.refused" }), {
+            status: 403,
+          }),
+      ),
+    );
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() =>
+      expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" }),
+    );
+    expect(lastFrame().sparqlMerge).toBeUndefined();
   });
 
   it("merges a CONSTRUCT around a class dropped on a frame", async () => {

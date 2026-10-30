@@ -12,7 +12,7 @@
 // that rewrites a Cypher query (auto-impute) is not offered on it.
 
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "../../../test-utils/render";
+import { act, fireEvent, render, screen } from "../../../test-utils/render";
 import { GraphFrame } from "../GraphFrame";
 
 // The canvas draws into a 2D context jsdom does not have; what is asked of here is the header.
@@ -50,7 +50,10 @@ function show(
   query: string,
   language?: GraphLanguage,
   f: FrameData = frame(query),
-  extra: { onExpandResource?: (id: string, iri: string, toggle: boolean) => void } = {},
+  extra: {
+    onExpandResource?: (id: string, iri: string, toggle: boolean) => void;
+    onDescribeResource?: (id: string, iri: string) => void;
+  } = {},
 ) {
   return render(
     <GraphFrame
@@ -285,6 +288,73 @@ describe("a SPARQL answer drawn", () => {
     // A drag adds, and never takes an expansion back.
     props.onNodeDragged(a);
     expect(expanded).toHaveBeenLastCalledWith("fd", "http://x/a", false);
+  });
+
+  describe("selecting a node", () => {
+    const BARE: GNode = {
+      id: 7,
+      label: "pets",
+      tableLabel: "pets",
+      properties: { name: "6", iri: "http://x/pets/6" },
+    };
+    const pick = (node: GNode) =>
+      act(() =>
+        (canvas.props as { onSelect: (s: unknown) => void }).onSelect({ kind: "node", data: node }),
+      );
+    const withNode = (over: Partial<FrameData> = {}): FrameData => ({
+      ...select(),
+      nodes: new Map([["pets:7", BARE]]),
+      ...over,
+    });
+    const literals = (nt: string) => ({ literals: parseNTriples(nt, NS) });
+
+    it("asks for the resource's properties once, when the node has none beyond iri and name", () => {
+      const describe_ = vi.fn();
+      show("q", "sparql", withNode(), { onDescribeResource: describe_ });
+      pick(BARE);
+      expect(describe_).toHaveBeenCalledTimes(1);
+      expect(describe_).toHaveBeenCalledWith("fs", "http://x/pets/6");
+    });
+
+    it("lists the described literals beside iri and name, and leaves the drawing as it is", () => {
+      const f = withNode({
+        sparqlDescribed: {
+          "http://x/pets/6": literals(
+            '<http://x/pets/6> <http://x/species> "cat" .\n<http://x/pets/6> <http://x/owner> <http://x/o/1> .',
+          ),
+        },
+      });
+      const describe_ = vi.fn();
+      canvas.nodes.length = 0;
+      show("q", "sparql", f, { onDescribeResource: describe_ });
+      const drawn = canvas.nodes.at(-1);
+      pick(BARE);
+      expect(describe_).not.toHaveBeenCalled();
+      expect(screen.getByText("species")).toBeInTheDocument();
+      expect(screen.getByText("cat")).toBeInTheDocument();
+      expect(screen.getByText("iri")).toBeInTheDocument();
+      expect(screen.getByText("name")).toBeInTheDocument();
+      // A neighbour is expansion's, not selection's.
+      expect(screen.queryByText("owner")).toBeNull();
+      expect(canvas.nodes.at(-1)).toBe(drawn);
+    });
+
+    it("says why a DESCRIBE was refused, in the panel", () => {
+      const f = withNode({ sparqlDescribed: { "http://x/pets/6": { error: "Not for you" } } });
+      show("q", "sparql", f, { onDescribeResource: vi.fn() });
+      pick(BARE);
+      expect(screen.getByText("Not for you")).toBeInTheDocument();
+    });
+
+    it("asks nothing of a node that already holds its properties", () => {
+      const held: GNode = { ...BARE, properties: { ...BARE.properties, species: "cat" } };
+      const describe_ = vi.fn();
+      show("q", "sparql", withNode({ nodes: new Map([["pets:7", held]]) }), {
+        onDescribeResource: describe_,
+      });
+      pick(held);
+      expect(describe_).not.toHaveBeenCalled();
+    });
   });
 
   it("leaves a Cypher frame's expansion and layout as they are", () => {
