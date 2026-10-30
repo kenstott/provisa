@@ -47,7 +47,7 @@ function subsets<T>(items: T[]): T[][] {
   return items.reduce<T[][]>((all, x) => [...all, ...all.map((s) => [...s, x])], [[]]);
 }
 
-const LAYERS: LayerId[] = ["domains", "data", "columns", "ownerTables"];
+const LAYERS: LayerId[] = ["domains", "data", "columns"];
 const SEARCHES = [[], ["party"]];
 const STATUSES: QueryScope["hiddenStatuses"][] = [
   [],
@@ -134,10 +134,10 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(produced);
   });
 
-  it("read a column's table, with the relationships declared from it, under the owner tables", () => {
-    // REQ-2135: the owner-tables layer draws the relationships between the tables it draws. A
-    // term ref reaches its table through registeredTable; the _meta system field reaches the same
-    // type and is no relationship to follow.
+  it("read a column's table with its product, and no relationship declared from it", () => {
+    // REQ-2130 (amended 2026-10-29): Data draws the product of each table a term reaches; no
+    // relationship between tables is drawn. A term ref reaches its table through registeredTable;
+    // the _meta system field reaches the same type and is no relationship to follow.
     const m = reader();
     const scope = (layers: LayerId[]): QueryScope => ({
       layers: new Set<LayerId>(["ontology", ...layers]),
@@ -149,15 +149,14 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
       tags: [],
       sensitivities: [],
     });
-    const owner = ontologyQuery(m, scope(["columns", "ownerTables"]));
+    const data = ontologyQuery(m, scope(["columns", "data"]));
     const columns = ontologyQuery(m, scope(["columns"]));
-    expect(owner).not.toEqual(columns);
-    const refs = owner!.slice(
-      owner!.indexOf("refs: refs"),
-      owner!.indexOf("data_products") >= 0 ? owner!.indexOf("data_products") : undefined,
-    );
+    expect(data).not.toEqual(columns);
+    expect(data).not.toContain("data_products");
+    const refs = data!.slice(data!.indexOf("refs: refs"));
     expect(refs).toContain("table: registeredTable");
-    expect(refs).toContain("source_relationships: sourceRelationships");
+    expect(refs).toContain("product: product");
+    expect(refs).not.toContain("source_relationships");
     expect(refs).not.toContain("_meta");
   });
 

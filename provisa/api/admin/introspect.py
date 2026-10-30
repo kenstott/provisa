@@ -1294,6 +1294,15 @@ async def athena_table_format(source_id: str, schema_name: str, table_name: str)
     return table_format(meta.get("Parameters") or {})
 
 
+async def record_table_format(model: Any, source_type: str | None) -> None:
+    """REQ-1981: record on ``model`` the format its source reports for it (an Athena table's),
+    which decides the writes the table takes; a table of any other source has none."""
+    if source_type == "athena":
+        model.table_format = await athena_table_format(
+            model.source_id, model.schema_name, model.table_name
+        )
+
+
 async def _native_columns_athena(
     source_id: str, schema_name: str, table_name: str
 ) -> list[tuple[str, str]]:
@@ -1396,6 +1405,7 @@ def _pg_column_typing(
     or domain (text)."""
     from provisa.core.ir_types import (
         ColumnTyping,
+        character_typing,
         column_typing,
         composite_typing,
         subtype_of,
@@ -1418,6 +1428,9 @@ def _pg_column_typing(
     subtype = subtype_of(data_type, kind)
     if subtype is not None:
         return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
+    character = character_typing(formatted or udt_name, kind)
+    if character is not None:
+        return character  # text, keeping its native type and length (REQ-1961)
     return ColumnTyping(to_ir(data_type))
 
 

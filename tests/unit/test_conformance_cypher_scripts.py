@@ -146,7 +146,7 @@ def test_nan_is_its_own_match():
     assert tck._same([1, 2], [2, 1], True)
 
 
-def test_each_scenario_passes_fails_or_is_not_runnable(scenarios, monkeypatch):
+def test_each_scenario_passes_fails_or_is_not_run(scenarios, monkeypatch):
     answers = {
         "RETURN true AS literal": (200, {"columns": ["literal"], "rows": [[True]]}),
         "RETURN 1 + 1 AS n": (200, {"columns": ["n"], "rows": [[2]]}),
@@ -159,12 +159,12 @@ def test_each_scenario_passes_fails_or_is_not_runnable(scenarios, monkeypatch):
         "passed",
         "passed",
         "failed",
-        "not_runnable",
+        "not_run",
         "passed",
     ]
     doc = tck.report(outcomes, "2024.3")
-    # [3] builds its graph only as setup: adapted, not excluded, so a failure until it is.
-    assert (doc["ran"], doc["passed"], doc["not_runnable"]) == (5, 3, 0)
+    # [3] builds its graph only as setup: adapted, not excluded, so failed until it is.
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (5, 3, 0, 2)
     assert doc["pass_rate"] == 0.6
     assert doc["failures"][0]["scenario"] == "[2] Add numbers #2"
 
@@ -175,16 +175,30 @@ def test_a_page_is_filled_from_the_artifact_and_refilled_in_place():
         "surface": "cypher",
         "suite": "openCypher TCK",
         "version": "2024.3",
-        "ran": 4,
+        "total": 5,
         "passed": 3,
-        "not_runnable": 1,
+        "by_design": 1,
+        "failed": 1,
+        "pass_rate": 0.75,
+        "by_design_groups": [
+            {
+                "group": "G",
+                "kind": "design",
+                "requirement": "REQ-1",
+                "decision": "d",
+                "count": 1,
+                "cases": [{"case": "F::x", "reason": "why"}],
+            }
+        ],
         "failures": [{"feature": "Literals1", "scenario": "[2] #2", "reason": "rows differ"}],
     }
     surface, suite, rate, cases = fill_docs.read(artifact)
     filled = fill_docs.fill(page, suite, rate, cases)
     assert surface == "cypher"
     assert "**Suite:** openCypher TCK 2024.3." in filled
-    assert "**Pass rate:** 75.0% (3 of 4); 1 cases not runnable by design." in filled
+    assert "**Pass rate:** 75.0%: 3 passed, 1 skipped by design, 1 failed, of 5 cases." in filled
+    assert "| G | 1 | d |" in filled
+    assert "| F::x | why |" in filled  # each case skipped by design keeps its reason
     assert "| [2] #2 | rows differ |" in filled
     assert filled.index("conformance-results:begin") < filled.index("## Deliberate")
     again = fill_docs.fill(filled, suite, rate, cases)
@@ -208,23 +222,30 @@ def test_a_driver_s_junit_results_are_a_conformance_report(tmp_path):
     doc = junit.summarise(
         str(xml), "bolt", "neo4j-python-driver integration tests", "6.2.0", "tests/integration"
     )
-    assert (doc["ran"], doc["passed"], doc["failed"], doc["skipped"]) == (2, 1, 1, 1)
+    # REQ-2167 (amended 2026-10-28): a test the suite skips did not pass, and no decision names
+    # it: it is failed, saying the suite skipped it -- there is no fourth outcome.
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (3, 1, 0, 2)
     assert doc["failures"] == [
         {
             "feature": "tests.integration.test_bolt_driver",
             "scenario": "test_bad",
             "reason": "ClientError: Unknown label",
-        }
+        },
+        {
+            "feature": "tests.integration.examples",
+            "scenario": "test_skip",
+            "reason": "skipped by the suite: needs enterprise",
+        },
     ]
     _, suite, rate, _ = fill_docs.read(doc)
     assert suite == "neo4j-python-driver integration tests 6.2.0 (tests/integration)"
-    # A test the suite skips never ran: counted apart, not as by design (no decision names it).
-    assert rate == "50.0% (1 of 2); 1 skipped by the suite"
+    assert rate == "33.3%: 1 passed, 0 skipped by design, 2 failed, of 3 cases"
 
 
-def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path):
-    """REQ-2167 (amended 2026-10-27): it is counted in its group, with its requirement, and left
-    out of the pass rate; a failure no group names stays a failure."""
+def test_a_failure_a_design_decision_excludes_is_skipped_by_design(tmp_path):
+    """REQ-2167 (amended 2026-10-27 and 2026-10-28): it is skipped by design in its group, with
+    its requirement, never counted as failed and left out of the pass rate; a failure no group
+    names stays failed."""
     xml = tmp_path / "junit.xml"
     xml.write_text(
         '<testsuites><testsuite name="pytest">'
@@ -243,22 +264,35 @@ def test_a_failure_a_design_decision_excludes_is_not_runnable_by_design(tmp_path
         "</testsuite></testsuites>"
     )
     doc = junit.summarise(str(xml), "bolt", "driver tests", "6.2.0", "tests/integration")
-    assert (doc["ran"], doc["passed"], doc["failed"], doc["not_runnable"]) == (3, 1, 2, 1)
-    assert doc["by_design"] == [
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (4, 1, 1, 2)
+    assert doc["by_design_groups"] == [
         {
             "group": "Digits below the microsecond",
+            "kind": "design",
             "requirement": "REQ-2173",
             "decision": '"Every temporal value, read from a column or built in a query, has '
             "microsecond precision, what the engines and their drivers hold; its nanosecond "
             'property is its microseconds times 1000."',
             "count": 1,
+            "cases": [
+                {
+                    "case": "tests.integration.examples.test_temporal_types_example::test_time",
+                    "reason": "AssertionError: assert '07:47:00.000004000-04:00' == "
+                    "'07:47:00.000004123-04:00'",
+                }
+            ],
         }
     ]
     assert [f["scenario"] for f in doc["failures"]] == ["test_local_time", "test_bookmark"]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == "33.3% (1 of 3); 1 cases not runnable by design"
+    assert rate == "33.3%: 1 passed, 1 skipped by design, 2 failed, of 4 cases"
     assert "| Digits below the microsecond | 1 |" in cases
     assert "REQ-" not in cases  # the requirement is the artifact's; a published page names none
+    # The job's own summary says the group skipped by design and the requirement it cites, and
+    # never counts it as failed.
+    md = junit.markdown(doc)
+    assert "4 cases: 1 passed, 1 skipped by design, 2 failed." in md
+    assert "| Digits below the microsecond | 1 | REQ-2173 |" in md
 
 
 def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):
@@ -268,18 +302,21 @@ def test_a_group_with_no_requirement_is_refused(tmp_path, monkeypatch):
         by_design.groups("x")
 
 
-def test_a_scenario_not_run_with_no_decision_behind_it_is_a_failure():
+def test_a_scenario_not_run_with_no_decision_behind_it_is_failed():
     """A setup that builds its graph is adapted, not excluded (REQ-2167, amended 2026-10-27):
-    until it is, it is a failure, as a scenario with no decision behind it is."""
+    until it is, it is failed, as a scenario with no decision behind it is."""
     outcomes = [
-        tck.Outcome("F", "built", "not_runnable", "its setup builds its graph with a statement"),
-        tck.Outcome("F", "control", "not_runnable", "checks state with a control query"),
+        tck.Outcome("F", "built", "not_run", "its setup builds its graph with a statement"),
+        tck.Outcome("F", "control", "not_run", "checks state with a control query"),
         tck.Outcome("F", "label", "failed", "refused (400): There is no label :Person."),
         tck.Outcome("F", "ok", "passed"),
     ]
     doc = tck.report(outcomes, "2024.3")
-    assert (doc["passed"], doc["failed"], doc["not_runnable"]) == (1, 2, 1)
-    assert [g["requirement"] for g in doc["by_design"]] == ["REQ-778"]
+    assert (doc["passed"], doc["failed"], doc["by_design"], doc["total"]) == (1, 2, 1, 4)
+    assert [g["requirement"] for g in doc["by_design_groups"]] == ["REQ-778"]
+    md = tck.markdown(doc)
+    assert "4 scenarios: 1 passed, 1 skipped by design, 2 failed." in md
+    assert "| REQ-778 |" in md
     assert [f["scenario"] for f in doc["failures"]] == ["built", "control"]
 
 
@@ -545,10 +582,10 @@ def test_a_named_graph_the_tck_does_not_have_is_said(named_graph_scenario, monke
     assert tck.named_graph("an empty graph") is None
 
 
-def test_a_named_graph_with_no_session_is_not_runnable(named_graph_scenario, monkeypatch):
+def test_a_named_graph_with_no_session_is_not_run(named_graph_scenario, monkeypatch):
     monkeypatch.setattr(bolt, "_BOLT", {})
     outcome = tck.run(named_graph_scenario, "http://x", "org_admin")
-    assert (outcome.status, outcome.reason) == ("not_runnable", "its setup uses a named TCK graph")
+    assert (outcome.status, outcome.reason) == ("not_run", "its setup uses a named TCK graph")
 
 
 # --- test procedures as commands -----------------------------------------------------------------
@@ -719,9 +756,31 @@ def test_a_procedure_s_statement_answers_its_rows_for_the_arguments(proc, args, 
     assert duckdb.execute(sql, args).fetchall() == rows
 
 
-def test_a_void_procedure_is_no_command(procedure_scenarios):
-    with pytest.raises(procedures.NotACommand, match="VOID"):
-        procedures.command(tck.procedure(procedure_scenarios[3]))
+def test_a_void_procedure_is_a_void_command(procedure_scenarios):
+    # REQ-2001 (amended 2026-10-28): it declares no outputs, so a call answers no columns.
+    import duckdb
+    import sqlglot
+
+    from provisa.core.models import Function
+    from provisa.core.statement_declaration import declared
+    from provisa.core.void_command import is_void
+
+    entry = procedures.command(tck.procedure(procedure_scenarios[3]))
+    assert entry["output_columns"] == []
+    assert entry["language_bindings"] == {"cypher": {"name": "test.doNothing"}}
+    function = Function(**entry)
+    assert function.kind == "query" and is_void(function.model_dump())
+    found = declared(entry["name"], entry["binding"], [])
+    assert duckdb.execute(sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0])
+
+
+def test_a_void_procedure_s_statement_uses_each_argument():
+    from provisa.core.models import Function
+
+    proc = procedures.Procedure("test.doNothing", (("in", "STRING"),), (), ())
+    entry = procedures.command(proc)
+    assert entry["output_columns"] == []
+    Function(**entry)  # every {{name}} is a declared argument and every argument is used
 
 
 def test_a_procedure_scenario_puts_the_model_holding_its_command(
@@ -747,6 +806,7 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
         ),
         "CALL test.my.proc": (400, {"detail": "unknown command"}),
         "CALL test.my.proc(null)": (200, {"columns": ["out"], "rows": [["nix"]]}),
+        "CALL test.doNothing()": (200, {"columns": [], "rows": []}),
         "CALL test.my.proc('Stefan', 2)": (
             200,
             {"columns": ["city", "country_code"], "rows": [["München", 49]]},
@@ -766,23 +826,22 @@ def test_a_procedure_scenario_puts_the_model_holding_its_command(
         ("passed", tck.AS_A_COMMAND),
         ("passed", ""),
         ("passed", tck.AS_A_COMMAND),
-        (
-            "failed",
-            "its test procedure is no command: the procedure test.doNothing is VOID (it has no "
-            "outputs), which no command expresses: a command answers rows of its columns",
-        ),
+        # REQ-2001: a VOID procedure is a VOID command, its call answering no columns.
+        ("passed", tck.AS_A_COMMAND),
         ("passed", tck.AS_A_COMMAND),
     ]
     # The model is put once per procedure declared, its other blocks as it booted.
     assert [[f["language_bindings"]["cypher"]["name"] for f in m["functions"]] for m in put] == [
         ["test.my.proc"],
         ["test.my.proc"],
+        ["test.doNothing"],
     ]
-    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1]
+    assert [len(m["functions"][0]["arguments"]) for m in put] == [2, 1, 0]
+    assert put[2]["functions"][0]["output_columns"] == []
     assert all(m["domains"] == [{"id": "tck_empty"}] for m in put)
     doc = tck.report(list(outcomes.values()), "2024.3")
     (group,) = doc["adapted"]
-    assert (group["group"], len(group["cases"])) == ("Test procedures", 3)
+    assert (group["group"], len(group["cases"])) == ("Test procedures", 4)
 
 
 def test_a_procedure_with_no_model_to_declare_it_in_is_a_failure(procedure_scenarios, monkeypatch):
@@ -801,3 +860,90 @@ def test_a_model_not_applied_is_said(procedure_scenarios, tmp_path, monkeypatch)
     monkeypatch.setattr(procedures, "_put", lambda _b: {"success": False, "message": "bad"})
     with pytest.raises(ValueError, match="was not applied"):
         procedures.declare(tck.procedure(procedure_scenarios[0]))
+
+
+# --- the feature filter (REQ-2167) ---------------------------------------------------------------
+
+_FEATURES = [
+    "Merge1 - Merge node",
+    "Merge2 - Merge node onCreate",
+    "Set1 - Set a Property",
+    "Match1 - Match nodes",
+]
+
+
+def _by_feature():
+    return [tck.Scenario(f, f"s of {f}") for f in _FEATURES]
+
+
+def test_a_feature_filter_selects_by_glob_on_the_prefix_and_the_full_name():
+    chosen = tck.select_scenarios(_by_feature(), "Merge*, Set1")
+    assert [s.feature for s in chosen] == _FEATURES[:3]
+    full = tck.select_scenarios(_by_feature(), "Match1 - Match nodes")
+    assert [s.feature for s in full] == [_FEATURES[3]]
+
+
+def test_an_empty_feature_filter_selects_every_scenario():
+    every = _by_feature()
+    assert tck.select_scenarios(every, "") == every
+    assert tck.select_scenarios(every, "  ") == every
+
+
+def test_a_feature_filter_matching_nothing_raises_naming_it():
+    with pytest.raises(ValueError, match=r"Nope\*"):
+        tck.select_scenarios(_by_feature(), "Nope*")
+    with pytest.raises(ValueError, match="names no feature glob"):
+        tck.select_scenarios(_by_feature(), ",")
+
+
+def test_a_filtered_result_carries_the_filter_and_a_full_one_does_not():
+    outcome = tck.Outcome("Merge1 - Merge node", "s", "passed", "")
+    assert tck.report([outcome], "2024.3", "Merge*")["filter"] == "Merge*"
+    assert "filter" not in tck.report([outcome], "2024.3", "")
+    assert "filter" not in tck.report([outcome], "2024.3")
+
+
+_LOG_DOC = {
+    "surface": "cypher",
+    "passed": 7,
+    "by_design": 3,
+    "failed": 2,
+    "total": 12,
+    "by_design_groups": [{"group": "Unbounded paths"}, {"group": "Tabs\nand: colons"}],
+    "failures": [
+        {"feature": "Match1", "scenario": "Plain", "reason": "x"},
+        {"feature": "Odd\\Feature", "scenario": "a :: b\nc", "reason": "y"},
+    ],
+}
+
+
+def test_the_log_lines_have_the_counts_groups_and_failures_in_a_fixed_form():
+    assert by_design.log_lines(_LOG_DOC) == [
+        "CONFORMANCE-COUNTS surface=cypher passed=7 by_design=3 failed=2 total=12",
+        "CONFORMANCE-GROUP Unbounded paths",
+        "CONFORMANCE-GROUP Tabs\\nand\\: colons",
+        "CONFORMANCE-FAILURE Match1 :: Plain",
+        "CONFORMANCE-FAILURE Odd\\\\Feature :: a \\:\\: b\\nc",
+    ]
+
+
+def test_a_name_with_the_separator_or_a_newline_cannot_break_the_parse():
+    lines = by_design.log_lines(_LOG_DOC)
+    assert len(lines) == 5
+    assert all("\n" not in line and "\r" not in line for line in lines)
+    for line in lines[3:]:
+        assert line.removeprefix("CONFORMANCE-FAILURE ").count(" :: ") == 1
+
+
+def test_main_prints_the_log_lines_after_writing_the_result(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tck, "parse_feature", lambda path: [])
+    monkeypatch.setattr(tck, "select_scenarios", lambda scenarios, spec: [])
+    monkeypatch.setattr(tck, "report", lambda outcomes, version, spec="": _LOG_DOC)
+    monkeypatch.setattr(tck, "markdown", lambda doc: "md\n")
+    features = tmp_path / "tck" / "features"
+    features.mkdir(parents=True)
+    out = tmp_path / "out.json"
+    tck.main([str(features), "1", "http://x", "r", "Bearer t", str(out), str(tmp_path / "o.md")])
+    assert out.exists()
+    printed = capsys.readouterr().out.splitlines()
+    assert printed == by_design.log_lines(_LOG_DOC)

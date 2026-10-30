@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "Диаграмма «сущность — связь»",
+    "tableNotFound": "В ERD нет таблицы с идентификатором {{id}}.",
     "domains": "Домены",
     "domainsTooltip": "Показать / скрыть домены",
     "columnDetailLabel": "Детализация столбцов",

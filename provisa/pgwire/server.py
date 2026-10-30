@@ -773,15 +773,15 @@ def _evaluated_pid(args: str) -> int | None:
 
 
 def _undescribed_read_shape(plan: Any, shape: Any) -> list[tuple[str, str]] | None:  # REQ-2171
-    """The read shape an undescribed statement's subtyped columns keep their PostgreSQL type by:
-    a row-returning read's. None for a described statement (sent by its description), for a
+    """The read shape an undescribed statement's subtyped columns keep their PostgreSQL type by,
+    and its sized numeric and character columns their typmod (REQ-1961): a row-returning read's. None for a described statement (sent by its description), for a
     statement on a session's temporary table, which answers its command, not the rows of the
     SELECT it is planned as, and for a write (a RETURNING write's rows keep the engine's typing)."""
     if shape is not None or plan is None or plan.result_shape is None:
         return None
     if plan.temp is not None or plan.writes_tables:
         return None
-    return plan.result_shape.subtyped()
+    return plan.result_shape.wire_typed()
 
 
 def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167
@@ -893,6 +893,31 @@ def _describe_casts(
         types[i], oids[i], typmods[i] = cast_type.bvtype, cast_type.oid, cast_type.typmod
         if cast_type.coerce is not None:
             coerce.append((i, cast_type.coerce))
+
+
+def _describe_registered(
+    shape: list[Tuple[str, str]],
+    types: list[BVType],
+    oids: list[int | None],
+    typmods: list[int],
+    coerce: list[Tuple[int, Callable[[Any], Any]]],
+) -> None:  # REQ-1961
+    """A result column that is a registered column is described as the model registers it
+    (PGWIRE SENDS NUMERIC(P,S); VARCHAR AND CHAR KEEP THEIR TYPE): a numeric(p,s) with its typmod,
+    a text column whose native type is a character type as that type with its length typmod,
+    where its value has that type's wire form (cast_types)."""
+    from provisa.compiler.result_shape import RegisteredType
+    from provisa.pgwire.cast_types import described_type, registered_spelling
+
+    for i, (_name, declared) in enumerate(shape):
+        if not isinstance(declared, RegisteredType):
+            continue  # a computed column: the engine's type, or its cast's, describes it
+        wire = described_type(registered_spelling(declared, declared.native))
+        if wire is None or types[i] not in wire.served_as:
+            continue
+        types[i], oids[i], typmods[i] = wire.bvtype, wire.oid, wire.typmod
+        if wire.coerce is not None:
+            coerce.append((i, wire.coerce))
 
 
 def _duckdb_inet(value: Any) -> Any:  # REQ-2167
@@ -1032,6 +1057,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
                 if coercer is not None:
                     self._coerce.append((i, coercer))
             self._typmods = [-1] * len(self._cols)
+            _describe_registered(shape, self._types, self._type_oids, self._typmods, self._coerce)
             _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
             return
         # A None entry (or absent types) means the type must be inferred from data, which
@@ -1045,6 +1071,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             ]
         else:
             self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
+        self._typmods = [-1] * len(self._cols)
         if read_shape is not None:
             # REQ-2171: a column the read's shape types as a subtype is sent as its PostgreSQL type.
             if len(read_shape) != len(self._cols):
@@ -1056,11 +1083,13 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             for i, (_name, declared) in enumerate(read_shape):
                 if declared in SUBTYPES:
                     self._types[i] = _sql_type_to_bvtype(declared)
+            _describe_registered(
+                read_shape, self._types, self._type_oids, self._typmods, self._coerce
+            )
         for i, served in enumerate(ctypes or ()):
             value_of = _ENGINE_VALUES.get(str(served).upper())
             if value_of is not None:
                 self._coerce.append((i, value_of))
-        self._typmods = [-1] * len(self._cols)
         _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
 
     def has_results(self) -> bool:

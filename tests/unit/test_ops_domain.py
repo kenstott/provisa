@@ -157,6 +157,7 @@ class _Col:
         self.data_type = dtype
         self.is_nullable = nullable
         self.subtype = None  # REQ-2171
+        self.native_type = None  # REQ-1965, REQ-1961
 
 
 def _ops_ctx():

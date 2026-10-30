@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,7 @@ import {
 } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { Trash2, Pencil, Plus } from "lucide-react";
+import { Trash2, Pencil, Plus, Terminal } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchActions,
@@ -711,7 +712,7 @@ export function CommandsPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("commandsPage.title")}</Title>
+        <PageTitle icon={Terminal}>{t("commandsPage.title")}</PageTitle>
         <FilterInput
           value={cmdSearch}
           onChange={(v) => {

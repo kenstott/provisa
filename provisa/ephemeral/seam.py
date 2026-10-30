@@ -45,10 +45,13 @@ __all__ = ["Answered", "counters", "expand", "label_map", "rows_of", "write"]
 
 
 def label_map(model: Any, session: TempSession | None) -> Any:
-    """The label map a read compiles over: ``model`` itself unless the session holds
-    ephemeral objects."""
-    if session is None or not read.involved(session):
+    """The label map a read compiles over: ``model`` itself outside a session; in a session
+    holding no ephemeral object, ``model`` with the session's (empty) relationships to walk
+    (REQ-348), which no other read touches; else the session's overlay of it."""
+    if session is None:
         return model
+    if not read.involved(session):
+        return read.walkable(model)
     return read.overlay(model, session)
 
 

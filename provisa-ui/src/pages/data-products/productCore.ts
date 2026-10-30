@@ -90,6 +90,8 @@ const PANEL: Selection = {
           "description",
           "dq_contract",
           "contract",
+          // REQ-2158: its freshness, a contract row's SLA headline.
+          "cache_ttl",
         ],
         rels: {
           // Its checkers' latest scans: its quality on the graph (REQ-2174).
@@ -185,6 +187,8 @@ export interface CoreTable {
   alias: string | null;
   description: string | null;
   dq_contract: string | null;
+  // REQ-2158: how long a read may trail its source, in seconds (-1: never expires); null for none.
+  cache_ttl?: number | null;
   // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
   contract?: StoredContract | string | null;
   checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;

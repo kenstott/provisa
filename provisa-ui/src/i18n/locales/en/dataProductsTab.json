@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} custom properties",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "This product has no output port with a contract.",
+      "consumers_one": "{{count}} consumer",
+      "consumers_other": "{{count}} consumers",
+      "freshness": "Fresh within {{seconds}}s",
+      "loadedOnce": "Loaded once, never refreshed",
+      "noSla": "No service level declared",
+      "checkedAt": "Checked {{when}}",
+      "neverChecked": "Never checked",
+      "draftWarning": "Draft: not yet in force",
+      "card": {
+        "details": "Details",
+        "fields": "Fields promised",
+        "sla": "SLAs & freshness",
+        "quality": "Quality promises",
+        "consumers": "Consumers",
+        "versions": "Versions & changes"
       }
     }
   }

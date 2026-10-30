@@ -214,6 +214,23 @@
         "customProperties_other": "{{count}} propriedades personalizadas",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "Este produto não tem nenhuma porta de saída com contrato de dados.",
+      "consumers_one": "{{count}} consumidor",
+      "consumers_other": "{{count}} consumidores",
+      "freshness": "Atualizado em até {{seconds}} s",
+      "loadedOnce": "Carregado uma vez, nunca atualizado",
+      "noSla": "Nenhum nível de serviço declarado",
+      "checkedAt": "Verificado {{when}}",
+      "neverChecked": "Nunca verificado",
+      "draftWarning": "Rascunho: ainda não vigente",
+      "card": {
+        "details": "Detalhes",
+        "fields": "Campos prometidos",
+        "sla": "SLAs e atualidade",
+        "quality": "Promessas de qualidade",
+        "consumers": "Consumidores",
+        "versions": "Versões e alterações"
       }
     }
   }

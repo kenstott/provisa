@@ -35,6 +35,7 @@ import {
   suggestResolvingTerms,
   type ResolveShape,
 } from "../../api/glossary";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { GroundingGuideLink, ShapeLine } from "./relTypeGuide";
 
 export type PairTerm = { id: number; name: string };
@@ -129,17 +130,17 @@ export function RelatedToDialog({
             </Group>
           );
         })}
-        <Group justify="space-between" wrap="wrap">
-          <GroundingGuideLink testId="glossary-related-to-dialog-guide" />
-          <Group gap="xs">
-            <Button variant="default" onClick={onCancel} data-testid="glossary-related-to-cancel">
-              {t("glossaryTab.cancel")}
-            </Button>
+        <FormFooter
+          onCancel={onCancel}
+          cancelProps={{ "data-testid": "glossary-related-to-cancel" }}
+          action={
             <Button variant="default" onClick={onAnyway} data-testid="glossary-related-to-anyway">
               {t("glossaryTab.relatedToDialogAnyway")}
             </Button>
-          </Group>
-        </Group>
+          }
+        >
+          <GroundingGuideLink testId="glossary-related-to-dialog-guide" />
+        </FormFooter>
       </Stack>
     </Modal>
   );
@@ -201,30 +202,38 @@ export function ShapeTermForm({
       data-testid="glossary-shape-form"
     >
       <Stack gap="sm">
-        <TextInput
-          label={t("glossaryTab.nameLabel")}
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-          data-autofocus
-          data-testid="glossary-shape-name"
-        />
-        <Textarea
-          label={t("glossaryTab.definitionLabel")}
-          value={definition}
-          onChange={(e) => setDefinition(e.currentTarget.value)}
-          autosize
-          minRows={2}
-          data-testid="glossary-shape-definition"
-        />
-        {domainsEnabled && (
-          <MultiSelect
-            label={t("glossaryTab.domainsLabel")}
-            data={domainOptions}
-            value={domains}
-            onChange={setDomains}
-            data-testid="glossary-shape-domains"
-          />
-        )}
+        <FormLayout>
+          <FormField size="long">
+            <TextInput
+              label={t("glossaryTab.nameLabel")}
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              data-autofocus
+              data-testid="glossary-shape-name"
+            />
+          </FormField>
+          <FormField size="full">
+            <Textarea
+              label={t("glossaryTab.definitionLabel")}
+              value={definition}
+              onChange={(e) => setDefinition(e.currentTarget.value)}
+              autosize
+              minRows={2}
+              data-testid="glossary-shape-definition"
+            />
+          </FormField>
+          {domainsEnabled && (
+            <FormField size="long">
+              <MultiSelect
+                label={t("glossaryTab.domainsLabel")}
+                data={domainOptions}
+                value={domains}
+                onChange={setDomains}
+                data-testid="glossary-shape-domains"
+              />
+            </FormField>
+          )}
+        </FormLayout>
         <Text size="sm" fw={500}>
           {t("glossaryTab.shapeFormEdges")}
         </Text>
@@ -240,19 +249,15 @@ export function ShapeTermForm({
             {error}
           </Alert>
         )}
-        <Group justify="flex-end" gap="xs">
-          <Button variant="default" onClick={onCancel}>
-            {t("glossaryTab.cancel")}
-          </Button>
-          <Button
-            onClick={() => void create()}
-            loading={saving}
-            disabled={!name.trim() || (domainsEnabled && domains.length === 0)}
-            data-testid="glossary-shape-create"
-          >
-            {t("glossaryTab.create")}
-          </Button>
-        </Group>
+        <FormFooter
+          onSave={() => void create()}
+          saving={saving}
+          saveProps={{
+            "data-testid": "glossary-shape-create",
+            disabled: !name.trim() || (domainsEnabled && domains.length === 0),
+          }}
+          onCancel={onCancel}
+        />
       </Stack>
     </Modal>
   );

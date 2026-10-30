@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "תרשים ישויות-קשרים (ERD)",
+    "tableNotFound": "אין ב-ERD טבלה עם המזהה {{id}}.",
     "domains": "דומיינים",
     "domainsTooltip": "הצגה / הסתרה של דומיינים",
     "columnDetailLabel": "פירוט עמודות",

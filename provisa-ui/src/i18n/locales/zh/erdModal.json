@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "实体关系图",
+    "tableNotFound": "ERD 中没有 ID 为 {{id}} 的表。",
     "domains": "域",
     "domainsTooltip": "显示/隐藏域",
     "columnDetailLabel": "列详情",

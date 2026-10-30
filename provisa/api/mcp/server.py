@@ -671,6 +671,19 @@ def build_mcp_server(state: Any):
         return await tools.search_terms(state, _role(role), query, limit=limit)
 
     @_tool
+    async def search_reference_library(
+        question: str, role: str | None = None, k: int = 5
+    ) -> list[dict]:
+        """Search the org's reference library -- its policies, regulations, contracts,
+        specifications and standards -- for the passages that answer a question (REQ-2185).
+
+        Only documents the caller's role may read are searched. Each passage carries its
+        document's title and source, its section or page, and the quoted text: cite them
+        whenever an answer uses a passage.
+        """
+        return await tools.search_reference_library(state, _role(role), question, k=k)
+
+    @_tool
     async def list_metrics(role: str | None = None) -> list[dict]:
         """List governed metric definitions — agents select meanings by name instead of
         composing aggregation SQL (REQ-1319).

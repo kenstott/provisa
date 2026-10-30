@@ -58,14 +58,43 @@ class _FakeWriter:
         return self._buf.getvalue()
 
 
-def _make_session(roles: list[str], bolt_version: tuple[int, int] = (5, 4)):
+def _make_session(
+    roles: list[str], bolt_version: tuple[int, int] = (5, 4), *, graph_session: bool = False
+):
+    """A Bolt session holding ``roles``. Each of its RUNs is bound to a graph session held in
+    memory -- no control plane -- unless ``graph_session``: the principal's own, as served
+    (provisa.api.graph_session, REQ-2176)."""
     from provisa.bolt.session import BoltSession
 
     writer = _FakeWriter()
     session = BoltSession(writer, bolt_version)  # type: ignore[arg-type]
     session.roles = list(roles)
     session.role_id = roles[0] if roles else None
+    if not graph_session:
+        session._graph_session = _held_in_memory()  # type: ignore[method-assign]
     return session, writer
+
+
+def _held_in_memory():
+    """A graph session bound for each RUN as the principal's is, held in memory."""
+    from contextlib import asynccontextmanager
+
+    from provisa.api import graph_session
+    from provisa.compiler import temp_tables
+
+    held = temp_tables.TempSession(kept=True)
+
+    @asynccontextmanager
+    async def bound(_state, *, writes: bool):
+        token = temp_tables.bind(held)
+        graph = graph_session._bound.set(graph_session.GraphSession("anonymous", held, writes))
+        try:
+            yield
+        finally:
+            graph_session._bound.reset(graph)
+            temp_tables.unbind(token)
+
+    return bound
 
 
 # ---------------------------------------------------------------------------

@@ -4274,6 +4274,36 @@ def create_app() -> FastAPI:
             },
         )
 
+    from provisa.compiler.write_admission import (
+        ReturningNotSupported as _ReturningNotSupported,
+        WriteFormNotSupported as _WriteFormNotSupported,
+    )
+
+    @app.exception_handler(_WriteFormNotSupported)
+    async def _write_form_not_supported_handler(_req: _Request, exc: _WriteFormNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1981: a statement form (MERGE, ON CONFLICT, UPDATE ... FROM ...) the table's write
+        # route does not carry, refused by name like any write its source cannot take.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.write_form_not_supported",
+                "params": {"table": exc.table, "form": exc.form},
+            },
+        )
+
+    @app.exception_handler(_ReturningNotSupported)
+    async def _returning_not_supported_handler(_req: _Request, exc: _ReturningNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # A RETURNING the table's write route cannot answer, refused by name.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.returning_not_supported",
+                "params": {"table": exc.table},
+            },
+        )
+
     from provisa.executor.errors import SystemCatalogUnavailable as _SystemCatalogUnavailable
 
     @app.exception_handler(_SystemCatalogUnavailable)
@@ -4793,6 +4823,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
+    from provisa.api.admin.reference_library_router import (  # REQ-2185
+        router as reference_library_router,
+    )
+
+    app.include_router(reference_library_router)
     from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
 
     app.include_router(model_report_router)

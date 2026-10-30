@@ -164,15 +164,13 @@ describe("the Ontology View's query", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"])));
     expect(q).not.toContain("domains:");
     expect(q).not.toContain("refs:");
+    // REQ-2130 (amended 2026-10-29): Data names the product of each table a term reaches -- a
+    // column's, and a class term's -- and reads no product, table or column apart.
     const data = squash(ontologyQuery(reader(), scope(["ontology", "data", "columns"])));
-    expect(data).toContain("product: product { id: id name: name domain_id: domainId }");
-    expect(data).toContain("data_products: m__dataProducts {");
-    expect(data).toContain("glossary_ref: glossaryRef { term_id: termId }");
-    // Tables, with Columns: the relationships declared from the tables drawn.
-    const tables = squash(
-      ontologyQuery(reader(), scope(["ontology", "data", "columns", "ownerTables"])),
-    );
-    expect(tables).toContain("source_relationships: sourceRelationships {");
+    expect(data.match(/product: product \{ id: id name: name domain_id: domainId \}/g)).toHaveLength(2);
+    expect(data).not.toContain("data_products");
+    expect(data).not.toContain("glossary_ref");
+    // No relationship between tables is read: those are the ERD's.
     expect(data).not.toContain("source_relationships");
   });
 
@@ -201,17 +199,12 @@ describe("the Ontology View's query", () => {
     expect(q).toContain('refs: refs(where: { domainId: { in: ["sales"] } })');
   });
 
-  it("keeps the chosen edge types in its where, of the term edges and the relationships", () => {
+  it("keeps the chosen edge types in its where, of the term edges", () => {
     const q = squash(
-      ontologyQuery(
-        reader(),
-        scope(["ontology", "columns", "ownerTables"], { edgeTypes: ["KIND_OF", "PLACED_BY"] }),
-      ),
+      ontologyQuery(reader(), scope(["ontology", "columns"], { edgeTypes: ["KIND_OF", "PART_OF"] })),
     );
-    expect(q).toContain('edges_out: edgesOut(where: { relType: { in: ["KIND_OF","PLACED_BY"] } })');
-    expect(q).toContain(
-      'sourceRelationships(where: { cypherType: { in: ["KIND_OF","PLACED_BY"] } })',
-    );
+    expect(q).toContain('edges_out: edgesOut(where: { relType: { in: ["KIND_OF","PART_OF"] } })');
+    expect(q).not.toContain("sourceRelationships");
   });
 
   it("keeps, with Orphans off, the terms with an edge kept to a term kept or a column they are", () => {

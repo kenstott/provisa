@@ -44,6 +44,7 @@ export const REDSHIFT_E2E_SCRIPT = path.join(ROOT, "scripts", "redshift_e2e.py")
 // self-provisioning source... it cannot live in docker-compose and must not be left standing
 // between runs"). scripts/synapse_e2e.py bridges that pytest-generator-shaped fixture into two
 // plain CLI calls the same way redshift_e2e.py bridges redshift_cluster.py.
+export const DATABRICKS_CLEANUP_SCRIPT = path.join(ROOT, "scripts", "databricks_location_cleanup.py");
 export const SYNAPSE_E2E_SCRIPT = path.join(ROOT, "scripts", "synapse_e2e.py");
 // delta_lake/iceberg (SCAN-mechanism, no ATTACH, no network service — connector_duckdb.py's
 // DuckDBDeltaConnector/DuckDBIcebergConnector read a host path directly) are the first engine-swap
@@ -1179,6 +1180,17 @@ export async function runFreshEngineCase(
  * — `register<Type>`'s own `host` param (registerMongodb/registerRedis/registerCassandra/
  * registerElasticsearch) supplies the container-reachable address a Trino-primary-from-boot
  * registration needs; `reprovisionSourceOnEngine`'s post-hoc rewrite is too late for it. */
+/** REQ-254: a Databricks engine lands each source into a Unity Catalog catalog named for the
+ * source id. Drop it (REST force delete, read back gone; a throw fails the test) after the backend
+ * is down. `--if-exists`: a run that failed before landing never created it. */
+export function dropDatabricksCatalog(catalog: string): void {
+  execFileSync(
+    PYTHON,
+    [DATABRICKS_CLEANUP_SCRIPT, "delete-catalogs", "--names", JSON.stringify([catalog]), "--if-exists"],
+    { stdio: "pipe" },
+  );
+}
+
 export async function runRebootCase(
   page: Page,
   registrar: (page: Page) => Promise<Registration>,
@@ -1212,6 +1224,7 @@ export async function runRebootCase(
   test.setTimeout(420000 + engineSequence.length * 180000);
   prepareRebootDataDir();
   let proc = await spawnRebootBackend(startEngine);
+  let landedSourceId: string | undefined;
   try {
     await sweepRebootZombieSources();
     const routes = ["/admin", "/data", "/query", "/health"].map((prefix) => `${UI_URL}${prefix}**`);
@@ -1221,6 +1234,7 @@ export async function runRebootCase(
       });
     }
     const registration = await withRebootApiRequest(page, () => registrar(page));
+    landedSourceId = registration.sourceId;
     // A CDC-listener/push-wired type (websocket) needs its own wiring to catch up after EVERY
     // reboot, not just after the original harness's replay — pollTimeoutMs is that type's own
     // declared tolerance for that (see rss/websocket's own comment). queryRebootBackend's own
@@ -1268,6 +1282,9 @@ export async function runRebootCase(
     for (const pattern of routes) await page.unroute(pattern);
   } finally {
     await killRebootBackend(proc);
+    if (landedSourceId && [startEngine, ...engineSequence].includes("databricks")) {
+      dropDatabricksCatalog(landedSourceId);
+    }
   }
 }
 

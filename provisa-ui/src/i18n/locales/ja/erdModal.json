@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "ER図",
+    "tableNotFound": "ID {{id}} のテーブルはERDにありません。",
     "domains": "ドメイン",
     "domainsTooltip": "ドメインの表示／非表示",
     "columnDetailLabel": "列の詳細",

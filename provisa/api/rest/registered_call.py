@@ -36,6 +36,8 @@ def _command_signature(cmd: dict) -> str:
     args = ", ".join(
         f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
     )
+    if cmd["void"]:  # REQ-2001: a VOID command answers nothing
+        return f"{cmd['name']}({args}) :: ()"
     ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
     return f"{cmd['name']}({args}) :: ({ret})"
 

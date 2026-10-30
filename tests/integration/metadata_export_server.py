@@ -137,6 +137,8 @@ def model_config(
     domain: str = DOMAIN,
     product_name: str = PRODUCT_FIELDS["name"],
     status: str = PRODUCT_FIELDS["status"],
+    source: str = SOURCE,
+    terms: tuple[str, str] = (GLOSSARY_TERM, CLASS_TERM),
 ) -> dict[str, Any]:
     """The server's configuration: the governed model every target is published from. A target
     that shares the members' physical objects (Snowflake Horizon, Dataplex) takes the product
@@ -146,7 +148,11 @@ def model_config(
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
     is its name: a catalog read back by name is given the run's own. ``status`` is its lifecycle
     status (REQ-1634): live by default, so a catalog lists it as published (Purview); a draft keeps
-    a listing in a shared account unpublished (Snowflake Horizon's organization listing)."""
+    a listing in a shared account unpublished (Snowflake Horizon's organization listing).
+    ``source`` is the warehouse source's id and ``terms`` the names of the glossary term and the
+    Class term: a test that must leave nothing in a shared cloud account (REQ-254) names them for
+    the run, so the catalog entries the publish makes from them are the run's alone (Purview)."""
+    glossary_term, class_term = terms
     roles = MODEL_ROLES
     # Every role, the org's own admin among them: the tests read as org_admin, the role the
     # server's default assignment gives.
@@ -167,7 +173,7 @@ def model_config(
         ],
         "sources": [
             {
-                "id": SOURCE,
+                "id": source,
                 "type": "postgresql",
                 "description": "Sales warehouse",
                 "host": "${env:PG_HOST}",
@@ -194,7 +200,7 @@ def model_config(
         ],
         "tables": [
             {
-                "source_id": SOURCE,
+                "source_id": source,
                 "domain_id": domain,
                 "schema_name": SCHEMA,
                 "table_name": "customers",
@@ -214,12 +220,12 @@ def model_config(
                 ],
             },
             {
-                "source_id": SOURCE,
+                "source_id": source,
                 "domain_id": domain,
                 "schema_name": SCHEMA,
                 "table_name": "orders",
                 "description": "Orders placed",
-                "class_term": CLASS_TERM,
+                "class_term": class_term,
                 "contract": ORDERS_CONTRACT,
                 # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
                 # cache_ttl; it is also the member's freshness in its contract.
@@ -283,8 +289,8 @@ def model_config(
             },
         ],
         "glossary_terms": [
-            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [domain]},
-            {"name": CLASS_TERM, "definition": CLASS_DEFINITION, "domains": [domain]},
+            {"name": glossary_term, "definition": GLOSSARY_DEFINITION, "domains": [domain]},
+            {"name": class_term, "definition": CLASS_DEFINITION, "domains": [domain]},
         ],
         "relationships": [
             {
@@ -317,6 +323,19 @@ async def entitle(client: httpx.AsyncClient, org_id: str) -> None:
     assert response.status_code == 200, response.text
 
 
+async def approve_terms(
+    client: httpx.AsyncClient, names: tuple[str, ...] = (GLOSSARY_TERM, CLASS_TERM)
+) -> None:
+    """The org's terms ``names`` approved, as a steward does: a config-declared term starts as a
+    draft and only an approved term publishes (REQ-1387)."""
+    listed = await client.get("/admin/glossary/terms")
+    assert listed.status_code == 200, listed.text
+    ids = {t["name"]: t["id"] for t in listed.json()}
+    for name in names:
+        approved = await client.post(f"/admin/glossary/terms/{ids[name]}/approve")
+        assert approved.status_code == 200, approved.text
+
+
 @asynccontextmanager
 async def published_server(
     org_id: str,
@@ -328,6 +347,8 @@ async def published_server(
     domain: str = DOMAIN,
     product_name: str = PRODUCT_FIELDS["name"],
     status: str = PRODUCT_FIELDS["status"],
+    source: str = SOURCE,
+    terms: tuple[str, str] = (GLOSSARY_TERM, CLASS_TERM),
 ) -> AsyncGenerator[httpx.AsyncClient]:
     """A started Provisa server for ``org_id`` with the model above, as an HTTP client."""
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -344,6 +365,8 @@ async def published_server(
                     domain=domain,
                     product_name=product_name,
                     status=status,
+                    source=source,
+                    terms=terms,
                 ),
                 sort_keys=False,
             )

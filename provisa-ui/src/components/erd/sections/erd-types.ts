@@ -24,6 +24,8 @@ export interface ErdPanelProps {
   domains: Domain[];
   // Domains to render, driven by the host page's own domain filter. Null means unfiltered (show all).
   checkedDomains: Set<string> | null;
+  // The id of a table to centre and select on first draw (REQ-2130).
+  focusTableId?: string;
   // Omit to embed as a plain panel (no close button, no modal chrome).
   onClose?: () => void;
 }
@@ -33,5 +35,6 @@ export interface ErdModalProps {
   relationships: Relationship[];
   domains: Domain[];
   checkedDomains: Set<string> | null;
+  focusTableId?: string;
   onClose: () => void;
 }

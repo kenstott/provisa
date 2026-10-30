@@ -115,3 +115,44 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
             return None  # its columns are known only to the engine
         out.append(_cast_type(expression.to) if isinstance(expression, exp.Cast) else None)
     return tuple(out)
+
+
+#: The registered types described with a typmod of their own (REQ-1961, amended 2026-10-28):
+#: a sized numeric, and the character types a text column's native type may be.
+_CHARACTER_KINDS = ("VARCHAR", "CHAR", "BPCHAR")
+
+
+@functools.lru_cache(maxsize=4096)
+def described_type(spelling: str) -> CastType | None:
+    """How a registered type is described (REQ-1961, PGWIRE SENDS NUMERIC(P,S); VARCHAR AND CHAR
+    KEEP THEIR TYPE): a numeric(p,s) as numeric with its typmod, and varchar, varchar(n), char(n)
+    or bpchar as that type with its length typmod, as a cast to it is. None for any other type,
+    which its wire type describes."""
+    import sqlglot.expressions as exp
+    from sqlglot.errors import SqlglotError
+
+    from provisa.core.numeric_type import numeric_size_of
+
+    try:
+        data_type = exp.DataType.build(spelling, dialect="postgres")
+    except (SqlglotError, ValueError):
+        return None  # no PostgreSQL type: its wire type describes it
+    kind = data_type.this
+    if not isinstance(kind, exp.DataType.Type):
+        return None  # an object identifier type (oid, regclass): sqlglot names it by a string
+    if kind == exp.DataType.Type.DECIMAL and numeric_size_of(spelling) is None:
+        return None  # an unsized numeric has no typmod
+    if kind != exp.DataType.Type.DECIMAL and kind.name not in _CHARACTER_KINDS:
+        return None
+    return _cast_type(data_type)
+
+
+def registered_spelling(data_type: str, native_type: str | None) -> str:
+    """The type a registered column is described by on pgwire and in its catalog: a text column
+    whose native type is a character type (registration keeps it, REQ-1961) is that type;
+    any other column is its registered type."""
+    if native_type and data_type.lower() == "text":
+        native = described_type(native_type)
+        if native is not None and native.bvtype == BVType.TEXT:
+            return native_type
+    return data_type
