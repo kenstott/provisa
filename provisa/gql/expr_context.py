@@ -330,9 +330,14 @@ class TranslatorExprContext:
                 held = attribute_type(name, t._all_rels_mappings)
                 return value if held is None else exp.Cast(this=value, to=held)
             if var in t._all_rels_node_vars:
-                from provisa.gql.translator_union import union_type
+                from provisa.gql.translator_union import held_by_any, union_type
 
-                held = union_type(name, t._all_rels_ends.get(var, []), t._lm)
+                ends = t._all_rels_ends.get(var, [])
+                if ends and not held_by_any(name, ends, t._lm):
+                    # No label the node may have holds the property: null, of no type -- read
+                    # from its JSON it is text, which an aggregate of numbers refuses.
+                    return exp.Null()
+                held = union_type(name, ends, t._lm)
                 path = exp.Literal.string(f"$.properties.{name}")
                 value = _anon("JSON_EXTRACT_SCALAR", exp.column(var, table=carried_in), path)
                 if held is not None and held.is_type(exp.DataType.Type.JSON):
@@ -1176,6 +1181,11 @@ class TranslatorExprContext:
             if node_info and node_info[1] is not None:
                 return t._build_node_object_expr(node_alias, node_info[1])
             return exp.Column(this=exp.Star(), table=exp.to_identifier(node_alias))
+        if var in t._all_rels_rel_vars:
+            # A relationship of a read of every relationship (or a session hop): the end its
+            # edge's JSON carries, its own start or end whichever way the pattern read it.
+            key = "$.startNode" if start else "$.endNode"
+            return _anon("JSON_EXTRACT", exp.column(var), exp.Literal.string(key))
         raise NotImplementedError(f"endpoint of {var!r} unresolved")
 
     def _session_labels(self, var: str | None, info: tuple | None) -> exp.Expression | None:
@@ -1212,6 +1222,20 @@ class TranslatorExprContext:
         # Labels are Provisa's fixed types, and a variable's type is fixed by its MATCH binding, so a
         # label test is a compile-time constant: does the bound node's type match the requested label?
         var = operand.name if isinstance(operand, exp.Column) else None
+        if var is not None and self.graph_kind(var) == "relationship":
+            # A relationship's one label is its type, as written (T2 is not t2): r:T holds where
+            # its type is T, r:T:U where it is each of them.
+            rel_type = self._graph_scalar_fn("type", var)
+            if rel_type is not None:
+                is_type: exp.Expression = exp.true()
+                for x in labels:
+                    same = exp.EQ(this=rel_type.copy(), expression=exp.Literal.string(x))
+                    is_type = (
+                        same
+                        if isinstance(is_type, exp.Boolean)
+                        else exp.And(this=is_type, expression=same)
+                    )
+                return is_type
         info = self._t._var_table.get(var) if var else None
         nm = info[1] if info else None
         held = self._session_labels(var, info)

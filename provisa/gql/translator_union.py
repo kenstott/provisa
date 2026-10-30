@@ -108,7 +108,7 @@ def union_type(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> exp.Data
     return None
 
 
-def _held_by_any(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> bool:
+def held_by_any(prop: str, labels: "list[str]", lm: "CypherLabelMap") -> bool:
     """Whether a table of ``labels`` holds ``prop`` as a column of its own."""
     return any(
         nm is not None and nm.physical_properties.get(prop)
@@ -580,7 +580,7 @@ class _UnionMixin:  # mixin for _Translator
         # (a number to average, a string to join) beside it, never text.
         held_as = {
             p: union_type(p, type_labels, self._lm)
-            or (exp.DataType.build("VARCHAR") if _held_by_any(p, type_labels, self._lm) else None)
+            or (exp.DataType.build("VARCHAR") if held_by_any(p, type_labels, self._lm) else None)
             for p in props
         }
         branches: list[exp.Select] = []

@@ -270,6 +270,12 @@ _CARRY = re.compile(
     r"(?=(?:MATCH|OPTIONAL|UNWIND|CREATE|MERGE|SET|REMOVE|DELETE|DETACH|RETURN|WITH|CALL)\b)",
     re.I,
 )
+#: WITH * on its own: every variable in scope carried on, which finding them again already is.
+_CARRY_ALL = re.compile(
+    r"\s*WITH\s+\*\s+"
+    r"(?=(?:MATCH|OPTIONAL|UNWIND|CREATE|MERGE|SET|REMOVE|DELETE|DETACH|RETURN|WITH|CALL)\b)",
+    re.I,
+)
 _CARRY_WHERE = re.compile(
     r"\s*WITH\s+((?:[A-Za-z_][A-Za-z0-9_]*\s*,\s*)*[A-Za-z_][A-Za-z0-9_]*)\s+WHERE\b", re.I
 )
@@ -327,6 +333,9 @@ def rest_read(
     rest = split.rest
     scope = split.scope
     condition = None
+    every = _CARRY_ALL.match(rest)
+    if every is not None:
+        rest = rest[every.end() :]
     carried_on = _CARRY.match(rest) or _CARRY_WHERE.match(rest)
     if carried_on is not None:
         names = {n.strip().strip("`") for n in carried_on.group(1).split(",")}

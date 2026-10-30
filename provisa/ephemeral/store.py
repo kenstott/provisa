@@ -32,6 +32,7 @@ table again whole, its columns grown and widened (:mod:`.types`).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, TypeGuard, get_args, get_origin, get_type_hints
@@ -66,14 +67,28 @@ def fixed_columns(table: str) -> list[tuple[str, str]]:
     return list(_FIXED[table])
 
 
+_CASE_MASK = re.compile(r"__[0-9a-f]+$")
+
+
+def _caseless(name: str) -> str:
+    """``name`` as a table name an engine that folds case (DuckDB) tells from every other: a name
+    in lower case alone (that does not end like a mask) as it is; any other lowered, with the
+    hex mask of its upper-case letters' places -- T2 ``t2__1``, t2 ``t2``."""
+    if name == name.lower() and not _CASE_MASK.search(name):
+        return name
+    mask = sum(1 << i for i, c in enumerate(name) if c != c.lower())
+    return f"{name.lower()}__{mask:x}"
+
+
 def anchor_table(label: str) -> str:
     """The anchor table a free label creates for the nodes it anchors."""
     return f"cypher__anchor__{label}"
 
 
 def rel_table(rel_type: str) -> str:
-    """The table a relationship type's properties are held in."""
-    return f"cypher__rel__{rel_type}"
+    """The table a relationship type's properties are held in: one per type, types told apart
+    by case (T2 and t2)."""
+    return f"cypher__rel__{_caseless(rel_type)}"
 
 
 @dataclass(frozen=True)

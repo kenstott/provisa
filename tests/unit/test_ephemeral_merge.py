@@ -248,3 +248,42 @@ def test_a_merge_after_unwind_makes_each_value_once(monkeypatch):
     s.run("CREATE ({id: 3})")
     s.run("UNWIND [1, 2, 3, 4] AS int MERGE (n {id: int})")
     assert s.run("MATCH (n) RETURN count(n) AS c") == [{"c": 4}]
+
+
+def test_a_merge_after_a_merge_matches_the_loop_on_a_node_with_no_label(monkeypatch):
+    # TCK Merge5 [18] [19]: a node with no label found again after a MERGE (then.UNLABELED) is an
+    # end of the session's relationships; filtered by a label '' it never was, the MERGE made a
+    # second relationship.
+    s = _empty(monkeypatch)
+    s.run("CREATE ({id: 0})")
+    made = s.run(
+        "MATCH (n) MATCH (m) WITH n AS a, m AS b MERGE (a)-[:T]->(b) WITH a AS x, b AS y "
+        "MERGE (a) MERGE (b) MERGE (a)-[:T]->(b) RETURN x.id AS x, y.id AS y"
+    )
+    assert made.rows == [{"x": 0, "y": 0}]
+    assert made.counters["relationships"] == 1
+
+
+def test_the_ends_of_a_relationship_merged_with_no_direction_are_read(monkeypatch):
+    # TCK Merge5 [11]: startNode(r)/endNode(r) of a session relationship found again with
+    # unlabelled ends ("endpoint of 'r' unresolved"); made with no direction, it goes outward.
+    s = _empty(monkeypatch)
+    made = s.run(
+        "CREATE (a {id: 2}), (b {id: 1}) MERGE (a)-[r:KNOWS]-(b) "
+        "RETURN startNode(r).id AS s, endNode(r).id AS e"
+    )
+    assert made.rows == [{"s": 2, "e": 1}]
+
+
+def test_a_match_maps_value_may_be_any_expression(monkeypatch):
+    # TCK Unwind1 [6]: {year: event.year} in a MATCH is the equality y.year = event.year; only a
+    # literal or a parameter was read ("Unexpected value token 'event'").
+    s = _empty(monkeypatch)
+    s.run("CREATE (:Year {year: 2016})")
+    made = s.run(
+        "UNWIND $events AS event MATCH (y:Year {year: event.year}) "
+        "MERGE (e:Event {id: event.id}) MERGE (y)<-[:IN]-(e) RETURN e.id AS x ORDER BY x",
+        events=[{"year": 2016, "id": 1}, {"year": 2016, "id": 2}],
+    )
+    assert made.rows == [{"x": 1}, {"x": 2}]
+    assert made.counters["nodes"] == 2 and made.counters["relationships"] == 2

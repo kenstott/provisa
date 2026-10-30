@@ -425,3 +425,29 @@ def test_a_pattern_of_undirected_session_hops_reads_no_model_label(monkeypatch):
     sql = s.sql(query)
     assert '"traces"' not in sql and '"lineage"' not in sql
     assert sorted(r["d"]["labels"] for r in s.answer(query)) == [["A"], ["D"]]
+
+
+# --- types and labels told apart by case -----------------------------------------------------------
+
+
+def test_relationship_types_differing_only_in_case_are_two_types(monkeypatch):
+    # TCK Graph5 [2]: T2 and t2 are two types; an engine that folds names held them in one table
+    # and named their CTEs alike (Duplicate CTE name "__session_rel__T2").
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T2 {n: 1}]->(), ()-[:t2 {n: 2}]->()")
+    rows = s.run("MATCH ()-[r]->() RETURN type(r) AS t, r.n AS n")
+    assert _sorted(rows) == [("T2", 1), ("t2", 2)]
+
+
+def test_a_relationships_label_is_its_type(monkeypatch):
+    # TCK Graph5 [2]: r:T2 holds of a relationship of type T2 alone.
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T1]->(), ()-[:T2]->(), ()-[:t2]->(), (:T2)-[:T3]->(), ()-[:T4]->(:T2)")
+    rows = s.run("MATCH ()-[r]->() RETURN type(r) AS t, r:T2 AS result")
+    assert _sorted(rows) == [
+        ("T1", False),
+        ("T2", True),
+        ("T3", False),
+        ("T4", False),
+        ("t2", False),
+    ]

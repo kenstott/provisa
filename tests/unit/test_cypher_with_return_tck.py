@@ -449,3 +449,12 @@ def test_a_call_bodys_collected_nodes_are_read_as_nodes(monkeypatch):
         "RETURN [x IN cs | x.name] AS names"
     )
     assert rows == [{"names": ["c1"]}]
+
+
+def test_an_aggregate_of_a_property_no_end_label_holds_is_null(monkeypatch):
+    # TCK Return4 [7]: n.aGe is held by no label n may have; read from n's JSON it was text,
+    # which avg() refuses (Binder Error: avg(VARCHAR)).
+    s = _session(monkeypatch, "CREATE ()-[:T]->()")
+    assert s.run("MATCH p = (n)-->(b) RETURN aVg(    n.aGe     )") == [
+        {"aVg(    n.aGe     )": None}
+    ]

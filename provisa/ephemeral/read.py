@@ -558,7 +558,9 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
     def cte(stem: str, body: exp.Expression) -> str:
         text = body.sql(dialect="postgres")
         if text not in defined:
-            name = stem if stem not in {c.alias for c in ctes} else f"{stem}__{len(ctes)}"
+            # Engines name CTEs regardless of case: types T2 and t2 are two names, two CTEs.
+            taken = {c.alias.lower() for c in ctes}
+            name = stem if stem.lower() not in taken else f"{stem}__{len(ctes)}"
             defined[text] = name
             ctes.append(
                 exp.CTE(this=body, alias=exp.TableAlias(this=exp.to_identifier(name, quoted=True)))

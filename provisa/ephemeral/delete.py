@@ -125,6 +125,17 @@ def _is_edge(value: Any) -> bool:
     )
 
 
+def _gone(value: Any) -> Any:
+    """What a variable the DELETE deleted is bound to after it (then.Bound): a relationship its
+    value as read, whose type a read after it still has (openCypher: type() of a deleted
+    relationship); anything else null."""
+    from provisa.gql.assembler import to_serializable
+
+    if value is not None and _is_edge(value):
+        return ("v", to_serializable(value, keep_values=True))
+    return None
+
+
 def _edge_id(value: Any) -> str:
     from provisa.gql.assembler import Edge
 
@@ -206,7 +217,9 @@ async def delete_bound(
         )
     bound_rows = [
         {
-            var: None if var in d.variables else bound_value(row[f"_v_{var}"], label_map, graph)
+            var: _gone(row[f"_v_{var}"])
+            if var in d.variables
+            else bound_value(row[f"_v_{var}"], label_map, graph)
             for var in keep
         }
         for row in rows

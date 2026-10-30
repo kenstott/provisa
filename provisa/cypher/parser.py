@@ -1084,6 +1084,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 props[key] = self._write_expression(frozenset({"COMMA", "RBRACE"}))
                 if written is not None:
                     text[key] = self._raw[written.pos : self._tokens[self._pos - 1].end]
+            elif written is not None and not self._is_literal_value(written):
+                # A read's map value of any other expression (UNWIND $events AS event MATCH
+                # (y {year: event.year})): its text, the equality with_inline_conditions reads.
+                props[key] = self._write_expression(frozenset({"COMMA", "RBRACE"}))
+                text[key] = self._raw[written.pos : self._tokens[self._pos - 1].end]
             else:
                 props[key] = self._parse_value()
                 if written is not None:
@@ -1098,6 +1103,14 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         can name it. No statement writes it: the tokenizer gives no identifier this prefix."""
         self._inline += 1
         return f"{INLINE_PREFIX}{self._inline}"
+
+    @staticmethod
+    def _is_literal_value(t: Token) -> bool:
+        """Whether ``t`` is a value _parse_value reads: a number, a string, a parameter, true,
+        false or null."""
+        return t.type in ("NUMBER", "STRING", "PARAM") or (
+            t.type == "IDENT" and t.value.upper() in ("TRUE", "FALSE", "NULL")
+        )
 
     def _parse_value(self) -> Any:
         t = self._peek()

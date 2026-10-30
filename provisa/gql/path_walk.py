@@ -506,6 +506,14 @@ class SessionWalkMixin:  # REQ-348
         domain's types' labels; None for any node."""
         if type_name is not None:
             labels = self._lm.label_sets.get(type_name) or (self._lm.nodes[type_name].label,)
+            if labels == ("",):
+                # The session's nodes with no label (read.overlay's "" and then.UNLABELED).
+                return exp.EQ(
+                    this=exp.Anonymous(
+                        this="cardinality", expressions=[_col(LABELS_COLUMN, alias)]
+                    ),
+                    expression=exp.Literal.number(0),
+                )
             return exp.ArrayContainsAll(
                 this=_col(LABELS_COLUMN, alias),
                 expression=exp.Array(expressions=[exp.Literal.string(x) for x in labels]),

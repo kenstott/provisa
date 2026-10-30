@@ -237,3 +237,13 @@ def test_a_deleted_variable_null_before_the_delete_is_read_as_null(monkeypatch):
     s.run("CREATE (:T)")
     made = s.run("OPTIONAL MATCH (n:T) WHERE n.k = 1 DELETE n RETURN n.k AS k")
     assert made.rows == [{"k": None}]
+
+
+def test_the_type_of_a_deleted_relationship_is_read_after_the_delete(monkeypatch):
+    # TCK Return2 [14]: a relationship's type is still there after the DELETE (its properties
+    # are not, DeletedEntityAccess); it was read as null.
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T]->()")
+    made = s.run("MATCH ()-[r]->() DELETE r RETURN type(r)")
+    assert made.rows == [{"type(r)": "T"}]
+    assert s.run("MATCH ()-[r]->() RETURN count(r) AS n") == [{"n": 0}]

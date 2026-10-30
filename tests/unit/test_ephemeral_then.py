@@ -265,3 +265,13 @@ def test_a_node_created_with_no_label_is_read_after_among_the_sessions_alone(mon
     s = Session(monkeypatch, {"Person": ({"id": "text", "name": "text"}, "('p1', 'Ann')")})
     made = s.run("CREATE (n {id: 12, name: 'foo'}) RETURN n.id AS id, n.name AS p")
     assert made.rows == [{"id": 12, "p": "foo"}]
+
+
+def test_a_with_star_after_a_write_carries_every_variable_on(monkeypatch):
+    # TCK Match8 [2]: WITH * after the MERGE is what finding a and b again already is; kept, it
+    # carried the found nodes as tables of their own ("Alias already used: a").
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A), (b:B) CREATE (a)-[:T1]->(b), (b)-[:T2]->(a)")
+    made = s.run("MATCH (a) MERGE (b) WITH * OPTIONAL MATCH (a)--(b) RETURN count(*)")
+    assert made.rows == [{"count(*)": 6}]
+    assert made.counters["nodes"] == 0 and made.counters["relationships"] == 0
