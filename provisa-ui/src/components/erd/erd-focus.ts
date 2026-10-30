@@ -8,16 +8,120 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2130: the ERD opened on one table (`?erd=<table id>`): it is centred and selected.
+// REQ-2187: a focus of the ERD, and it is a link: `domains` the only domains shown, `objects` the
+// tables highlighted and fitted into view. The one domain list and the one table list both pages
+// read, so a focus crosses between them. A table is named as the catalog names it, `domain.table`.
 
+import { catalogTableName } from "../../naming";
+import type { ListedTable } from "../../types/admin";
 import type { CyInstance } from "../graph/cytoscape-types";
 
-/** Select the table's node and centre the diagram on it; false when the diagram has no such node. */
-export function focusErdTable(cy: CyInstance, tableId: string): boolean {
-  const node = cy.getElementById(`t:${tableId}`);
-  if (node.empty()) return false;
-  cy.$(":selected").unselect();
-  node.select();
-  cy.center(node);
-  return true;
+export interface ErdFocus {
+  domains: string[];
+  objects: string[];
+}
+
+/** What a focus comes to against the tables and domains that exist. */
+export interface ResolvedErdFocus {
+  /** The only domains shown; null with no focus, when the page's filter decides. */
+  shownDomains: Set<string> | null;
+  /** The domains and the tables it names that exist, as the bar names them. */
+  domains: string[];
+  tables: string[];
+  /** The ids of the tables to highlight: those named, in a domain shown. */
+  highlighted: number[];
+  /** What it names that does not exist. */
+  missing: string[];
+}
+
+const FOCUSED = "erd-focused";
+const FIT_PADDING = 40;
+/** The closest a fit comes: one table is read in its place, not blown up to the whole canvas. */
+const MOST_ZOOM = 1.5;
+
+const named = (list: string | null): string[] => [
+  ...new Set((list ?? "").split(",").filter((name) => name !== "")),
+];
+
+export function readErdFocus(params: URLSearchParams): ErdFocus {
+  return { domains: named(params.get("domains")), objects: named(params.get("objects")) };
+}
+
+/** Both lists named in `params`; a list with nothing in it is not in the link. */
+export function writeErdFocus(params: URLSearchParams, focus: ErdFocus): void {
+  for (const key of ["domains", "objects"] as const) {
+    if (focus[key].length > 0) params.set(key, focus[key].join(","));
+    else params.delete(key);
+  }
+}
+
+/** `params` as a link's query, its lists comma-separated as they are written by hand. */
+export function erdSearch(params: URLSearchParams): string {
+  return `?${params.toString().replace(/%2C/g, ",")}`;
+}
+
+export const focusIsOn = (focus: ErdFocus): boolean =>
+  focus.domains.length > 0 || focus.objects.length > 0;
+
+export function resolveErdFocus(
+  focus: ErdFocus,
+  tables: ListedTable[],
+  domainIds: string[],
+): ResolvedErdFocus {
+  if (!focusIsOn(focus)) {
+    return { shownDomains: null, domains: [], tables: [], highlighted: [], missing: [] };
+  }
+  const byName = new Map(tables.map((t) => [catalogTableName(t), t]));
+  const existing = new Set([...domainIds, ...tables.map((t) => t.domainId)]);
+  const objects = focus.objects.flatMap((name) => byName.get(name) ?? []);
+  // Only objects given: their own domains are shown.
+  const shown = focus.domains.length > 0 ? focus.domains : objects.map((t) => t.domainId);
+  const domains = [...new Set(shown)].filter((d) => existing.has(d));
+  const shownDomains = new Set(domains);
+  return {
+    shownDomains,
+    domains,
+    tables: objects.map(catalogTableName),
+    highlighted: objects.filter((t) => shownDomains.has(t.domainId)).map((t) => t.id),
+    missing: [
+      ...focus.domains.filter((d) => !existing.has(d)),
+      ...focus.objects.filter((name) => !byName.has(name)),
+    ],
+  };
+}
+
+type FocusTable = Pick<ListedTable, "domainId" | "tableName">;
+
+/** The panel's Focus: the table's domain, and the table. */
+export function focusOnTable(table: FocusTable): ErdFocus {
+  return { domains: [table.domainId], objects: [catalogTableName(table)] };
+}
+
+/** The panel's Add to focus: the table, and its domain if new. A link of objects alone lists no
+ * domains and stays that way: its objects' own domains are the ones shown. */
+export function addTableToFocus(focus: ErdFocus, table: FocusTable): ErdFocus {
+  return {
+    domains:
+      focus.domains.length > 0 ? [...new Set([...focus.domains, table.domainId])] : focus.domains,
+    objects: [...new Set([...focus.objects, catalogTableName(table)])],
+  };
+}
+
+/** Highlight the tables the diagram holds and fit them into view; the ids it held. */
+export function highlightErdTables(cy: CyInstance, tableIds: number[]): number[] {
+  cy.$(`.${FOCUSED}`).removeClass(FOCUSED);
+  const held = tableIds.filter((id) => {
+    const node = cy.getElementById(`t:${id}`);
+    if (node.empty()) return false;
+    node.addClass(FOCUSED);
+    return true;
+  });
+  if (held.length === 0) return held;
+  const focused = cy.$(`.${FOCUSED}`);
+  cy.fit(focused, FIT_PADDING);
+  if (cy.zoom() > MOST_ZOOM) {
+    cy.zoom(MOST_ZOOM);
+    cy.center(focused);
+  }
+  return held;
 }

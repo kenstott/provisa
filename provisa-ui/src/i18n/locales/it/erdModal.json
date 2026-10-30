@@ -1,7 +1,6 @@
 {
   "erdModal": {
     "title": "Diagramma entità-relazioni",
-    "tableNotFound": "Nell'ERD non c'è nessuna tabella con id {{id}}.",
     "domains": "Domini",
     "domainsTooltip": "Mostra / nascondi domini",
     "columnDetailLabel": "Dettaglio colonne",
@@ -25,8 +24,13 @@
     "downloadPng": "Scarica PNG",
     "downloadJpeg": "Scarica JPEG",
     "downloadJson": "Scarica il diagramma come JSON (tabelle, colonne, relazioni)",
-    "close": "Chiudi",
     "hint": "Fare clic su un gruppo di dominio per comprimerlo / espanderlo · le linee tratteggiate collegano i domini compressi",
-    "resizeHandle": "Ridimensiona riquadro del dominio ({{corner}})"
+    "resizeHandle": "Ridimensiona riquadro del dominio ({{corner}})",
+    "focus": "Metti a fuoco",
+    "addToFocus": "Aggiungi al fuoco",
+    "focusDomains": "Domini: {{names}}",
+    "focusTables": "Tabelle: {{names}}",
+    "focusMissing": "Non trovato: {{names}}",
+    "showAll": "Mostra tutto"
   }
 }
