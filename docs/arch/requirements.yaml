@@ -88639,7 +88639,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     own frame, with history and stars; a vocabulary pill starts a new frame; expanding or dragging a node
     runs a DESCRIBE or CONSTRUCT around that resource and merges its triples into the frame. Any graph view,
     including one drawn from a SELECT''s triples, exports as Turtle or N-Triples, as a CONSTRUCT''s already
-    does.'
+    does. (Amended 2026-10-29, A LIMIT NEEDS NO FULL UNION:) Maintainer 2026-10-30: graph.union_limit defaults
+    to 256. A query with LIMIT and no ORDER BY, DISTINCT or aggregate is allowed ten times the limit, because
+    the engine stops the union once it has its rows. Past that it is refused by name, since every branch
+    is still compiled.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -90306,7 +90309,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     macros in the transpiler and reaches every transport. XML parsing and xpath are engine functions on
     DuckDB, native where a dialect has them, and refused by name elsewhere; nothing reaches a source to
     fail there. query_to_xml and its kin read through the governed pipeline and take constant arguments
-    only.'
+    only. (Amended 2026-10-29, A FUNCTION WITH NO FORM ON A SOURCE:) Maintainer 2026-10-30: functions are
+    one macro table in the transpiler. On a direct route to a source with no form for a function, the statement
+    goes to the federation engine, and it is refused by name only when no engine can run it. A source''s
+    own function sharing a name in the table stays refused until a source can declare its functions.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90596,7 +90602,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     refused by name elsewhere. Shapes get no parallel set of functions. (Amended 2026-10-29, HOW THE LIMITS
     ARE TESTED:) Maintainer 2026-10-30: conformance runs on two engines, the default and PostgreSQL, because
     running every engine is not practical. A compile-only test covers every function on every dialect: each
-    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.'
+    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
+    (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
+    base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
+    binary wire forms. It is native on PostgreSQL and emulated elsewhere.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
