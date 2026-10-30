@@ -1,6 +1,7 @@
 {
   "erdModal": {
     "title": "Diagrama entidade-relacionamento",
+    "tableNotFound": "Nenhuma tabela com o id {{id}} está no ERD.",
     "domains": "Domínios",
     "domainsTooltip": "Mostrar / ocultar domínios",
     "columnDetailLabel": "Detalhe de colunas",

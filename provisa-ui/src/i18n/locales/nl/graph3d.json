@@ -64,6 +64,7 @@
     "edge_owns": "bezit",
     "loadError": "De graaf kon niet worden gelezen: {{error}}",
     "zoomTo": "Inzoomen",
+    "openInErd": "Openen in ERD",
     "edge_column_lineage": "voedt kolom",
     "preset_taxonomy": "Taxonomie",
     "layer_domains": "Domeinen",

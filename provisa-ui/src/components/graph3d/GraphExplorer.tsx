@@ -61,7 +61,7 @@ import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
-import { nodeHref } from "./nodeHref";
+import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
 import { BreakableName } from "../list/BreakableName";
@@ -749,6 +749,17 @@ function GraphDetail({
             >
               {t("graph3d.zoomTo")}
             </Button>
+            {node.type === "table" && (
+              <Button
+                size="xs"
+                variant="default"
+                component={Link}
+                to={erdHref(node)}
+                data-testid={`${testId}-open-in-erd`}
+              >
+                {t("graph3d.openInErd")}
+              </Button>
+            )}
             {hasColumns && (
               <Button
                 size="xs"

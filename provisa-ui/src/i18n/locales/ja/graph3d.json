@@ -64,6 +64,7 @@
     "edge_owns": "所有",
     "loadError": "グラフを読み込めませんでした: {{error}}",
     "zoomTo": "ズーム",
+    "openInErd": "ERDで開く",
     "edge_column_lineage": "列に供給",
     "preset_taxonomy": "タクソノミー",
     "layer_domains": "ドメイン",

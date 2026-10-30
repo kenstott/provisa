@@ -64,6 +64,7 @@
     "edge_owns": "besitzt",
     "loadError": "Der Graph konnte nicht gelesen werden: {{error}}",
     "zoomTo": "Hineinzoomen",
+    "openInErd": "Im ERD öffnen",
     "edge_column_lineage": "speist Spalte",
     "preset_taxonomy": "Taxonomie",
     "layer_domains": "Domänen",

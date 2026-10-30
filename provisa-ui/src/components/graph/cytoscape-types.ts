@@ -134,6 +134,7 @@ export interface CyInstance {
     one(evt: string, fn: () => void): void;
   };
   fit(eles?: CyCollection, padding?: number): void;
+  center(eles?: CyCollection): void;
   zoom(): number;
   zoom(level: number): void;
   pan(): { x: number; y: number };
