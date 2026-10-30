@@ -19,7 +19,7 @@
     "detailCollapse": "הצג פחות",
     "inputs": "קלטים",
     "inputsHint": "הקלטים הפיזיים הקרובים ביותר של המוצר: הטבלאות והמקורות שמהם בנויים החברים בו.",
-    "inputsEmpty": "לא נרשמו קלטים.",
+    "inputsEmpty": "אין",
     "promises_one": "הבטחות: {{count}}",
     "promises_other": "הבטחות: {{count}}",
     "expectations_one": "ציפיות: {{count}}",
@@ -55,7 +55,8 @@
     "dqRowEmpty": "אין.",
     "consumers": "צרכנים",
     "consumersHint": "מי קורא את המוצר הזה צעד אחד במורד הזרם: הטבלאות, התצוגות והתצוגות הממומשות שנבנו ישירות על החברים שלו.",
-    "consumersEmpty": "לא נרשמו צרכנים.",
+    "consumersEmpty": "אין",
+    "ownerOnlyList": "רשימה זו גלויה לבעלים של מוצר הנתונים.",
     "consumerKind_table": "טבלה",
     "consumerKind_view": "תצוגה",
     "consumerKind_materialized_view": "תצוגה ממומשת"

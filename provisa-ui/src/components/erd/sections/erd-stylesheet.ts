@@ -119,6 +119,17 @@ export function buildErdStylesheet(isDark: boolean) {
       style: { "border-color": p.accent, "border-width": 3 },
     },
     {
+      // REQ-2187: the tables a focus names.
+      selector: ".erd-table.erd-focused",
+      style: {
+        "border-color": p.accent,
+        "border-width": 3,
+        "underlay-color": p.accent,
+        "underlay-opacity": 0.3,
+        "underlay-padding": 6,
+      },
+    },
+    {
       // One edge standing for a row and its mirror-image complement: arrows at both ends.
       selector: ".erd-rel[?bidirectional]",
       style: { "source-arrow-shape": "triangle" },

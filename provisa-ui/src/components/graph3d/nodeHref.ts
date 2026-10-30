@@ -12,7 +12,7 @@
 // every kind has one -- the map below is over every NodeType, and a kind added without a page
 // does not compile.
 
-import { entityHref } from "../../lib/entityHref";
+import { entityHref, erdViewHref } from "../../lib/entityHref";
 import type { GraphNode, NodeType } from "./graphModel";
 
 /** ``prefix:rest`` -> rest. */
@@ -43,7 +43,9 @@ const HREF: Record<NodeType, (n: GraphNode) => string> = {
     n.id.startsWith("x:") ? entityHref("table", rest(n.id)) : entityHref("lineage", rest(n.id)),
 };
 
-/** A table node's ERD: the Relationships page's diagram, centred on and selecting that table. */
-export const erdHref = (n: GraphNode): string => entityHref("erd", rest(n.id));
+/** A table node's ERD: the Tables page's ERD view focused on that table, with its panel open. A
+ * graph labels a table as the catalog names it, which is how a focus names one. */
+export const erdHref = (n: GraphNode): string =>
+  erdViewHref("tables", { objects: [n.label], table: rest(n.id) });
 
 export const nodeHref = (n: GraphNode): string => HREF[n.type](n);

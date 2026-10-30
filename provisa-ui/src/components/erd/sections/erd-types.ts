@@ -22,19 +22,11 @@ export interface ErdPanelProps {
   tables: ListedTable[];
   relationships: Relationship[];
   domains: Domain[];
-  // Domains to render, driven by the host page's own domain filter. Null means unfiltered (show all).
+  // Domains to render, driven by the host's filter or focus. Null means unfiltered (show all).
   checkedDomains: Set<string> | null;
-  // The id of a table to centre and select on first draw (REQ-2130).
-  focusTableId?: string;
-  // Omit to embed as a plain panel (no close button, no modal chrome).
-  onClose?: () => void;
-}
-
-export interface ErdModalProps {
-  tables: ListedTable[];
-  relationships: Relationship[];
-  domains: Domain[];
-  checkedDomains: Set<string> | null;
-  focusTableId?: string;
-  onClose: () => void;
+  // REQ-2187: the tables highlighted and fitted into view.
+  highlightTableIds?: number[];
+  onTableClick: (tableId: number, tableName: string) => void;
+  // A line in the diagram clicked: a host with no use for it leaves it out.
+  onRelationshipClick?: (relationshipId: string) => void;
 }

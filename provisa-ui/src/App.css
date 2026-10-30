@@ -718,6 +718,22 @@ main {
 .split-pane__list > :not(.table-scroll) {
   flex: 0 0 auto;
 }
+/* The ERD in the list's place takes all of its height: the bar, then the diagram down to the foot. */
+.split-pane__list > .erd-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.erd-view__bar {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.erd-view__diagram {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 /* The rule between the two IS the grab handle: a 1px line inside a wider hit area. */
 .split-pane__handle {
   flex: 0 0 9px;

@@ -442,6 +442,9 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:
         kinds = exp.DataType.Type
         if _cast_to(args[1], kinds.TIMESTAMPTZ):
             return f"(TIMEZONE('UTC', {written[1]}) + {written[0]})"
+        if _cast_to(args[1], kinds.TIMETZ):
+            # timetz_izone: a timetz stays a timetz, moved to the zone the interval names
+            return f"TIMEZONE({written[0]}, {written[1]})"
         return f"(CAST({written[1]} - {written[0]} AS TIMESTAMP) AT TIME ZONE 'UTC')"
     if name == "sum" and len(args) == 1 and _cast_to(args[0], interval):
         return f"TO_SECONDS(SUM(EPOCH({written[0]})))"
