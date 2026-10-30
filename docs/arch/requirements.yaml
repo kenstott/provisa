@@ -47068,7 +47068,12 @@
     version history: the glossary as it stood at the start of the previous period is graded with the same
     grounding computation as today''s and the two are compared; it is computed by Provisa rather than read
     from a view, and shown with the report. A broad hub term is one with at least five terms directly beneath
-    it on grounding edges; the report states the rule.'
+    it on grounding edges; the report states the rule. (Amended 2026-10-29, WHAT THE PREVIOUS PERIOD IS:)
+    Maintainer 2026-10-30: drift''s previous period is the last full calendar month, so it compares the
+    model now with the model at the first of last month, UTC: the latest commit on the environment''s branch
+    at or before that time. A term is matched by name, so a renamed term shows as one lost and one gained,
+    and the report says so. A branch with no commit at or before that time shows no history, not zero, and
+    a term absent then counts as new.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
