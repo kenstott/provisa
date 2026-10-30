@@ -96,7 +96,7 @@ def for_dialect(pg_sql: str, dialect: str) -> str:
         if not (isinstance(node, exp.Anonymous) and node.name.lower() == "provisa_xml"):
             return node
         if dialect in NATIVE_DIALECTS:
-            return exp.Cast(this=node.expressions[0], to=exp.DataType.build("XML"))
+            return exp.Cast(this=node.expressions[0], to=exp.DataType(this=_XML_TYPE))
         return node.expressions[0]
 
     if not any(
