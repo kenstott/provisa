@@ -90575,7 +90575,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     homed to a PostgreSQL store is how a model gets them. Elsewhere an operation on one is refused by name,
     saying it needs PostgreSQL, and a read of the column as a value still works in its text form. They are
     not emulated. This settles the types left open in REQ-2167: money and xml are served, ranges emulated
-    everywhere, tsvector and shapes native to PostgreSQL.'
+    everywhere, tsvector and shapes native to PostgreSQL. (Amended 2026-10-29, THE FUNCTIONS ARE LIMITED,
+    NOT THE TYPES:) Maintainer 2026-10-30, correcting TSVECTOR AND SHAPES ARE NATIVE TO POSTGRESQL: tsvector
+    and the shapes are supported on every engine as types: stored, read, returned and carried through the
+    pipeline. Only their functions and operators are limited: those run where the statement routes to a
+    dialect with a native form, today PostgreSQL, and elsewhere a call is refused by name, saying it needs
+    PostgreSQL.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
