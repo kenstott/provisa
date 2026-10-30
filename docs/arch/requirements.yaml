@@ -90560,7 +90560,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     overlap and containment), checked against the native answer in tests; (4) otherwise the operation is
     refused by name (spatial predicates with neither native support nor pushdown, for instance), never evaluated
     over the text form. Each subtype declares its native type per engine, whether it pushes down, and its
-    emulation if one exists.'
+    emulation if one exists. (Amended 2026-10-29, RANGES ARE EMULATED ON EVERY ENGINE:) Maintainer 2026-10-30:
+    a range type works on every federation engine, not only DuckDB and Trino, whose emulations are the template.
+    Native on PostgreSQL, emulated on every other engine, for all six range types, never refused by name
+    for want of an emulation. Bounds compare as the range''s element type, not as text.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
