@@ -148,7 +148,8 @@ def test_a_form_reads_the_meta_views_a_statement_is_governed_on():
 
 
 def test_only_what_a_privilege_function_reads_is_carried():
-    assert "WITH" not in _expanded("SELECT pg_table_is_visible(16385)")
+    sql = _expanded("SELECT pg_table_is_visible(16385)")
+    assert PRIVILEGES not in sql and UNSERVED not in sql
     sql = _expanded("SELECT has_table_privilege('orders', 'SELECT')")
     assert f"WITH {PRIVILEGES}" in sql and UNSERVED not in sql
     sql = _expanded("SELECT has_column_privilege('orders', 'id', 'SELECT')")
