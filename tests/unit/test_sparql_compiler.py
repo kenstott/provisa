@@ -742,3 +742,66 @@ def test_a_comparison_of_two_kinds_is_a_type_error(con, comparison, value):
     # SPARQL 1.1 17.3: = of an xsd:string and an xsd:boolean is an error; a BIND of it is unbound.
     rows = _answer(con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' BIND({comparison} AS ?x) }}")
     assert [r["x"] for r in rows] == [value]
+
+
+# --- a LIMIT needs no full union (REQ-2135) ------------------------------------------------
+
+
+def _wide_model(n: int = 72) -> tuple[CypherLabelMap, dict]:
+    """``n`` classes, each with a name column: ``?s ?p ?o`` reads n combinations."""
+    nodes = {
+        f"T{i}": dataclasses.replace(
+            _node(f"T{i}", f"t{i}"), domain_id="hr", properties={"id": "id", "name": "name"}
+        )
+        for i in range(n)
+    }
+    types = {(label, col): "VARCHAR" for label in nodes for col in ("id", "name")}
+    return CypherLabelMap(nodes=nodes, relationships={}), types
+
+
+def _wide(query: str):
+    lm, types = _wide_model()
+    return compile_sparql(query, build_vocabulary(lm, BASE, types, Grounding()), lm), lm
+
+
+def test_the_union_limit_defaults_to_256():
+    from provisa.core import settings_registry
+
+    assert settings_registry.value("graph.union_limit") == 256
+
+
+def test_the_explorers_default_query_compiles_on_a_wide_model():
+    compiled, lm = _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
+    assert len(compiled.ast.union_parts) == 71  # 72 combinations, the head being one
+    sql, _, _ = cypher_to_sql(compiled.ast, lm, {})
+    text = sql.sql(dialect="postgres")
+    assert text.count("UNION ALL") >= 71
+    # The LIMIT sits outside the union, so the engine stops reading branches once it has 25 rows.
+    assert text.rstrip().endswith("LIMIT 25")
+    assert text.index("LIMIT 25") > text.rindex("UNION ALL")
+
+
+def test_a_limit_is_allowed_ten_times_the_union_limit(monkeypatch):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "8")  # 72 <= 80
+    compiled, _ = _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
+    assert compiled.ast is not None
+
+
+def test_a_limit_past_ten_times_the_union_limit_is_refused_naming_it(monkeypatch):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "7")  # 72 > 70
+    with pytest.raises(SparqlRefused, match=r"10 times the graph union limit of 7 \(70\)"):
+        _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT * WHERE { ?s ?p ?o } ORDER BY ?o LIMIT 25",
+        "SELECT DISTINCT * WHERE { ?s ?p ?o } LIMIT 25",
+        "SELECT * WHERE { ?s ?p ?o }",
+    ],
+)
+def test_without_a_plain_limit_the_plain_union_limit_applies(monkeypatch, query):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "8")
+    with pytest.raises(SparqlRefused, match=r"past the graph union limit of 8;"):
+        _wide(query)
