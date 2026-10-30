@@ -29,6 +29,14 @@ refused; the error's type is not compared, since Provisa names its own. A scenar
 session has its side effects (``the side effects should be``, ``no side effects``) compared
 exactly with the summary counters of its query.
 
+Log lines (by_design.log_lines), printed to stdout after the files are written, so the result is
+readable from the job log without the artifact; names escape backslash, newline, CR and colon with
+a backslash:
+
+    CONFORMANCE-COUNTS surface=<surface> passed=<n> by_design=<n> failed=<n> total=<n>
+    CONFORMANCE-GROUP <group name>                  (one per skipped-by-design group)
+    CONFORMANCE-FAILURE <feature> :: <scenario>     (one per failed case)
+
 The exit status is non-zero only when the suite did not run (no scenario passed or failed).
 
 Usage: cypher_tck.py <features dir> <version> <base url> <role> <out.json> <out.md>
@@ -828,6 +836,7 @@ def main(argv: list[str]) -> int:
     doc = report([o for o in outcomes if o is not None], version, spec)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
+    print("\n".join(by_design.log_lines(doc)), flush=True)
     if not doc["total"]:
         return 1
     # REQ-2167: at its baseline, a failed scenario fails the job.
