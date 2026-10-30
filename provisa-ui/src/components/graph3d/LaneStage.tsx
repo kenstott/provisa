@@ -26,7 +26,7 @@ import type { GraphHover } from "./graphScene";
 import { GraphLegend } from "./GraphStage";
 import { hoverBody } from "./hoverBody";
 import { MoreFacts } from "./nodeFacts";
-import { LANES, laneMermaid, laneOrder, type Lane, type LaneDiagram } from "./laneDiagram";
+import { LANES, laneMermaid, placedLaneOrder, type Lane, type LaneDiagram } from "./laneDiagram";
 import { nodeLook } from "./nodeLook";
 
 type CyExt = Parameters<typeof cytoscape.use>[0];
@@ -321,16 +321,10 @@ export function LaneStage({
       } as CyLayoutOptions);
 
     // The term lane is laid out on its own (top-down), so the outer lanes cannot see the lines
-    // from it. A second pass orders them by it: the terms top to bottom as placed (left to right
-    // within a row), the other lanes ordered to cut crossings (laneOrder), each spread over the
+    // from it. A second pass orders them by it (placedLaneOrder), each lane spread over the
     // height of the longest.
     const reorder = () => {
-      const pos = (id: string) => cy.getElementById(id).position();
-      const terms = g.nodes
-        .filter((n) => diagram.lane.get(n.id) === "term")
-        .map((n) => n.id)
-        .sort((p, q) => pos(p).y - pos(q).y || pos(p).x - pos(q).x);
-      const lanes = laneOrder(diagram, terms).slice(1);
+      const lanes = placedLaneOrder(diagram, (id) => cy.getElementById(id).position()).slice(1);
       const span = Math.max(...lanes.map((row) => row.length));
       // Only the order within each lane counts (ELK's interactive crossing minimisation).
       for (const row of lanes)

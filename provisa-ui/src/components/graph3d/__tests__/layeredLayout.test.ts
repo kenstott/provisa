@@ -21,8 +21,8 @@ import {
   type GraphData,
 } from "../graphModel";
 import { crossings, layerLevels, orderLevels } from "../layeredLayout";
-import { laneDiagram, laneOrder } from "../laneDiagram";
-import { petStoreFlows, petStoreOntology, threeLevels } from "./crossingFixtures";
+import { drawnCrossings, laneDiagram, laneOrder, placedLaneOrder, type At } from "../laneDiagram";
+import { PET_STORE_DRAWN, petStoreFlows, petStoreOntology, threeLevels } from "./crossingFixtures";
 
 const node = (id: string) => ({ id, type: "term" as const, label: id });
 const edge = (a: string, b: string, kind: EdgeKind, label?: string) => ({
@@ -177,7 +177,11 @@ describe("the layout a view opens in", () => {
 // that code before it changed.
 const OLD_FLOWS = 31;
 const OLD_THREE = 10;
-const OLD_LANES = 95;
+// The lanes, ordered by the heuristic the 2D view used (each table at the mean height of its
+// columns' terms, its columns beside it): crossings with the terms in a list, and as drawn under
+// ELK's rows of terms.
+const OLD_LANES_LISTED = 95;
+const OLD_LANES_DRAWN = 110;
 
 function permutations<T>(xs: T[]): T[][] {
   if (xs.length <= 1) return [xs];
@@ -238,29 +242,55 @@ describe("the lane diagram's order", () => {
   const data = petStoreOntology();
   const d = laneDiagram(data, data, new Set());
   const terms = d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => n.id);
-  const order = laneOrder(d, terms);
-  const at = new Map<string, number>();
-  order.forEach((row, l) => row.forEach((id) => at.set(id, l)));
-  const edges = d.links
-    .filter((k) => at.get(k.from) !== at.get(k.to))
-    .map((k) => [k.from, k.to] as [string, string]);
-
-  it("cuts the crossings of the pet-store Ontology graph, its terms in the order given", () => {
-    expect(order.map((l) => l.length)).toEqual([17, 32, 12, 1]);
-    expect(order[0]).toEqual(terms);
-    const c = crossings(order, edges);
-    expect(c).toBeLessThanOrEqual(95);
-    expect(c).toBeLessThan(OLD_LANES);
-  });
-
-  it("puts a table's columns side by side", () => {
-    const tableOf = new Map(d.graph.nodes.filter((n) => n.parent).map((n) => [n.id, n.parent]));
-    const runs = order[1].map((id) => tableOf.get(id));
-    // Each table's columns are one run: a table never reappears after another's.
+  const tableOf = new Map(d.graph.nodes.filter((n) => n.parent).map((n) => [n.id, n.parent]));
+  const first = (id: string) => PET_STORE_DRAWN[id] as At;
+  /** Where ``lanes`` would be drawn: terms as ELK placed them, each other lane spread evenly
+   * over the height it had, in order (placedLaneOrder's model of the second pass). */
+  const placed = (lanes: string[][]) => {
+    const at = new Map<string, At>(terms.map((t) => [t, first(t)]));
+    for (const row of lanes.slice(1)) {
+      const ys = row.map((id) => first(id).y);
+      const lo = Math.min(...ys);
+      const hi = Math.max(...ys);
+      row.forEach((id, i) =>
+        at.set(id, { x: first(id).x, y: lo + ((i + 0.5) * (hi - lo)) / row.length }),
+      );
+    }
+    return (id: string) => at.get(id) as At;
+  };
+  const oneRunPerTable = (columns: string[]) => {
+    const runs = columns.map((id) => tableOf.get(id));
     const seen = new Set<string | undefined>();
     runs.forEach((t, i) => {
       if (i > 0 && runs[i - 1] !== t) expect(seen.has(t)).toBe(false);
       seen.add(t);
     });
+  };
+
+  it("orders the lanes below a fixed term order, each table's columns side by side", () => {
+    const order = laneOrder(d, terms);
+    expect(order.map((l) => l.length)).toEqual([17, 32, 12, 1]);
+    expect(order[0]).toEqual(terms);
+    const at = new Map<string, number>();
+    order.forEach((row, l) => row.forEach((id) => at.set(id, l)));
+    const edges = d.links
+      .filter((k) => at.get(k.from) !== at.get(k.to))
+      .map((k) => [k.from, k.to] as [string, string]);
+    // The barycenter order this replaced reached the same count with the terms in a list.
+    expect(crossings(order, edges)).toBeLessThanOrEqual(OLD_LANES_LISTED);
+    oneRunPerTable(order[1]);
+  });
+
+  it("cuts the crossings drawn under ELK's rows of terms (the pet-store graph at 1280)", () => {
+    const order = placedLaneOrder(d, first);
+    expect(order.map((l) => l.length)).toEqual([17, 32, 12, 1]);
+    const drawn = drawnCrossings(d.links, placed(order));
+    expect(drawn).toBeLessThanOrEqual(101);
+    expect(drawn).toBeLessThan(OLD_LANES_DRAWN);
+    oneRunPerTable(order[1]);
+  });
+
+  it("gives the same order for the same drawing", () => {
+    expect(placedLaneOrder(d, first)).toEqual(placedLaneOrder(d, first));
   });
 });
