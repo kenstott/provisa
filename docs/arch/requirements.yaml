@@ -90580,7 +90580,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and the shapes are supported on every engine as types: stored, read, returned and carried through the
     pipeline. Only their functions and operators are limited: those run where the statement routes to a
     dialect with a native form, today PostgreSQL, and elsewhere a call is refused by name, saying it needs
-    PostgreSQL.'
+    PostgreSQL. (Amended 2026-10-29, SHAPE FUNCTIONS MAP TO THE GEOMETRY FUNCTIONS:) Maintainer 2026-10-30:
+    Provisa already has geometry functions, so a shape function maps to one wherever it can: a shape converts
+    to its geometry form and the existing function answers, on every dialect geometry is native to. A shape
+    function with no such mapping is limited as tsvector''s functions are: it runs on PostgreSQL and is
+    refused by name elsewhere. Shapes get no parallel set of functions.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
