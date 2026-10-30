@@ -9,7 +9,6 @@
 // permission from the copyright holder.
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -20,13 +19,13 @@ import {
   Text,
   useComputedColorScheme,
 } from "@mantine/core";
-import { X, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { Download, ChevronDown, ChevronRight } from "lucide-react";
 import { FitScreenIcon } from "../graph/GraphIcons";
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
 import { buildErdElements, erdJson } from "./erd-model";
-import { focusErdTable } from "./erd-focus";
+import { highlightErdTables } from "./erd-focus";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent } from "../graph/cytoscape-types";
@@ -61,17 +60,19 @@ try {
 
 type Pt = { x: number; y: number };
 
+const NO_TABLES: number[] = [];
+
 // ── component ─────────────────────────────────────────────────────────────────
 export function ErdPanel({
   tables,
   relationships,
   domains,
   checkedDomains,
-  focusTableId,
-  onClose,
+  highlightTableIds = NO_TABLES,
+  onTableClick,
+  onRelationshipClick,
 }: ErdPanelProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const colorScheme = useComputedColorScheme("dark");
   const isDark = colorScheme === "dark";
   const palette = getErdPalette(isDark);
@@ -128,10 +129,23 @@ export function ErdPanel({
     body: "",
   });
 
-  // The table the ERD was opened on is centred once, on the first layout; a later rebuild (a domain
-  // collapsed, say) leaves the view where the user put it.
-  const focusedRef = useRef(false);
-  const [focusResult, setFocusResult] = useState<"found" | "missing" | null>(null);
+  // The tables highlighted and fitted into view (REQ-2187), and those the diagram held: applied
+  // when they change, and again by every layout, which draws the nodes anew.
+  const highlightRef = useRef(highlightTableIds);
+  const [highlighted, setHighlighted] = useState<number[]>([]);
+  const applyHighlight = useCallback((cy: CyInstance) => {
+    setHighlighted(highlightErdTables(cy, highlightRef.current));
+  }, []);
+  useEffect(() => {
+    highlightRef.current = highlightTableIds;
+    if (cyRef.current) applyHighlight(cyRef.current);
+  }, [highlightTableIds, applyHighlight]);
+
+  // The host's handlers, read when a click comes: the diagram is not rebuilt when they change.
+  const clicks = useRef({ onTableClick, onRelationshipClick });
+  useEffect(() => {
+    clicks.current = { onTableClick, onRelationshipClick };
+  }, [onTableClick, onRelationshipClick]);
 
   const [hoveredDomainId, setHoveredDomainId] = useState<string | null>(null);
   const [resizeHandleBox, setResizeHandleBox] = useState<{
@@ -440,10 +454,7 @@ export function ErdPanel({
       resolveCompoundOverlaps(cy);
 
       cy.fit(undefined, 10);
-      if (focusTableId !== undefined && !focusedRef.current) {
-        focusedRef.current = true;
-        setFocusResult(focusErdTable(cy, focusTableId) ? "found" : "missing");
-      }
+      applyHighlight(cy);
 
       // Apply current edge routing (handles rebuilds triggered by showOrphans etc.)
       cy.$(".erd-rel").style("curve-style", edgeRoutingRef.current);
@@ -461,8 +472,14 @@ export function ErdPanel({
     });
 
     cy.on("tap", ".erd-table", (evt: CyEvent) => {
-      const tableName = evt.target.data("tableName") as string;
-      if (tableName) navigate(`/tables?source=${encodeURIComponent(tableName)}`);
+      clicks.current.onTableClick(
+        evt.target.data("tableId") as number,
+        evt.target.data("tableName") as string,
+      );
+    });
+
+    cy.on("tap", ".erd-rel", (evt: CyEvent) => {
+      clicks.current.onRelationshipClick?.(evt.target.data("relationshipId") as string);
     });
 
     cy.on("mouseover", "node", (evt: CyEvent) => {
@@ -548,13 +565,26 @@ export function ErdPanel({
       }
     });
 
-    cy.layout(ERD_ELK_LAYOUT).run();
+    const layout = cy.layout(ERD_ELK_LAYOUT);
+    let computing = true;
+    layout.one("layoutstop", () => {
+      computing = false;
+    });
+    layout.run();
 
     return () => {
-      cy.destroy();
       cyRef.current = null;
+      if (!computing) {
+        cy.destroy();
+        return;
+      }
+      // ELK cannot be stopped, and writes its answer to the instance that asked: a focus changed,
+      // or the view left, while it computes leaves that instance off the canvas until it answers.
+      cy.off("layoutstop");
+      cy.unmount();
+      layout.one("layoutstop", () => cy.destroy());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateHandleBox is stable (useCallback); omitting it avoids infinite rebuild loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateHandleBox and applyHighlight are stable (useCallback); omitting them avoids infinite rebuild loop
   }, [
     containerReady,
     tables,
@@ -564,8 +594,22 @@ export function ErdPanel({
     hiddenDomains,
     columnDetail,
     isDark,
-    navigate,
   ]);
+
+  // The canvas narrows beside a detail panel and widens when it closes: the diagram follows.
+  useEffect(() => {
+    const canvas = containerRef.current;
+    if (!containerReady || !canvas) return;
+    const watcher = new ResizeObserver(() => {
+      const cy = cyRef.current;
+      if (!cy || canvas.clientWidth === 0) return;
+      cy.resize();
+      cy.fit(undefined, 10);
+      applyHighlight(cy);
+    });
+    watcher.observe(canvas);
+    return () => watcher.disconnect();
+  }, [containerReady, applyHighlight]);
 
   // Toggle orphan visibility without re-running fCoSE.
   useEffect(() => {
@@ -844,7 +888,7 @@ export function ErdPanel({
   return (
     <div
       data-testid="erd-panel"
-      data-focus={focusResult ?? undefined}
+      data-highlighted={highlighted.join(",")}
       style={{
         height: "100%",
         display: "flex",
@@ -854,11 +898,6 @@ export function ErdPanel({
       }}
     >
       <>
-        {focusResult === "missing" && (
-          <Text size="sm" c="red" p="0.5rem 0.75rem" data-testid="erd-table-not-found">
-            {t("erdModal.tableNotFound", { id: focusTableId })}
-          </Text>
-        )}
         {/* ── header ── */}
         <Group
           gap="0.5rem"
@@ -1007,20 +1046,6 @@ export function ErdPanel({
               JSON
             </Button>
           </Tip>
-
-          {onClose && (
-            <ActionIcon
-              size={30}
-              variant="subtle"
-              color="gray"
-              aria-label={t("erdModal.close")}
-              onClick={onClose}
-              ml="0.25rem"
-              data-testid="erd-close"
-            >
-              <X size={16} />
-            </ActionIcon>
-          )}
         </Group>
 
         {/* ── canvas ── */}

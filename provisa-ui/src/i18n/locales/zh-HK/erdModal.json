@@ -1,7 +1,6 @@
 {
   "erdModal": {
     "title": "實體關係圖",
-    "tableNotFound": "ERD 中沒有 ID 為 {{id}} 的表。",
     "domains": "領域",
     "domainsTooltip": "顯示／隱藏領域",
     "columnDetailLabel": "欄位詳情",
@@ -25,8 +24,13 @@
     "downloadPng": "下載 PNG",
     "downloadJpeg": "下載 JPEG",
     "downloadJson": "將圖表下載為 JSON（表、欄、關係）",
-    "close": "關閉",
     "hint": "按一下領域群組可摺疊／展開 · 虛線連接已摺疊的領域",
-    "resizeHandle": "調整領域方塊大小（{{corner}}）"
+    "resizeHandle": "調整領域方塊大小（{{corner}}）",
+    "focus": "聚焦",
+    "addToFocus": "加入聚焦",
+    "focusDomains": "領域：{{names}}",
+    "focusTables": "資料表：{{names}}",
+    "focusMissing": "找不到：{{names}}",
+    "showAll": "全部顯示"
   }
 }
