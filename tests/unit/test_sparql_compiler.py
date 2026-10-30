@@ -301,6 +301,14 @@ def test_describe_of_a_resource_is_the_triples_about_it(con):
     assert (f"{RDF}type", PERSON) in said
 
 
+def test_a_class_dropped_on_a_frame_constructs_its_instances(con):
+    """REQ-2135: the CONSTRUCT the SPARQL explorer merges for a class pill dropped on a frame."""
+    rows = _answer(con, f"CONSTRUCT {{ ?s ?p ?o }} WHERE {{ ?s a <{COMPANY}> ; ?p ?o }} LIMIT 50")
+    assert {r["s"] for r in rows} == {subject_iri(BASE, "hr", "companies", [i]) for i in (1, 2, 3)}
+    assert (f"{RDF}type", COMPANY) in {(r["p"], r["o"]) for r in rows}
+    assert {r["o"] for r in rows if r["p"] == CNAME} == {"Acme", "Beta", "Corp"}
+
+
 def test_describe_of_several_resources_says_each(con):
     bo = subject_iri(BASE, "hr", "persons", [2])
     rows = _answer(con, f"DESCRIBE <{ann()}> <{bo}>")
