@@ -91901,7 +91901,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     CATALOG:) Maintainer 2026-10-30: the meta domain is a superset of PostgreSQL''s catalog. What pg_catalog
     and information_schema carry is in meta, and pgwire adds only a small routing step so a client can address
     it as it expects. A real empty PostgreSQL database mirroring the model was considered and rejected:
-    it is a second copy of the metadata.'
+    it is a second copy of the metadata. (Amended 2026-10-29, HOW THE CATALOG READS META:) Maintainer 2026-10-30:
+    a rewritten catalog statement runs with the relationship guard bypassed, since a client''s join on oids
+    is no registered relationship; row scope and column rules still apply. A listed column the role is not
+    served appears in pg_attribute, and has_column_privilege answers false for it. pg_attrdef shows the
+    role''s own insert preset, read from its write grants and not held in meta.'
   scenario: 'Given a role connected over pgwire
 
     When a client reads pg_class and pg_attribute
