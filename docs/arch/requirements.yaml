@@ -89852,7 +89852,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
     2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
     change is not yet in force while its version''s status is proposed or draft, meaning every version after
-    the last one in neither status. Who saved a version is visible to anyone who can read the data product.'
+    the last one in neither status. Who saved a version is visible to anyone who can read the data product.
+    (Amended 2026-10-29, A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise
+    means a data quality check a product makes on its output ports, and nothing else. Columns are never
+    called promised, and fields is not a second name for them: a contract declares its columns. The contract
+    view''s card and the contract editor''s field are both Columns, and the quality card is Promises.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
