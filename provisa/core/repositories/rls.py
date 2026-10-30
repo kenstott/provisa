@@ -74,11 +74,13 @@ def _replaced(rule: RLSRule, held: list[dict]) -> dict | None:
 
 
 async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919, REQ-2188
-    conn: "Connection", rule: RLSRule
+    conn: "Connection", rule: RLSRule, *, creating: bool = False
 ) -> None:
     """Save one rule: THE save, for every surface. Resolves table_id from table name for
     table-level rules. Refused by name (:class:`RuleRightTaken`) when a right it holds is in
-    another rule of the role on the target. Two rules may share a predicate."""
+    another rule of the role on the target. Two rules may share a predicate. ``creating`` is a
+    person adding a rule: it replaces nothing, so a rule holding exactly these rights is a right
+    taken like any other. A config load does not say so, and finds its own rule again."""
     target = rule.table_id or rule.domain_id or rule.action_name or rule.tag_id
     model_change.name(
         "upsert", "row filter", f"{rule.role_id} {_rights(rule)} on {target}"
@@ -113,7 +115,7 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919, REQ-2188
                 )
             ).fetchall()
         ]
-        previous = _replaced(rule, held)
+        previous = None if creating else _replaced(rule, held)
         for other in held:
             if other is previous:
                 continue

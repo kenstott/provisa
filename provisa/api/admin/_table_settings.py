@@ -552,6 +552,7 @@ async def save_row_rules(info: Any, conn: "Connection", inp: "TableInput", model
                     rights=rule.rights,  # REQ-2188
                     id=rule.id,
                 ),
+                creating=rule.creating,
             )
         except rls_repo.RuleRightTaken as refused:
             raise TableSaveRefused(right_taken(refused)) from refused

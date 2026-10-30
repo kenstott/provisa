@@ -265,6 +265,17 @@ def _meta_grants(grants: list[dict], members: list[str]) -> dict[str, dict]:
     }
 
 
+def test_a_meta_role_acts_as_its_members_and_their_ancestors():  # REQ-2188
+    state, _ = _state(
+        rls={"east": RLSContext(rules={}), "west": RLSContext(rules={})},
+        reads={"east": [1], "west": [1]},
+        roles={"east": _role("east"), "west": _role("west")},
+    )
+    state.role_build_inputs["role_chains"]["east"] = ["east", "regional"]
+    meta = ensure_meta_role(state, ["east", "west"])
+    assert state.roles[meta]["acting_chain"] == ["east", "regional", "west"]
+
+
 def test_a_member_u_rule_holds_only_the_rows_that_member_writes():  # REQ-2188
     state, _ = _state(
         rls={

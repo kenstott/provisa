@@ -1094,6 +1094,28 @@ class Connection:
             _select(func.count()).select_from(table).where(*[w for w in where if w is not None])
         ).scalar_one()
 
+    async def require_admitted(self, stmt: Any) -> None:
+        """REQ-2188: hold ``stmt``, an UPDATE or DELETE this write does not itself run, to the acting
+        role's rule: a write stored on another row that belongs to the row ``stmt`` names (a
+        contract, kept on its table, belongs to its product). Refused by name, writing nothing."""
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+        from provisa.core.model_row_rules import narrowing_of
+
+        guarded = apply_meta_tenant_guard(stmt)
+        narrowing = narrowing_of(guarded, self.capabilities.dialect)
+        if narrowing is not None:
+            self._admit(guarded, narrowing)
+
+    def _admit(self, stmt: Any, narrowing: Any) -> int:
+        """Refuse ``stmt`` when a row it matches is outside the rule; how many rows it matches."""
+        from provisa.core.model_row_rules import refused
+
+        where = stmt.whereclause
+        matched = self._count_rows(stmt.table, where)
+        if self._count_rows(stmt.table, where, narrowing.predicate) < matched:
+            raise refused(narrowing)
+        return matched
+
     def _exec_narrowed(self, stmt: Any, narrowing: Any) -> Any:
         """REQ-2188: ``stmt`` held to the acting role's rule, in effect UPDATE ... WHERE id = ? AND
         (rule). All of it or none: every row it matches is admitted, or it is refused by name
@@ -1103,11 +1125,8 @@ class Connection:
         a row that matched nothing at all is not one."""
         from provisa.core.model_row_rules import refused
 
-        where = stmt.whereclause
         try:
-            matched = self._count_rows(stmt.table, where)
-            if self._count_rows(stmt.table, where, narrowing.predicate) < matched:
-                raise refused(narrowing)
+            matched = self._admit(stmt, narrowing)
             result = self._exec(stmt.where(narrowing.predicate))
             if matched and result.rowcount == 0:
                 raise refused(narrowing)

@@ -160,6 +160,11 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
         # REQ-2086: a constant may be a ${env:...} / ${secret:...} reference, resolved here.
         out[str(k)] = resolve_role_constant(str(k), str(v))
     out.update(current_session_vars.get())
+    # REQ-2188: the roles acted as with their ancestors, which the runtime build knows and a
+    # transport binding the request does not. Set over what the transport bound, never a client's.
+    chain = (role or {}).get("acting_chain")
+    if chain:
+        out[ACTING_ROLES_VAR] = ",".join(chain)
     # REQ-1922: where the platform declares regions, ``provisa.region`` is the region of the
     # node answering, so a rule can keep a region's rows in that region. It is the node's fact,
     # not the caller's: set last, over any role constant or request value of that name. With no
@@ -185,8 +190,9 @@ REGION_VAR = "region"
 #: The session variable that names the org a request is served for.
 ORG_VAR = "org"
 #: The session variable that holds the roles the caller acts as, comma-joined: its members for a
-#: meta-role, else the one role (REQ-2188). A rule reads it with IN (core.session_terms). It holds
-#: the roles acted as, not their ancestors.
+#: meta-role, else the one role, each with its ancestors (REQ-2188): a role holds what its parents
+#: hold, so a rule naming an owner role admits a child of it. A rule reads it with IN
+#: (core.session_terms).
 ACTING_ROLES_VAR = "acting_roles"
 
 

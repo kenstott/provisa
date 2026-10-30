@@ -452,6 +452,7 @@ def _build(
     )
     _fold_write_grants(state, meta_id, member_roles, inputs["tables"])  # REQ-2074
     role = _role(member_roles, meta_id)
+    role["acting_chain"] = chains[meta_id][1:]  # REQ-2188: its members and their ancestors
     state.masking_rules = {**state.masking_rules, **masks}
     state.roles[meta_id] = role
     register_role_surface(state, role, rls)

@@ -195,6 +195,7 @@ export function SecurityRlsPage() {
         description: ruleForm.description.trim(),
         rights: ruleForm.rights, // REQ-2188
         id: editingRuleInRow, // the rule being edited; null for a new one
+        creating: editingRuleInRow === null,
       });
       if (!res.success) {
         setError(serverMessage(res, res.message));

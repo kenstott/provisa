@@ -125,7 +125,11 @@ describe("SecurityPage: a row rule's rights (REQ-2188)", () => {
     render(<SecurityRlsPage />);
     await fillIn();
     await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
-    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({ rights: ["R"], id: null });
+    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({
+      rights: ["R"],
+      id: null,
+      creating: true,
+    });
   });
 
   it("saves one filter with several rights, in their one order", async () => {
@@ -180,7 +184,11 @@ describe("SecurityPage: a row rule's rights (REQ-2188)", () => {
     fireEvent.click(screen.getByTestId("rule-right-D"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(upsertRlsRuleSpy).toHaveBeenCalled());
-    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({ rights: ["U"], id: 7 });
+    expect(upsertRlsRuleSpy.mock.calls[0][0]).toMatchObject({
+      rights: ["U"],
+      id: 7,
+      creating: false,
+    });
   });
 
   it("deletes the one rule by its id", async () => {

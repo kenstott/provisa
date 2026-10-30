@@ -207,6 +207,10 @@ async def save_contract(  # REQ-2158
             raise data_contracts.ContractRefused(
                 f"table {table_id} is no data product's output port: it has no contract"
             )
+        # REQ-2188: a contract belongs to its product: the product's U rule holds its save.
+        await conn.require_admitted(
+            update(data_products).where(data_products.c.id == row.product_id)
+        )
         cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
         contract = data_contracts.as_stored(cid, contract)

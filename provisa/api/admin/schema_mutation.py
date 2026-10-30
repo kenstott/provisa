@@ -4719,7 +4719,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model, creating=input.creating)
         except rls_repo.RuleRightTaken as refused:
             return right_taken(refused)
         except ValueError as e:
@@ -6521,6 +6521,7 @@ async def _upsert_tag_rls_rule(
                     rights=input.rights,  # REQ-2188
                     id=input.id,
                 ),
+                creating=input.creating,
             )
         except rls_repo.RuleRightTaken as refused:
             return right_taken(refused)
@@ -6610,6 +6611,7 @@ async def _upsert_action_rls_rule(
                 description=input.description,
                 why=input.why,  # REQ-2094
             ),
+            creating=input.creating,
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

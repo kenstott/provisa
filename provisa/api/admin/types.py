@@ -1773,6 +1773,8 @@ class RLSRuleInput:  # REQ-041, REQ-402
     # REQ-2188: what the rule narrows: any of R read, U update, D delete.
     rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
     id: int | None = None  # the rule this save edits; None: a new rule, or its rights' own
+    # REQ-2188: a person adding a rule: it replaces no rule of the same rights, it is refused.
+    creating: bool = False
 
 
 @strawberry.type

@@ -59,6 +59,7 @@ export function useUpsertRlsRule() {
       description: string; // REQ-2081: required
       rights: RuleRight[]; // REQ-2188
       id?: number | null; // the rule being edited
+      creating: boolean; // REQ-2188: a new rule replaces none, it is refused
     }) => {
       const result = await upsertRlsRule({ variables: { input } });
       return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;

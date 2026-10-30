@@ -1887,6 +1887,8 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         _drop_data_surface(state, gone)
 
     for role in roles:
+        # REQ-2188: what provisa.acting_roles reads for this role (session_vars_for).
+        role["acting_chain"] = list(state.role_build_inputs["role_chains"][role["id"]])
         state.roles[role["id"]] = role
         # REQ-1327: platform_admin is control-plane only and holds zero data capabilities in every
         # org, root included, so it gets NO data surface at all. Generating one produced a schema

@@ -36,7 +36,12 @@ from provisa.core.env_deploy import _rights_in_two_rules
 from provisa.core.models import DataProduct, RLSRule
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import rls as rls_repo
-from provisa.core.request_context import current_acting_role
+from provisa.core.request_context import (
+    current_acting_role,
+    reset_session_vars,
+    session_vars_for,
+    set_session_vars,
+)
 from provisa.core.schema_org import (
     data_products,
     domains,
@@ -292,6 +297,24 @@ def test_one_role_binds_itself_as_its_acting_roles():
 def test_a_meta_role_binds_every_member():
     bound = principal_session_vars("u", {}, "meta:pets_team+sales_team")
     assert bound["acting_roles"] == "pets_team,sales_team"
+
+
+def test_the_acting_roles_read_include_the_ancestors():
+    role = {"id": "steward", "acting_chain": ["steward", "pets_team"]}
+    token = set_session_vars({"acting_roles": "steward"})
+    try:
+        assert session_vars_for(role)["acting_roles"] == "steward,pets_team"
+    finally:
+        reset_session_vars(token)
+
+
+def test_a_child_of_the_owner_role_is_admitted_by_a_rule_naming_it():
+    sql = apply_governance(
+        "UPDATE public.orders SET region = 'x' WHERE id = 1",
+        _gov(_g("update", rows="TRUE"), update=OWNS),
+        session_vars=session_vars_for({"acting_chain": ["steward", "pets_team"]}),
+    )
+    assert "CAST('pets_team' AS VARCHAR)" in sql
 
 
 def test_a_client_cannot_supply_the_acting_roles():
@@ -774,6 +797,15 @@ async def test_a_save_with_no_id_replaces_the_rule_of_exactly_those_rights(plane
         await rls_repo.upsert(conn, _save(filter_="9 = 9", rights=["U", "D"]))
         held = await _rules(conn)
     assert {k: v["filter_expr"] for k, v in held.items()} == {"UD": "9 = 9"}
+
+
+async def test_the_editors_new_rule_replaces_none_and_is_refused(plane):
+    async with plane.acquire() as conn:
+        await rls_repo.upsert(conn, _save(filter_="1 = 1", rights=["U", "D"]))
+        with pytest.raises(rls_repo.RuleRightTaken):
+            await rls_repo.upsert(conn, _save(filter_="9 = 9", rights=["U", "D"]), creating=True)
+        held = await _rules(conn)
+    assert {k: v["filter_expr"] for k, v in held.items()} == {"UD": "1 = 1"}
 
 
 async def test_an_edit_changes_the_rights_of_the_rule_it_names(plane):
