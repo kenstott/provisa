@@ -17,15 +17,12 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Text } from "@mantine/core";
-import type {
-  OdcsContract,
-  OdcsProperty,
-  OdcsRecord,
-} from "../../api/dataProductContracts";
+import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
 import type { ContractVersion } from "../../types/admin";
 import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
 import { DetailCard } from "./DetailCard";
+import "./ContractView.css";
 import { ClaimsCallout, ConsumersList } from "./dataProductDq";
 
 /** The Details card's further ODCS sections, each a row collapsed to a one-line summary. */
@@ -333,102 +330,101 @@ export function ContractView({
     label: t(`dataProductsTab.contract.card.${key}`),
   });
   return (
-    <div
-      style={{ columnWidth: "320px", columnGap: "var(--mantine-spacing-sm)" }}
-      data-testid={`data-contract-${tableId}`}
-    >
-      <DetailCard {...card("details")}>
-        <Stack gap={2}>
-          <Element name="id" value={contract.id} />
-          <Element name="name" value={contract.name} />
-          <Element name="status" value={status} />
-          <Element name="domain" value={contract.domain} />
-          <Element name="dataProduct" value={contract.dataProduct} />
-          <Element name="tenant" value={contract.tenant} />
-          <Element name="description.purpose" value={contract.description?.purpose} />
-          <Element name="description.limitations" value={contract.description?.limitations} />
-          <Element name="description.usage" value={contract.description?.usage} />
-          <Collapsibles id={`data-product.contract.${tableId}`}>
-            {DETAIL_SECTIONS.map((section) => (
-              <CollapsibleItem
-                key={section}
-                value={section}
-                defaultOpen={false}
-                mountWhenOpen
-                testId={`data-contract-${tableId}-${section}`}
-                controlTestId={`data-contract-${tableId}-${section}-toggle`}
-                title={
-                  <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={500} style={{ flexShrink: 0 }}>
-                      {t(`dataProductsTab.contract.section.${section}`)}
-                    </Text>
-                    <Text
-                      size="sm"
-                      c="dimmed"
-                      truncate="end"
-                      style={{ minWidth: 0 }}
-                      data-testid={`data-contract-${tableId}-${section}-summary`}
-                    >
-                      {summaries[section]}
-                    </Text>
-                  </Group>
-                }
-              >
-                <Stack gap={2}>{bodies[section]}</Stack>
-              </CollapsibleItem>
-            ))}
-          </Collapsibles>
-        </Stack>
-      </DetailCard>
-      <DetailCard {...card("fields")}>
-        <Stack gap={2}>
-          <Element name="name" value={object?.name} />
-          <Element name="physicalName" value={object?.physicalName} />
-          <Element name="physicalType" value={object?.physicalType} />
-          <Element name="description" value={object?.description} />
-          <Element name="businessName" value={object?.businessName} />
-          <Element name="dataGranularityDescription" value={object?.dataGranularityDescription} />
-          <Records name="relationships" items={object?.relationships} />
-          <Element name="tags" value={object?.tags} />
-          <Properties
-            properties={properties}
-            tableId={tableId}
-            testId={`data-contract-columns-${tableId}`}
-          />
-        </Stack>
-      </DetailCard>
-      <DetailCard {...card("sla")}>
-        <Stack gap={2}>
-          <Element name="slaDefaultElement" value={contract.slaDefaultElement} />
-          <Records name="slaProperties" items={sla} testId={`data-contract-sla-${tableId}`} />
-        </Stack>
-      </DetailCard>
-      <DetailCard {...card("quality")}>
-        <Stack gap={4}>
-          {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
-          {promises && (
-            <ClaimsCallout
-              kind="promises"
-              checks={promises}
-              testId={`data-contract-promises-${tableId}`}
-            />
-          )}
-          <Records name="quality" items={rules} />
-        </Stack>
-      </DetailCard>
-      {consumers && (
-        <DetailCard {...card("consumers")}>
-          <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
+    <div className="contract-cards" data-testid={`data-contract-${tableId}`}>
+      <div className="contract-cards__grid">
+        <DetailCard {...card("details")}>
+          <Stack gap={2}>
+            <Element name="id" value={contract.id} />
+            <Element name="name" value={contract.name} />
+            <Element name="status" value={status} />
+            <Element name="domain" value={contract.domain} />
+            <Element name="dataProduct" value={contract.dataProduct} />
+            <Element name="tenant" value={contract.tenant} />
+            <Element name="description.purpose" value={contract.description?.purpose} />
+            <Element name="description.limitations" value={contract.description?.limitations} />
+            <Element name="description.usage" value={contract.description?.usage} />
+            <Collapsibles id={`data-product.contract.${tableId}`}>
+              {DETAIL_SECTIONS.map((section) => (
+                <CollapsibleItem
+                  key={section}
+                  value={section}
+                  defaultOpen={false}
+                  mountWhenOpen
+                  testId={`data-contract-${tableId}-${section}`}
+                  controlTestId={`data-contract-${tableId}-${section}-toggle`}
+                  title={
+                    <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={500} style={{ flexShrink: 0 }}>
+                        {t(`dataProductsTab.contract.section.${section}`)}
+                      </Text>
+                      <Text
+                        size="sm"
+                        c="dimmed"
+                        truncate="end"
+                        style={{ minWidth: 0 }}
+                        data-testid={`data-contract-${tableId}-${section}-summary`}
+                      >
+                        {summaries[section]}
+                      </Text>
+                    </Group>
+                  }
+                >
+                  <Stack gap={2}>{bodies[section]}</Stack>
+                </CollapsibleItem>
+              ))}
+            </Collapsibles>
+          </Stack>
         </DetailCard>
-      )}
-      <DetailCard {...card("versions")}>
-        <Stack gap={2}>
-          <Element name="version" value={contract.version} />
-          <Element name="status" value={status} />
-          <Element name="contractCreatedTs" value={contract.contractCreatedTs} />
-          <Versions versions={versions} tableId={tableId} />
-        </Stack>
-      </DetailCard>
+        <DetailCard {...card("fields")}>
+          <Stack gap={2}>
+            <Element name="name" value={object?.name} />
+            <Element name="physicalName" value={object?.physicalName} />
+            <Element name="physicalType" value={object?.physicalType} />
+            <Element name="description" value={object?.description} />
+            <Element name="businessName" value={object?.businessName} />
+            <Element name="dataGranularityDescription" value={object?.dataGranularityDescription} />
+            <Records name="relationships" items={object?.relationships} />
+            <Element name="tags" value={object?.tags} />
+            <Properties
+              properties={properties}
+              tableId={tableId}
+              testId={`data-contract-columns-${tableId}`}
+            />
+          </Stack>
+        </DetailCard>
+        <DetailCard {...card("sla")}>
+          <Stack gap={2}>
+            <Element name="slaDefaultElement" value={contract.slaDefaultElement} />
+            <Records name="slaProperties" items={sla} testId={`data-contract-sla-${tableId}`} />
+          </Stack>
+        </DetailCard>
+        <DetailCard {...card("quality")} span={2}>
+          <Stack gap={4}>
+            {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
+            {promises && (
+              <ClaimsCallout
+                kind="promises"
+                checks={promises}
+                testId={`data-contract-promises-${tableId}`}
+              />
+            )}
+            <Records name="quality" items={rules} />
+          </Stack>
+        </DetailCard>
+        {consumers && (
+          <DetailCard {...card("consumers")}>
+            <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
+          </DetailCard>
+        )}
+        <DetailCard {...card("versions")}>
+          <Stack gap={2}>
+            <Element name="version" value={contract.version} />
+            <Element name="status" value={status} />
+            <Element name="contractCreatedTs" value={contract.contractCreatedTs} />
+            <Versions versions={versions} tableId={tableId} />
+          </Stack>
+        </DetailCard>
+      </div>
     </div>
   );
 }
