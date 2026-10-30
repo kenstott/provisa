@@ -26763,3 +26763,15 @@ Maintainer 2026-10-30: the ERD is a main view of the Tables page, swapped with t
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2188 · Security {#REQ-2188}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-10-30: a role is given R or RW on a model, and that is the ceiling of what it may do; RW includes create, which has no row to narrow. A row rule has a right, R, U or D, the three things that can be done to an existing row, with at most one rule for each right per role and model. A rule only narrows: it never gives a right the role does not hold, and U or D on a role with only R does nothing. A role with no rule for a right does that to every row its grant allows. Today's rules are R rules. Semantic objects are models too: the model store applies a role's U and D rules to every write of one, whatever route the write came by. So a data product is edited only by an org admin, who holds RW with no U or D rule, or by a role holding RW with U and D rules naming the product's owner role. data_product_owned_rw and its hand-written owner check go away. Every role other than org_admin that holds data_product_rw carries those rules.
+
+**Code:** —
+
+**Tests:** —
