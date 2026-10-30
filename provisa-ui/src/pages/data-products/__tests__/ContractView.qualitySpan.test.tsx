@@ -38,7 +38,7 @@ describe("a contract's Quality promises card", () => {
     );
     const grid = document.querySelector(".contract-cards__grid") as HTMLElement;
     expect(Array.from(grid.children).map((c) => c.getAttribute("data-testid"))).toEqual(
-      ["details", "fields", "sla", "quality", "consumers", "versions"].map(
+      ["details", "versions", "fields", "sla", "quality", "consumers"].map(
         (k) => `data-contract-7-${k}`,
       ),
     );
