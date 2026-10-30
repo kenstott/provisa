@@ -90301,7 +90301,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Maintainer 2026-10-30: pgwire function support is an improvement to compiler pushdown. A function is
     expressed in the compiler and transpiler through the semantic IR, as SQL for each dialect, so every
     transport and every engine that can run it gets it. A UDF is never implemented within the pgwire module.
-    Wire encoding stays in the encoder.'
+    Wire encoding stays in the encoder. (Amended 2026-10-29, XML AND MONEY ARE SERVED:) Maintainer 2026-10-30,
+    replacing the earlier skip of XML and money: both are served with real results. XML generation is per-dialect
+    macros in the transpiler and reaches every transport. XML parsing and xpath are engine functions on
+    DuckDB, native where a dialect has them, and refused by name elsewhere; nothing reaches a source to
+    fail there. query_to_xml and its kin read through the governed pipeline and take constant arguments
+    only.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
