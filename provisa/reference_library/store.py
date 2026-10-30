@@ -282,6 +282,31 @@ async def replace_content(
     await _write_passages(conn, document_id, passages)
 
 
+async def replace_vectors(
+    conn: Connection,
+    document_id: int,
+    *,
+    embedding_model: str,
+    vectors: Sequence[Sequence[float]],
+) -> None:
+    """The document's passages re-embedded: ``vectors`` are the new embeddings of its passages in
+    ordinal order, made by ``embedding_model``. Text, sections and everything else stay."""
+    held = [o for o, _, _, _ in await passages(conn, document_id)]
+    if len(vectors) != len(held):
+        raise ValueError(f"{len(vectors)} embeddings for {len(held)} passages")
+    for ordinal, vector in zip(held, vectors, strict=True):
+        await conn.execute_core(
+            update(passages_t)
+            .where((passages_t.c.document_id == document_id) & (passages_t.c.ordinal == ordinal))
+            .values(vector=json.dumps(list(vector)))
+        )
+    await conn.execute_core(
+        update(documents_t)
+        .where(documents_t.c.id == document_id)
+        .values(embedding_model=embedding_model)
+    )
+
+
 async def remove(conn: Connection, document_id: int) -> bool:
     """Remove the document with its domains and passages. False when there is none."""
     result = await conn.execute_core(
