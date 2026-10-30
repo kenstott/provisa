@@ -137,6 +137,8 @@ export function RelationshipsPage() {
   const updateSearch = (v: string) => {
     setRelSearch(v);
     setRelPage(0);
+    // REQ-2187: on the ERD the filter box is not part of the link (a focus is what is shared).
+    if (erd.on) return;
     setSearchParams(
       (p) => {
         const n = new URLSearchParams(p);
@@ -768,7 +770,7 @@ export function RelationshipsPage() {
         }}
         list={
           erd.on ? (
-            <ErdView page="relationships" onOpen={openFromErd} />
+            <ErdView page="relationships" search={relSearch} onOpen={openFromErd} />
           ) : (
             <>
               {/* As on Tables: every column keeps its width and a name stays on one line; what the

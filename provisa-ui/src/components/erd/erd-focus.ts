@@ -15,6 +15,7 @@
 import { catalogTableName } from "../../naming";
 import type { ListedTable } from "../../types/admin";
 import type { CyInstance } from "../graph/cytoscape-types";
+import { matchesSearch, searchItems } from "../../lib/searchItems";
 
 export interface ErdFocus {
   domains: string[];
@@ -124,4 +125,61 @@ export function highlightErdTables(cy: CyInstance, tableIds: number[]): number[]
     cy.center(focused);
   }
   return held;
+}
+
+const DIM = "erd-dim";
+const MATCH = "erd-match";
+
+const text = (el: { data(key: string): unknown }, key: string): string | undefined => {
+  const v = el.data(key);
+  return typeof v === "string" ? v : undefined;
+};
+
+/** The page's filter box on the diagram, as a search focuses the Ontology graph (searchItems' rule):
+ * what matches is marked and the rest dimmed, by classes -- nothing moved, nothing rebuilt. On
+ * Tables a table matches by name or domain, and its lines and domain stay lit; on Relationships a
+ * line matches by its source or its target, and its two tables and their domains stay lit. An empty
+ * search clears the classes. Returns the ids of what matched. */
+export function applyErdSearch(
+  cy: CyInstance,
+  search: string,
+  page: "tables" | "relationships",
+): string[] {
+  const items = searchItems(search);
+  const marked = new Set<string>();
+  const lit = new Set<string>();
+  const tableName = (id: string): string => text(cy.getElementById(id), "tableName") ?? "";
+  if (items.length > 0) {
+    if (page === "tables") {
+      cy.nodes(".erd-table").forEach((n) => {
+        if (matchesSearch([text(n, "tableName"), text(n, "domainId")], items)) marked.add(n.id());
+      });
+      marked.forEach((id) => lit.add(id));
+      cy.edges().forEach((e) => {
+        const ends = [String(e.data("source")), String(e.data("target"))];
+        if (ends.some((id) => marked.has(id))) lit.add(e.id());
+      });
+    } else {
+      cy.edges().forEach((e) => {
+        const ends = [String(e.data("source")), String(e.data("target"))];
+        if (!matchesSearch(ends.map(tableName), items)) return;
+        marked.add(e.id());
+        lit.add(e.id());
+        ends.forEach((id) => lit.add(id));
+      });
+    }
+    cy.nodes(".erd-table").forEach((n) => {
+      const parent = n.data("parent");
+      if (lit.has(n.id()) && typeof parent === "string") lit.add(parent);
+    });
+  }
+  cy.batch(() => {
+    cy.elements().removeClass(DIM).removeClass(MATCH);
+    if (items.length === 0) return;
+    cy.elements().forEach((el) => {
+      if (!lit.has(el.id())) el.addClass(DIM);
+      if (marked.has(el.id())) el.addClass(MATCH);
+    });
+  });
+  return [...marked];
 }
