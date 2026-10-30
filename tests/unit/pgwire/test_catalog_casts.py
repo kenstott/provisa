@@ -94,20 +94,18 @@ def test_name_cast_becomes_varchar(con):
     assert _scalar(con, "SELECT 'public'::name AS n") == "public"
 
 
-def test_qualified_regclass_literal_shortened():
-    # pg_description.classoid stores the short relation name ('pg_class'), so
-    # DataGrip's `classoid = 'pg_catalog.pg_class'::regclass` filter must map the
-    # schema-qualified literal to its last component or every comment drops.
+def test_qualified_regclass_literal_is_the_relations_oid():
+    # pg_description.classoid is an oid, as in PostgreSQL, so DataGrip's
+    # `classoid = 'pg_catalog.pg_class'::regclass` filter compares it with pg_class's oid.
     out = _rewrite_for_duckdb(
         "SELECT description FROM pg_description WHERE classoid = 'pg_catalog.pg_class'::regclass"
     )
-    assert "'pg_class'" in out
+    assert "1259" in out
     assert "pg_catalog.pg_class" not in out
 
 
-def test_unqualified_regclass_literal_unchanged(con):
-    # Compared, as pg_description's classoid is: the relation's short name.
-    assert _scalar(con, "SELECT 'pg_class'::regclass = 'pg_class' AS c") is True
+def test_unqualified_regclass_literal_is_the_relations_oid(con):
+    assert _scalar(con, "SELECT 'pg_class'::regclass = 1259 AS c") is True
 
 
 def test_regclass_oid_chain_maps_to_class_oid(con):

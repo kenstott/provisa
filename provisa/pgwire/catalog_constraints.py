@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 
 from provisa.compiler.sql_where import META_QUERY_NAME
+from provisa.pgwire.catalog_pg17_tables import create_relation
 
 from typing import TYPE_CHECKING
 
@@ -71,6 +72,7 @@ def _build_pk_constraint_rows(
                 0,
                 True,
                 conkey,
+                None,
                 None,
                 None,
                 None,
@@ -141,6 +143,7 @@ def _build_unique_constraint_rows(  # REQ-1093
                     None,
                     None,
                     None,
+                    None,
                 )
             )
             con_oid += 1
@@ -178,6 +181,7 @@ def _fk_row(
         True,
         conkey,
         confkey,
+        None,
         None,
         None,
         None,
@@ -365,18 +369,11 @@ def catalog_constraint_rows(ctx, idx: CatalogIndex) -> list[tuple]:
 
 
 def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
-    db.execute("""CREATE TABLE _pg_constraint (
-        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
-        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
-        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
-        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
-        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkey SMALLINT[], confkey SMALLINT[], conpfeqop INTEGER[], conppeqop INTEGER[],
-        conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
+    create_relation(db, "pg_catalog", "pg_constraint")
     constraint_rows = catalog_constraint_rows(ctx, idx)
     if constraint_rows:
         db.executemany(
-            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
+            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 26)})",
             constraint_rows,
         )
     # What pg_get_constraintdef(oid) answers (catalog_rewrite): each constraint's definition as
@@ -447,6 +444,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
                 n,  # indnatts
                 n,  # indnkeyatts
                 True,  # indisunique
+                False,  # indnullsnotdistinct
                 contype == "p",  # indisprimary
                 False,  # indisexclusion
                 True,  # indimmediate
@@ -465,7 +463,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
             )
         )
     if index_rows:
-        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 20)})", index_rows)
+        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 21)})", index_rows)
 
 
 _BTREE_AM_OID = 403

@@ -127,7 +127,7 @@ def test_pg_description_carries_the_tags():
 
     db = duckdb.connect()
     db.execute(
-        "CREATE TABLE _pg_description (objoid INTEGER, classoid VARCHAR, objsubid INTEGER, "
+        "CREATE TABLE _pg_description (objoid INTEGER, classoid INTEGER, objsubid INTEGER, "
         "description VARCHAR)"
     )
     idx = SimpleNamespace(
