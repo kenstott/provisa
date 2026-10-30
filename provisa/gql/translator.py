@@ -1010,7 +1010,20 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             joins = _optional_step_matches_whole(joins, step_vars)
         before_with = _reads_before_with(with_clause)
         aggregates = any(_has_aggregate(i.expression) for i in with_clause.items)
-        filters_read_rows = bool(before_with) and not aggregates
+        # A WITH that carries each variable on under its own name (WITH a, c, d WHERE ...) is
+        # its rows unchanged: its WHERE filters the rows it reads, as a MATCH's WHERE does, not a
+        # wrapper of them, which an engine reading the session's tables would not push down.
+        carries_only = (
+            with_clause.where is not None
+            and with_clause.skip is None
+            and with_clause.limit is None
+            and all(
+                isinstance(i.expression, Variable)
+                and (i.alias is None or i.alias == i.expression.name)
+                for i in with_clause.items
+            )
+        )
+        filters_read_rows = (bool(before_with) or carries_only) and not aggregates
         if filters_read_rows:
             assert with_clause.where is not None
             if with_clause.skip is not None or with_clause.limit is not None:

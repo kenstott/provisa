@@ -559,3 +559,20 @@ def test_a_model_label_is_found_by_its_declared_name_alone(monkeypatch):
         CypherMistake, match="There is no label :person. Registered labels: :Person"
     ):
         s.run("MATCH (p:person) RETURN p.name AS n")
+
+
+def test_a_with_carrying_its_variables_filters_the_rows_it_reads(monkeypatch):
+    # TCK WithWhere2 [1]: WITH a, c, d WHERE ... wrapped the whole cyclic pattern's join in a
+    # subquery and filtered above it; over the engine's session tables the read ran past the
+    # request timeout. Carrying each variable under its own name, the WHERE is the stage's own.
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (a:A), (b:B {id: 1}), (c:C {id: 2}), (d:D) "
+        "CREATE (a)-[:T]->(b), (a)-[:T]->(c), (a)-[:T]->(d), (b)-[:T]->(c), (b)-[:T]->(d), "
+        "(c)-[:T]->(d)"
+    )
+    query = (
+        "MATCH (a)--(b)--(c)--(d)--(a), (b)--(d) WITH a, c, d WHERE a.id = 1 AND c.id = 2 RETURN d"
+    )
+    assert "_inner" not in s.sql(query)
+    assert sorted(r["d"]["labels"] for r in s.answer(query)) == [["A"], ["D"]]
