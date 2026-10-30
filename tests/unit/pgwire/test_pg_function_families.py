@@ -31,6 +31,7 @@ from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 BOOL, BYTEA, NAME, INT8, INT4, TEXT, OID = 16, 17, 19, 20, 23, 25, 26
 FLOAT8, NUMERIC, TEXT_ARRAY, TIMESTAMPTZ, TIMESTAMP = 701, 1700, 1009, 1184, 1114
+TIMETZ = 1266
 PG_LSN, XID8, RECORD, VOID, MONEY, ANYELEMENT = 3220, 5069, 2249, 2278, 790, 2283
 
 
@@ -151,6 +152,8 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
         TIMESTAMP,
         ["2024-01-01 01:00:00"],
     ),
+    "SELECT timezone('1 hour'::interval, '12:00:00+00'::timetz) AS v": (TIMETZ, ["13:00:00+01"]),
+    "SELECT timezone('-2 hours'::interval, '12:00:00+00'::timetz) AS v": (TIMETZ, ["10:00:00-02"]),
     # Xact ids and snapshots.
     "SELECT pg_snapshot_xmin('10:20:12,15'::pg_snapshot) AS v": (XID8, ["10"]),
     "SELECT pg_snapshot_xmax('10:20:12,15'::pg_snapshot) AS v": (XID8, ["20"]),

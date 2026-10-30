@@ -14,23 +14,23 @@ The tables and commands assigned to a data product are its **output ports**: the
 
 ## Contracts
 
-Each member table is an output port with its own data contract, in the ODCS format. A table gets a draft contract at version `0.1.0` when it joins a product, promising every column it has. The contract has its own version, separate from the product's. A checker table that a product owns is not an output port and has no contract.
+Each member table is an output port with its own data contract, in the ODCS format. A table gets a draft contract at version `0.1.0` when it joins a product, declaring every column it has. The contract has its own version, separate from the product's. A checker table that a product owns is not an output port and has no contract.
 
 A contract holds:
 
 | Field | Notes |
 | --- | --- |
-| `version` | Required. Changed when the contract stops promising a column or promises it as another type |
+| `version` | Required. Changed when the contract removes a column or declares it as another type |
 | `status` | `proposed`, `draft`, `active`, `deprecated` or `retired` |
 | `description` | What the port is for |
 | `terms` | `usage`, `limitations` and `notice_period` (for example `P3M`) |
 | `sla` | Service levels such as availability or retention. Freshness is not declared here: it comes from the table's cache TTL |
-| `columns` | The columns the port promises: name, type, description and whether the column is never null |
+| `columns` | The columns the port declares: name, type, description and whether the column is never null |
 
 Two rules keep a contract and its table in step:
 
-- A contract saved at the same version may not drop a promised column or change its type. Save it at a new version.
-- A table save may not drop or retype a column its contract promises. Release a new contract version without the column first. In a configuration file, the table and its new contract can change in the same save.
+- A contract saved at the same version may not drop a declared column or change its type. Save it at a new version.
+- A table save may not drop or retype a column its contract declares. Release a new contract version without the column first. In a configuration file, the table and its new contract can change in the same save.
 
 Edit contracts on the product's form, in its Contracts panel, or declare them in configuration on the table:
 
@@ -60,7 +60,7 @@ Opening a data product in the admin UI shows these panels:
 | Panel | What it shows |
 | --- | --- |
 | Output Ports | Member tables and their columns; member commands; sample queries (GraphQL, SQL, Cypher, gRPC, JSON:API, REST) |
-| Contracts | Each output port's contract: its version and status, terms, service levels and promised columns |
+| Contracts | Each output port's contract: its version and status, terms, service levels and columns |
 | Related Terms | Glossary terms linked to the product's member tables |
 | Related Tables | Tables reachable from member tables through approved relationships but not yet part of the product |
 | Relationships | Approved relationships between this product's member tables |

@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PostgreSQL's scalar functions on DuckDB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): macros where a
-DuckDB expression carries the function, on any argument a statement can name, a column too; UDFs
-where the value needs PostgreSQL's own algorithm (the exact sind, the bytes of a bytea, a regular
-expression's groups). A UDF is strict unless it says otherwise. A numeric of no fixed scale is
-returned as its text, which pgwire sends as the numeric PostgreSQL declares (cast_types)."""
+"""The Python UDFs of PostgreSQL's scalar functions on DuckDB (REQ-2167, PGWIRE'S CATALOG
+FUNCTIONS): where the value needs PostgreSQL's own algorithm (the exact sind, a regular expression's
+groups). A function is a rewrite in provisa.transpiler.function_macros, whose DuckDB forms call
+these; no other dialect can. A UDF is strict unless it says otherwise. A numeric of no fixed scale
+is returned as its text, which pgwire sends as the numeric PostgreSQL declares (cast_types)."""
 
 # Requirements: REQ-2167
 
@@ -127,16 +127,6 @@ def bytea_like(value: bytes, pattern: bytes) -> bool:
 def _checked_index(index: int, size: int) -> None:
     if index < 0 or index >= size:
         raise _error("2202E", f"index {index} out of valid range, 0..{size - 1}")
-
-
-def get_byte(value: bytes, index: int) -> int:
-    _checked_index(index, len(value))
-    return value[index]
-
-
-def set_byte(value: bytes, index: int, new: int) -> bytes:
-    _checked_index(index, len(value))
-    return value[:index] + bytes([new & 0xFF]) + value[index + 1 :]
 
 
 def get_bit(value: bytes, index: int) -> int:
@@ -692,20 +682,6 @@ def diagonal(value: str) -> str:
     return f"[{_text_point(high_x, high_y)},{_text_point(low_x, low_y)}]"
 
 
-def box_height(value: str) -> float:
-    _, high_y, _, low_y = _box(value)
-    return high_y - low_y
-
-
-def box_width(value: str) -> float:
-    high_x, _, low_x, _ = _box(value)
-    return high_x - low_x
-
-
-def circle_radius(value: str) -> float:
-    return _numbers(value)[2]
-
-
 def path_is_closed(value: str) -> bool:
     return value.strip().startswith("(")
 
@@ -822,11 +798,6 @@ def numeric_series(start: str, stop: str, step: str | None) -> list[str]:
     return out
 
 
-def to_base(value: int, bits: int, base: int) -> str:
-    """to_bin and to_oct: the value's two's complement in ``bits`` bits, in base 2 or 8."""
-    return format(value & ((1 << bits) - 1), "b" if base == 2 else "o")  # noqa: PLR2004
-
-
 def abbrev(value: str, kind: str) -> str:
     """abbrev(inet) drops a /32 (or /128); abbrev(cidr) also drops the zero bytes the mask covers."""
     address, _, bits = value.partition("/")
@@ -846,8 +817,6 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_sind", sind, ["DOUBLE"], "DOUBLE"),
     ("provisa_tand", tand, ["DOUBLE"], "DOUBLE"),
     ("provisa_bytea_like", bytea_like, ["BLOB", "BLOB"], "BOOLEAN"),
-    ("provisa_get_byte", get_byte, ["BLOB", "BIGINT"], "INTEGER"),
-    ("provisa_set_byte", set_byte, ["BLOB", "BIGINT", "BIGINT"], "BLOB"),
     ("provisa_get_bit", get_bit, ["BLOB", "BIGINT"], "INTEGER"),
     ("provisa_set_bit", set_bit, ["BLOB", "BIGINT", "BIGINT"], "BLOB"),
     ("provisa_bit_count", bit_count, ["BLOB"], "BIGINT"),
@@ -868,7 +837,6 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_numeric_gcd", numeric_gcd, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_numeric_lcm", numeric_lcm, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
-    ("provisa_to_base", to_base, ["BIGINT", "BIGINT", "BIGINT"], "VARCHAR"),
     ("provisa_abbrev", abbrev, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_aclitem", aclitem, ["VARCHAR", "VARCHAR", "VARCHAR", "BOOLEAN"], "VARCHAR"),
     ("provisa_typemod", typemod, ["VARCHAR"], "INTEGER"),
@@ -881,10 +849,6 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_tsvector_strip", tsvector_strip, ["VARCHAR"], "VARCHAR"),
     ("provisa_center", center, ["VARCHAR"], "VARCHAR"),
     ("provisa_diagonal", diagonal, ["VARCHAR"], "VARCHAR"),
-    ("provisa_box_height", box_height, ["VARCHAR"], "DOUBLE"),
-    ("provisa_box_width", box_width, ["VARCHAR"], "DOUBLE"),
-    ("provisa_circle_radius", circle_radius, ["VARCHAR"], "DOUBLE"),
-    ("provisa_path_is_closed", path_is_closed, ["VARCHAR"], "BOOLEAN"),
     ("provisa_is_horizontal", is_horizontal, ["VARCHAR"], "BOOLEAN"),
     ("provisa_is_vertical", is_vertical, ["VARCHAR"], "BOOLEAN"),
     ("provisa_is_parallel", is_parallel, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
@@ -922,196 +886,6 @@ _OPTIONAL_LAST_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
 )
 
 
-def _text_matches() -> tuple[str, ...]:
-    like = "(a LIKE b ESCAPE '\\')"
-    ilike = "(a ILIKE b ESCAPE '\\')"
-    regex = "regexp_matches(a, b)"
-    iregex = "regexp_matches(a, b, 'i')"
-    family: dict[str, str] = {
-        "like": like,
-        "nlike": f"NOT {like}",
-        "iclike": ilike,
-        "icnlike": f"NOT {ilike}",
-        "regexeq": regex,
-        "regexne": f"NOT {regex}",
-        "icregexeq": iregex,
-        "icregexne": f"NOT {iregex}",
-    }
-    return tuple(
-        f"CREATE MACRO {prefix}{suffix}(a, b) AS {body}"
-        for prefix in ("text", "name", "bpchar")
-        for suffix, body in family.items()
-    )
-
-
-def _comparisons(prefix: str, *suffixes: str) -> tuple[str, ...]:
-    operators = {"eq": "=", "ne": "<>", "lt": "<", "le": "<=", "gt": ">", "ge": ">="}
-    return tuple(
-        f"CREATE MACRO {prefix}{suffix}(a, b) AS a {operators[suffix]} b" for suffix in suffixes
-    )
-
-
-#: oid_send: an oid's four bytes, for the send functions of the object identifier types.
-_OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
-_INT8_BYTES = "unhex(printf('%016x', CAST(v AS UBIGINT)))"
-
-#: quote_literal: an E'' string, its backslashes doubled, when it holds one.
-_QUOTED_LITERAL = (
-    "CAST(CASE "
-    f"WHEN contains(CAST(value AS VARCHAR), '{_BACKSLASH}') THEN 'E''' || "
-    f"replace(replace(CAST(value AS VARCHAR), '{_BACKSLASH}', '{_BACKSLASH * 2}'), '''', '''''') "
-    "|| '''' ELSE '''' || replace(CAST(value AS VARCHAR), '''', '''''') || '''' END AS VARCHAR)"
-)
-
-_MACROS: tuple[str, ...] = (
-    *_text_matches(),
-    """CREATE MACRO "like"(a, b) AS (a LIKE b ESCAPE '\\')""",
-    """CREATE MACRO notlike(a, b) AS NOT (a LIKE b ESCAPE '\\')""",
-    "CREATE MACRO textcat(a, b) AS CAST(a || b AS VARCHAR)",
-    "CREATE MACRO byteacat(a, b) AS CAST(a || b AS BLOB)",
-    "CREATE MACRO bytealike(a, b) AS provisa_bytea_like(a, b)",
-    "CREATE MACRO byteanlike(a, b) AS NOT provisa_bytea_like(a, b)",
-    "CREATE MACRO bitcat(a, b) AS CAST(CAST(a AS VARCHAR) || CAST(b AS VARCHAR) AS BIT)",
-    "CREATE MACRO bitshiftleft(value, n) AS CAST(substr(CAST(value AS VARCHAR), n + 1) || "
-    "repeat('0', least(n, length(CAST(value AS VARCHAR)))) AS BIT)",
-    "CREATE MACRO bitshiftright(value, n) AS CAST(repeat('0', least(n, "
-    "length(CAST(value AS VARCHAR)))) || left(CAST(value AS VARCHAR), "
-    "greatest(length(CAST(value AS VARCHAR)) - n, 0)) AS BIT)",
-    "CREATE MACRO get_byte(value, n) AS provisa_get_byte(value, n)",
-    "CREATE MACRO set_byte(value, n, new) AS provisa_set_byte(value, n, new)",
-    f"CREATE MACRO quote_literal(value) AS {_QUOTED_LITERAL}",
-    "CREATE MACRO quote_nullable(value) AS CASE WHEN value IS NULL THEN 'NULL' "
-    f"ELSE {_QUOTED_LITERAL} END",
-    "CREATE MACRO dcbrt(x) AS cbrt(x)",
-    "CREATE MACRO dround(x) AS round_even(CAST(x AS DOUBLE), 0)",
-    "CREATE MACRO dtrunc(x) AS trunc(CAST(x AS DOUBLE))",
-    "CREATE MACRO sind(x) AS CASE WHEN isnan(CAST(x AS DOUBLE)) THEN CAST(x AS DOUBLE) "
-    "ELSE provisa_sind(x) END",
-    "CREATE MACRO tand(x) AS CASE WHEN isnan(CAST(x AS DOUBLE)) THEN CAST(x AS DOUBLE) "
-    "ELSE provisa_tand(x) END",
-    "CREATE MACRO every(x) AS bool_and(x)",
-    "CREATE MACRO scale(x) AS CASE WHEN x IS NULL THEN CAST(NULL AS INTEGER) "
-    "WHEN contains(CAST(x AS VARCHAR), '.') "
-    "THEN CAST(length(split_part(CAST(x AS VARCHAR), '.', 2)) AS INTEGER) ELSE 0 END",
-    "CREATE MACRO to_bin(value) AS provisa_to_base(value, "
-    "CASE WHEN typeof(value) IN ('BIGINT', 'HUGEINT') THEN 64 ELSE 32 END, 2)",
-    "CREATE MACRO to_oct(value) AS provisa_to_base(value, "
-    "CASE WHEN typeof(value) IN ('BIGINT', 'HUGEINT') THEN 64 ELSE 32 END, 8)",
-    "CREATE MACRO pg_size_bytes(size) AS provisa_size_bytes(size)",
-    "CREATE MACRO pg_convert(value, source, destination) AS "
-    "provisa_convert(value, source, destination)",
-    "CREATE MACRO pg_json_object(value) AS CAST(provisa_json_object(value, NULL) AS JSON), "
-    "(ks, vs) AS CAST(CASE WHEN ks IS NOT NULL AND vs IS NOT NULL THEN "
-    "provisa_json_object(ks, vs) END AS JSON)",
-    "CREATE MACRO convert_from(value, source) AS decode(provisa_convert(value, source, 'UTF8'))",
-    "CREATE MACRO convert_to(value, destination) AS "
-    "provisa_convert(encode(value), 'UTF8', destination)",
-    "CREATE MACRO regexp_match(value, pattern) AS provisa_regexp_match(value, pattern, ''), "
-    "(value, pattern, flags) AS provisa_regexp_match(value, pattern, flags)",
-    "CREATE MACRO regexp_substr(value, pattern) AS "
-    "provisa_regexp_substr(value, pattern, 1, 1, '', 0), "
-    "(value, pattern, start) AS provisa_regexp_substr(value, pattern, start, 1, '', 0), "
-    "(value, pattern, start, n) AS provisa_regexp_substr(value, pattern, start, n, '', 0), "
-    "(value, pattern, start, n, flags) AS "
-    "provisa_regexp_substr(value, pattern, start, n, flags, 0), "
-    "(value, pattern, start, n, flags, subexpr) AS "
-    "provisa_regexp_substr(value, pattern, start, n, flags, subexpr)",
-    "CREATE MACRO string_to_table(value, delimiter) AS "
-    "unnest(provisa_string_to_array(value, delimiter, NULL)), "
-    "(value, delimiter, null_string) AS "
-    "unnest(provisa_string_to_array(value, delimiter, null_string))",
-    "CREATE MACRO similar_escape(pattern, escape) AS provisa_similar_escape(pattern, escape)",
-    "CREATE MACRO similar_to_escape(pattern) AS CASE WHEN pattern IS NOT NULL THEN "
-    "provisa_similar_escape(pattern, NULL) END, (pattern, escape) AS "
-    "CASE WHEN pattern IS NOT NULL AND escape IS NOT NULL THEN "
-    "provisa_similar_escape(pattern, escape) END",
-    "CREATE MACRO is_normalized(value, form) AS provisa_is_normalized(value, form)",
-    "CREATE MACRO unicode_assigned(value) AS provisa_unicode_assigned(value)",
-    "CREATE MACRO unicode_version() AS '15.1'",
-    "CREATE MACRO icu_unicode_version() AS CAST(NULL AS VARCHAR)",
-    "CREATE MACRO unistr(value) AS provisa_unistr(value)",
-    # The database's encoding is UTF8, which to_ascii refuses; a named single-byte one it strips.
-    "CREATE MACRO to_ascii(value) AS provisa_to_ascii(value, 'UTF8'), "
-    "(value, encoding) AS provisa_to_ascii(value, CAST(encoding AS VARCHAR))",
-    "CREATE MACRO parse_ident(value) AS provisa_parse_ident(value, true), "
-    "(value, strict) AS provisa_parse_ident(value, strict)",
-    "CREATE MACRO abbrev(value) AS "
-    "provisa_abbrev(CAST(value AS VARCHAR), CASE typeof(value) WHEN 'INET' THEN 'inet' "
-    "ELSE 'cidr' END)",
-    "CREATE MACRO nameconcatoid(name, oid) AS "
-    "CAST(left(name, 63 - length('_' || oid)) || '_' || oid AS VARCHAR)",
-    "CREATE MACRO jsonb_typeof(value) AS CASE WHEN value IS NULL THEN CAST(NULL AS VARCHAR) "
-    "ELSE CASE json_type(value) WHEN 'OBJECT' THEN 'object' "
-    "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
-    "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
-    *(
-        f"CREATE MACRO {name}(value) AS provisa_{target}(CAST(value AS VARCHAR))"
-        for name, target in (
-            ("area", "area"),
-            ("center", "center"),
-            ("diagonal", "diagonal"),
-            ("height", "box_height"),
-            ("width", "box_width"),
-            ("radius", "circle_radius"),
-            ("isclosed", "path_is_closed"),
-        )
-    ),
-    "CREATE MACRO isopen(value) AS NOT provisa_path_is_closed(CAST(value AS VARCHAR))",
-    "CREATE MACRO ishorizontal(a) AS provisa_is_horizontal(CAST(a AS VARCHAR)), "
-    "(a, b) AS provisa_points_horizontal(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
-    "CREATE MACRO isvertical(a) AS provisa_is_vertical(CAST(a AS VARCHAR)), "
-    "(a, b) AS provisa_points_vertical(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
-    "CREATE MACRO isparallel(a, b) AS provisa_is_parallel(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
-    "CREATE MACRO isperp(a, b) AS provisa_is_perpendicular(CAST(a AS VARCHAR), CAST(b AS VARCHAR))",
-    "CREATE MACRO pt_contained_circle(p, c) AS "
-    "provisa_point_in_circle(CAST(p AS VARCHAR), CAST(c AS VARCHAR))",
-    "CREATE MACRO pt_contained_poly(p, poly) AS "
-    "provisa_point_in_polygon(CAST(p AS VARCHAR), CAST(poly AS VARCHAR))",
-    "CREATE MACRO strip(value) AS provisa_tsvector_strip(CAST(value AS VARCHAR))",
-    "CREATE MACRO mul_d_interval(d, i) AS "
-    "to_microseconds(CAST(round(epoch(i) * 1000000 * d) AS BIGINT))",
-    "CREATE MACRO oidvectorsend(v) AS CASE WHEN v IS NOT NULL THEN unhex("
-    "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(v), 0) || "
-    "array_to_string(list_transform(v, _o -> printf('00000004%08x', _o)), '')) END",
-    "CREATE MACRO numrange(a, b) AS CASE "
-    "WHEN a IS NOT NULL AND b IS NOT NULL AND a > b THEN "
-    "error('postgresql-error 22000: range lower bound must be less than or equal to range upper "
-    "bound') "
-    "WHEN a IS NOT NULL AND a = b THEN 'empty' "
-    "ELSE CASE WHEN a IS NULL THEN '(' ELSE '[' END || coalesce(CAST(a AS VARCHAR), '') || ',' || coalesce(CAST(b AS VARCHAR), '') "
-    "|| ')' END",
-    "CREATE MACRO varbit(value, n, explicit) AS CASE WHEN value IS NOT NULL AND n IS NOT NULL THEN "
-    "CAST(CASE WHEN n < 0 THEN CAST(value AS VARCHAR) ELSE left(CAST(value AS VARCHAR), n) END "
-    "AS BIT) END",
-    "CREATE MACRO json_each(value) AS unnest(list_transform(json_keys(value), "
-    "_k -> struct_pack(key := _k, value := json_extract(value, '$.\"' || _k || '\"'))))",
-    *_comparisons("oidvector", "eq", "ne", "lt", "le", "gt", "ge"),
-    *_comparisons("xid8", "eq", "ne", "lt", "le", "gt", "ge"),
-    "CREATE MACRO xid8cmp(a, b) AS CASE WHEN a < b THEN -1 WHEN a > b THEN 1 WHEN a = b THEN 0 END",
-    "CREATE MACRO xid8_larger(a, b) AS CASE WHEN a IS NOT NULL AND b IS NOT NULL THEN "
-    "greatest(a, b) END",
-    "CREATE MACRO xid8_smaller(a, b) AS CASE WHEN a IS NOT NULL AND b IS NOT NULL THEN "
-    "least(a, b) END",
-    f"CREATE MACRO xid8send(v) AS {_INT8_BYTES}",
-    *(
-        f"CREATE MACRO {name}send(v) AS {_OID_BYTES}"
-        for name in (
-            "regclass",
-            "regcollation",
-            "regconfig",
-            "regdictionary",
-            "regnamespace",
-            "regoper",
-            "regoperator",
-            "regprocedure",
-            "regproc",
-            "regrole",
-            "regtype",
-        )
-    ),
-)
-
-
 def _strict_in_all(function: Any) -> Any:
     @functools.wraps(function)
     def call(*args: Any) -> Any:
@@ -1131,7 +905,7 @@ def _null_for_a_required_argument(function: Any) -> Any:
 
 
 def register(con: Any) -> None:
-    """Create the UDFs and macros on DuckDB connection ``con``."""
+    """Create the UDFs on DuckDB connection ``con``."""
     from provisa.federation.duckdb_pg_money import register as register_money
 
     register_money(con)
@@ -1152,5 +926,3 @@ def register(con: Any) -> None:
         con.create_function(
             name, function, parameters, returns, null_handling="special", side_effects=False
         )
-    for macro in _MACROS:
-        con.execute(macro)

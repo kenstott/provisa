@@ -154,6 +154,24 @@ function relatedLabel(e: CoreEdge): string {
   return e.target_table ? modelName(e.target_table) : String(e.target_table_id);
 }
 
+/** REQ-2160: any reader but the owner or team sees that the list exists and whose it is, never a
+ *  list and never "None" (an empty list is the owner's to read). */
+function OwnerOnlyList() {
+  const { t } = useTranslation();
+  return <Empty text={t("dataProductCore.ownerOnlyList")} />;
+}
+
+/** The owner's card while lineage is unread: loading, or the read's error; never a false "None". */
+function LineagePending({ loading, error }: { loading: boolean; error: string }) {
+  const { t } = useTranslation();
+  if (loading) return <Empty text={t("dataProductsTab.detail.lineageLoading")} />;
+  return error ? (
+    <Text size="sm" c="red">
+      {error}
+    </Text>
+  ) : null;
+}
+
 // Row-click detail view for a data product — same detail-then-edit pattern as
 // MetricDetailPanel (REQ-1323): the read-only facts with Edit/Delete inside.
 export function DataProductDetailPanel({
@@ -822,40 +840,50 @@ export function DataProductDetailPanel({
         </DetailCard>
         {/* REQ-2126, REQ-2132: the nearest physical inputs and the product's expectations of them,
             found on the product's lineage as its reader may read it (REQ-2156). */}
-        {lineageGraph && owner && (
-          <DetailCard
-            section="inputPorts"
-            testId={`data-product-card-inputPorts-${p.id}`}
-            label={t("dataProductsTab.detail.field.inputPorts")}
-            hint={t("dataProductCore.inputsHint")}
-          >
-            <ClaimsCallout
-              kind="expectations"
-              checks={lineageGraph.dq.expectations}
-              testId={`data-product-detail-expectations-${p.id}`}
-            />
-            <InputsList
-              inputs={lineageGraph.inputs}
-              expectations={lineageGraph.dq.expectations}
-              testId={`data-product-detail-inputs-${p.id}`}
-            />
-          </DetailCard>
-        )}
+        <DetailCard
+          section="inputPorts"
+          testId={`data-product-card-inputPorts-${p.id}`}
+          label={t("dataProductsTab.detail.field.inputPorts")}
+          hint={t("dataProductCore.inputsHint")}
+        >
+          {!owner ? (
+            <OwnerOnlyList />
+          ) : lineageGraph ? (
+            <>
+              <ClaimsCallout
+                kind="expectations"
+                checks={lineageGraph.dq.expectations}
+                testId={`data-product-detail-expectations-${p.id}`}
+              />
+              <InputsList
+                inputs={lineageGraph.inputs}
+                expectations={lineageGraph.dq.expectations}
+                testId={`data-product-detail-inputs-${p.id}`}
+              />
+            </>
+          ) : (
+            <LineagePending loading={lineageLoading} error={lineageError} />
+          )}
+        </DetailCard>
         {/* REQ-2160: the owner's view of who reads the product, one hop downstream (the product
             lineage endpoint, cut to the reader). */}
-        {lineageGraph && owner && (
-          <DetailCard
-            section="consumers"
-            testId={`data-product-card-consumers-${p.id}`}
-            label={t("dataProductCore.consumers")}
-            hint={t("dataProductCore.consumersHint")}
-          >
+        <DetailCard
+          section="consumers"
+          testId={`data-product-card-consumers-${p.id}`}
+          label={t("dataProductCore.consumers")}
+          hint={t("dataProductCore.consumersHint")}
+        >
+          {!owner ? (
+            <OwnerOnlyList />
+          ) : lineageGraph ? (
             <ConsumersList
               consumers={lineageGraph.consumers}
               testId={`data-product-detail-consumers-${p.id}`}
             />
-          </DetailCard>
-        )}
+          ) : (
+            <LineagePending loading={lineageLoading} error={lineageError} />
+          )}
+        </DetailCard>
         {/* Compact: the product, its members, commands and bound terms; the full graph opens
             from its expand button. */}
         <DetailCard

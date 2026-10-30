@@ -474,20 +474,60 @@ def _wkb_not_sent(r):
     raise ValueError("geometry and geography are sent in text format only")
 
 
-def _float8_text(x):
-    """float8out: the shortest exact form, with no trailing .0, an exponent from 1e+15 (Python's
-    from 1e+16), and PostgreSQL's spellings of the values that are no number."""
-    value = float(x)
-    if math.isinf(value):
-        return "Infinity" if value > 0 else "-Infinity"
-    if math.isnan(value):
+def _shortest_text(sig: str, negative: bool) -> str:
+    """float8out / float4out for a finite value, from its shortest round-trip form ``sig`` (a
+    ``d.ddde[+-]x`` string): plain decimal for an exponent in [-4, 15), else ``d.ddde+XX``."""
+    mantissa, exponent = sig.split("e")
+    digits = mantissa.replace(".", "").rstrip("0") or "0"
+    exp = int(exponent)
+    sign = "-" if negative else ""
+    if digits == "0":
+        return sign + "0"
+    if exp < -4 or exp >= 15:
+        body = digits[0] + ("." + digits[1:] if len(digits) > 1 else "")
+        return f"{sign}{body}e{'-' if exp < 0 else '+'}{abs(exp):02d}"
+    if exp < 0:
+        return sign + "0." + "0" * (-exp - 1) + digits
+    if len(digits) <= exp + 1:
+        return sign + digits + "0" * (exp + 1 - len(digits))
+    return sign + digits[: exp + 1] + "." + digits[exp + 1 :]
+
+
+def _non_finite_text(x: float):
+    if x != x:
         return "NaN"
-    text = repr(value)
-    if 1e15 <= abs(value) < 1e16:  # noqa: PLR2004
-        digits = text.removesuffix(".0").lstrip("-").rstrip("0")
-        mantissa = digits[0] + (f".{digits[1:]}" if len(digits) > 1 else "")
-        return f"{'-' if value < 0 else ''}{mantissa}e+15"
-    return text.removesuffix(".0")
+    if x in (float("inf"), float("-inf")):
+        return "Infinity" if x > 0 else "-Infinity"
+    return None
+
+
+def _float8_text(x):
+    """float8out: the shortest exact form (2, -1, NaN, Infinity), as PostgreSQL writes it."""
+    x = float(x)
+    special = _non_finite_text(x)
+    if special is not None:
+        return special
+    return _shortest_text(format(decimal.Decimal(repr(abs(x))), "e"), math.copysign(1.0, x) < 0)
+
+
+def _float4_text(x):
+    """float4out: the shortest form that reads back as the same 4-byte float."""
+    x = float(x)
+    special = _non_finite_text(x)
+    if special is not None:
+        return special
+    wanted = struct.pack("!f", abs(x))
+    negative = math.copysign(1.0, x) < 0
+    for digits in range(1, 10):
+        sig = f"{abs(x):.{digits - 1}e}"
+        try:
+            reads_back = struct.pack("!f", float(sig)) == wanted
+        except OverflowError:
+            # the shortest form of the largest float4 sits just past it in a double
+            reads_back = digits == 8 and wanted == struct.pack("!f", 3.4028234663852886e38)
+        if reads_back:
+            return _shortest_text(sig, negative)
+    return _shortest_text(f"{abs(x):.8e}", negative)
 
 
 def _point_parts(v):
@@ -592,7 +632,7 @@ def _numeric_to_pg_binary(v) -> bytes:
 PG_UNKNOWN = (705, str)
 BVTYPE_TO_PGTYPE = {
     BVType.SMALLINT: (21, str, lambda r: r.to_bytes(2, "big", signed=True)),
-    BVType.REAL: (700, str, lambda r: struct.pack("!f", r)),
+    BVType.REAL: (700, _float4_text, lambda r: struct.pack("!f", r)),
     BVType.JSONB: (
         3802,
         lambda v: json.dumps(v) if not isinstance(v, str) else v,

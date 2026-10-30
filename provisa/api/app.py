@@ -4136,6 +4136,17 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.transpiler.function_macros import FunctionRefused as _FunctionRefused
+
+    @app.exception_handler(_FunctionRefused)
+    async def _function_refused_handler(_req: _Request, exc: _FunctionRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        """REQ-2167: a function the routed dialect neither has nor has a form of: refused by name,
+        never an engine's error."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.sandbox_limits import SandboxDiskFull as _SandboxDiskFull
     from provisa.federation.duckdb_runtime import WriteConflict as _WriteConflict
 
@@ -4828,6 +4839,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(reference_library_router)
+    from provisa.api.admin.term_finding_router import (  # REQ-2179
+        router as term_finding_router,
+    )
+
+    app.include_router(term_finding_router)
     from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
 
     app.include_router(model_report_router)

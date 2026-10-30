@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "開啟 {{successor}}",
     "contract": {
       "label": "數據契約",
-      "hint": "每個輸出端口的契約：以其自身版本承諾的內容",
+      "hint": "每個輸出端口的契約：以其自身版本聲明的內容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "已提議",
@@ -177,8 +177,8 @@
       "versionLabel": "契約版本",
       "statusLabel": "契約狀態",
       "descriptionLabel": "用途說明",
-      "columnsLabel": "承諾的欄",
-      "columnsHelp": "不再承諾某欄或更改其類型，需要新版本。",
+      "columnsLabel": "欄",
+      "columnsHelp": "移除某欄或更改其類型，需要新版本。",
       "requiredLabel": "從不為空",
       "slaLabel": "服務級別",
       "slaProperty": "屬性",
@@ -248,9 +248,9 @@
       "draftWarning": "草稿：尚未生效",
       "card": {
         "details": "詳情",
-        "fields": "承諾的欄位",
+        "fields": "欄",
         "sla": "SLA 與新鮮度",
-        "quality": "質素承諾",
+        "quality": "承諾",
         "consumers": "消費方",
         "versions": "版本與變更"
       }

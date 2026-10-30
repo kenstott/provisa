@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Ponto de extremidade",
+    "copyEndpoint": "Copiar o URL do ponto de extremidade",
+    "prefixes_one": "{{count}} prefixo",
+    "prefixes_other": "{{count}} prefixos",
+    "prefixName": "Prefixo",
+    "namespace": "Espaço de nomes",
+    "removePrefix": "Remover prefixo",
+    "invalidPrefix": "Apenas letras, dígitos, - e _",
+    "addHint": "Preencha a última linha para adicionar um prefixo. Os prefixos nomeiam termos nos resultados e nas consultas das pílulas; uma consulta é executada exatamente como foi escrita.",
+    "restore": "Restaurar prefixos"
+  }
+}

@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Alert, Box, Loader, SegmentedControl, Stack, Text } from "@mantine/core";
 import { AlertCircle } from "lucide-react";
@@ -25,11 +26,12 @@ import { VOYAGER_THEME_CSS, VOYAGER_VARS_ID, voyagerThemeVars } from "./schemaEx
  * Pre-fetches introspection from the parent window, then passes it
  * as static data to Voyager inside the iframe, avoiding CDN/CORS issues.
  * When a domain is selected, filters to that domain + relationship-reachable tables.
- * ERD sub-tab embeds the same ErdPanel component used (inside a Modal) by the
- * Relationships page — one diagram implementation, two entry points.
+ * ERD sub-tab embeds the same ErdPanel component the Tables and Relationships
+ * pages host in their ERD view — one diagram implementation.
  */
 export function SchemaExplorer() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { role, actingRoles } = useAuth();
   // REQ-1620: under "Role: All" the schema shown is the active set's (their meta-role's).
   const roleHeader = actingRoles;
@@ -173,6 +175,7 @@ setTimeout(function() {
             relationships={relationships}
             domains={allDomains}
             checkedDomains={erdCheckedDomains}
+            onTableClick={(_id, name) => navigate(`/tables?source=${encodeURIComponent(name)}`)}
           />
         )}
       </div>

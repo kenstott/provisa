@@ -13,21 +13,14 @@ import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Sparkles, Code2, Network, X, Link2 } from "lucide-react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Pagination,
-  Table,
-  Text,
-} from "@mantine/core";
+import { ArrowLeft, Sparkles, Code2, X, Link2 } from "lucide-react";
+import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
 import { tagLossTitle } from "../components/admin/tagLoss";
-import { ErdModal } from "../components/erd/ErdModal";
+import { ErdToggle } from "../components/erd/ErdToggle";
+import { ErdView } from "../components/erd/ErdView";
+import { useErdView } from "../components/erd/useErdView";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -45,7 +38,6 @@ import {
   useRelationships,
   useAllRelationships,
   useTables,
-  useDomains,
   useUpsertRelationship,
   useDeleteRelationship,
 } from "../hooks/useAdminQueries";
@@ -96,13 +88,11 @@ export function RelationshipsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
-  const { relationships: allRels, loading: allRelsLoading } = useAllRelationships();
+  // What the ERD draws, the system's own relationships too (REQ-2187: a line opens its panel here).
+  const { relationships: allRels } = useAllRelationships();
   const { tables, loading: tablesLoading } = useTables();
-  const { domains, loading: domainsLoading } = useDomains();
-  // `?erd=<table id>` (the Ontology's "Open in ERD", lib/entityHref) opens the ERD centred on that
-  // table, on a direct load too; closing it drops the parameter.
-  const erdTableId = searchParams.get("erd") ?? undefined;
-  const [showErd, setShowErd] = useState(() => erdTableId !== undefined);
+  // REQ-2187: the ERD in the list's place, its state in the URL.
+  const erd = useErdView();
   const { upsertRelationship } = useUpsertRelationship();
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
@@ -147,6 +137,8 @@ export function RelationshipsPage() {
   const updateSearch = (v: string) => {
     setRelSearch(v);
     setRelPage(0);
+    // REQ-2187: on the ERD the filter box is not part of the link (a focus is what is shared).
+    if (erd.on) return;
     setSearchParams(
       (p) => {
         const n = new URLSearchParams(p);
@@ -577,9 +569,21 @@ export function RelationshipsPage() {
     setReverseForm(null);
     setEditingRel(null);
     setExpanded(null);
+    if (erd.on) erd.setPanel("relationship", null);
+  };
+  // REQ-2187: a line clicked in the ERD: its panel, in place of whatever the panel held.
+  const openFromErd = (id: string) => {
+    setSaveProblem("");
+    setShowForm(false);
+    setReverseForm(null);
+    setEditingRel(null);
+    setExpanded(id);
+    erd.setPanel("relationship", id);
   };
   const selectedRel =
-    expanded === null ? null : (rels.find((r) => String(r.id) === expanded) ?? null);
+    expanded === null
+      ? null
+      : ((erd.on ? allRels : rels).find((r) => String(r.id) === expanded) ?? null);
   const panelBody = showForm ? (
     <div data-tour="rels-form">
       <AddRelationshipForm
@@ -619,7 +623,8 @@ export function RelationshipsPage() {
       rel={selectedRel}
       editingRel={editingRel}
       setEditingRel={setEditingRel}
-      canManage={canManage}
+      // A line of the system's own (the ERD draws them) is read here, never edited.
+      canManage={canManage && rels.some((r) => r.id === selectedRel.id)}
       onStartEdit={() => {
         setSaveProblem("");
         startEditing(selectedRel);
@@ -699,21 +704,11 @@ export function RelationshipsPage() {
               </ActionIcon>
             }
           />
-          <HelpBubble
+          <ErdToggle
+            page="relationships"
             title={t("relationshipsPage.erdHelpTitle")}
-            paragraphs={[t("relationshipsPage.erdHelpBody")]}
-            ariaLabel={t("relationshipsPage.viewErd")}
-            testId="rels-erd-help"
-            target={
-              <ActionIcon
-                data-tour="rels-erd"
-                variant="subtle"
-                aria-label={t("relationshipsPage.viewErd")}
-                onClick={() => setShowErd(true)}
-              >
-                <Network size={14} />
-              </ActionIcon>
-            }
+            body={t("relationshipsPage.erdHelpBody")}
+            label={t("relationshipsPage.viewErd")}
           />
           {canManage && (
             <HelpBubble
@@ -774,106 +769,110 @@ export function RelationshipsPage() {
           backToList: t("tablesPage.backToList"),
         }}
         list={
-          <>
-            {/* As on Tables: every column keeps its width and a name stays on one line; what the
+          erd.on ? (
+            <ErdView page="relationships" search={relSearch} onOpen={openFromErd} />
+          ) : (
+            <>
+              {/* As on Tables: every column keeps its width and a name stays on one line; what the
                 panel leaves too little room for scrolls sideways. */}
-            <ListTable testId="relationships-list">
-              <ListHead
-                sortGroup={sortGroup}
-                columns={[
-                  ...(domainsEnabled ? [{ col: "domain" }] : []),
-                  { col: "source" },
-                  { col: "target" },
-                  { label: t("relationshipsPage.gqlCqlAlias") },
-                  { col: "cardinality" },
-                  { col: "materialize" },
-                  { label: t("relationshipsPage.refreshSeconds") },
-                ]}
-              />
-              <Table.Tbody>
-                {(() => {
-                  const filtered = filteredRels;
-
-                  if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
-                    return (
-                      <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
-                        {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
-                      </ListEmpty>
-                    );
-                  }
-                  if (filtered.length === 0) {
-                    return (
-                      <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
-                        {t("relationshipsPage.empty")}
-                      </ListEmpty>
-                    );
-                  }
-
-                  return (
-                    <ListItems
-                      state={sortGroup}
-                      items={pageItems(sortGroup, relPage, PAGE_SIZE)}
-                      colSpan={domainsEnabled ? 7 : 6}
-                      rowKey={(r) => r.id}
-                      render={(r) => {
-                        const id = String(r.id);
-                        return (
-                          <RelationshipRow
-                            rel={r}
-                            selected={expanded === id}
-                            onToggle={() => {
-                              // The row opens its detail in the panel, swaps it, or closes it.
-                              setSaveProblem("");
-                              setExpanded(expanded === id ? null : id);
-                              setEditingRel(null);
-                              setReverseForm(null);
-                              setShowForm(false);
-                            }}
-                            tableDomainById={tableDomainById}
-                            domainsEnabled={domainsEnabled}
-                          />
-                        );
-                      }}
-                    />
-                  );
-                })()}
-              </Table.Tbody>
-            </ListTable>
-            {totalPages > 1 && groupBy.length === 0 && (
-              <Group gap="sm" align="center" justify="flex-end" py="sm">
-                <Tip text={t("relationshipsPage.firstPage")} named>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("relationshipsPage.firstPage")}
-                    onClick={() => setRelPage(0)}
-                    disabled={relPage === 0}
-                  >
-                    «
-                  </ActionIcon>
-                </Tip>
-                <Pagination
-                  total={totalPages}
-                  value={relPage + 1}
-                  onChange={(p) => setRelPage(p - 1)}
-                  size="sm"
-                  data-testid="rels-pagination"
+              <ListTable testId="relationships-list">
+                <ListHead
+                  sortGroup={sortGroup}
+                  columns={[
+                    ...(domainsEnabled ? [{ col: "domain" }] : []),
+                    { col: "source" },
+                    { col: "target" },
+                    { label: t("relationshipsPage.gqlCqlAlias") },
+                    { col: "cardinality" },
+                    { col: "materialize" },
+                    { label: t("relationshipsPage.refreshSeconds") },
+                  ]}
                 />
-                <Text fz="sm" data-testid="rels-page-label">
-                  {t("relationshipsPage.pageOf", { page: relPage + 1, totalPages })}
-                </Text>
-                <Tip text={t("relationshipsPage.lastPage")} named>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("relationshipsPage.lastPage")}
-                    onClick={() => setRelPage(totalPages - 1)}
-                    disabled={relPage >= totalPages - 1}
-                  >
-                    »
-                  </ActionIcon>
-                </Tip>
-              </Group>
-            )}
-          </>
+                <Table.Tbody>
+                  {(() => {
+                    const filtered = filteredRels;
+
+                    if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
+                      return (
+                        <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
+                          {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
+                        </ListEmpty>
+                      );
+                    }
+                    if (filtered.length === 0) {
+                      return (
+                        <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
+                          {t("relationshipsPage.empty")}
+                        </ListEmpty>
+                      );
+                    }
+
+                    return (
+                      <ListItems
+                        state={sortGroup}
+                        items={pageItems(sortGroup, relPage, PAGE_SIZE)}
+                        colSpan={domainsEnabled ? 7 : 6}
+                        rowKey={(r) => r.id}
+                        render={(r) => {
+                          const id = String(r.id);
+                          return (
+                            <RelationshipRow
+                              rel={r}
+                              selected={expanded === id}
+                              onToggle={() => {
+                                // The row opens its detail in the panel, swaps it, or closes it.
+                                setSaveProblem("");
+                                setExpanded(expanded === id ? null : id);
+                                setEditingRel(null);
+                                setReverseForm(null);
+                                setShowForm(false);
+                              }}
+                              tableDomainById={tableDomainById}
+                              domainsEnabled={domainsEnabled}
+                            />
+                          );
+                        }}
+                      />
+                    );
+                  })()}
+                </Table.Tbody>
+              </ListTable>
+              {totalPages > 1 && groupBy.length === 0 && (
+                <Group gap="sm" align="center" justify="flex-end" py="sm">
+                  <Tip text={t("relationshipsPage.firstPage")} named>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={t("relationshipsPage.firstPage")}
+                      onClick={() => setRelPage(0)}
+                      disabled={relPage === 0}
+                    >
+                      «
+                    </ActionIcon>
+                  </Tip>
+                  <Pagination
+                    total={totalPages}
+                    value={relPage + 1}
+                    onChange={(p) => setRelPage(p - 1)}
+                    size="sm"
+                    data-testid="rels-pagination"
+                  />
+                  <Text fz="sm" data-testid="rels-page-label">
+                    {t("relationshipsPage.pageOf", { page: relPage + 1, totalPages })}
+                  </Text>
+                  <Tip text={t("relationshipsPage.lastPage")} named>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={t("relationshipsPage.lastPage")}
+                      onClick={() => setRelPage(totalPages - 1)}
+                      disabled={relPage >= totalPages - 1}
+                    >
+                      »
+                    </ActionIcon>
+                  </Tip>
+                </Group>
+              )}
+            </>
+          )
         }
       >
         {panelBody}
@@ -924,7 +923,7 @@ export function RelationshipsPage() {
 
       {conflictRel && <ConflictModal rel={conflictRel} onClose={() => setConflictRel(null)} />}
 
-      {candidates.length > 0 && (
+      {!erd.on && candidates.length > 0 && (
         <div className="page-aux">
           <CandidatesTable
             candidates={candidates}
@@ -934,23 +933,6 @@ export function RelationshipsPage() {
             onReject={handleReject}
           />
         </div>
-      )}
-      {showErd && !tablesLoading && !allRelsLoading && !domainsLoading && (
-        <ErdModal
-          focusTableId={erdTableId}
-          tables={tables}
-          relationships={allRels}
-          domains={domains}
-          checkedDomains={erdCheckedDomains}
-          onClose={() => {
-            setShowErd(false);
-            setSearchParams((p) => {
-              const n = new URLSearchParams(p);
-              n.delete("erd");
-              return n;
-            });
-          }}
-        />
       )}
       {refusal.dialog}
       {tagLoss && (

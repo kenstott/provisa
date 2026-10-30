@@ -331,13 +331,12 @@ describe("Open in ERD", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(2));
   };
 
-  it("is offered on a table node, as a link carrying the table's id", async () => {
+  it("is offered on a table node, as a link focusing the table with its panel open", async () => {
     await open();
     act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "t:customers" }));
-    expect(screen.getByTestId("graph3d-open-in-erd")).toHaveAttribute(
-      "href",
-      "/relationships?erd=customers",
-    );
+    const href = screen.getByTestId("graph3d-open-in-erd").getAttribute("href") as string;
+    expect(href.startsWith("/tables?view=erd&objects=")).toBe(true);
+    expect(href.endsWith("&table=customers")).toBe(true);
   });
 
   it("is not offered on a node that is not a table", async () => {

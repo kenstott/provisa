@@ -12,8 +12,9 @@
 catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_sha224``, ``provisa_sha384`` and
 ``provisa_sha512``, each a bytea's digest as a bytea (sha256 is DuckDB's own,
 provisa.transpiler.pg_functions), ``provisa_size_pretty``, pg_size_pretty's text (DuckDB's of that
-name writes KiB), and the functions of provisa.federation.duckdb_pg_scalars: UDFs where a value
-needs PostgreSQL's own algorithm, and macros where a DuckDB expression carries the function."""
+name writes KiB), and the UDFs of provisa.federation.duckdb_pg_scalars, where a value needs
+PostgreSQL's own algorithm. A function a DuckDB expression carries is no function here: it is a
+rewrite in provisa.transpiler.function_macros."""
 
 # Requirements: REQ-2167
 

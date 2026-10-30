@@ -72,7 +72,7 @@ def as_stored(cid: str, contract: DataContract) -> DataContract:
             columns.append(c.model_copy(update={"type": stored_type_of(c.type)}))
         except ReportedNumericMalformed as malformed:
             raise ContractRefused(
-                f"contract {cid} promises {c.name} as {c.type}, which is no column type"
+                f"contract {cid} declares {c.name} as {c.type}, which is no column type"
             ) from malformed
     return contract.model_copy(update={"columns": columns})
 
@@ -97,7 +97,7 @@ def require_new_version(cid: str, old: DataContract, new: DataContract) -> None:
     broken = _breaks(old, new)
     if broken and new.version == old.version:
         raise ContractRefused(
-            f"contract {cid} version {old.version} stops promising {', '.join(broken)}: "
+            f"contract {cid} version {old.version} removes or retypes {', '.join(broken)}: "
             "a change that breaks a contract is a new version of it"
         )
 
@@ -113,7 +113,7 @@ def require_provided(cid: str, contract: DataContract, column_types: dict[str, s
     ]
     if missing:
         raise ContractRefused(
-            f"contract {cid} version {contract.version} promises {', '.join(missing)}: release "
+            f"contract {cid} version {contract.version} declares {', '.join(missing)}: release "
             "a new version of the contract without it first, or in the same save"
         )
 

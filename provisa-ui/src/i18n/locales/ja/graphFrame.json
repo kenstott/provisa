@@ -40,6 +40,7 @@
     "copyErrorTitle": "コピーエラー",
     "expandedDialogLabel": "展開されたグラフビュー",
     "firstNodesShown": "最初の {{count}} 個のノードを表示しています。ほかにもあります。サイドメニューで上限を引き上げてください。",
-    "deleteFrame": "この結果を削除"
+    "deleteFrame": "この結果を削除",
+    "sparqlNothingMore": "{{resource}} についてこれ以上の情報はありません。"
   }
 }

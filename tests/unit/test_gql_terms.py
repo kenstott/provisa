@@ -225,6 +225,23 @@ def test_a_variable_predicate_past_the_union_limit_is_refused(monkeypatch):
         cypher_to_sql(_spo(), _model(), {})
 
 
+def test_a_limit_lifts_the_union_limit_tenfold(monkeypatch):
+    # _model()'s Person reads 3 mapped predicates (name, age, knows): past 2, within 10 x 1.
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "1")
+    ast = _spo()
+    ast.limit = 2
+    cypher_to_sql(ast, _model(), {})
+
+
+def test_a_limit_past_ten_times_the_union_limit_is_refused(monkeypatch):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "1")
+    ast = _spo()
+    ast.limit = 2
+    ast.return_clause.distinct = True
+    with pytest.raises(CypherTranslateError, match="graph union limit of 1;"):
+        cypher_to_sql(ast, _model(), {})
+
+
 def test_a_predicate_of_a_property_the_label_lacks_is_refused():
     ast, step = _match("MATCH (a:Person) RETURN a")
     step.matches.append(

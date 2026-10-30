@@ -35,6 +35,7 @@ const ICON_COMPONENTS = new Set([
   "OpenAsQuery",
   "ExportMenu",
   "OntologyToggle",
+  "ErdToggle",
 ]);
 
 /** Containers read through: their children stand in the toolbar in their order. */

@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PostgreSQL's functions on DuckDB where a name alone does not carry them (REQ-2167, PGWIRE'S
-CATALOG FUNCTIONS).
+"""PostgreSQL's functions on DuckDB where the arguments, not a name, choose the rewrite (REQ-2167,
+PGWIRE'S CATALOG FUNCTIONS); a rewrite of a name is a row of provisa.transpiler.function_macros.
 
 ``before`` reads the PostgreSQL statement, ahead of sqlglot's transpile, for the calls that
 transpile drops arguments of or sends to a DuckDB function of the same name and another meaning:
@@ -362,7 +362,8 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
         return "CAST(NULL AS BIT)"
     if name == "bit" and len(args) == 2:  # noqa: PLR2004 -- an integer, as so many bits
         value, width = _sql(args[0]), _sql(args[1])
-        return f"CAST(PROVISA_TO_BASE({value}, {width}, 2) AS BIT)"
+        bits = f"CAST({value} AS HUGEINT) & ((CAST(1 AS HUGEINT) << ({width})) - 1)"
+        return f"CAST(FORMAT('{{:b}}', {bits}) AS BIT)"
     return None
 
 
@@ -441,6 +442,9 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:
         kinds = exp.DataType.Type
         if _cast_to(args[1], kinds.TIMESTAMPTZ):
             return f"(TIMEZONE('UTC', {written[1]}) + {written[0]})"
+        if _cast_to(args[1], kinds.TIMETZ):
+            # timetz_izone: a timetz stays a timetz, moved to the zone the interval names
+            return f"TIMEZONE({written[0]}, {written[1]})"
         return f"(CAST({written[1]} - {written[0]} AS TIMESTAMP) AT TIME ZONE 'UTC')"
     if name == "sum" and len(args) == 1 and _cast_to(args[0], interval):
         return f"TO_SECONDS(SUM(EPOCH({written[0]})))"

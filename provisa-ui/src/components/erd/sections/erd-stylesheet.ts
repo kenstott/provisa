@@ -119,6 +119,26 @@ export function buildErdStylesheet(isDark: boolean) {
       style: { "border-color": p.accent, "border-width": 3 },
     },
     {
+      // REQ-2187: the tables a focus names.
+      selector: ".erd-table.erd-focused",
+      style: {
+        "border-color": p.accent,
+        "border-width": 3,
+        "underlay-color": p.accent,
+        "underlay-opacity": 0.3,
+        "underlay-padding": 6,
+      },
+    },
+    {
+      // REQ-2187: the page's filter box dims what does not match, and marks what does.
+      selector: ".erd-dim",
+      style: { opacity: 0.15 },
+    },
+    {
+      selector: ".erd-table.erd-match, .erd-rel.erd-match",
+      style: { "line-color": p.accent, "border-color": p.accent, "border-width": 3 },
+    },
+    {
       // One edge standing for a row and its mirror-image complement: arrows at both ends.
       selector: ".erd-rel[?bidirectional]",
       style: { "source-arrow-shape": "triangle" },

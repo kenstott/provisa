@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "适用于",
+      "check": "检查",
+      "details": "详情",
+      "result": "最新结果"
+    },
+    "level": {
+      "table": "表",
+      "row": "行"
+    },
+    "check": {
+      "notNull": "非空",
+      "unique": "唯一",
+      "allowedValues": "允许的值",
+      "pattern": "模式匹配",
+      "valueRange": "取值范围",
+      "textLength": "文本长度",
+      "average": "平均值范围",
+      "distinctCount": "不同值数量",
+      "rowCount": "行数",
+      "columnOrder": "列顺序",
+      "unexpectedRows": "无意外行",
+      "missing": "无缺失值",
+      "valid": "有效值",
+      "duplicate": "无重复",
+      "aggregate": "聚合",
+      "freshness": "时效性",
+      "failedRows": "无失败行"
+    },
+    "threshold": {
+      "eq": "必须为 {{value}}",
+      "ne": "不得为 {{value}}",
+      "gt": "大于 {{value}}",
+      "gte": "至少 {{value}}",
+      "lt": "小于 {{value}}",
+      "lte": "至多 {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "从 {{min}} 到 {{max}}",
+      "atLeast": "至少 {{value}}",
+      "atMost": "至多 {{value}}",
+      "oneOf": "以下之一：{{values}}",
+      "matches": "匹配 {{pattern}}",
+      "greater": "{{a}} 大于 {{b}}",
+      "orEqual": "{{a}} 不小于 {{b}}",
+      "query": "意外行：{{query}}",
+      "expression": "失败行：{{expression}}",
+      "mostly": "至少 {{percent}}% 的行",
+      "alsoMissing": "另外视为缺失：{{values}}",
+      "minLength": "至少 {{value}} 个字符",
+      "maxLength": "至多 {{value}} 个字符"
+    },
+    "aggregate": {
+      "avg": "平均值",
+      "sum": "总和",
+      "min": "最小值",
+      "max": "最大值",
+      "minLength": "最短长度",
+      "maxLength": "最长长度",
+      "avgLength": "平均长度"
+    }
+  }
+}

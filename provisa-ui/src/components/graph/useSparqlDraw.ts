@@ -23,12 +23,22 @@ export interface SparqlDraw {
   setDrawSelect: (on: boolean) => void;
 }
 
-export function useSparqlDraw(answered: FrameData): SparqlDraw {
+export function useSparqlDraw(
+  answered: FrameData,
+  /** The prefixes every term of the frame shows by. */
+  prefixes?: Record<string, string>,
+): SparqlDraw {
   const [literalNodes, setLiteralNodes] = useState(false);
   const [drawSelect, setDrawSelect] = useState(false);
+  // A SELECT shows its table first: a new query's rows are not drawn until asked for.
+  const [drawnQuery, setDrawnQuery] = useState(answered.query);
+  if (answered.query !== drawnQuery) {
+    setDrawnQuery(answered.query);
+    setDrawSelect(false);
+  }
   const frame = useMemo(
-    () => sparqlDrawn(answered, literalNodes, drawSelect),
-    [answered, literalNodes, drawSelect],
+    () => sparqlDrawn(answered, literalNodes, drawSelect, prefixes),
+    [answered, literalNodes, drawSelect, prefixes],
   );
   return { frame, literalNodes, setLiteralNodes, drawSelect, setDrawSelect };
 }

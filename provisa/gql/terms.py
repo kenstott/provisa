@@ -44,8 +44,9 @@ from provisa.gql.expr_ast import (
     TermIri,
     Variable,
 )
+from provisa.gql.group_by import _has_aggregate
 from provisa.gql.iri import iri_base
-from provisa.gql.ir import MatchClause, Predicate, TriplePattern, TripleTemplate
+from provisa.gql.ir import CypherAST, MatchClause, Predicate, TriplePattern, TripleTemplate
 from provisa.gql.label_map import CypherLabelMap, NodeMapping
 from provisa.gql.path_functions import _apply_hop
 from provisa.gql.translator_types import CypherTranslateError, GraphVarKind
@@ -149,6 +150,28 @@ def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
     )
 
 
+LIMITED_UNION_FACTOR = 10  # REQ-2135: a LIMIT query is allowed this many times graph.union_limit
+
+
+def union_allowance(limited: bool) -> tuple[int, int]:  # REQ-2135
+    """The branches a union may have, as (graph.union_limit, allowed). A query with LIMIT and no
+    ORDER BY, DISTINCT or aggregate (``limited``) is allowed ten times the limit: the engine
+    stops the UNION ALL once it has its rows. Past that every branch is still compiled."""
+    limit = settings_registry.value("graph.union_limit")
+    return limit, limit * LIMITED_UNION_FACTOR if limited else limit
+
+
+def union_refusal(what: str, limit: int, allowed: int) -> str:  # REQ-2135
+    """What a refused union says: what it needs, and the limit it hit -- the plain one or, for a
+    LIMIT query, ten times it."""
+    if allowed > limit:
+        return (
+            f"{what}, past {LIMITED_UNION_FACTOR} times the graph union limit of {limit} "
+            f"({allowed}), which a query with a LIMIT is allowed"
+        )
+    return f"{what}, past the graph union limit of {limit}"
+
+
 class TermsMixin:  # REQ-2135
     """Mixin for _Translator: RDF terms, variable predicates and CONSTRUCT."""
 
@@ -157,6 +180,7 @@ class TermsMixin:  # REQ-2135
     _var_table: dict
     _term_vars: dict  # variable → the column holding its term
     _graph_vars: dict
+    _ast: CypherAST
 
     if TYPE_CHECKING:
 
@@ -213,12 +237,26 @@ class TermsMixin:  # REQ-2135
             )
         alias, nm = bound
         branches = [b for p in triple.candidates for b in self._predicate_branches(nm, p)]
-        limit = settings_registry.value("graph.union_limit")
-        if len(branches) > limit:
+        ast = self._ast
+        limit, allowed = union_allowance(
+            ast.limit is not None
+            and not ast.order_by
+            and not (
+                ast.return_clause is not None
+                and (
+                    ast.return_clause.distinct
+                    or any(_has_aggregate(i.expression) for i in ast.return_clause.items)
+                )
+            )
+        )
+        if len(branches) > allowed:
             raise CypherTranslateError(
-                f"A variable predicate on {nm.label} reads {len(branches)} mapped predicates, past "
-                f"the graph union limit of {limit}; name the predicate, or raise the limit "
-                "(graph.union_limit)"
+                union_refusal(
+                    f"A variable predicate on {nm.label} reads {len(branches)} mapped predicates",
+                    limit,
+                    allowed,
+                )
+                + "; name the predicate, or raise the limit (graph.union_limit)"
             )
         if not branches:
             raise CypherTranslateError(f"{nm.label} has no mapped predicate a variable can match")

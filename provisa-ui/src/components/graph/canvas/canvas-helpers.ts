@@ -75,6 +75,49 @@ export function applyNodeSize(
 // The nodes the user placed, where they are, as fcose's fixedNodeConstraint: fcose moves a locked
 // node during its simulation and only the final write is refused, so the rest were laid out around
 // where the simulation had carried it, not where the user put it.
+/** A drawing's place on the canvas: where each node stands, by its own id, which outlives a change
+ * of its label, and the view of them. */
+export interface HeldDrawing {
+  positions: Map<number, { x: number; y: number }>;
+  zoom: number;
+  pan: { x: number; y: number };
+}
+
+export function holdDrawing(cy: CyInstance): HeldDrawing {
+  const positions = new Map<number, { x: number; y: number }>();
+  cy.nodes().forEach((n) => {
+    const gn = n.data("_node") as GNode | undefined;
+    if (gn) positions.set(gn.id, { ...n.position() });
+  });
+  return { positions, zoom: cy.zoom(), pan: { ...cy.pan() } };
+}
+
+/** Puts each node of a new drawing where ``held`` has it, under the same view, and each new node
+ * beside a neighbour that was held. The ids of the nodes that are new, for the layout to place. */
+export function restoreDrawing(cy: CyInstance, drawing: HeldDrawing, spread: number): Set<string> {
+  const held = drawing.positions;
+  cy.zoom(drawing.zoom);
+  cy.pan(drawing.pan);
+  const fresh: CyElement[] = [];
+  cy.nodes().forEach((n) => {
+    const gn = n.data("_node") as GNode | undefined;
+    const position = gn && held.get(gn.id);
+    if (position) n.position(position);
+    else fresh.push(n);
+  });
+  for (const n of fresh) {
+    const beside = n.neighborhood("node").filter((nb: CyElement) => {
+      const gn = nb.data("_node") as GNode | undefined;
+      return gn !== undefined && held.has(gn.id);
+    });
+    if (beside.length === 0) continue;
+    const from = beside[0].position();
+    const angle = Math.random() * 2 * Math.PI;
+    n.position({ x: from.x + spread * Math.cos(angle), y: from.y + spread * Math.sin(angle) });
+  }
+  return new Set(fresh.map((n) => n.id() as string));
+}
+
 export function anchoredPositions(
   cy: CyInstance,
   anchored: Set<string>,

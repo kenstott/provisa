@@ -109,7 +109,8 @@ async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> 
 
 @router.api_route("/data/sparql", methods=["GET", "POST"])
 async def sparql_query(request: Request) -> Response:  # REQ-2135
-    """Answer a SPARQL SELECT, ASK or CONSTRUCT over the semantic model, for the caller's role."""
+    """Answer a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE over the semantic model, for the
+    caller's role."""
     from provisa.api.app import state
     from provisa.api.rest.cypher_router import (
         _dict_rows,

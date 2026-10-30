@@ -40,6 +40,7 @@
     "copyErrorTitle": "Erreur de copie",
     "expandedDialogLabel": "Vue agrandie du graphe",
     "firstNodesShown": "Affichage des {{count}} premiers nœuds ; il y en a d'autres. Augmentez la limite dans le menu latéral.",
-    "deleteFrame": "Supprimer ce résultat"
+    "deleteFrame": "Supprimer ce résultat",
+    "sparqlNothingMore": "Rien de plus n’est dit de {{resource}}."
   }
 }
