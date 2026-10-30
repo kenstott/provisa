@@ -26794,7 +26794,7 @@ Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-10-30: all metadata pgwire presents lives in the meta domain. pg_catalog and information_schema are answered from it, so there is one source of what a table, column, type or relationship is, and no second store of metadata. pgwire may still rewrite a client's statement and add what true PostgreSQL shows and the model does not hold, such as additional roles, so a client sees PostgreSQL, but it holds none of the details itself.
+Maintainer 2026-10-30: all metadata pgwire presents lives in the meta domain. pg_catalog and information_schema are answered from it, so there is one source of what a table, column, type or relationship is, and no second store of metadata. pgwire may still rewrite a client's statement and add what true PostgreSQL shows and the model does not hold, such as additional roles, so a client sees PostgreSQL, but it holds none of the details itself. (Amended 2026-10-29, META IS A SUPERSET OF THE CATALOG:) Maintainer 2026-10-30: the meta domain is a superset of PostgreSQL's catalog. What pg_catalog and information_schema carry is in meta, and pgwire adds only a small routing step so a client can address it as it expects. A real empty PostgreSQL database mirroring the model was considered and rejected: it is a second copy of the metadata.
 
 **Code:** —
 
