@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "打开 {{successor}}",
     "contract": {
       "label": "数据契约",
-      "hint": "每个输出端口的契约：以其自身版本承诺的内容",
+      "hint": "每个输出端口的契约：以其自身版本声明的内容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "已提议",
@@ -177,8 +177,8 @@
       "versionLabel": "契约版本",
       "statusLabel": "契约状态",
       "descriptionLabel": "用途说明",
-      "columnsLabel": "承诺的列",
-      "columnsHelp": "不再承诺某列或更改其类型，需要新版本。",
+      "columnsLabel": "列",
+      "columnsHelp": "删除某列或更改其类型，需要新版本。",
       "requiredLabel": "从不为空",
       "slaLabel": "服务级别",
       "slaProperty": "属性",
@@ -248,9 +248,9 @@
       "draftWarning": "草稿：尚未生效",
       "card": {
         "details": "详情",
-        "fields": "承诺的字段",
+        "fields": "列",
         "sla": "SLA 与新鲜度",
-        "quality": "质量承诺",
+        "quality": "承诺",
         "consumers": "消费方",
         "versions": "版本与变更"
       }

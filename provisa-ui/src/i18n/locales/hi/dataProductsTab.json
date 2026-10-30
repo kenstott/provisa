@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} खोलें",
     "contract": {
       "label": "डेटा अनुबंध",
-      "hint": "हर आउटपुट पोर्ट का अनुबंध: वह अपने संस्करण पर क्या वादा करता है",
+      "hint": "हर आउटपुट पोर्ट का अनुबंध: वह अपने संस्करण पर क्या घोषित करता है",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "प्रस्तावित",
@@ -177,8 +177,8 @@
       "versionLabel": "अनुबंध संस्करण",
       "statusLabel": "अनुबंध स्थिति",
       "descriptionLabel": "यह किसलिए है",
-      "columnsLabel": "वादा किए गए कॉलम",
-      "columnsHelp": "किसी कॉलम का वादा छोड़ने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
+      "columnsLabel": "कॉलम",
+      "columnsHelp": "किसी कॉलम को हटाने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
       "requiredLabel": "कभी null नहीं",
       "slaLabel": "सेवा स्तर",
       "slaProperty": "गुण",
@@ -248,9 +248,9 @@
       "draftWarning": "मसौदा: अभी लागू नहीं",
       "card": {
         "details": "विवरण",
-        "fields": "वादा किए गए फ़ील्ड",
+        "fields": "कॉलम",
         "sla": "SLA और ताज़गी",
-        "quality": "गुणवत्ता के वादे",
+        "quality": "वादे",
         "consumers": "उपभोक्ता",
         "versions": "संस्करण और परिवर्तन"
       }
