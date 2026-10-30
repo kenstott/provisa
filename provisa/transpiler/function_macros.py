@@ -573,15 +573,6 @@ _ROWS: tuple[Macro, ...] = (
         "provisa_point_in_polygon(CAST(p AS VARCHAR), CAST(poly AS VARCHAR))",
     ),
     _macro("strip", "value", "provisa_tsvector_strip(CAST(value AS VARCHAR))"),
-    *(
-        _macro(
-            name,
-            "a, b",
-            "CAST(round(a * b, 2) AS DECIMAL(18,2))",
-            {_STRINGS: Pg("CAST(ROUND(a * b, 2) AS DECIMAL(18, 2))")},
-        )
-        for name in ("flt4_mul_cash", "flt8_mul_cash")
-    ),
     _macro(
         "mul_d_interval",
         "d, i",

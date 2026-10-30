@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from psycopg import pq
 
+from provisa.pgwire.cast_types import result_casts
 from provisa.federation import duckdb_pg_xml as xml
 from provisa.compiler import xml_mapping
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
@@ -769,3 +770,10 @@ def test_a_read_cut_at_the_limit_warns_the_statement():
     reads = _SessionReads(Session())  # type: ignore[arg-type]
     reads.rows("SELECT 1")
     assert reads.warnings == ["first", "cut"]
+
+
+def test_a_statement_of_xml_and_money_describes_each_column_as_its_own_type():
+    sql = "SELECT xpath('/a', '<a/>'::xml), '$1'::money"
+    assert [column.oid for column in result_casts(sql)] == [143, 790]
+    assert [c.oid for c in result_casts("SELECT p FROM (SELECT '$1'::money AS p) s")] == [790]
+    assert [c.oid for c in result_casts("SELECT p FROM (SELECT '<a/>'::xml AS p) s")] == [142]

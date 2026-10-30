@@ -152,6 +152,9 @@ _RETURNED: dict[str, CastType] = {
     "void": CastType(2278, -1, BVType.TEXT, _TEXT_FORMS),
     "xml": CastType(142, -1, BVType.XML, _XML_FORMS, xml_out),
     "xml[]": CastType(143, -1, XML_ARRAY, frozenset({BVType.STRINGARRAY, XML_ARRAY})),
+    "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
+    # The engine holds money as its base; its encoder sends the value as money.
+    "money": CastType(790, -1, BVType.MONEY, _NUMBERS | {BVType.TEXT, BVType.MONEY}),
 }
 
 
@@ -163,21 +166,29 @@ def bit_varying_read(sql: str) -> str:
     return _BIT_VARYING.sub("::varbit", sql)
 
 
-def _result_type(expression: Any) -> CastType | None:
-    """How a result column is described by its root: a cast by the cast's type, a call of a
-    pg_catalog function by the type that function returns; None for any other column."""
+def _result_type(expression: Any, columns: Any) -> CastType | None:
+    """How a result column is described by its root: a money expression as PostgreSQL's operators
+    type it, a cast by the cast's type, a call of a pg_catalog function by the type that function
+    returns; None for any other column."""
     import sqlglot.expressions as exp
 
     from provisa.pgwire.function_types import call_result_type
+    from provisa.transpiler.pg_money import money_type
 
+    # A column of a table only the plan's shape types: a part of the expression is not known here.
+    typed = None
+    if columns is not None and all(columns(c) for c in expression.find_all(exp.Column)):
+        typed = money_type(expression, columns)
+    if typed is not None:
+        return _RETURNED[typed]
     if isinstance(expression, exp.Cast):
         return _cast_type(expression.to)
     if isinstance(expression, XmlSerialize):
         return _cast_type(expression.args["to"])
     if isinstance(expression, exp.Paren):
-        return _result_type(expression.this)
+        return _result_type(expression.this, columns)
     if isinstance(expression, exp.Array):
-        elements = [_result_type(element) for element in expression.expressions]
+        elements = [_result_type(element, columns) for element in expression.expressions]
         xml_elements = elements and all(e is not None and e.oid == 142 for e in elements)
         return _RETURNED["xml[]"] if xml_elements else None
     if isinstance(expression, exp.Bracket):
@@ -205,17 +216,19 @@ def _derived_xml(tree: Any, name: str) -> CastType | None:
         return None
     for select in inner.selects:
         if select.alias_or_name == name:
-            typed = _column_type(inner, select.unalias())
+            typed = _column_type(inner, select.unalias(), None)
             return typed if typed is not None and typed.oid in (142, 143) else None
     return None
 
 
-def _column_type(tree: Any, expression: Any) -> CastType | None:
+def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
     import sqlglot.expressions as exp
 
     if isinstance(expression, exp.Column):
-        return _xmltable_columns(tree).get(expression.name) or _derived_xml(tree, expression.name)
-    return _result_type(expression)
+        xml = _xmltable_columns(tree).get(expression.name) or _derived_xml(tree, expression.name)
+        if xml is not None:
+            return xml
+    return _result_type(expression, columns)
 
 
 def _xmltable_column(column: Any) -> CastType | None:
@@ -247,12 +260,15 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     import sqlglot.expressions as exp
     from sqlglot.errors import ParseError
 
+    from provisa.transpiler.pg_money import names_money, statement_columns
+
     try:
         tree = sqlglot.parse_one(bit_varying_read(sql), read="postgres")
     except ParseError:
         return None  # not PostgreSQL's grammar: the engine's own types describe it
     if not isinstance(tree, exp.Select):
         return None
+    columns = statement_columns(tree) if names_money(sql) else None
     out: list[CastType | None] = []
     xmltable = _xmltable_columns(tree)
     for select in tree.selects:
@@ -260,7 +276,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
         if isinstance(expression, exp.Star):
             # A star's columns are otherwise known only to the engine.
             return tuple(xmltable.values()) if xmltable else None
-        out.append(_column_type(tree, expression))
+        out.append(_column_type(tree, expression, columns))
     return tuple(out)
 
 

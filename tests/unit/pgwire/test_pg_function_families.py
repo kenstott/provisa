@@ -589,8 +589,6 @@ def _recorded_problem(conn: Any, sql: str) -> str | None:
     if res.ftype(0) != first:
         return f"type {res.ftype(0)}"
     rows = _rows(res)
-    if first == FLOAT8:  # the wire's digits are a known gap of their own: the value is compared
-        rows, second = [v and float(v) for v in rows], [v and float(v) for v in second]
     return None if rows == second else str(rows)
 
 

@@ -906,6 +906,9 @@ def _null_for_a_required_argument(function: Any) -> Any:
 
 def register(con: Any) -> None:
     """Create the UDFs on DuckDB connection ``con``."""
+    from provisa.federation.duckdb_pg_money import register as register_money
+
+    register_money(con)
     for name, function, parameters, returns in _UDFS:
         con.create_function(name, function, parameters, returns, side_effects=False)
     special = (

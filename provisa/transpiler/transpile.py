@@ -19,7 +19,7 @@ import re
 
 import sqlglot
 
-from provisa.transpiler import function_macros, pg_functions
+from provisa.transpiler import function_macros, pg_functions, pg_money
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
@@ -568,6 +568,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
+    pg_sql = pg_money.lowered(pg_sql, "duckdb")  # REQ-2171
     return pg_functions.after(
         _postgres_semantics_for_duckdb(
             _lengths_for_duckdb(
@@ -1147,6 +1148,7 @@ def transpile(
     """
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
+    pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
     # `_expand_star`) stays unquoted through the transpile by default, which is harmless for every

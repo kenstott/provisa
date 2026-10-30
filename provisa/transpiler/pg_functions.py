@@ -47,7 +47,6 @@ _TYPE_CALLS = {
     "bool": "boolean",
     "oid": "oid",
     "regclass": "regclass",
-    "money": "money",
 }
 #: A length-carrying cast function: (value, typmod, is_explicit); a typmod counts the header.
 _SIZED_CALLS = {"varchar": "varchar", "bpchar": "bpchar"}
