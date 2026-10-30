@@ -89924,7 +89924,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     checks, input ports, downstream consumers and contract editing. Every other part of the panel (fields,
     Graph, terms, tags, related tables, commands, promises, lineage, support) is shown to owner and consumer
     alike, capped by the reader''s read rights. The owner is a reader whose acting roles include the product''s
-    owner or team role.'
+    owner or team role. (Amended 2026-10-29, INPUT PORTS AND CONSUMERS ARE ALWAYS SHOWN:) Maintainer 2026-10-30:
+    a product''s Input Ports and Consumers cards always appear. The owner or team sees the list, or None
+    when there is nothing. Any other reader sees that the list is visible to the product''s owner, never
+    None, because the product may have entries that reader cannot see. What a non-owner may read does not
+    change.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
