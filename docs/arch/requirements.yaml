@@ -90625,7 +90625,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     FOR TYPES AND FUNCTIONS: a dialect may support a type under a different name, and then that is the dialect''s
     type for it, not varchar: Trino''s ipaddress is inet, and PostgreSQL''s shapes have a geometry equivalent
     where one exists. The same holds for a function a dialect has under another name. Varchar and inline
-    operators apply only once no such variant exists.'
+    operators apply only once no such variant exists. (Amended 2026-10-29, THE TYPES ARE A SUPERSET OF POSTGRESQL''S:)
+    Maintainer 2026-10-30: Provisa''s types are a superset of PostgreSQL''s. Every PostgreSQL 17 built-in
+    type is a Provisa type or subtype that keeps its identity, including where it is held as text, so jsonb
+    is not json and timetz keeps its offset. The varchar rule applies to a type a dialect does not support,
+    not to a PostgreSQL type Provisa has not named. A source''s type that maps to no Provisa type is read
+    as text. A value of a type the dialect does not support MUST be in PostgreSQL''s canonical text form,
+    the form pgwire sends, when it leaves the source, on a landing and on a direct read alike: the compiler''s
+    read form gives it, and nothing after that corrects it. An operation on such a value is chosen by its
+    type, not by the engine''s.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
