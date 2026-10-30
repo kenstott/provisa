@@ -53,7 +53,6 @@ from rdflib.plugins.sparql import parser as _rdf_parser
 from rdflib.plugins.sparql.parser import parseQuery
 from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
-from provisa.core import settings_registry
 from provisa.gql.expr_ast import (
     AxiomObject,
     Binary,
@@ -95,6 +94,7 @@ from provisa.gql.ir import (
     WhereClause,
 )
 from provisa.gql.iri import parse_subject_iri
+from provisa.gql.terms import union_allowance, union_refusal
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
 from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
@@ -1626,11 +1626,16 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
             "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
             "give the subjects one class"
         )
-    limit = settings_registry.value("graph.union_limit")
-    if len(parts) > limit:
+    limit, allowed = union_allowance(
+        mods.get("limit") is not None
+        and not mods.get("order")
+        and not mods.get("distinct")
+        and aggregation is None
+    )
+    if len(parts) > allowed:
         raise SparqlRefused(
-            f"The query matches {len(parts)} combinations of classes, past the graph union limit "
-            f"of {limit}; give its subjects classes, or raise the limit (graph.union_limit)"
+            union_refusal(f"The query matches {len(parts)} combinations of classes", limit, allowed)
+            + "; give its subjects classes, or raise the limit (graph.union_limit)"
         )
     variables = mods.get("project", []) if form == "SELECT" else []
     if not parts:
