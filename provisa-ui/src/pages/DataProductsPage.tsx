@@ -8,12 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Plus } from "lucide-react";
+import { Plus, Package } from "lucide-react";
 import {
   useDomains,
   useReadTableDetails,
@@ -529,7 +530,7 @@ export function DataProductsPage() {
       data-tour="data-products-content"
     >
       <Group justify="space-between" mb="md">
-        <Title order={3}>{t("dataProductsTab.title")}</Title>
+        <PageTitle icon={Package} order={3}>{t("dataProductsTab.title")}</PageTitle>
         <FilterInput
           value={search}
           onChange={updateSearch}
