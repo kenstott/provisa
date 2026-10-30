@@ -88639,7 +88639,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     own frame, with history and stars; a vocabulary pill starts a new frame; expanding or dragging a node
     runs a DESCRIBE or CONSTRUCT around that resource and merges its triples into the frame. Any graph view,
     including one drawn from a SELECT''s triples, exports as Turtle or N-Triples, as a CONSTRUCT''s already
-    does.'
+    does. (Amended 2026-10-29, A LIMIT NEEDS NO FULL UNION:) Maintainer 2026-10-30: graph.union_limit defaults
+    to 256. A query with LIMIT and no ORDER BY, DISTINCT or aggregate is allowed ten times the limit, because
+    the engine stops the union once it has its rows. Past that it is refused by name, since every branch
+    is still compiled.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
