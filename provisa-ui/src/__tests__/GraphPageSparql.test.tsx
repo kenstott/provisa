@@ -195,7 +195,9 @@ describe("the SPARQL tab", () => {
     expect((read?.init?.headers as Record<string, string>)["X-Provisa-Role"]).toBe("analyst");
     // No Cypher schema is read.
     expect(sent.some((s) => s.url.includes("/data/graph-schema"))).toBe(false);
-    expect(screen.getByTestId("sparql-class-sales:orders")).toHaveTextContent("sales:orders");
+    // A class is listed under its prefix, its pill showing the local name.
+    expect(screen.getByTestId("sparql-class-prefix-sales")).toHaveTextContent("sales (2)");
+    expect(screen.getByTestId("sparql-class-sales:orders")).toHaveTextContent(/^orders$/);
     // A Class term with the class it is a KIND_OF.
     expect(screen.getByTestId("sparql-class-term:Customer")).toHaveTextContent("⊂ term:Party");
     // An edge type, from its source label's class to its target's.

@@ -330,7 +330,7 @@ describe("a SPARQL answer drawn", () => {
       const drawn = canvas.nodes.at(-1);
       pick(BARE);
       expect(describe_).not.toHaveBeenCalled();
-      expect(screen.getByText("species")).toBeInTheDocument();
+      expect(screen.getByText("ex:species")).toBeInTheDocument();
       expect(screen.getByText("cat")).toBeInTheDocument();
       expect(screen.getByText("iri")).toBeInTheDocument();
       expect(screen.getByText("name")).toBeInTheDocument();
