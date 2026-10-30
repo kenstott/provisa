@@ -551,11 +551,14 @@ rls_rules = Table(
     Column(
         "why", JSON(none_as_null=True)
     ),  # REQ-2094: why the rule is what it is (provisa.judgments.why)
+    # REQ-2188: what the rule narrows: reading a row (R), updating it (U) or deleting it (D).
+    Column("right", Text, nullable=False, server_default="R"),
     Column("tenant_id", Uuid),
-    UniqueConstraint("table_id", "role_id"),
-    UniqueConstraint("tag_id", "role_id", name="rls_rules_tag_role_key"),
-    UniqueConstraint("domain_id", "role_id", name="rls_rules_domain_role_key"),
-    UniqueConstraint("action_name", "role_id", name="rls_rules_action_role_key"),
+    CheckConstraint("\"right\" IN ('R', 'U', 'D')", name="rls_rules_right"),
+    UniqueConstraint("table_id", "role_id", "right"),
+    UniqueConstraint("tag_id", "role_id", "right", name="rls_rules_tag_role_key"),
+    UniqueConstraint("domain_id", "role_id", "right", name="rls_rules_domain_role_key"),
+    UniqueConstraint("action_name", "role_id", "right", name="rls_rules_action_role_key"),
 )
 
 # REQ-1373/REQ-1375: org-level tag registry — one registry, per-tag applies_to scopes;

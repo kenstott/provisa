@@ -524,9 +524,12 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     -- The reference to tags(id) is declared after that table, below.
     tag_id      TEXT,
     why         JSONB,  -- REQ-2094: why the rule is what it is
-    UNIQUE (table_id, role_id),
-    UNIQUE (action_name, role_id),
-    CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id)
+    -- REQ-2188: what the rule narrows: reading a row (R), updating it (U) or deleting it (D). One
+    -- rule of each per role and target. "right" is a reserved word, so it is always quoted.
+    "right"     TEXT NOT NULL DEFAULT 'R' CHECK ("right" IN ('R', 'U', 'D')),
+    UNIQUE (table_id, role_id, "right"),
+    UNIQUE (action_name, role_id, "right"),
+    CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id, "right")
 );
 
 -- REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
@@ -556,7 +559,7 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 DO $$ BEGIN
-    ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key UNIQUE (domain_id, role_id);
+    ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key UNIQUE (domain_id, role_id, "right");
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

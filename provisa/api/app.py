@@ -1284,11 +1284,13 @@ retire_hooks.append(_stop_retired_runtime_listeners)
 
 # REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
 # platform config through core.request_context, never by importing this module.
+from provisa.core import model_row_rules  # noqa: E402
 from provisa.core.request_context import (  # noqa: E402
     register_active_engine_url_provider,
     register_org_store_provider,
     register_platform_config_provider,
 )
+from provisa.security.row_filters import acting_model_rule  # noqa: E402
 
 
 # The platform config as last read, with the config generation it was read under. Asked on request
@@ -1324,6 +1326,9 @@ def _org_store_of(side: str) -> Database:
 
 register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
+model_row_rules.register_rule_provider(  # REQ-2188
+    lambda role, table, right: acting_model_rule(state, role, table, right)
+)
 
 # REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
 # the org whose request is running. `core` cannot import this ContextVar, so the API layer installs
@@ -2880,8 +2885,11 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
     # fetch happens after every prior rebuild's writes have committed and been published.
     #
     # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
+    #
+    # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
     async with _rebuild_schemas_lock:
-        await _rebuild_schemas_impl(raw_config, announce=announce)
+        with model_row_rules.unnarrowed():
+            await _rebuild_schemas_impl(raw_config, announce=announce)
 
 
 async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
@@ -3305,21 +3313,20 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         )
         # REQ-1677, REQ-2155: child-precedence RLS -- a role's own rule for a table (REQ-1679: or
         # an action) stands, else its parents' rules ORed.
-        from provisa.security.inheritance import expand_grants, materialize_rls
-
-        rls_rules = materialize_rls(
-            rls_rules, tables, role_parents_by_id, [*tracked_functions, *tracked_webhooks]
-        )
         # REQ-1384: one predicate per (role, table) — the table's own or its domain's rule,
         # AND-ed with every rule on a tag the table carries and (REQ-1363) with the rule on every
         # domain above the table's. Resolved here so the governance
         # path reads the one table-keyed rule it always has.
+        # REQ-2188: each right resolved on its own.
         from provisa.core.repositories import tag as _tag_repo
-        from provisa.security.row_filters import resolve_table_rules
+        from provisa.security.inheritance import expand_grants
+        from provisa.security.row_filters import resolve_rules_by_right
 
-        rls_rules = resolve_table_rules(
+        rls_rules = resolve_rules_by_right(
             rls_rules,
             tables,
+            role_parents_by_id,
+            [*tracked_functions, *tracked_webhooks],
             role_chains_by_id,
             await _tag_repo.list_assignments(conn),
             _domain_parents,

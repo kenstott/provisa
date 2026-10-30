@@ -459,10 +459,10 @@ async def save_carried_region(
 
 
 async def row_rule_refusal(
-    conn: "Connection", role_id: str, description: str
-) -> MutationResult | None:  # REQ-041, REQ-2081
-    """Why a row rule cannot bind: it names no role, gives no description, or its role does not
-    exist. None when it can."""
+    conn: "Connection", role_id: str, description: str, right: str = "R"
+) -> MutationResult | None:  # REQ-041, REQ-2081, REQ-2188
+    """Why a row rule cannot bind: it names no role, gives no description, its right is not R, U
+    or D, or its role does not exist. None when it can."""
     from provisa.core.repositories import role as role_repo
 
     if not role_id:
@@ -474,6 +474,13 @@ async def row_rule_refusal(
             success=False,
             message="A row rule needs a description of what it is for",
             code="schema.rls_rule_description_missing",
+        )
+    if right not in ("R", "U", "D"):
+        return MutationResult(
+            success=False,
+            message=f"A row rule's right is R, U or D, not {right!r}",
+            code="schema.rls_rule_invalid",
+            params={"reason": f"right {right!r}"},
         )
     if await role_repo.get(conn, role_id) is None:
         return MutationResult(
@@ -508,7 +515,7 @@ async def save_row_rules(info: Any, conn: "Connection", inp: "TableInput", model
     targets = [t for t in registry if (t.get("alias") or t["table_name"]) == name]
     rule: RLSRuleInput
     for rule in inp.row_rules:
-        refusal = await row_rule_refusal(conn, rule.role_id, rule.description)
+        refusal = await row_rule_refusal(conn, rule.role_id, rule.description, rule.right)
         if refusal is not None:
             raise TableSaveRefused(refusal)
         problem = validate_rls_predicate(rule.filter_expr, targets, registry)
@@ -530,6 +537,7 @@ async def save_row_rules(info: Any, conn: "Connection", inp: "TableInput", model
                     filter=rule.filter_expr,
                     description=rule.description,
                     why=rule.why,  # REQ-2094
+                    right=rule.right,  # REQ-2188
                 ),
             )
         except ValueError as refused:

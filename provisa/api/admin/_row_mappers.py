@@ -267,6 +267,7 @@ def _rls_from_row(row) -> RLSRuleType:
         action_name=row.get("action_name"),  # REQ-1679
         tag_id=row["tag_id"],  # REQ-1384
         why=row.get("why"),  # REQ-2094
+        right=row["right"],  # REQ-2188
     )
 
 

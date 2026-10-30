@@ -2287,6 +2287,26 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     filter: str
     # REQ-2081: what the rule is for, as an access review reads it. Required, as a role's is.
     description: str
+    # REQ-2188: what the rule narrows: R reading a row, U updating it, D deleting it. It only
+    # narrows: the role's R or RW on the model is the ceiling, and a U or D rule on a role with
+    # only R does nothing.
+    right: str = "R"
+
+    @field_validator("right")
+    @classmethod
+    def _a_right(cls, value: str) -> str:  # REQ-2188
+        if value not in ("R", "U", "D"):
+            raise ValueError(f"A row rule's right is R, U or D, not {value!r}")
+        return value
+
+    @model_validator(mode="after")
+    def _action_rule_reads(self) -> "RLSRule":  # REQ-2188
+        if self.action_name and self.right != "R":
+            raise ValueError(
+                f"The row rule for {self.role_id!r} on action {self.action_name!r} has right "
+                f"{self.right!r}: an action's rows are read, so it takes only an R rule"
+            )
+        return self
 
     @field_validator("description")
     @classmethod

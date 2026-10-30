@@ -184,6 +184,10 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
 REGION_VAR = "region"
 #: The session variable that names the org a request is served for.
 ORG_VAR = "org"
+#: The session variable that holds the roles the caller acts as, comma-joined: its members for a
+#: meta-role, else the one role (REQ-2188). A rule reads it with IN (core.session_terms). It holds
+#: the roles acted as, not their ancestors.
+ACTING_ROLES_VAR = "acting_roles"
 
 
 # The role the request acts as (request.state.role), bound by the surfaces that authenticate a

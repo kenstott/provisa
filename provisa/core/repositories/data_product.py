@@ -350,6 +350,16 @@ async def retire(
         raise StatusRefused(
             "not_found", f"data product {product_id!r} not found", data_product=product_id
         )
+    # REQ-2188: one transaction: a retirement refused by a row rule moves no member.
+    async with conn.transaction():
+        await _retire(conn, product, text, successor, by)
+    model_change.name("retire", "data product", product_id)
+
+
+async def _retire(
+    conn: "Connection", product: dict, text: str, successor: "str | None", by: "str | None"
+) -> None:
+    product_id = product["id"]
     if product["status"] not in ("live", "deprecated"):
         raise StatusRefused(
             "not_live",
@@ -380,7 +390,6 @@ async def retire(
         retire_on=None,
         successor_id=successor,
     )
-    model_change.name("retire", "data product", product_id)
 
 
 async def _check_successor(conn: "Connection", product: dict, successor: str) -> None:

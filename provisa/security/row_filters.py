@@ -31,6 +31,13 @@ A rule names a tag by its base id and covers every parameter value the tag is as
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
+
+
+#: REQ-2188: a rule's rights, and the capability RW on a model table is held by. A member of a set
+#: of roles that holds it with no rule lifts the set's rule; one that does not, gives nothing.
+RIGHTS = ("R", "U", "D")
+MODEL_RW_RIGHTS: dict[str, str] = {"data_products": "data_product_rw"}
 
 
 def tagged_table_ids(tag_assignments: Iterable[dict]) -> dict[str, set[int]]:
@@ -115,3 +122,82 @@ def resolve_table_rules(
                     }
                 )
     return out
+
+
+def resolve_rules_by_right(
+    rls_rules: list[dict],
+    tables: list[dict],
+    parents: dict[str, list[str]],
+    actions: Iterable[dict],
+    chains: dict[str, list[str]],
+    tag_assignments: list[dict],
+    domain_parents: dict[str, str | None],
+) -> list[dict]:  # REQ-2188
+    """Each right's rules resolved on their own, as a read's are: child precedence
+    (``materialize_rls``), then one predicate per (role, table) over the table, its domain and its
+    tags (:func:`resolve_table_rules`). A U rule never stands in for an R rule, or the reverse:
+    a role with no rule for a right is not narrowed by a rule for another. Every row comes back
+    naming its right, and a stored rule with none is an R rule."""
+    from provisa.security.inheritance import materialize_rls
+
+    out: list[dict] = []
+    for right in RIGHTS:
+        own = [r for r in rls_rules if r.get("right", "R") == right]
+        if right != "R" and not own:
+            continue
+        materialized = materialize_rls(own, tables, parents, actions)
+        resolved = resolve_table_rules(
+            materialized, tables, chains, tag_assignments, domain_parents
+        )
+        out.extend({**rule, "right": right} for rule in resolved)
+    return out
+
+
+def model_write_rules(
+    resolved: Iterable[dict], tables: Iterable[dict]
+) -> dict[tuple[str, str, str], str]:  # REQ-2188
+    """(role, table, right) -> predicate: the U and D rules that hold the model store. A semantic
+    object's table is registered in the meta domain, by its own name; a rule on any other table
+    holds data, through write admission."""
+    from provisa.security.rights import META_DOMAIN_ID
+
+    model = {t["id"]: t["table_name"] for t in tables if t.get("domain_id") == META_DOMAIN_ID}
+    return {
+        (r["role_id"], model[r["table_id"]], r["right"]): r["filter_expr"]
+        for r in resolved
+        if r.get("right", "R") != "R" and r.get("table_id") in model
+    }
+
+
+def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any:  # REQ-2188
+    """The rule the store holds ``role_id``'s ``right`` on ``table`` to, or None when it is not
+    narrowed (``core.model_row_rules``). A meta-role takes the OR of its members' rules, each with
+    its own constants inlined: a member with no rule lifts it only if it holds RW on the model, so
+    a member with only R neither widens the set nor narrows it."""
+    from provisa.core.model_row_rules import ModelRule
+    from provisa.core.request_context import session_vars_for
+    from provisa.security.meta_role import _inlined, _or
+
+    inputs = state.role_build_inputs
+    if not inputs:  # a first start: nothing is built, so no rule is in force
+        return None
+    rules = inputs["model_write_rules"]
+    view = inputs["physical_table_map"].get(table)
+    members = state.meta_roles.get(role_id)
+    if members is None:
+        predicate = rules.get((role_id, table, right))
+    else:
+        terms: list[str] = []
+        for member in members:
+            role = state.roles[member]
+            own = rules.get((member, table, right))
+            if own is not None:
+                terms.append(_inlined(own, role.get("session_vars") or {}))
+            elif MODEL_RW_RIGHTS.get(table) in (role.get("capabilities") or []):
+                return None
+        predicate = _or(terms) if terms else None
+    if predicate is None:
+        return None
+    return ModelRule(
+        predicate=predicate, session_vars=session_vars_for(state.roles.get(role_id)), view=view
+    )

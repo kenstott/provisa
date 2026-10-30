@@ -48,7 +48,8 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
     model_change.name(
         "upsert",
         "row filter",
-        f"{rule.role_id} on {rule.table_id or rule.domain_id or rule.action_name or rule.tag_id}",
+        f"{rule.role_id} {rule.right} on "
+        f"{rule.table_id or rule.domain_id or rule.action_name or rule.tag_id}",
     )  # REQ-1524
     filter_enc = _encrypt_filter(rule.filter)
     if rule.action_name:  # REQ-1679
@@ -71,11 +72,12 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
         {
             **scope,
             "role_id": rule.role_id,
+            "right": rule.right,  # REQ-2188
             "filter_expr": filter_enc,
             "description": rule.description,  # REQ-2081
             "why": why,  # REQ-2094
         },
-        index_elements=[scope_column, "role_id"],
+        index_elements=[scope_column, "role_id", "right"],
         update_columns=["filter_expr", "description", "why"],
     )
 
@@ -92,7 +94,9 @@ async def _stamped_why(
     held = (
         await conn.execute_core(
             select(rls_rules).where(
-                rls_rules.c[scope_column] == scope_value, rls_rules.c.role_id == rule.role_id
+                rls_rules.c[scope_column] == scope_value,
+                rls_rules.c.role_id == rule.role_id,
+                rls_rules.c.right == rule.right,  # REQ-2188
             )
         )
     ).fetchone()
@@ -110,16 +114,20 @@ async def _stamped_why(
         None if previous is None else previous.get("why"),
         given,
         changed=previous is None or previous["filter_expr"] != rule.filter,
-        where=f"row rule for {rule.role_id}",
+        where=f"{rule.right} row rule for {rule.role_id}",
         evidence=_evidence,
     )
 
 
-async def get_for_table_role(  # REQ-041, REQ-403
-    conn: "Connection", table_id: int, role_id: str
+async def get_for_table_role(  # REQ-041, REQ-403, REQ-2188
+    conn: "Connection", table_id: int, role_id: str, right: str = "R"
 ) -> dict | None:
     result = await conn.execute_core(
-        select(rls_rules).where(rls_rules.c.table_id == table_id, rls_rules.c.role_id == role_id)
+        select(rls_rules).where(
+            rls_rules.c.table_id == table_id,
+            rls_rules.c.role_id == role_id,
+            rls_rules.c.right == right,
+        )
     )
     row = result.fetchone()
     return _decrypt_row(row) if row is not None else None
@@ -154,32 +162,30 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-041, REQ-402
     return [_decrypt_row(r) for r in result.fetchall()]
 
 
-async def delete(  # REQ-041, REQ-402
+async def delete(  # REQ-041, REQ-402, REQ-2188
     conn: "Connection",
     role_id: str,
     table_id: int | None = None,
     domain_id: str | None = None,
     action_name: str | None = None,
     tag_id: str | None = None,
+    right: str = "R",
 ) -> bool:
     model_change.name(  # REQ-1524
-        "delete", "row filter", f"{role_id} on {table_id or domain_id or action_name or tag_id}"
+        "delete",
+        "row filter",
+        f"{role_id} {right} on {table_id or domain_id or action_name or tag_id}",
     )
     if tag_id:  # REQ-1384
-        stmt = _delete(rls_rules).where(
-            rls_rules.c.tag_id == tag_id, rls_rules.c.role_id == role_id
-        )
+        target = rls_rules.c.tag_id == tag_id
     elif action_name:  # REQ-1679
-        stmt = _delete(rls_rules).where(
-            rls_rules.c.action_name == action_name, rls_rules.c.role_id == role_id
-        )
+        target = rls_rules.c.action_name == action_name
     elif domain_id:
-        stmt = _delete(rls_rules).where(
-            rls_rules.c.domain_id == domain_id, rls_rules.c.role_id == role_id
-        )
+        target = rls_rules.c.domain_id == domain_id
     else:
-        stmt = _delete(rls_rules).where(
-            rls_rules.c.table_id == table_id, rls_rules.c.role_id == role_id
-        )
+        target = rls_rules.c.table_id == table_id
+    stmt = _delete(rls_rules).where(
+        target, rls_rules.c.role_id == role_id, rls_rules.c.right == right
+    )
     result = await conn.execute_core(stmt)
     return (result.rowcount or 0) > 0

@@ -4659,7 +4659,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # is refused with the reason here rather than by the role_id foreign key at insert.
         async with pool.acquire() as _rconn:
             _rule_refusal = await row_rule_refusal(
-                cast("Connection", _rconn), input.role_id, input.description
+                cast("Connection", _rconn), input.role_id, input.description, input.right
             )
         if _rule_refusal is not None:
             return _rule_refusal
@@ -4713,6 +4713,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             filter=input.filter_expr,
             description=input.description,
             why=input.why,  # REQ-2094
+            right=input.right,  # REQ-2188
         )
         try:
             async with pool.acquire() as conn:
@@ -4746,6 +4747,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
         tag_id: Optional[str] = None,
+        right: str = "R",  # REQ-2188
     ) -> MutationResult:  # REQ-1531, REQ-1679, REQ-1384
         from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
@@ -4789,6 +4791,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 domain_id=domain_id,
                 action_name=action_name,
                 tag_id=tag_id,
+                right=right,
             )
         if deleted:
             # See upsert_rls_rule's matching rebuild — a deleted rule must stop being enforced
@@ -6510,6 +6513,7 @@ async def _upsert_tag_rls_rule(
                 filter=input.filter_expr,
                 description=input.description,
                 why=input.why,  # REQ-2094
+                right=input.right,  # REQ-2188
             ),
         )
     await _rebuild_schemas()
@@ -6544,6 +6548,13 @@ async def _upsert_action_rls_rule(
     from provisa.core.models import RLSRule as RLSRuleModel
 
     name = input.action_name or ""
+    if input.right != "R":  # REQ-2188
+        return MutationResult(
+            success=False,
+            message=f"Action {name!r} takes only an R row rule: its rows are read",
+            code="schema.rls_rule_invalid",
+            params={"reason": "an action's rows are only read"},
+        )
     action = state.tracked_functions.get(name) or (
         getattr(state, "tracked_webhooks", None) or {}
     ).get(name)
