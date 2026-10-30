@@ -90738,7 +90738,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node''s full name stays
     in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the
     layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
-    the 2D views may still move a crowded pair apart.'
+    the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
+    Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
+    between 9px and 10px, replacing 11.5px and 20px.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
