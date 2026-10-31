@@ -88777,7 +88777,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     ?s ?p ?o answers what naming each predicate answers, one union part per predicate, and edges go through
     their registered relationship. A table whose whole registered key the role cannot read is left out of
     an open subject, with the edges into it. Naming such a table and asking for its subject is refused by
-    the table''s name, without naming the column; reading its columns without its subject is still answered.'
+    the table''s name, without naming the column; reading its columns without its subject is still answered.
+    (Amended 2026-10-29, PATHS SKIP PARAMETERIZED TABLES:) Maintainer 2026-10-31: shortestPath and any path
+    cannot include a parameterized table, one whose read needs arguments. A path search does not pass through
+    one, and a drop never proposes one.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
