@@ -554,7 +554,12 @@ export function Inspector({
                     >
                       {propName(k)}
                     </Table.Td>
-                    <Table.Td className="gf-prop-val">{vs}</Table.Td>
+                    <Table.Td
+                      className="gf-prop-val"
+                      title={isN ? (selected.data as GNode).propertyDatatypes?.[k] : undefined}
+                    >
+                      {vs}
+                    </Table.Td>
                     <Table.Td className="gf-prop-copy-cell">
                       <ActionIcon
                         variant="subtle"

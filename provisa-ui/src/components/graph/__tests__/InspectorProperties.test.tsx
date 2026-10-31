@@ -162,4 +162,35 @@ describe("a node's properties in its panel", () => {
     };
     expect(rows(n)).toEqual([["Pets#breed", "Husky"]]);
   });
+
+  it("say a literal's datatype on hover of its value", () => {
+    const { container } = render(
+      <Inspector
+        selected={{
+          kind: "node",
+          data: {
+            id: 4,
+            label: "pet-store:pets",
+            tableLabel: "pet-store:pets",
+            properties: { "pet-store:pets#price": "3.25" },
+            propertyIris: { "pet-store:pets#price": "https://x/pet-store/pets#price" },
+            propertyDatatypes: {
+              "pet-store:pets#price": "http://www.w3.org/2001/XMLSchema#decimal",
+            },
+          },
+        }}
+        colorOverrides={{}}
+        onColorChange={() => {}}
+        onClose={() => {}}
+        width={320}
+        onResizeStart={() => {}}
+        relationships={[]}
+        labelToTableId={{}}
+      />,
+    );
+    expect(container.querySelector(".gf-prop-val")).toHaveAttribute(
+      "title",
+      "http://www.w3.org/2001/XMLSchema#decimal",
+    );
+  });
 });

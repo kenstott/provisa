@@ -30,7 +30,8 @@ vi.mock("../GraphCanvas", () => ({
 }));
 import type { FrameData, GNode } from "../graph-model";
 import { parseNTriples, selectPairing, triplesGraph } from "../sparql";
-import type { GraphLanguage } from "../graph-persistence";
+import { settingKey, type GraphLanguage } from "../graph-persistence";
+import { getStored } from "../../../lib/browserStorage";
 
 const ORDER: GNode = { id: 1, label: "sales:orders", tableLabel: "orders", properties: {} };
 
@@ -404,5 +405,30 @@ describe("a SPARQL answer drawn", () => {
     });
     expect(screen.queryByTestId("graph-frame-draw-as-graph")).toBeNull();
     expect(screen.queryByTestId("graph-frame-literals-as-nodes")).toBeNull();
+  });
+});
+
+describe("wrapping a table's cells", () => {
+  const rows = (): FrameData => ({
+    ...frame("q"),
+    nodes: new Map(),
+    rows: [{ a: 1 }],
+    columns: ["a"],
+  });
+  const button = () => screen.getByTestId("graph-frame-table-wrap-btn");
+
+  it("is remembered per language", () => {
+    const first = show("q", "sparql", rows());
+    expect(button()).not.toHaveAttribute("aria-current");
+    fireEvent.click(button());
+    expect(button()).toHaveAttribute("aria-current", "true");
+    expect(getStored(settingKey("sparql", "tableWrap"))).toBe("true");
+    expect(getStored(settingKey("cypher", "tableWrap"))).toBeNull();
+    first.unmount();
+    const again = show("q", "sparql", rows());
+    expect(button()).toHaveAttribute("aria-current", "true");
+    again.unmount();
+    show("q", "cypher", rows());
+    expect(button()).not.toHaveAttribute("aria-current");
   });
 });

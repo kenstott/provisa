@@ -236,12 +236,21 @@ describe("the SPARQL tab", () => {
       .filter((s) => s.url.endsWith("/data/sparql") && s.init?.method === "POST")
       .map((s) => s.init?.body as string);
 
-  it("runs a class pill as its own query, its instances with a limit", async () => {
+  it("runs a class pill as its own query, a row per instance with a limit", async () => {
     page();
     fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
     await waitFor(() => expect(posted()).toHaveLength(1));
     expect(posted()[0]).toBe(
-      `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE {\n  ?s a sales:orders .\n}\nLIMIT 25`,
+      [
+        `PREFIX sales: <${BASE}/vocab/sales/>`,
+        `PREFIX p: <${BASE}/vocab/sales/orders#>`,
+        "SELECT ?s ?amount ?total WHERE {",
+        "  ?s a sales:orders .",
+        "  OPTIONAL { ?s sales:amount ?amount }",
+        "  OPTIONAL { ?s p:total ?total }",
+        "}",
+        "LIMIT 25",
+      ].join("\n"),
     );
     await waitFor(() => expect(framesSeen.some((f) => f.status === "done")).toBe(true));
     // The query in the bar is left as it was.

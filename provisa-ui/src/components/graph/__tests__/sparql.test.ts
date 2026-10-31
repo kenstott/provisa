@@ -122,10 +122,10 @@ describe("a CONSTRUCT's triples", () => {
     const byIri = (iri: string) =>
       [...nodes.values()].find((n) => n.properties.iri === `${BASE}/id/sales/orders/${iri}`);
     expect(byIri("1")?.properties).toMatchObject({
-      "sales:amount": '"12.50"^^xsd:decimal',
+      "sales:amount": "12.50",
       "sales:note": '"said "hi""@en',
     });
-    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": '"12.50"^^xsd:decimal' });
+    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": "12.50" });
   });
 
   it("hold a predicate's several literals as a list", () => {
@@ -150,9 +150,9 @@ describe("a CONSTRUCT's triples", () => {
     ]);
     // The same literal under two subjects is two nodes.
     expect(literals.map((n) => n.properties.name).sort()).toEqual([
-      '"12.50"^^xsd:decimal',
-      '"12.50"^^xsd:decimal',
       '"said "hi""@en',
+      "12.50",
+      "12.50",
     ]);
     expect([...edges.values()].map((e) => e.type).sort()).toEqual([
       "rdf:type",

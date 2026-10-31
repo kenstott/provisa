@@ -49,7 +49,7 @@ import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
-import { useLocalStorage, type GraphLanguage } from "./graph-persistence";
+import { settingKey, useLocalStorage, type GraphLanguage } from "./graph-persistence";
 import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
 import { frameMetaText } from "./frame/frame-meta";
@@ -234,7 +234,10 @@ export function GraphFrame({
     "none",
   );
   const canvasView = useRequestedView(requestedView, setClusterLevel);
-  const [tableWrap, setTableWrap] = useState(false);
+  const [tableWrap, setTableWrap] = useLocalStorage<boolean>(
+    settingKey(language, "tableWrap"),
+    false,
+  );
   const [tableColWidths, setTableColWidths] = useColumnWidths(frame.columns);
   const canvasCyRef = useRef<CyInstance | null>(null);
   const canvasHullSvgRef = useRef<SVGSVGElement | null>(null);

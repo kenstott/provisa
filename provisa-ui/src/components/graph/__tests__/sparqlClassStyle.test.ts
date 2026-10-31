@@ -20,6 +20,8 @@ import {
   classLabel,
   classMenuProperties,
   parseNTriples,
+  pillQuery,
+  shownLiteral,
   sparqlDrawn,
   triplesGraph,
   type SparqlVocabulary,
@@ -151,9 +153,9 @@ describe("a literal the menu reads", () => {
   const price = (i: number, v: string) => `${pet(i)} <${PETS}#price> "${v}"^^<${XSD}decimal> .`;
 
   it("keeps its Turtle form for the panel and its value for the drawing", () => {
-    const n = nodeOf(`${typed(1)}\n${price(1, "3.25")}`);
-    expect(n.properties["pet-store:pets#price"]).toBe(`"3.25"^^xsd:decimal`);
-    expect(n.propertyValues?.["pet-store:pets#price"]).toBe("3.25");
+    const n = nodeOf(`${typed(1)}\n${pet(1)} <${PETS}#nick> "Rex"@en .`);
+    expect(n.properties["pet-store:pets#nick"]).toBe(`"Rex"@en`);
+    expect(n.propertyValues?.["pet-store:pets#nick"]).toBe("Rex");
   });
 
   it("captions a node with the value", () => {
@@ -220,5 +222,113 @@ describe("what a DESCRIBE said of a drawn node", () => {
     const drawn = sparqlDrawn(frame, false, false, edited);
     const n = [...drawn.nodes.values()].find((x) => x.label === "shop:pets") as GNode;
     expect(n.properties["shop:pets#breedName"]).toBe("Husky");
+  });
+});
+
+describe("a class pill's query", () => {
+  const twoColumns: SparqlVocabulary = {
+    ...VOCABULARY,
+    predicates: VOCABULARY.predicates.filter((x) => x.property === "breedName" || x.property === "age"),
+  };
+  const wide = pillQuery({ kind: "class", iri: PETS }, twoColumns);
+
+  it("asks one row per subject, with one OPTIONAL per property of the class", () => {
+    expect(wide).toBe(
+      [
+        `PREFIX pet-store: <${B}/vocab/pet-store/>`,
+        `PREFIX p: <${PETS}#>`,
+        "SELECT ?s ?age ?breedName WHERE {",
+        "  ?s a pet-store:pets .",
+        "  OPTIONAL { ?s p:age ?age }",
+        "  OPTIONAL { ?s p:breedName ?breedName }",
+        "}",
+        "LIMIT 25",
+      ].join("\n"),
+    );
+  });
+
+  it("writes no # outside a PREFIX line, where SPARQL would read a comment", () => {
+    const body = wide.split("\n").filter((l) => !l.startsWith("PREFIX"));
+    expect(body.join("\n")).not.toContain("#");
+  });
+
+  it("takes a prefix name the viewer has not used", () => {
+    const vocabulary = { ...twoColumns, prefixes: { ...PREFIXES, p: `${B}/other/` } };
+    const q = pillQuery({ kind: "class", iri: PETS }, vocabulary);
+    expect(q).toContain(`PREFIX p2: <${PETS}#>`);
+    expect(q).toContain("OPTIONAL { ?s p2:age ?age }");
+  });
+
+  it("writes a predicate no prefix can name in full, and keeps each variable safe and its own", () => {
+    const term = `${B}/vocab/term/hire%20date`;
+    const vocabulary: SparqlVocabulary = {
+      ...VOCABULARY,
+      predicates: [
+        {
+          iri: term,
+          kind: "term",
+          classes: [{ class: PETS, label: "pet-store__pets", property: "hired", datatype: `${XSD}date` }],
+        },
+        { iri: `${PETS}#s`, kind: "column", label: "pet-store__pets", property: "s", datatype: `${XSD}string` },
+      ],
+    };
+    const q = pillQuery({ kind: "class", iri: PETS }, vocabulary);
+    expect(q).toContain(`OPTIONAL { ?s <${term}> ?hire_date }`);
+    expect(q).toContain("OPTIONAL { ?s p:s ?s2 }");
+    expect(q).toContain("SELECT ?s ?hire_date ?s2 WHERE {");
+  });
+
+  it("stays a plain pattern for a class with no property the role can read", () => {
+    const vocabulary = { ...VOCABULARY, predicates: [] };
+    expect(pillQuery({ kind: "class", iri: PETS }, vocabulary)).toBe(
+      `PREFIX pet-store: <${B}/vocab/pet-store/>\nSELECT * WHERE {\n  ?s a pet-store:pets .\n}\nLIMIT 25`,
+    );
+  });
+
+  it("keeps a frame's keys by the vocabulary's names, whatever prefix the query declares", () => {
+    const nt = `${typed(1)}\n${pet(1)} <${PETS}#age> "4"^^<${XSD}integer> .`;
+    const frame = {
+      id: "f",
+      query: wide,
+      status: "done",
+      nodes: new Map(),
+      edges: new Map(),
+      rows: [],
+      columns: [],
+      sparqlForm: "graph",
+      sparqlTriples: parseNTriples(nt, PREFIXES),
+    } as FrameData;
+    const drawn = sparqlDrawn(frame, false, false, PREFIXES);
+    const n = [...drawn.nodes.values()].find((x) => x.label === "pet-store:pets") as GNode;
+    expect(Object.keys(n.propertyIris ?? {})).toEqual(["pet-store:pets#age"]);
+  });
+});
+
+describe("a literal as it is shown", () => {
+  it.each([
+    ["800.0", "double"],
+    ["1.5", "float"],
+    ["12.50", "decimal"],
+    ["9", "long"],
+    ["9", "nonNegativeInteger"],
+    ["true", "boolean"],
+    ["2026-10-31", "date"],
+    ["2026-10-31T08:00:00Z", "dateTime"],
+    ["08:00:00", "time"],
+    ["2026", "gYear"],
+    ["P1D", "duration"],
+  ])("shows %s as xsd:%s plainly", (value, datatype) => {
+    expect(shownLiteral(value, `${XSD}${datatype}`, undefined, PREFIXES)).toBe(value);
+  });
+
+  it("keeps a language tag, and a datatype that has no plain reading", () => {
+    expect(shownLiteral("Rex", undefined, "en", PREFIXES)).toBe('"Rex"@en');
+    expect(shownLiteral("AB", `${XSD}hexBinary`, undefined, PREFIXES)).toBe('"AB"^^xsd:hexBinary');
+  });
+
+  it("keeps the datatype for the node's hover, and for a DESCRIBE's literals", () => {
+    const n = nodeOf(`${typed(1)}\n${pet(1)} <${PETS}#price> "3.25"^^<${XSD}decimal> .`);
+    expect(n.properties["pet-store:pets#price"]).toBe("3.25");
+    expect(n.propertyDatatypes?.["pet-store:pets#price"]).toBe(`${XSD}decimal`);
   });
 });

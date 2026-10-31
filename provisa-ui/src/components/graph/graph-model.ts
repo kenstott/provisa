@@ -142,6 +142,8 @@ export interface GNode {
   /** A SPARQL node's literals under the same names, as their values: ``properties`` holds each as
    * a result cell shows it, and a caption or a size reads the value. */
   propertyValues?: Record<string, unknown>;
+  /** A SPARQL node's literals' datatypes under the same names, which a value's hover says. */
+  propertyDatatypes?: Record<string, string>;
 }
 
 /** What a caption or a size reads of a node's property. */
