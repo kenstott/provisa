@@ -1009,7 +1009,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
         try:
             read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
             lowered = grpc_table_to_graphql(
-                ctx, surface.schema, type_name, request.limit, filter_msg, read_mask, params_msg
+                ctx,
+                surface.schema,
+                type_name,
+                request.limit,
+                filter_msg,
+                read_mask,
+                params_msg,
+                offset=request.offset or None,
             )
         except (ReadMaskError, FilterError, ParameterError) as exc:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
