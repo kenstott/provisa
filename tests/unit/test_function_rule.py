@@ -16,6 +16,8 @@ functions answered as Python UDFs they answer as forms, on no UDF."""
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import duckdb
 import pytest
 import sqlglot
@@ -238,6 +240,25 @@ def _money(con, row: str, cents: int):
 )
 def test_a_form_answers_as_the_udf_it_replaced(con, row, args, want):
     assert _value(con, row, *args) == want
+
+
+def test_a_polygons_level_edge_divides_by_nothing(con):
+    """The pipeline's division raises on zero, and an AND in a lambda guards nothing: a horizontal
+    edge, where the crossing's divisor is zero, is held off by a CASE."""
+    written = transpile_to_duckdb(
+        "SELECT pt_contained_poly('(-5,0)'::point, '((0,0),(0,8.376),(8,0))'::polygon) AS v"
+    )
+    assert con.execute(written).fetchone()[0] is False
+
+
+def test_a_null_box_keeps_the_type_its_diagonal_is_described_by(con):
+    written = transpile_to_duckdb("SELECT diagonal(NULL) AS v")
+    assert con.execute(f"SELECT typeof(v) FROM ({written})").fetchone()[0] == "VARCHAR"
+
+
+def test_a_bound_money_input_runs_as_a_form_of_its_parameter(con):
+    written = transpile_to_duckdb("SELECT $1::money AS v")
+    assert con.execute(written, ["$1,234.50"]).fetchone()[0] == Decimal("1234.5000")
 
 
 def test_unnest_of_a_tsvector_is_its_lexemes_in_order(con):

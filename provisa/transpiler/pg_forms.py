@@ -125,12 +125,13 @@ BOX_CENTER = _POINT_TEXT.format(
 )
 CIRCLE_CENTER = _POINT_TEXT.format(x=number("value", 1), y=number("value", 2))
 CENTER = f"CASE WHEN {_is_circle('value')} THEN {CIRCLE_CENTER} ELSE {BOX_CENTER} END"
+#: Cast, as a NULL box leaves the concatenation no type of its own for pgwire to describe.
 BOX_DIAGONAL = (
-    "'[' || "
+    "CAST('[' || "
     + _POINT_TEXT.format(x=f"greatest({', '.join(_BOX_X)})", y=f"greatest({', '.join(_BOX_Y)})")
     + " || ',' || "
     + _POINT_TEXT.format(x=f"least({', '.join(_BOX_X)})", y=f"least({', '.join(_BOX_Y)})")
-    + " || ']'"
+    + " || ']' AS VARCHAR)"
 )
 
 _STEP = "sqrt(pow(_p[_i + 2] - _p[_i], 2) + pow(_p[_i + 3] - _p[_i + 1], 2))"
