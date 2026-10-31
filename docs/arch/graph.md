@@ -1,4 +1,4 @@
-# Graph Analytics — Architecture
+# Graph Analytics Architecture
 
 ## Overview
 
@@ -136,7 +136,7 @@ analyticsOverrides: Record<string, { color?: string; size?: number }>
 
 ### Core Principle
 
-Grouping is a **view transform**, not a data transform. The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. This keeps the model clean and composable across arbitrary attributes: data properties, injected metadata (`domain`), or analytics output (`cluster`).
+Grouping is a **view transform**. The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. This keeps the model clean and composable across arbitrary attributes, whether data properties, injected metadata (`domain`) or analytics output (`cluster`).
 
 ---
 
@@ -178,7 +178,7 @@ Multiple layers are supported simultaneously, each using a different visual chan
 
 ### Rendering Phases
 
-#### Phase 1 — Color encoding + convex hull overlays
+#### Phase 1: Color encoding and convex hull overlays
 
 One active grouping attribute at a time. The attribute drives two simultaneous encodings:
 
@@ -187,7 +187,7 @@ One active grouping attribute at a time. The attribute drives two simultaneous e
 
 Hulls render in an SVG layer overlaid on the Cytoscape canvas. Node positions are read from `cy.nodes().positions()` after layout stabilizes. Hulls recompute on pan/zoom via a Cytoscape `viewport` event listener.
 
-#### Phase 2 — Multiple simultaneous groupings
+#### Phase 2: Multiple simultaneous groupings
 
 Each layer in `GroupingState.layers` uses a distinct visual channel:
 
@@ -199,7 +199,7 @@ Each layer in `GroupingState.layers` uses a distinct visual channel:
 
 Only one layer may use `color`; only one may use `ring`. Multiple `hull` layers are permitted (nested/overlapping hulls with different stroke colors).
 
-#### Phase 3 — Collapse groups
+#### Phase 3: Collapse groups
 
 A "collapse" toggle per group in the legend. When collapsed:
 
@@ -257,7 +257,7 @@ Analytics output (`_analytics.cluster`, `_analytics.score`) is just more node da
 - After a community detection run, `cluster` appears in `groupableAttributes`
 - The user can immediately select "Group by cluster" in the controls bar
 - Nodes are colored and hulled by cluster ID automatically
-- Centrality `score` is not groupable (continuous, not categorical); it drives size encoding instead
+- Centrality `score` is continuous, so it is not groupable; it drives size encoding instead
 
 ---
 

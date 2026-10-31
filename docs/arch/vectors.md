@@ -57,7 +57,7 @@ columns:
     embedding_source: description             # optional: originating text column
 ```
 
-`embedding_source` is informational: it records what text generated the vector. Not required for externally generated embeddings.
+`embedding_source` is informational. It records what text generated the vector, and externally generated embeddings do not need it.
 
 ### Source Capability Detection
 
@@ -81,7 +81,7 @@ ORDER BY score DESC
 LIMIT 10
 ```
 
-The query is a vector (a bound value or a `'[...]'` literal), a text (embedded with the column's model), or another embedding column of the same model. The call is governed with the whole statement: its column must be an embedding column the role is served (visibility and scope; a `restricted` scope is the sensitivity tier), and any other column is refused by name. Row filters and domain rules apply to the statement as to any other.
+The query is a vector (a bound value or a `'[...]'` literal), a text (embedded with the column's model), or another embedding column of the same model. The call is governed with the whole statement. Its column must be an embedding column the role is served (visibility and scope; a `restricted` scope is the sensitivity tier), and any other column is refused by name. Row filters and domain rules apply to the statement as to any other.
 
 The call is written in the SQL of the terminal that runs it:
 
@@ -93,7 +93,7 @@ The call is written in the SQL of the terminal that runs it:
 | DuckDB engine | `array_cosine_similarity(col::FLOAT[d], $1::FLOAT[d])` |
 | Trino engine | `cosine_similarity(col::array(double), json_parse($1)::array(double))` |
 
-A statement over any other source routes to the federation engine, which computes the call exactly. MongoDB Atlas, Qdrant and Azure Cosmos DB search natively through a query form rather than a SQL scalar: their own nearest-neighbour search is a pipeline or search table, and `cosine_similarity` over one of their collection tables is computed by the engine over the landed rows.
+A statement over any other source routes to the federation engine, which computes the call exactly. MongoDB Atlas, Qdrant and Azure Cosmos DB search natively through a query form, a pipeline or search table, where the sources above use a SQL scalar. The engine computes `cosine_similarity` over one of their collection tables from the landed rows.
 
 ### Query-Time Vectorization
 
@@ -135,7 +135,7 @@ A table served from its replica is the fallback for a vector search. Where the e
 | PostgreSQL | `REAL[]` in the engine's own database | HNSW (`vector_cosine_ops`) on its pgvector cast `vector(d)`, built with each replica build |
 | Trino, or an engine reading a replica from a store of another kind | the vector's JSON text | none |
 
-A top-k search reads the index: a statement with a `LIMIT`, ordered first by `cosine_similarity(...)` most similar first, whose embedding column belongs to a replica-served table. It is written nearest-first by distance (DuckDB `array_cosine_distance`, pgvector `<=>`), the order the index serves, and its answer carries the `statement.approximate_index` warning: the index may miss a row slightly more similar than the last one returned. Every other search over a replica, and every search on an engine with no index, is computed exactly and says nothing.
+A top-k search reads the index. Such a search is a statement with a `LIMIT`, ordered first by `cosine_similarity(...)` most similar first, whose embedding column belongs to a replica-served table. It is written nearest-first by distance (DuckDB `array_cosine_distance`, pgvector `<=>`), the order the index serves. Its answer carries the `statement.approximate_index` warning, because the index may miss a row slightly more similar than the last one returned. Every other search over a replica, and every search on an engine with no index, is computed exactly and says nothing.
 
 ### Freshness
 
@@ -211,11 +211,11 @@ Embedding columns participate in the full Provisa governance stack:
 
 | Governance feature | Applies to embedding columns |
 | --- | --- |
-| RLS | ✅ — row filters applied before similarity search |
-| Column masking | ❌ — not applicable (see note below) |
-| Domain boundary | ✅ — embedding columns respect domain traversal rules |
-| Sensitivity tiers | ✅ — `restricted` tier blocks cosine_similarity() for unauthorized roles |
-| Per-role schema visibility | ✅ — embedding columns hidden from roles without visibility |
+| RLS | ✅ Row filters applied before similarity search |
+| Column masking | ❌ Not applicable (see note below) |
+| Domain boundary | ✅ Embedding columns respect domain traversal rules |
+| Sensitivity tiers | ✅ `restricted` tier blocks cosine_similarity() for unauthorized roles |
+| Per-role schema visibility | ✅ Embedding columns hidden from roles without visibility |
 
 Column masking does not apply to embedding columns, because a vector cannot be partially masked and remain semantically meaningful. Access control is enforced via visibility (hide entirely), RLS (filter rows), sensitivity tier (block search), and domain boundary rules. An embedding column is either visible and searchable for a given role, or absent from the schema entirely.
 
@@ -227,7 +227,7 @@ Column masking does not apply to embedding columns, because a vector cannot be p
 | --- | --- |
 | Cloud / SaaS | OpenAI-compatible APIs (via API key) |
 | Air-gapped | Ollama, local HuggingFace models |
-| Regulated / on-prem | Ollama or local HuggingFace only — no external API calls |
+| Regulated / on-prem | Ollama or local HuggingFace only, with no external API calls |
 
 The model registry makes the embedding pipeline fully portable across deployment types. An air-gapped enterprise substitutes local models; the rest of the pipeline is identical.
 
