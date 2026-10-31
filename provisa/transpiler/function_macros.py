@@ -44,7 +44,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import raising
-from provisa.transpiler import pg_forms
+from provisa.transpiler import pg_forms, pg_forms_types
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -540,6 +540,16 @@ _MONEY: tuple[Macro, ...] = (
     _macro("money_input", "value", pg_forms.MONEY_INPUT),
 )
 
+#: The Type operators, I/O and casts family, one row each from its pattern (pg_forms_types).
+_TYPE_FUNCTIONS: tuple[Macro, ...] = tuple(
+    _macro(
+        form.name,
+        form.params,
+        strict(form.params, form.returns, form.answer) if form.strict else form.answer,
+    )
+    for form in pg_forms_types.FORMS
+)
+
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
     _operators("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
@@ -813,6 +823,7 @@ _ROWS: tuple[Macro, ...] = (
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
+    *_TYPE_FUNCTIONS,
 )
 
 #: A call's name and argument count -> its overload: the one table.
@@ -899,8 +910,8 @@ _HELD_AS_TEXT = frozenset(
 )
 
 
-def _argument(value: exp.Expr) -> exp.Expr:
-    if said_type(value) in _HELD_AS_TEXT:
+def _argument(value: exp.Expr, held: bool = False) -> exp.Expr:
+    if said_type(value) in _HELD_AS_TEXT or (held and isinstance(value.unnest(), exp.Cast)):
         value = value.unnest().this
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
 
@@ -909,10 +920,11 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str) -> exp.Expr:
     """The call's form with each parameter its argument. As a DuckDB macro does, an argument is
     written wherever the form names it; it is evaluated each time."""
     values = dict(zip(macro.params, args))
+    held = macro.name in pg_forms_types.HELD
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name]).copy()
+            return _argument(values[node.name], held).copy()
         return node
 
     return _parsed(macro.name, len(args), dialect).copy().transform(bound)
