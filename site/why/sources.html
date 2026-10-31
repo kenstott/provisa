@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>73 connectors, and one of them is a crawler — Provisa</title>
-  <meta name="description" content="73 connectors reaching 85+ kinds of source, including Salesforce, ServiceNow, Jira and Stripe and a file crawler: point it at a folder, bucket, SFTP host, or SharePoint site and every database file and tabular document under it is discovered and cataloged, ready to register as a governed table — alongside graph, RDF, and API endpoints." />
+  <meta name="description" content="73 connectors reaching 85+ kinds of source, including Salesforce, ServiceNow, Jira and Stripe and a file crawler: point it at a folder, bucket, SFTP host, or SharePoint site and every database file and tabular document under it is discovered and cataloged, ready to register as a governed table, alongside graph, RDF, and API endpoints." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -65,8 +65,7 @@
         <p>
           It is one source type, and the only one where you register a <em>location</em>
           rather than a system. Point it at a folder, a bucket, an FTP or SFTP host, or a
-          SharePoint site and it walks the tree recursively, looking for two things:
-          database files, and files with tabular data embedded in them. What it finds gets
+          SharePoint site and it walks the tree recursively, looking for database files and for files with tabular data embedded in them. What it finds gets
           cataloged as an available table; registering it is still your call, the same as
           for any other source.
         </p>
@@ -109,15 +108,11 @@
           joins reach like any other.
         </p>
 
-        <h2>Shaping is a declaration, not a program</h2>
+        <h2>Shaping takes a declaration instead of a program</h2>
         <p>
           Non-relational data is where pipelines are born: the response is nested, the
           document has an array inside it, the location is a pile of files, so somebody
-          writes code to flatten it and a procedure enters the path permanently. The variety is smaller than it looks: a modest set of structure types, each
-          with a short declarative rule for projecting it into rows and columns. The path to the collection and the fields to lift from it. A
-          sampled document schema, with the steward's explicit types overriding what was
-          inferred. A crawled location that catalogs what it finds. Once it's flat,
-          everything after it is SQL, and SQL is a thing a machine can read back.
+          writes code to flatten it and a procedure enters the path permanently. The variety is smaller than it looks. There's a modest set of structure types, each with a short declarative rule for projecting it into rows and columns: the path to the collection and the fields to lift from it, a sampled document schema with the steward's explicit types overriding what was inferred, or a crawled location that catalogs what it finds. Once it's flat, everything after it is SQL, which a machine can read back.
         </p>
         <a class="more" href="/why/materialized-views">Why that removes the downstream pain</a>
 
@@ -205,7 +200,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>

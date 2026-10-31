@@ -12,8 +12,7 @@
 # Provisa, is beside it.
 title: Reproduce a report
 description: >-
-  A bank's exposure report, reproduced for its regulator from a live trading book: where a figure
-  came from, column by column and refresh by refresh, and the report as it was filed, untouched by
+  A bank's exposure report, reproduced for its regulator from a live trading book. It shows where a figure came from, column by column and refresh by refresh, and the report as it was filed, untouched by
   a correction recorded since. Every read of it is in the audit log.
 screenshot: card.png
 published: true
