@@ -1,0 +1,41 @@
+/* A contract's three tiers, top to bottom (ContractLayout.tsx). */
+.contract-layout {
+  min-width: 0;
+}
+/* Small: the key-value panels in a grid, each as tall as it needs. */
+.contract-tier--small {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  column-gap: var(--mantine-spacing-sm);
+  align-items: start;
+}
+/* Medium: the tables in two flowing columns, so tables of different lengths leave no row gaps. */
+.contract-tier--medium {
+  columns: 2 24rem;
+  column-gap: var(--mantine-spacing-sm);
+}
+/* A panel's tables are dense, its promises' with them: a contract is read at a glance. */
+.contract-layout .data-table th,
+.contract-layout .data-table td {
+  padding: 0.5rem 0.75rem;
+}
+.contract-cell-whole {
+  white-space: nowrap;
+}
+/* A version's changes keep a readable measure, however little room its table has. */
+.contract-version-changes {
+  min-width: 16rem;
+}
+/* A panel's key-value rows sit close to the table or the line beneath them. */
+.contract-panel-body > .detail-fields {
+  margin-bottom: 0.5rem;
+}
+.contract-panel-body > .detail-fields:last-child {
+  margin-bottom: 0;
+}
+.contract-panel-table + .contract-panel-table {
+  margin-top: 0.75rem;
+}
+.contract-panel-table + .contract-not-declared {
+  margin-top: 0.5rem;
+}
