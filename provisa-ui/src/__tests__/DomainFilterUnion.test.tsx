@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "../test-utils/render";
 import { DomainFilterProvider, useDomainFilter } from "../context/DomainFilterContext";
+import { setStored } from "../lib/browserStorage";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
 import type { Role, Capability } from "../types/auth";
 
@@ -129,8 +130,8 @@ describe("DomainFilterContext domain resolution", () => {
   });
 
   it("checks a system domain a returning user has not seen, keeping what they unchecked", async () => {
-    localStorage.setItem(CHECKED_DOMAINS_KEY, JSON.stringify(["pet-store"]));
-    localStorage.setItem(KNOWN_DOMAINS_KEY, JSON.stringify(["pet-store", "shelter"]));
+    setStored(CHECKED_DOMAINS_KEY, JSON.stringify(["pet-store"]));
+    setStored(KNOWN_DOMAINS_KEY, JSON.stringify(["pet-store", "shelter"]));
     renderWith([ANALYST]);
     expect(await checkedShown()).toEqual(["meta", "ontology", "pet-store"]);
   });
