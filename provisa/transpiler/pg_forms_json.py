@@ -37,7 +37,11 @@ Row = tuple[str, tuple[str, ...], Forms]
 _NAME = """replace(k, '"', '\\"')"""
 #: A place in a value: a key, and an index ``{i}``.
 _KEY = {_D: f"""('$."' || {_NAME} || '"')""", _T: f"""('$["' || {_NAME} || '"]')""", _C: "k"}
-_AT = {_D: "{i}", _T: "('$[' || CAST({i} AS VARCHAR) || ']')", _C: "if({i} < 0, {i}, {i} + 1)"}
+_AT = {
+    _D: "{i}",
+    _T: "('$[' || CAST({i} AS VARCHAR) || ']')",
+    _C: "if(startsWith(trimLeft(v), '['), if({i} < 0, {i}, {i} + 1), 0)",  # a key's place otherwise
+}
 _INDEX = {_D: "CAST(i AS BIGINT)", _T: "i", _C: "i"}
 _KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "k", _C: "toInt64OrNull(k)"}
 _READ = {_D: "json_extract(v, @)", _T: "json_extract(v, @)", _C: "nullif(JSONExtractRaw(v, @), '')"}
@@ -97,6 +101,7 @@ ROWS: tuple[Row, ...] = (
     ("array_to_json", ("v",), {_OF[_D]: "to_json(v)"}),
     ("row_to_json", ("v",), {_OF[_D]: "to_json(v)"}),
 )
+_ON_JSON = frozenset(row[0] for row in ROWS) - {"to_jsonb", "array_to_json", "row_to_json"}
 #: What no engine has a form of.
 REFUSED = frozenset(
     """
@@ -115,9 +120,9 @@ REFUSED = frozenset(
     jsonb_path_match_opr json_build_array
     """.split()
 )
-_NOT_ON_CLICKHOUSE = frozenset(
-    {"jsonb_agg", "json_object_agg", "jsonb_object_agg", "json_build_object", "jsonb_build_object"}
-)
+_ONLY_ON_DUCKDB = frozenset({"jsonb_agg", "json_object_agg", "jsonb_object_agg"})
+_NOT_ON_CLICKHOUSE = frozenset({"json_build_object", "jsonb_build_object", "to_json"})
+_AGGREGATES = {exp.JSONObjectAgg: "json_object_agg", exp.JSONBObjectAgg: "jsonb_object_agg"}
 #: Each engine's FROM of an array's elements ``e``, and of an object's members ``k`` and ``e``.
 _ELEMENTS = {
     _D: "(SELECT unnest(json_extract(v, '$[*]')) AS e FROM (SELECT CAST(@ AS JSON) AS v))",
@@ -183,7 +188,7 @@ def jsonb_text(text: str) -> str:
 
 def jsonb_out(value: Any) -> Any:
     """A cell of a column the statement says is jsonb, as a client reads it."""
-    return jsonb_text(value) if isinstance(value, str) else value
+    return jsonb_text(value) if isinstance(value, str) and value else value
 
 
 class NoForm(ValueError):
@@ -233,6 +238,12 @@ def _steps(called: str, path: exp.Expr) -> list[str]:
     return [step.strip().strip('"') for step in inner.split(",")]
 
 
+def _parsed(value: exp.Expr, dialect: str) -> exp.Expr:
+    """An argument of a json parameter: Trino's json is no text."""
+    is_text = isinstance(value, exp.Literal) and value.is_string
+    return exp.ParseJSON(this=value) if is_text and dialect in _OF[_T] else value
+
+
 def _table(table: exp.Table, dialect: str) -> exp.Expr:
     """A set-returning call in a FROM as a subquery of its rows."""
     name = table.this.name.lower()
@@ -241,17 +252,16 @@ def _table(table: exp.Table, dialect: str) -> exp.Expr:
     text = columns.format(e=_E_TEXT[d] if name.endswith("_text") else "e", name=name)
     guard = _guard(d, "v", wanted, name)
     query = sqlglot.parse_one(f"SELECT {text} FROM {source[d].replace('@', guard)}", read=dialect)
-    value = table.this.expressions[0]
+    value = _parsed(table.this.expressions[0], dialect)
 
     def bound(node: exp.Expr) -> exp.Expr:
         reads = isinstance(node, exp.Column) and node.name == "v"
         return value.copy() if reads and node.find_ancestor(exp.Case) else node
 
-    alias = table.args.get("alias")
-    return exp.Subquery(
-        this=query.transform(bound),
-        alias=alias.copy() if alias else exp.TableAlias(this=exp.to_identifier(name)),
-    )
+    alias = table.args.get("alias") or exp.TableAlias(this=exp.to_identifier(name))
+    if dialect in _OF[_T] and isinstance(table.parent, exp.Join):  # a statement's earlier FROM
+        return exp.Lateral(this=exp.Subquery(this=query.transform(bound)), alias=alias.copy())
+    return exp.Subquery(this=query.transform(bound), alias=alias.copy())
 
 
 def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
@@ -267,7 +277,9 @@ def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
 def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
     """A call the table's rows do not take as they stand."""
     name = node.name.lower() if isinstance(node, exp.Anonymous) else node.sql_name().lower()
+    name = _AGGREGATES.get(type(node), name)
     lacking = name in REFUSED or (dialect in _OF[_C] and name in _NOT_ON_CLICKHOUSE)
+    lacking = lacking or (dialect not in _OF[_D] and name in _ONLY_ON_DUCKDB)
     second = name in ("row_to_json", "array_to_json") and len(node.expressions) > 1
     if lacking or second or name in TABLES:  # a Table's call never reaches here: _table has it
         raise NoForm(name)
@@ -284,6 +296,8 @@ def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -
             raise NoForm(name)
         steps = [a.this for a in node.expressions[1:]]
         return _path(node.expressions[0].transform(inner), steps, name.endswith("_text"))
+    if name in _ON_JSON and node.expressions:
+        node.expressions[0].replace(_parsed(node.expressions[0].copy(), dialect))
     return node
 
 
