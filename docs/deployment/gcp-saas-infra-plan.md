@@ -1,4 +1,4 @@
-# GCP SaaS Infra Plan — Cloud SQL variant
+# GCP SaaS Infra Plan: Cloud SQL variant
 
 Multi-tenant, on-demand deployment of Provisa. Distinct from the enterprise module
 ([terraform/gcp/](https://github.com/kenstott/provisa/blob/main/terraform/gcp/)), which is a fixed single-tenant N-node cluster
@@ -44,15 +44,15 @@ wake the way an HTTP request can), so always-on TCP endpoints / ops-grade latenc
 inherently the paid warm-coordinator tier. Warm add-ons use on-demand instances, because a "guaranteed warm" SLA can't ride a preemptible Spot instance, and qualify for a 1-year
 committed-use discount (~37% off) since they run 24/7.
 
-## Service placement — can every service be provisioned here?
+## Service placement
 
-Yes. Every service in the stack ([docker-compose.core.yml](https://github.com/kenstott/provisa/blob/main/docker-compose.core.yml) +
+Every service in the stack ([docker-compose.core.yml](https://github.com/kenstott/provisa/blob/main/docker-compose.core.yml) +
 [docker-compose.app.yml](https://github.com/kenstott/provisa/blob/main/docker-compose.app.yml)) maps to one of the three layers,
 with optional managed swaps for the stateful singletons.
 
 | Service | Enterprise home | SaaS placement | Managed swap (optional) |
 | --- | --- | --- | --- |
-| postgres (control plane) | coordinator compose | **Cloud SQL** | — (this is the swap) |
+| postgres (control plane) | coordinator compose | **Cloud SQL** | None (this is the swap) |
 | pgbouncer | coordinator compose | Cloud SQL pooling, or small pooler on coordinator | Cloud SQL built-in |
 | provisa (API 8000, Flight 8815) | primary + secondaries | **coordinator** (+ workers optional) | — |
 | provisa-ui (443/3000) | primary + secondaries | **coordinator** | — |
@@ -69,7 +69,7 @@ with optional managed swaps for the stateful singletons.
 The stateful singletons (redis, minio) ride the coordinator at low scale. Offloading
 them to Memorystore + GCS is a scale-up option. The plan provisions everything without it.
 
-## Terraform module — delta from enterprise
+## Terraform module: delta from enterprise
 
 New module `terraform/gcp-saas/`. Reuses enterprise networking, firewall, health-check,
 protocol-surface locals, and the NLB verbatim. Changes:
@@ -91,8 +91,8 @@ is required for Cloud SQL private IP on the provisa VPC.
 
 Coordinator needs an external-DB mode. Today only `ROLE=secondary` skips bundled
 postgres and rewrites the DB URLs ([first-launch.sh:275](https://github.com/kenstott/provisa/blob/main/packaging/linux/first-launch.sh#L275),
-[first-launch.sh:582-588](https://github.com/kenstott/provisa/blob/main/packaging/linux/first-launch.sh#L582-L588)). The change:
-key the existing `skip_pattern` + URL-rewrite on an env toggle
+[first-launch.sh:582-588](https://github.com/kenstott/provisa/blob/main/packaging/linux/first-launch.sh#L582-L588)). The change keys
+the existing `skip_pattern` + URL-rewrite on an env toggle
 (e.g. `PROVISA_EXTERNAL_CONTROL_DB=1` with `CONFIG_DB_HOST`/`CONFIG_DB_PASSWORD`) so a
 coordinator can drop the `postgres`/`pgbouncer` services and point
 `PLATFORM_DATABASE_URL`/`TENANT_DATABASE_URL` at Cloud SQL. The compose app tier already
@@ -123,15 +123,15 @@ data to minio/GCS instead of coordinator heap. Keep it; it is the spill valve th
 big query from blowing the coordinator.
 
 **3. Shard coordinators per tenant.** Multitenant routing (`{org}.provisa.dev`) lets each org
-hit its own coordinator, so no single coordinator carries the whole platform: horizontal scale *across* tenants, vertical *within* only a genuinely hot org. This is the primary
-scale-out story; per-coordinator vertical resize is the exception, not the norm.
+hit its own coordinator, so no single coordinator carries the whole platform. Scale is horizontal *across* tenants and vertical *within* only a genuinely hot org. This is the primary
+scale-out story; per-coordinator vertical resize is the exception.
 
 **4. Monitor + automate the rare resize as a rolling failover.** Coordinator exposes JMX
 (`HeapMemoryUsage`, running/queued query counts, cluster memory-pool reserved). Scrape it via
 Managed Prometheus / OTLP (the obs stack already exists) and alert on heap % + queue depth.
 When a tenant genuinely outgrows its coordinator, a controller drains it (stop admitting new
 queries, let in-flight ones drain, which FTE lets checkpoint), brings up a larger-`-Xmx`
-coordinator, and cuts the NLB/DNS over. Seconds of connect interruption, not a live resize.
+coordinator, and cuts the NLB/DNS over. Connects are interrupted for seconds, and nothing is resized live.
 
 ## Cost points
 

@@ -1,17 +1,16 @@
 # Engine cluster mode cutover
 
-Switching `var.engine_cluster_mode` between `autopilot` and `standard` **replaces the GKE cluster**:
-`enable_autopilot` and `dns_config` are creation-time settings, and Autopilot must be regional while
-the Standard cluster is zonal. Every shard on the old cluster is destroyed with it. This is a
-scheduled maintenance window announced through the maintenance banner, not a rolling
-change.
+Switching `var.engine_cluster_mode` between `autopilot` and `standard` **replaces the GKE cluster**,
+because `enable_autopilot` and `dns_config` are creation-time settings and Autopilot must be regional
+while the Standard cluster is zonal. Every shard on the old cluster is destroyed with it. This is a
+scheduled maintenance window announced through the maintenance banner. It is not a rolling change.
 
 ## When to switch
 
 Autopilot bills per pod request, so an idle shard costs nothing; Standard runs ~6% cheaper per
 shard-hour against a fixed ~$11/mo Spot system pool. Crossover is ~460 shard-hours a month (~15
 hours a day of query time on the shared lane). Launch shape is `autopilot`. Switch to `standard`
-once measured duty cycle passes the crossover, not before.
+once measured duty cycle passes the crossover.
 
 ## What changes, and what does not
 
@@ -26,7 +25,7 @@ Everything else is identical. Downstream terraform reads the cluster only throug
 control plane changes only `PROVISA_ENGINE_CLUSTER_MODE` and `PROVISA_ENGINE_CLUSTER_LOCATION`
 (`provisa/federation/k8s_provisioner.py:156` and `:180`).
 
-`PROVISA_ENGINE_CLUSTER_ZONE` is required in **both** modes: regional Autopilot would otherwise
+`PROVISA_ENGINE_CLUSTER_ZONE` is required in **both** modes, because regional Autopilot would otherwise
 place a shard pod in a zone the control-plane VM is not in and bill every result set as cross-zone
 egress.
 
@@ -89,7 +88,7 @@ No shard survives the replacement. The first query re-creates it, with a cold st
 
 `preflight_engine` reprints the engine settings out of the running container (confirm the new mode),
 and `verify_engine` runs a real `SELECT 1` through `/data/sql`. That query is the only end-to-end
-readiness signal: `shard_status()` has no HTTP surface, and `/health` answers 200 whether or not a
+readiness signal, because `shard_status()` has no HTTP surface and `/health` answers 200 whether or not a
 shard is reachable.
 
 ### 5. Clear the notice
@@ -101,4 +100,4 @@ provisa maintenance off
 ## Rollback
 
 Set `engine_cluster_mode` back, repeat steps 2-4. Rollback is another cluster replacement with the
-same shard loss, so it costs a second window. Decide before step 2, not during.
+same shard loss, so it costs a second window. Decide before step 2.
