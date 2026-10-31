@@ -44,7 +44,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import raising
-from provisa.transpiler import pg_forms
+from provisa.transpiler import pg_forms, pg_forms_json
 from provisa.transpiler.metadata_functions import VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
@@ -977,14 +977,6 @@ _ROWS: tuple[Macro, ...] = (
             )
         },
     ),
-    _macro(
-        "jsonb_typeof",
-        "value",
-        "CASE WHEN value IS NULL THEN CAST(NULL AS VARCHAR) "
-        "ELSE CASE json_type(value) WHEN 'OBJECT' THEN 'object' "
-        "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
-        "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
-    ),
     _macro("pg_typeof", "value", _PG_TYPEOF),
     *_SHAPES,
     *_TSVECTOR,
@@ -1015,12 +1007,6 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN value IS NOT NULL AND n IS NOT NULL THEN "
         "CAST(CASE WHEN n < 0 THEN CAST(value AS VARCHAR) ELSE left(CAST(value AS VARCHAR), n) END "
         "AS BIT) END",
-    ),
-    _macro(
-        "json_each",
-        "v",
-        "unnest(list_transform(json_keys(v), "
-        "_k -> struct_pack(key := _k, value := json_extract(v, '$.\"' || _k || '\"'))))",
     ),
     *_comparisons("oidvector", "eq", "ne", "lt", "le", "gt", "ge"),
     *_comparisons("xid8", "eq", "ne", "lt", "le", "gt", "ge"),
@@ -1061,20 +1047,13 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) IN ('utf8', 'unicode') "
         "THEN 6 WHEN name IS NOT NULL THEN -1 END",
     ),
-    # Strict; on a value PostgreSQL refuses this form: a record needs a column definition list.
-    _macro(
-        "json_to_record",
-        "value",
-        "CASE WHEN value IS NOT NULL THEN "
-        "error('function returning record called in context that cannot accept type record') "
-        "ELSE CAST(NULL AS VARCHAR) END",
-    ),
     *_NUMBERS,
     *_DATES,
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_json.ROWS),
 )
 
 #: A call's name and argument count -> its overload: the one table.
@@ -1128,7 +1107,9 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
 #: An overload's row -> the function a statement called, which names its column.
 _CALLED = {row: name for (name, _, _), row in OVERLOADS.items()}
 _NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS}
-_MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
+_MENTIONED = re.compile(
+    r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(|" + pg_forms_json.OPERATORS, re.IGNORECASE
+)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
 
@@ -1242,6 +1223,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     of its argument count is left, for the engine to say so."""
     if dialect in NATIVE:
         return tree
+    try:
+        tree = pg_forms_json.lowered(tree, dialect)
+    except pg_forms_json.NoForm as refused:
+        raise FunctionRefused(refused.called, dialect) from refused
 
     def rewrite(node: exp.Expr) -> exp.Expr:
         target = node
