@@ -35921,7 +35921,9 @@
     column grants. The pgwire catalog passes metadata along and is neither the meta domain nor gated by
     it. (Amended 2026-10-29, CORRECTION TO READ, WRITE OR LIST:) The sentence holding this metadata to the
     role''s column grants is withdrawn: the maintainer did not state it, and a role that can only list holds
-    no column grants.'
+    no column grants. (Amended 2026-10-29, THE SAME ON EVERY CATALOG SURFACE:) Maintainer 2026-10-31: read,
+    write or list holds on every surface that describes the catalog: the gRPC proto, JSON:API, GraphQL,
+    Cypher, SPARQL and OpenAPI, as on the pgwire catalog and meta.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
