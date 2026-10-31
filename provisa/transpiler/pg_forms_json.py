@@ -201,7 +201,7 @@ class NoForm(ValueError):
 
 #: What may be json in a statement, for function_macros.mentioned. ``->`` is not: a statement that
 #: holds only it costs nothing here.
-OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_"
+OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json"
 
 
 def _said_jsonb(node: exp.Expr) -> bool:
