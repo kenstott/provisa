@@ -28,6 +28,10 @@ import { anchoredPositions } from "../canvas/canvas-helpers";
 
 const REGIONS = ["North", "South", "East", "West"];
 
+/** A schema level: a node with no value of one stays free, where a property's lacking nodes form a
+ * group of their own (frameMeta.test.ts). */
+const LEVEL = "schema_L1";
+
 /** A weblogs-like result: customers carrying a region, each with two orders, each order with an
  * item of a product -- the orders, items and products carry no region. */
 function weblogs() {
@@ -54,7 +58,7 @@ function weblogs() {
   const owner = new Map<string, string>(); // order/item/product key -> its customer's region
   REGIONS.forEach((region) => {
     for (let c = 0; c < 3; c++) {
-      const customer = node("customers", { region });
+      const customer = node("customers", { scl1: region });
       for (let o = 0; o < 2; o++) {
         const order = node("orders", { total: o });
         edge("PLACED", customer, order);
@@ -69,14 +73,14 @@ function weblogs() {
   return { nodes, edges, owner };
 }
 
-const supernode = (region: string) => `__collapsed_region_${cidToId(region)}`;
+const supernode = (region: string) => `__collapsed_${LEVEL}_${cidToId(region)}`;
 
 describe("the grouping transform, every group collapsed", () => {
   const { nodes, edges } = weblogs();
   const collapsed = new Set(REGIONS);
 
   it("ties an edge to a collapsed member to its group's supernode", () => {
-    const meta = buildClusterMetaEdges(nodes, edges, "region", undefined, collapsed, false);
+    const meta = buildClusterMetaEdges(nodes, edges, LEVEL, undefined, collapsed, false);
     const placed = meta.filter((e) => e.data._metaType === "PLACED");
     expect(new Set(placed.map((e) => e.data.source))).toEqual(new Set(REGIONS.map(supernode)));
     // every order is tied to a supernode, none to a customer that is no longer drawn
@@ -85,8 +89,8 @@ describe("the grouping transform, every group collapsed", () => {
   });
 
   it("ends an edge on the supernode in either routing", () => {
-    const forLayout = buildClusterMetaEdges(nodes, edges, "region", undefined, collapsed, false);
-    const forPorts = buildClusterMetaEdges(nodes, edges, "region", undefined, collapsed, true);
+    const forLayout = buildClusterMetaEdges(nodes, edges, LEVEL, undefined, collapsed, false);
+    const forPorts = buildClusterMetaEdges(nodes, edges, LEVEL, undefined, collapsed, true);
     expect(forPorts.map((e) => e.data.id)).toEqual(forLayout.map((e) => e.data.id));
   });
 });
@@ -98,9 +102,9 @@ function canvas() {
     headless: true,
     styleEnabled: true,
     elements: [
-      ...buildClusterElements(nodes, edges, "region", undefined, collapsed),
+      ...buildClusterElements(nodes, edges, LEVEL, undefined, collapsed),
       // after a layout the canvas holds the port routing (GraphCanvas.computeHulls)
-      ...buildClusterMetaEdges(nodes, edges, "region", undefined, collapsed, true),
+      ...buildClusterMetaEdges(nodes, edges, LEVEL, undefined, collapsed, true),
     ],
   }) as unknown as CyInstance;
   return { cy, nodes, edges, owner, collapsed };
@@ -110,7 +114,7 @@ describe("a redraw after the supernodes were dragged apart", () => {
   it("puts the layout's edges in place of the ones the canvas holds", () => {
     const { cy, nodes, edges, collapsed } = canvas();
     const before = cy.edges("[?_metaEdge]").length;
-    swapToLayoutMetaEdges(cy, nodes, edges, "region", new Map(), collapsed);
+    swapToLayoutMetaEdges(cy, nodes, edges, LEVEL, new Map(), collapsed);
     expect(cy.edges("[?_metaEdge]").length).toBe(before);
   });
 
@@ -130,7 +134,7 @@ describe("a redraw after the supernodes were dragged apart", () => {
       cy.getElementById(supernode(region)).position(corners[region]).lock();
     }
 
-    swapToLayoutMetaEdges(cy, nodes, edges, "region", new Map(), collapsed);
+    swapToLayoutMetaEdges(cy, nodes, edges, LEVEL, new Map(), collapsed);
     // The nudge's layout (use-graph-layout.ts nudgeLayout), run to its end without animation.
     cy.layout({
       ...LAYOUT_OPTIONS.force,

@@ -58,11 +58,59 @@ export function termName(iri: string, prefixes: Record<string, string>): string 
   return ns !== undefined && iri.startsWith(ns) ? decodeURIComponent(iri.slice(ns.length)) : null;
 }
 
+/** The datatypes of a numeric column (provisa.sparql_query.vocabulary.xsd_of). */
+const NUMERIC_DATATYPES = new Set(
+  ["integer", "decimal", "double", "float"].map(
+    (d) => `http://www.w3.org/2001/XMLSchema#${d}`,
+  ),
+);
+
+/** The predicates of a class's columns and the Property terms they bind, by name. */
+function classPredicates(
+  cls: SparqlVocabulary["classes"][number],
+  vocabulary: SparqlVocabulary,
+): { iri: string; name: string; datatype: string | undefined }[] {
+  const held = new Map<string, { iri: string; name: string; datatype: string | undefined }>();
+  for (const x of vocabulary.predicates) {
+    const column = x.kind === "column" && cls.labels.includes(x.label ?? "");
+    const bound = x.classes?.find((k) => k.class === cls.iri || cls.labels.includes(k.label));
+    if (!column && !bound) continue;
+    const name = column ? x.property : termName(x.iri, vocabulary.prefixes);
+    held.set(x.iri, { iri: x.iri, name: name ?? x.iri, datatype: (bound ?? x).datatype });
+  }
+  return [...held.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** What a class's menu offers: its predicates, each by the key a drawn node holds it under, named
+ * as the panel names it; and those that are numeric. */
+export function classMenuProperties(
+  cls: SparqlVocabulary["classes"][number],
+  vocabulary: SparqlVocabulary,
+  prefixes: Record<string, string>,
+): { properties: string[]; propertyNames: Record<string, string>; numericProperties: string[] } {
+  const named = { ...vocabulary, prefixes };
+  const all = allPrefixes(named);
+  const predicates = classPredicates(cls, named).map((x) => ({
+    ...x,
+    key: shownIri(x.iri, all),
+  }));
+  return {
+    properties: predicates.map((x) => x.key),
+    propertyNames: Object.fromEntries(predicates.map((x) => [x.key, x.name])),
+    numericProperties: predicates
+      .filter((x) => NUMERIC_DATATYPES.has(x.datatype ?? ""))
+      .map((x) => x.key),
+  };
+}
+
 /** The prefixes every vocabulary has; any other is a domain's. */
 export const STANDARD_PREFIXES = ["rdf", "rdfs", "owl", "skos", "xsd", "rel", "term", "id"];
 
 export const domainPrefixes = (v: SparqlVocabulary): [string, string][] =>
   Object.entries(v.prefixes).filter(([p]) => !STANDARD_PREFIXES.includes(p));
+
+/** A local name a query can write as it stands: percent escapes are legal in one. */
+const PLAIN_LOCAL = /^(?:[\w:]|%[0-9A-Fa-f]{2})(?:[\w.:-]|%[0-9A-Fa-f]{2})*$/;
 
 /** ``prefix:local`` where a prefix's namespace starts the IRI and the rest is a plain local name;
  * otherwise the IRI in angle brackets. */
@@ -70,10 +118,47 @@ export function compactIri(iri: string, prefixes: Record<string, string>): strin
   const best = longestPrefix(iri, prefixes);
   if (best) {
     const local = iri.slice(best[1].length);
-    if (/^[A-Za-z_][\w.-]*$/.test(local) && !local.endsWith(".")) return `${best[0]}:${local}`;
+    if (PLAIN_LOCAL.test(local) && !local.endsWith(".")) return `${best[0]}:${local}`;
   }
   return `<${iri}>`;
 }
+
+/** A class's name made a prefix name. */
+const prefixName = (name: string): string => {
+  const safe = name.replace(/[^\w-]/g, "_");
+  return /^[A-Za-z]/.test(safe) ? safe : `c_${safe}`;
+};
+
+/**
+ * Each table class's own prefix, ending in its ``#``: a column's predicate holds a ``#``, which a
+ * query reads as a comment, so it is written ``pets:breedName``. By the class's name, qualified by
+ * its domain's prefix where two domains share the name or a prefix in use has it.
+ */
+export function classPrefixes(
+  vocabulary: Pick<SparqlVocabulary, "classes" | "prefixes">,
+): Record<string, string> {
+  const { prefixes } = vocabulary;
+  const tables = vocabulary.classes
+    .filter((c) => c.kind === "table")
+    .map((c) => ({ iri: c.iri, name: prefixName(c.iri.slice(c.iri.lastIndexOf("/") + 1)) }));
+  const named = new Map<string, number>();
+  for (const { name } of tables) named.set(name, (named.get(name) ?? 0) + 1);
+  const own: Record<string, string> = {};
+  for (const { iri, name } of tables) {
+    const domain = longestPrefix(iri, prefixes)?.[0] ?? "c";
+    const clear = named.get(name) === 1 && !(name in prefixes);
+    const base = clear ? name : `${domain}_${name}`;
+    let prefix = base;
+    for (let i = 2; prefix in prefixes || prefix in own; i++) prefix = `${base}${i}`;
+    own[prefix] = `${iri}#`;
+  }
+  return own;
+}
+
+/** The prefixes in use and each class's own: what terms are written and shown by. */
+export const allPrefixes = (
+  vocabulary: Pick<SparqlVocabulary, "classes" | "prefixes">,
+): Record<string, string> => ({ ...classPrefixes(vocabulary), ...vocabulary.prefixes });
 
 function longestPrefix(iri: string, prefixes: Record<string, string>): [string, string] | null {
   let best: [string, string] | null = null;
@@ -95,11 +180,45 @@ export function shownIri(iri: string, prefixes: Record<string, string>): string 
 }
 
 const XSD = "http://www.w3.org/2001/XMLSchema#";
-/** The datatypes a literal shows no datatype for: a plain string, an integer. */
-const PLAIN_DATATYPES = new Set([`${XSD}string`, `${XSD}integer`]);
+/** The datatypes a literal shows no datatype for, its value saying what it is: text, the numeric
+ * types, booleans, and dates and times. Its hover names the datatype. */
+const PLAIN_DATATYPES = new Set(
+  [
+    "string",
+    "integer",
+    "int",
+    "long",
+    "short",
+    "byte",
+    "nonNegativeInteger",
+    "positiveInteger",
+    "nonPositiveInteger",
+    "negativeInteger",
+    "unsignedLong",
+    "unsignedInt",
+    "unsignedShort",
+    "unsignedByte",
+    "decimal",
+    "double",
+    "float",
+    "boolean",
+    "date",
+    "dateTime",
+    "dateTimeStamp",
+    "time",
+    "duration",
+    "dayTimeDuration",
+    "yearMonthDuration",
+    "gYear",
+    "gYearMonth",
+    "gMonth",
+    "gMonthDay",
+    "gDay",
+  ].map((d) => `${XSD}${d}`),
+);
 
-/** A literal as a cell or a graph label shows it: a plain string and an integer plainly, one with a
- * language tag or another datatype as Turtle writes it, its datatype compacted. */
+/** A literal as a cell or a graph label shows it: plainly where its value says what it is, one with
+ * a language tag or another datatype as Turtle writes it, its datatype compacted. */
 export function shownLiteral(
   value: string,
   datatype: string | undefined,
@@ -164,7 +283,7 @@ export function pickedQuery(
   pick: VocabularyPick,
   vocabulary: SparqlVocabulary,
 ): string {
-  const p = vocabulary.prefixes;
+  const p = allPrefixes(vocabulary);
   if (pick.kind === "prefix") return withPrefixes(query, [pick.prefix], p);
   if (pick.kind === "edge") {
     const rel = relationshipPattern(query, pick.iri, vocabulary);
@@ -186,7 +305,53 @@ export function pillQuery(
   pick: Extract<VocabularyPick, { iri: string }>,
   vocabulary: SparqlVocabulary,
 ): string {
-  return pickedQuery("", pick, vocabulary);
+  if (pick.kind !== "class") return pickedQuery("", pick, vocabulary);
+  const cls = vocabulary.classes.find((x) => x.iri === pick.iri);
+  if (!cls) throw new Error(`the vocabulary has no class ${pick.iri}`);
+  const wide = classQuery(cls, vocabulary);
+  return wide ?? pickedQuery("", pick, vocabulary);
+}
+
+/** ``name`` as a variable none of ``used`` is. */
+function ownVariable(name: string, used: Set<string>): string {
+  const safe = name.replace(/[^A-Za-z0-9_]/g, "_");
+  let variable = safe;
+  for (let i = 2; used.has(variable); i++) variable = `${safe}${i}`;
+  used.add(variable);
+  return variable;
+}
+
+/**
+ * A class as a table, as a Cypher label's nodes read: one row per instance, one column per property
+ * the role reads of the class, each by its plain name and OPTIONAL so a row with no value stays.
+ * Null for a class with no property.
+ */
+function classQuery(
+  cls: SparqlVocabulary["classes"][number],
+  vocabulary: SparqlVocabulary,
+): string | null {
+  const predicates = classPredicates(cls, vocabulary);
+  if (predicates.length === 0) return null;
+  const namespaces = allPrefixes(vocabulary);
+  const term = compactIri(cls.iri, namespaces);
+  const used = new Set(["s"]);
+  const columns = predicates.map((x) => ({
+    term: compactIri(x.iri, namespaces),
+    variable: ownVariable(x.name, used),
+  }));
+  const body = [
+    `SELECT ?s ${columns.map((c) => `?${c.variable}`).join(" ")} WHERE {`,
+    `  ?s a ${term} .`,
+    ...columns.map((c) => `  OPTIONAL { ?s ${c.term} ?${c.variable} }`),
+    "}",
+    "LIMIT 25",
+  ].join("\n");
+  const named = [term, ...columns.map((c) => c.term)].map(prefixOf);
+  return withPrefixes(
+    body,
+    named.filter((p): p is string => p !== null),
+    namespaces,
+  );
 }
 
 /** The variables ``query`` types, each with the classes it is typed as (``?s a pet-store:pets``). */
@@ -248,6 +413,28 @@ export function relationshipPattern(
     pattern: `${a} a ${domain} . ${a} ${rel} ${b} . ${b} a ${range} .`,
     terms: [domain, rel, range],
   };
+}
+
+/** One token of a query: a PREFIX declaration (1, its name), then what no prefix is read inside --
+ * a string, an IRI, a comment, a variable, a language tag -- then a prefixed name (2, its prefix),
+ * a word, or any other character. */
+const QUERY_TOKEN =
+  /PREFIX\s+([A-Za-z][\w.-]*)?:\s*<[^>]*>|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|<[^<>"{}|^`\\\s]*>|#[^\n]*|[?$]\w+|@[A-Za-z-]+|([A-Za-z][\w.-]*)?:(?:[\w%:.-]|\\.)*|\w+|[\s\S]/gi;
+
+/** ``query`` as it is sent: with a PREFIX line for each of ``namespaces`` it uses and does not
+ * declare. A query's own PREFIX wins, and a prefix neither has is left for the server to refuse. */
+export function withUsedPrefixes(query: string, namespaces: Record<string, string>): string {
+  const declared = new Set<string>();
+  const used = new Set<string>();
+  for (const m of query.matchAll(QUERY_TOKEN)) {
+    if (/^PREFIX\s/i.test(m[0])) declared.add(m[1] ?? "");
+    else if (/^[A-Za-z:]/.test(m[0]) && m[0].includes(":")) used.add(m[2] ?? "");
+  }
+  return withPrefixes(
+    query,
+    [...used].filter((p) => !declared.has(p)),
+    namespaces,
+  );
 }
 
 /** ``query`` with its PREFIX lines for ``prefixes`` (those it has not declared), first. */
@@ -412,6 +599,10 @@ const iriLocal = (iri: string): string =>
 const resourceName = (c: RdfCell): string =>
   c.rdfTerm === "iri" && !isPrefixedName(c) ? iriTail(c.value) : c.shown;
 
+/** The label a class's nodes are drawn with, which what is kept per class goes by. */
+export const classLabel = (iri: string, prefixes: Record<string, string>): string =>
+  resourceName({ rdfTerm: "iri", value: iri, shown: shownIri(iri, prefixes) });
+
 /** Whether an IRI's shown form is a prefix and a plain local name: not the whole IRI, and not a
  * shortened path such as ``id:sales/orders/1``, which says nothing a label could. */
 const isPrefixedName = (c: RdfCell): boolean => !c.shown.startsWith("<") && !/[/#%]/.test(c.shown);
@@ -511,6 +702,29 @@ function ontologyTriples(triples: Triple[]): { triples: Triple[]; classes: Map<s
   return { triples: out, classes };
 }
 
+/** The prefixes a frame's terms show by: the ones in use, and those its query declares for what they
+ * do not already name. A query's ``p:`` for a class's columns renames none of them: what is kept per
+ * class and predicate goes by the names in use. */
+function shownPrefixes(
+  prefixes: Record<string, string>,
+  query: string,
+): Record<string, string> {
+  const namespaces = Object.values(prefixes).filter((ns) => ns !== "");
+  const own = Object.entries(queryPrefixes(query)).filter(
+    ([p, ns]) => p in prefixes || !namespaces.some((n) => ns.startsWith(n)),
+  );
+  return { ...prefixes, ...Object.fromEntries(own) };
+}
+
+/** A relationship as it is shown: every relationship is under ``rel:`` (the server's edge_iri), so
+ * the prefix says nothing; any other predicate keeps its own. A query still writes it. */
+export const edgeName = (shown: string): string =>
+  shown.startsWith("rel:") ? shown.slice("rel:".length) : shown;
+
+/** ``value`` beside what a predicate holds: one value alone, several a list. */
+const listed = (held: unknown, value: string): unknown =>
+  held === undefined ? value : Array.isArray(held) ? [...held, value] : [held, value];
+
 /**
  * The triples as the canvas draws them: each resource a node, labelled by its class where a triple
  * types it (else its namespace's prefix), and each triple whose object is a resource an edge named
@@ -564,6 +778,8 @@ export function triplesGraph(
         label,
         tableLabel: label,
         propertyIris: {},
+        propertyValues: {},
+        propertyDatatypes: {},
         properties: classValues.has(c.value)
           ? { name: iriLocal(c.value), class: resourceName(c), ...identity }
           : { name: captionOf(c, literals), ...identity },
@@ -576,10 +792,10 @@ export function triplesGraph(
     const { s, p, o } = t;
     const a = resource(s);
     if (o.rdfTerm === "literal" && !literalNodes) {
-      const held = a.properties[p.shown];
-      a.properties[p.shown] =
-        held === undefined ? o.shown : Array.isArray(held) ? [...held, o.shown] : [held, o.shown];
+      a.properties[p.shown] = listed(a.properties[p.shown], o.shown);
       if (a.propertyIris) a.propertyIris[p.shown] = p.value;
+      if (a.propertyValues) a.propertyValues[p.shown] = listed(a.propertyValues[p.shown], o.value);
+      if (a.propertyDatatypes && o.datatype) a.propertyDatatypes[p.shown] = o.datatype;
       return;
     }
     // A literal node is the triple's own: the same value under two subjects is two nodes.
@@ -601,7 +817,7 @@ export function triplesGraph(
       identity,
       start: a.id,
       end: b.id,
-      type: p.shown,
+      type: edgeName(p.shown),
       properties: p.value === "" ? {} : { iri: p.value },
       startNode: a,
       endNode: b,
@@ -610,12 +826,17 @@ export function triplesGraph(
   return { nodes, edges };
 }
 
-/** The class each variable of ``query`` is typed as (``?s a pet-store:pets``), as the query names
- * it; the tail of its IRI where the query writes it in full. */
-function queryClasses(query: string): Map<string, string> {
+/** The class each variable of ``query`` is typed as (``?s a pet-store:pets``): by the label its
+ * nodes are drawn with where ``prefixes`` read it, else as the query names it, the tail of its IRI
+ * where the query writes it in full. */
+function queryClasses(query: string, prefixes?: Record<string, string>): Map<string, string> {
   return new Map(
     [...typedVariables(query)].map(([variable, classes]) => {
       const [first] = classes;
+      const iri = prefixes
+        ? writtenPredicate(first, { ...queryPrefixes(query), ...prefixes })
+        : null;
+      if (prefixes && iri) return [variable, classLabel(iri, prefixes)];
       return [variable, first.startsWith("<") ? iriTail(first.slice(1, -1)) : first];
     }),
   );
@@ -746,15 +967,49 @@ export function frameTriples(frame: FrameData): Triple[] {
 export function describedProperties(literals: Triple[]): {
   properties: Record<string, unknown>;
   propertyIris: Record<string, string>;
+  propertyValues: Record<string, unknown>;
+  propertyDatatypes: Record<string, string>;
 } {
   const own = new Set(["name", "iri", "class"]);
   const properties: Record<string, unknown> = {};
   const propertyIris: Record<string, string> = {};
+  const propertyValues: Record<string, unknown> = {};
+  const propertyDatatypes: Record<string, string> = {};
   for (const node of triplesGraph(literals).nodes.values()) {
     for (const [k, v] of Object.entries(node.properties)) if (!own.has(k)) properties[k] = v;
     Object.assign(propertyIris, node.propertyIris);
+    Object.assign(propertyValues, node.propertyValues);
+    Object.assign(propertyDatatypes, node.propertyDatatypes);
   }
-  return { properties, propertyIris };
+  return { properties, propertyIris, propertyValues, propertyDatatypes };
+}
+
+const shownTriple = (t: Triple, prefixes: Record<string, string>): Triple => ({
+  s: shownBy(t.s, prefixes),
+  p: shownBy(t.p, prefixes),
+  o: shownBy(t.o, prefixes),
+});
+
+/** ``drawn`` with what a DESCRIBE said of each of its nodes on the node, by the prefixes in use. */
+function withDescribed(drawn: FrameData, prefixes?: Record<string, string>): FrameData {
+  const { sparqlDescribed: described } = drawn;
+  if (!described || drawn.nodes.size === 0) return drawn;
+  const nodes = new Map(drawn.nodes);
+  for (const [key, n] of nodes) {
+    const entry = typeof n.properties.iri === "string" ? described[n.properties.iri] : undefined;
+    if (!entry || !("literals" in entry)) continue;
+    const said = describedProperties(
+      prefixes ? entry.literals.map((t) => shownTriple(t, prefixes)) : entry.literals,
+    );
+    nodes.set(key, {
+      ...n,
+      properties: { ...said.properties, ...n.properties },
+      propertyIris: { ...said.propertyIris, ...n.propertyIris },
+      propertyValues: { ...said.propertyValues, ...n.propertyValues },
+      propertyDatatypes: { ...said.propertyDatatypes, ...n.propertyDatatypes },
+    });
+  }
+  return { ...drawn, nodes };
 }
 
 /** ``frame`` as it is drawn: a CONSTRUCT's triples with their literals as properties or, with
@@ -767,11 +1022,17 @@ export function sparqlDrawn(
   drawSelect: boolean,
   prefixes?: Record<string, string>,
 ): FrameData {
-  const shown = prefixes && { ...prefixes, ...queryPrefixes(frame.query) };
-  const cells = (ts: Triple[]): Triple[] =>
-    shown
-      ? ts.map((t) => ({ s: shownBy(t.s, shown), p: shownBy(t.p, shown), o: shownBy(t.o, shown) }))
-      : ts;
+  const shown = prefixes && shownPrefixes(prefixes, frame.query);
+  return withDescribed(drawnAnswer(frame, literalNodes, drawSelect, shown), shown);
+}
+
+function drawnAnswer(
+  frame: FrameData,
+  literalNodes: boolean,
+  drawSelect: boolean,
+  shown: Record<string, string> | undefined,
+): FrameData {
+  const cells = (ts: Triple[]): Triple[] => (shown ? ts.map((t) => shownTriple(t, shown)) : ts);
   const rows = shown
     ? frame.rows.map((r) =>
         Object.fromEntries(
@@ -791,7 +1052,7 @@ export function sparqlDrawn(
   if (drawSelect && frame.sparqlPairing) {
     const pairing = frame.sparqlPairing;
     // The class the query types each end as (``?s a pet-store:pets``), for the nodes' labels.
-    const classes = queryClasses(frame.query);
+    const classes = queryClasses(frame.query, shown);
     const typed = new Map<string, string>();
     for (const [column, variable] of [
       [pairing.subject, pairing.subject],
@@ -839,7 +1100,7 @@ export async function sparqlStatement(
   res: Response,
   namespaces: Record<string, string>,
 ): Promise<FrameStatement> {
-  const prefixes = { ...namespaces, ...queryPrefixes(query) };
+  const prefixes = shownPrefixes(namespaces, query);
   const empty = { nodes: new Map(), edges: new Map(), rows: [], columns: [] };
   if (!res.ok) return { ...empty, query, status: "error", error: await refusalText(res) };
   const type = (res.headers.get("content-type") ?? "").split(";")[0].trim();

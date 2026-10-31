@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import type { TFunction } from "i18next";
-import type { FrameData, GNode } from "../graph-model";
+import { ownColumnName, type FrameData, type GNode } from "../graph-model";
 
 /** A done frame's header count: its nodes and relationships when it draws any, else the rows of a
  * table answer (a read of values only), never "0 nodes · 0 rels" over rows. */
@@ -29,54 +29,60 @@ export function frameMetaText(frame: FrameData, t: TFunction): string {
     : t("graphFrame.metaCount", { nodes: frame.nodes.size, edges: frame.edges.size });
 }
 
-/** Properties available for grouping: virtual schema_L1/L2/L3 (mapped to scl1/scl2/scl3) followed
- * by any scalar property with more than one distinct value. */
-export function groupableAttributes(nodes: Map<string, GNode>): string[] {
+/** What a class has, by the key a node holds each property under, before its nodes were read. */
+export interface ClassProperties {
+  properties: string[];
+  propertyNames: Record<string, string>;
+}
+
+const NOT_GROUPABLE = new Set([
+  "scl1",
+  "scl2",
+  "scl3",
+  "l1Cluster",
+  "l2Cluster",
+  "l3Cluster",
+  "degIn",
+  "degOut",
+  "degTotal",
+]);
+
+/** A frame's Group list, alphabetically: the domain, the schema levels and degrees that differ, and
+ * every property any node has or its class declares, named as the Inspector names it. A name two
+ * properties share stays as written, so each can be told apart. */
+export function groupOptions(
+  nodes: Map<string, GNode>,
+  classProperties: Record<string, ClassProperties> = {},
+): { value: string; label: string }[] {
   if (nodes.size === 0) return [];
-  const SKIP = new Set([
-    "scl1",
-    "scl2",
-    "scl3",
-    "l1Cluster",
-    "l2Cluster",
-    "l3Cluster",
-    "degIn",
-    "degOut",
-    "degTotal",
-  ]);
-  const schemaVirtuals: string[] = [];
-  for (const [virtName, prop] of [
-    ["schema_L1", "scl1"],
-    ["schema_L2", "scl2"],
-    ["schema_L3", "scl3"],
-  ] as const) {
+  const differs = (prop: string): boolean => {
     const vals = new Set<string>();
     nodes.forEach((n) => {
       const v = n.properties[prop];
       if (v !== null && v !== undefined) vals.add(String(v));
     });
-    if (vals.size > 1) schemaVirtuals.push(virtName);
-  }
-  const degreeVirtuals: string[] = [];
-  for (const key of ["degIn", "degOut", "degTotal"] as const) {
-    const vals = new Set<string>();
-    nodes.forEach((n) => {
-      const v = n.properties[key];
-      if (v !== null && v !== undefined) vals.add(String(v));
-    });
-    if (vals.size > 1) degreeVirtuals.push(key);
-  }
-  const counts = new Map<string, Set<string>>();
+    return vals.size > 1;
+  };
+  const named = new Map<string, string>();
   nodes.forEach((n) => {
-    Object.entries(n.properties).forEach(([k, v]) => {
-      if (SKIP.has(k) || v === null || v === undefined) return;
-      if (typeof v === "object") return;
-      if (!counts.has(k)) counts.set(k, new Set());
-      counts.get(k)!.add(String(v));
-    });
+    for (const k of Object.keys(n.properties))
+      if (!NOT_GROUPABLE.has(k)) named.set(k, ownColumnName(n, k) ?? k);
+    const declared = classProperties[n.label];
+    if (!declared) return;
+    for (const k of declared.properties) named.set(k, declared.propertyNames[k] ?? k);
   });
-  const regularAttrs = [...counts.entries()].filter(([, vals]) => vals.size > 1).map(([k]) => k);
-  return ["domain", ...schemaVirtuals, ...degreeVirtuals, ...regularAttrs].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const shared = new Map<string, number>();
+  for (const name of named.values()) shared.set(name, (shared.get(name) ?? 0) + 1);
+  const virtuals = [
+    "domain",
+    ...(["schema_L1", "schema_L2", "schema_L3"] as const).filter((_, i) => differs(`scl${i + 1}`)),
+    ...(["degIn", "degOut", "degTotal"] as const).filter(differs),
+  ];
+  return [
+    ...virtuals.map((value) => ({ value, label: value })),
+    ...[...named].map(([value, name]) => ({
+      value,
+      label: (shared.get(name) ?? 0) > 1 ? value : name,
+    })),
+  ].sort((a, b) => a.label.localeCompare(b.label));
 }
