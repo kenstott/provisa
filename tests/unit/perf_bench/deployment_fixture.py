@@ -247,6 +247,7 @@ def build(
                 "alias": t["alias"],
                 "cacheTtl": t["cache_ttl"],
                 "replicate": t["replicate"],
+                "rowMaterialize": t["replicate"] == 0,  # config.yaml: the three replicated tables
                 "graphqlFieldName": None if "graphql" in drop.get(t["table"], ()) else t["root"],
                 "dqDataset": f"pgwire/{t['sql'].split('.')[0]}/{t['sql'].split('.')[1]}",
                 "columns": [
@@ -364,8 +365,12 @@ def build(
         proto += [f"  optional int32 {c['grpc']} = {i};" for i, c in enumerate(t["columns"], 1)]
         proto.append("}")
 
-    # GET /data/sparql/vocabulary, as the server builds it over the graph's labels: a table's class
-    # and its columns' predicates by its label, an edge type's predicate between two labels.
+    # GET /data/sparql/vocabulary, as the server builds it. Its labels are the label map's keys, not
+    # the graph schema's domain:table spelling: a table's class and its columns' predicates by that
+    # label, an edge type's predicate between two labels.
+    def vocab_label(t: dict[str, Any]) -> str:
+        return f"PB__{t['table_label']}"
+
     def in_sparql(t: dict[str, Any]) -> bool:
         return not {"cypher", "sparql"} & set(drop.get(t["table"], ()))
 
@@ -376,7 +381,7 @@ def build(
             {
                 "iri": f"{PUBLIC_URL}/vocab/{DOMAIN}/{t['table']}",
                 "kind": "table",
-                "labels": [t["label"]],
+                "labels": [vocab_label(t)],
             }
             for t in vocab_tables
         ],
@@ -384,7 +389,7 @@ def build(
             {
                 "iri": f"{PUBLIC_URL}/vocab/{DOMAIN}/{t['table']}#{c['name']}",
                 "kind": "column",
-                "label": t["label"],
+                "label": vocab_label(t),
                 "property": c["cypher"],
                 "datatype": "http://www.w3.org/2001/XMLSchema#integer",
             }
@@ -395,8 +400,8 @@ def build(
             {
                 "iri": f"{PUBLIC_URL}/vocab/rel/{cy}",
                 "type": cy,
-                "source": by_id[s]["label"],
-                "target": by_id[tg]["label"],
+                "source": vocab_label(by_id[s]),
+                "target": vocab_label(by_id[tg]),
             }
             for s, tg, _sc, _tc, _card, cy, _nested in rels
             if in_sparql(by_id[s]) and in_sparql(by_id[tg])

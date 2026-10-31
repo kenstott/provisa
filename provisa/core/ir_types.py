@@ -17,7 +17,8 @@ DDL, free). Swap the fed engine and only its IR→physical map changes; sources 
 
 ``data_type`` on a column is an IR name. For a LANDED table it is authoritative (it IS the store
 DDL); for a LIVE source it is informational (the engine's live resolution wins). Either way it is
-resolved at registration — never lazily backfilled, and never silently defaulted to ``varchar``.
+resolved at registration, never lazily backfilled. A type that names none of the vocabulary is
+``text`` (REQ-2171, NO TYPE LEFT UNMAPPED), its values read as text.
 """
 
 from __future__ import annotations
@@ -133,13 +134,15 @@ class Subtype:  # REQ-2171
     emulated: frozenset[str] = frozenset()
     #: Per reader -- a SQL dialect a landing reads the column in, or an adapter source's type --
     #: the expression over ``{col}`` that gives its value in the subtype's own form (its
-    #: PostgreSQL text form on a text base). A reader with none cannot land the column.
+    #: PostgreSQL text form on a text base). A reader with none reads it as text (``landing_form``).
     landing: Mapping[str, str] = field(default_factory=dict)
 
 
 # REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
 # types would hide. A subtype's name is its PostgreSQL type name; its values are held in
-# PostgreSQL's own text form on a text base.
+# PostgreSQL's own text form on a text base. REQ-2171, THE TYPES ARE A SUPERSET OF POSTGRESQL'S:
+# every PostgreSQL 17 built-in type that a column can hold is one of these or a type of the IR. A
+# domain is its base, as PostgreSQL's wire describes it; a pseudo-type holds no column's value.
 _EVERY_DIALECT = frozenset({"*"})
 
 
@@ -155,6 +158,44 @@ def _multirange(name: str, oid: int) -> Subtype:
 def _shape(name: str, oid: int) -> Subtype:
     return Subtype("text", oid, "shape", {"postgres": name.upper()})
 
+
+# PostgreSQL's types with no operation of their own here: each is its canonical text. "char" keeps
+# the quotes PostgreSQL's format_type gives it: unquoted, char is the character type.
+HELD_AS_TEXT: dict[str, int] = {
+    '"char"': 18,
+    "name": 19,
+    "int2vector": 22,
+    "regproc": 24,
+    "tid": 27,
+    "xid": 28,
+    "cid": 29,
+    "oidvector": 30,
+    "pg_node_tree": 194,
+    "aclitem": 1033,
+    "refcursor": 1790,
+    "regprocedure": 2202,
+    "regoper": 2203,
+    "regoperator": 2204,
+    "regclass": 2205,
+    "regtype": 2206,
+    "txid_snapshot": 2970,
+    "pg_lsn": 3220,
+    "pg_ndistinct": 3361,
+    "pg_dependencies": 3402,
+    "tsquery": 3615,
+    "gtsvector": 3642,
+    "regconfig": 3734,
+    "regdictionary": 3769,
+    "jsonpath": 4072,
+    "regnamespace": 4089,
+    "regrole": 4096,
+    "regcollation": 4191,
+    "pg_brin_bloom_summary": 4600,
+    "pg_brin_minmax_multi_summary": 4601,
+    "pg_mcv_list": 5017,
+    "pg_snapshot": 5038,
+    "xid8": 5069,
+}
 
 SUBTYPES: dict[str, Subtype] = {
     # DuckDB's inet extension holds an address with its mask, as PostgreSQL does. Trino's
@@ -216,11 +257,22 @@ SUBTYPES: dict[str, Subtype] = {
     "bit": Subtype("text", 1560),
     "varbit": Subtype("text", 1562),
     "tsvector": Subtype("text", 3614, "text_search", {"postgres": "TSVECTOR"}),
+    # A time of day with its offset, which ``time`` has no place for.
+    "timetz": Subtype(
+        "text",
+        1266,
+        "zoned_time",
+        {"postgres": "TIMETZ", "duckdb": "TIMETZ", "trino": "TIME WITH TIME ZONE"},
+    ),
+    # jsonb is not json: its text is normalized, its keys ordered and unique.
+    "jsonb": Subtype("json", 3802),
+    **{name: Subtype("text", oid) for name, oid in HELD_AS_TEXT.items()},
 }
 
 # REQ-2171: how a landing reads each subtype in its own form, beyond PostgreSQL (which casts any
 # subtype to its base, a PostGIS one through ST_AsText). Never a form other than the subtype's own
-# (no hex WKB for a geometry): a reader not named here cannot land the column.
+# (no hex WKB for a geometry) where the reader has it: a reader not named here reads the column as
+# text (``_READ_AS_TEXT``).
 _LANDING: dict[str, dict[str, str]] = {
     # A range or multirange reads as its PostgreSQL text.
     **{
@@ -248,10 +300,33 @@ _LANDING: dict[str, dict[str, str]] = {
         "oracle": "XMLSERIALIZE(CONTENT {col} AS CLOB)",
     },
     "money": {"tsql": "CAST({col} AS DECIMAL(21,4))"},
+    # Trino writes a time's fraction to its precision and an offset's minutes: PostgreSQL neither.
+    "timetz": {
+        "trino": (
+            "regexp_replace(regexp_replace(CAST({col} AS VARCHAR), "
+            "'(\\.\\d*?[1-9])0+(?=[+-])|\\.0+(?=[+-])', '$1'), '([+-]\\d\\d):00$', '$1')"
+        ),
+    },
+}
+
+# What each SQL dialect a source or engine reads in writes to read a value as its text. An adapter
+# source is named by its type here, not by a dialect, and hands over what it holds.
+_READ_AS_TEXT: dict[str, str] = {
+    **dict.fromkeys(("athena", "druid", "duckdb", "snowflake", "trino"), "CAST({col} AS VARCHAR)"),
+    **dict.fromkeys(("bigquery", "databricks", "hive"), "CAST({col} AS STRING)"),
+    **dict.fromkeys(("postgres", "sqlite"), "CAST({col} AS TEXT)"),
+    **dict.fromkeys(("mysql", "singlestore"), "CAST({col} AS CHAR)"),
+    "exasol": "CAST({col} AS VARCHAR(2000000))",
+    "redshift": "CAST({col} AS VARCHAR(65535))",
+    "tsql": "CAST({col} AS NVARCHAR(MAX))",
+    "oracle": "TO_CHAR({col})",
+    "clickhouse": "toString({col})",
 }
 
 
 def _with_landing(name: str, sub: Subtype) -> Subtype:
+    if sub.base == "json":
+        return sub  # read as JSON by every reader
     at_postgres = (
         "ST_AsText({col})"
         if name in ("geometry", "geography")
@@ -263,14 +338,38 @@ def _with_landing(name: str, sub: Subtype) -> Subtype:
 SUBTYPES = {name: _with_landing(name, sub) for name, sub in SUBTYPES.items()}
 
 
-def landing_form(subtype: str, reader: str) -> str | None:
+def landing_form(subtype: str, reader: str) -> str:
     """The expression over ``{col}`` that lands a column of ``subtype`` read by ``reader`` (a
-    SQL dialect, or an adapter source's type) in the subtype's own form; None when it has none."""
-    return SUBTYPES[subtype].landing.get(reader)
+    SQL dialect, or an adapter source's type): the subtype's own form, or, for a reader with none,
+    the value as text. A subtype on a base other than text is its base's value, which the reader
+    gives by casting to it."""
+    sub = SUBTYPES[subtype]
+    own = sub.landing.get(reader)
+    if own is not None:
+        return own
+    if sub.base == "json" or reader not in _READ_AS_TEXT:
+        return "{col}"
+    if sub.base != "text":
+        return f"CAST({{col}} AS {sub.base.upper()})"
+    return _READ_AS_TEXT[reader]
+
+
+def read_form(subtype: str, dialect: str) -> str | None:
+    """The expression over ``{col}`` that reads a column of ``subtype`` as a value on ``dialect``:
+    its PostgreSQL text, as it lands (REQ-2171, THE TYPES ARE A SUPERSET OF POSTGRESQL'S). None
+    where the column is read as it is: PostgreSQL has every type, and what it sends is the form
+    itself, and a subtype on a base other than text is read as that base."""
+    if dialect == "postgres" or SUBTYPES[subtype].base != "text":
+        return None
+    return landing_form(subtype, dialect)
 
 
 # REQ-2171: a spelling of a subtype that is not its name, on any platform.
-_SUBTYPE_SPELLINGS: dict[str, str] = {"bit varying": "varbit"}
+_SUBTYPE_SPELLINGS: dict[str, str] = {
+    "bit varying": "varbit",
+    "time with time zone": "timetz",
+    "information_schema.sql_identifier": "name",  # a domain over name
+}
 
 # MySQL's spatial types are PostGIS's planar geometry, whichever shape a column declares.
 _MYSQL_SPATIAL = {
@@ -348,8 +447,7 @@ _ALIASES: dict[str, str] = {
     "char ascii": "text",
     "character": "text",
     "string": "text",
-    "json": "json",  # REQ-980: first-class JSON (jsonb narrows to portable generic JSON)
-    "jsonb": "json",
+    "json": "json",  # REQ-980: first-class JSON
     "super": "json",  # Redshift: holds any JSON value, so JSON at its source (REQ-1965)
     "bool": "boolean",
     "real": "float",
@@ -366,10 +464,13 @@ _ALIASES: dict[str, str] = {
     "timestamp with local time zone": "timestamptz",
     "timestamptz": "timestamptz",
     "time without time zone": "time",
-    "time with time zone": "time",
-    "timetz": "time",  # postgres time with time zone alias
     "datetime": "timestamp",
     "blob": "bytea",
+    # information_schema's domains, each its base.
+    "information_schema.cardinal_number": "integer",
+    "information_schema.character_data": "text",
+    "information_schema.time_stamp": "timestamptz",
+    "information_schema.yes_or_no": "text",
 }
 
 # Per-platform native→IR translators (REQ-846). Each platform has type spellings the generic
@@ -383,7 +484,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "varbinary": "bytea",
         "json": "json",  # REQ-980
         "timestamp with time zone": "timestamptz",
-        "time with time zone": "time",
         "uuid": "uuid",
     },
     # REQ-1981: Amazon Athena's catalog spells a column's type as Hive DDL does; a composite
@@ -760,6 +860,15 @@ def _array_of_a_primitive(shape: NativeType, platform: str | None) -> tuple[int,
     return depth, _semantic_type(node.spelling, platform)
 
 
+def element_subtype(native_type: str, platform: str | None = None) -> str | None:
+    """The subtype of the innermost element of the array ``native_type`` (REQ-2171), or None. An
+    array's ``element_type`` is that element's base, which is what a backend reads it as."""
+    node = parse_native_type(native_type)
+    while node.kind == "array" and node.element is not None:
+        node = node.element
+    return subtype_of(node.spelling, platform) if node.kind == "scalar" else None
+
+
 def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping:
     """The ONE decision of what a native type registers as (REQ-1965). ``platform`` is the kind
     of the source that reported the spelling.
@@ -841,7 +950,7 @@ def indexed_string_length() -> int:
 
 def _session_only_sqlalchemy(type_name: str) -> Any:
     """REQ-2176: the column types only a session's ephemeral table holds, which no source's type
-    names (a source's time with a zone is ``time``, its array ``json``): ``zoned_time``, a time
+    names (a source's time with a zone is ``timetz``, its array ``json``): ``zoned_time``, a time
     of day with its offset, and ``list<elem>``, a list of one element type. None for any other."""
     if type_name == "zoned_time":
         return Time(timezone=True)

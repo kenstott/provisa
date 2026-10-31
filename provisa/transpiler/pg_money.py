@@ -25,8 +25,9 @@ in a double, a result outside int8 cents is PostgreSQL's error where the dialect
 A use PostgreSQL has no operator for is refused as PostgreSQL refuses it, wherever the statement
 says the operand's type.
 
-Refused by name, as every subtype's operation is (:class:`SubtypeOperationRefused`): an operation
-the dialect has no form of."""
+Money's text, words, bytes and input are rows of provisa.transpiler.function_macros, which applies
+the rule. Refused by name, as every subtype's operation is (:class:`SubtypeOperationRefused`): an
+operation the dialect has no form of."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -44,6 +45,7 @@ from sqlglot.optimizer.scope import Scope, traverse_scope
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_money import cash_in
+from provisa.transpiler.function_macros import outcome
 from provisa.transpiler.native_subtype import COMPARISONS, SubtypeOperationRefused, marked
 
 MONEY = "money"
@@ -446,44 +448,32 @@ def _chosen(a: exp.Expr, b: exp.Expr, larger: bool) -> exp.Expr:
     return exp.Case(ifs=[exp.If(this=first, true=a), exp.If(this=second, true=b)])
 
 
+def _by_the_rule(row: str, operation: str, value: exp.Expr, dialect: str) -> exp.Expr:
+    """A money function, as function_macros writes it for ``dialect``."""
+    if outcome(row, 1, dialect) == "refused":
+        raise SubtypeOperationRefused(MONEY, operation, dialect)
+    return exp.Anonymous(this=row, expressions=[value])
+
+
 def _money_text(value: exp.Expr, dialect: str) -> exp.Expr:
     """money's text form."""
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_out", expressions=[_cents(value)])
-    if dialect in ("trino", "athena"):
-        unsigned = exp.Anonymous(
-            this="format",
-            expressions=[
-                exp.Literal.string("$%,.2f"),
-                exp.Abs(this=_as(value.copy(), _DOLLARS_TYPE)),
-            ],
-        )
-        negative = exp.LT(this=value.copy(), expression=exp.Literal.number(0))
-        sign = _case(negative, exp.Literal.string("-"), exp.Literal.string(""))
-        return exp.DPipe(this=sign, expression=unsigned)
-    raise SubtypeOperationRefused(MONEY, "cast to text", dialect)
+    return _by_the_rule("money_text", "cast to text", value, dialect)
 
 
 def _money_words(value: exp.Expr, dialect: str) -> exp.Expr:
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_words", expressions=[_cents(value)])
-    raise SubtypeOperationRefused(MONEY, "cash_words", dialect)
+    return _by_the_rule("money_words", "cash_words", value, dialect)
 
 
 def _money_bytes(value: exp.Expr, dialect: str) -> exp.Expr:
     """cash_send: the int8, big-endian."""
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_send", expressions=[_cents(value)])
-    if dialect in ("trino", "athena"):
-        return exp.Anonymous(this="to_big_endian_64", expressions=[_cents(value)])
-    raise SubtypeOperationRefused(MONEY, "cash_send", dialect)
+    return _by_the_rule("money_bytes", "cash_send", value, dialect)
 
 
 def _money_input(value: exp.Expr, dialect: str) -> exp.Expr:
     """A value read as money: money's input of its text, which reads a number's digits exactly as
     numeric's cast to money rounds them."""
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_in", expressions=[_as(value, "VARCHAR")])
+    if outcome("money_input", 1, dialect) != "refused":
+        return exp.Anonymous(this="money_input", expressions=[value])
     return _base_of_text(value)
 
 

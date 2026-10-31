@@ -14,7 +14,7 @@ catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_sha224``, ``provisa
 provisa.transpiler.pg_functions), ``provisa_size_pretty``, pg_size_pretty's text (DuckDB's of that
 name writes KiB), and the UDFs of provisa.federation.duckdb_pg_scalars, where a value needs
 PostgreSQL's own algorithm. A function a DuckDB expression carries is no function here: it is a
-rewrite in provisa.transpiler.function_macros."""
+rewrite in provisa.transpiler.function_macros, as money's, the shapes', tsvector's and abbrev are."""
 
 # Requirements: REQ-2167
 

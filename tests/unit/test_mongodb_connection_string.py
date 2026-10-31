@@ -93,6 +93,25 @@ def test_a_connection_string_naming_its_own_user_is_used_as_given():
     assert MongoConnection.from_source(_source(given)).url() == given
 
 
+def test_the_trino_attach_takes_a_direct_connection_from_the_source_hint():
+    # The Python driver always connects directly; Trino's connector discovers the replica set, and
+    # its advertised member can be unreachable from the engine, unless the URL says otherwise.
+    source = _source("mongo.internal", 27018)
+    assert TrinoMongoConnector().details(source)["mongodb.connection-url"] == (
+        "mongodb://mongo.internal:27018/"
+    )
+    source.federation_hints = {"direct_connection": "true"}
+    assert TrinoMongoConnector().details(source)["mongodb.connection-url"] == (
+        "mongodb://mongo.internal:27018/?directConnection=true"
+    )
+
+
+def test_a_connection_string_keeps_its_own_topology_options_on_trino():
+    source = _source(_SRV, username="app", password="p@ss")
+    source.federation_hints = {"direct_connection": "true"}
+    assert "directConnection" not in TrinoMongoConnector().details(source)["mongodb.connection-url"]
+
+
 def test_the_trino_and_duckdb_attaches_use_the_connection_string():
     source = _source(_SRV, username="app", password="p@ss")
     url = "mongodb+srv://app:p%40ss@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority"

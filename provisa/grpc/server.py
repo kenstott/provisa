@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from provisa.api.role_surface import role_surface
 
-import contextvars
 import functools
 import importlib.util
 import json
@@ -53,6 +52,7 @@ if TYPE_CHECKING:
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.core import request_deadline
 from provisa.core.request_context import reset_current_org
+from provisa.grpc.auth import org_bound_for_rpc
 from provisa.grpc.descriptor import SERVICE_NAME, bound_descriptor, role_descriptor
 from provisa.core.read_refusal import ReadRefused
 from provisa.core.ir_types import iso8601_duration
@@ -309,12 +309,6 @@ def _streaming(body):
 _HANDLERS_KEPT = 4096
 _REFLECTION_METHOD = ("grpc.reflection.v1alpha.ServerReflection", "ServerReflectionInfo")
 
-# Whether the RPC running in this context had its organisation bound where it was received
-# (ProvisaServicer._received): the handlers' own binding then has nothing to do.
-_org_bound_for_rpc: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "provisa_grpc_org_bound", default=False
-)
-
 
 class _OrgBoundService(grpc.GenericRpcHandler):
     """The Provisa service and its reflection, served to each caller from the service of the
@@ -352,51 +346,26 @@ class ProvisaServicer:  # REQ-045, REQ-143
             raise RuntimeError("the bound organisation has no gRPC service")
         return found
 
-    async def _resolve_org(self, requested: str | None) -> str | None:
-        """The org this RPC binds: the principal's membership decides, not the metadata (REQ-1337).
-
-        With no validated principal (unsecured deployment) the requested org is all there is, and
-        the caller's own check rejects a missing one."""
-        from provisa.grpc.auth import authenticated_identity
-
-        identity = authenticated_identity()
-        if identity is None:
-            return requested
-        from provisa.api.org_resolve import resolve_session_org
-        from provisa.security.rights import can_act_cross_org, capabilities_for_claims
-
-        caps = capabilities_for_claims(identity.roles or [], self._state.platform_roles)
-        return await resolve_session_org(
-            self._state,
-            user_id=identity.user_id,
-            can_act_any_org=can_act_cross_org(caps),
-            requested_org=requested or None,
-            credential_org=identity.active_org_id,  # REQ-1235
-            named_by="send the x-provisa-org metadata",
-        )
-
     async def _bind_org(self, metadata: dict):
-        """Resolve+build the RPC's org and bind it (REQ-1266, REQ-1337).
+        """Resolve+build the RPC's org and bind it (REQ-1266).
 
-        On a secured deployment the org comes from the validated principal's memberships — the same
-        rule MCP, pgwire and Flight use — so ``x-provisa-org`` is a REQUEST honored only for a
-        principal holding the cross-org right, and a caller cannot name someone else's org. An
-        unsecured deployment has no principal to resolve, so the metadata org stands; under
-        multitenancy it is REQUIRED — a missing org raises ``ValueError`` (the caller aborts) rather
-        than silently binding the default. A single-org deployment binds its one org. Returns the
-        reset token. Each RPC runs in its own context (``provisa.grpc.rpc_scope``), so a plain
-        set/reset isolates the binding."""
+        On a secured deployment the interceptor bound it already, from the validated principal
+        (``grpc.auth``, REQ-1337). An unsecured deployment has no principal to resolve, so the
+        metadata org stands; under multitenancy it is REQUIRED — a missing org raises ``ValueError``
+        (the caller aborts) rather than silently binding the default. A single-org deployment binds
+        its one org. Returns the reset token, or None when there is nothing for the handler to
+        reset. Each RPC runs in its own context (``provisa.grpc.rpc_scope``), so a plain set/reset
+        isolates the binding."""
         from provisa.core.request_context import set_current_org
 
-        if _org_bound_for_rpc.get():
-            # Bound where the RPC was received, before its request could be decoded
-            # (_received): that binding stands for the whole RPC and is reset there.
+        if org_bound_for_rpc.get():
+            # Bound before the handler ran, or where the RPC was received, before its request
+            # could be decoded (_received): that binding stands for the whole RPC.
             return None
         if not getattr(self._state, "multitenancy", False):
             return set_current_org(self._state.org_id)
         raw = metadata.get("x-provisa-org")
-        requested = raw.decode() if isinstance(raw, bytes) else raw
-        org_id = await self._resolve_org(requested)
+        org_id = raw.decode() if isinstance(raw, bytes) else raw
         if not org_id:
             raise ValueError("Missing x-provisa-org metadata")
         from provisa.api.app import ensure_serving_runtime
@@ -444,10 +413,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
         except ValueError as exc:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             raise
-        bound = _org_bound_for_rpc.set(True)
+        bound = org_bound_for_rpc.set(True)
 
         def reset() -> None:
-            _org_bound_for_rpc.reset(bound)
+            org_bound_for_rpc.reset(bound)
             if org_token is not None:
                 reset_current_org(org_token)
 
