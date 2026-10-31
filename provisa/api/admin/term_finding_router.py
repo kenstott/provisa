@@ -15,7 +15,10 @@ http(s) URL, which joins the library as a proposed document in the domains the s
 in (a document already in the library is not added again: the scan reads the library's copy).
 The scan runs in the background with the org's AI model, held to the role's LLM budget, and its
 candidates land as drafts in the review queue, where the steward edits, accepts, merges or
-rejects each, or accepts several at once. Scanning a document again is a new scan whose drafts
+rejects each, or accepts several at once. A scan always ends: it finishes, or it stops saying why
+-- refused at the start when its model cannot run, failed by a model call that stalls or a budget
+that refuses, cancelled by a person, or given up on by :func:`keep` when its server restarted or it
+stopped moving. Scanning a document again is a new scan whose drafts
 show the candidates the glossary does not hold yet and those that match or duplicate its terms
 and synonyms; nothing is re-reviewed automatically.
 
@@ -29,6 +32,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Query, Request
@@ -36,21 +41,36 @@ from fastapi import APIRouter, Query, Request
 from provisa.api.admin import glossary_router as glossary
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.errors import ApiError
+from provisa.core.connection_loop import spawn_background
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.llm.client import CALL_TIMEOUT_S
 from provisa.reference_library import library, store
-from provisa.term_finding import queue, review, scan
+from provisa.term_finding import model, queue, review, scan
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Coroutine
 
     from provisa.core.database import Connection, Database
+    from provisa.term_finding.model import Held
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/glossary/term-finding", tags=["admin", "glossary"])
 
-#: The scans running now, held so none is collected before it finishes.
-_RUNNING: set[asyncio.Task] = set()
+#: How often scans left behind are looked for, in seconds; the first look is at startup.
+KEEP_EVERY_S = 30
+#: A running scan that has not moved on for this long has failed: a step is one model call, tried
+#: on the model and on its fallback, and each is held to CALL_TIMEOUT_S.
+STALLED_AFTER = timedelta(seconds=2 * CALL_TIMEOUT_S + 60)
+#: This process, when it is not one of a launch's workers (provisa.core.boot_lock).
+_PROCESS = uuid.uuid4().hex
+
+RESTARTED = "the server restarted while the scan was running; scan the document again"
+STOPPED = "the server stopped while the scan was running; scan the document again"
+STALLED = (
+    f"the scan made no progress for {STALLED_AFTER.total_seconds():g} seconds; "
+    "scan the document again"
+)
 
 
 def _pool() -> Database:
@@ -101,6 +121,11 @@ def _scan(s: queue.ScanRow, counts: dict[str, int] | None = None) -> dict[str, A
         "started_by": s.started_by,
         "started_at": _iso(s.started_at),
         "finished_at": _iso(s.finished_at),
+        "model": s.model,
+        "step": s.step,
+        "batch": s.batch,
+        "batches": s.batches,
+        "budget_limit": s.budget_limit,
         "counts": counts or {},
     }
 
@@ -169,10 +194,16 @@ async def _new_document(
 # -- scanning -----------------------------------------------------------------------------------
 
 
-async def _model(request: Request) -> Callable[[str, int], Awaitable[str]]:
+def this_launch() -> str:
+    """The launch a scan starts in: a launch's workers, respawned ones included, share it."""
+    from provisa.core.boot_lock import launch_id
+
+    return launch_id() or _PROCESS
+
+
+async def _model(request: Request) -> Held:
     from provisa.api.admin.capabilities import acting_role_of_request
     from provisa.api.app import state
-    from provisa.term_finding import model
 
     return await model.for_role(state, acting_role_of_request(request))
 
@@ -182,14 +213,30 @@ async def run_scan(
     scan_id: int,
     document_id: int,
     title: str,
-    call: Callable[[str, int], Awaitable[str]],
+    call: Held,
 ) -> None:
     """Scan the document and queue its candidates; a scan that cannot finish is marked failed,
-    naming why."""
+    naming why. Each step is recorded on the scan's row, and a scan whose row has been ended (a
+    person cancelled it, :func:`keep` gave up on it) stops there: the row is what every worker
+    reads, and the worker running a scan need not be the one that was asked."""
+
+    async def report(step: str, batch: int, batches: int) -> None:
+        async with pool.acquire() as conn:
+            moved_on = await queue.record_progress(
+                conn,
+                scan_id,
+                step=step,
+                batch=batch,
+                batches=batches,
+                budget_limit=call.limited_to,
+            )
+        if not moved_on:
+            raise scan.ScanStopped
+
     try:
         async with pool.acquire() as conn:
             rows = await store.passages(conn, document_id)
-        result = await scan.run(title, [scan.Passage(*r) for r in rows], call)
+        result = await scan.run(title, [scan.Passage(*r) for r in rows], call, report)
         async with pool.acquire() as conn:
             terms = [
                 {"id": t["id"], "name": t["name"]}
@@ -210,16 +257,61 @@ async def run_scan(
             }
             async with conn.transaction():
                 await queue.finish_scan(conn, scan_id, result.candidates, summary)
+    except scan.ScanStopped:
+        log.info("term-finding scan %s stopped: its row has ended", scan_id)
+    except asyncio.CancelledError:  # the process is shutting down (shutdown_background)
+        async with pool.acquire() as conn:
+            await queue.fail_scan(conn, scan_id, STOPPED)
+        raise
     except Exception as exc:  # the scan is marked failed with what stopped it, never left running
         log.exception("term-finding scan %s failed", scan_id)
+        reason = str(exc) or type(exc).__name__
+        if call.limited_to is not None:
+            reason += f" (the role's LLM budget held a call to {call.limited_to} output tokens)"
         async with pool.acquire() as conn:
-            await queue.fail_scan(conn, scan_id, str(exc) or type(exc).__name__)
+            await queue.fail_scan(conn, scan_id, reason)
 
 
-def _launch(work: Awaitable[None]) -> None:
-    task = asyncio.ensure_future(work)
-    _RUNNING.add(task)
-    task.add_done_callback(_RUNNING.discard)
+def _launch(work: Coroutine[Any, Any, None]) -> None:
+    """Run the scan on a background worker. A request's own loop stops when the request ends and
+    cancels what is left on it (provisa.core.connection_loop), and a scan outlives its request."""
+    spawn_background(work, name="term-finding-scan")
+
+
+async def give_up_on_left_behind(pool: Database, launch: str) -> None:
+    """Fail the scans no server is running any more: those of an earlier launch, and those that
+    have stopped moving (a worker of this launch that died, whatever else nothing here foresaw)."""
+    async with pool.acquire() as conn:
+        restarted = await queue.fail_left_behind(conn, launch, RESTARTED)
+        stalled = await queue.fail_stalled(conn, STALLED_AFTER, STALLED)
+    if restarted or stalled:
+        log.warning(
+            "term-finding scans given up on: %d left by a restart, %d stalled", restarted, stalled
+        )
+
+
+async def keep(state: Any) -> None:
+    """A worker's watch over the scans of every org environment it holds a runtime of. Runs until
+    the worker stops, its first pass at startup; any worker's pass may end any scan."""
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+
+    while True:
+        try:
+            for runtime in state.org_registry.runtimes():
+                org, env = set_current_org(runtime.org_id), set_current_env(runtime.env)
+                try:
+                    await give_up_on_left_behind(state.model_db, this_launch())
+                finally:
+                    reset_current_env(env)
+                    reset_current_org(org)
+        except Exception:  # noqa: BLE001 -- the watch outlives a pass that failed; it says so
+            log.exception("term-finding scan watch failed; it runs again")
+        await asyncio.sleep(KEEP_EVERY_S)
 
 
 @router.post("/scans")
@@ -238,6 +330,11 @@ async def start_scan(request: Request) -> dict:
         )
     declared = glossary._declared_domains(request, body.get("domains"), current=set())
     pool = _pool()
+    # Before anything is written: a scan that could not run adds no document to the library.
+    try:
+        call = await _model(request)
+    except model.ModelRefused as exc:
+        raise ApiError(409, "term_finding.no_model", str(exc)) from None
     try:
         async with pool.acquire() as conn:
             if body.get("document_id") is not None:
@@ -257,7 +354,6 @@ async def start_scan(request: Request) -> dict:
                     "auth.domain_denied",
                     f"{document.title!r} is in the reference library, outside your domains",
                 )
-            call = await _model(request)
             scan_id = await queue.start_scan(
                 conn,
                 document_id=document.id,
@@ -265,6 +361,8 @@ async def start_scan(request: Request) -> dict:
                 document_source=document.source,
                 domains=sorted(declared),
                 started_by=glossary._caller_id(request),
+                model=call.name,
+                launch=this_launch(),
             )
             started = await queue.scan(conn, scan_id)
     except (library.LibraryRefused, review.ReviewRefused) as exc:
@@ -349,6 +447,25 @@ async def get_scan(scan_id: int, request: Request) -> dict:
         names = await _term_names(conn, request)
         counts = (await queue.draft_counts(conn)).get(scan_id)
     return {"scan": _scan(found, counts), "drafts": [_draft_view(d, names) for d in drafts]}
+
+
+@router.post("/scans/{scan_id}/cancel")
+async def cancel_scan(scan_id: int, request: Request) -> dict:
+    """End a running scan now, naming who did. It stops before its next model call; a call under
+    way finishes, and is counted against the role's budget, with nothing queued from it."""
+    glossary._require_glossary_rw(request)
+    require_active_org_id(request)
+    async with _pool().acquire() as conn:
+        found = await _scan_held(conn, scan_id, request)
+        who = glossary._caller_id(request)
+        reason = f"cancelled by {who}" if who else "cancelled"
+        if not await queue.fail_scan(conn, scan_id, reason):
+            raise ApiError(
+                409, "term_finding.refused", f"scan {found.id} has already ended: {found.status}"
+            )
+        ended = await queue.scan(conn, scan_id)
+    assert ended is not None
+    return {"scan": _scan(ended)}
 
 
 # -- deciding on drafts -------------------------------------------------------------------------

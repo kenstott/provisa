@@ -2070,6 +2070,16 @@ glossary_term_scans = Table(
     Column("started_by", Text, nullable=True),
     Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("finished_at", DateTime(timezone=True), nullable=True),
+    # What a running scan is doing: the model it asks, the step it is on (reading | merging), the
+    # batch of the batches it reads, what the role's LLM budget held a call's output to, the launch
+    # it runs in and when it last moved on (provisa/term_finding/queue.py).
+    Column("model", Text, nullable=True),
+    Column("step", Text, nullable=True),
+    Column("batch", Integer, nullable=True),
+    Column("batches", Integer, nullable=True),
+    Column("budget_limit", Integer, nullable=True),
+    Column("launch", Text, nullable=True),
+    Column("progress_at", DateTime(timezone=True), nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "status IN ('running', 'done', 'failed')", name="glossary_term_scans_status_check"

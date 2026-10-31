@@ -3309,6 +3309,9 @@ class AIModelsConfig(BaseModel):  # REQ-464
     # REQ-1794: the right-hand chat assistant panel's model (provisa/api/mcp/chat.py
     # _resolve_model() falls back to this same default when unconfigured).
     mcp_chat: str | dict = "claude-opus-4-8"
+    # REQ-2179: no default. A scan reads a whole document, so a model is chosen for it, and until
+    # one is a scan is refused saying so (provisa/term_finding/model.py).
+    glossary_term_finding: str | dict = ""
 
 
 class NlConfig(BaseModel):  # REQ-464
