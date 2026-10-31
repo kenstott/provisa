@@ -88649,7 +88649,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     does. (Amended 2026-10-29, A LIMIT NEEDS NO FULL UNION:) Maintainer 2026-10-30: graph.union_limit defaults
     to 256. A query with LIMIT and no ORDER BY, DISTINCT or aggregate is allowed ten times the limit, because
     the engine stops the union once it has its rows. Past that it is refused by name, since every branch
-    is still compiled.'
+    is still compiled. (Amended 2026-10-29, AN OPEN PATTERN READS WHAT THE ROLE MAY NAME:) Decided 2026-10-30:
+    ?s ?p ?o answers what naming each predicate answers, one union part per predicate, and edges go through
+    their registered relationship. A table whose whole registered key the role cannot read is left out of
+    an open subject, with the edges into it. Naming such a table and asking for its subject is refused by
+    the table''s name, without naming the column; reading its columns without its subject is still answered.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
