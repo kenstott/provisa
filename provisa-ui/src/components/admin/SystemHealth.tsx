@@ -14,6 +14,9 @@ import { Box, Group, Table, Text } from "@mantine/core";
 import { useSystemHealth } from "../../hooks/useAdminOpsQueries";
 import { ListTable, ListRow } from "../list/ListTable";
 
+// The one protocol name with words to translate; the others are product names.
+const CYPHER_OVER_HTTP = "Cypher over HTTP";
+
 // null = neutral/disabled (grey), true = ok (green), false = down (red)
 function StatusDot({ ok }: { ok: boolean | null }) {
   const color =
@@ -126,7 +129,9 @@ export function SystemHealth() {
           </ListRow>
           {health.protocols.map((p) => (
             <ListRow key={p.name}>
-              <Table.Td>{p.name}</Table.Td>
+              <Table.Td>
+                {p.name === CYPHER_OVER_HTTP ? t("systemHealth.cypherOverHttp") : p.name}
+              </Table.Td>
               <Table.Td>
                 <Group gap={0} wrap="nowrap">
                   <StatusDot ok={p.status === "disabled" ? null : p.status === "running"} />
@@ -137,7 +142,9 @@ export function SystemHealth() {
                       : t("systemHealth.unreachable")}
                 </Group>
               </Table.Td>
-              <Table.Td>{p.port != null ? t("systemHealth.port", { port: p.port }) : ""}</Table.Td>
+              <Table.Td>
+                {p.path ?? (p.port != null ? t("systemHealth.port", { port: p.port }) : "")}
+              </Table.Td>
             </ListRow>
           ))}
           <ListRow>

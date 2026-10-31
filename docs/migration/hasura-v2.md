@@ -124,7 +124,7 @@ A grant states what one role may write to one table by one operation. An empty `
 
 ### Actions, tracked functions and triggers
 
-- An **action** becomes a command calling its handler, visible to the roles its permissions name (to `org_admin` alone when it names none). An asynchronous action is warned: the command waits for the handler's answer.
+- An **action** becomes a command calling its handler, visible to the roles its permissions name (to `org_admin` alone when it names none). An asynchronous action is warned, because the command waits for the handler's answer.
 - A **tracked function** becomes a command when the preview can read its arguments and return table from a PostgreSQL source. Offline, and for any function that is missing, overloaded or returns a table the import does not register, it goes to redo.
 - An **event trigger** fires on every change to its table, once per batch, and posts the table and the changed rows rather than one event per row with old and new values. A trigger that listened to fewer than all three operations is warned.
 
@@ -148,7 +148,7 @@ A grant states what one role may write to one table by one operation. An empty `
 ### Connection comes from an environment variable
 
 If the source `database_url` is an environment variable reference (`{"from_env": "PG_URL"}`),
-its value is not in the export. The converter does not guess one: the source has empty
+its value is not in the export. The converter does not guess one. The source has empty
 host, database, username and password, and the report lists it under `Redo by hand`.
 Enter the connection in the import's source settings (or `--source-overrides`) and convert
 again.
@@ -175,7 +175,7 @@ exists in Hasura but appears in none of them, it will not appear in the output.
 ### Custom root fields
 
 The `select` and `select_by_pk` root field names give the table alias. The other custom root
-fields (`select_aggregate`, `insert`, `update`, `delete`) are reported by name: Provisa serves
+fields (`select_aggregate`, `insert`, `update`, `delete`) are reported by name, because Provisa serves
 a table as one field, with aggregates and writes as its `_aggregate` field and mutations.
 
 ## Example

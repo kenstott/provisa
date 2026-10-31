@@ -214,6 +214,6 @@ describe("glossary read-only mode", () => {
   it("keeps searching and filtering, which write nothing", async () => {
     await openRevenue();
     expect(screen.getByTestId("glossary-search")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-show-deprecated")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-status-filter")).toBeInTheDocument();
   });
 });

@@ -66,6 +66,15 @@ export interface Scan {
   started_by: string | null;
   started_at: string;
   finished_at: string | null;
+  /** The model the scan asks, as vendor:model. */
+  model: string | null;
+  /** The step a scan is on, or stopped on; null until its first. */
+  step: "reading" | "merging" | null;
+  /** While reading: the batch of the batches of passages. */
+  batch: number | null;
+  batches: number | null;
+  /** What the role's AI budget held a call's output to, in tokens, when it held one short. */
+  budget_limit: number | null;
   counts: Partial<Record<DraftStatus, number>>;
 }
 
@@ -157,6 +166,10 @@ export async function fetchScans(documentId?: number): Promise<Scan[]> {
 
 export async function fetchScan(id: number): Promise<{ scan: Scan; drafts: Draft[] }> {
   return ok(await fetch(`${BASE}/scans/${id}`), "Scan");
+}
+
+export async function cancelScan(id: number): Promise<{ scan: Scan }> {
+  return ok(await fetch(`${BASE}/scans/${id}/cancel`, send("POST")), "Cancel scan");
 }
 
 export async function editDraft(

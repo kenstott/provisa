@@ -16,6 +16,7 @@
     "role_sql_generation": "SQL जनरेशन",
     "role_table_selection": "टेबल चयन",
     "role_mcp_chat": "चैट असिस्टेंट",
+    "role_glossary_term_finding": "दस्तावेज़ में शब्द खोजें",
     "vendorLabel": "वेंडर",
     "modelLabel": "मॉडल",
     "nlHeading": "प्राकृतिक-भाषा क्वेरी",

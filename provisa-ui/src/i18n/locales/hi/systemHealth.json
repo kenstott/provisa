@@ -26,6 +26,7 @@
     "running": "चल रहा है",
     "unreachable": "पहुँच से बाहर",
     "port": "पोर्ट {{port}}",
+    "cypherOverHttp": "HTTP पर Cypher",
     "mvRefreshLoop": "MV रिफ़्रेश लूप",
     "stopped": "रुका हुआ"
   }

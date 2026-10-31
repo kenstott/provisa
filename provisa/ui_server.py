@@ -93,16 +93,28 @@ SANDBOX_REGIONS_DEMOS = _pairs("PROVISA_SANDBOX_REGIONS_DEMOS")
 DEMO_OPEN_PREFIXES = ("public/demos/", "sandboxes/")
 
 
-async def _sandbox_starting(instance: str) -> Response:
-    """The sandbox tier's VM refused the connection: it is powered off (it stops itself when no
-    sandbox has been used for a while) or still starting. It is started, and the visitor told to
-    come back; a VM that cannot be started is a 502 naming why, in the log."""
+async def _sandbox_starting(instance: str, base: str) -> Response:
+    """The sandbox tier at ``base`` refused the connection: its VM is powered off (it stops itself
+    when no sandbox has been used for a while) or still starting. It is started, and the visitor
+    told to come back; a VM that cannot be started is a 502 naming why, in the log, and a tier
+    that has refused for longer than a cold start takes has failed, and is said to have."""
     try:
         found = await sandbox_wake.wake(instance)
     except (httpx.HTTPError, RuntimeError):
         _log.exception("the sandbox tier's VM could not be started")
         return HTMLResponse("API unavailable", status_code=502)
     _log.warning("sandbox tier unreachable; its VM was %s", found)
+    refusing = sandbox_wake.refused(base, found)
+    if refusing >= sandbox_wake.FAILED_AFTER_S:
+        _log.error("sandbox tier %s has refused connections for %.0fs", base, refusing)
+        return JSONResponse(
+            {
+                "detail": "The demo server could not be started. Try again later.",
+                "code": "sandbox.failed_to_start",
+                "params": {},
+            },
+            status_code=503,
+        )
     return JSONResponse(
         {
             "detail": "The demo server is starting. Try again in a minute or two.",
@@ -451,13 +463,14 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
                 ),
                 stream=True,
             )
+            sandbox_wake.answered(base)
             if not upstream.headers.get("content-type", "").startswith("text/event-stream"):
                 await upstream.aread()
         except httpx.ConnectError:
             # Both sandbox tiers run on the sandbox VM (REQ-2068).
             sandbox = base == SANDBOX_API_URL or base in SANDBOX_REGIONS_NODES.values()
             if sandbox and sandbox_wake.SANDBOX_INSTANCE is not None:
-                return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE)
+                return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE, base)
             return HTMLResponse("API unavailable", status_code=502)
         except httpx.TimeoutException as exc:
             # The upstream accepted the connection but did not finish in the budget. Left

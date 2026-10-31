@@ -90833,7 +90833,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     A function whose answer depends on an argument type the transpiler cannot see (set_masklen of a column)
     is refused unless the statement says the type. (Amended 2026-10-29, JSON NUMBERS COMPARE BY VALUE:)
     Maintainer 2026-10-31: JSON returns untyped numbers, so an answer holding JSON numbers is compared as
-    int or float, with decimals as float, not as text: 1.50 and 1.5 are the same answer.'
+    int or float, with decimals as float, not as text: 1.50 and 1.5 are the same answer. (Amended 2026-10-29,
+    JSON SPACING AND KEY ORDER ARE NOT A DIFFERENCE:) Maintainer 2026-10-31: spacing and key order are not
+    a difference in JSON, which guarantees neither. A json or jsonb answer is compared as parsed JSON, with
+    numbers by value. (Amended 2026-10-29, ARRAY ORDER NEEDS AN ORDER BY:) Maintainer 2026-10-31: the order
+    of an array an aggregate builds is guaranteed only by an ORDER BY in the statement. Without one its
+    elements compare in any order; an array stated as a value keeps its order. (Amended 2026-10-29, SIMPLE
+    TEXT SEARCH:) Maintainer 2026-10-31: on DuckDB, Trino and ClickHouse a regex runs on the engine as written
+    with its flags kept; a check at client SQL entry allows syntax the engines read alike, with . given
+    (?s) where an engine needs it and $ allowed per engine where replay proves it, and refuses the rest
+    by name. LIKE with a bound or non-literal pattern is served; a backslash before an ordinary letter is
+    a named exception. simple to_tsvector, to_tsquery and @@ are an expansion, matching without ranking.
+    Compiled SPARQL, Cypher and internal forms never pass the check.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered

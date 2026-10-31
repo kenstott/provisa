@@ -46,9 +46,12 @@ import type { GlossaryTermSummary } from "../../api/glossary";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { ScanStatusBadge, TermReviewQueue } from "./TermReviewQueue";
+import { useScanProgress } from "./useScanProgress";
 
 /** The files the reference library reads. */
 const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
+/** How often the list is read again while a scan in it is running, in milliseconds. */
+const POLL_MS = 2000;
 
 type Mode = "library" | "file" | "url";
 
@@ -219,6 +222,7 @@ function ScanList({
   onRescan: (scan: Scan) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const progress = useScanProgress();
   if (!scans.length) {
     return (
       <Text size="sm" c="dimmed" data-testid="find-terms-no-scans">
@@ -260,7 +264,19 @@ function ScanList({
                 <Text size="sm">{new Date(s.started_at).toLocaleString(i18n.language)}</Text>
               </Table.Td>
               <Table.Td>
-                <ScanStatusBadge status={s.status} />
+                <Stack gap={2} align="flex-start">
+                  <ScanStatusBadge status={s.status} />
+                  {s.status === "running" && (
+                    <Text size="xs" c="dimmed" data-testid={`find-terms-progress-${s.id}`}>
+                      {progress(s)}
+                    </Text>
+                  )}
+                  {s.status === "failed" && (
+                    <Text size="xs" c="red" data-testid={`find-terms-stopped-${s.id}`}>
+                      {s.error}
+                    </Text>
+                  )}
+                </Stack>
               </Table.Td>
               <Table.Td>
                 <Text size="sm">{t("findTerms.queueCounts", { draft, decided })}</Text>
@@ -334,6 +350,18 @@ export function FindTermsDialog({
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  // While the list shows a running scan it is read again, until each has ended.
+  const running = openScan === null && scans.some((s) => s.status === "running");
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setTimeout(() => {
+      fetchScans().then(setScans, (e: unknown) =>
+        setProblem(e instanceof Error ? e.message : String(e)),
+      );
+    }, POLL_MS);
+    return () => window.clearTimeout(timer);
+  }, [running, scans]);
 
   const rescan = async (s: Scan) => {
     setProblem("");

@@ -26,6 +26,7 @@
     "running": "En ejecución",
     "unreachable": "Inaccesible",
     "port": "puerto {{port}}",
+    "cypherOverHttp": "Cypher sobre HTTP",
     "mvRefreshLoop": "Bucle de actualización de MV",
     "stopped": "Detenido"
   }

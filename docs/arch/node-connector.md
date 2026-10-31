@@ -297,7 +297,7 @@ Runtimes are fetched on demand, pinned and hashed, and cached as the pgwire bund
 - **Execution.** A new executor in `_EXECUTORS`, `impl_kind = "node"`, calls the export in the worker.
 - **Arguments** are converted as in section 5.3.
 - **Output.** A collection return gives rows; a single object gives one row; `void` gives none. Each is checked against `output_columns`.
-- **Everything else is the existing command path:** `invoke_command`, `admit_command`, approval, audit, and every command surface.
+- **Everything else is the existing command path.** `invoke_command`, `admit_command`, approval, audit, and every command surface.
 - **Query or mutation.** A command is a `mutation` unless a steward sets it as a `query` when registering it.
 
 ### 9.2 `@stream` live tables (part 7)

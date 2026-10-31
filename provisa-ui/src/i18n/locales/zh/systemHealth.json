@@ -26,6 +26,7 @@
     "running": "运行中",
     "unreachable": "不可达",
     "port": "端口 {{port}}",
+    "cypherOverHttp": "基于 HTTP 的 Cypher",
     "mvRefreshLoop": "物化视图刷新循环",
     "stopped": "已停止"
   }

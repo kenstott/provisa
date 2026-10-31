@@ -3,6 +3,13 @@
     "title": "Abrindo o seu sandbox de demonstração",
     "opening": "Estamos preparando uma cópia da demonstração para você. Leva alguns segundos.",
     "starting": "Iniciando esta demonstração…",
-    "retry": "Tentar novamente"
+    "retry": "Tentar novamente",
+    "coordinatorWaking": "O servidor está sendo ativado…",
+    "coordinatorUpdating": "O servidor está sendo atualizado. Ele voltará em breve…",
+    "serverStarting": "O servidor de demonstração está iniciando…",
+    "connecting": "Conectando ao servidor…",
+    "elapsed": "{{time}} até agora",
+    "coldStart": "Uma demonstração inativa leva cerca de cinco minutos para iniciar.",
+    "gaveUp": "A demonstração não abriu em {{minutes}} minutos. Tente novamente mais tarde."
   }
 }

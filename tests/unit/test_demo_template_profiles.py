@@ -131,10 +131,15 @@ def test_a_template_still_being_prepared_is_not_ready(monkeypatch):
 
     monkeypatch.setattr(orgs_router, "_admin_pool", lambda: _Pool())
     demo = SimpleNamespace(name="profiling", template_org="sbxtplprofiling", title="Profiling")
-    for state in ("queued", "building", "failed"):
+    for state in ("queued", "building"):
         monkeypatch.setattr(demo_templates.template_builds, "state_of", lambda _n, s=state: s)
         with pytest.raises(ApiError) as refused:
             asyncio.run(demo_sandbox._template_ready(demo))
         assert refused.value.code == "sandbox.demo_not_ready"
+    # A preparation that failed is named: a visitor is not left waiting on it.
+    monkeypatch.setattr(demo_templates.template_builds, "state_of", lambda _n: "failed")
+    with pytest.raises(ApiError) as refused:
+        asyncio.run(demo_sandbox._template_ready(demo))
+    assert refused.value.code == "sandbox.demo_failed"
     monkeypatch.setattr(demo_templates.template_builds, "state_of", lambda _n: "ready")
     asyncio.run(demo_sandbox._template_ready(demo))

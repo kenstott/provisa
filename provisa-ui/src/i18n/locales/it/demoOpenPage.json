@@ -3,6 +3,13 @@
     "title": "Apertura della tua sandbox demo",
     "opening": "Stiamo preparando una copia della demo per te. Ci vuole qualche secondo.",
     "starting": "Avvio di questa demo…",
-    "retry": "Riprova"
+    "retry": "Riprova",
+    "coordinatorWaking": "Il server si sta riattivando…",
+    "coordinatorUpdating": "Il server è in aggiornamento. Tornerà a breve…",
+    "serverStarting": "Il server demo si sta avviando…",
+    "connecting": "Connessione al server…",
+    "elapsed": "{{time}} finora",
+    "coldStart": "Una demo inattiva impiega circa cinque minuti ad avviarsi.",
+    "gaveUp": "La demo non si è aperta in {{minutes}} minuti. Riprova più tardi."
   }
 }

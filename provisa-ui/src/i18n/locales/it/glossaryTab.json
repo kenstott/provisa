@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "Non ancorato",
     "pendingOn": "Approvare {{terms}} lo ancora.",
     "filterStatus": "Stato",
+    "filterStatusHint": "Mostra solo questi stati",
     "filterGrounding": "Ancoraggio",
     "approve": "Approva",
     "approveHint": "Approva questo termine: agenti e cataloghi trovano e citano i dati tramite termini approvati e ancorati.",

@@ -81,6 +81,7 @@ from provisa.api.app_startup import (
     _seed_sandbox_org,
     _start_background_tasks,
     _start_scheduler,
+    _log_http_surfaces,
     _start_servers,
     _warmup_readiness,
 )
@@ -233,6 +234,7 @@ class AppState:
     _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
     _temp_keeper_task: LongLived | None = None  # REQ-1926: the keeper of sessions' temp tables
     _graph_session_task: LongLived | None = None  # REQ-2176: the sweep of graph sessions
+    _term_scan_task: LongLived | None = None  # REQ-2179: the watch over document scans
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
@@ -3783,6 +3785,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await _start_background_tasks(_log)
 
     await _start_servers(_log)
+    _log_http_surfaces(_app, _log)
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
@@ -3924,6 +3927,8 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         await _stop_long_lived(state._replica_hot_task)
     if state._graph_session_task:
         await _stop_long_lived(state._graph_session_task)
+    if state._term_scan_task:
+        await _stop_long_lived(state._term_scan_task)
     if state._temp_keeper_task:
         await _stop_long_lived(state._temp_keeper_task)
     if state.hot_manager is not None:

@@ -2027,6 +2027,8 @@ export interface ProtocolHealth {
   name: string;
   status: "running" | "down" | "disabled";
   port: number | null;
+  /** Where an HTTP surface is served; a socket listener has a `port` instead. */
+  path: string | null;
 }
 
 export interface SystemHealth {

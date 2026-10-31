@@ -26,6 +26,7 @@
     "running": "Работает",
     "unreachable": "Недоступно",
     "port": "порт {{port}}",
+    "cypherOverHttp": "Cypher через HTTP",
     "mvRefreshLoop": "Цикл обновления материализованных представлений",
     "stopped": "Остановлено"
   }

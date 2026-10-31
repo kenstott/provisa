@@ -19,24 +19,36 @@ domains; one already there is not added again; a rescan shows matches and duplic
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import re
+import threading
+import time
 import types
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from sqlalchemy import insert
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import insert, update
 
 from provisa.api.admin import glossary_router
 from provisa.api.admin import reference_library_router as library_api
 from provisa.api.admin import term_finding_router as router
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.core.request_thread import RequestThreadMiddleware
+from provisa.core.request_context import current_org
 from provisa.core.schema_org import domains
+from provisa.core.schema_org import glossary_term_scans as scans_t
+from provisa.llm import client as llm_client
+from provisa.llm.client import ProvisaLLMClient
 from provisa.reference_library import library, store
 from provisa.security.llm_budget import BudgetRefused
-from provisa.term_finding import model, scan
+from provisa.term_finding import model, queue, scan
 
 if TYPE_CHECKING:
     from fastapi import Request
@@ -201,6 +213,7 @@ class _Guard:
 
 
 class _Client:
+    vendor = "anthropic"
     model = "claude-test"
 
     def __init__(self, usage: Any):
@@ -219,7 +232,7 @@ USAGE = types.SimpleNamespace(prompt_tokens=100, completion_tokens=20, prompt_to
 
 async def test_a_call_is_limited_to_the_roles_room_and_debited_with_what_it_used():
     guard, client = _Guard(room=500), _Client(USAGE)
-    call = model.held(client, guard, None)
+    call = model.Held(client, guard, None)
     assert await call("find terms", 4096) == "[]"
     assert client.asked[0][1] == 500
     ((usage, model_name),) = guard.debited
@@ -227,15 +240,15 @@ async def test_a_call_is_limited_to_the_roles_room_and_debited_with_what_it_used
 
 
 async def test_a_refused_budget_ends_the_scan_naming_the_window():
-    call = model.held(_Client(USAGE), _Guard(refuse=True), None)
+    call = model.Held(_Client(USAGE), _Guard(refuse=True), None)
     with pytest.raises(scan.ScanFailed, match="budget for the day is spent"):
         await call("find terms", 4096)
 
 
 async def test_a_call_with_no_reported_usage_is_refused_when_a_budget_holds_the_role():
     with pytest.raises(scan.ScanFailed, match="reported no usage"):
-        await model.held(_Client(None), _Guard(), None)("p", 10)
-    assert await model.held(_Client(None), _Guard(budget=False), None)("p", 10) == "[]"
+        await model.Held(_Client(None), _Guard(), None)("p", 10)
+    assert await model.Held(_Client(None), _Guard(budget=False), None)("p", 10) == "[]"
 
 
 # -- the API: scan, review queue, rescan ----------------------------------------------------------
@@ -368,7 +381,7 @@ GROUPS = [
 ]
 
 
-async def fake_model(prompt: str, max_tokens: int) -> str:
+def fake_answer(prompt: str) -> str:
     if "Group the mentions" in prompt:
         return json.dumps(GROUPS)
     ordinals = dict((s, int(n)) for n, s in re.findall(r"\[P(\d+)\] \(section '([^']+)'", prompt))
@@ -379,6 +392,19 @@ async def fake_model(prompt: str, max_tokens: int) -> str:
             if m["section"] in ordinals
         ]
     )
+
+
+class _Model:
+    """The model a scan asks, answering at once."""
+
+    name = "fake:model"
+    limited_to = None
+
+    def __init__(self, answer: Callable[[str], str] = fake_answer):
+        self.answer = answer
+
+    async def __call__(self, prompt: str, max_tokens: int) -> str:
+        return self.answer(prompt)
 
 
 async def _embed(texts: list[str]) -> list[list[float]]:
@@ -417,7 +443,7 @@ def api(control_plane, monkeypatch):
         notified.append(reason)
 
     async def _model(request):
-        return fake_model
+        return _Model()
 
     async def _embedder():
         return EMBEDDER
@@ -628,11 +654,11 @@ async def test_a_library_document_is_picked_and_its_removal_is_marked_on_the_sca
 
 
 async def test_a_scan_that_cannot_finish_is_marked_failed_naming_why(api, monkeypatch):
-    async def refused(request):
-        async def call(prompt: str, max_tokens: int) -> str:
-            raise scan.ScanFailed("role steward's LLM budget for the hour is spent")
+    def spent(prompt: str) -> str:
+        raise scan.ScanFailed("role steward's LLM budget for the hour is spent")
 
-        return call
+    async def refused(request):
+        return _Model(spent)
 
     monkeypatch.setattr(router, "_model", refused)
     found = await _scanned(api, _upload(POLICY, domains=["d"]))
@@ -653,3 +679,474 @@ async def test_a_scan_is_refused_by_name(api):
     assert (missing.status_code, missing.code) == (404, "reference_library.not_found")
     bad_url = await refused({"url": "ftp://x/a", "domains": ["d"]})
     assert bad_url.code == "reference_library.invalid"
+
+
+# -- a scan finishes, or stops saying why ---------------------------------------------------------
+
+REAL_LAUNCH = router._launch
+
+
+def _served(api) -> TestClient:
+    """The router behind the middleware every HTTP request passes (REQ-1882): the request runs on
+    a loop checked out for it, and that loop stops when the request ends."""
+
+    async def as_steward(scope, receive, send):
+        scope.setdefault("state", {}).update(_request().state.__dict__)
+        await served(scope, receive, send)
+
+    served = FastAPI()
+    served.include_router(router.router)
+    return TestClient(RequestThreadMiddleware(as_steward))
+
+
+def _settled(client: TestClient, scan_id: int) -> dict:
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        found = client.get(f"/admin/glossary/term-finding/scans/{scan_id}").json()
+        if found["scan"]["status"] != "running":
+            return found
+        time.sleep(0.05)
+    raise AssertionError(f"scan {scan_id} is still running: {found['scan']}")
+
+
+class _Vendor:
+    """aisuite with the vendor's answers replaced: the rest of the call is the real client's."""
+
+    def __init__(self, answer: Callable[[str], str] = fake_answer):
+        self.asked = 0
+        self.answer = answer
+        self.chat = types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=self.create),
+        )
+
+    def __call__(self, *args: Any) -> _Vendor:
+        return self
+
+    def create(self, *, model: str, messages: list[dict], max_tokens: int) -> Any:
+        self.asked += 1
+        text = self.answer(messages[-1]["content"])
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=text))],
+            usage=USAGE,
+        )
+
+
+def _real_client(monkeypatch, vendor: _Vendor) -> Any:
+    monkeypatch.setattr("aisuite.Client", vendor)
+    config = {"ai_models": {model.OPERATION: {"vendor": "anthropic", "model": "fake-model"}}}
+    client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"anthropic": "k"})
+    guard = _Guard(budget=False)
+
+    async def _model(request):
+        return model.Held(client, guard, None)
+
+    monkeypatch.setattr(router, "_model", _model)
+    return client
+
+
+def test_a_scan_outlives_the_request_and_ends_with_its_candidates(api, monkeypatch):
+    """The real path but for the vendor: the request's loop stops when it has answered."""
+    vendor = _Vendor()
+    _real_client(monkeypatch, vendor)
+    monkeypatch.setattr(router, "_launch", REAL_LAUNCH)
+    with _served(api) as client:
+        started = client.post(
+            "/admin/glossary/term-finding/scans", json=_upload(POLICY, domains=["d"])
+        ).json()
+        assert started["scan"]["model"] == "anthropic:fake-model"
+        found = _settled(client, started["scan"]["id"])
+    assert found["scan"]["status"] == "done", found["scan"]
+    assert len(found["drafts"]) == 5
+    assert vendor.asked == found["scan"]["summary"]["calls"]
+    assert found["scan"]["step"] == "merging"
+
+
+async def _running(api, *, launch: str = "this", at: datetime | None = None) -> int:
+    async with api.db.acquire() as conn:
+        scan_id = await queue.start_scan(
+            conn,
+            document_id=None,
+            document_title="t",
+            document_source="s",
+            domains=["d"],
+            started_by="alice",
+            model="fake:model",
+            launch=launch,
+        )
+        if at is not None:
+            await conn.execute_core(
+                update(scans_t).where(scans_t.c.id == scan_id).values(progress_at=at)
+            )
+    return scan_id
+
+
+async def _row(api, scan_id: int) -> queue.ScanRow:
+    async with api.db.acquire() as conn:
+        found = await queue.scan(conn, scan_id)
+    assert found is not None
+    return found
+
+
+async def test_each_batch_and_the_merging_step_is_recorded_as_the_scan_goes(api, monkeypatch):
+    monkeypatch.setattr(scan, "BATCH_CHARS", 1)
+    seen: list[tuple] = []
+
+    def answer(prompt: str) -> str:
+        running = next(r for r in rows if r.id == scan_id)
+        seen.append((running.step, running.batch, running.batches))
+        return fake_answer(prompt)
+
+    rows: list[queue.ScanRow] = []
+    real = queue.record_progress
+
+    async def recorded(conn, id, **values):
+        moved = await real(conn, id, **values)
+        rows[:] = [cast("queue.ScanRow", await queue.scan(conn, id))]
+        return moved
+
+    monkeypatch.setattr(queue, "record_progress", recorded)
+    monkeypatch.setattr(scan, "batches", lambda p: [[x] for x in p])
+
+    async with api.db.acquire() as conn:
+        document = await library.add(
+            conn,
+            library.file_content("policy.md", POLICY),
+            source_kind=store.FILE,
+            domains=["*"],
+            status=store.KEPT,
+            embedder=EMBEDDER,
+            added_by="admin",
+        )
+        passages = len(await store.passages(conn, document))
+    scan_id = await _running(api)
+    await router.run_scan(api.db, scan_id, document, "t", cast("Any", _Model(answer)))
+    assert seen == [
+        *(("reading", n, passages) for n in range(1, passages + 1)),
+        ("merging", 0, 0),
+    ]
+
+
+async def test_a_stalled_model_fails_the_scan_naming_the_model(api, monkeypatch):
+    released = threading.Event()
+
+    def stalls(prompt: str) -> str:
+        released.wait(30)
+        return "[]"
+
+    _real_client(monkeypatch, _Vendor(stalls))
+    monkeypatch.setattr(llm_client, "CALL_TIMEOUT_S", 0.05)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    released.set()
+    assert found["scan"]["status"] == "failed"
+    assert found["scan"]["error"] == "anthropic:fake-model gave no answer within 0.05 seconds"
+
+
+async def test_an_answer_that_is_garbage_fails_the_scan_saying_so(api, monkeypatch):
+    _real_client(monkeypatch, _Vendor(lambda prompt: "I found some terms for you!"))
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["status"] == "failed"
+    assert "was not JSON" in found["scan"]["error"]
+
+
+async def test_a_key_the_vendor_refuses_fails_the_scan_saying_where_to_set_it(api, monkeypatch):
+    def refused(prompt: str) -> str:
+        error = RuntimeError("Error code: 401")
+        error.status_code = 401  # type: ignore[attr-defined]
+        raise error
+
+    _real_client(monkeypatch, _Vendor(refused))
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["error"] == (
+        "the vendor refused the API key for anthropic:fake-model; "
+        "set a working one under Admin, AI Models"
+    )
+
+
+@pytest.mark.parametrize(
+    ("config", "keys", "said"),
+    [
+        ({}, {}, "no AI model is set for finding terms"),
+        ({model.OPERATION: ""}, {}, "no AI model is set for finding terms"),
+        ({model.OPERATION: {"vendor": "anthropic"}}, {}, "no AI model is set for finding terms"),
+        (
+            {model.OPERATION: {"vendor": "anthropic", "model": "m"}},
+            {},
+            "anthropic:m cannot run: anthropic has no API key. Set one under Admin, AI Models",
+        ),
+    ],
+)
+async def test_a_model_that_cannot_run_is_refused_saying_where_to_set_it(
+    monkeypatch, config, keys, said
+):
+    async def resolved(db):
+        return {"ai_models": config}
+
+    async def org_keys(db):
+        return keys
+
+    monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", resolved)
+    monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(model.ModelRefused, match=re.escape(said)) as refused:
+        await model.for_role(types.SimpleNamespace(model_db=None, roles={}), "steward")
+    assert "Admin, AI Models" in str(refused.value)
+
+
+async def test_a_scan_that_cannot_run_is_refused_and_adds_no_document(api, monkeypatch):
+    async def refused(request):
+        raise model.ModelRefused("no AI model is set")
+
+    monkeypatch.setattr(router, "_model", refused)
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request(_upload(POLICY, domains=["d"])))
+    assert (caught.value.status_code, caught.value.code) == (409, "term_finding.no_model")
+    assert api.launched == []
+    async with api.db.acquire() as conn:
+        assert await store.documents(conn) == []
+        assert await queue.scans(conn) == []
+
+
+def test_a_key_is_looked_for_where_the_call_would_look(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ENDPOINT_KEY", raising=False)
+
+    def client(vendor: str, keys: dict[str, str] | None = None, **extra: Any) -> ProvisaLLMClient:
+        return ProvisaLLMClient(
+            model.OPERATION,
+            config={
+                "ai_models": {model.OPERATION: {"vendor": vendor, "model": "m", **extra}},
+                "ai_endpoints": [
+                    {
+                        "id": "mine",
+                        "style": "openai",
+                        "base_url": "http://x",
+                        "api_key_env": "ENDPOINT_KEY",
+                    },
+                    {"id": "open", "style": "openai", "base_url": "http://x"},
+                ],
+            },
+            api_keys=keys,
+        )
+
+    assert client("anthropic").key_problem() == "anthropic has no API key"
+    assert client("anthropic", {"anthropic": "k"}).key_problem() is None
+    assert client("mine").key_problem() == "mine has no API key"
+    assert client("open").key_problem() is None
+    assert client("ollama").key_problem() is None
+    fallback = {"vendor": "ollama", "model": "m"}
+    assert client("anthropic", fallback=fallback).key_problem() is None
+    fallback = {"vendor": "openai", "model": "m"}
+    assert client("anthropic", fallback=fallback).key_problem() == "anthropic has no API key"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    assert client("anthropic").key_problem() is None
+
+
+def test_a_stalled_call_is_tried_on_the_fallback(monkeypatch):
+    calls: list[str] = []
+
+    def respond(self, vendor, model_name, prompt, system, max_tokens):
+        calls.append(vendor)
+        if vendor == "anthropic":
+            threading.Event().wait(5)
+        return llm_client.Completion("answer", vendor, model_name, None)
+
+    monkeypatch.setattr(ProvisaLLMClient, "_respond", respond)
+    monkeypatch.setattr(llm_client, "CALL_TIMEOUT_S", 0.05)
+    fallback = {"vendor": "openai", "model": "n"}
+    config = {"ai_models": {"x": {"vendor": "anthropic", "model": "m", "fallback": fallback}}}
+    assert ProvisaLLMClient("x", config=config).complete_sync("p") == "answer"
+    assert calls == ["anthropic", "openai"]
+    with pytest.raises(llm_client.LLMTimeoutError, match="anthropic:m gave no answer"):
+        ProvisaLLMClient(
+            "x", config={"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}}
+        ).complete_sync("p")
+
+
+def test_a_call_runs_in_the_callers_context(monkeypatch):
+    def respond(self, vendor, model_name, prompt, system, max_tokens):
+        return llm_client.Completion(str(current_org.get()), vendor, model_name, None)
+
+    monkeypatch.setattr(ProvisaLLMClient, "_respond", respond)
+    token = current_org.set("acme")
+    try:
+        config = {"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}}
+        assert ProvisaLLMClient("x", config=config).complete_sync("p") == "acme"
+    finally:
+        current_org.reset(token)
+
+
+async def test_a_budget_that_refuses_is_shown_on_the_scan_and_no_call_is_made(api, monkeypatch):
+    client = _Client(USAGE)
+
+    async def refusing(request):
+        return model.Held(client, _Guard(refuse=True), None)
+
+    monkeypatch.setattr(router, "_model", refusing)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["status"] == "failed"
+    assert found["scan"]["error"] == "role steward's LLM budget for the day is spent"
+    assert client.asked == []
+
+
+async def test_a_budget_that_holds_a_call_short_is_shown(api, monkeypatch):
+    held = model.Held(_Client(USAGE), _Guard(room=500), None)
+    assert await held("p", 4096) == "[]"
+    assert held.limited_to == 500
+
+    class Limited(_Model):
+        limited_to = 500
+
+    async def limited(request):
+        return Limited()
+
+    monkeypatch.setattr(router, "_model", limited)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert (found["scan"]["status"], found["scan"]["budget_limit"]) == ("done", 500)
+
+    async def garbage(request):
+        return Limited(lambda prompt: "cut sho")
+
+    monkeypatch.setattr(router, "_model", garbage)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert "held a call to 500 output tokens" in found["scan"]["error"]
+
+
+async def test_scans_a_restart_left_running_are_failed_saying_so(api):
+    old = await _running(api, launch="earlier")
+    this = await _running(api, launch="this")
+    await router.give_up_on_left_behind(api.db, "this")
+    assert ((await _row(api, old)).status, (await _row(api, old)).error) == (
+        "failed",
+        router.RESTARTED,
+    )
+    assert (await _row(api, old)).finished_at is not None
+    assert (await _row(api, this)).status == "running"
+
+
+async def test_a_scan_that_predates_launches_is_failed_too(api):
+    scan_id = await _running(api)
+    async with api.db.acquire() as conn:
+        await conn.execute_core(
+            update(scans_t).where(scans_t.c.id == scan_id).values(launch=None, progress_at=None)
+        )
+    await router.give_up_on_left_behind(api.db, "this")
+    assert (await _row(api, scan_id)).error == router.RESTARTED
+
+
+async def test_a_scan_with_no_progress_past_the_limit_is_failed_saying_so(api):
+    now = datetime.now(UTC)
+    stalled = await _running(api, at=now - router.STALLED_AFTER - timedelta(seconds=1))
+    moving = await _running(api, at=now - router.STALLED_AFTER + timedelta(seconds=30))
+    await router.give_up_on_left_behind(api.db, "this")
+    assert ((await _row(api, stalled)).status, (await _row(api, stalled)).error) == (
+        "failed",
+        router.STALLED,
+    )
+    assert (await _row(api, moving)).status == "running"
+
+
+async def test_the_watch_looks_at_startup_in_every_org_runtime_and_outlives_a_failed_pass(
+    api, monkeypatch
+):
+    scan_id = await _running(api, launch="earlier")
+    passes = 0
+    real = router.give_up_on_left_behind
+
+    async def give_up(pool, launch):
+        nonlocal passes
+        passes += 1
+        if passes == 1:
+            raise RuntimeError("a pass that failed")
+        await real(pool, launch)
+
+    monkeypatch.setattr(router, "give_up_on_left_behind", give_up)
+    monkeypatch.setattr(router, "KEEP_EVERY_S", 0)
+    state = types.SimpleNamespace(
+        model_db=api.db,
+        org_registry=types.SimpleNamespace(
+            runtimes=lambda: [types.SimpleNamespace(org_id="default", env="prod")]
+        ),
+    )
+    watch = asyncio.ensure_future(router.keep(state))
+    try:
+        for _ in range(200):
+            if (await _row(api, scan_id)).status == "failed":
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        watch.cancel()
+    assert (await _row(api, scan_id)).error == router.RESTARTED
+
+
+async def test_shutting_down_fails_a_running_scan_saying_so(api):
+    scan_id = await _running(api)
+    entered = asyncio.Event()
+
+    class Stuck(_Model):
+        async def __call__(self, prompt: str, max_tokens: int) -> str:
+            entered.set()
+            await asyncio.Event().wait()
+            return ""
+
+    async with api.db.acquire() as conn:
+        document = await library.add(
+            conn,
+            library.file_content("policy.md", POLICY),
+            source_kind=store.FILE,
+            domains=["*"],
+            status=store.KEPT,
+            embedder=EMBEDDER,
+            added_by="admin",
+        )
+    work = asyncio.ensure_future(
+        router.run_scan(api.db, scan_id, document, "t", cast("Any", Stuck()))
+    )
+    await entered.wait()
+    work.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await work
+    assert (await _row(api, scan_id)).error == router.STOPPED
+
+
+def test_a_person_cancels_a_running_scan_and_it_queues_nothing(api, monkeypatch):
+    asked, release = threading.Event(), threading.Event()
+
+    def waits(prompt: str) -> str:
+        asked.set()
+        release.wait(20)
+        return fake_answer(prompt)
+
+    vendor = _Vendor(waits)
+    _real_client(monkeypatch, vendor)
+    monkeypatch.setattr(router, "_launch", REAL_LAUNCH)
+    with _served(api) as client:
+        started = client.post(
+            "/admin/glossary/term-finding/scans", json=_upload(POLICY, domains=["d"])
+        ).json()
+        scan_id = started["scan"]["id"]
+        assert asked.wait(20)
+        cancelled = client.post(f"/admin/glossary/term-finding/scans/{scan_id}/cancel")
+        assert cancelled.status_code == 200
+        assert cancelled.json()["scan"]["error"] == "cancelled by alice"
+        release.set()
+        found = _settled(client, scan_id)
+        assert (found["scan"]["status"], found["scan"]["error"]) == ("failed", "cancelled by alice")
+        assert found["drafts"] == []
+        time.sleep(0.2)
+        assert vendor.asked == 1
+        again = client.post(f"/admin/glossary/term-finding/scans/{scan_id}/cancel")
+        assert again.status_code == 409
+
+
+async def test_an_ended_scan_keeps_its_first_ending(api):
+    scan_id = await _running(api)
+    async with api.db.acquire() as conn:
+        assert await queue.fail_scan(conn, scan_id, "cancelled by alice")
+        assert not await queue.fail_scan(conn, scan_id, "later")
+        assert not await queue.finish_scan(conn, scan_id, [_candidate("x")], {})
+        assert not await queue.record_progress(
+            conn, scan_id, step="merging", batch=0, batches=0, budget_limit=None
+        )
+        assert await queue.drafts(conn, scan_id) == []
+    assert (await _row(api, scan_id)).error == "cancelled by alice"
