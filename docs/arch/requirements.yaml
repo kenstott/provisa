@@ -35919,7 +35919,9 @@
     for the tables of non-system domains it can read, write or list, with no meta grant. List means a role
     can see only the metadata, never the data. Metadata about a table reached this way is held to the role''s
     column grants. The pgwire catalog passes metadata along and is neither the meta domain nor gated by
-    it.'
+    it. (Amended 2026-10-29, CORRECTION TO READ, WRITE OR LIST:) The sentence holding this metadata to the
+    role''s column grants is withdrawn: the maintainer did not state it, and a role that can only list holds
+    no column grants.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
