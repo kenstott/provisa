@@ -16,7 +16,7 @@ This module formalizes what schema_gen already does and adds validation.
 
 from __future__ import annotations
 
-from provisa.security.rights import column_served, reaches_domain
+from provisa.security.rights import column_served, reads_domain
 
 # Requirements: REQ-001, REQ-038, REQ-039, REQ-042, REQ-263, REQ-363
 
@@ -26,7 +26,7 @@ def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, RE
     schema build and SQL governance read (:func:`provisa.security.rights.column_served`)."""
     result = []
     for table in tables:
-        reaches = reaches_domain(role["domain_access"], table["domain_id"])
+        reaches = reads_domain(role["domain_access"], table["domain_id"])
         visible_cols = [
             c
             for c in table["columns"]

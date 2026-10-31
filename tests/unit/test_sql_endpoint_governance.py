@@ -445,18 +445,23 @@ class TestImplicitTraversalDomains:
             "Expected V002 for JOIN between unrelated data domains without a registered relationship"
         )
 
-    def test_direct_meta_table_in_from_blocked_by_v001(self):
-        """Direct FROM-clause use of a meta table is still domain-access checked (V001)."""
+    def test_direct_meta_table_in_from_is_read_by_a_listed_role(self):
+        """A role with a list reads a meta table directly, as a "*" role does (REQ-1132)."""
         from provisa.compiler.sql_validator import validate_sql
 
         ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
         sql = "SELECT table_name FROM registered_tables"
         violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
-        # meta domain not in role's domain_access ["pet-store"] → V001
-        v001 = [v for v in violations if v.code == "V001"]
-        assert v001, (
-            "Expected V001 when meta table appears directly in FROM clause without domain access"
-        )
+        assert not [v for v in violations if v.code == "V001"]
+
+    def test_direct_ops_table_in_from_blocked_by_v001(self):
+        """ops is a normal domain: direct FROM-clause use is domain-access checked (V001)."""
+        from provisa.compiler.sql_validator import validate_sql
+
+        ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        violations = validate_sql("SELECT id FROM metrics", ctx, gov_ctx, role, raw_tables)
+        # ops not in role's domain_access ["pet-store"] → V001
+        assert [v for v in violations if v.code == "V001"]
 
 
 class TestMaskedColumnInPredicate:

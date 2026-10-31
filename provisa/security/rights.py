@@ -322,11 +322,12 @@ def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039
     return domain_policy.single_domain() or ALL_DOMAINS in domain_access
 
 
-# The catalog every role reaches implicitly, whatever its list: the schema build includes its tables
-# for traversal from any domain (REQ-1132), and its commands (the APOC set, REQ-2168) are admitted
-# by their grants alone. Data governance does not read it: direct SQL over the catalog still needs
-# it listed (reaches_domain).
-IMPLICIT_DOMAINS: frozenset[str] = frozenset({META_DOMAIN_ID})
+# The system domains every role with a domain list reads, whatever it lists: meta, the model's
+# structure (REQ-1132), and ontology, its meaning (REQ-2163). THE list; every other reader derives
+# from it. Reading them is as a "*" role reads them, on every surface, governed by the same column
+# grants and row rules (reads_domain). Writing and commands are not implied: ops, and any other
+# domain, is one a role must list.
+IMPLICIT_DOMAINS: frozenset[str] = frozenset({META_DOMAIN_ID, ONTOLOGY_DOMAIN_ID})
 
 
 def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
@@ -334,10 +335,29 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
 
 
+def reads_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
+    """:func:`reaches_domain`, or ``domain_id`` is a system domain (IMPLICIT_DOMAINS) and the role
+    lists any domain: what a role READS, by the schema build, SQL's V001, Cypher's roots and the
+    catalog alike. An empty list is no domains, so it reads no system domain either. A write
+    stays within :func:`reaches_domain`, a command within :func:`reaches_implicitly`."""
+    if reaches_domain(domain_access, domain_id):
+        return True
+    return domain_id in IMPLICIT_DOMAINS and bool(domain_access)
+
+
+def read_domains(domain_access: Iterable[str] | None) -> set[str]:
+    """The named domains ``domain_access`` reads: its list and, for a list naming any, the system
+    domains. A ``"*"`` role is every domain (:func:`reaches_all_domains`), which no set here says."""
+    listed = set(domain_access or ())
+    return listed | IMPLICIT_DOMAINS if listed else listed
+
+
 def reaches_implicitly(domain_access: Iterable[str] | None, domain_id: str) -> bool:
-    """:func:`reaches_domain`, or ``domain_id`` is one every role reaches (IMPLICIT_DOMAINS): the
-    reach the schema build and command admission read."""
-    return domain_id in IMPLICIT_DOMAINS or reaches_domain(domain_access, domain_id)
+    """:func:`reaches_domain`, or ``domain_id`` is meta: command admission's reach. Every role
+    reaches the catalog's commands (the APOC set, REQ-2168), admitted by their grants alone.
+    Ontology is read-only and regenerated with the model (REQ-2163), so its being read admits no
+    command registered in it."""
+    return domain_id == META_DOMAIN_ID or reaches_domain(domain_access, domain_id)
 
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
@@ -353,7 +373,7 @@ def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: b
     schema build, SQL governance, the direct-read (V001) check and the catalog's row scope.
 
     ``reaches``: whether the role reaches the table's domain, as the caller decides it (a domain
-    it lists, ``*``, or the catalog domain every role may traverse).
+    it lists, ``*``, or a system domain, :func:`reads_domain`).
 
     The column's own grant comes first, and it is the only thing that says who: ``visible_to``
     names the role (a grant to an ancestor is folded down to its descendants when roles load,
@@ -388,7 +408,7 @@ def served_roles(  # REQ-2152
             {"id": role_id},
             domain_id,
             granted,
-            reaches=reaches_domain(definition["domain_access"], domain_id),
+            reaches=reads_domain(definition["domain_access"], domain_id),
         )
     )
 
@@ -408,7 +428,7 @@ def serves_table(role: dict, table: dict) -> bool:
     rule (:func:`column_served`) — within a domain the role reaches, or published across domains
     (REQ-1959). A parameter column is an argument, not data."""
     domain_id = cast("str", table.get("domain_id"))
-    reaches = reaches_domain(role["domain_access"], domain_id)
+    reaches = reads_domain(role["domain_access"], domain_id)
     return any(
         not column.get("native_filter_type")
         and column_served(role, domain_id, column, reaches=reaches)

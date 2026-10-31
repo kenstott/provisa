@@ -27,10 +27,9 @@ from provisa.api._ontology_views import (
     ONTOLOGY_TABLES,
 )
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
-from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.core import domain_policy
 from provisa.core.db import SEEDED_DOMAIN_IDS
-from provisa.security.rights import GLOSSARY_SCOPED_VIEWS, ONTOLOGY_DOMAIN_ID
+from provisa.security.rights import GLOSSARY_SCOPED_VIEWS, IMPLICIT_DOMAINS, ONTOLOGY_DOMAIN_ID
 
 DEFINITIONS = (
     "_terms",
@@ -90,7 +89,7 @@ def test_the_definitions_relate_within_ontology_and_bind_columns_in_meta():
 def test_ontology_is_a_system_domain_every_role_may_traverse():
     assert ONTOLOGY_DOMAIN_ID in SEEDED_DOMAIN_IDS
     assert ONTOLOGY_DOMAIN_ID in domain_policy.system_domain_ids()
-    assert ONTOLOGY_DOMAIN_ID in _IMPLICIT_TRAVERSAL_DOMAINS
+    assert ONTOLOGY_DOMAIN_ID in IMPLICIT_DOMAINS
 
 
 def test_a_terms_rows_are_read_by_the_glossarys_own_rule_in_ontology():

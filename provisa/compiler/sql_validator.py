@@ -49,10 +49,9 @@ import sqlglot.expressions as exp
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
-from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
-from provisa.security.rights import reaches_all_domains
+from provisa.security.rights import IMPLICIT_DOMAINS, reads_domain, reaches_all_domains
 from provisa.transpiler.xml_syntax import MAPPINGS
 
 
@@ -249,7 +248,9 @@ def _check_domain_access(  # REQ-039, REQ-263
             # columns the role may read is the column check's (V003).
             if tid in gov_ctx.public_tables:
                 continue
-            if meta.domain_id and meta.domain_id not in domain_access:
+            # The system domains are read as a "*" role reads them (rights.reads_domain): their
+            # columns by the column check, their rows by the catalog's and the glossary's rules.
+            if meta.domain_id and not reads_domain(domain_access, meta.domain_id):
                 ref = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
                 violations.append(
                     ValidationViolation(
@@ -439,9 +440,9 @@ def tables_outside_relationships(  # REQ-603
     covered_pairs = {(s, t) for s, t, _, _ in valid_joins}
 
     def exempt(table_id: int) -> bool:
-        # meta/ops tables are implicitly traversable — no registered relationship required
+        # the system domains are implicitly traversable — no registered relationship required
         meta = table_id_to_meta.get(table_id)
-        return meta is not None and meta.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
+        return meta is not None and meta.domain_id in IMPLICIT_DOMAINS
 
     def same_remote_source(a: int, b: int) -> bool:
         # Remote schemas own their relationship model: two tables of one remote source with no

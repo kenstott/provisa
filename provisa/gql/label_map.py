@@ -36,13 +36,6 @@ if TYPE_CHECKING:
 
 # Requirements: REQ-351, REQ-392, REQ-394, REQ-467, REQ-471, REQ-574
 
-# Catalog domain id — local constant (kept in sync with provisa.security.rights.META_DOMAIN_ID) to
-# avoid importing a higher layer into the cypher package.
-_META_DOMAIN_ID = "meta"
-# The domains every role may traverse but only a role granted them may root a MATCH in: meta and
-# the ontology schema (provisa.compiler.schema_gen._IMPLICIT_TRAVERSAL_DOMAINS).
-_IMPLICIT_DOMAINS = frozenset({_META_DOMAIN_ID, "ontology"})
-
 # REQ-1320: star-schema modeling role → the additional node label Neo4j clients see.
 _ROLE_LABELS = {"fact": "Fact", "dimension": "Dimension"}
 
@@ -494,10 +487,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         marked traversal_only=True — they cannot be used as MATCH starting nodes.
 
         ``domain_access`` is the ACTING ROLE's own list and is required: it decides whether the
-        meta catalog may be a MATCH root, and there is no list to read off a missing role, so
+        system domains may be a MATCH root, and there is no list to read off a missing role, so
         ``None`` raises rather than leaving the catalog open.
         """
-        from provisa.security.rights import reaches_all_domains
+        from provisa.security.rights import IMPLICIT_DOMAINS, reaches_all_domains, reads_domain
 
         if domain_access is None:
             raise ValueError(
@@ -547,23 +540,20 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             for nm in nodes.values():
                 nm.modeling_role = _roles_by_id.get(nm.table_id) or nm.modeling_role
 
-        # REQ-1132: meta (catalog) is DISCOVERABLE ONLY BY TRAVERSAL for a role without a meta grant
-        # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
-        # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
-        # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
-        # REQ-2163: the ontology schema (the glossary's definitions moved from meta) likewise -- but
-        # a Class table, which no relationship reaches, is read as a root, as SQL reads it, under
-        # the read rights of the tables it is the union of.
+        # REQ-1132, REQ-2163: a role reads the system domains (meta, ontology) as SQL does, so a
+        # MATCH may root in them, by the one rule (rights.reads_domain). Only a role reading none,
+        # one with an empty list, is left with traversal: a direct FROM would be V001-blocked --
+        # but a Class table, which no relationship reaches, is read as a root, as SQL reads it,
+        # under the read rights of the tables it is the union of.
         from provisa.compiler.ontology_classes import is_class_table_id
 
-        if not _all_access:
-            for nm in nodes.values():
-                if (
-                    nm.domain_id in _IMPLICIT_DOMAINS
-                    and nm.domain_id not in domain_access
-                    and not is_class_table_id(nm.table_id)
-                ):
-                    nm.traversal_only = True
+        for nm in nodes.values():
+            if (
+                nm.domain_id in IMPLICIT_DOMAINS
+                and not reads_domain(domain_access, nm.domain_id)
+                and not is_class_table_id(nm.table_id)
+            ):
+                nm.traversal_only = True
 
         # REQ-2163: an ontology Class never takes a model table's bare label: where a table and a
         # Class share one, it is the table's, and the Class is reached by its qualified label

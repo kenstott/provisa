@@ -103,15 +103,17 @@ def data_view(
     ``row_rule`` (table id, domain → predicate) are what the build resolved for the role. Only what
     ``readable`` -- the viewer's own read rights (REQ-2152) -- admits is listed, and nothing marks
     the rest."""
-    from provisa.security.rights import column_served, reaches_domain
+    from provisa.security.rights import column_served, reaches_domain, reads_domain
 
     out: list[dict] = []
     for table in tables:
         tid, domain = table["id"], table["domain_id"]
-        reaches = reaches_domain(list(reach), domain)
+        reaches = reads_domain(list(reach), domain)
         writes: dict[str, list[str]] = {}
-        # A write is admitted only within the role's reach: outside it nothing is written.
-        for grant in table.get("write_grants") or [] if reaches else []:
+        # A write is admitted only within the role's reach: outside it nothing is written, and a
+        # system domain it reads without listing it is outside it.
+        writable = reaches_domain(list(reach), domain)
+        for grant in table.get("write_grants") or [] if writable else []:
             if grant["role"] != role_id:
                 continue
             for column in (

@@ -500,9 +500,8 @@ def _register_ops_synthetic_joins(
     from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
-    _IMPLICIT_DOMAINS = {"meta", "ops"}
     for ops_t in tables:
-        if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
+        if ops_t.domain_id != "ops":
             continue
         # The link matches the registration's (domain_id, table_name) on the ops row's own pair;
         # a row naming its table otherwise (replica_build_log: source, schema, physical name)

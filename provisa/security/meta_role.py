@@ -250,7 +250,7 @@ def _member_reads(
     with, which contribute grants only."""
     from provisa.compiler.rls import HIDDEN, PLAIN, MemberReads
     from provisa.security.masking import entry_for, rule_of
-    from provisa.security.rights import column_served, reaches_domain
+    from provisa.security.rights import column_served, reads_domain
 
     from provisa.security.masking import MaskType
 
@@ -287,7 +287,7 @@ def _member_reads(
             name = c["column_name"]
             treatments = []
             for m in readers:
-                reaches = not domain or reaches_domain(m.get("domain_access") or [], domain)
+                reaches = not domain or reads_domain(m.get("domain_access") or [], domain)
                 served = any(
                     column_served({"id": rid}, domain, c, reaches=reaches)
                     for rid in (m["id"], *qualifiers)

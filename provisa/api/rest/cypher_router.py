@@ -1271,12 +1271,12 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         rows = _dict_rows(executed)
         return {"count": int(rows[0]["cnt"]) if rows else 0}
 
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import reads_domain
 
     _domain_access = state.roles[role_id]["domain_access"]
 
     def _reads_domain(domain_id: str | None) -> bool:
-        return not domain_id or reaches_all_domains(_domain_access) or domain_id in _domain_access
+        return not domain_id or reads_domain(_domain_access, domain_id)
 
     node_labels, rel_types = _countable_labels(label_map, filtered_domains, _reads_domain)
 
