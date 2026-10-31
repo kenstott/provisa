@@ -139,7 +139,7 @@
         "description": "📓 The Notebook tab is JupyterLite: a Jupyter notebook running in your browser. Its first cell signs in, and the next reads the same statement as a DataFrame to chart or join with other data.<p>⬇️ Download the notebook and it opens in any desktop Jupyter, where the same cells read from Provisa as they do here.</p><p>One surface left: the one that writes your queries for you. →</p>"
       },
       "step13": {
-        "title": "Ask in plain English: the surface that writes your queries",
+        "title": "Plain English: the surface that writes your queries",
         "description": "💬 <em>\"how many pets per species\"</em><p><strong>Ask in plain English</strong> and Provisa compiles your question into all seven at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
