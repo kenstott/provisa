@@ -403,7 +403,7 @@ def _mcp(server: _Traced) -> int:
     return asyncio.run(_call())
 
 
-_CYPHER = "MATCH (e:events) WHERE e.id = 7 RETURN e.id AS id, e.amount AS amount"
+_CYPHER = "MATCH (e:Events) WHERE e.id = 7 RETURN e.id AS id, e.amount AS amount"
 _PLAIN_GQL = "query { td__events(where: {id: {eq: 7}}) { id amount } }"
 
 # transport -> (one request, the provisa.transport its request span reports)

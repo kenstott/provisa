@@ -1202,6 +1202,14 @@ def transpile(
         )
     from provisa.transpiler.native_subtype import MARKER as _SUBTYPE_MARKER, resolve_subtypes
 
+    if target_dialect != "postgres" and "range" in pg_sql.lower():
+        # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
+        from provisa.transpiler import pg_ranges
+
+        lowered = pg_ranges.rewrite(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            target_dialect,
+        )
     if _SUBTYPE_MARKER in pg_sql.lower():
         # REQ-2171: each sort, filter, join or operator on a subtyped column, in this dialect's
         # native type, an emulation, or refused by name.
