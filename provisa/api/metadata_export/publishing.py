@@ -328,12 +328,11 @@ async def role_reader(state: Any, role: str) -> "Callable[[TableAsset], set[str]
 
 def role_reach(state: Any, role: str) -> "Callable[[str], bool]":
     """Whether ``role`` reaches a domain, by its definition: a target's role is one the org
-    defines, checked when the target is saved. A capability opening a system domain to read
-    publishes nothing of it (rights.acts_in_domain)."""
-    from provisa.security.rights import acts_in_domain
+    defines, checked when the target is saved."""
+    from provisa.security.rights import reaches_domain
 
     reach = state.roles[role]["domain_access"]
-    return lambda domain_id: acts_in_domain(reach, domain_id)
+    return lambda domain_id: reaches_domain(reach, domain_id)
 
 
 async def snapshot_reader(

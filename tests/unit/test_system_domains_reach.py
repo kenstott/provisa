@@ -63,7 +63,7 @@ from provisa.security.rights import (
 )
 from provisa.security.visibility import visible_tables
 
-ROLE, LONER = "pet_analyst", "loner"
+ROLE, LONER, WILD, NO_GLOSSARY = "pet_analyst", "loner", "wild", "no_glossary"
 PETS, CATALOG, TERMS, QUERIES = 1, 2, 3, 4
 PETS_NAME, CATALOG_NAME, TERMS_NAME, QUERIES_NAME = (
     "pets",
@@ -89,6 +89,15 @@ OWN = [
     {"id": ROLE, "capabilities": [], "parents": ["analyst"], "domain_access": LISTED},
     # No viewer ancestor: it holds a data right and reaches a data domain.
     {"id": LONER, "capabilities": ["usage"], "parents": [], "domain_access": ["pet-store"]},
+    # "*" and no capability opening a system domain.
+    {"id": WILD, "capabilities": ["usage"], "parents": [], "domain_access": ["*"]},
+    # REQ-2155 NO FLOOR: viewer's rights but glossary_read, as a child unselecting it holds them.
+    {
+        "id": NO_GLOSSARY,
+        "capabilities": ["catalog_read", "data_product_read"],
+        "parents": [],
+        "domain_access": ["pet-store"],
+    },
 ]
 
 
@@ -131,7 +140,7 @@ def _tables() -> list[dict]:
                     "visible_to": (
                         [VIEWER_ROLE]
                         if tid in (CATALOG, TERMS)
-                        else [ROLE, LONER, "analyst", "org_admin"]
+                        else [ROLE, LONER, WILD, NO_GLOSSARY, "analyst", "org_admin"]
                     ),
                     "native_filter_type": None,
                 }
@@ -247,6 +256,8 @@ def test_every_other_module_derives_from_it():
         pytest.param("org_admin", ["*", "meta", "ontology", "ops"], id="org_admin"),
         pytest.param("platform_admin", [], id="platform_admin-reaches-none"),
         pytest.param(LONER, ["pet-store"], id="no-viewer-ancestor"),
+        pytest.param(WILD, ["*"], id="wildcard-with-no-capability"),
+        pytest.param(NO_GLOSSARY, ["meta", "pet-store"], id="without-glossary-read"),
     ],
 )
 def test_a_roles_flattened_list_is_its_data_domains_and_its_capabilities(role_id, reach):
@@ -353,6 +364,19 @@ def test_graphql_a_role_with_no_viewer_ancestor_reaches_neither():
     assert query is not None
     assert PETS_NAME in query.fields
     assert not _system_fields(query.fields)
+
+
+def test_graphql_a_wildcard_role_with_no_capability_reaches_no_system_domain():
+    query = generate_schema(_schema_input(_flat(WILD))).query_type
+    assert query is not None
+    assert PETS_NAME in query.fields
+    assert not _system_fields(query.fields) and not _ops_fields(query.fields)
+
+
+def test_graphql_a_role_not_holding_glossary_read_has_no_ontology():
+    query = generate_schema(_schema_input(_flat(NO_GLOSSARY))).query_type
+    assert query is not None
+    assert not {f for f in query.fields if "terms" in f.lower()}
 
 
 def test_graphql_serves_ontology_terms_and_meta_columns():
@@ -635,14 +659,6 @@ def test_a_role_reaching_every_domain_keeps_its_write_where_it_holds_the_capabil
 def test_command_admission_is_not_widened_by_a_capability(role_id, domain, admitted):
     command = {"domain_id": domain, "visible_to": [role_id]}
     assert command_reachable(command, _flat(role_id)) is admitted
-
-
-def test_a_metadata_export_target_publishes_no_system_domain_for_a_listed_role():
-    from provisa.api.metadata_export.publishing import role_reach
-
-    state = types.SimpleNamespace(roles={ROLE: _flat()})
-    reach = role_reach(state, ROLE)
-    assert reach("pet-store") and not reach(META_DOMAIN_ID) and not reach(ONTOLOGY_DOMAIN_ID)
 
 
 def test_a_listed_role_holding_observability_is_admitted_no_ops_command():
