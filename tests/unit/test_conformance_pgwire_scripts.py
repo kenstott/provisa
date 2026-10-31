@@ -372,7 +372,7 @@ class _Probe:
 
     def rows(self, sql: str) -> list[tuple]:
         return [
-            (name, args, "f", False, "n", 0, "integer", list(argtypes))
+            (name, args, "f", False, "n", 0, "integer", "i", list(argtypes))
             for name, args, argtypes in self._functions
         ]
 

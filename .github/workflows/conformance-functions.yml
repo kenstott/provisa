@@ -13,9 +13,10 @@ name: Conformance (functions)
 # failed when any leg left no complete result: such a list guarantees nothing.
 #
 # Engines left out: the paid warehouses (snowflake, databricks, bigquery, fabric, synapse,
-# motherduck) need credentials; clickhouse-server is the clickhouse leg's runtime and rewrites;
-# the generic SQLAlchemy engines (mysql, mssql and the rest) run no pg_catalog rewrites of their
-# own and each needs a server of its own.
+# motherduck) need credentials; clickhouse-server is the clickhouse leg's runtime on a server of
+# its own, so it would repeat that leg; the SQLAlchemy engines (mysql, mssql and the rest) each
+# need a server, and landing the fixture into it, that no conformance job has booted yet, and a
+# leg that leaves no result leaves no guaranteed list.
 
 on:
   workflow_dispatch:

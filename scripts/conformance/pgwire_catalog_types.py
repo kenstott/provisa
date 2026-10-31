@@ -327,8 +327,12 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     pgspec needs nothing here: every table it touches it creates itself as a session temporary
     table."""
     registered = registrable_columns(pg_dsn)
+    engine = os.environ.get("PROVISA_ENGINE") or "duckdb"
+    # ClickHouse's PostgreSQL database engine mounts one schema, public unless the source's hint
+    # says otherwise (ClickHousePostgresConnector); no other engine reads it for this source.
+    hints = {"federation_hints": {"schema": FIXTURE_SCHEMA}} if engine == "clickhouse" else {}
     return {
-        "federation_engine": os.environ.get("PROVISA_ENGINE") or "duckdb",
+        "federation_engine": engine,
         "auth": {
             # Password auth with SCRAM-SHA-256 (REQ-1394), so pgspec's auth tests prove a password
             # rather than meet trust mode. The break-glass account creates the job's one user
@@ -381,6 +385,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 "database": "${env:CONFORMANCE_PG_DATABASE}",
                 "username": "${env:CONFORMANCE_PG_USER}",
                 "password": "${env:CONFORMANCE_PG_PASSWORD}",
+                **hints,
             }
         ],
         "tables": [

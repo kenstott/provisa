@@ -697,6 +697,10 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
         1 for o in overloads if o["outcome"] == "pass" and o.get("answers_checked")
     )
     out["pass_only_called"] = out["pass"] - out["pass_answers_checked"]
+    # Passed without reaching the engine: the catalog DB answers it on every engine alike.
+    out["pass_catalog_answered"] = sum(
+        1 for o in overloads if o["outcome"] == "pass" and o.get("served_by") == "catalog"
+    )
     return out
 
 
@@ -740,7 +744,7 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
     """An overload's outcome on one engine, as the data file keeps it."""
     if entry is None:
         return {"outcome": "not_reached", "detail": "the engine's leg left no result"}
-    kept = {"outcome": entry["outcome"]}
+    kept: dict[str, Any] = {"outcome": entry["outcome"]}
     for key in ("detail", "served_by"):
         if entry.get(key) is not None:
             kept[key] = entry[key]
@@ -848,6 +852,13 @@ def merged_markdown(doc: dict[str, Any]) -> str:
         "Comparison: " + doc["comparison"] + ". A pass counts as answers checked when a call with "
         "real values was compared, and as only called when it was not: such a pass proves the "
         "call is served and its type, not its answer.",
+        "",
+    ]
+    answered = {engine: doc["counts"][engine]["pass_catalog_answered"] for engine in engines}
+    lines += [
+        "Passes the catalog DB answers, without reaching the engine: "
+        + ", ".join(f"{engine} {n}" for engine, n in answered.items())
+        + ".",
         "",
     ]
     if doc["engines_incomplete"]:
