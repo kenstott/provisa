@@ -59,7 +59,10 @@ class _Stores:
         subprocess.run(
             ["docker", "run", "-d", "--rm", "--memory", "512m", "--name", self._pg]
             + ["-e", "POSTGRES_USER=provisa", "-e", "POSTGRES_PASSWORD=provisa"]
-            + ["-e", "POSTGRES_DB=provisa", "-p", f"127.0.0.1:{self.pg_port}:5432", "postgres:16"],
+            + ["-e", "POSTGRES_DB=provisa", "-p", f"127.0.0.1:{self.pg_port}:{self.pg_port}"]
+            # One port inside and out: the engine's postgres_fdw dials the parent source from in
+            # this container, the server dials it from the host, and both read one address.
+            + ["postgres:16", "-p", str(self.pg_port)],
             check=True,
             capture_output=True,
         )
