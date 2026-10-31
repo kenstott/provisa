@@ -14,9 +14,9 @@
 // Relationships (the edge types between the tables' labels),
 // Concepts (the SKOS vocabulary) and Prefixes. A class, property, relationship or concept pill
 // starts a new frame, as a Cypher label pill does; a prefix or a domain adds its PREFIX line to the
-// query in the bar, and a domain picked narrows the lists to its vocabulary. A class pill dropped on
-// a frame merges the class's instances into it, and its right click opens the menu a Cypher label's
-// does. Every section starts closed, the panel holding far more than Cypher's. Properties are named by their local names: a
+// query in the bar, and a domain picked narrows the lists to its vocabulary. A class, domain,
+// relationship or property pill dropped on a frame adds to its query (sparqlDrop.ts), and a class's,
+// domain's or relationship's right click opens the menu a Cypher pill's does. Every section starts closed, the panel holding far more than Cypher's. Properties are named by their local names: a
 // Property term once, with the classes that have it, and each column's own under its class; the
 // search reads those names across every class.
 
@@ -26,11 +26,13 @@ import { TextInput } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { Tip } from "../Tip";
 import { labelColor } from "./graph-model";
-import type { OpenClassMenu } from "./GraphSidebar";
+import type { OpenClassMenu, OpenRelMenu } from "./GraphSidebar";
+import { EDGE_DRAG, PROPERTY_DRAG } from "./sparqlDrop";
 import {
   classLabel,
   classMenuProperties,
   compactIri,
+  domainMenuProperties,
   domainPrefixes,
   edgeName,
   termName,
@@ -65,6 +67,7 @@ function Pill({
   color,
   badge,
   dragged,
+  dragType = "text/x-provisa-label",
   onContextMenu,
 }: {
   text: string;
@@ -78,6 +81,8 @@ function Pill({
   badge?: boolean;
   /** What a drop on a frame reads, as a Cypher label pill carries its label. */
   dragged?: string;
+  /** The type ``dragged`` is carried under. */
+  dragType?: string;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   return (
@@ -93,7 +98,7 @@ function Pill({
           onDragStart={
             dragged === undefined
               ? undefined
-              : (e) => e.dataTransfer.setData("text/x-provisa-label", dragged)
+              : (e) => e.dataTransfer.setData(dragType, dragged)
           }
           data-testid={testId}
         >
@@ -117,6 +122,7 @@ export function SparqlVocabularyPanel({
   colorOverrides,
   checkedDomains,
   onClassMenu,
+  onRelMenu,
 }: {
   /** null while it is read. */
   vocabulary: SparqlVocabulary | null;
@@ -130,6 +136,8 @@ export function SparqlVocabularyPanel({
   checkedDomains: ReadonlySet<string>;
   /** Opens a class's menu, on a right click of its pill. */
   onClassMenu?: OpenClassMenu;
+  /** Opens a relationship's menu, on a right click of its pill. */
+  onRelMenu?: OpenRelMenu;
 }) {
   const { t } = useTranslation();
   const [domain, setDomain] = useState<string | null>(null);
@@ -281,6 +289,16 @@ export function SparqlVocabularyPanel({
                   setDomain(domain === prefix ? null : prefix);
                   onPick({ kind: "prefix", prefix });
                 }}
+                onContextMenu={(e) =>
+                  onClassMenu?.(e, {
+                    compoundLabel: prefix,
+                    tableLabel: prefix,
+                    properties: [],
+                    ...domainMenuProperties(ns, vocabulary, named),
+                  })
+                }
+                dragged={prefix}
+                dragType="text/x-provisa-domain"
                 testId={`sparql-domain-${prefix}`}
               />
             )),
@@ -364,6 +382,8 @@ export function SparqlVocabularyPanel({
                   text={p.name}
                   tip={p.tip}
                   onClick={() => onPick({ kind: "predicate", iri: p.iri })}
+                  dragged={p.iri}
+                  dragType={PROPERTY_DRAG}
                   testId={`sparql-predicate-${p.testId}`}
                 />
               ));
@@ -430,6 +450,9 @@ export function SparqlVocabularyPanel({
                   badge
                   tip={`${e.iri} · ${e.source} → ${e.target}`}
                   onClick={() => onPick({ kind: "edge", iri: e.iri })}
+                  onContextMenu={(ev) => onRelMenu?.(ev, edgeName(e.shown))}
+                  dragged={e.iri}
+                  dragType={EDGE_DRAG}
                   testId={`sparql-edge-${e.shown}`}
                 />
               )),

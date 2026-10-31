@@ -43,6 +43,7 @@ import {
   computeLabelSizeRanges,
   applyNodeSize,
   holdDrawing,
+  nodeUnder,
   restoreDrawing,
   type HeldDrawing,
 } from "./canvas/canvas-helpers";
@@ -76,6 +77,7 @@ export function GraphCanvas({
   showingParentsCircular,
   describable = false,
   onNodeDragged,
+  onNodeDroppedOnNode,
   keepPositions = false,
   onCyReady,
   clusterLevel,
@@ -106,6 +108,8 @@ export function GraphCanvas({
   relLineOverridesRef.current = relLineOverrides;
   const nodeDraggedRef = useRef(onNodeDragged);
   nodeDraggedRef.current = onNodeDragged;
+  const nodeDroppedRef = useRef(onNodeDroppedOnNode);
+  nodeDroppedRef.current = onNodeDroppedOnNode;
   const keepPositionsRef = useRef(keepPositions);
   keepPositionsRef.current = keepPositions;
   // Where the last drawing's nodes stood, for a drawing that keeps them (keepPositions).
@@ -588,6 +592,9 @@ export function GraphCanvas({
       pendingNudgeFreeNodesRef.current = undefined;
       nudgeLayoutRef.current();
       nodeDraggedRef.current?.(id);
+      const dragged = evt.target.data("_node") as GNode | undefined;
+      const under = nodeUnder(cy, evt.target);
+      if (dragged && under) nodeDroppedRef.current?.(dragged, under);
     });
 
     portEdgesAddedRef.current = false;

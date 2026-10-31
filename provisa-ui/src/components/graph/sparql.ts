@@ -103,6 +103,22 @@ export function classMenuProperties(
   };
 }
 
+/** What a domain's menu offers: the numeric properties of its tables' classes, as a Cypher domain's
+ * does, each named as a class's menu names it. */
+export function domainMenuProperties(
+  namespace: string,
+  vocabulary: SparqlVocabulary,
+  prefixes: Record<string, string>,
+): { propertyNames: Record<string, string>; numericProperties: string[] } {
+  const held = vocabulary.classes
+    .filter((c) => c.kind === "table" && c.iri.startsWith(namespace))
+    .map((c) => classMenuProperties(c, vocabulary, prefixes));
+  return {
+    propertyNames: Object.assign({}, ...held.map((c) => c.propertyNames)),
+    numericProperties: [...new Set(held.flatMap((c) => c.numericProperties))],
+  };
+}
+
 /** The prefixes every vocabulary has; any other is a domain's. */
 export const STANDARD_PREFIXES = ["rdf", "rdfs", "owl", "skos", "xsd", "rel", "term", "id"];
 
@@ -418,7 +434,7 @@ export function relationshipPattern(
 /** One token of a query: a PREFIX declaration (1, its name), then what no prefix is read inside --
  * a string, an IRI, a comment, a variable, a language tag -- then a prefixed name (2, its prefix),
  * a word, or any other character. */
-const QUERY_TOKEN =
+export const QUERY_TOKEN =
   /PREFIX\s+([A-Za-z][\w.-]*)?:\s*<[^>]*>|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|<[^<>"{}|^`\\\s]*>|#[^\n]*|[?$]\w+|@[A-Za-z-]+|([A-Za-z][\w.-]*)?:(?:[\w%:.-]|\\.)*|\w+|[\s\S]/gi;
 
 /** ``query`` as it is sent: with a PREFIX line for each of ``namespaces`` it uses and does not
@@ -458,7 +474,7 @@ export function withPrefixes(
  * becomes a SELECT of the pattern.
  */
 /** The group's text so far, its last triple ended with "." where it is left open. */
-const closeTriple = (before: string): string => (/[.{}]$/.test(before) ? before : `${before} .`);
+export const closeTriple = (before: string): string => (/[.{}]$/.test(before) ? before : `${before} .`);
 
 export function addPattern(
   query: string,
@@ -565,7 +581,7 @@ export function parseNTriples(text: string, prefixes: Record<string, string>): T
 const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
 const OWL = "http://www.w3.org/2002/07/owl#";
-const RDF_TYPE = `${RDF}type`;
+export const RDF_TYPE = `${RDF}type`;
 const RDFS_DOMAIN = `${RDFS}domain`;
 const RDFS_RANGE = `${RDFS}range`;
 const RDFS_SUBCLASS = `${RDFS}subClassOf`;
@@ -588,7 +604,7 @@ export function iriTail(iri: string): string {
 }
 
 /** An IRI's local name: what follows its last ``/``, ``#`` or ``:``. */
-const iriLocal = (iri: string): string =>
+export const iriLocal = (iri: string): string =>
   iri
     .split(/[/#:]/)
     .filter((x) => x !== "")
@@ -738,6 +754,8 @@ export function triplesGraph(
   literalNodes = false,
   /** The class a query types a resource as, where no triple does (a SELECT's rows). */
   typed: ReadonlyMap<string, string> = new Map(),
+  /** Resources drawn whether or not a triple names them: a row an OPTIONAL did not reach. */
+  standing: readonly RdfCell[] = [],
 ): {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
@@ -823,6 +841,7 @@ export function triplesGraph(
       endNode: b,
     });
   });
+  standing.forEach(resource);
   return { nodes, edges };
 }
 
@@ -850,13 +869,15 @@ export interface SelectPairing {
   object: string;
   /** The predicate the query's own pattern names between them, where it names one. */
   iri?: string;
+  /** The query's other patterns its rows bind both ends of (rowPairing). */
+  more?: SelectPairing[];
 }
 
 const isResource = (v: unknown): boolean =>
   isRdfCell(v) && (v.rdfTerm === "iri" || v.rdfTerm === "bnode");
 
 /** A triple pattern of a query's WHERE, each term as it is written. */
-interface WrittenPattern {
+export interface WrittenPattern {
   s: string;
   p: string;
   o: string;
@@ -864,9 +885,12 @@ interface WrittenPattern {
 
 const PATTERN_TOKEN = /<[^>]*>|"(?:[^"\\]|\\.)*"|[?$]\w+|[\w-]*:[^\s;,{}()]*|[;,{}()]|\.(?=\s|$|})|[^\s;,{}()]+/g;
 
+/** What ends a triple that no "." does (``?s a x FILTER(...)``). */
+const GROUP_KEYWORD = /^(?:FILTER|OPTIONAL|BIND|MINUS|VALUES)$/i;
+
 /** The triple patterns written in ``query``'s WHERE, ``;`` and ``,`` read as they abbreviate. Text
  * that is no triple (a FILTER's expression, a keyword) resets the reading, so it gives none. */
-function writtenPatterns(query: string): WrittenPattern[] {
+export function writtenPatterns(query: string): WrittenPattern[] {
   const out: WrittenPattern[] = [];
   let run: string[] = [];
   const close = () => {
@@ -879,7 +903,7 @@ function writtenPatterns(query: string): WrittenPattern[] {
     } else if (token === ",") {
       close();
       run = run.slice(0, 2);
-    } else if (token === "." || "{}()".includes(token)) {
+    } else if (token === "." || "{}()".includes(token) || GROUP_KEYWORD.test(token)) {
       close();
       run = [];
     } else {
@@ -890,7 +914,7 @@ function writtenPatterns(query: string): WrittenPattern[] {
 }
 
 /** A predicate as ``query`` writes it, read as its IRI; null where it names none. */
-function writtenPredicate(token: string, namespaces: Record<string, string>): string | null {
+export function writtenPredicate(token: string, namespaces: Record<string, string>): string | null {
   if (token === "a") return RDF_TYPE;
   if (token.startsWith("<")) return token.slice(1, -1);
   const colon = token.indexOf(":");
@@ -936,17 +960,57 @@ export function selectPairing(
   return bound(b, isResource) ? { subject: a, predicate: null, object: b } : null;
 }
 
-/** A SELECT's rows as triples, one per row: the predicate bound or the one its pattern names, else
- * an unnamed edge. */
+/**
+ * A SELECT a dropped path widened past what selectPairing reads (REQ-2135): each pattern of the
+ * query that joins two of its columns by a named predicate. It holds an OPTIONAL, as a drop writes,
+ * whose columns can be unbound, so no column need be bound in every row; and at least one such
+ * pattern's object is a resource, a row of a class's literals alone being a table.
+ */
+function rowPairing(
+  query: string,
+  columns: string[],
+  rows: Record<string, unknown>[],
+  namespaces: Record<string, string>,
+): SelectPairing | null {
+  if (!/\bOPTIONAL\b/i.test(query)) return null;
+  const ns = { ...namespaces, ...queryPrefixes(query) };
+  const column = (token: string): string | null => {
+    const name = token.replace(/^[?$]/, "");
+    return token !== name && columns.includes(name) ? name : null;
+  };
+  const pairs = writtenPatterns(query).flatMap((t) => {
+    const subject = column(t.s);
+    const object = column(t.o);
+    const iri = writtenPredicate(t.p, ns);
+    if (subject === null || object === null || iri === null || iri === RDF_TYPE) return [];
+    return [{ subject, predicate: null, object, iri }];
+  });
+  const once = [...new Map(pairs.map((x) => [`${x.subject} ${x.iri} ${x.object}`, x])).values()];
+  if (!once.some((x) => rows.some((r) => isResource(r[x.object])))) return null;
+  const [first, ...more] = once;
+  return { ...first, more };
+}
+
+/** A SELECT's rows as triples, one per row that binds both ends: the predicate bound or the one its
+ * pattern names, else an unnamed edge. */
 export function pairedTriples(pairing: SelectPairing, rows: Record<string, unknown>[]): Triple[] {
   const written: RdfCell = pairing.iri
     ? { rdfTerm: "iri", value: pairing.iri, shown: `<${pairing.iri}>` }
     : { rdfTerm: "iri", value: "", shown: "" };
-  return rows.map((r) => ({
-    s: r[pairing.subject] as RdfCell,
-    p: pairing.predicate === null ? written : (r[pairing.predicate] as RdfCell),
-    o: r[pairing.object] as RdfCell,
-  }));
+  return [
+    ...rows.flatMap((r) =>
+      isRdfCell(r[pairing.subject]) && isRdfCell(r[pairing.object])
+        ? [
+            {
+              s: r[pairing.subject] as RdfCell,
+              p: pairing.predicate === null ? written : (r[pairing.predicate] as RdfCell),
+              o: r[pairing.object] as RdfCell,
+            },
+          ]
+        : [],
+    ),
+    ...(pairing.more ?? []).flatMap((x) => pairedTriples(x, rows)),
+  ];
 }
 
 /** The triples a frame's drawing holds that are triples at all: an edge of a SELECT no predicate
@@ -1054,17 +1118,19 @@ function drawnAnswer(
     // The class the query types each end as (``?s a pet-store:pets``), for the nodes' labels.
     const classes = queryClasses(frame.query, shown);
     const typed = new Map<string, string>();
-    for (const [column, variable] of [
-      [pairing.subject, pairing.subject],
-      [pairing.object, pairing.object],
-    ]) {
-      const cls = classes.get(variable);
-      if (cls === undefined) continue;
-      for (const r of rows)
-        if ((r[column] as RdfCell).rdfTerm !== "literal") typed.set((r[column] as RdfCell).value, cls);
-    }
+    const held = new Map<string, RdfCell>();
+    for (const { subject, object } of [pairing, ...(pairing.more ?? [])])
+      for (const column of [subject, object]) {
+        const cls = classes.get(column);
+        for (const r of rows) {
+          const cell = r[column];
+          if (!isRdfCell(cell) || cell.rdfTerm === "literal") continue;
+          held.set(cell.value, cell);
+          if (cls !== undefined) typed.set(cell.value, cls);
+        }
+      }
     const triples = cells(distinctTriples([...pairedTriples(pairing, rows), ...merged]));
-    return { ...frame, ...triplesGraph(triples, false, typed), rows };
+    return { ...frame, ...triplesGraph(triples, false, typed, [...held.values()]), rows };
   }
   if (merged.length > 0) return { ...frame, ...triplesGraph(cells(merged), literalNodes), rows };
   return shown ? { ...frame, rows } : frame;
@@ -1136,7 +1202,8 @@ export async function sparqlStatement(
   const rows = (body.results?.bindings ?? []).map((b) =>
     Object.fromEntries(columns.map((v) => [v, b[v] ? cellOf(b[v], prefixes) : null])),
   );
-  const pairing = selectPairing(query, columns, rows, prefixes);
+  const pairing =
+    selectPairing(query, columns, rows, prefixes) ?? rowPairing(query, columns, rows, prefixes);
   return {
     ...empty,
     query,
@@ -1154,8 +1221,3 @@ export const SPARQL_ACCEPT = "application/sparql-results+json, application/n-tri
 
 /** The DESCRIBE a node's expansion runs: what the model says of the resource. */
 export const describeQuery = (iri: string): string => `DESCRIBE <${iri}>`;
-
-/** The CONSTRUCT a class pill dropped on a frame runs: the class's instances and what is said of
- * them, merged into the frame. */
-export const classConstruct = (iri: string): string =>
-  `CONSTRUCT { ?s ?p ?o } WHERE { ?s a <${iri}> ; ?p ?o } LIMIT 25`;

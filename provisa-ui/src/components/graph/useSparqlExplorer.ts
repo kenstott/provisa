@@ -9,14 +9,13 @@
 // permission from the copyright holder.
 
 // REQ-2135: what the SPARQL tab holds beside the frames: the role's vocabulary, the prefixes in use
-// with the viewer's edits, and what expanding a node or dropping a class merges into a frame.
+// with the viewer's edits, and what expanding a node merges into a frame.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { FrameData, SparqlDescribed } from "./graph-model";
 import { settingKey, useLocalStorage } from "./graph-persistence";
 import {
   allPrefixes,
-  classConstruct,
   classLabel,
   classMenuProperties,
   describeQuery,
@@ -197,14 +196,6 @@ export function useSparqlExplorer({
     [framesRef, mergeIntoFrame, changeFrame],
   );
 
-  /** A class pill dropped on a frame: a CONSTRUCT around the class merged in. */
-  const dropClass = useCallback(
-    (id: string, iri: string) => {
-      void mergeIntoFrame(id, iri, classConstruct(iri));
-    },
-    [mergeIntoFrame],
-  );
-
   return {
     vocabulary,
     vocabularyError,
@@ -216,6 +207,5 @@ export function useSparqlExplorer({
     expandResource,
     describeResource,
     describeResources,
-    dropClass,
   };
 }
