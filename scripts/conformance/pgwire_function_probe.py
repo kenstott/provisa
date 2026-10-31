@@ -16,7 +16,9 @@ its result type or its kind. ``call`` writes the statement PostgreSQL requires f
 NULL of each argument's type, a concrete type in place of a pseudo-type, the VARIADIC form, WITHIN
 GROUP, OVER, a column definition list, and a real argument where PostgreSQL refuses the NULL. An
 overload taking ``internal`` has no statement: no SQL expression has that type, so ``call`` returns
-None and the overload is failed by name, as is one PostgreSQL refuses in every form it is called.
+None. That overload, and one PostgreSQL refuses in a way no server state changes
+(``proves_internal``), is an internal function (amended 2026-10-29, INTERNAL FUNCTIONS). One
+PostgreSQL refuses for this server's state is no such proof: it is failed.
 
 ``family`` names the family a function belongs to (function_families.yaml), so the failures can be
 taken one family at a time."""
@@ -62,6 +64,26 @@ UNCALLABLE = "internal"
 
 #: Why an overload taking an internal argument has no call.
 NO_CALL = "takes an internal argument, which no SQL expression can supply"
+
+#: PostgreSQL's refusals that hold on every server in every state: the function runs only from the
+#: trigger manager, an event trigger, binary upgrade, a language call or initdb, or is a
+#: pseudo-type's input or output function. Each is PostgreSQL's own wording. Any other refusal is
+#: no proof: "recovery is not in progress", say, names a state another server is in.
+INTERNAL_REFUSAL = re.compile(
+    "|".join(
+        (
+            r"was not called by trigger manager",
+            r"not fired by trigger manager",
+            r"must be called as trigger",
+            r"can only be called in an? (\w+ )*event trigger function",
+            r"can only be called when server is in binary upgrade mode",
+            r"cannot accept a value of (type \w+|a shell type)",
+            r'functions returning type "internal" cannot be called explicitly',
+            r"PL/pgSQL functions cannot return type language_handler",
+            r"cannot advance OID counter anymore",
+        )
+    )
+)
 
 #: A row type both servers have, for the functions whose first argument PostgreSQL refuses to take
 #: as anything else.
@@ -192,6 +214,11 @@ def statement(fn: Function, args: list[str]) -> str:
     if fn.kind == "w":
         return f"SELECT {named}({', '.join(args)}) OVER () AS v"
     return f"SELECT {named}({', '.join(args)}) AS v"
+
+
+def proves_internal(error: str) -> bool:
+    """Whether PostgreSQL's refusal of a call proves the function internal (INTERNAL_REFUSAL)."""
+    return INTERNAL_REFUSAL.search(error) is not None
 
 
 @dataclass
