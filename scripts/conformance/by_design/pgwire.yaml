@@ -50,14 +50,6 @@
     SQL uses the engine's functions; these are not emulated (PGWIRE'S CATALOG FUNCTIONS).
   case: "^catalog function::(json_array_element|json_array_element_text|json_array_elements|json_array_elements_text|json_build_array|json_each_text|json_object_field|json_object_field_text|json_object_keys|json_send|json_strip_nulls|json_typeof|jsonb_array_element|jsonb_array_element_text|jsonb_array_elements|jsonb_array_elements_text|jsonb_array_length|jsonb_build_array|jsonb_cmp|jsonb_concat|jsonb_contained|jsonb_contains|jsonb_delete|jsonb_delete_path|jsonb_each|jsonb_each_text|jsonb_eq|jsonb_exists|jsonb_exists_all|jsonb_exists_any|jsonb_ge|jsonb_gt|jsonb_hash|jsonb_hash_extended|jsonb_insert|jsonb_le|jsonb_lt|jsonb_ne|jsonb_object|jsonb_object_field|jsonb_object_field_text|jsonb_object_keys|jsonb_path_exists|jsonb_path_exists_opr|jsonb_path_exists_tz|jsonb_path_match|jsonb_path_match_opr|jsonb_path_match_tz|jsonb_path_query|jsonb_path_query_array|jsonb_path_query_array_tz|jsonb_path_query_first|jsonb_path_query_first_tz|jsonb_path_query_tz|jsonb_pretty|jsonb_send|jsonb_set|jsonb_set_lax|jsonb_strip_nulls|jsonb_to_record|jsonpath_send)\\("
 
-- group: XML functions
-  requirement: REQ-2167
-  decision: >-
-    27 pg_catalog functions (29 overloads) the engine does not have and no
-    client queries: psql, pgjdbc, pgAdmin and DBeaver call none of them. A statement's own
-    SQL uses the engine's functions; these are not emulated (PGWIRE'S CATALOG FUNCTIONS).
-  case: "^catalog function::(cursor_to_xml|cursor_to_xmlschema|database_to_xml|database_to_xml_and_xmlschema|database_to_xmlschema|query_to_xml|query_to_xml_and_xmlschema|query_to_xmlschema|schema_to_xml|schema_to_xml_and_xmlschema|schema_to_xmlschema|table_to_xml|table_to_xml_and_xmlschema|table_to_xmlschema|xml|xml_is_well_formed|xml_is_well_formed_content|xml_is_well_formed_document|xml_send|xmlagg|xmlcomment|xmlconcat2|xmlexists|xmltext|xmlvalidate|xpath|xpath_exists)\\("
-
 - group: Index access method and operator class support
   requirement: REQ-2167
   decision: >-

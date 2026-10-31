@@ -548,16 +548,17 @@ def _wkb_not_sent(r):
     raise ValueError("geometry and geography are sent in text format only")
 
 
-def _shortest_text(sig: str, negative: bool) -> str:
+def _shortest_text(sig: str, negative: bool, fixed_below: int) -> str:
     """float8out / float4out for a finite value, from its shortest round-trip form ``sig`` (a
-    ``d.ddde[+-]x`` string): plain decimal for an exponent in [-4, 15), else ``d.ddde+XX``."""
+    ``d.ddde[+-]x`` string): plain decimal for an exponent in [-4, ``fixed_below``), else
+    ``d.ddde+XX``. PostgreSQL's limits are printf's: 15 for a float8, 6 for a float4."""
     mantissa, exponent = sig.split("e")
     digits = mantissa.replace(".", "").rstrip("0") or "0"
     exp = int(exponent)
     sign = "-" if negative else ""
     if digits == "0":
         return sign + "0"
-    if exp < -4 or exp >= 15:
+    if exp < -4 or exp >= fixed_below:
         body = digits[0] + ("." + digits[1:] if len(digits) > 1 else "")
         return f"{sign}{body}e{'-' if exp < 0 else '+'}{abs(exp):02d}"
     if exp < 0:
@@ -575,13 +576,18 @@ def _non_finite_text(x: float):
     return None
 
 
+_FLOAT8_FIXED_BELOW = 15
+_FLOAT4_FIXED_BELOW = 6
+
+
 def _float8_text(x):
     """float8out: the shortest exact form (2, -1, NaN, Infinity), as PostgreSQL writes it."""
     x = float(x)
     special = _non_finite_text(x)
     if special is not None:
         return special
-    return _shortest_text(format(decimal.Decimal(repr(abs(x))), "e"), math.copysign(1.0, x) < 0)
+    sig = format(decimal.Decimal(repr(abs(x))), "e")
+    return _shortest_text(sig, math.copysign(1.0, x) < 0, _FLOAT8_FIXED_BELOW)
 
 
 def _float4_text(x):
@@ -600,8 +606,8 @@ def _float4_text(x):
             # the shortest form of the largest float4 sits just past it in a double
             reads_back = digits == 8 and wanted == struct.pack("!f", 3.4028234663852886e38)
         if reads_back:
-            return _shortest_text(sig, negative)
-    return _shortest_text(f"{abs(x):.8e}", negative)
+            return _shortest_text(sig, negative, _FLOAT4_FIXED_BELOW)
+    return _shortest_text(f"{abs(x):.8e}", negative, _FLOAT4_FIXED_BELOW)
 
 
 def _point_parts(v):
@@ -630,6 +636,15 @@ def _money_cents(v):
     return int(
         _money_value(v).quantize(decimal.Decimal("0.01"), rounding=decimal.ROUND_HALF_UP) * 100
     )
+
+
+def _money_of_cents(v):
+    """cash_recv: money's binary form, its int8 cents, as a decimal."""
+    return decimal.Decimal(struct.unpack("!q", v)[0]).scaleb(-2)
+
+
+TEXT_PARAM_DECODERS[790] = _money_value
+TYPE_OIDS[790] = ("MONEYOID", _money_of_cents, decimal.Decimal(0))
 
 
 def _money_text(v):
@@ -896,6 +911,7 @@ BVTYPE_TO_PGTYPE.update(
         BVType.BOOLARRAY: _array_entry(BVType.BOOL, 1000, lambda v: "t" if v else "f"),
         BVType.STRINGARRAY: _array_entry(BVType.TEXT, 1009),
         BVType.OIDARRAY: _array_entry(BVType.OID, 1028),
+        BVType.MONEYARRAY: _array_entry(BVType.MONEY, 791),
     }
 )
 
@@ -1008,6 +1024,25 @@ class BVBuffer(object):
         return self.stream.getvalue()
 
 
+class UnknownStatement(Exception):
+    """A message named a prepared statement this connection does not hold."""
+
+    sqlstate = "26000"  # invalid_sql_statement_name
+
+    def __init__(self, name: str):
+        said = f'prepared statement "{name}"' if name else "unnamed prepared statement"
+        super().__init__(f"{said} does not exist")
+
+
+class UnknownPortal(Exception):
+    """A message named a portal this connection does not hold."""
+
+    sqlstate = "34000"  # invalid_cursor_name
+
+    def __init__(self, name: str):
+        super().__init__(f'portal "{name}" does not exist')
+
+
 class BVContext:
     """Manages the state of a single connection to the server."""
 
@@ -1074,8 +1109,22 @@ class BVContext:
                 qr.result_format = result_fmt
         return qr
 
+    def statement(self, name: str):
+        """The (sql, parameter OIDs) of a prepared statement this connection holds."""
+        held = self.stmts.get(name)
+        if held is None:
+            raise UnknownStatement(name)
+        return held
+
+    def portal(self, name: str):
+        """The (statement, parameters, result formats) of a portal this connection holds."""
+        held = self.portals.get(name)
+        if held is None:
+            raise UnknownPortal(name)
+        return held
+
     def describe_portal(self, name: str) -> QueryResult:
-        stmt, params, result_fmt = self.portals[name]
+        stmt, params, result_fmt = self.portal(name)
         sql, _ = self.stmts[stmt]
         query_result = self.execute_sql(
             sql=sql,
@@ -1088,7 +1137,7 @@ class BVContext:
         return query_result
 
     def describe_statement(self, name: str) -> QueryResult:
-        sql, param_oids = self.stmts[name]
+        sql, param_oids = self.statement(name)
         params = []
         for typeoid in param_oids:
             type = TYPE_OIDS.get(typeoid)
@@ -1145,7 +1194,7 @@ class BVContext:
             del self.result_cache[name]
             return query_result
         else:
-            stmt, params, result_fmt = self.portals[name]
+            stmt, params, result_fmt = self.portal(name)
             sql, _ = self.stmts[stmt]
             qr = self.execute_sql(
                 sql=sql,
@@ -1171,8 +1220,9 @@ class BVContext:
         self.stmts[name] = (sql, param_oids)
 
     def close_statement(self, name: str):
+        # Closing a name that does not exist is no error (the protocol says so).
         self._drop_described(name)
-        del self.stmts[name]
+        self.stmts.pop(name, None)
 
     def add_portal(self, name: str, stmt: str, params: List, result_formats: List[int]):
         # A Bind REPLACES the portal it names (the unnamed portal on every simple client query). A
@@ -1205,7 +1255,7 @@ class BVContext:
         self.result_cache[name] = held
 
     def close_portal(self, name: str):
-        del self.portals[name]
+        self.portals.pop(name, None)
         self.portal_prepared.pop(name, None)
         # A Describe-then-Close flow (no Execute — e.g. a client fetching metadata only, or
         # aborting after Describe) leaves an already-executed result in result_cache with nobody

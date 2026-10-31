@@ -279,7 +279,7 @@ class TestMaterializeRls:
 # met twice kept at its first place; rights are unions over them.
 VIEWER = _role("viewer", caps=["glossary_read"])
 STEWARD = _role("steward", parents=["viewer"], caps=["glossary_rw"], domains=["sales"])
-OWNER = _role("owner", parents=["viewer"], caps=["data_product_owned_rw"], rate_limit={"rps": 9})
+OWNER = _role("owner", parents=["viewer"], caps=["data_product_rw"], rate_limit={"rps": 9})
 LEAD = _role("lead", parents=["steward", "owner"])
 MULTI = [VIEWER, STEWARD, OWNER, LEAD]
 MULTI_CHAINS = role_chains(MULTI)
@@ -292,7 +292,7 @@ class TestSeveralParents:
 
     def test_capabilities_are_the_union_of_every_ancestor(self):
         lead = {r["id"]: r for r in flatten_role_dicts(MULTI)}["lead"]
-        assert lead["capabilities"] == ["data_product_owned_rw", "glossary_read", "glossary_rw"]
+        assert lead["capabilities"] == ["data_product_rw", "glossary_read", "glossary_rw"]
         assert lead["domain_access"] == []  # reach is its own (REQ-2155)
 
     def test_a_property_comes_from_the_first_ancestor_that_sets_one(self):

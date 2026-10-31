@@ -15,6 +15,7 @@ Supports PG SQL → Trino, and PG SQL → any target dialect for direct executio
 
 # Requirements: REQ-066, REQ-068, REQ-229
 
+import functools
 import re
 
 import sqlglot
@@ -569,6 +570,18 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
+    from provisa.observability.stage_trace import trace_stage
+
+    duckdb_sql = _duckdb_form(pg_sql)
+    trace_stage("transpile.duckdb", duckdb_sql)
+    return duckdb_sql
+
+
+@functools.lru_cache(maxsize=2048)
+def _duckdb_form(pg_sql: str) -> str:
+    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone, and
+    the steps parse it about six times. A statement a client repeats reaches here on each run, its
+    plan kept or not. A refusal raises and is not kept."""
     pg_sql = pg_money.lowered(pg_sql, "duckdb")  # REQ-2171
     return pg_functions.after(
         _postgres_semantics_for_duckdb(
@@ -1147,6 +1160,8 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
+        pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
     pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's

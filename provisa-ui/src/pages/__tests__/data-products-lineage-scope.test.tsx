@@ -29,7 +29,7 @@ vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
     selectedRoles: [{ id: "admin" }],
-    availableRoles: [],
+    availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
 // Every right but view_governance: the product's lineage asks none.

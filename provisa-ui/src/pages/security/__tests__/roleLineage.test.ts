@@ -29,12 +29,12 @@ const VIEW: RoleEffective = {
   adds: {
     viewer: ["read"],
     dq_steward: ["dq_rw"],
-    dp_owner: ["data_product_owned_rw"],
+    dp_owner: ["data_product_rw"],
     dq_lead: ["export"],
   },
   standards: ["dq_steward", "viewer", "dp_owner"],
   capabilities: [
-    { right: "data_product_owned_rw", from: ["dp_owner"] },
+    { right: "data_product_rw", from: ["dp_owner"] },
     { right: "dq_rw", from: ["dq_steward"] },
     { right: "export", from: ["dq_lead"] },
     { right: "read", from: ["viewer"] },
@@ -53,7 +53,7 @@ describe("a role's lineage", () => {
     expect(rows("dq_steward")).toEqual(["kind:standard", "dq_rw"]);
     expect(rows("dq_lead")).toEqual([
       "kind:custom",
-      "data_product_owned_rw",
+      "data_product_rw",
       "dq_rw",
       "export",
       "read",

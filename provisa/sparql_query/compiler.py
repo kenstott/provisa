@@ -24,8 +24,13 @@ How a query's parts become the IR:
   combination of one label per node that every triple holds in is one interpretation, a UNION ALL
   part. The parts are bounded by graph.union_limit.
 - A property triple binds its object variable to the property, or compares it; an edge triple is a
-  relationship; a property path is a path expression under REACH; ``?s ?p ?o`` is a variable
-  predicate over the subject label's predicates.
+  relationship; a property path is a path expression under REACH; ``?s ?p ?o`` is each of the
+  subject label's predicates in turn, a UNION ALL part each -- read as that predicate named is, so
+  governed as it is, with no join of a table to itself -- or, where a part per predicate can't say
+  it (:meth:`_Lowering.predicate_reads`), a variable predicate over them.
+- An open subject is of the classes the role can name a subject of: a table whose key it is not
+  served is left out, and so is an edge into one. A query naming one and asking for its subject is
+  refused by the table's name.
 - The answer: SELECT returns each projected variable as an RDF term (provisa.gql.terms), ASK one
   row when there is a solution, CONSTRUCT the template's triples.
 
@@ -38,6 +43,7 @@ the keys. What the front end does not lower is refused by name.
 from __future__ import annotations
 
 import copy
+import collections
 import dataclasses
 import itertools
 import re
@@ -94,7 +100,7 @@ from provisa.gql.ir import (
     WhereClause,
 )
 from provisa.gql.iri import parse_subject_iri
-from provisa.gql.terms import union_allowance, union_refusal
+from provisa.gql.terms import subject_key, union_allowance, union_refusal
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
 from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
@@ -574,7 +580,9 @@ class _Lowering:
                 if ref is not None and self._is_table(label, ref.domain, ref.table)
             }
             allow(var, labels)
-        everything = set(self.vocab.classes_of)
+        # A subject nothing constrains names no class, so it is no request for one whose subjects
+        # the role cannot name.
+        everything = {label for label in self.vocab.classes_of if self._node(label).key_readable}
         options = []
         names = []
         for var, labels in allowed.items():
@@ -619,9 +627,11 @@ class _Lowering:
         bindings: dict[str, tuple[CypherExpr, str | None]],
         optional: bool,
         deferred: "_Deferred | None" = None,
+        reads: dict[str, Predicate] | None = None,
     ) -> MatchStep:
         """The MATCH of ``group`` with its nodes labelled ``labels``. ``bindings`` gains each
-        variable the group binds to a value: (its expression, its datatype)."""
+        variable the group binds to a value: (its expression, its datatype). ``reads`` is the
+        predicate each variable predicate stands for in this part (:meth:`predicate_reads`)."""
         named: dict[str, str] = {}
         keys: dict[str, tuple] = {}
         conditions: list[CypherExpr] = []
@@ -658,7 +668,22 @@ class _Lowering:
                     raise SparqlRefused(
                         "A variable predicate with a constant object is not supported"
                     )
-                triples.append(TriplePattern(sv, str(p), str(o), self._predicates_of(labels[sv])))
+                read = (reads or {}).get(str(p))
+                if read is None:
+                    triples.append(
+                        TriplePattern(sv, str(p), str(o), self._predicates_of(labels[sv]))
+                    )
+                    continue
+                bindings[str(p)] = (IriConst(read.iri), None)
+                if read.constant is not None:
+                    bindings[str(o)] = (IriConst(read.constant), None)
+                elif read.property is not None:
+                    value = Property(Variable(sv), read.property)
+                    bindings[str(o)] = (value, read.datatype)
+                    conditions.append(IsNull(value, negated=True))
+                else:
+                    rel = RelPattern(None, [read.rel_type], None, None, "right")  # type: ignore[list-item]
+                    edges.append((sv, rel, node(o)))
                 continue
             iri = str(p)
             if iri == RDF_TYPE:
@@ -714,6 +739,98 @@ class _Lowering:
                 cond = Binary("AND", cond, c)
             where = WhereClause(cond)
         return MatchStep(matches, where)
+
+    # -- variable predicates --------------------------------------------------------------
+
+    def predicate_reads(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        mods: dict,
+        aggregation: "_Aggregation | None",
+        limit: int,
+        allowed: int,
+    ) -> list[tuple[dict[str, str], dict[str, Predicate]]]:
+        """The UNION ALL parts of one interpretation of ``group``, each its labels and the
+        predicate each variable predicate stands for: ``?s ?p ?o`` is the union of ``?s <iri> ?o``
+        over the subject's predicates, so each part reads a table, or an edge along its registered
+        relationship, as naming that predicate does. A variable predicate no part can say stays
+        one: in an aggregate, which reads every predicate as one group; where ?p or ?o is shared
+        with another triple or an OPTIONAL; and where a FILTER, BIND or ORDER BY reads them, which
+        would see a node in one part and a value in the next."""
+        if aggregation is not None:
+            return [(labels, {})]
+        counts = collections.Counter(
+            str(t) for triple in group.triples for t in triple if _is_var(t)
+        )
+        beyond = {v for o in group.optionals for v in _bound_vars(o)}
+        read_elsewhere = {
+            *(v for e in group.filters for v in _expr_vars(e)),
+            *(v for _, e in group.binds for v in _expr_vars(e)),
+            *(v for c in mods.get("order", []) for v in _expr_vars(c.expr)),
+            *beyond,
+        }
+
+        def own(var: Any) -> bool:
+            return (
+                _is_var(var)
+                and counts[str(var)] == 1
+                and str(var) not in read_elsewhere
+                and str(var) not in labels
+            )
+
+        named: dict[str, str] = {}
+        keys: dict[str, tuple] = {}
+        choices: list[list[tuple[str, str, Predicate, str | None]]] = []
+        for s, p, o in group.triples:
+            if _is_axiom(p, o):
+                continue
+            subject = self._subject_node(s, named, keys)
+            if isinstance(p, Path) or (not _is_var(p) and str(p) in self.vocab.edges):
+                self._subject_node(o, named, keys)
+            if not (own(p) and own(o)):
+                continue
+            label = labels[subject]
+            reads = self._reads_of(label)
+            if len(reads) > allowed:
+                raise SparqlRefused(
+                    union_refusal(
+                        f"A variable predicate on {self._node(label).label} reads {len(reads)} "
+                        "mapped predicates",
+                        limit,
+                        allowed,
+                    )
+                    + "; name the predicate, or raise the limit (graph.union_limit)"
+                )
+            choices.append([(str(p), str(o), read, target) for read, target in reads])
+        parts = []
+        for combo in itertools.product(*choices):
+            ends = {obj: target for _, obj, _, target in combo if target is not None}
+            parts.append(({**labels, **ends}, {var: read for var, _, read, _ in combo}))
+            if len(parts) > allowed:
+                raise SparqlRefused(
+                    union_refusal(
+                        "The variable predicates of a pattern read "
+                        f"{len(parts)} combinations of predicates",
+                        limit,
+                        allowed,
+                    )
+                    + "; name a predicate, or raise the limit (graph.union_limit)"
+                )
+        return parts
+
+    def _reads_of(self, label: str) -> list[tuple[Predicate, str | None]]:
+        """Each predicate of ``label`` a variable predicate stands for, with the label of its
+        object where that is a node: an edge's target, whose subjects the role can name."""
+        out: list[tuple[Predicate, str | None]] = [
+            (pred, None) for pred in self._predicates_of(label) if pred.rel_type is None
+        ]
+        out += [
+            (Predicate(iri, rel_type=ep.rel_type), ep.target)
+            for iri, ep in self.vocab.edges_of.get(label, [])
+            if self._node(ep.target).key_readable
+        ]
+        return out
 
     # -- the ontology's axioms (REQ-2163) -------------------------------------------------
 
@@ -1009,7 +1126,7 @@ class _Lowering:
         ref = parse_subject_iri(self.vocab.base, iri)
         nm = self._node(label)
         assert ref is not None  # the interpretation only labels it with the table it names
-        key_columns = nm.pk_columns or [nm.id_column]
+        key_columns = subject_key(nm)
         if len(key_columns) != len(ref.keys):
             return [Literal(False, "boolean")]
         by_column = {col: prop for prop, col in nm.properties.items()}
@@ -1107,7 +1224,7 @@ class _Lowering:
         nm = self._node(labels[a])
         by_column = {col: prop for prop, col in nm.properties.items()}
         out: CypherExpr | None = None
-        for col in nm.pk_columns or [nm.id_column]:
+        for col in subject_key(nm):
             prop = by_column.get(col)
             if prop is None:
                 raise SparqlRefused(f"{nm.table_name}'s key column {col} is not readable")
@@ -1400,7 +1517,7 @@ class _Lowering:
         """A subject's first key column, which tells one subject of its table from another."""
         nm = self._node(labels[var])
         by_column = {col: prop for prop, col in nm.properties.items()}
-        column = (nm.pk_columns or [nm.id_column])[0]
+        column = subject_key(nm)[0]
         if column not in by_column:
             raise SparqlRefused(f"{nm.table_name}'s key column {column} is not readable")
         return Property(Variable(var), by_column[column])
@@ -1411,7 +1528,7 @@ class _Lowering:
             if key in labels:
                 nm = self._node(labels[key])
                 by_column = {col: prop for prop, col in nm.properties.items()}
-                for column in nm.pk_columns or [nm.id_column]:
+                for column in subject_key(nm):
                     if column not in by_column:
                         raise SparqlRefused(
                             f"{nm.table_name}'s key column {column} is not readable"
@@ -1431,14 +1548,20 @@ class _Lowering:
         form: str,
         template,
         aggregation: "_Aggregation | None" = None,
+        reads: dict[str, Predicate] | None = None,
     ):
-        """One UNION ALL part: ``group`` under one interpretation, answered as ``form``."""
+        """One UNION ALL part: ``group`` under one interpretation, its variable predicates standing
+        for ``reads``, answered as ``form``."""
         self._placed = set()
         bindings: dict[str, tuple[CypherExpr, str | None]] = {}
         # A group's FILTER holds over its OPTIONALs' answers too, and a BIND may read what they
         # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
         deferred = _Deferred() if group.optionals else None
-        steps = [self.lower_group(group, labels, bindings, optional=False, deferred=deferred)]
+        steps = [
+            self.lower_group(
+                group, labels, bindings, optional=False, deferred=deferred, reads=reads
+            )
+        ]
         labels = self._lower_optionals(group, labels, bindings, steps)
         if deferred is not None:
             conditions: list[CypherExpr] = []
@@ -1627,28 +1750,37 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
         mods["project"] = [str(v) for v in algebra.PV]
     template = list(algebra.template) if form == "CONSTRUCT" else None
 
-    lowering = _Lowering(vocab, lm)
-    parts: list[CypherAST] = []
-    for group in _alternatives(pattern):
-        for expanded in lowering.expand_axiom_joins(group):
-            for labels in lowering.interpretations(expanded, {}):
-                parts.append(
-                    lowering.statement(expanded, labels, mods, form, template, aggregation)
-                )
-    if aggregation is not None and len(parts) > 1:
-        raise SparqlRefused(
-            "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
-            "give the subjects one class"
-        )
     limit, allowed = union_allowance(
         mods.get("limit") is not None
         and not mods.get("order")
         and not mods.get("distinct")
         and aggregation is None
     )
-    if len(parts) > allowed:
+    lowering = _Lowering(vocab, lm)
+    parts: list[CypherAST] = []
+    combinations = 0
+    for group in _alternatives(pattern):
+        for expanded in lowering.expand_axiom_joins(group):
+            for labels in lowering.interpretations(expanded, {}):
+                combinations += 1
+                for part_labels, reads in lowering.predicate_reads(
+                    expanded, labels, mods, aggregation, limit, allowed
+                ):
+                    parts.append(
+                        lowering.statement(
+                            expanded, part_labels, mods, form, template, aggregation, reads
+                        )
+                    )
+    if aggregation is not None and len(parts) > 1:
         raise SparqlRefused(
-            union_refusal(f"The query matches {len(parts)} combinations of classes", limit, allowed)
+            "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
+            "give the subjects one class"
+        )
+    if combinations > allowed:
+        raise SparqlRefused(
+            union_refusal(
+                f"The query matches {combinations} combinations of classes", limit, allowed
+            )
             + "; give its subjects classes, or raise the limit (graph.union_limit)"
         )
     variables = mods.get("project", []) if form == "SELECT" else []

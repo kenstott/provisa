@@ -205,7 +205,7 @@ def _gov(capabilities: list[str]):
     role = {"id": "analyst", "capabilities": capabilities, "domain_access": [META_DOMAIN_ID]}
     tables = [{"id": 200, "columns": [{"column_name": "kind", "data_type": "varchar"}]}]
     return build_governance_context(
-        "analyst", SimpleNamespace(rules={}), {}, _edges_ctx(), tables, role
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, _edges_ctx(), tables, role
     )
 
 

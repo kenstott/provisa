@@ -27,6 +27,7 @@ import pytest
 import sqlalchemy as sa
 
 import provisa.api.app as app_mod
+from provisa.api.org_runtime import OrgRegistry
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ParamType
 from provisa.api_source.persist import persist_api_endpoint
 from provisa.core.models import Column, Table
@@ -61,8 +62,12 @@ def state(monkeypatch):
         return [SimpleNamespace(id="graph", type=SimpleNamespace(value="neo4j"))]
 
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
+    # REQ-2188: a store write asks the org registry whether the org's runtime is built before it
+    # reads a model row rule; an empty registry is an org not yet built, so no rule applies.
     state = SimpleNamespace(
-        mv_registry=MVRegistry(), federation_engine=SimpleNamespace(connectors={})
+        mv_registry=MVRegistry(),
+        federation_engine=SimpleNamespace(connectors={}),
+        org_registry=OrgRegistry(),
     )
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     return state

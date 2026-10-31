@@ -91,3 +91,4 @@ def test_a_rebuild_forgets_a_role_that_was_deleted(monkeypatch):
     for name in surfaces:
         assert "loose" not in getattr(state, name), name
     assert "kept" in state.roles and "kept" in state.schemas
+    assert state.roles["kept"]["acting_chain"] == ["kept"]  # REQ-2188

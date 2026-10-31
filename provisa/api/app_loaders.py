@@ -1834,6 +1834,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # What any role's surface is built from, kept so a role made later in this generation — a
     # meta-role (security/meta_role.py) — is built exactly as the stored roles are here.
     from provisa.security.inheritance import role_chains as _role_chains
+    from provisa.security.row_filters import model_write_rules
 
     state.role_build_inputs = {
         # REQ-2058: each stored role with its ancestors -- what a meta-role made later holds.
@@ -1860,6 +1861,10 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "draft_tables": draft_tables,
         "metrics": metrics,
         "rls_rules": rls_rules,
+        # REQ-2188: the U and D rules on model tables, which hold the model store's writes.
+        "model_write_rules": model_write_rules(
+            rls_rules, tables, [r["id"] for r in roles if r.get("owner_held")]
+        ),
         "field_numbers": field_numbers,
     }
 
@@ -1884,6 +1889,8 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         _drop_data_surface(state, gone)
 
     for role in roles:
+        # REQ-2188: what provisa.acting_roles reads for this role (session_vars_for).
+        role["acting_chain"] = list(state.role_build_inputs["role_chains"][role["id"]])
         state.roles[role["id"]] = role
         # REQ-1327: platform_admin is control-plane only and holds zero data capabilities in every
         # org, root included, so it gets NO data surface at all. Generating one produced a schema

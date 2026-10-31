@@ -9803,9 +9803,12 @@
     default) with `domain_prefix: bool` as orthogonal option. `snake` (PascalCase types, snake_case fields/mutations),
     `hasura_graphql` (PascalCase types, camelCase fields, snake_case mutations matching Hasura V2), `apollo_graphql`
     (PascalCase types, camelCase fields/mutations per Apollo/GraphQL idiom). Old free-form strings deprecated.
-    (Amended 2026-10-29, GRAPHQL IS SNAKE CASE:) Maintainer 2026-10-30: GraphQL field and mutation names
-    are snake case on the SDL, always; snake is the default convention, and types stay PascalCase. on_terms
-    and ref_count are the names.'
+    (Amended 2026-10-29, GRAPHQL IS SNAKE CASE:) Maintainer 2026-10-30: [SUPERSEDED by REQ-416, 2026-10-29
+    -- the maintainer withdrew the snake case rule. Kept here for history; do not implement against it.]
+    GraphQL field and mutation names are snake case on the SDL, always; snake is the default convention,
+    and types stay PascalCase. on_terms and ref_count are the names. [END SUPERSEDED BLOCK] (Amended 2026-10-29,
+    THE SNAKE CASE RULE IS WITHDRAWN:) Maintainer 2026-10-31: the snake case rule was a mistake. apollo_graphql
+    stays the default convention: camelCase fields and mutations, PascalCase types.'
   use_case: Enum-based preset naming eliminates ambiguous string values and standardizes on clear, documented
     conventions compatible with Hasura and Apollo ecosystems.
   code:
@@ -12323,8 +12326,12 @@
     at query time. Raw Trino session-prop keys still pass through (deprecated) for backward compatibility.
     (Amended 2026-09-30, source hints are the operator''s floor:) A request''s engine session hints (@join/@reorder/@broadcastSize,
     the -- @provisa comment forms, and /*+ ... */ hints) may set a property the operator''s source federation_hints
-    left open, but never override one the operator set: compiler.directives.merge_session_props raises
-    SessionPropFloorViolation naming the property (REQ-030). Repeating the operator''s value is accepted.'
+    left open, but never override one the operator set: compiler.directives.merge_session_props raises SessionPropFloorViolation
+    naming the property (REQ-030). Repeating the operator''s value is accepted. (Amended 2026-10-29, ONLY
+    THE VOCABULARY REACHES THE SESSION:) Maintainer 2026-10-30: only the @provisa vocabulary reaches an
+    engine''s session. A raw session key in a source''s federation_hints is no longer passed through; the
+    bag''s other keys are connector settings, read by that source''s driver or connector. This supersedes
+    the earlier text that unknown keys pass through.'
   use_case: Source-level federation hints vocabulary is translated to Trino session props, keeping query
     authors decoupled from engine-specific property names.
   code:
@@ -29196,12 +29203,16 @@
     reporting FUNCTIONAL truth (FDW/extension actually loads/works), not mere presence. build_pg_engine()
     registers all prebuilt Postgres connectors as candidates in precedence order (postgres_fdw; pg_duckdb_csv
     preferred over file_fdw; pg_duckdb_parquet; pg_duckdb_json). At startup, FederationEngine.discover(fetch,
-    disabled=frozenset(keys)) probes each candidate and sets the active set: a connector struck by the
-    override (key in disabled) is not probed; every other candidate is probed and only kept if available;
-    per source_type the first available candidate wins (richer preferred, stock fallback). A source with
-    no available connector is UnreachableSource (explicit, no silent fallback). The override config is
-    now only a strike-list, not a presence declaration. Runtime probe correctly reports pg_duckdb unavailable
-    until preloaded (shared_preload_libraries check), where a static flag would get it wrong.'
+    disabled=frozenset(keys)) probes each candidate and sets the active set: a connector struck by the override
+    (key in disabled) is not probed; every other candidate is probed and only kept if available; per source_type
+    the first available candidate wins (richer preferred, stock fallback). A source with no available connector
+    is UnreachableSource (explicit, no silent fallback). The override config is now only a strike-list,
+    not a presence declaration. Runtime probe correctly reports pg_duckdb unavailable until preloaded (shared_preload_libraries
+    check), where a static flag would get it wrong. (Amended 2026-10-29, THE ENGINE''S STORE IS ITS OWN
+    DATABASE:) The pg engine reads its replicas in the database it runs in, so that database is its declared
+    materialization store. A store anywhere else, from PROVISA_MATERIALIZE_URL, materialize_store_url, an
+    org''s own store or a region''s replicas store, is refused by name (StoreOutsideEngineDatabase) rather
+    than written and never read.'
   use_case: Runtime discovery ensures only functionally available connectors are registered, avoiding
     silent failures from misconfigured deployments. The strike-list override provides fallback control
     without requiring static presence declarations.
@@ -70586,95 +70597,100 @@
   feature: replicas-and-freshness-warm-placement
   priority: SHOULD
   type: behavioral
-  description: 'A registered table may opt in (row_materialize, per-table, never a global engine mode)
-    to a row-level, query-driven cache: an individual row is fetched from the live source and upserted
-    into a landed replica strictly when a query''s compiled plan resolves a concrete primary-key equality/IN bound against that table, never eagerly, never a background pre-fetch of a key nothing has queried.
+  description: 'A registered table may opt in (row_materialize, per-table, never a global engine mode) to
+    a row-level, query-driven cache: an individual row is fetched from the live source and upserted into
+    a landed replica strictly when a query''s compiled plan resolves a concrete primary-key equality/IN
+    bound against that table, never eagerly, never a background pre-fetch of a key nothing has queried.
     The table must declare at least one is_primary_key column and resolve a cache_ttl (own or inherited
     from its source); [SUPERSEDED by REQ-1907, 2026-10-03 -- Freshness is now judged per reader from _row_cached_at
     against max(cache_ttl, role_ttl(role)); _row_expires_at is only the reaper horizon, stamped with the
-    longest TTL any reader accepts (query_residency.py:61-73, 1021-1034), and a push-fed table''s rows
-    are never stale on the clock (:569-574). Kept here for history; do not implement against it.] each
-    cached row carries its own _row_cached_at/_row_expires_at freshness clock, independent of every other
-    row''s, driven by that same cache_ttl duration [END SUPERSEDED BLOCK]. A query whose predicate does
-    not resolve to a bounded PK set [SUPERSEDED by REQ-1915, 2026-10-01 -- a row-level table has no whole-table
-    fallback; an unfiltered read is refused at planning and a filtered read replicates the rows its filter
-    matches. Kept here for history; do not implement against it.] falls back to the table''s ordinary
-    whole-table materialize/live resolution unchanged. [END SUPERSEDED BLOCK] For a push change_signal
-    source, an incoming CDC event for a key already present in the row cache triggers an out-of-band background
-    refresh (queued, not inline); a key not already cached is dropped, never triggering an insert. A key
-    the source no longer returns is tombstoned (deleted) from the cache synchronously. A periodic out-of-band
-    reaper deletes rows expired past an operator-configured reap_grace_period. row_materialize is mutually
-    exclusive with the view_sql-CTAS materialize flag. A declared primary key is trusted, never runtime-verified
-    for uniqueness against the live source. (Amended 2026-09-30, row_materialize applies only where the
-    engine cannot attach:) The choice is made from the bound engine''s DECLARED capability. When the engine
-    declares it can direct-attach the table''s source type (strategy.engine_attaches: its connector reads in place), the engine attaches and reads the source live and row_materialize is ignored for
-    that engine, by design (row_materialize is the reach for a source the engine cannot attach, not an
-    alternative to an attach). If that attach fails, the failure is an error. It is never routed through
-    the row cache or a landed replica instead. row_materialize applies only when the engine declares it
-    cannot direct-attach the source. Every row-materialize consumer (bound extraction, key pushdown, row
-    fetch, background refresh/reap wiring) selects its tables through query_residency.active_row_materialize_tables,
-    so an attach-capable engine never pays a probe query, a keyed fetch or a cache land it would not read. Confirmed live on the perf bench: the DuckDB engine (which attaches MongoDB) ran the key-pushdown
-    probe and landed order_docs rows for large_federated_join while its query read the live MONGO_SCAN.
-    (Amended 2026-09-30, key pushdown fails loudly and lands at scale:) A key-pushdown probe or keyed
-    fetch that fails raises; it is never logged and skipped, which left the table unlanded and the query
-    answered from whatever the row cache already held. Confirmed live: large_federated_join returned
-    3030 rows instead of ~3.03M because ClickHouse rejected the 1..1M order_id IN list ("Max query size
-    exceeded") and the failure was swallowed. A keyed fetch names its keys in predicates that each fit
-    the source''s statement-size limit (ClickHouse: max_query_size, 262144 bytes by default), together
-    naming every key once: a run of three or more consecutive integers of a single-column key is one BETWEEN
-    (exact over integers), the rest are IN batches. The row-cache freshness read joins the candidate keys
-    as a registered frame, never a bound IN list, [SUPERSEDED by REQ-1907, 2026-10-03 -- The freshness
+    longest TTL any reader accepts (query_residency.py:61-73, 1021-1034), and a push-fed table''s rows are
+    never stale on the clock (:569-574). Kept here for history; do not implement against it.] each cached
+    row carries its own _row_cached_at/_row_expires_at freshness clock, independent of every other row''s,
+    driven by that same cache_ttl duration [END SUPERSEDED BLOCK]. A query whose predicate does not resolve
+    to a bounded PK set [SUPERSEDED by REQ-1915, 2026-10-01 -- a row-level table has no whole-table fallback;
+    an unfiltered read is refused at planning and a filtered read replicates the rows its filter matches.
+    Kept here for history; do not implement against it.] falls back to the table''s ordinary whole-table
+    materialize/live resolution unchanged. [END SUPERSEDED BLOCK] For a push change_signal source, an incoming
+    CDC event for a key already present in the row cache triggers an out-of-band background refresh (queued,
+    not inline); a key not already cached is dropped, never triggering an insert. A key the source no longer
+    returns is tombstoned (deleted) from the cache synchronously. A periodic out-of-band reaper deletes
+    rows expired past an operator-configured reap_grace_period. row_materialize is mutually exclusive with
+    the view_sql-CTAS materialize flag. A declared primary key is trusted, never runtime-verified for uniqueness
+    against the live source. (Amended 2026-09-30, row_materialize applies only where the engine cannot attach:)
+    The choice is made from the bound engine''s DECLARED capability. When the engine declares it can direct-attach
+    the table''s source type (strategy.engine_attaches: its connector reads in place), the engine attaches
+    and reads the source live and row_materialize is ignored for that engine, by design (row_materialize
+    is the reach for a source the engine cannot attach, not an alternative to an attach). If that attach
+    fails, the failure is an error. It is never routed through the row cache or a landed replica instead.
+    row_materialize applies only when the engine declares it cannot direct-attach the source. Every row-materialize
+    consumer (bound extraction, key pushdown, row fetch, background refresh/reap wiring) selects its tables
+    through query_residency.active_row_materialize_tables, so an attach-capable engine never pays a probe
+    query, a keyed fetch or a cache land it would not read. Confirmed live on the perf bench: the DuckDB
+    engine (which attaches MongoDB) ran the key-pushdown probe and landed order_docs rows for large_federated_join
+    while its query read the live MONGO_SCAN. (Amended 2026-09-30, key pushdown fails loudly and lands at
+    scale:) A key-pushdown probe or keyed fetch that fails raises; it is never logged and skipped, which
+    left the table unlanded and the query answered from whatever the row cache already held. Confirmed live:
+    large_federated_join returned 3030 rows instead of ~3.03M because ClickHouse rejected the 1..1M order_id
+    IN list ("Max query size exceeded") and the failure was swallowed. A keyed fetch names its keys in predicates
+    that each fit the source''s statement-size limit (ClickHouse: max_query_size, 262144 bytes by default),
+    together naming every key once: a run of three or more consecutive integers of a single-column key is
+    one BETWEEN (exact over integers), the rest are IN batches. The row-cache freshness read joins the candidate
+    keys as a registered frame, never a bound IN list, [SUPERSEDED by REQ-1907, 2026-10-03 -- The freshness
     read returns min(_row_cached_at) per key, the oldest landed-at stamp, not an expiry (store_connection.py:411-415;
     query_residency.py:540-566). Kept here for history; do not implement against it.] and reports a key
     repeated in the cache at its earliest expiry [END SUPERSEDED BLOCK]. A key-pushdown fetch lands columnar:
     SourceRowLoader. load_keys_arrow returns one Arrow table (ClickHouse fetches it natively via query_arrow;
     a type without an Arrow fetch converts its rows), the _row_cached_at/_row_expires_at stamps are added
-    as Arrow columns (naive UTC), and the DuckDB store upserts it through the broker in one DELETE of
-    the carried keys and one INSERT ... SELECT: no per-row Python objects. ClickHouse''s Arrow output
-    encodes DateTime as uint32 seconds and Date as uint16 days; a column the registry declares temporal
-    is re-typed to the Arrow timestamp/date it encodes. A DuckDB-store cache land applies its batch set-based
-    -- each key ends at its last event in stream order (one DELETE of every touched key, one bulk INSERT
-    of the keys whose last event is an upsert) -- never one DELETE/INSERT per row, which held the store
-    lock for over ten minutes landing ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct
-    request hint never reaches a row_materialize source live: decide_route never makes a VIRTUAL source
-    (neo4j included, though a driver is registered for it) direct on a hint (REQ-030). (Amended 2026-10-01,
-    bound resolution reads the in-memory registry:) Resolving a statement''s PK bounds (`_resolve_pk_bounds`)
-    runs for every governed statement on every surface, so it reads no control plane: the row_materialize
-    tables come from the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and
-    keyed exactly as `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the
-    source type; bare table name and alias). A statement that touches no such table pays a list scan.
-    (Amended 2026-10-23, row fetch by keys is the source''s declaration:) row_materialize needs a row fetch
-    by primary keys, and whether a source type has one is a declaration of that type in the source-type
-    registry (`provisa/core/source_registry.py` ROW_FETCH_BY_KEYS, default none), each entry naming the
-    type''s keyed fetch: its own keyed loader (cassandra, clickhouse, cosmosdb, druid, elasticsearch, hive_s3,
-    kafka, mongodb, neo4j through its query_template, pinot, redis), the direct driver''s WHERE (pk) IN
-    read for a SQL source read through its own driver, the Calcite pgwire bridge for the bridged types, or
-    the engine''s own key read for a lake it scans in place (delta_lake, hive, iceberg). The declaration is
-    held to the code in both directions: every entry resolves, and the declared types are exactly those the
-    key fetch is wired for. A table whose source''s type declares none is refused at config load and on save,
-    by name: "<table>: row_materialize needs row fetch by primary keys, which <source type> sources don''t
-    support" [SUPERSEDED by REQ-1865, 2026-10-23 -- a GraphQL-remote table now has a fetch by keys of its
-    own where its remote''s schema offers one, and is refused for lacking it. Kept here for history; do not
-    implement against it.] -- among them REST/OpenAPI, GraphQL-remote, gRPC-remote, SPARQL, code sources and
-    Qdrant (a live-only type has no key fetch). API sources and govdata keep their own reasons (filtered by
-    their own parameters; read live). [END SUPERSEDED BLOCK] The declaration is one of the source
-    contract''s capabilities, to be absorbed by it (REQ-1756), not a second mechanism.
-    (Amended 2026-10-23, a remote GraphQL table fetches by keys where its schema offers it:) For a remote
-    GraphQL source the fetch by keys is each table''s own (ROW_FETCH_BY_KEYS_PER_TABLE): the type declares
-    one (its keyed loader), and a table has it only where the remote''s schema has a field returning the
-    table''s full rows for a LIST of its primary key in one request -- a Hasura-style `where: {<pk>: {_in:
-    [...]}}` on the table''s own root field, or a root field taking one list of IDs and returning the
-    table''s type or an interface or union it is one of (Relay `nodes(ids:)`); the list is of the type''s
-    `id`. The fetch is read off the schema when the table is registered or refreshed
-    (`graphql_remote.by_keys`) and stored with the table''s spec on the source; a table registered before
-    it was kept has it read off the schema when row_materialize is next saved. row_materialize is set on
-    registerTable and on an update (TableInput.rowMaterialize; left out, a registration is not
-    row-materialized and an update keeps what the table has), and in the table form''s Load and timeliness
-    tab, offered only for a source whose type declares a fetch by keys (Source.rowFetchByKeys). A table
-    with a single primary-key column whose remote has such a field is fetched in ONE request for the keys a
-    statement names and kept for its TTL; one without is refused by name at registration and on save,
-    code schema.row_materialize_no_key_fetch: "<table>: row_materialize needs row fetch by primary keys,
-    and its remote schema has no field that returns its rows for a list of its primary key".'
+    as Arrow columns (naive UTC), and the DuckDB store upserts it through the broker in one DELETE of the
+    carried keys and one INSERT ... SELECT: no per-row Python objects. ClickHouse''s Arrow output encodes
+    DateTime as uint32 seconds and Date as uint16 days; a column the registry declares temporal is re-typed
+    to the Arrow timestamp/date it encodes. A DuckDB-store cache land applies its batch set-based -- each
+    key ends at its last event in stream order (one DELETE of every touched key, one bulk INSERT of the
+    keys whose last event is an upsert) -- never one DELETE/INSERT per row, which held the store lock for
+    over ten minutes landing ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct request hint
+    never reaches a row_materialize source live: decide_route never makes a VIRTUAL source (neo4j included,
+    though a driver is registered for it) direct on a hint (REQ-030). (Amended 2026-10-01, bound resolution
+    reads the in-memory registry:) Resolving a statement''s PK bounds (`_resolve_pk_bounds`) runs for every
+    governed statement on every surface, so it reads no control plane: the row_materialize tables come from
+    the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and keyed exactly as
+    `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the source type; bare
+    table name and alias). A statement that touches no such table pays a list scan. (Amended 2026-10-23,
+    row fetch by keys is the source''s declaration:) row_materialize needs a row fetch by primary keys,
+    and whether a source type has one is a declaration of that type in the source-type registry (`provisa/core/source_registry.py`
+    ROW_FETCH_BY_KEYS, default none), each entry naming the type''s keyed fetch: its own keyed loader (cassandra,
+    clickhouse, cosmosdb, druid, elasticsearch, hive_s3, kafka, mongodb, neo4j through its query_template,
+    pinot, redis), the direct driver''s WHERE (pk) IN read for a SQL source read through its own driver,
+    the Calcite pgwire bridge for the bridged types, or the engine''s own key read for a lake it scans in
+    place (delta_lake, hive, iceberg). The declaration is held to the code in both directions: every entry
+    resolves, and the declared types are exactly those the key fetch is wired for. A table whose source''s
+    type declares none is refused at config load and on save, by name: "<table>: row_materialize needs row
+    fetch by primary keys, which <source type> sources don''t support" [SUPERSEDED by REQ-1865, 2026-10-23
+    -- a GraphQL-remote table now has a fetch by keys of its own where its remote''s schema offers one,
+    and is refused for lacking it. Kept here for history; do not implement against it.] -- among them REST/OpenAPI,
+    GraphQL-remote, gRPC-remote, SPARQL, code sources and Qdrant (a live-only type has no key fetch). API
+    sources and govdata keep their own reasons (filtered by their own parameters; read live). [END SUPERSEDED
+    BLOCK] The declaration is one of the source contract''s capabilities, to be absorbed by it (REQ-1756),
+    not a second mechanism. (Amended 2026-10-23, a remote GraphQL table fetches by keys where its schema
+    offers it:) For a remote GraphQL source the fetch by keys is each table''s own (ROW_FETCH_BY_KEYS_PER_TABLE):
+    the type declares one (its keyed loader), and a table has it only where the remote''s schema has a field
+    returning the table''s full rows for a LIST of its primary key in one request -- a Hasura-style `where:
+    {<pk>: {_in: [...]}}` on the table''s own root field, or a root field taking one list of IDs and returning
+    the table''s type or an interface or union it is one of (Relay `nodes(ids:)`); the list is of the type''s
+    `id`. The fetch is read off the schema when the table is registered or refreshed (`graphql_remote.by_keys`)
+    and stored with the table''s spec on the source; a table registered before it was kept has it read off
+    the schema when row_materialize is next saved. row_materialize is set on registerTable and on an update
+    (TableInput.rowMaterialize; left out, a registration is not row-materialized and an update keeps what
+    the table has), and in the table form''s Load and timeliness tab, offered only for a source whose type
+    declares a fetch by keys (Source.rowFetchByKeys). A table with a single primary-key column whose remote
+    has such a field is fetched in ONE request for the keys a statement names and kept for its TTL; one
+    without is refused by name at registration and on save, code schema.row_materialize_no_key_fetch: "<table>:
+    row_materialize needs row fetch by primary keys, and its remote schema has no field that returns its
+    rows for a list of its primary key". (Amended 2026-10-29, A ROW-LEVEL LAND IS SET-BASED:) Rows land
+    in batches, not by upsert: each batch''s keys are deleted and its rows bulk inserted, in one store transaction
+    holding a per-table lock, so no reader finds a key missing and two landers cannot both insert one. A
+    land never issues one statement per row. A key repeated in one land keeps its last row; a column the
+    fetch did not return lands NULL.'
   use_case: A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template
     scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a 60-120s
     full re-land for a handful of rows, without ever pre-warming keys nothing has asked for.
@@ -70983,15 +70999,21 @@
   type: behavioral
   description: '(Amended 2026-09-28, LIVE-VERIFIED WORKING:) The pg engine''s clickhouse source type should
     be reachable as a live ATTACH via ClickHouse''s own official pg_clickhouse extension (FDW name `clickhouse_fdw`,
-    github.com/ClickHouse/pg_clickhouse), added to provisa_pg_ext''s bundled FDW set, instead of only
-    Mechanism.DIRECT (native driver, materialize-required). No apt/PGDG package exists (confirmed), so provisa_pg_ext bundling it is the correct path per the solid-redistribution-point rule (contrast REQ-1869/mongo_fdw).
-    Built and tested LIVE against ClickHouse 24.3 (v0.10.0 release source, github.com/ClickHouse/pg_clickhouse/releases,
-    `make && make install` against postgresql-server-dev-16 + libcurl/libssl/liblz4/libzstd/uuid dev headers; clean build, no errors): CREATE SERVER (driver ''binary'') + CREATE USER MAPPING + IMPORT FOREIGN
-    SCHEMA auto-generated the full correctly-typed 22-column schema for a real ~60M-row table; `SELECT
-    count(*)` returned the exact live row count (59,989,933); a filtered query (`WHERE order_id = 1`)
-    showed via EXPLAIN VERBOSE that the ENTIRE predicate and aggregate pushed down as remote SQL executed
-    by ClickHouse itself, not locally. Genuinely solid. Recommend prioritizing this over the other REQ-186x/187x
-    Iceberg-catalog gaps given it''s already proven working end to end, not just theoretically feasible.'
+    github.com/ClickHouse/pg_clickhouse), added to provisa_pg_ext''s bundled FDW set, instead of only Mechanism.DIRECT
+    (native driver, materialize-required). No apt/PGDG package exists (confirmed), so provisa_pg_ext bundling
+    it is the correct path per the solid-redistribution-point rule (contrast REQ-1869/mongo_fdw). Built
+    and tested LIVE against ClickHouse 24.3 (v0.10.0 release source, github.com/ClickHouse/pg_clickhouse/releases,
+    `make && make install` against postgresql-server-dev-16 + libcurl/libssl/liblz4/libzstd/uuid dev headers;
+    clean build, no errors): CREATE SERVER (driver ''binary'') + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA
+    auto-generated the full correctly-typed 22-column schema for a real ~60M-row table; `SELECT count(*)`
+    returned the exact live row count (59,989,933); a filtered query (`WHERE order_id = 1`) showed via EXPLAIN
+    VERBOSE that the ENTIRE predicate and aggregate pushed down as remote SQL executed by ClickHouse itself,
+    not locally. Genuinely solid. Recommend prioritizing this over the other REQ-186x/187x Iceberg-catalog
+    gaps given it''s already proven working end to end, not just theoretically feasible. (Amended 2026-10-29,
+    THE ATTACH USES THE DECLARED PORT:) The pg engine attaches ClickHouse with pg_clickhouse''s http driver,
+    not binary, at the source''s declared port (8123, or 8443 when secure, if none is declared). A source''s
+    port is ClickHouse''s HTTP port, as on the direct driver and DuckDB. secure comes from federation_hints.secure
+    and is always stated.'
   use_case: ClickHouse sources currently require a full materialized replica on every pg-engine query. Live verification showed this closes the gap correctly with real predicate/aggregate pushdown, not just a naive
     full-table pull. Unlike mongo_fdw (REQ-1869, rejected as non-functional), this one is ready to bundle
     as soon as REQ-1873's install-script work lands.
@@ -88649,7 +88671,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     does. (Amended 2026-10-29, A LIMIT NEEDS NO FULL UNION:) Maintainer 2026-10-30: graph.union_limit defaults
     to 256. A query with LIMIT and no ORDER BY, DISTINCT or aggregate is allowed ten times the limit, because
     the engine stops the union once it has its rows. Past that it is refused by name, since every branch
-    is still compiled.'
+    is still compiled. (Amended 2026-10-29, AN OPEN PATTERN READS WHAT THE ROLE MAY NAME:) Decided 2026-10-30:
+    ?s ?p ?o answers what naming each predicate answers, one union part per predicate, and edges go through
+    their registered relationship. A table whose whole registered key the role cannot read is left out of
+    an open subject, with the edges into it. Naming such a table and asking for its subject is refused by
+    the table''s name, without naming the column; reading its columns without its subject is still answered.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

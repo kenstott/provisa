@@ -61,7 +61,16 @@ def _as_float4(value: float) -> float:
         (-1.5, "-1.5"),
         (1.1, "1.1"),
         (0.1, "0.1"),
-        (16777216.0, "16777216"),
+        # float4out goes to exponents at 10**6, not float8out's 10**15 (PostgreSQL 16.11 answered).
+        (100000.0, "100000"),
+        (123456.0, "123456"),
+        (999999.0, "999999"),
+        (1e6, "1e+06"),
+        (1.5e6, "1.5e+06"),
+        (1234567.0, "1.234567e+06"),
+        (16777216.0, "1.6777216e+07"),
+        (-1e6, "-1e+06"),
+        (0.0001, "0.0001"),
         (1e-5, "1e-05"),
         (3.4028234663852886e38, "3.4028235e+38"),
         (float("nan"), "NaN"),
@@ -89,6 +98,9 @@ def _text(conn: Any, sql: str) -> tuple[int, list[str]]:
         ("SELECT '-Infinity'::float8 AS v", 701, "-Infinity"),
         ("SELECT 2.0::float4 AS v", 700, "2"),
         ("SELECT 'NaN'::float4 AS v", 700, "NaN"),
+        ("SELECT 1000000::float4 AS v", 700, "1e+06"),
+        ("SELECT 16777216::float4 AS v", 700, "1.6777216e+07"),
+        ("SELECT '{1000000}'::float4[] AS v", 1021, "{1e+06}"),
     ],
 )
 def test_a_result_carries_float_text_as_postgresql_writes_it(

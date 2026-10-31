@@ -936,6 +936,10 @@ tables:
     visible_to:
     - viewer
     is_primary_key: true
+  - name: rights
+    data_type: text
+    visible_to:
+    - viewer
   - name: role_id
     data_type: text
     visible_to:

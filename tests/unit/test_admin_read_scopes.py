@@ -45,7 +45,12 @@ class _Conn:
     async def __aexit__(self, *exc):
         return None
 
-    async def execute_core(self, _stmt):
+    async def execute_core(self, stmt):
+        # The rows are role/source rows. A read of data products (the owner roles) finds none: this
+        # fake database holds no data product, and answering it role rows would name every role an
+        # owner.
+        if any(f.name == "data_products" for f in stmt.get_final_froms()):
+            return _Rows([])
         return _Rows(self._rows)
 
 

@@ -34,6 +34,7 @@ from provisa.pgwire.catalog_data import (
 )
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
+from provisa.core.pg_error import from_engine
 from provisa.transpiler import function_macros
 from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.pg_literals import postgres_literals
@@ -208,6 +209,7 @@ def _emulated(fn: str, untyped: exp.Expression) -> exp.Expression:
 # ischema_names and falls back to NullType — breaking DDL generation — for any
 # name it doesn't recognize, so internal names must be mapped before they reach it.
 _PG_TYPE_DISPLAY_NAMES: dict[str, str] = {
+    "_xml": "xml[]",
     "bool": "boolean",
     "int2": "smallint",
     "int4": "integer",
@@ -523,7 +525,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         if "::bytea" in sql:
             sql = postgres_literals(sql)  # REQ-2167: a bytea literal is PostgreSQL's input of it
         tree = sqlglot.parse_one(sql, read="postgres")
-    except Exception:
+    except Exception as exc:
+        if from_engine(exc) is not None:
+            raise  # REQ-2167: PostgreSQL's own refusal of the statement, not a failure to rewrite
         return sql
     vectors = _vector_names(tree)
 

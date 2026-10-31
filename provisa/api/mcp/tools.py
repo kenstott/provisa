@@ -888,23 +888,20 @@ async def create_data_product(  # REQ-1855
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
 
-    from provisa.api.admin.capabilities import data_product_edit_refusal
-    from provisa.api.errors import ApiError
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
 
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        # REQ-1944: the product's domain, and the one it is moved out of when it exists. REQ-2155:
-        # a product's owner (data_product_owned_rw) edits the one it owns.
+        # REQ-1944: the product's domain, and the one it is moved out of when it exists. REQ-2188:
+        # the role's U rule, not this gate, says which products it edits (core.model_row_rules).
         stored = await data_product_repo.get(conn, id)
-        refusal = data_product_edit_refusal(
-            getattr(request.state, "identity", None),
-            state,
-            stored,
+        require_right_in_domains_request(
+            request,
+            "data_product_rw",
             {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
-        if refusal is not None:
-            raise ApiError(403, "auth.missing_capability", refusal)
         if await domain_repo.get(conn, domain_id) is None:
             raise ValueError(f"Domain not found: {domain_id}")
         model = DataProductModel(
@@ -931,6 +928,8 @@ async def create_data_product(  # REQ-1855
             support=support,
         )
         await data_product_repo.upsert(conn, model)
+    if (None if stored is None else stored["owner_role"]) != owner_role:
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"id": id}
 
 
@@ -1031,6 +1030,10 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
         deleted = await data_product_repo.delete(conn, id)
     if not deleted:
         raise ValueError(f"Data product not found: {id}")
+    if stored is not None and stored["owner_role"]:
+        from provisa.api.admin.schema_helpers import _rebuild_schemas
+
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"ok": True}
 
 

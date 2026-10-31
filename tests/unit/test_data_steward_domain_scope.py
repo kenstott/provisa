@@ -43,6 +43,8 @@ from provisa.core.schema_org import (
 )
 from tests.unit.gate_identity import serve_every_column
 
+# The rights the role under test carries: the seeded steward's and, as an org admin may give a
+# steward (REQ-2188), data_product_rw.
 STEWARD_RIGHTS = [
     "access_config",
     "column_grant",
@@ -222,7 +224,7 @@ M = schema_mutation.Mutation
 
 def test_data_steward_holds_the_governance_rights():
     """REQ-1944, REQ-2155: its own and its ancestors' (security_admin, analyst)."""
-    assert set(STANDARD_ROLE_RIGHTS["data_steward"]) == set(STEWARD_RIGHTS)
+    assert set(STANDARD_ROLE_RIGHTS["data_steward"]) == set(STEWARD_RIGHTS) - {"data_product_rw"}
 
 
 def test_data_steward_holds_nothing_operational():
