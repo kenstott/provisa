@@ -8,13 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-281: on a real Trino, a source's federation hints reach the session only as session
-properties.
+"""REQ-281: on a real Trino, only the @provisa vocabulary reaches the session.
 
 The hints dict also carries each connector's settings. Bench P2: bench-mongodb's
 ``direct_connection`` went out as SET SESSION and Trino answered INVALID_SESSION_PROPERTY, failing
-every statement over the source. ``SHOW SESSION`` is the list the plan reads, and its row shape is
-what no fake can prove.
+every statement over the source. A raw session property stays on the source too; only a real plan
+shows the vocabulary changing what Trino does.
 """
 
 # Requirements: REQ-281
@@ -23,17 +22,19 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 import trino
 
 from provisa.executor.trino import execute_trino
-from provisa.federation.backend import TrinoBackend
-from provisa.federation.runtime import EngineRuntime
-from provisa.pgwire._pipeline import _defined_session_props, _engine_session_hints
+from provisa.pgwire._pipeline import _engine_session_hints
 
 pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
+
+_JOIN = (
+    "EXPLAIN SELECT a.node_id FROM system.runtime.nodes a "
+    "JOIN system.runtime.nodes b ON a.node_id = b.node_id"
+)
 
 
 @pytest.fixture
@@ -46,40 +47,39 @@ def state():
         schema="runtime",
         http_scheme="http",
     )
-    engine_state = SimpleNamespace(
+    return SimpleNamespace(
         engine_conn=trino.dbapi.connect(**kwargs),
         engine_conn_kwargs=kwargs,
         engine_session_hints={},
         source_types={"mongo": "mongodb"},
     )
-    backend = TrinoBackend(MagicMock())
-    engine_state.federation_engine = EngineRuntime(MagicMock(backend=backend), engine_state)
-    return engine_state
 
 
-async def _run(state, hints: dict[str, str]):
+def _run(state, hints: dict[str, str], sql: str = "SELECT 1"):
     state.source_federation_hints = {"mongo": hints}
-    plan_hints = _engine_session_hints(
-        state,
-        ("mongo",),
-        None,
-        "SELECT 1",
-        writes=False,
-        defined=await _defined_session_props(state, ("mongo",)),
-    )
-    result = execute_trino(state.engine_conn, "SELECT 1", session_hints=plan_hints)
+    plan_hints = _engine_session_hints(state, ("mongo",), None, sql, writes=False)
+    result = execute_trino(state.engine_conn, sql, session_hints=plan_hints)
     return plan_hints or {}, result
 
 
-async def test_a_statement_over_a_source_with_a_connector_setting_answers(state):
-    hints, result = await _run(state, {"direct_connection": "true"})
+def test_a_statement_over_a_source_with_a_connector_setting_answers(state):
+    hints, result = _run(state, {"direct_connection": "true"})
     assert result.rows == [[1]]
-    assert "direct_connection" not in hints
+    assert hints == {}
 
 
-async def test_a_raw_session_property_is_sent_and_takes_effect(state):
-    hints, _ = await _run(state, {"query_max_memory": "3GB", "direct_connection": "true"})
-    assert hints == {"query_max_memory": "3GB"}
+@pytest.mark.parametrize(
+    "join, distribution", [("broadcast", "REPLICATED"), ("partitioned", "PARTITIONED")]
+)
+def test_a_vocabulary_hint_takes_effect_and_a_raw_key_is_not_sent(state, join, distribution):
+    hints, result = _run(
+        state,
+        {"join": join, "query_max_memory": "3GB", "direct_connection": "true"},
+        _JOIN,
+    )
+    assert hints == {"join_distribution_type": join.upper()}
+    assert f"distribution = {distribution}" in result.rows[0][0]
     cur = state.engine_conn.cursor()
     cur.execute("SHOW SESSION LIKE 'query_max_memory'")
-    assert cur.fetchall()[0][1] == "3GB"
+    _, value, default, *_ = cur.fetchall()[0]
+    assert value == default != "3GB"

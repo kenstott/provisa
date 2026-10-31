@@ -968,12 +968,6 @@ class EngineBackend:
         del state
         raise PassthroughError(f"engine {self.engine.name!r} is not a Postgres connection pool")
 
-    async def session_properties(self, state: Any) -> frozenset[str] | None:  # REQ-281
-        """The session properties this engine defines. ``None``: it has none, and ignores
-        ``session_hints``."""
-        del state
-        return None
-
     def execute_sync(
         self,
         state: Any,
@@ -1590,11 +1584,6 @@ class TrinoBackend(EngineBackend):
                 extra_table_attrs=extra_table_attrs,
             ),
         )
-
-    async def session_properties(self, state: Any) -> frozenset[str]:  # REQ-281
-        """Asked of the coordinator, the one place that holds them: a catalog's own properties
-        arrive and leave with the catalog."""
-        return frozenset(row[0] for row in (await self.execute(state, "SHOW SESSION")).rows)
 
     def execute_sync(
         self,

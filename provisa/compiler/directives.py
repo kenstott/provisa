@@ -172,13 +172,6 @@ def merge_session_props(  # REQ-281, REQ-030
     return merged
 
 
-#: The session properties the ``@provisa`` vocabulary translates to. Any other key in a source's
-#: hints is either a raw session property or a setting for the source's connector.
-TRANSLATED_SESSION_PROPS = frozenset(
-    {"join_distribution_type", "join_reordering_strategy", "join_max_broadcast_table_size"}
-)
-
-
 def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-278, REQ-281
     """REQ-281: map Provisa-branded source federation hints to the engine session props.
 
@@ -189,10 +182,9 @@ def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-
         ``auto``/``true`` → ``AUTOMATIC``
       - ``broadcast_size``: ``<size>`` → ``join_max_broadcast_table_size``
 
-    Unrecognized keys pass through unchanged so configs still using raw the engine session-prop
-    names keep working during the transition. The same dict carries each connector's own settings
-    (``http_path``, ``direct_connection``), so a passed-through key is only a candidate: the engine
-    says which are its session properties (``pgwire._pipeline._defined_session_props``).
+    Only this vocabulary reaches a session. Any other key is a setting for the source's driver or
+    connector (``http_path``, ``direct_connection``), read from the source; it may be a credential,
+    so it is neither returned nor logged here.
     """
     out: dict[str, str] = {}
     for key, value in hints.items():
@@ -210,8 +202,6 @@ def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-
                 out["join_reordering_strategy"] = "AUTOMATIC"
         elif k == "broadcast_size":
             out["join_max_broadcast_table_size"] = v
-        else:
-            out[key] = value  # passthrough (raw the engine prop) — transitional
     return out
 
 
