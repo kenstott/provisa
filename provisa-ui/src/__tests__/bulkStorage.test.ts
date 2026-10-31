@@ -17,21 +17,25 @@ const idb = vi.hoisted(() => ({
   held: new Map<string, unknown>(),
   capacity: Infinity,
   refuse: false,
+  hang: false,
+  calls: 0,
 }));
 
 vi.mock("idb-keyval", () => {
   const size = (v: unknown) => JSON.stringify(v)?.length ?? 0;
   const used = () => [...idb.held.values()].reduce<number>((n, v) => n + size(v), 0);
-  const guard = () => {
+  const guard = async () => {
+    idb.calls += 1;
+    if (idb.hang) await new Promise(() => undefined);
     if (idb.refuse) throw new DOMException("denied", "SecurityError");
   };
   return {
-    get: async (k: string) => (guard(), idb.held.get(k)),
+    get: async (k: string) => (await guard(), idb.held.get(k)),
     getMany: async (ks: string[]) => ks.map((k) => idb.held.get(k)),
     keys: async () => [...idb.held.keys()],
     del: async (k: string) => void idb.held.delete(k),
     set: async (k: string, v: unknown) => {
-      guard();
+      await guard();
       if (used() - size(idb.held.get(k) ?? null) + size(v) > idb.capacity) {
         throw new DOMException("full", "QuotaExceededError");
       }
@@ -58,6 +62,8 @@ beforeEach(async () => {
   idb.held.clear();
   idb.capacity = Infinity;
   idb.refuse = false;
+  idb.hang = false;
+  idb.calls = 0;
   localStorage.clear();
   errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
   await load();
@@ -166,5 +172,56 @@ describe("a full IndexedDB", () => {
     await bulk.writeBulk("nl-branches", "y".repeat(60));
     expect(idb.held.size).toBe(0);
     expect(errors).toHaveBeenCalled();
+  });
+});
+
+describe("an IndexedDB that never answers", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("surfaces after 5 seconds, once, and is not used again this session", async () => {
+    const { listenForStorageNotice } = await import("../lib/browserStorage");
+    const heard: string[] = [];
+    listenForStorageNotice((kind) => heard.push(kind));
+    await bulk.startBulkMove();
+    idb.hang = true;
+    const read = bulk.readBulk("nl-branches");
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(errors).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await read).toBeNull();
+    expect(heard).toEqual(["settings"]);
+    expect(errors).toHaveBeenCalledTimes(1);
+
+    const calls = idb.calls;
+    idb.hang = false; // a late answer changes nothing: it is unavailable for the session
+    expect(await bulk.readBulk("nl-branches")).toBeNull();
+    await bulk.writeBulk("nl-branches", "dropped");
+    await bulk.removeBulk("nl-branches");
+    expect(idb.calls).toBe(calls);
+    expect(idb.held.size).toBe(0);
+    expect(heard).toEqual(["settings"]);
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+
+  it("times a write out the same way", async () => {
+    await bulk.startBulkMove();
+    idb.hang = true;
+    const write = bulk.writeBulk("nl-branches", "x");
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(write).resolves.toBeUndefined();
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hold the queue when the move itself hangs, and leaves the copy in place", async () => {
+    idb.hang = true;
+    localStorage.setItem(`${SCOPE}provisa.graph.state`, "{}");
+    localStorage.setItem(`${SCOPE}provisa.sparql.state`, "{}");
+    const read = bulk.readBulk("nl-branches");
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await read).toBeNull();
+    expect(localStorage.getItem(`${SCOPE}provisa.graph.state`)).toBe("{}");
+    expect(localStorage.getItem(`${SCOPE}provisa.sparql.state`)).toBe("{}");
+    expect(errors).toHaveBeenCalledTimes(1);
   });
 });

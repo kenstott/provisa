@@ -25,21 +25,56 @@ import {
  *
  * Reads and writes run strictly in the order asked, after any copies left in localStorage have
  * moved across. A failure is logged and noticed (see lib/browserStorage) and the caller goes on
- * with what it holds in memory; none of these reject.
+ * with what it holds in memory; none of these reject. An IndexedDB that never answers would fail
+ * no other way, so each operation has 5 seconds: past that it is logged and noticed the same way,
+ * and bulk storage is not used for the rest of the session.
  */
+const OPERATION_TIMEOUT_MS = 5000;
+
+let unavailable = false;
 let tail: Promise<unknown> | null = null;
+
+/** `operation`'s result, or `otherwise` if IndexedDB is unavailable or stops answering it. */
+async function timed<T>(
+  action: string,
+  key: string,
+  operation: () => Promise<T>,
+  otherwise: T,
+): Promise<T> {
+  if (unavailable) return otherwise;
+  const hung = Symbol("hung");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<typeof hung>((resolve) => {
+    timer = setTimeout(() => resolve(hung), OPERATION_TIMEOUT_MS);
+  });
+  try {
+    const result = await Promise.race([operation(), limit]);
+    if (result !== hung) return result as T;
+  } finally {
+    clearTimeout(timer);
+  }
+  unavailable = true;
+  const silence = new Error(
+    `IndexedDB gave no answer in ${OPERATION_TIMEOUT_MS} ms; not used for the rest of this session`,
+  );
+  reportStorageFailure(action, key, silence);
+  return otherwise;
+}
 
 /** Move what an earlier version left in localStorage across, every scope, freeing its space. */
 async function moveStrayEntries(): Promise<void> {
   for (const [entry, raw] of strayBulkEntries()) {
-    try {
-      // A copy already in IndexedDB is newer than the one left behind.
-      if ((await idbGet(entry)) === undefined) await idbSet(entry, JSON.parse(raw));
-      removeStrayEntry(entry);
-    } catch (e) {
-      if (e instanceof SyntaxError) removeStrayEntry(entry); // corrupt: nothing to keep
-      reportStorageFailure("move to IndexedDB", entry, e);
-    }
+    const moveEntry = async () => {
+      try {
+        // A copy already in IndexedDB is newer than the one left behind.
+        if ((await idbGet(entry)) === undefined) await idbSet(entry, JSON.parse(raw));
+        removeStrayEntry(entry);
+      } catch (e) {
+        if (e instanceof SyntaxError) removeStrayEntry(entry); // corrupt: nothing to keep
+        reportStorageFailure("move to IndexedDB", entry, e);
+      }
+    };
+    await timed("move to IndexedDB", entry, moveEntry, undefined);
   }
 }
 
@@ -85,14 +120,15 @@ async function put(entry: string, value: unknown): Promise<void> {
 /** The list saved in the bound scope, or `null` when there is none or it cannot be read. */
 export function readBulk<T>(key: string): Promise<T | null> {
   const entry = storageKey(key);
-  return inOrder(async () => {
+  const read = async (): Promise<T | null> => {
     try {
       return (await idbGet<T>(entry)) ?? null;
     } catch (e) {
       reportStorageFailure("read", key, e);
       return null;
     }
-  });
+  };
+  return inOrder(() => timed("read", key, read, null));
 }
 
 const latest = new Map<string, number>();
@@ -103,25 +139,27 @@ export function writeBulk(key: string, value: unknown): Promise<void> {
   const entry = storageKey(key);
   const write = ++writes;
   latest.set(entry, write);
-  return inOrder(async () => {
+  const save = async (): Promise<void> => {
     if (latest.get(entry) !== write) return;
     try {
       await put(entry, value);
     } catch (e) {
       reportStorageFailure("save", key, e);
     }
-  });
+  };
+  return inOrder(() => timed("save", key, save, undefined));
 }
 
 /** Remove a list from the bound scope. */
 export function removeBulk(key: string): Promise<void> {
   const entry = storageKey(key);
   latest.set(entry, ++writes); // a write queued before this is superseded
-  return inOrder(async () => {
+  const remove = async (): Promise<void> => {
     try {
       await idbDel(entry);
     } catch (e) {
       reportStorageFailure("remove", key, e);
     }
-  });
+  };
+  return inOrder(() => timed("remove", key, remove, undefined));
 }
