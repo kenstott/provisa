@@ -359,7 +359,9 @@ def test_a_default_tier_role_reads_a_catalog_view_scoped_to_its_neighbourhood():
             "columns": [{"column_name": "id", "visible_to": ["analyst"]}],
         }
     ]
-    gov = build_governance_context("analyst", SimpleNamespace(rules={}), {}, ctx, tables, role, [])
+    gov = build_governance_context(
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, tables, role, []
+    )
     assert gov.rls_rules[10] == "table_id IN (1) AND referenced_table_id IN (1)"
     assert gov.rls_rules[11] == "table_id IN (1)"
     assert gov.rls_rules[12] == "id IN (1)"
@@ -465,7 +467,7 @@ def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
 
     ctx = _meta_context("catalog_pg_class", "is_tables", "catalog_pg_constraint")
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
     assert "IS NULL OR" in gov.rls_rules[10]
     assert "IN (1)" in gov.rls_rules[10]
@@ -479,7 +481,7 @@ def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
     ctx = _meta_context("catalog_pg_attribute", "is_columns")
     ctx.columns_outside_relation = {(1, "Pets")}
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
     assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[10]
     assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[11]
@@ -490,7 +492,9 @@ def test_a_whole_catalog_role_is_not_scoped():
 
     ctx = _meta_context("catalog_pg_class")
     role = {**_ROLE, "domain_access": ["*"]}
-    gov = build_governance_context("analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, role, [])
+    gov = build_governance_context(
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, role, []
+    )
     assert 10 not in gov.rls_rules
 
 
@@ -508,7 +512,7 @@ def test_a_scope_survives_governance_on_an_aliased_read(view, column):
 
     ctx = _meta_context(view)
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
     governed = apply_governance(f"SELECT c.{column} FROM meta.{view} AS c", gov)
     tree = sqlglot.parse_one(governed, read="postgres")
@@ -524,7 +528,7 @@ def test_a_scope_is_qualified_on_a_join_of_two_views():
 
     ctx = _meta_context("catalog_pg_class", "catalog_pg_namespace")
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
     governed = apply_governance(
         "SELECT c.relname FROM meta.catalog_pg_class c "
