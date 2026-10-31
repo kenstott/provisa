@@ -74,6 +74,7 @@ describe("a contract's card layout", () => {
     expect(promises).toBe(screen.getByTestId("data-contract-7-quality"));
     for (const wide of [columns, promises]) {
       expect(wide.style.breakInside).toBe("");
+      expect(wide.style.marginTop).toBe("var(--mantine-spacing-sm)");
       expect(flow.contains(wide)).toBe(false);
     }
   });
