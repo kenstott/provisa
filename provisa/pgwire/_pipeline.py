@@ -768,6 +768,7 @@ def _catalog_settings(
             request.database,
             bool(state.schema_build_cache.get("domain_prefix", False)),
             session=request.session,
+            scope=gov_ctx.meta_scope,
         )
     read = set(table_ids)
     if not any(
@@ -781,6 +782,7 @@ def _catalog_settings(
         gov_ctx.can_write,
         served_database_name(state),
         bool(state.schema_build_cache.get("domain_prefix", False)),
+        scope=gov_ctx.meta_scope,
     )
 
 

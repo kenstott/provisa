@@ -570,6 +570,7 @@ def _catalog_request(
 ) -> CatalogRequest:
     from provisa.pgwire.catalog_facts import role_facts, row_counts
     from provisa.pgwire.catalog_data import served_database_name
+    from provisa.transpiler.metadata_facts import catalog_facts
 
     connection: dict[str, str] = {}
     if session is not None:
@@ -581,7 +582,10 @@ def _catalog_request(
     return CatalogRequest(
         role_id=role_id,
         database=served_database_name(state),
-        facts=role_facts(role_id, state),
+        # Only the privilege functions read them, and the model is walked for them.
+        facts=role_facts(role_id, state)
+        if "_privilege" in sql.lower()
+        else catalog_facts(role_id, {}),
         settings=_KNOWN_SETTINGS,
         pid=session.pid if session is not None else 0,
         session={**connection, "query": sql} if "pg_stat_activity" in sql.lower() else connection,

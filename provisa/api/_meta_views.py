@@ -37,6 +37,8 @@ from provisa.api._pg_catalog_views import (
     CATALOG_COLUMN_VIEWS,
     CATALOG_KEY_VIEWS,
     CATALOG_VIEWS,
+    SERVED_COLUMN_NAMES,
+    registered_column_sql_name,
 )
 from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
 
@@ -505,12 +507,16 @@ def _table_keys_sql() -> str:
     the foreign key slot 1024 holds, as catalog_constraints publishes it."""
     return f"""
         CREATE OR REPLACE VIEW table_keys AS
-        WITH served AS (
-            SELECT table_id AS id FROM catalog_tables WHERE table_id IS NOT NULL
+        WITH tables AS (
+            SELECT table_id, domain_id, schema_name, table_name
+            FROM catalog_tables WHERE table_id IS NOT NULL
+        ),
+        served AS (
+            SELECT table_id AS id FROM tables
         ),
         registrations AS (
             SELECT t.table_id
-            FROM catalog_tables t
+            FROM tables t
             JOIN registered_tables rt ON rt.id = t.table_id
             WHERE rt.domain_id = 'meta' AND rt.table_name = 'registered_tables'
         ),
@@ -612,26 +618,30 @@ def _table_keys_sql() -> str:
             UNION ALL
             SELECT t.table_id, {FOREIGN_KEY_SLOT}, 'f', NULL, r.table_id, q.position,
                    q.column_name, q.referenced_column
-            FROM catalog_tables t
+            FROM tables t
             CROSS JOIN registrations r
             CROSS JOIN (VALUES (1, '_domain_', 'domain_id'), (2, '_name_', 'table_query_name'))
                 AS q(position, column_name, referenced_column)
-            WHERE t.table_id IS NOT NULL AND t.domain_id <> 'meta'
+            WHERE t.domain_id <> 'meta'
         )
         SELECT CAST(k.table_id * {KEY_SLOTS} + k.slot AS TEXT) || ':' || CAST(k.position AS TEXT)
                    AS id,
                k.table_id * {KEY_SLOTS} + k.slot AS key_id, k.kind, k.key_name, k.table_id,
                t.schema_name, t.table_name, k.referenced_table_id,
                r.schema_name AS referenced_schema_name, r.table_name AS referenced_table_name,
-               k.position, k.column_name, c.sql_name AS column_sql_name, k.referenced_column,
-               rc.sql_name AS referenced_column_sql_name
+               k.position, k.column_name,
+               COALESCE({registered_column_sql_name("c")}, k.column_name) AS column_sql_name,
+               k.referenced_column,
+               COALESCE({registered_column_sql_name("rc")}, k.referenced_column)
+                   AS referenced_column_sql_name
         FROM all_keys k
-        JOIN catalog_tables t ON t.table_id = k.table_id
-        JOIN catalog_tables r ON r.table_id = k.referenced_table_id
-        JOIN catalog_columns c
+        JOIN tables t ON t.table_id = k.table_id
+        JOIN tables r ON r.table_id = k.referenced_table_id
+        LEFT JOIN table_columns c
           ON c.table_id = k.table_id AND c.column_name = k.column_name
-        LEFT JOIN catalog_columns rc
+        LEFT JOIN table_columns rc
           ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
+        WHERE c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES}
     """
 
 

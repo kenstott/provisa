@@ -40,6 +40,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     masking_rules: dict[tuple[int, str], tuple] = field(default_factory=dict)
     # table_id → visible column names (None = all visible)
     visible_columns: dict[int, frozenset[str] | None] = field(default_factory=dict)
+    # REQ-2190: the table ids the role's meta rows are scoped to, as an array literal, which a
+    # statement's settings tell its catalog views. None where no row filter applies.
+    meta_scope: str | None = None
     # REQ-1959: tables outside the role's domains that it is served anyway, because they publish
     # a column to it. A direct read of one is not a domain violation (V001); the columns it may
     # read there are the published ones (visible_columns).
@@ -237,7 +240,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         served_across_domains,
     )
 
-    from provisa.transpiler.metadata_views import SCOPE_COLUMN
+    from provisa.transpiler.metadata_settings import scope_ids_sql
+    from provisa.transpiler.metadata_views import NEUTRAL_VIEW_NAMES, SCOPE_COLUMN
 
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
     gov.can_write = has_capability(role, Capability.WRITE)
@@ -399,17 +403,20 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     meta_scope = compute_meta_row_scope(role, tables, relationships)
     if meta_scope is not None:
         id_list = ",".join(str(i) for i in sorted(meta_scope)) or "-1"  # empty → matches no row
+        gov.meta_scope = "{" + id_list + "}"
+        scoped_ids = scope_ids_sql()
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
             scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
             catalog_scope = META_CATALOG_ROW_SCOPES.get(getattr(tm, "table_name", ""))
             if scope_cols is not None:
-                predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
+                ids = scoped_ids if tm.table_name in NEUTRAL_VIEW_NAMES else id_list
+                predicate = " AND ".join(f"{col} IN ({ids})" for col in scope_cols)
             elif catalog_scope is not None:
                 # REQ-2190: a row about no registered table is every role's.
                 predicate = " AND ".join(
-                    f"(({expr}) IS NULL OR ({expr}) IN ({id_list}))" for expr in catalog_scope
+                    f"(({expr}) IS NULL OR ({expr}) IN ({scoped_ids}))" for expr in catalog_scope
                 )
             else:
                 continue

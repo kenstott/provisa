@@ -36,6 +36,7 @@ NAMES = (
     "application_name",
     "backend_start",
     "query",
+    "scope",
 )
 _PREFIX = "provisa.catalog"
 _WRITES_SETTINGS = re.compile(r"\bset_config\b", re.IGNORECASE)
@@ -58,6 +59,13 @@ def setting(name: str) -> str:
     return f"NULLIF(CURRENT_SETTING('{_PREFIX}.{name}', TRUE), '')"
 
 
+def scope_ids_sql() -> str:
+    """The table ids a role's meta rows are scoped to, told once by the statement's settings: a
+    list written into the statement would be parsed, governed and planned for each view it
+    reads. A statement that was not told them reads none."""
+    return f"SELECT UNNEST(CAST({setting('scope')} AS INTEGER[]))"
+
+
 def set_statement(values: Mapping[str, str]) -> tuple[str, tuple[str, ...]]:
     """The statement setting ``values`` for the rest of this transaction, and its arguments."""
     unknown = set(values) - set(NAMES)
@@ -74,10 +82,11 @@ def statement_settings(
     domain_prefix: bool,
     *,
     session: Mapping[str, str] | None = None,
+    scope: str | None = None,
 ) -> dict[str, str]:
     """What a statement's catalog views are told: who asks, what database it is on, the naming in
-    force, and, where a connection asks, that connection (pid, application_name, backend_start,
-    query)."""
+    force, where a connection asks, that connection (pid, application_name, backend_start,
+    query), and where the role's meta rows are scoped, to which tables."""
     from provisa.compiler.naming import active_gql_convention, active_sql_form
 
     return {
@@ -88,6 +97,7 @@ def statement_settings(
         "gql_convention": active_gql_convention(),
         "domain_prefix": "true" if domain_prefix else "false",
         **(session or {}),
+        **({"scope": scope} if scope is not None else {}),
     }
 
 

@@ -39,7 +39,7 @@ import sqlglot.expressions as exp
 from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
-from provisa.transpiler.metadata_oids import key_id_sql
+from provisa.transpiler.metadata_oids import FIRST_METRIC_OID, KEY_OID_BASE, key_id_sql
 from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS
 
 #: The search path a definition names a table against (catalog_data's search_path).
@@ -283,61 +283,107 @@ _KEY_COLUMNS = "STRING_AGG(QUOTE_IDENT(k.column_sql_name), ', ' ORDER BY k.posit
 _REFERENCED_COLUMNS = (
     "STRING_AGG(QUOTE_IDENT(k.referenced_column_sql_name), ', ' ORDER BY k.position)"
 )
+_REFERENCED_TABLE = _named("MIN(k.referenced_schema_name)", "MIN(k.referenced_table_name)")
 
 
-def _constraint_definition(key: str) -> str:
-    target = _named("MIN(k.referenced_schema_name)", "MIN(k.referenced_table_name)")
+def _entries(entry: str, value: str, source: str) -> str:
+    """The one row a statement reads a form's answers from, the answers by their key in a jsonb
+    object: a client asks of a catalog once for each row, and a lookup there costs no view."""
     return (
-        f"(SELECT CASE MIN(k.kind) WHEN 'p' THEN 'PRIMARY KEY (' || {_KEY_COLUMNS} || ')' "
+        "SELECT JSONB_OBJECT_AGG(_e.entry, _e.answer) AS entries "
+        f"FROM (SELECT CAST({entry} AS TEXT) AS entry, {value} AS answer {source}) _e"
+    )
+
+
+def _answer(relation: str, entry: str) -> str:
+    return f"(SELECT _m.entries ->> CAST({entry} AS TEXT) FROM {relation} _m)"
+
+
+#: A key's definition, as pg_get_constraintdef writes it.
+KEY_DEFINITIONS = "_provisa_key_definitions"
+#: A unique key's index, as pg_get_indexdef writes it: PostgreSQL always names the table's schema.
+INDEX_DEFINITIONS = "_provisa_index_definitions"
+#: The columns of a unique key's index, by the key and the column's place.
+INDEX_COLUMNS = "_provisa_index_columns"
+#: A relation's comment, and a comment by what it is on.
+OBJECT_COMMENTS = "_provisa_object_comments"
+COMMENTS = "_provisa_comments"
+#: The relations a role lists, read once by a statement however many rows ask: a client calls
+#: pg_table_is_visible for each row of pg_class. Its indexes apart: only a call about one reads
+#: them, which is the keys.
+LISTED_RELATIONS = "_provisa_listed_relations"
+LISTED_INDEXES = "_provisa_listed_indexes"
+PUBLISHABLE = "_provisa_publishable_relations"
+
+#: What a form reads once, by the relation a statement holds it in. A statement reads only those
+#: its forms name, each as a role reads the view: what it does not list has no answer here.
+_READ_ONCE: dict[str, str] = {
+    KEY_DEFINITIONS: _entries(
+        "k.key_id",
+        f"CASE MIN(k.kind) WHEN 'p' THEN 'PRIMARY KEY (' || {_KEY_COLUMNS} || ')' "
         f"WHEN 'u' THEN 'UNIQUE (' || {_KEY_COLUMNS} || ')' "
-        f"ELSE 'FOREIGN KEY (' || {_KEY_COLUMNS} || ') REFERENCES ' || {target} "
-        f"|| '(' || {_REFERENCED_COLUMNS} || ')' END "
-        f"FROM meta.table_keys k WHERE k.key_id = {key_id_sql(key)} GROUP BY k.key_id)"
-    )
-
-
-def _index_definition(key: str) -> str:
-    """As pg_get_indexdef writes a key's index: PostgreSQL always names the table's schema."""
-    return (
-        "(SELECT 'CREATE UNIQUE INDEX ' || QUOTE_IDENT(COALESCE(MIN(k.key_name), 'pk_' || "
+        f"ELSE 'FOREIGN KEY (' || {_KEY_COLUMNS} || ') REFERENCES ' || {_REFERENCED_TABLE} "
+        f"|| '(' || {_REFERENCED_COLUMNS} || ')' END",
+        "FROM meta.table_keys k GROUP BY k.key_id",
+    ),
+    INDEX_DEFINITIONS: _entries(
+        "k.key_id",
+        "'CREATE UNIQUE INDEX ' || QUOTE_IDENT(COALESCE(MIN(k.key_name), 'pk_' || "
         "MIN(k.table_name))) || ' ON ' || QUOTE_IDENT(MIN(k.schema_name)) || '.' || "
-        f"QUOTE_IDENT(MIN(k.table_name)) || ' USING btree (' || {_KEY_COLUMNS} || ')' "
-        f"FROM meta.table_keys k WHERE k.key_id = {key_id_sql(key)} AND k.kind IN ('p', 'u') "
-        "GROUP BY k.key_id)"
-    )
+        f"QUOTE_IDENT(MIN(k.table_name)) || ' USING btree (' || {_KEY_COLUMNS} || ')'",
+        "FROM meta.table_keys k WHERE k.kind IN ('p', 'u') GROUP BY k.key_id",
+    ),
+    INDEX_COLUMNS: _entries(
+        "CAST(k.key_id AS TEXT) || ':' || CAST(k.position AS TEXT)",
+        "QUOTE_IDENT(k.column_sql_name)",
+        "FROM meta.table_keys k WHERE k.kind IN ('p', 'u')",
+    ),
+    OBJECT_COMMENTS: _entries(
+        "_d.objoid",
+        "MIN(_d.description)",
+        "FROM meta.catalog_pg_description _d WHERE _d.objsubid = 0 GROUP BY _d.objoid",
+    ),
+    COMMENTS: _entries(
+        "CAST(_d.objoid AS TEXT) || ':' || CAST(_d.classoid AS TEXT) || ':' "
+        "|| CAST(_d.objsubid AS TEXT)",
+        "_d.description",
+        "FROM meta.catalog_pg_description _d",
+    ),
+    LISTED_RELATIONS: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind <> 'i'",
+    LISTED_INDEXES: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind = 'i'",
+    PUBLISHABLE: (
+        "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
+        "AND _c.relnamespace NOT IN (11, 12)"
+    ),
+}
 
 
 def _index_column(key: str, position: str) -> str:
     """pg_get_indexdef(index, column, pretty) of a key column: that column's name."""
-    return (
-        "(SELECT QUOTE_IDENT(k.column_sql_name) FROM meta.table_keys k "
-        f"WHERE k.key_id = {key_id_sql(key)} AND k.kind IN ('p', 'u') AND k.position = {position})"
-    )
+    entry = f"CAST({key_id_sql(key)} AS TEXT) || ':' || CAST({position} AS TEXT)"
+    return _answer(INDEX_COLUMNS, entry)
 
 
-_OBJECT_COMMENT = (
-    "(SELECT MIN(_d.description) FROM meta.catalog_pg_description _d "
-    "WHERE _d.objoid = object_oid AND _d.objsubid = 0)"
-)
+_OBJECT_COMMENT = _answer(OBJECT_COMMENTS, "object_oid")
 #: PostgreSQL's oid of the catalog obj_description is asked about, by the name it is asked with.
-_COMMENT_IN_CATALOG = (
-    "(SELECT _d.description FROM meta.catalog_pg_description _d WHERE _d.objoid = object_oid "
-    "AND _d.objsubid = 0 AND _d.classoid = CASE catalog WHEN 'pg_class' THEN 1259 "
-    "WHEN 'pg_namespace' THEN 2615 END)"
+_COMMENT_IN_CATALOG = _answer(
+    COMMENTS,
+    "CAST(object_oid AS TEXT) || ':' || CAST(CASE catalog WHEN 'pg_class' THEN 1259 "
+    "WHEN 'pg_namespace' THEN 2615 END AS TEXT) || ':0'",
 )
-_COLUMN_COMMENT = (
-    "(SELECT _d.description FROM meta.catalog_pg_description _d WHERE _d.objoid = relation_oid "
-    "AND _d.classoid = 1259 AND _d.objsubid = attnum)"
+_COLUMN_COMMENT = _answer(
+    COMMENTS, "CAST(relation_oid AS TEXT) || ':1259:' || CAST(attnum AS TEXT)"
 )
 
-#: The relations a role lists, read once by a statement however many rows ask: a client calls
-#: pg_table_is_visible for each row of pg_class, and each call would read the view again.
-LISTED_RELATIONS = "_provisa_listed_relations"
-_LISTED = f"(SELECT TRUE FROM {LISTED_RELATIONS} _c WHERE _c.oid = relation_oid)"
-_PUBLISHABLE = (
-    "COALESCE((SELECT _c.relkind IN ('r', 'p') AND _c.relnamespace NOT IN (11, 12) "
-    "FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid), FALSE)"
+_KEY_DEFINITION = _answer(KEY_DEFINITIONS, key_id_sql("conoid"))
+_INDEX_DEFINITION = _answer(INDEX_DEFINITIONS, key_id_sql("indexoid"))
+_LISTED = (
+    f"CASE WHEN CAST(relation_oid AS BIGINT) >= {KEY_OID_BASE} "
+    f"AND CAST(relation_oid AS BIGINT) < {FIRST_METRIC_OID} "
+    f"THEN CASE WHEN relation_oid IN (SELECT _c.oid FROM {LISTED_INDEXES} _c) THEN TRUE END "
+    f"WHEN relation_oid IN (SELECT _c.oid FROM {LISTED_RELATIONS} _c) THEN TRUE END"
 )
+_PUBLISHABLE = f"COALESCE(relation_oid IN (SELECT _c.oid FROM {PUBLISHABLE} _c), FALSE)"
 
 #: A relation's name as written: a quoted one as it is, an unquoted one folded to lower case.
 _WRITTEN_NAME = (
@@ -445,26 +491,28 @@ _FORMS: tuple[Form, ...] = (
     # A catalog keeps a default's expression as its text.
     _form("pg_get_expr", "expression, relation", "CAST(expression AS TEXT)"),
     _form("pg_get_expr", "expression, relation, pretty", "CAST(expression AS TEXT)"),
-    _form("pg_get_constraintdef", "conoid", _constraint_definition("conoid")),
-    _form("pg_get_constraintdef", "conoid, pretty", _constraint_definition("conoid")),
-    _form("pg_get_indexdef", "indexoid", _index_definition("indexoid")),
+    _form("pg_get_constraintdef", "conoid", _KEY_DEFINITION, KEY_DEFINITIONS),
+    _form("pg_get_constraintdef", "conoid, pretty", _KEY_DEFINITION, KEY_DEFINITIONS),
+    _form("pg_get_indexdef", "indexoid", _INDEX_DEFINITION, INDEX_DEFINITIONS),
     _form(
         "pg_get_indexdef",
         "indexoid, position, pretty",
-        f"CASE WHEN position = 0 THEN {_index_definition('indexoid')} "
+        f"CASE WHEN position = 0 THEN {_INDEX_DEFINITION} "
         f"ELSE {_index_column('indexoid', 'position')} END",
+        INDEX_DEFINITIONS,
+        INDEX_COLUMNS,
     ),
-    _form("obj_description", "object_oid", _OBJECT_COMMENT),
-    _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG),
-    _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT),
+    _form("obj_description", "object_oid", _OBJECT_COMMENT, OBJECT_COMMENTS),
+    _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG, COMMENTS),
+    _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT, COMMENTS),
     # Every table has one owner, the role a client is shown as owning it (pg_class.relowner).
     _form(
         "pg_get_userbyid",
         "role_oid",
         "CAST(CASE WHEN role_oid IS NOT NULL THEN 'provisa' END AS NAME)",
     ),
-    _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS),
-    _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE),
+    _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS, LISTED_INDEXES),
+    _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE, PUBLISHABLE),
     _form("pg_is_other_temp_schema", "schema_oid", "FALSE"),
     _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
     _form("has_any_column_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
@@ -632,16 +680,15 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     out = tree.transform(rewrite)
     if not isinstance(out, exp.Query):
         return out
-    for name in sorted(needed - {LISTED_RELATIONS}):
-        out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
-    if LISTED_RELATIONS in needed:
-        out = out.with_(
-            LISTED_RELATIONS,
-            as_="SELECT _l.oid FROM meta.catalog_pg_class _l",
-            append=True,
-            copy=False,
-            materialized=True,
-        )
+    for name in sorted(needed):
+        if name in _READ_ONCE:
+            out = out.with_(name, as_=_READ_ONCE[name], append=True, copy=False, materialized=True)
+        else:
+            out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
+    if needed:
+        # Before a client's own: a form in one of those reads these.
+        written = out.args["with_"]
+        written.set("expressions", sorted(written.expressions, key=lambda c: c.alias not in needed))
     return out
 
 

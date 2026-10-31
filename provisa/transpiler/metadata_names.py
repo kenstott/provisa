@@ -28,11 +28,12 @@ _CAMEL_PRESETS = "('apollo_graphql')"
 
 
 def snake_case_sql(name: str) -> str:
-    """naming._to_snake_case."""
+    """naming._to_snake_case. A name with no capital is its own snake case, which costs no regular
+    expression: most of a model's names."""
     return (
-        "LOWER(REGEXP_REPLACE(REGEXP_REPLACE("
+        f"CASE WHEN {name} = LOWER({name}) THEN {name} ELSE LOWER(REGEXP_REPLACE(REGEXP_REPLACE("
         f"{name}, '([A-Z]+)([A-Z][a-z])', '\\1_\\2', 'g'), "
-        "'([a-z0-9])([A-Z])', '\\1_\\2', 'g'))"
+        "'([a-z0-9])([A-Z])', '\\1_\\2', 'g')) END"
     )
 
 
@@ -57,9 +58,12 @@ def pascal_case_sql(name: str) -> str:
 
 
 def camel_case_sql(name: str) -> str:
-    """naming._to_camel_case."""
-    pascal = pascal_case_sql(name)
-    return f"LOWER(LEFT({pascal}, 1)) || SUBSTR({pascal}, 2)"
+    """naming._to_camel_case. The pascal form is written once: each copy of it is a subplan of every
+    statement that reads a name, run or not."""
+    return (
+        f"(SELECT LOWER(LEFT(_cc.pascal, 1)) || SUBSTR(_cc.pascal, 2) "
+        f"FROM (SELECT {pascal_case_sql(name)} AS pascal) _cc)"
+    )
 
 
 def sql_name_sql(name: str) -> str:
