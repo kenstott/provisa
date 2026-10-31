@@ -89652,7 +89652,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a role reads is decided by its grants, row rules, masks and the relationship guard, on every protocol
     alike, so a viewer reads over GraphQL as it does over pgwire. query_development gates development features
     only. A query a person writes is no wider than a generated API while the relationship guard applies,
-    so it is not an access boundary.'
+    so it is not an access boundary. (Amended 2026-10-29, VIEWER IS THE FLOOR:) Maintainer 2026-10-31: viewer
+    holds reading the catalog, the glossary and data products (catalog_read, glossary_read, data_product_read),
+    and that is the floor of every role built on it, since a child only adds to what it inherits. This replaces
+    the part of the DATA BUYER amendment under which viewer does not read data products. What a role is
+    shown of a product stays cut to its own rights (REQ-2152). A Data buyer role, if built, adds requesting
+    a product.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
