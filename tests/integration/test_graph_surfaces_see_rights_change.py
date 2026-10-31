@@ -9,7 +9,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration: Cypher and SPARQL over HTTP read a change of rights on the next request (REQ-1911).
+"""Integration: every surface reads a change of rights on the next request (REQ-1911).
 
 Each repeats a statement until its role's governance is kept, then changes the role or the model
 and asks again at once: a kept governance context never answers with the rights it was built from.
@@ -165,7 +165,76 @@ def _sparql(boot, role: str = "reader") -> str:
     )
 
 
-_SURFACES = {"cypher_http": _cypher, "sparql_http": _sparql}
+_SQL = "SELECT id, region FROM sales.ledger ORDER BY id"
+
+
+def _sql_http(boot, role: str = "reader") -> str:
+    return _call(
+        boot,
+        "/data/sql",
+        role=role,
+        data=json.dumps({"sql": _SQL}).encode(),
+        content_type="application/json",
+    )
+
+
+def _bolt(boot, role: str = "reader") -> str:
+    from neo4j import GraphDatabase
+    from neo4j.exceptions import Neo4jError
+
+    statement = "MATCH (l:Sales:Ledger) RETURN l.id AS id, l.region AS region ORDER BY id"
+    driver = GraphDatabase.driver(f"bolt://127.0.0.1:{boot.ports['bolt']}", auth=(role, ""))
+    try:
+        with driver.session() as session:
+            return str([dict(r) for r in session.run(statement)])
+    except Neo4jError as exc:
+        return str(exc)
+    finally:
+        driver.close()
+
+
+def _flight(boot, role: str = "reader") -> str:
+    import pyarrow.flight as fl
+
+    client = fl.connect(f"grpc://127.0.0.1:{boot.ports['flight']}")
+    try:
+        ticket = fl.Ticket(json.dumps({"query": _SQL, "role": role}).encode())
+        return str(client.do_get(ticket).read_all().to_pylist())
+    except fl.FlightError as exc:
+        return str(exc)
+    finally:
+        client.close()
+
+
+def _pgwire(boot, role: str = "reader") -> str:
+    import psycopg2
+
+    conn = psycopg2.connect(
+        host="127.0.0.1",
+        port=boot.ports["pgwire"],
+        user=role,
+        password="x",
+        dbname="provisa",
+        sslmode="disable",
+    )
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(_SQL)
+            return str(cursor.fetchall())
+    except psycopg2.Error as exc:
+        return str(exc)
+    finally:
+        conn.close()
+
+
+_SURFACES = {
+    "cypher_http": _cypher,
+    "sparql_http": _sparql,
+    "sql_http": _sql_http,
+    "bolt": _bolt,
+    "flight": _flight,
+    "pgwire": _pgwire,
+}
 
 
 def _warm(boot, ask) -> None:

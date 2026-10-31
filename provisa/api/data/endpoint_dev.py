@@ -1003,8 +1003,8 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     """
     from provisa.api.app import state
     from provisa.compiler.naming import domain_to_sql_name
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.core.org_secrets import read_org_api_keys
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.core.org_settings import resolve_org_config
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request)
@@ -1030,19 +1030,10 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
         return {"sql": sql, "cypher": cypher, "attempts": 1}
 
     ctx = surface.context
-    rls = surface.rls
     from provisa.security.rights import require_role
 
     role_obj = require_role(state.roles, role_id)
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role_obj,
-        relationships=getattr(state, "relationships", None),
-    )
+    gov_ctx = role_governance(state, surface, role_id)
     raw_tables = getattr(state, "tables", [])
 
     all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(

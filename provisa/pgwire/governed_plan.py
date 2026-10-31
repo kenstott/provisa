@@ -56,6 +56,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -161,11 +162,13 @@ class PlanSlot:
         state.compiled_query_cache.put(self._key, _Kept(value, self._anchors, self._settings))
 
 
-def role_governance(state: Any, surface: Any, role_id: str) -> Any:
-    """``role_id``'s governance context on ``surface``, built once per role and model version under
-    the rules above. The governance objects are the anchors, and the surface read is one of them, so
-    a context built from a surface a rebuild has since replaced answers no later request. Each
-    caller gets its own copy, since a statement's governance sets its own limits on the context."""
+def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], Any]:
+    """What reads ``role_id``'s governance context on ``surface``, every input taken now on the
+    calling thread, for a caller that reads it later (provenance.enforced_for_request). The context
+    is built once per role and model version under the rules above. The governance objects are the
+    anchors, and the surface read is one of them, so a context built from a surface a rebuild has
+    since replaced answers no later request. Each read is its own copy, since a statement's
+    governance sets its own limits on the context."""
     from provisa.compiler.stage2 import build_governance_context
     from provisa.fakes.measurement import MEASURING
     from provisa.security.rights import effective_domain_access_role
@@ -178,18 +181,33 @@ def role_governance(state: Any, surface: Any, role_id: str) -> Any:
         MEASURING.get(),
         extra_anchors=(surface.context, surface.rls),
     )
-    governance = slot.cached()
-    if governance is None:
-        governance = build_governance_context(
-            role_id,
-            surface.rls,
-            state.masking_rules,
-            surface.context,
-            getattr(state, "tables", []),
-            role=effective_domain_access_role(role_id, state.roles),
-            relationships=getattr(state, "relationships", None),
-            source_types=state.source_types,
-            engine=getattr(state, "federation_engine", None),
-        )
-        slot.keep(governance)
-    return dataclasses.replace(governance)
+    masking_rules = state.masking_rules
+    tables = getattr(state, "tables", [])
+    role = effective_domain_access_role(role_id, state.roles)
+    relationships = getattr(state, "relationships", None)
+    source_types = state.source_types
+    engine = getattr(state, "federation_engine", None)
+
+    def read() -> Any:
+        governance = slot.cached()
+        if governance is None:
+            governance = build_governance_context(
+                role_id,
+                surface.rls,
+                masking_rules,
+                surface.context,
+                tables,
+                role=role,
+                relationships=relationships,
+                source_types=source_types,
+                engine=engine,
+            )
+            slot.keep(governance)
+        return dataclasses.replace(governance)
+
+    return read
+
+
+def role_governance(state: Any, surface: Any, role_id: str) -> Any:
+    """``role_id``'s governance context on ``surface``: the one way every surface reads it."""
+    return governance_reader(state, surface, role_id)()

@@ -21,8 +21,10 @@ of the landing paths' table list, and in the governance context.
 
 from __future__ import annotations
 
+import ast
 import copy
 from collections import defaultdict
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +32,7 @@ import pytest
 from provisa.api.admin import db_queries
 from provisa.api.admin.db_queries import fetch_tables
 from provisa.api.rest.cypher_router import access_violations
+from provisa.audit.provenance import enforced_for_request
 from provisa.compiler import stage2
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.rls import RLSContext
@@ -37,7 +40,7 @@ from provisa.compiler.stage2 import apply_governance
 from provisa.fakes.measurement import MEASURING
 from provisa.federation import registry_view
 from provisa.pgwire import governed_plan
-from provisa.pgwire.governed_plan import role_governance
+from provisa.pgwire.governed_plan import governance_reader, role_governance
 from provisa.security.rights import SQL_CATALOG_TABLES
 from tests.role_state import RoleState
 
@@ -288,6 +291,49 @@ def test_a_refusal_is_still_reached_with_the_kept_context(monkeypatch):
     refused = access_violations("SELECT 1", surface, "analyst", state)
     assert refused is not None and refused.status_code == 403
     assert seen == [None, None]
+
+
+def test_a_reader_taken_before_a_rebuild_reads_what_it_took():
+    """The audit writer records the rights the request ran under, read later on its own thread."""
+    state = _state()
+    read = governance_reader(state, state.surfaces["analyst"], "analyst")
+    tables = copy.deepcopy(_TABLES)
+    tables[0]["columns"][1]["visible_to"] = ["viewer"]
+    state.tables = tables
+    state.schema_version += 1
+    assert read().visible_columns[1] is None
+    assert _governance(state).visible_columns[1] == frozenset({"id"})
+
+
+def test_the_audit_summary_shares_the_context_and_reads_a_change(builds):
+    state = _state()
+    state.tables[0]["max_rows"] = 5
+    ctx = state.contexts["analyst"]
+    assert enforced_for_request(state, "analyst", ctx)((1,))["table_caps"]
+    _governance(state)
+    assert builds.count == 1
+    tables = copy.deepcopy(state.tables)
+    del tables[0]["max_rows"]
+    state.tables = tables
+    assert not enforced_for_request(state, "analyst", ctx)((1,))["table_caps"]
+
+
+@pytest.mark.parametrize("path", sorted(str(p) for p in Path("provisa").rglob("*.py")))
+def test_no_module_builds_a_context_of_its_own(path):
+    """REQ-1911: one context per role and model version. Every surface reads role_governance; the
+    statement is still governed whole, per statement, by each stage."""
+    if path in (
+        str(Path("provisa/compiler/stage2.py")),
+        str(Path(governed_plan.__file__).relative_to(Path.cwd())),
+    ):
+        return
+    tree = ast.parse(Path(path).read_text())
+    calls = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "build_governance_context"
+    ]
+    assert not calls, f"{path} builds a governance context of its own"
 
 
 # -- a SQL catalog's views ------------------------------------------------------------------------
