@@ -829,7 +829,7 @@ The Databricks connector inherits this from `requests`, so it needs no Databrick
 | `TRINO_PORT` | `8080` | Trino federation engine coordinator HTTP port |
 | `PROVISA_ENGINE` | `duckdb` | Active federation engine key; overrides persisted config |
 | `PROVISA_ENGINE_URL` | | Connection URL for URL-driven engines (Databricks, Snowflake, ClickHouse, BigQuery, Fabric, Synapse, SQLAlchemy) |
-| `PROVISA_MATERIALIZE_URL` | | Materialization store URL override; defaults to engine's own store |
+| `PROVISA_MATERIALIZE_URL` | | Materialization store URL override; defaults to engine's own store; on `pg`, must name the engine's database |
 | `PROVISA_MSSQL_ODBC_DRIVER` | `ODBC Driver 18 for SQL Server` | ODBC driver name for Fabric / Synapse |
 | `GOOGLE_APPLICATION_CREDENTIALS` | | Path to GCP service-account key JSON (BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | | GCP project ID (BigQuery; inferred from service account when unset) |
