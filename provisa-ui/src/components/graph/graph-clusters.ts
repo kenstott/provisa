@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { clusterColor } from "./graph-model";
+import { clusterColor, propertyValue } from "./graph-model";
 import type { GNode, GEdge } from "./graph-model";
 import type { CyElementDefinition, CyInstance } from "./cytoscape-types";
 
@@ -29,13 +29,17 @@ function clusterKeyFor(level: Exclude<ClusterLevel, "none">): string {
         : level;
 }
 
+/** The group of the nodes that have no value of the property grouped by. */
+const NO_VALUE = "∅";
+
 function nodeClusterId(n: GNode, clusterKey: string): string | null {
   if (clusterKey === "domain") {
     const colonIdx = n.label.indexOf(":");
     return colonIdx > 0 ? n.label.slice(0, colonIdx) : n.label || null;
   }
-  const raw = n.properties[clusterKey];
-  return raw !== null && raw !== undefined ? String(raw) : null;
+  const raw = propertyValue(n, clusterKey);
+  if (raw !== null && raw !== undefined) return String(raw);
+  return /^scl[123]$/.test(clusterKey) ? null : NO_VALUE;
 }
 
 /** Every group the nodes fall into at ``level``: what "collapse every group" collapses. */

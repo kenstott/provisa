@@ -1070,7 +1070,9 @@ async def pushdown_row_materialize(
                 skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue
             key_cols[name] = kc
-            joins_by_name[name].set("kind", "LEFT")
+            # A join's side says LEFT; a statement's own LEFT JOIN already carries it.
+            joins_by_name[name].set("side", "LEFT")
+            joins_by_name[name].set("kind", None)
         for name in skip:
             still_pending.discard(name)
         if not still_pending:

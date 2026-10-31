@@ -241,6 +241,7 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             "differing": {},
             "not_served": {"pg_catalog.foo(integer)": "function foo does not exist"},
             "not_callable": {"bar(internal)": "takes an internal argument"},
+            "refused_here": {"pg_wal_replay_pause()": "recovery is not in progress"},
             "failures_by_family": {
                 "Geometric": {"count": 1, "functions": ["pg_catalog.foo(integer)"]},
                 "Index support": {"count": 1, "functions": ["bar(internal)"]},
@@ -276,11 +277,12 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         assert heading in md
     assert "`pg_catalog.pg_stat_database`" in md
     assert "`pg_catalog.foo(integer)`" in md
-    # REQ-2167 (PG_CATALOG FUNCTIONS ARE GAPS): no function is skipped by design; each is failed,
-    # one no call can reach by name, and the failures are counted by family.
-    assert "Functions skipped by design" not in md
-    assert "Functions no call can reach (1)" in md
+    # REQ-2167 (INTERNAL FUNCTIONS): one PostgreSQL itself cannot call is listed by name, apart
+    # from one this server refuses for its state; what stays failed is counted by family.
+    assert "Functions PostgreSQL itself cannot call (1)" in md
     assert "`bar(internal)`" in md
+    assert "Functions this PostgreSQL refuses for its own state (1)" in md
+    assert "`pg_wal_replay_pause()`: recovery is not in progress" in md
     assert "Functions failed, by family (2)" in md
     assert "| Index support | 1 |" in md
     assert "| `SELECT 'x'::name AS v` | name | text |" in md
@@ -366,35 +368,44 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
 class _Probe:
     """A server answering the catalog function probe: each function either answers or refuses."""
 
-    def __init__(self, functions: list[tuple[str, str]], refused: set[str]) -> None:
+    def __init__(
+        self,
+        functions: list[tuple[str, str]],
+        refused: dict[str, str],
+        oids: dict[str, int] | None = None,
+    ) -> None:
         self._functions = functions
         self._refused = refused
+        self._oids = oids or {}
 
     def rows(self, sql: str) -> list[tuple]:
         return [
-            (name, args, "f", False, "n", 0, "integer", list(argtypes))
+            (name, args, "f", False, "n", 0, "integer", "i", list(argtypes))
             for name, args, argtypes in self._functions
         ]
 
     def run(self, sql: str, result_format: int = 0) -> dict:
         name = sql.split('pg_catalog."', 1)[1].split('"', 1)[0]
         if name in self._refused:
-            return {"ok": False, "error": f"Scalar Function with name {name} does not exist!"}
-        return {"ok": True, "fields": [{"type_oid": 23}]}
+            return {"ok": False, "error": self._refused[name]}
+        return {"ok": True, "fields": [{"type_oid": self._oids.get(name, 23)}]}
 
 
-def _report(monkeypatch, functions, pg_refused=(), refused=()):
+def _report(monkeypatch, functions, pg_refused=None, refused=(), oids=None):
+    """``pg_refused``: each function PostgreSQL refuses, with its error. ``refused``: those
+    Provisa does not serve. ``oids``: a result type Provisa gives that is not PostgreSQL's."""
     m = _load("pgwire_catalog_types")
+    not_served = {n: f"Scalar Function with name {n} does not exist!" for n in refused}
     return m, m.catalog_functions(
-        _Probe(functions, refused=set(pg_refused)),
-        _Probe(functions, refused=set(refused)),
-        {23: "int4"},
+        _Probe(functions, refused=pg_refused or {}),
+        _Probe(functions, refused=not_served, oids=oids),
+        {23: "int4", 25: "text"},
     )
 
 
 def test_every_catalog_function_not_served_is_failed_with_its_name_overload_and_family(monkeypatch):
-    # PG_CATALOG FUNCTIONS ARE GAPS (REQ-2167): whatever its family, and whether or not a client
-    # calls it, a function not served is failed. Nothing is skipped by design.
+    # PG_CATALOG FUNCTIONS ARE GAPS (REQ-2167): outside the two function groups, whatever its
+    # family and whether or not a client calls it, a function not served is failed.
     functions = [
         ("point_above", "point, point", ("point", "point")),
         ("pg_cancel_backend", "integer", ("integer",)),
@@ -419,25 +430,187 @@ def test_every_catalog_function_not_served_is_failed_with_its_name_overload_and_
     }
 
 
-def test_a_function_no_call_reaches_is_failed_by_name_and_none_is_dropped(monkeypatch):
-    # PostgreSQL has no expression of type internal; a trigger function runs only in a trigger.
-    # Each stays a case: the total is every overload pg_proc lists.
+#: PostgreSQL 17's own refusals on the conformance job's server, as the probe records them.
+TRIGGER_REFUSAL = 'ERROR:  function "unique_key_recheck" was not called by trigger manager'
+RECOVERY_REFUSAL = (
+    "ERROR:  recovery is not in progress\n"
+    "HINT:  Recovery control functions can only be executed during recovery."
+)
+
+
+def test_a_function_postgresql_cannot_call_is_internal_with_its_proof_and_none_is_dropped(
+    monkeypatch,
+):
+    # INTERNAL FUNCTIONS (REQ-2167): PostgreSQL has no expression of type internal, and a trigger
+    # function runs only in a trigger. Each stays a case: the total is every overload pg_proc
+    # lists, and the group names each one with its proof.
     functions = [
         ("boolrecv", "internal", ("internal",)),
         ("unique_key_recheck", "", ()),
         ("abs", "", ()),
     ]
-    _, report = _report(monkeypatch, functions, pg_refused={"unique_key_recheck"})
+    _, report = _report(
+        monkeypatch, functions, pg_refused={"unique_key_recheck": TRIGGER_REFUSAL}, refused={"abs"}
+    )
     assert (report["total"], report["postgres_functions"]) == (3, 3)
-    assert (report["passed"], report["by_design"], report["failed"]) == (1, 0, 2)
+    assert (report["passed"], report["by_design"], report["failed"]) == (0, 2, 1)
     assert report["not_callable"]["boolrecv(internal)"] == function_probe.NO_CALL
     assert "refuses the call" in report["not_callable"]["unique_key_recheck()"]
-    assert report["not_served"] == {}
-    assert [f["reason"].split(":")[0] for f in report["failures"]] == ["no call reaches it"] * 2
+    assert report["refused_here"] == {}
+    (group,) = report["by_design_groups"]
+    assert (group["group"], group["requirement"], group["count"]) == (
+        "Internal functions",
+        "REQ-2167",
+        2,
+    )
+    assert group["cases"] == [
+        {
+            "case": "catalog function::boolrecv(internal)",
+            "reason": f"no call reaches it: {function_probe.NO_CALL}",
+        },
+        {
+            "case": "catalog function::unique_key_recheck()",
+            "reason": f"no call reaches it: PostgreSQL refuses the call: {TRIGGER_REFUSAL}",
+        },
+    ]
+    assert [f["scenario"] for f in report["failures"]] == ["abs()"]
+
+
+def test_a_refusal_of_this_server_s_state_proves_nothing_and_stays_failed(monkeypatch):
+    # If PostgreSQL can call it, it is not internal: this function runs on a server in recovery.
+    functions = [("pg_wal_replay_pause", "", ())]
+    _, report = _report(
+        monkeypatch, functions, pg_refused={"pg_wal_replay_pause": RECOVERY_REFUSAL}
+    )
+    assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
+        1,
+        0,
+        0,
+        1,
+    )
+    assert report["not_callable"] == {}
+    assert list(report["refused_here"]) == ["pg_wal_replay_pause()"]
+    (failure,) = report["failures"]
+    assert failure["reason"].startswith("PostgreSQL refuses the call: ERROR:  recovery")
+    assert report["failures_by_family"]["System"]["functions"] == ["pg_wal_replay_pause()"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        'function "RI_FKey_check_ins" was not called by trigger manager',
+        "suppress_redundant_updates_trigger: must be called as trigger",
+        "tsvector_update_trigger: not fired by trigger manager",
+        "pg_event_trigger_ddl_commands() can only be called in an event trigger function",
+        "pg_event_trigger_dropped_objects() can only be called in a sql_drop event trigger function",
+        "function can only be called when server is in binary upgrade mode",
+        "cannot accept a value of type event_trigger",
+        "cannot accept a value of a shell type",
+        'functions returning type "internal" cannot be called explicitly',
+        "PL/pgSQL functions cannot return type language_handler",
+        "cannot advance OID counter anymore",
+    ],
+)
+def test_a_refusal_no_server_state_changes_proves_a_function_internal(error):
+    assert function_probe.proves_internal(f"PostgreSQL refuses the call: ERROR:  {error}")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "recovery is not in progress",
+        "could not get commit timestamp data",
+        'logical decoding requires "wal_level" >= "logical"',
+        'could not open directory "log": No such file or directory',
+        "no replication origin is configured",
+        "replication slots can only be synchronized to a standby server",
+        # SELECT pg_typeof(unknownin(NULL)) runs: only the probe's top-level column is refused.
+        "failed to find conversion function from unknown to text",
+        "no result column",
+    ],
+)
+def test_a_refusal_of_a_server_s_state_or_of_the_probe_s_statement_proves_nothing(error):
+    assert not function_probe.proves_internal(f"PostgreSQL refuses the call: ERROR:  {error}")
+
+
+def test_an_index_function_not_served_is_skipped_by_design_and_nothing_else_of_its_family(
+    monkeypatch,
+):
+    # INDEXES BELONG TO THE DATABASE (REQ-2167): one served stays passed, and one served with the
+    # wrong result type stays failed. A function PostgreSQL cannot call is internal first.
+    functions = [
+        ("brin_summarize_range", "regclass, bigint", ("regclass", "bigint")),
+        ("btint4cmp", "integer, integer", ("integer", "integer")),
+        ("gtsvectorout", "gtsvector", ("gtsvector",)),
+        ("amvalidate", "oid", ("oid",)),
+        ("btint4sortsupport", "internal", ("internal",)),
+        ("pg_get_indexdef", "oid", ("oid",)),
+        ("hashtext", "text", ("text",)),
+    ]
+    _, report = _report(
+        monkeypatch,
+        functions,
+        refused={"brin_summarize_range", "btint4cmp", "pg_get_indexdef", "hashtext"},
+        oids={"gtsvectorout": 25},
+    )
+    assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
+        7,
+        1,
+        3,
+        3,
+    )
+    assert {g["group"]: [c["case"] for c in g["cases"]] for g in report["by_design_groups"]} == {
+        "Internal functions": ["catalog function::btint4sortsupport(internal)"],
+        "Index functions": [
+            "catalog function::brin_summarize_range(regclass, bigint)",
+            "catalog function::btint4cmp(integer, integer)",
+        ],
+    }
+    assert sorted(f["scenario"] for f in report["failures"]) == [
+        "gtsvectorout(gtsvector)",
+        "hashtext(text)",
+        "pg_get_indexdef(oid)",
+    ]
+
+
+def test_index_metadata_btrim_and_hash_functions_are_outside_the_index_support_family():
+    # Index metadata stays served (REQ-2190), so it is never in the family that decides the group;
+    # btrim is a string function whose name happens to start like a btree one.
+    declared = function_probe.families()
+
+    def named(name: str) -> str:
+        return function_probe.family(function_probe.Function(name, ""), declared)
+
+    for name in (
+        "pg_get_indexdef",
+        "pg_index_has_property",
+        "pg_index_column_has_property",
+        "pg_indexam_has_property",
+        "pg_indexam_progress_phasename",
+        "pg_indexes_size",
+        "pg_table_size",
+        "btrim",
+    ):
+        assert named(name) != "Index support", name
+    # A client calls a hash function directly, so the group never hides one.
+    for name in ("hashtext", "hashtextextended", "hashint4", "hash_numeric", "hash_array"):
+        assert named(name) == "Hash", name
+    for name in (
+        "brin_summarize_range",
+        "brin_desummarize_range",
+        "gin_clean_pending_list",
+        "btint4cmp",
+        "gtsvectorin",
+        "brin_bloom_summary_in",
+        "spg_poly_quad_compress",
+        "hashhandler",
+    ):
+        assert named(name) == "Index support", name
 
 
 def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
-    # Not by the case the group names, and not by a reason a function's failure happens to match.
+    # Not by the case the group names, not by a family, not under an allowed name with a wider
+    # rule, and not by a reason a function's failure happens to match.
     import by_design
 
     rules = tmp_path / "by_design"
@@ -452,18 +625,48 @@ def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="names catalog functions"):
         by_design.groups("pgwire")
     (rules / "pgwire.yaml").write_text(
+        "- group: Geometric functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: not emulated\n"
+        '  reason: "."\n'
+        "  family: Geometric\n"
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        "- group: Index functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: wider than declared\n"
+        '  case: "^catalog function::"\n'
+        '  reason: "."\n'
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        "- group: Internal functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: every refusal\n"
+        '  case: "^catalog function::"\n'
+        '  reason: "^PostgreSQL refuses"\n'
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
         '- group: Any error\n  requirement: REQ-2167\n  decision: d\n  reason: "."\n'
     )
     _, report = _report(monkeypatch, [("point_above", "", ())], refused={"point_above"})
     assert (report["by_design"], report["failed"]) == (0, 1)
 
 
-def test_no_shipped_group_names_a_catalog_function():
+def test_the_shipped_groups_naming_catalog_functions_are_exactly_the_two_allowed():
     import by_design
 
     groups = by_design.groups("pgwire")
     assert groups
-    assert not [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
+    named = [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
+    assert named == ["Internal functions", "Index functions"] == list(by_design.FUNCTION_GROUPS)
+    assert [g.group for g in by_design.function_groups("pgwire")] == named
+    assert {g.family for g in groups} == {"", "Index support"}
 
 
 @pytest.mark.parametrize(
@@ -561,6 +764,52 @@ def test_every_postgresql_17_function_has_a_family_and_the_old_groups_kept_their
     assert "ginhandler" in found["Index support"]
     # "Other" is for what no family says, not a place a family's functions end up.
     assert len(found["Other"]) < 100
+
+
+def test_the_page_gives_the_function_groups_and_each_case_s_proof_on_one_line(monkeypatch):
+    import by_design
+
+    fill_docs = _load("fill_docs")
+    functions = [
+        ("event_trigger_out", "event_trigger", ("event_trigger",)),
+        ("btint4cmp", "integer, integer", ("integer", "integer")),
+        ("pg_wal_replay_pause", "", ()),
+    ]
+    m, report = _report(
+        monkeypatch,
+        functions,
+        pg_refused={
+            "event_trigger_out": "ERROR:  cannot accept a value of type event_trigger\nLINE 1: x\n",
+            "pg_wal_replay_pause": RECOVERY_REFUSAL,
+        },
+        refused={"btint4cmp"},
+    )
+    pgspec = {
+        "suite": "pgspec",
+        "version": "v1",
+        **by_design.outcomes(0, [], []),
+        "failed_by_section": {},
+    }
+    catalog = {"postgres_version": "17.11", "catalog_functions": report}
+    _, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
+    assert rate == "0.0%: 0 passed, 2 skipped by design, 1 failed, of 3 cases"
+    assert "## Skipped by design" in cases
+    assert "<details><summary>Internal functions (1)</summary>" in cases
+    assert "<details><summary>Index functions (1)</summary>" in cases
+    assert "<details><summary>Catalog function: System (1)</summary>" in cases
+    assert (
+        "| catalog function::event_trigger_out(event_trigger) | no call reaches it: PostgreSQL "
+        "refuses the call: ERROR: cannot accept a value of type event_trigger LINE 1: x |"
+    ) in cases
+
+
+def test_the_pgwire_page_states_the_three_outcomes_of_a_catalog_function():
+    page = (_load("fill_docs").DOCS / "pgwire.md").read_text()
+    assert "each case is passed, skipped by design or failed" in page
+    assert "| Skipped by design: Internal functions |" in page
+    assert "| Skipped by design: Index functions |" in page
+    assert "| Failed | Every other function" in page
+    assert "No `pg_catalog` function is skipped by design" not in page
 
 
 def test_the_pgwire_page_says_a_function_not_served_is_failed():
@@ -675,6 +924,7 @@ def test_a_conversion_is_passed_by_design_or_failed():
                 "differing": {},
                 "not_served": {},
                 "not_callable": {},
+                "refused_here": {},
                 "failures_by_family": {},
             },
             "type_conversions": out,

@@ -90451,7 +90451,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     refuses for its context, each proved against PostgreSQL; a function refused only for this server''s
     state or configuration (standby, wal_level) stays failed, about 558 in all. Index functions holds index
     support and maintenance functions that are not general: a hash function a client calls directly stays
-    failed. This corrects the 571 of THE GOAL IS 571.'
+    failed. This corrects the 571 of THE GOAL IS 571. (Amended 2026-10-29, WHAT GUARANTEED MEANS:) Maintainer
+    2026-10-31: a function whose value cannot be compared (volatile, or session) is validated by its return
+    type and, where it is a string, its canonical form, against PostgreSQL''s own output. The guaranteed
+    list holds functions with answers compared or form checked on every engine; a function only called is
+    reported as called only.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90792,7 +90796,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     separate rewriter. An engine tweak is added only after a replay fails. (Amended 2026-10-29, ALWAYS POSTGRESQL
     TO THE TARGET:) Maintainer 2026-10-31: sqlglot always reads PostgreSQL and writes the target. Every
     form and expansion is written in PostgreSQL syntax and rendered for any engine, not listed per dialect;
-    only an engine tweak added after a replay fails is written for one engine.'
+    only an engine tweak added after a replay fails is written for one engine. (Amended 2026-10-29, WHAT
+    A DIALECT CANNOT CHECK IS REFUSED:) J371b: a form whose answer needs an overflow error is refused by
+    name on a dialect whose failing cast does not raise, or whose arithmetic checks no range (MySQL, SQLite,
+    Spark, and Databricks with it, since the dialect name cannot show ANSI mode), until a replay shows otherwise.
+    A function whose answer depends on an argument type the transpiler cannot see (set_masklen of a column)
+    is refused unless the statement says the type.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered

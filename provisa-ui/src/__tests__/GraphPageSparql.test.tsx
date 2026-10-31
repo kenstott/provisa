@@ -45,6 +45,8 @@ const frameProps = vi.hoisted(() => ({
     | ((frameId: string, iri: string, toggle: boolean) => void),
   drop: undefined as undefined | ((frameId: string, iri: string) => void),
   describe: undefined as undefined | ((frameId: string, iri: string) => void),
+  describeAll: undefined as undefined | ((frameId: string, iris: string[]) => void),
+  rerun: undefined as undefined | ((frameId: string, query: string) => void),
   prefixes: undefined as undefined | Record<string, string>,
 }));
 vi.mock("../components/graph/GraphFrame", () => ({
@@ -53,6 +55,8 @@ vi.mock("../components/graph/GraphFrame", () => ({
     language,
     onExpandResource,
     onDescribeResource,
+    onDescribeResources,
+    onRerun,
     onTableDrop,
     sparqlPrefixes,
   }: {
@@ -60,6 +64,8 @@ vi.mock("../components/graph/GraphFrame", () => ({
     language?: string;
     onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
     onDescribeResource?: (frameId: string, iri: string) => void;
+    onDescribeResources?: (frameId: string, iris: string[]) => void;
+    onRerun?: (frameId: string, query: string) => void;
     onTableDrop?: (frameId: string, iri: string) => void;
     sparqlPrefixes?: Record<string, string>;
   }) => {
@@ -68,6 +74,8 @@ vi.mock("../components/graph/GraphFrame", () => ({
     frameProps.expand = onExpandResource;
     frameProps.drop = onTableDrop;
     frameProps.describe = onDescribeResource;
+    frameProps.describeAll = onDescribeResources;
+    frameProps.rerun = onRerun;
     frameProps.prefixes = sparqlPrefixes;
     return null;
   },
@@ -78,6 +86,8 @@ vi.mock("../components/graph/Neo4jExportModal", () => ({
 
 import { GraphPage } from "../pages/GraphPage";
 import { DEFAULT_QUERY, graphStateOf } from "../components/graph/graph-persistence";
+import { readBulk, writeBulk } from "../lib/bulkStorage";
+import { bindStorageScope } from "../lib/browserStorage";
 
 const BASE = "https://provisa.example";
 const VOCABULARY = {
@@ -188,6 +198,29 @@ describe("the SPARQL tab", () => {
     );
   });
 
+  it("renders at once, and the saved frames and query arrive from IndexedDB", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "restored" });
+    await writeBulk("provisa.sparql.state", {
+      frames: [
+        {
+          id: "saved",
+          query: "SELECT saved",
+          status: "done",
+          nodes: [],
+          edges: [],
+          rows: [],
+          columns: [],
+        },
+      ],
+      history: ["SELECT saved"],
+      currentQuery: "SELECT kept",
+    });
+    page();
+    expect(framesSeen.filter((f) => f.id === "saved")).toEqual([]); // not in the first render
+    await waitFor(() => expect(framesSeen.some((f) => f.id === "saved")).toBe(true));
+    expect(graphStateOf("sparql").currentQuery).toBe("SELECT kept");
+  });
+
   it("shows the role's vocabulary where Cypher's labels are", async () => {
     page();
     expect(await screen.findByTestId("sparql-vocabulary")).toBeInTheDocument();
@@ -232,12 +265,21 @@ describe("the SPARQL tab", () => {
       .filter((s) => s.url.endsWith("/data/sparql") && s.init?.method === "POST")
       .map((s) => s.init?.body as string);
 
-  it("runs a class pill as its own query, its instances with a limit", async () => {
+  it("runs a class pill as its own query, a row per instance with a limit", async () => {
     page();
     fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
     await waitFor(() => expect(posted()).toHaveLength(1));
     expect(posted()[0]).toBe(
-      `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE {\n  ?s a sales:orders .\n}\nLIMIT 25`,
+      [
+        `PREFIX sales: <${BASE}/vocab/sales/>`,
+        `PREFIX orders: <${BASE}/vocab/sales/orders#>`,
+        "SELECT ?s ?amount ?total WHERE {",
+        "  ?s a sales:orders .",
+        "  OPTIONAL { ?s sales:amount ?amount }",
+        "  OPTIONAL { ?s orders:total ?total }",
+        "}",
+        "LIMIT 25",
+      ].join("\n"),
     );
     await waitFor(() => expect(framesSeen.some((f) => f.status === "done")).toBe(true));
     // The query in the bar is left as it was.
@@ -284,8 +326,10 @@ describe("the SPARQL tab", () => {
     // Each frame is drawn as a SPARQL query's frame.
     expect(new Set(languagesSeen)).toEqual(new Set(["sparql"]));
     // Kept apart from Cypher's: the SPARQL history holds the query, Cypher's does not.
-    expect(localStorage.getItem("test-cp:test-org:provisa.sparql.state")).toContain("CONSTRUCT");
-    expect(localStorage.getItem("test-cp:test-org:provisa.graph.state")).toBeNull();
+    await waitFor(async () =>
+      expect(JSON.stringify(await readBulk("provisa.sparql.state"))).toContain("CONSTRUCT"),
+    );
+    expect(await readBulk("provisa.graph.state")).toBeNull();
   });
 
   const lastFrame = () => framesSeen.at(-1)!;
@@ -312,10 +356,11 @@ describe("the SPARQL tab", () => {
     fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
     fireEvent.click(screen.getByTestId("sparql-class-sales:customers"));
     await waitFor(() => expect(posted()).toHaveLength(2));
-    const held = localStorage.getItem("test-cp:test-org:provisa.sparql.state")!;
-    const { frames, history } = JSON.parse(held);
-    expect(frames).toHaveLength(2);
-    expect(history).toHaveLength(2);
+    await waitFor(async () => {
+      const held = await readBulk<{ frames: unknown[]; history: string[] }>("provisa.sparql.state");
+      expect(held?.frames).toHaveLength(2);
+      expect(held?.history).toHaveLength(2);
+    });
   });
 
   it("shows the endpoint's URL for other tools", async () => {
@@ -435,6 +480,67 @@ describe("the SPARQL tab", () => {
       expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" }),
     );
     expect(lastFrame().sparqlMerge).toBeUndefined();
+  });
+
+  it("adds the panel's prefixes a typed query uses, and the frame shows it as sent", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    const before = posted().length;
+    await act(async () => frameProps.rerun?.(id, "SELECT * WHERE { ?s a sales:orders }"));
+    await waitFor(() => expect(posted().length).toBe(before + 1));
+    const sent = `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE { ?s a sales:orders }`;
+    expect(posted().at(-1)).toBe(sent);
+    await waitFor(() => expect(framesSeen.filter((f) => f.id === id).at(-1)?.query).toBe(sent));
+  });
+
+  it("keys what a DESCRIBE said as the frame shows it, a column by its class's prefix", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(`<${ORDER}> <${BASE}/vocab/sales/orders#total> "1" .`, {
+            headers: { "content-type": "application/n-triples" },
+          }),
+      ),
+    );
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[ORDER]).toBeDefined());
+    const said = lastFrame().sparqlDescribed?.[ORDER];
+    expect(said && "literals" in said && said.literals[0].p.shown).toBe("orders:total");
+  });
+
+  it("reads a class's styled nodes in one update of the frame, each resource once", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    const other = `${BASE}/id/sales/orders/2`;
+    const updates = framesSeen.length;
+    act(() => frameProps.describeAll?.(id, [ORDER, other]));
+    act(() => frameProps.describeAll?.(id, [ORDER, other]));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[other]).toBeDefined());
+    expect(posted().slice(before).sort()).toEqual([`DESCRIBE <${ORDER}>`, `DESCRIBE <${other}>`].sort());
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toHaveProperty("literals");
+    expect(framesSeen.length - updates).toBeLessThanOrEqual(2);
+    expect(lastFrame().nodes).toBeDefined();
+  });
+
+  it("says why a class's styled nodes could not be read", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not for you", code: "sparql.refused" }), {
+            status: 403,
+          }),
+      ),
+    );
+    act(() => frameProps.describeAll?.(id, [ORDER]));
+    await waitFor(() => expect(lastFrame().sparqlMerge?.error).toBe("Not for you"));
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" });
   });
 
   it("merges a CONSTRUCT around a class dropped on a frame", async () => {

@@ -191,6 +191,34 @@ def test_a_required_property_drops_a_row_without_it_and_optional_keeps_it(con):
     assert {r["n"]: r["a"] for r in optional} == {"Ann": 41, "Bo": 35, "Cy": 29, "Di": None}
 
 
+def test_a_class_pills_wide_query_is_one_row_per_subject(con):
+    # REQ-2135: the text sparql.ts classQuery writes for a class with two columns (sparqlClassStyle
+    # .test.ts pins it): its predicates by a prefix ending in the class's #, never by a # of their
+    # own, which SPARQL reads as a comment.
+    rows = _answer(
+        con,
+        f"PREFIX hr: <{BASE}/vocab/hr/>\n"
+        f"PREFIX persons: <{PERSON}#>\n"
+        "SELECT ?s ?age ?name WHERE {\n"
+        "  ?s a hr:persons .\n"
+        "  OPTIONAL { ?s persons:age ?age }\n"
+        "  OPTIONAL { ?s persons:name ?name }\n"
+        "}\n"
+        "LIMIT 25",
+    )
+    assert len({r["s"] for r in rows}) == len(rows) == 4
+    assert {r["name"]: r["age"] for r in rows} == {"Ann": 41, "Bo": 35, "Cy": 29, "Di": None}
+
+
+def test_a_property_pills_query_names_its_predicate_by_the_class_prefix(con):
+    # REQ-2135: as sparql.ts pickedQuery writes it, a prefix ending in the class's #.
+    rows = _answer(
+        con,
+        f"PREFIX persons: <{PERSON}#>\nSELECT * WHERE {{\n  ?s persons:age ?o .\n}}\nLIMIT 25",
+    )
+    assert sorted(r["o"] for r in rows) == [29, 35, 41]
+
+
 def test_an_edge_and_the_node_at_its_end(con):
     rows = _answer(con, "SELECT ?n ?cn WHERE { ?s p:name ?n ; rel:WORKS_AT ?c . ?c c:name ?cn }")
     assert sorted((r["n"], r["cn"]) for r in rows) == [

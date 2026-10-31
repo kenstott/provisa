@@ -139,3 +139,36 @@ export function buildDropExpansion(
   );
   return { query: newQueryBase, targetVars: pairs.map((p) => p.targetVar) };
 }
+
+const NUMERIC_TYPES = new Set([
+  "integer",
+  "bigint",
+  "int",
+  "int4",
+  "int8",
+  "smallint",
+  "float",
+  "double precision",
+  "numeric",
+  "decimal",
+  "real",
+  "float4",
+  "float8",
+]);
+
+/** The WHERE clauses binding a parameterized node's native filter columns, for those given a value. */
+export function nativeFilterClauses(
+  varName: string,
+  filterColumns: { name: string; type: string }[],
+  params: Record<string, string>,
+): string[] {
+  return filterColumns
+    .filter((col) => params[col.name] !== "")
+    .map(({ name, type }) => {
+      const v = params[name];
+      const lit = NUMERIC_TYPES.has((type ?? "").toLowerCase())
+        ? v
+        : `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+      return `${varName}._nf_${name} = ${lit}`;
+    });
+}

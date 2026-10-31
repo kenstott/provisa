@@ -17,7 +17,8 @@ both servers. Three parts, each written as data -- a difference is a finding, ne
    Provisa serves, the columns Provisa's RowDescription gives for ``SELECT * FROM <rel> LIMIT 0``
    against pg_attribute (name, order, type OID, typmod). For every overload of every pg_catalog
    function, the call PostgreSQL requires (pgwire_function_probe.py) through Provisa: whether it
-   is served, and its result type against what PostgreSQL returns for the same call.
+   is served, and its result type against what PostgreSQL returns for the same call. An overload
+   PostgreSQL itself cannot call, and an index function not served, are skipped by design.
 2. Coverage. The relations and functions real PostgreSQL has that Provisa does not serve, and the
    catalog relations Provisa serves that PostgreSQL does not have.
 3. Type conversions. For each column of the fixture table (one value of each type, read through
@@ -45,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -313,7 +315,8 @@ TCK_SESSION_USER = "tck-session"
 
 
 def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
-    """The model the conformance instance boots with.
+    """The model the conformance instance boots with, on the engine the job names in
+    ``$PROVISA_ENGINE`` (the DuckDB engine unless it names one).
 
     The basic provider with SCRAM: pgwire proves the job user's password, and the user acts as
     ``org_admin``. One domain, ``conformance``, which pgwire presents as the schema; one
@@ -325,8 +328,12 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     pgspec needs nothing here: every table it touches it creates itself as a session temporary
     table."""
     registered = registrable_columns(pg_dsn)
+    engine = os.environ.get("PROVISA_ENGINE") or "duckdb"
+    # ClickHouse's PostgreSQL database engine mounts one schema, public unless the source's hint
+    # says otherwise (ClickHousePostgresConnector); no other engine reads it for this source.
+    hints = {"federation_hints": {"schema": FIXTURE_SCHEMA}} if engine == "clickhouse" else {}
     return {
-        "federation_engine": "duckdb",
+        "federation_engine": engine,
         "auth": {
             # Password auth with SCRAM-SHA-256 (REQ-1394), so pgspec's auth tests prove a password
             # rather than meet trust mode. The break-glass account creates the job's one user
@@ -379,6 +386,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 "database": "${env:CONFORMANCE_PG_DATABASE}",
                 "username": "${env:CONFORMANCE_PG_USER}",
                 "password": "${env:CONFORMANCE_PG_PASSWORD}",
+                **hints,
             }
         ],
         "tables": [
@@ -535,13 +543,13 @@ def catalog_relations(pg: Server, provisa: Server, names: dict[int, str]) -> dic
     }
 
 
-def _pg_functions(pg: Server) -> list[function_probe.Function]:
+def pg_functions(pg: Server) -> list[function_probe.Function]:
     """Every overload pg_proc lists in pg_catalog (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS)."""
     rows = pg.rows(
         "SELECT p.proname::text, pg_get_function_identity_arguments(p.oid)::text, "
         "p.prokind::text, p.provariadic NOT IN (0, '\"any\"'::regtype), "
         "COALESCE(a.aggkind::text, 'n'), COALESCE(a.aggnumdirectargs::int, 0), "
-        "format_type(p.prorettype, NULL), "
+        "format_type(p.prorettype, NULL), p.provolatile::text, "
         "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY u(t, i) "
         "      ORDER BY i)::text[] "
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
@@ -558,23 +566,28 @@ def _pg_functions(pg: Server) -> list[function_probe.Function]:
             aggkind=aggkind,
             direct=direct,
             rettype=rettype,
+            volatility=volatility,
             argtypes=tuple(argtypes),
         )
-        for name, overload, kind, variadic, aggkind, direct, rettype, argtypes in rows
+        for name, overload, kind, variadic, aggkind, direct, rettype, volatility, argtypes in rows
     ]
 
 
 def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dict[str, Any]:
-    """Each overload is a case, passed or failed (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS): passed
-    when it is served with PostgreSQL's result type; failed when its result type differs, it is
-    not served, or no call PostgreSQL accepts can reach it. None is skipped by design: a failure
-    is classified by family, never by by_design/pgwire.yaml."""
+    """Each overload is a case: passed when it is served with PostgreSQL's result type; skipped by
+    design in Internal functions when PostgreSQL itself proves it cannot call it, or in Index
+    functions when it is of that family and not served (REQ-2167, amended 2026-10-29, INTERNAL
+    FUNCTIONS and INDEXES BELONG TO THE DATABASE, by_design.FUNCTION_GROUPS); failed otherwise,
+    which is a result type that differs, a function not served, or a refusal of this server's
+    state (``refused_here``, no proof PostgreSQL cannot call it). What stays failed is taken by
+    family."""
     declared = function_probe.families()
-    fns = _pg_functions(pg)
+    fns = pg_functions(pg)
     matching: list[str] = []
     differing: dict[str, str] = {}
     not_served: dict[str, str] = {}
     not_callable: dict[str, str] = {}
+    refused_here: dict[str, str] = {}
     for fn in fns:
         sql = function_probe.call(fn)
         if sql is None:
@@ -582,9 +595,9 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
             continue
         want = pg.run(sql)
         if not want["ok"] or not want["fields"]:
-            not_callable[fn.signature] = (
-                f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
-            )
+            why = f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
+            proven = function_probe.proves_internal(why)
+            (not_callable if proven else refused_here)[fn.signature] = why
             continue
         got = provisa.run(sql)
         if not got["ok"]:
@@ -603,8 +616,9 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         **differing,
         **{signature: f"not served: {error}" for signature, error in not_served.items()},
         **{signature: f"no call reaches it: {why}" for signature, why in not_callable.items()},
+        **refused_here,
     }
-    failures = [
+    unmet = [
         {
             "feature": "catalog function",
             "scenario": fn.signature,
@@ -616,17 +630,19 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         for fn in fns
         if fn.signature in reasons
     ]
+    failures, excluded = by_design.classify(unmet, by_design.function_groups("pgwire"))
     by_family: dict[str, list[str]] = {}
     for failure in failures:
         by_family.setdefault(failure["family"], []).append(failure["scenario"])
     return {
-        **by_design.outcomes(len(matching), [], failures),
+        **by_design.outcomes(len(matching), excluded, failures),
         "postgres_functions": len(fns),
         "served": len(matching) + len(differing),
         "matching": len(matching),
         "differing": dict(sorted(differing.items())),
         "not_served": dict(sorted(not_served.items())),
         "not_callable": dict(sorted(not_callable.items())),
+        "refused_here": dict(sorted(refused_here.items())),
         "failures_by_family": {
             family: {"count": len(functions), "functions": functions}
             for family, functions in sorted(by_family.items())
@@ -773,7 +789,7 @@ def markdown(report: dict[str, Any]) -> str:
         ),
         "",
         "Pass rate: passed over passed and failed. A relation or function failed differs from "
-        "PostgreSQL's or is not served.",
+        "PostgreSQL's, is not served, or is one this PostgreSQL refuses for its own state.",
         "",
         f"## pgwire catalog shape (PostgreSQL {report['postgres_version']})",
         "",
@@ -784,8 +800,8 @@ def markdown(report: dict[str, Any]) -> str:
         f"| functions | {fn['postgres_functions']} | {fn['served']} | {fn['matching']} "
         f"| {len(fn['differing'])} |",
         "",
-        "Functions compared: every pg_catalog overload. One no call can reach is failed by name "
-        f"({len(fn['not_callable'])} of those).",
+        "Functions compared: every pg_catalog overload. One PostgreSQL itself cannot call is "
+        f"skipped by design ({len(fn['not_callable'])} of those).",
         "",
     ]
     out += _details(f"Relations that differ ({len(rel['differing'])})", _md_list(rel["differing"]))
@@ -801,9 +817,18 @@ def markdown(report: dict[str, Any]) -> str:
         f"Functions PostgreSQL has that Provisa does not serve ({len(fn['not_served'])})",
         _md_list(list(fn["not_served"]), limit=3000),
     )
+    if fn["by_design_groups"]:
+        out += _details(
+            f"Functions skipped by design ({fn['by_design']})",
+            by_design.table(fn["by_design_groups"], requirement=True),
+        )
     out += _details(
-        f"Functions no call can reach ({len(fn['not_callable'])})",
+        f"Functions PostgreSQL itself cannot call ({len(fn['not_callable'])})",
         _md_list(list(fn["not_callable"]), limit=3000),
+    )
+    out += _details(
+        f"Functions this PostgreSQL refuses for its own state ({len(fn['refused_here'])})",
+        _md_list(fn["refused_here"]),
     )
     out += _details(
         f"Functions failed, by family ({fn['failed']})",

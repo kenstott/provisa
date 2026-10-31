@@ -13,7 +13,14 @@
 // URL fragment (never sent to a server), and that address keeps them as the tab's own visitor
 // identity (browserStorage's visit), never in place of the browser's Provisa login.
 
-import { getStored, setStored, startVisit, visitorActive } from "./browserStorage";
+import {
+  endVisit,
+  getStored,
+  SessionStorageError,
+  setStored,
+  startVisit,
+  visitorActive,
+} from "./browserStorage";
 
 const TOKEN_PARAM = "provisa_sandbox";
 const ORG_PARAM = "provisa_sandbox_org";
@@ -45,12 +52,20 @@ export function adoptSandboxTokenFromLocation(location: Location = window.locati
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ""));
   const token = fragment.get(TOKEN_PARAM);
   if (!token) return false;
+  // The token leaves the address however its keeping goes.
+  window.history.replaceState(null, "", `${location.pathname}${location.search}`);
   // The tab becomes the visitor's: its bearer and org are the visitor's own, beside -- never in
   // place of -- a login the browser holds.
-  startVisit();
-  setStored("provisa_token", token, { global: true });
-  const org = fragment.get(ORG_PARAM);
-  if (org) setStored("provisa_org", org, { global: true });
-  window.history.replaceState(null, "", `${location.pathname}${location.search}`);
-  return true;
+  try {
+    startVisit();
+    setStored("provisa_token", token, { global: true });
+    const org = fragment.get(ORG_PARAM);
+    if (org) setStored("provisa_org", org, { global: true });
+    return true;
+  } catch (e) {
+    if (!(e instanceof SessionStorageError)) throw e;
+    // Logged and noticed where it failed: the visit did not start, so the tab is as it was.
+    if (visitorActive()) endVisit();
+    return false;
+  }
 }

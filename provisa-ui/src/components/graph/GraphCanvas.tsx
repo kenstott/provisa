@@ -18,6 +18,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react
 import { useTranslation } from "react-i18next";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
+import { LITERAL_LABEL } from "./sparql";
 import {
   buildClusterElements,
   buildClusterMetaEdges,
@@ -534,14 +535,18 @@ export function GraphCanvas({
     });
     cy.on("mouseover", "node", (evt) => {
       evt.target.addClass("hovered");
-      // The full caption, where the circle's own was scaled down or cut short; a resource's IRI.
+      // The full caption, where the circle's own was scaled down or cut short; a resource's IRI;
+      // a literal's datatype beside its value.
       const el = cy.container();
       const gn = evt.target.data("_node") as GNode | undefined;
+      const caption = nodeCaption(gn, evt.target.data("label"), labelPropertyRef.current);
       if (el)
         el.title =
           typeof gn?.properties.iri === "string"
             ? gn.properties.iri
-            : nodeCaption(gn, evt.target.data("label"), labelPropertyRef.current);
+            : gn?.label === LITERAL_LABEL && typeof gn.properties.datatype === "string"
+              ? `${caption} · ${gn.properties.datatype}`
+              : caption;
     });
     cy.on("mouseout", "node", (evt) => {
       evt.target.removeClass("hovered");
