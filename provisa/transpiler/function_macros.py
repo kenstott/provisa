@@ -1164,15 +1164,13 @@ SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
 _TOLD_ONLY_BY_THE_STATEMENT = {"set_masklen": frozenset({"inet", "cidr"})}
 
 
-def _is_told(name: str, first: exp.Expr) -> bool:
+def _is_told(name: str, args: list[exp.Expr]) -> bool:
     """Whether a call says which overload it means; a column of cidr does not, and the inet row
     would keep what its mask clears (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED)."""
     types = _TOLD_ONLY_BY_THE_STATEMENT.get(name)
-    return (
-        types is None
-        or said_type(first) in types
-        or isinstance(first.unnest(), (exp.Literal, exp.Null))
-    )
+    if types is None:
+        return True
+    return said_type(args[0]) in types or isinstance(args[0].unnest(), (exp.Literal, exp.Null))
 
 
 def said_type(node: exp.Expr) -> str | None:
@@ -1348,7 +1346,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if macro is None:
             return node
         step, form = macro.resolved(dialect)
-        if step is Step.REFUSED or not _is_told(called, args[0]):
+        if step is Step.REFUSED or not _is_told(called, args):
             raise FunctionRefused(called, dialect)
         if form is MAPPED:
             return target

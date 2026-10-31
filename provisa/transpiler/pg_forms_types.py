@@ -483,6 +483,12 @@ _DATED_ARITHMETIC: tuple[Form, ...] = (
     Form("interval_pl", "a, b", f"{_INTERVAL_A} + {_INTERVAL_B}"),
     Form("interval_mi", "a, b", f"{_INTERVAL_A} - {_INTERVAL_B}"),
     Form("interval_um", "a", f"-{_INTERVAL_A}"),
+    Form("date_subtract", "a, b", "CAST(a AS TIMESTAMPTZ) - CAST(b AS INTERVAL)"),
+    Form(
+        "date_subtract",
+        "a, b, z",
+        "((CAST(a AS TIMESTAMPTZ) AT TIME ZONE z) - CAST(b AS INTERVAL)) AT TIME ZONE z",
+    ),
 )
 
 _BIT_A, _BIT_B = "CAST(a AS BIT)", "CAST(b AS BIT)"
@@ -841,14 +847,17 @@ def _interval_of(months: str, days: str, micros: str) -> str:
 
 
 def _interval_scaled(function: str, op: str) -> str:
-    """interval_mul and interval_div: what ``op`` leaves of a month runs on to days at thirty a
-    month, and what it leaves of a day to seconds, rounded to the microsecond."""
+    """interval_mul and interval_div, as timestamp.c cascades them: what ``op`` leaves of a month
+    runs on to days at thirty a month and what it leaves of a day to seconds, each rounded to six
+    places; rounding may leave a whole day of seconds, which is carried."""
     m, d, u = _interval_fields("_i")
     month = f"TRUNC({m} {op} _x)"
-    spilled = f"(({m} {op} _x - {month}) * 30)"
-    days = f"(TRUNC({d} {op} _x) + TRUNC({spilled}))"
+    spilled = f"(ROUND(({m} {op} _x - {month}) * 30000000) / 1000000)"
     rest = f"({d} {op} _x - TRUNC({d} {op} _x) + {spilled} - TRUNC({spilled}))"
-    micros = f"ROUND({u} {op} _x + ROUND({rest} * 86400000000))"
+    seconds = f"(ROUND({rest} * 86400000000) / 1000000)"
+    carried = f"TRUNC({seconds} / 86400)"
+    days = f"(TRUNC({d} {op} _x) + TRUNC({spilled}) + {carried})"
+    micros = f"ROUND({u} {op} _x + ({seconds} - {carried} * 86400) * 1000000)"
     return _bound(
         "CAST(a AS INTERVAL)",
         _bound(
@@ -874,12 +883,6 @@ _INTERVAL_SCALED: tuple[Form, ...] = (
         f"THEN {_fails('22012', _DIVISION_BY_ZERO, 'INTERVAL')} ELSE "
         + _interval_scaled("interval_div", "/")
         + " END",
-    ),
-    Form("date_subtract", "a, b", "CAST(a AS TIMESTAMPTZ) - CAST(b AS INTERVAL)"),
-    Form(
-        "date_subtract",
-        "a, b, z",
-        "((CAST(a AS TIMESTAMPTZ) AT TIME ZONE z) - CAST(b AS INTERVAL)) AT TIME ZONE z",
     ),
 )
 
@@ -980,4 +983,5 @@ DUCKDB_TWEAKS = {
 #: a cast to character(n) says how far it pads.
 HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar")))
 #: The forms whose overflow only the engine's own arithmetic raises: they check no range themselves.
+#: date_subtract's AT TIME ZONE is also what sqlglot drops for MySQL.
 OVERFLOW_UNCHECKED = frozenset(form.name for form in (*_numeric_forms(), *_DATED_ARITHMETIC))
