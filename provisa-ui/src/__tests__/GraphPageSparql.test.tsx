@@ -45,6 +45,7 @@ const frameProps = vi.hoisted(() => ({
     | ((frameId: string, iri: string, toggle: boolean) => void),
   drop: undefined as undefined | ((frameId: string, iri: string) => void),
   describe: undefined as undefined | ((frameId: string, iri: string) => void),
+  describeAll: undefined as undefined | ((frameId: string, iris: string[]) => void),
   prefixes: undefined as undefined | Record<string, string>,
 }));
 vi.mock("../components/graph/GraphFrame", () => ({
@@ -53,6 +54,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     language,
     onExpandResource,
     onDescribeResource,
+    onDescribeResources,
     onTableDrop,
     sparqlPrefixes,
   }: {
@@ -60,6 +62,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     language?: string;
     onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
     onDescribeResource?: (frameId: string, iri: string) => void;
+    onDescribeResources?: (frameId: string, iris: string[]) => void;
     onTableDrop?: (frameId: string, iri: string) => void;
     sparqlPrefixes?: Record<string, string>;
   }) => {
@@ -68,6 +71,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     frameProps.expand = onExpandResource;
     frameProps.drop = onTableDrop;
     frameProps.describe = onDescribeResource;
+    frameProps.describeAll = onDescribeResources;
     frameProps.prefixes = sparqlPrefixes;
     return null;
   },
@@ -435,6 +439,38 @@ describe("the SPARQL tab", () => {
       expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" }),
     );
     expect(lastFrame().sparqlMerge).toBeUndefined();
+  });
+
+  it("reads a class's styled nodes in one update of the frame, each resource once", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    const other = `${BASE}/id/sales/orders/2`;
+    const updates = framesSeen.length;
+    act(() => frameProps.describeAll?.(id, [ORDER, other]));
+    act(() => frameProps.describeAll?.(id, [ORDER, other]));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[other]).toBeDefined());
+    expect(posted().slice(before).sort()).toEqual([`DESCRIBE <${ORDER}>`, `DESCRIBE <${other}>`].sort());
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toHaveProperty("literals");
+    expect(framesSeen.length - updates).toBeLessThanOrEqual(2);
+    expect(lastFrame().nodes).toBeDefined();
+  });
+
+  it("says why a class's styled nodes could not be read", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not for you", code: "sparql.refused" }), {
+            status: 403,
+          }),
+      ),
+    );
+    act(() => frameProps.describeAll?.(id, [ORDER]));
+    await waitFor(() => expect(lastFrame().sparqlMerge?.error).toBe("Not for you"));
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" });
   });
 
   it("merges a CONSTRUCT around a class dropped on a frame", async () => {
