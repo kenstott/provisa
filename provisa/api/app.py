@@ -81,6 +81,7 @@ from provisa.api.app_startup import (
     _seed_sandbox_org,
     _start_background_tasks,
     _start_scheduler,
+    _log_http_surfaces,
     _start_servers,
     _warmup_readiness,
 )
@@ -3784,6 +3785,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await _start_background_tasks(_log)
 
     await _start_servers(_log)
+    _log_http_surfaces(_app, _log)
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.

@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "Not grounded",
     "pendingOn": "Approving {{terms}} grounds it.",
     "filterStatus": "Status",
+    "filterStatusHint": "Show only these statuses",
     "filterGrounding": "Grounding",
     "approve": "Approve",
     "approveHint": "Approve this term. Agents and catalogs find and cite data through approved, grounded terms.",

@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "未锚定",
     "pendingOn": "批准 {{terms}} 后它即锚定。",
     "filterStatus": "状态",
+    "filterStatusHint": "仅显示这些状态",
     "filterGrounding": "锚定",
     "approve": "批准",
     "approveHint": "批准此术语：智能体和目录通过已批准且已锚定的术语查找并引用数据。",

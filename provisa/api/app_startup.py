@@ -326,6 +326,18 @@ def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
     return None
 
 
+def _log_http_surfaces(app: Any, _log: logging.Logger) -> None:
+    """The startup banner's line for each query surface on the HTTP listener."""
+    from provisa.api.admin.system_health import HTTP_SURFACES, serving_http_surfaces
+
+    serving = serving_http_surfaces(app)
+    for name, path in HTTP_SURFACES.items():
+        if name in serving:
+            _log.info("%s endpoint listening at %s on the HTTP port", name, path)
+        else:
+            _log.warning("%s endpoint not served at %s", name, path)
+
+
 async def _start_servers(_log: logging.Logger) -> None:
     """Start gRPC, Arrow Flight, pgwire, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
@@ -549,7 +561,7 @@ async def _start_servers(_log: logging.Logger) -> None:
 
     _public_url = _settings.value("server.public_url")
     _log.info(
-        "SPARQL endpoint listening at /data/sparql on the HTTP port (subject IRIs under %s)",
+        "SPARQL subject IRIs under %s",
         f"{str(_public_url).rstrip('/')}/id/"
         if _public_url
         else "nothing: server.public_url is unset, so a query answering with one is refused",
