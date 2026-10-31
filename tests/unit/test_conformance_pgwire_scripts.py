@@ -541,22 +541,23 @@ def test_an_index_function_not_served_is_skipped_by_design_and_nothing_else_of_i
     functions = [
         ("brin_summarize_range", "regclass, bigint", ("regclass", "bigint")),
         ("btint4cmp", "integer, integer", ("integer", "integer")),
-        ("hashint4", "integer", ("integer",)),
+        ("gtsvectorout", "gtsvector", ("gtsvector",)),
         ("amvalidate", "oid", ("oid",)),
         ("btint4sortsupport", "internal", ("internal",)),
         ("pg_get_indexdef", "oid", ("oid",)),
+        ("hashtext", "text", ("text",)),
     ]
     _, report = _report(
         monkeypatch,
         functions,
-        refused={"brin_summarize_range", "btint4cmp", "pg_get_indexdef"},
-        oids={"hashint4": 25},
+        refused={"brin_summarize_range", "btint4cmp", "pg_get_indexdef", "hashtext"},
+        oids={"gtsvectorout": 25},
     )
     assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
-        6,
+        7,
         1,
         3,
-        2,
+        3,
     )
     assert {g["group"]: [c["case"] for c in g["cases"]] for g in report["by_design_groups"]} == {
         "Internal functions": ["catalog function::btint4sortsupport(internal)"],
@@ -566,12 +567,13 @@ def test_an_index_function_not_served_is_skipped_by_design_and_nothing_else_of_i
         ],
     }
     assert sorted(f["scenario"] for f in report["failures"]) == [
-        "hashint4(integer)",
+        "gtsvectorout(gtsvector)",
+        "hashtext(text)",
         "pg_get_indexdef(oid)",
     ]
 
 
-def test_index_metadata_and_btrim_are_outside_the_index_support_family():
+def test_index_metadata_btrim_and_hash_functions_are_outside_the_index_support_family():
     # Index metadata stays served (REQ-2190), so it is never in the family that decides the group;
     # btrim is a string function whose name happens to start like a btree one.
     declared = function_probe.families()
@@ -590,13 +592,18 @@ def test_index_metadata_and_btrim_are_outside_the_index_support_family():
         "btrim",
     ):
         assert named(name) != "Index support", name
+    # A client calls a hash function directly, so the group never hides one.
+    for name in ("hashtext", "hashtextextended", "hashint4", "hash_numeric", "hash_array"):
+        assert named(name) == "Hash", name
     for name in (
         "brin_summarize_range",
         "brin_desummarize_range",
         "gin_clean_pending_list",
         "btint4cmp",
-        "hashtext",
+        "gtsvectorin",
+        "brin_bloom_summary_in",
         "spg_poly_quad_compress",
+        "hashhandler",
     ):
         assert named(name) == "Index support", name
 

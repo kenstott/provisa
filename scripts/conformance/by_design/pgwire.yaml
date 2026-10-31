@@ -18,7 +18,8 @@
   reason: "^no call reaches it: "
 
 # Family "Index support" of function_families.yaml and not served. Index metadata (pg_index,
-# pg_get_indexdef and the like) is in no such family, and stays served (REQ-2190).
+# pg_get_indexdef and the like) is in no such family, and stays served (REQ-2190); nor are the hash
+# functions, which a client can call directly.
 - group: Index functions
   requirement: REQ-2167
   decision: >-
