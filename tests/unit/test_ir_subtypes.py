@@ -296,6 +296,7 @@ def _catalog_ctx():
         domain_id="net",
         schema_name="public",
         table_name="hosts",
+        original_table_name="",
         display_name="hosts",
         field_name="net__hosts",
     )
