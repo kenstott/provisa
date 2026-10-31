@@ -69,14 +69,13 @@ const rows = () =>
     (tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.textContent),
   );
 
-function renderView() {
+function renderView(promises = PROMISES) {
   render(
     <ContractView
       contract={CONTRACT}
       versions={[]}
       tableId={7}
-      promises={PROMISES}
-      consumers={[]}
+      promises={promises}
     />,
   );
 }
@@ -118,6 +117,30 @@ describe("a contract's promises table", () => {
     ]);
   });
 
+  it("counts the rows it shows, not the checkers behind them", () => {
+    renderView();
+    expect(rows()).toHaveLength(8);
+    expect(screen.getByTestId("data-contract-promises-table-7-count")).toHaveTextContent(
+      /^8 promises$/,
+    );
+  });
+
+  it("counts one checker's many rules as many promises", () => {
+    renderView([PROMISES[0]]);
+    expect(rows()).toHaveLength(3);
+    expect(screen.getByTestId("data-contract-promises-table-7-count")).toHaveTextContent(
+      /^3 promises$/,
+    );
+  });
+
+  it("says a lone row in the singular", () => {
+    renderView([promise(1, [rule("expect_column_values_to_not_be_null", "owner_email")])]);
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByTestId("data-contract-promises-table-7-count")).toHaveTextContent(
+      /^1 promise$/,
+    );
+  });
+
   it("shows no checker name and no JSON", () => {
     renderView();
     const text = screen.getByTestId("data-contract-promises-7").textContent ?? "";
@@ -138,7 +161,6 @@ describe("a contract's promises table", () => {
           versions={[]}
           tableId={7}
           promises={[promise(9, [rule("expect_something_new", "")])]}
-          consumers={[]}
         />,
       ),
     ).toThrow(/expect_something_new/);

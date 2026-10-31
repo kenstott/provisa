@@ -317,7 +317,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     from provisa.security.rights import require_role
 
     role = require_role(state.roles, role_id)
-    _check_role_capability(role, Capability.QUERY_DEVELOPMENT)
 
     # --- APQ (Automatic Persisted Queries, Phase AN) ---
     apq_hash: str | None = None
@@ -501,6 +500,8 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
+        # REQ-2155: reading needs no query_development; the physical SQL the stats show does.
+        _check_role_capability(role, Capability.QUERY_DEVELOPMENT)
         _qs_mod.begin()
 
     # REQ-049: X-Provisa-Normalized returns one governed, deduplicated relational table per

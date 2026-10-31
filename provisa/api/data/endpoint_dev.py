@@ -418,14 +418,14 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # ONE pipeline: /data/sql runs through the single governed chokepoint. execute_sql_batch splits a
     # multi-statement batch statement-aware and governs+executes EACH (last result returned) — so the
     # tail is never silently dropped, and a per-statement registered command still routes through the
-    # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
-    # (REQ-1163) is a query-shaping param threaded in.
+    # shared function hook. As_of (REQ-1163) is a query-shaping param threaded in.
     if role_id not in state.schemas:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
-    role = state.roles.get(role_id)
-    _check_sql_capabilities(role)
+    if stats_enabled:
+        # REQ-2155: reading needs no query_development; the physical SQL the stats show does.
+        _check_sql_capabilities(state.roles.get(role_id))
     from provisa.api.redirect_headers import delivery_from_headers
     from provisa.pgwire._pipeline import execute_sql_batch, execute_sql_batch_each
 

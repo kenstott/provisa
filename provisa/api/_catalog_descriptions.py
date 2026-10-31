@@ -26,6 +26,10 @@ meta tables (their views are registered under it), the view name for the ops rep
 from __future__ import annotations
 
 from provisa.api._ontology_quality_views import HUB_MIN_REACHERS
+from provisa.transpiler.metadata_views import (
+    column_descriptions as catalog_column_descriptions,
+    table_descriptions as catalog_table_descriptions,
+)
 
 _TENANT = "Owning org — control-plane rows are isolated per tenant by this column"
 
@@ -71,6 +75,13 @@ _META: dict[str, str] = {
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
+    # REQ-2190
+    "table_details": "Each registered table's catalog entry — its modeling role and history and "
+    "its comment, for a SQL catalog to present",
+    "column_details": "Each registered column's catalog entry — its position in the table, the "
+    "types it is listed as and its comment, for a SQL catalog to present",
+    "table_keys": "Each registered table's primary, unique and foreign keys, one row per column "
+    "of each",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
@@ -172,9 +183,11 @@ _OPS_OWN = (
 TABLE_DESCRIPTIONS: dict[str, str] = {
     **{name: text + _META_OWN for name, text in _META.items()},
     **{name: text + _OPS_OWN for name, text in _OPS.items()},
+    **catalog_table_descriptions(_META_OWN),  # REQ-2190
 }
 
 COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    **catalog_column_descriptions(),  # REQ-2190
     "registered_tables": {
         "id": "Surrogate key — what relationships, rls_rules, and the audit log reference",
         "source_id": "The registered source this table is read from",
@@ -213,6 +226,39 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "contract": "A data product member's contract: its version, status, terms, service "
         "levels, the columns it promises and its saved versions, each with its differences from "
         "the one before; empty for a table in no product",
+    },
+    # REQ-2190
+    "table_details": {
+        "id": "The registered table",
+        "modeling_role": "The table's star role: fact or dimension, when it has one",
+        "modeling_history": "The history mode of the entity the table was lowered from",
+        "comment": "The table's description, with its modeling role and tags in brackets",
+    },
+    "column_details": {
+        "id": "The column's row in table_columns",
+        "table_id": "Table the column belongs to",
+        "column_name": "Physical column name",
+        "ordinal_position": "The column's position in its table, from 1",
+        "subtype": "The subtype the column was registered as, when it has one",
+        "native_type": "The source's own type for the column, when it records one",
+        "comment": "The column's description, with the column's tags in brackets when it has any",
+    },
+    "table_keys": {
+        "id": "Row identifier: the key and the column's position in it",
+        "key_id": "The key: its table's id times 4096 plus its slot on the table",
+        "kind": "p for a primary key, u for a unique key, f for a foreign key",
+        "key_name": "The name a unique key was declared with",
+        "table_id": "Table the key is on",
+        "schema_name": "The schema that table is queried under",
+        "table_name": "The name that table is queried by",
+        "referenced_table_id": "Table a foreign key references; the key's own table otherwise",
+        "referenced_schema_name": "The schema the referenced table is queried under",
+        "referenced_table_name": "The name the referenced table is queried by",
+        "position": "The column's position in the key, from 1",
+        "column_name": "Physical name of the key's column",
+        "column_sql_name": "The name a statement queries that column by",
+        "referenced_column": "Physical name of the column a foreign key column references",
+        "referenced_column_sql_name": "The name a statement queries that column by",
     },
     # REQ-2126
     "data_product_edges": {

@@ -468,10 +468,17 @@ def register_sources(  # REQ-012, REQ-1266, REQ-1730, REQ-1919
     return failed
 
 
+from provisa.core.naming_rule_check import refuse_divergent_rule  # noqa: E402
+
+
 async def _upsert_naming_rules(conn: "Connection", config: ProvisaConfig) -> None:
     """Add each naming rule the config declares, or replace the replacement of the rule with
     its pattern (REQ-1919: an apply removes nothing)."""
     for rule in config.naming.rules:
+        # REQ-2190: the catalog's views apply the rule too, in PostgreSQL's regex engine.
+        await refuse_divergent_rule(
+            conn, rule.pattern, rule.replace, (t.table_name for t in config.tables)
+        )
         held = (
             await conn.execute_core(
                 select(naming_rules.c.id).where(naming_rules.c.pattern == rule.pattern)
