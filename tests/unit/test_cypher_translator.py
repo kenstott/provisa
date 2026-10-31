@@ -2632,6 +2632,55 @@ def test_a_schema_procedure_yielding_is_answered_from_the_label_map(cypher, expe
     assert sorted(_rows_of(cypher, _make_label_map_multi_path())) == expected
 
 
+@pytest.mark.parametrize(
+    "cypher,expected",
+    [
+        ("CALL db.labels() YIELD label", [("Company",), ("Person",)]),
+        ("CALL db.labels() YIELD label;", [("Company",), ("Person",)]),
+        ("CALL db.relationshipTypes() YIELD relationshipType", [("MANAGES",), ("WORKS_AT",)]),
+        ("CALL db.propertyKeys() YIELD propertyKey", [("age",), ("name",)]),
+        ("CALL db.labels() YIELD label AS l WHERE l <> 'Person'", [("Company",)]),
+    ],
+)
+def test_a_schema_procedure_standing_alone_returns_what_it_yields(cypher, expected):
+    """REQ-572: a YIELD with no RETURN is Neo4j's standalone call."""
+    assert sorted(_rows_of(cypher, _make_label_map_multi_path())) == expected
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    ["CALL db.labels() YIELD *", "call db.labels() yield * ;", "CALL db.labels();"],
+)
+def test_a_schema_procedure_standing_alone_reads_a_star_as_the_bare_call(cypher):
+    from provisa.api.rest.registered_call import _detect_procedure
+
+    assert _detect_procedure(cypher) == "db.labels"
+
+
+def test_a_call_standing_alone_returns_each_variable_in_the_order_yielded():
+    from provisa.cypher.parser import parse_cypher
+
+    ast = parse_cypher("CALL my.proc() YIELD b AS y, a AS x WHERE x > 1")
+    assert ast.return_clause is not None
+    assert [item.name for item in ast.return_clause.items] == ["y", "x"]
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "CALL db.labels() YIELD label ORDER BY label",
+        "CALL db.labels() YIELD label LIMIT 1",
+        "MATCH (n:Person) CALL db.labels() YIELD label",
+        "CALL db.labels() YIELD label UNION CALL db.labels() YIELD label",
+    ],
+)
+def test_a_call_in_a_larger_statement_still_needs_its_return(cypher):
+    from provisa.cypher.parser import CypherParseError, parse_cypher
+
+    with pytest.raises(CypherParseError, match="Missing RETURN clause"):
+        parse_cypher(cypher)
+
+
 def test_a_schema_procedure_of_nothing_is_no_rows():
     assert _rows_of("CALL db.labels() YIELD label RETURN label", CypherLabelMap({}, {})) == []
 
