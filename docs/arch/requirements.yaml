@@ -89973,7 +89973,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a product''s Input Ports and Consumers cards always appear. The owner or team sees the list, or None
     when there is nothing. Any other reader sees that the list is visible to the product''s owner, never
     None, because the product may have entries that reader cannot see. What a non-owner may read does not
-    change.'
+    change. (Amended 2026-10-29, CONSUMERS ARE NOT IN THE CONTRACT:) Maintainer 2026-10-31: a contract is
+    what a product''s user reads, so it shows neither a Consumers card nor a consumer count. Consumers are
+    the owner''s, on the product''s own Consumers card, which names the port each one reads. In the contract,
+    Columns is a full-width panel, as Promises is.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
