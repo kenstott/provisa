@@ -516,13 +516,13 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    - Promote to your production internal registry
 
 3. Decide before installing:
-   - **PostgreSQL** — in-cluster (`postgresql.enabled: true`) or external managed (`postgresql.host`)? External recommended for production
-   - **Redis** — in-cluster or external (`redis.host`)?
-   - **Store credentials** — create the Secret `credentials.existingSecret` names, with keys `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` and `trino-shared-secret`. The chart sets no password of its own and does not render without it
-   - **TLS** — on by default (`tls.enabled: true`): create the `kubernetes.io/tls` Secret `tls.secretName` names, or set `tls.enabled: false`
-   - **MinIO / S3** — in-cluster MinIO or native S3? For AWS, use S3 with an IAM role
-   - **Secrets** — pass via `--set` for evaluation; use External Secrets or Vault Agent for production
-   - **Trino coordinator cache** — a 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it
+   - **PostgreSQL.** In-cluster (`postgresql.enabled: true`) or external managed (`postgresql.host`)? External recommended for production.
+   - **Redis.** In-cluster or external (`redis.host`)?
+   - **Store credentials.** Create the Secret `credentials.existingSecret` names, with keys `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` and `trino-shared-secret`. The chart sets no password of its own and does not render without it.
+   - **TLS.** On by default (`tls.enabled: true`): create the `kubernetes.io/tls` Secret `tls.secretName` names, or set `tls.enabled: false`
+   - **MinIO / S3.** In-cluster MinIO or native S3? For AWS, use S3 with an IAM role.
+   - **Secrets.** Pass via `--set` for evaluation; use External Secrets or Vault Agent for production.
+   - **Trino coordinator cache.** A 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it.
 
 4. Give the deployment its master key. The key encrypts the secrets vault; every API pod must
    hold the same one, and it must outlive any pod. The chart does not render without it.
@@ -751,10 +751,10 @@ In production on GCP (Cloud Run, GKE with Workload Identity, Compute Engine), th
 
 The service account needs:
 
-- `roles/bigquery.dataViewer` — read data
-- `roles/bigquery.jobUser` — run queries
-- `roles/bigquery.dataEditor` — create external tables (for ATTACH)
-- `roles/storage.objectViewer` — read GCS objects for external tables
+- `roles/bigquery.dataViewer`: read data
+- `roles/bigquery.jobUser`: run queries
+- `roles/bigquery.dataEditor`: create external tables (for ATTACH)
+- `roles/storage.objectViewer`: read GCS objects for external tables
 
 **Databricks (CA certificate in dev proxy environments)**
 

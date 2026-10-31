@@ -146,10 +146,10 @@ Open `http://localhost:3000` in a browser.
 
 The nav bar has four top-level menus:
 
-- **Explore** — Schema Explorer (`/schema`), GraphQL editor (`/query`), Cypher editor (`/graph`), SQL editor (`/sql`)
-- **Model** — Views and Commands
-- **Security** — Row-level security and column masking policies
-- **Admin** — Overview, domains, cache, scheduled tasks, system health, observability, users, orgs, roles
+- **Explore.** Schema Explorer (`/schema`), GraphQL editor (`/query`), Cypher editor (`/graph`), SQL editor (`/sql`)
+- **Model.** Views and Commands.
+- **Security.** Row-level security and column masking policies.
+- **Admin.** Overview, domains, cache, scheduled tasks, system health, observability, users, orgs, roles.
 
 The admin GraphQL API is at `http://localhost:8001/admin/graphql`.
 
@@ -157,13 +157,13 @@ The admin GraphQL API is at `http://localhost:8001/admin/graphql`.
 
 ## Troubleshooting
 
-**Backend won't start** — check `.logs/server.log`. Most common cause is a missing env var or a port conflict on 8001.
+**Backend won't start.** Check `.logs/server.log`. Most common cause is a missing env var or a port conflict on 8001.
 
-**Docker services not healthy** — run `docker compose -f docker-compose.core.yml -f docker-compose.dev.yml ps` to see which service is stuck. The federation engine takes ~30 seconds on first start.
+**Docker services not healthy.** Run `docker compose -f docker-compose.core.yml -f docker-compose.dev.yml ps` to see which service is stuck. The federation engine takes ~30 seconds on first start.
 
-**Port conflict on 3000 or 8001** — `start-ui.sh` kills stale processes on those ports before starting. If something else owns the port, stop it manually first.
+**Port conflict on 3000 or 8001.** `start-ui.sh` kills stale processes on those ports before starting. If something else owns the port, stop it manually first.
 
-**Fresh start** — stop the script, then run `./start-ui.sh --reset-volumes` to wipe all volumes and restart.
+**Fresh start.** Stop the script, then run `./start-ui.sh --reset-volumes` to wipe all volumes and restart.
 
 ---
 

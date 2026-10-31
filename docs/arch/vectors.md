@@ -4,9 +4,9 @@
 
 Vector search in Provisa is organized as three independent phases, each delivering standalone value:
 
-1. **Native vector search** — model registry, embedding column declaration, `cosine_similarity()` UDF
-2. **Non-native fallback** — the replica of a table, with an HNSW index on its embedding column
-3. **Declarative embedding generation** — generate and maintain embedding columns from source text
+1. **Native vector search.** Model registry, embedding column declaration, `cosine_similarity()` UDF.
+2. **Non-native fallback.** The replica of a table, with an HNSW index on its embedding column.
+3. **Declarative embedding generation.** Generate and maintain embedding columns from source text.
 
 ---
 
@@ -39,9 +39,9 @@ models:
 
 Supported provider types:
 
-- `openai` — OpenAI-compatible REST API
-- `ollama` — local Ollama server
-- `huggingface` — HuggingFace sentence-transformers model loaded locally (air-gap friendly)
+- `openai`: OpenAI-compatible REST API
+- `ollama`: local Ollama server
+- `huggingface`: HuggingFace sentence-transformers model loaded locally (air-gap friendly)
 
 ### Embedding Column Declaration
 

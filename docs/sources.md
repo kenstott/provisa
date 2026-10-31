@@ -1145,9 +1145,9 @@ An unknown `kind` value fails loudly at startup, so a typo in a descriptor never
 
 Availability is verified at attach time against each engine's standard discovery catalog:
 
-- **Postgres** — checks `pg_extension`, then `pg_available_extensions`.
-- **DuckDB** — runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`.
-- **ClickHouse** — checks `system.table_engines` for the declared `ch_engine`; absent from the build fails loud.
+- **Postgres.** Checks `pg_extension`, then `pg_available_extensions`.
+- **DuckDB.** Runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`.
+- **ClickHouse.** Checks `system.table_engines` for the declared `ch_engine`; absent from the build fails loud.
 
 A declared extension that is not installable fails loud. No silent skip, no fallback. A connector whose probe fails is simply not active for that deployment.
 

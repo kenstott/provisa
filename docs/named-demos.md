@@ -159,18 +159,18 @@ needing the compose file open. `com.provisa.demo.role` identifies each service's
 
 The role value determines what the bundle build does with each store:
 
-- `rdb` — a Postgres service: each of its databases dumped to `dump/<service>/<database>.sql` at
+- `rdb`: a Postgres service: each of its databases dumped to `dump/<service>/<database>.sql` at
   build, with `dump/load-postgres.sh`, which loads them into the demo's own container.
-- `vector` — a Qdrant service: each collection saved as `dump/<service>/<collection>.snapshot` at build.
-- `document` — a MongoDB service: every database dumped as one gzipped archive,
+- `vector`: a Qdrant service: each collection saved as `dump/<service>/<collection>.snapshot` at build.
+- `document`: a MongoDB service: every database dumped as one gzipped archive,
   `dump/<service>.archive.gz`, read as the administrator its `MONGO_INITDB_ROOT_USERNAME` and
   `MONGO_INITDB_ROOT_PASSWORD` name.
-- `search` — an Elasticsearch service: its indices snapshotted to the repository its `path.repo`
+- `search`: an Elasticsearch service: its indices snapshotted to the repository its `path.repo`
   names, copied out to `dump/<service>/`.
-- `graph` — a Neo4j service: stopped, and its `neo4j` database dumped to
+- `graph`: a Neo4j service: stopped, and its `neo4j` database dumped to
   `dump/<service>/neo4j.dump`. It is dumped after every other store.
-- `seeder` — run once during the build (and during development starts); never in a bundle.
-- `client` — a client of the demo's own that reads the Provisa a start runs on (the provisioning
+- `seeder`: run once during the build (and during development starts); never in a bundle.
+- `client`: a client of the demo's own that reads the Provisa a start runs on (the provisioning
   demo's `consumer`). The build does not start it: it runs a client a `client:` step of
   `setup.yaml` names against its own setup server instead.
 

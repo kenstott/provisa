@@ -47,8 +47,8 @@ The default aggregation is `sum`.
 
 ### The source tables
 
-- `raw.customers` — id, name, region, tier, effective_date, updated_at
-- `raw.orders` — order_id, customer_id, amount, quantity
+- `raw.customers`: id, name, region, tier, effective_date, updated_at
+- `raw.orders`: order_id, customer_id, amount, quantity
 
 ### Register the Customer entity
 
@@ -245,8 +245,8 @@ Neither pattern requires separate tooling. The same two primitives compose into 
 
 This walkthrough builds a three-dimension star. Two source tables are new:
 
-- `raw.products` — `product_id`, `name`, `category`, `list_price`
-- `raw.date_spine` — `date_key`, `year`, `quarter`, `month`
+- `raw.products`: `product_id`, `name`, `category`, `list_price`
+- `raw.date_spine`: `date_key`, `year`, `quarter`, `month`
 
 `raw.orders` also gains `product_id` and `order_date` columns here.
 

@@ -210,9 +210,9 @@ kafka_sources:
             type: timestamp
 ```
 
-**Time Window** — `default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`. Auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
+**Time Window.** `default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`. Auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
 
-**Discriminator** — Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. The discriminator is auto-injected as a WHERE clause.
+**Discriminator.** Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. The discriminator is auto-injected as a WHERE clause.
 
 **Schema Source**
 
@@ -452,7 +452,7 @@ sources:
 
 #### API / Remote sources
 
-**openapi** — set `base_url` to the OpenAPI base URL. Schema discovery reads the OpenAPI spec at startup.
+**openapi.** Set `base_url` to the OpenAPI base URL. Schema discovery reads the OpenAPI spec at startup.
 
 ```yaml
 sources:
@@ -461,7 +461,7 @@ sources:
     base_url: https://api.payments.example.com/v1
 ```
 
-**graphql_remote** — set `base_url`. Optional `mapping` keys: `headers` (dict of static headers), `forward_client_headers` (bool), `timeout_seconds` (int).
+**graphql_remote.** Set `base_url`. Optional `mapping` keys: `headers` (dict of static headers), `forward_client_headers` (bool), `timeout_seconds` (int).
 
 ```yaml
 sources:
@@ -475,7 +475,7 @@ sources:
       timeout_seconds: 30
 ```
 
-**airport** — `base_url` is the Arrow Flight server location. DuckDB airport extension.
+**airport.** `base_url` is the Arrow Flight server location. DuckDB airport extension.
 
 ```yaml
 sources:
@@ -484,7 +484,7 @@ sources:
     base_url: grpc://flight.internal:8815
 ```
 
-**websocket / rss** — use `host`, `port`, `path`, and `federation_hints`.
+**websocket / rss.** Use `host`, `port`, `path`, and `federation_hints`.
 
 ```yaml
 sources:
@@ -1496,14 +1496,14 @@ observability:
 
 Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. The filters run before spans leave the process, and the original span objects are never changed.
 
-**`telemetry_filter`** — controls what reaches your internal collector.
+**`telemetry_filter`.** Controls what reaches your internal collector.
 
 | Key | Type | Default | Description |
 | ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `false` | Replaces string and numeric literals in `db.statement` with `?` |
 | `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
 
-**`support_telemetry_filter`** — controls what reaches the Provisa support endpoint. SQL literal redaction defaults to `true` on this path, since query data belongs to you.
+**`support_telemetry_filter`.** Controls what reaches the Provisa support endpoint. SQL literal redaction defaults to `true` on this path, since query data belongs to you.
 
 | Key | Type | Default | Description |
 | ----- | ------ | --------- | ------------- |

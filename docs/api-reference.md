@@ -61,12 +61,12 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 
 **Headers:**
 
-- `X-Provisa-Role` — the role to run as (dev mode); with auth, a role request honored only when assigned to the user
-- `Accept` — response format (see Content Negotiation)
-- `Authorization` — `Bearer <token>` when auth is enabled
-- `X-Provisa-Redirect-Format` — MIME type for S3 redirect output
-- `X-Provisa-Redirect-Threshold` — row count above which redirect triggers
-- `X-Provisa-Redirect` — `true` to force redirect unconditionally
+- `X-Provisa-Role`: the role to run as (dev mode); with auth, a role request honored only when assigned to the user
+- `Accept`: response format (see Content Negotiation)
+- `Authorization`: `Bearer <token>` when auth is enabled
+- `X-Provisa-Redirect-Format`: MIME type for S3 redirect output
+- `X-Provisa-Redirect-Threshold`: row count above which redirect triggers
+- `X-Provisa-Redirect`: `true` to force redirect unconditionally
 
 **Response cache:** opt-in per request with the `@cached` operation directive (`query @cached(ttl: 60) { ... }`, `ttl` optional); the same directive applies to GraphQL sent over Arrow Flight. Cypher opts in with a `// @provisa cache=true` or `// @provisa cache_ttl=N` line, SPARQL (`/data/sparql`) with a `# @provisa cache=true` or `# @provisa cache_ttl=N` line, gRPC with `x-provisa-cache: true` or `x-provisa-cache-ttl: N` call metadata. Without it the request neither reads nor writes the response cache. The `X-Provisa-Cache` response header reports `HIT` or `MISS`. See [Cache](configuration.md#per-request-opt-in).
 
@@ -297,12 +297,12 @@ Auto-generated plain REST endpoint for every registered table. The query string 
 
 **Query parameters:**
 
-- `limit` — max rows (≥ 1)
-- `offset` — skip rows (≥ 0)
-- `fields` — comma-separated field names as the GraphQL schema spells them, camelCase under the default naming convention, e.g. `?fields=orderId,amount` (defaults to all scalar fields). `filter` and `orderBy` field names follow the same spelling. JSON:API takes the physical column name instead (`fields[orders]=order_id`).
-- `filter` — JSON array of `{"field", "comparator", "value"}` filter objects. A value is read as its column's type, so `"100"` on a number column compares as 100; a value its column's type cannot hold returns `400`.
-- `orderBy` — JSON array of `{"field", "direction"}` sort objects
-- `params` — the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`. A table registered over an API, or a query table, has a parameter for each input its source takes. A read that leaves out a required parameter returns `400` naming it, as does a name the table has no parameter for. Each value is checked against its parameter's type.
+- `limit`: max rows (≥ 1)
+- `offset`: skip rows (≥ 0)
+- `fields`: comma-separated field names as the GraphQL schema spells them, camelCase under the default naming convention, e.g. `?fields=orderId,amount` (defaults to all scalar fields). `filter` and `orderBy` field names follow the same spelling. JSON:API takes the physical column name instead (`fields[orders]=order_id`).
+- `filter`: JSON array of `{"field", "comparator", "value"}` filter objects. A value is read as its column's type, so `"100"` on a number column compares as 100; a value its column's type cannot hold returns `400`.
+- `orderBy`: JSON array of `{"field", "direction"}` sort objects
+- `params`: the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`. A table registered over an API, or a query table, has a parameter for each input its source takes. A read that leaves out a required parameter returns `400` naming it, as does a name the table has no parameter for. Each value is checked against its parameter's type.
 
 Filter values and parameter values travel beside the GraphQL text the endpoint builds, as variables, so a value containing a quote is compared as written.
 
@@ -328,17 +328,17 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 
 **Query parameters:**
 
-- `fields[<type>]` — sparse fieldsets, e.g. `?fields[orders]=amount`. Names are the physical column names, e.g. `fields[orders]=order_id`, as are `filter[...]`, `sort` and the emitted attribute keys. REST takes the GraphQL spelling instead (`fields=orderId`).
+- `fields[<type>]`: sparse fieldsets, e.g. `?fields[orders]=amount`. Names are the physical column names, e.g. `fields[orders]=order_id`, as are `filter[...]`, `sort` and the emitted attribute keys. REST takes the GraphQL spelling instead (`fields=orderId`).
 - `filter[<col>]` / `filter[<col>][<op>]` — e.g. `?filter[region]=US`, `?filter[amount][gt]=100`. A value is read as its column's type; a value the type cannot hold returns `400`.
-- `params` — the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`, as on the REST endpoint. A missing required parameter returns `400` naming it; an unknown name or a value of the wrong type returns `400` with `source.parameter` set to `params`. Pagination links keep the parameter.
-- `sort` — comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
+- `params`: the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`, as on the REST endpoint. A missing required parameter returns `400` naming it; an unknown name or a value of the wrong type returns `400` with `source.parameter` set to `params`. Pagination links keep the parameter.
+- `sort`: comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — pagination
-- `page[total]` — `true` counts the rows the filter matches and returns `meta.total` and `links.last`. Without it the response carries `links.self`, `links.first`, `links.prev` and `links.next` only, and the database runs no count. Any value other than `true` or `false` returns `400`. Links in a response keep the parameter.
-- `aggregate` — comma-separated aggregate functions to run instead of row retrieval: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Use `?aggregate=count,sum` to request a subset. Aggregate responses return `data: null` with results in `meta.aggregate`.
-- `groupBy` — comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see.
-- `includeNodes` — `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details.
+- `page[total]`: `true` counts the rows the filter matches and returns `meta.total` and `links.last`. Without it the response carries `links.self`, `links.first`, `links.prev` and `links.next` only, and the database runs no count. Any value other than `true` or `false` returns `400`. Links in a response keep the parameter.
+- `aggregate`: comma-separated aggregate functions to run instead of row retrieval: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Use `?aggregate=count,sum` to request a subset. Aggregate responses return `data: null` with results in `meta.aggregate`.
+- `groupBy`: comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see.
+- `includeNodes`: `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details.
 
-- `include` — comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`: each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
+- `include`: comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`: each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
 
 Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` is its table's primary key: the key column's value, or for a composite key its columns' values in key order joined by `:` (order 7's line 2 of a table keyed `(order_id, line)` is `7:2`). A `:` or `\` inside a value is escaped with `\`. A table with no declared primary key uses its `id` column; a table with neither returns `400`, as does an `include` that reaches one. Errors follow the JSON:API error object shape.
 
@@ -348,12 +348,12 @@ Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` 
 
 The JSON:API explorer page (`/app/jsonapi`) is a browser UI over these endpoints. Select a table from the domain-grouped list, then configure:
 
-- **Fields** — choose which columns to include (sparse fieldset); leave all unchecked to request every column
-- **Relationships** — select FK-derived relationship names to sideload via `?include=`
-- **Filter** — field, operator (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`), and value
-- **Sort** — one field, ascending or descending
-- **Aggregate** — pick group-by columns from the server-validated list, then check one or more aggregate functions; when group-by columns are selected, an "Include nodes" checkbox appends base-table scalar columns to each row
-- **Page size** — resources per page, with first/prev/next/last navigation
+- **Fields.** Choose which columns to include (sparse fieldset); leave all unchecked to request every column.
+- **Relationships.** Select FK-derived relationship names to sideload via `?include=`
+- **Filter.** Field, operator (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`), and value.
+- **Sort.** One field, ascending or descending.
+- **Aggregate.** Pick group-by columns from the server-validated list, then check one or more aggregate functions; when group-by columns are selected, an "Include nodes" checkbox appends base-table scalar columns to each row.
+- **Page size.** Resources per page, with first/prev/next/last navigation.
 
 Results render in a formatted summary view (resource cards with clickable relationship anchors) or a raw JSON tab. The live request URL is shown and can be copied. Table selection and page size persist across sessions in `localStorage`.
 
@@ -375,8 +375,8 @@ Returns `{"job_id": "<id>"}`. Exceeding the per-role NL rate limit returns `429`
 
 **Retrieve the result:**
 
-- `GET /query/nl/{job_id}` — poll. Returns the job document.
-- `GET /query/nl/{job_id}/stream` — SSE. One `branch` event per generation target as it completes, then a `done` event.
+- `GET /query/nl/{job_id}`: poll. Returns the job document.
+- `GET /query/nl/{job_id}/stream`: SSE. One `branch` event per generation target as it completes, then a `done` event.
 
 Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated through the compiler and refined on error. The prompt is scoped to the role's visible schema. The result document keys each branch by target:
 
@@ -410,7 +410,7 @@ Return the GraphQL SDL for a role's schema.
 
 **Query parameters:**
 
-- `domain` — comma-separated domain IDs. When set, the response is filtered to the named domain(s) and tables reachable from them.
+- `domain`: comma-separated domain IDs. When set, the response is filtered to the named domain(s) and tables reachable from them.
 
 **Response:** `text/plain` GraphQL SDL.
 
@@ -1281,8 +1281,8 @@ The gRPC server starts when the model loaded at startup defines a gRPC service. 
 
 When a table has `enable_aggregates` set, the generated proto includes two additional RPCs alongside `Query{TypeName}`:
 
-- **`Query{TypeName}Aggregate`** — returns aggregate scalars for the table (`count`; `sum`, `avg`, `stddev`, `variance` per numeric column; `min`, `max` per comparable column)
-- **`Query{TypeName}GroupBy`** — returns one row per group key with aggregate sub-fields and, optionally, base-table scalars and joined-dimension rows in a `nodes` field
+- **`Query{TypeName}Aggregate`.** Returns aggregate scalars for the table (`count`; `sum`, `avg`, `stddev`, `variance` per numeric column; `min`, `max` per comparable column)
+- **`Query{TypeName}GroupBy`.** Returns one row per group key with aggregate sub-fields and, optionally, base-table scalars and joined-dimension rows in a `nodes` field.
 
 Both go through the same compiler aggregate pipeline as GraphQL's `{field}_aggregate` and `{field}_group_by` root fields, so there's no separate aggregate implementation.
 

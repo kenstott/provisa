@@ -42,13 +42,13 @@ Redis. There are no per-instance copies to diverge.
 
 Consistency per component:
 
-- **Materialization store** — one shared, snapshot-consistent copy (e.g. Iceberg);
+- **Materialization store.** One shared, snapshot-consistent copy (e.g. Iceberg);.
   all instances read the same committed snapshot.
-- **Control-plane registry** — shared source of truth; per-instance in-memory catalogs
+- **Control-plane registry.** Shared source of truth; per-instance in-memory catalogs.
   are eventually-consistent projections (reload/TTL on change). A **read-only** config
   at runtime is trivially consistent — you can then run arbitrarily many copies with no
   config coordination at all; mutable config converges via the shared registry.
-- **Hot cache** — sharing is an **optimization, not a requirement**: the hot cache has
+- **Hot cache.** Sharing is an **optimization, not a requirement**: the hot cache has.
   a live fallback (REQ-231) and its rows are governed at query time (REQ-233), so a
   per-instance cache never yields a wrong result, only a lower hit rate and a wider
   invalidation window (bounded by TTL).
@@ -75,10 +75,10 @@ Two tiers, chosen per deployment:
 - **Distributed / per-instance materialization** (eventually correct) — each instance
   materializes locally, at N× compute, and the same query may return different answers on
   different instances until they converge. Convergence requires **two** conditions, not one:
-  1. **Deterministic `view_sql`** — else instances compute different content from identical
+  1. **Deterministic `view_sql`.** Else instances compute different content from identical.
      source and never agree. Enforced at registration (reject `now()`/`random()`/`uuid`/
      unordered-`LIMIT`; `provisa/mv/determinism.py`).
-  2. **Source quiescence** — the source must stop changing long enough within a refresh
+  2. **Source quiescence.** The source must stop changing long enough within a refresh.
      cycle for every instance to materialize the *same* source state. A never-settling,
      high-churn source **never converges** — each instance perpetually reflects a different
      snapshot, so it is permanently divergent, not eventually consistent. Determinism is

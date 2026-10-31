@@ -289,21 +289,21 @@ A daily export at 06:00:
 
 ## What is published
 
-- **Sources, tables and columns** — names, data types, descriptions and aliases. Only tables
+- **Sources, tables and columns.** Names, data types, descriptions and aliases. Only tables.
   marked **Data Product** in their registration are published; a relationship, lineage edge or
   governance tag that touches an unmarked table is withheld with it, so the catalog never
   receives a reference to a table that was not sent.
 
-- **Domains** — each domain's description and its steward. A domain with no steward publishes
+- **Domains.** Each domain's description and its steward. A domain with no steward publishes.
   without one rather than with an invented owner.
-- **Approved relationships** — the modeled joins, with cardinality, alias, owner and version. Each
+- **Approved relationships.** The modeled joins, with cardinality, alias, owner and version. Each.
   edge also carries its `kind`. A `junction` edge reaches its target through an associative table
   rather than a column pair, so its `sourceColumn`/`targetColumn` are the two endpoint keys and a
   catalog that read them as a join condition would invent a foreign key that does not exist; the
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Ontology** — approved terms with their definitions and grounding and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be approved to export, and a draft never does; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for status, grounding and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
+- **Ontology.** Approved terms with their definitions and grounding and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be approved to export, and a draft never does; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for status, grounding and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
 
 | Target | Terms | Relationships | Role | Assignment to data |
 | --- | --- | --- | --- | --- |
@@ -316,7 +316,7 @@ A daily export at 06:00:
 | `dataplex` | The `provisa-<org>` glossary, in a Classes, Properties or Concepts category | Synonym and related entry links | The `provisa-role` label | Definition entry links from BigQuery tables and columns, whose ids Provisa gives the `provisa-` prefix; a table whose entry Dataplex has not catalogued within a minute is reported by name |
 | `datazone` | The `Provisa glossary (<org>)` glossary | `KIND_OF` as `isA`; DataZone has no synonym or related relation | Not exported: the glossary term has no free property | None: DataZone records no author for an assignment, so Provisa's could not be told from a steward's |
 
-- **Lineage** — column-level edges with the transforms applied along each one.
+- **Lineage.** Column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
 not inferred by scanning a warehouse. A column that a view computes from two upstream columns

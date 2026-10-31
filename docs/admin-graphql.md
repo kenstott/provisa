@@ -117,10 +117,10 @@ All registered tables, each with their full column list. Column visibility in th
 
 Each `RegisteredTableType` exposes computed sub-fields:
 
-- **`refreshPolicySummary → RefreshPolicySummaryType`** — the effective refresh/serving policy as plain text, derived server-side from the same planner resolution the engine uses. Returns `null` during startup.
-- **`graphqlFieldName → String`** — the field name this table has in the compiled data-plane schema, so the Data Product panel can build a runnable example without replicating the naming algorithm.
-- **`dqDataset → String`** — this table as a data-quality contract dataset, in the form the checker scans.
-- **`productId → String`** — the data product this table belongs to. A DQ-checker table inherits the product of the table its contract scans.
+- **`refreshPolicySummary → RefreshPolicySummaryType`.** The effective refresh/serving policy as plain text, derived server-side from the same planner resolution the engine uses. Returns `null` during startup.
+- **`graphqlFieldName → String`.** The field name this table has in the compiled data-plane schema, so the Data Product panel can build a runnable example without replicating the naming algorithm.
+- **`dqDataset → String`.** This table as a data-quality contract dataset, in the form the checker scans.
+- **`productId → String`.** The data product this table belongs to. A DQ-checker table inherits the product of the table its contract scans.
 
 #### `refreshPolicyPreview(...) → RefreshPolicySummaryType`
 
@@ -146,8 +146,8 @@ Same as `relationships`, but includes `meta:%` synthetic entries. Used by the gr
 
 Each `RelationshipType` exposes:
 
-- **`autoSuggested → Boolean`** — whether the relationship was suggested by FK analysis (`id` starts with `fk__`).
-- **`physicalName → String`** — the relationship's name on the SQL and gRPC planes (the `?include=` parameter). Derived server-side; clients must not transliterate the GraphQL alias.
+- **`autoSuggested → Boolean`.** Whether the relationship was suggested by FK analysis (`id` starts with `fk__`).
+- **`physicalName → String`.** The relationship's name on the SQL and gRPC planes (the `?include=` parameter). Derived server-side; clients must not transliterate the GraphQL alias.
 
 ---
 

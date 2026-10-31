@@ -52,9 +52,9 @@ REQ-1216 asserts "All Flight-serving engines (DuckDB, Snowflake, Databricks, Big
 Fabric/Synapse, Trino) declare `EngineCapability.ARROW_STREAM`," and REQ-1217 requires the terminal
 be "genuinely lazy." Three of them materialize the whole table then re-emit its batches:
 
-- `provisa/federation/databricks_runtime.py:257` — `run_arrow` then `.to_batches()`
-- `provisa/federation/bigquery_runtime.py:218` — same
-- `provisa/federation/mssql_warehouse_runtime.py:271` — same
+- `provisa/federation/databricks_runtime.py:257`: `run_arrow` then `.to_batches()`
+- `provisa/federation/bigquery_runtime.py:218`: same
+- `provisa/federation/mssql_warehouse_runtime.py:271`: same
 
 **Who declares it:** not the runtime but the per-engine **builder** in `provisa/federation/engine.py`
 hardcodes `ARROW_STREAM` into the capability `frozenset`, each with a comment naming a lazy driver
@@ -68,7 +68,7 @@ primitive the runtime never calls:
 The builder advertises the capability; the runtime fakes it. Declaring a capability the terminal
 does not honor is exactly the silent-materialization this project forbids.
 
-**The fix must make the terminal genuinely lazy** — use the server-side chunk API the builder
+**The fix must make the terminal genuinely lazy.** Use the server-side chunk API the builder.
 already names (bigquery `to_arrow_iterable`, databricks Cloud Fetch chunk iteration, mssql cursor
 `fetchmany`→Arrow), as Snowflake `fetch_arrow_batches` and DuckDB `fetch_record_batch` do (REQ-1217).
 This fixes Defect 3 in the same stroke, since a lazy `run_sync` falls out of the same primitive.
@@ -112,10 +112,10 @@ materialized arrow terminal (`execute_engine_arrow`) on the ENGINE route and `.r
 Airport must drain the one streaming terminal like Flight SQL. Its two real needs are separable
 catalog-identity concerns, not result-path buffering:
 
-- **byte-stable schema** — advertise from the plan's typed output columns (already known
+- **byte-stable schema.** Advertise from the plan's typed output columns (already known.
   pre-execution), not by scanning rows. Empty-result retyping (`_retype_null_columns`,
   query.py) already reads column types independent of row data.
-- **`is_rowid` for UPDATE/DELETE echo** — derive from the source's key metadata / a streamed rowid
+- **`is_rowid` for UPDATE/DELETE echo.** Derive from the source's key metadata / a streamed rowid.
   column, not by holding the whole table. If a genuinely unbounded rowid mapping is needed, land it
   as a CTAS side-table (off-heap), not an in-RAM cache.
 

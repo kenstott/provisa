@@ -139,25 +139,25 @@ These requirements have `competitive_position.status: gap` in `docs/arch/require
 
 The JSON:API source connector is in-progress (target 2026-Q3). No competitor natively federates JSON:API-compliant sources with governance. This is not a gap versus competitors but a differentiated planned capability:
 
-- **REQ-656** — JSON:API connector foundation
-- **REQ-657** — Include-based relationship expansion (`?include=`)
-- **REQ-658** — Sparse fieldsets (`?fields[type]=field1,field2`)
-- **REQ-659** — Pagination following (`links.next`)
-- **REQ-660** — Filter pushdown to remote JSON:API endpoint
+- **REQ-656.** JSON:API connector foundation.
+- **REQ-657.** Include-based relationship expansion (`?include=`)
+- **REQ-658.** Sparse fieldsets (`?fields[type]=field1,field2`)
+- **REQ-659.** Pagination following (`links.next`)
+- **REQ-660.** Filter pushdown to remote JSON:API endpoint.
 
 ### Cypher Write Mutations (REQ-661 through REQ-668, REQ-670) [tool-verified]
 
 Cypher read queries against Neo4j sources work. Write mutations do not. The following are unimplemented:
 
-- **REQ-661** — Write label resolution
-- **REQ-662** — Writes restricted to pre-registered tables only
-- **REQ-663** — write-grant enforcement on Cypher writes
-- **REQ-664** — DML-capability checking before Cypher writes
-- **REQ-665** — Relationship immutability enforcement
-- **REQ-666** — Cypher `CREATE` → SQL `INSERT` translation
-- **REQ-667** — Cypher `DELETE` translation
-- **REQ-668** — Cypher `SET` → SQL `UPDATE` translation
-- **REQ-670** — `affected_rows` response from Cypher mutations
+- **REQ-661.** Write label resolution.
+- **REQ-662.** Writes restricted to pre-registered tables only.
+- **REQ-663.** Write-grant enforcement on Cypher writes.
+- **REQ-664.** DML-capability checking before Cypher writes.
+- **REQ-665.** Relationship immutability enforcement.
+- **REQ-666.** Cypher `CREATE` → SQL `INSERT` translation.
+- **REQ-667.** Cypher `DELETE` translation.
+- **REQ-668.** Cypher `SET` → SQL `UPDATE` translation.
+- **REQ-670.** `affected_rows` response from Cypher mutations.
 
 Applications using Provisa for Neo4j must treat data as read-only today. Native Neo4j clients still needed for write workflows.
 

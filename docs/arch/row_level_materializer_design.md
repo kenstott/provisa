@@ -512,7 +512,7 @@ in this design.
    `bench_order_node` itself (the motivating example, whose current
    `query_template` has no WHERE) could adopt this feature without a config
    edit.
-3. **One `cache_ttl` now drives two different clocks on the same table** — the
+3. **One `cache_ttl` now drives two different clocks on the same table.** The.
    whole-table fallback path's own staleness clock (`is_stale_of`,
    `residency.py`) and each row's independent `_row_expires_at` (section 2a)
    both derive from the same resolved `table.cache_ttl or source.cache_ttl`.

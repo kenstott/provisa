@@ -105,7 +105,7 @@ Authentication uses standard JDBC `user` / `password` properties. The driver exc
 3. URL: `jdbc:provisa://localhost:8815`
 4. Enter your username and password in the Authentication tab
 
-**Power BI** — use the ODBC gateway with the Provisa JDBC-ODBC bridge (included in the installer).
+**Power BI.** Use the ODBC gateway with the Provisa JDBC-ODBC bridge (included in the installer).
 
 ---
 
@@ -568,9 +568,9 @@ schema-aware tools and codegen pick it up automatically.
 
 Two tools expose metrics to MCP clients:
 
-- **`list_metrics`** — returns all governed metrics visible to the session, with `name`,
+- **`list_metrics`.** Returns all governed metrics visible to the session, with `name`,.
   `description`, and `ai_context`.
-- **`query_metric`** — accepts a metric name plus a dimension list and calls the compiler's
+- **`query_metric`.** Accepts a metric name plus a dimension list and calls the compiler's.
   semantic-SQL path, returning the aggregate result.
 
 Agents that call `list_metrics` before constructing a query select a governed metric by name

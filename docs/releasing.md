@@ -29,16 +29,16 @@ git tag v1.2.3 && git push origin v1.2.3
 
 The CI workflow (`build-dmg.yml`, named "Build Provisa Packages") triggers on any `v*` tag and runs these jobs, most in parallel:
 
-1. **Resolve release metadata** — detects channel from tag suffix, derives PEP 440 version and asset names
-2. **Download / package Trino plugins** — pulls Calcite Trino connectors and packages a tarball
-3. **Pull core / obs / demo Docker images** — saves service image tarballs (arm64, plus amd64 core for the Windows container tier)
-4. **Build macOS Core / Obs / Demo DMGs** — run on `macos-14` (Apple Silicon), airgapped
-5. **Build Linux AppImage** — core, airgapped
-6. **Build Windows Core installer** — native, embedded Python, no Docker
-7. **Build Windows Container-tier installer** — WSL2 + Trino, fetches images on demand (no VirtualBox/OVA)
-8. **Build JDBC driver** — Maven shaded JAR
+1. **Resolve release metadata.** Detects channel from tag suffix, derives PEP 440 version and asset names.
+2. **Download / package Trino plugins.** Pulls Calcite Trino connectors and packages a tarball.
+3. **Pull core / obs / demo Docker images.** Saves service image tarballs (arm64, plus amd64 core for the Windows container tier)
+4. **Build macOS Core / Obs / Demo DMGs.** Run on `macos-14` (Apple Silicon), airgapped.
+5. **Build Linux AppImage.** Core, airgapped.
+6. **Build Windows Core installer.** Native, embedded Python, no Docker.
+7. **Build Windows Container-tier installer.** WSL2 + Trino, fetches images on demand (no VirtualBox/OVA)
+8. **Build JDBC driver.** Maven shaded JAR.
 9. **Build and test Python client**, then **Publish to PyPI**
-10. **Publish GitHub Release** — uploads all assets, sets pre-release flag for alpha/beta/rc
+10. **Publish GitHub Release.** Uploads all assets, sets pre-release flag for alpha/beta/rc.
 
 ## Release Assets
 

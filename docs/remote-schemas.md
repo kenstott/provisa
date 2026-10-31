@@ -67,9 +67,9 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 
 When an OBJECT-typed column on a governed table points to another governed type, that column is subject to three rules simultaneously:
 
-1. **Excluded from the GQL fetch** — the field is not requested when fetching the parent table's rows.
-2. **Excluded from the SDL** — the field does not appear on the parent type in the generated schema.
-3. **Accessible only via a declared relationship** — a steward must register a JOIN between the two materialized governed tables. Without one, the field is simply absent; there is no blob fallback.
+1. **Excluded from the GQL fetch.** The field is not requested when fetching the parent table's rows.
+2. **Excluded from the SDL.** The field does not appear on the parent type in the generated schema.
+3. **Accessible only via a declared relationship.** A steward must register a JOIN between the two materialized governed tables. Without one, the field is simply absent; there is no blob fallback.
 
 OBJECT types that are NOT reachable as root Query fields (inline types such as `ContactInfo` or `Address`) follow different rules: they are fetched as `jsonb` blob columns and appear in the SDL as nested-object fields. Sub-fields are accessible via `->>` extraction in SQL.
 
@@ -186,8 +186,8 @@ Proto files may also be local paths. Import paths for well-known types (`google/
 **What the source offers.** Every `rpc` method in the proto is classified as a query or mutation using three signals in priority order:
 
 1. **`method_overrides`** in the registration payload — `{"MethodName": "query"}` or `{"MethodName": "mutation"}` overrides everything else.
-2. **`server_streaming: true`** — the server sends a stream of messages; always a virtual table (unless the output is a scalar).
-3. **Output message has a repeated message-type field** — e.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this, because they are array properties on a single entity, not row sources.
+2. **`server_streaming: true`.** The server sends a stream of messages; always a virtual table (unless the output is a scalar).
+3. **Output message has a repeated message-type field.** E.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this, because they are array properties on a single entity, not row sources.
 
 Methods that match none of these signals (unary RPC returning a single entity message, or any scalar output) become tracked functions.
 

@@ -168,7 +168,7 @@ Whatever cannot be decided is refused by name rather than admitted on doubt (an 
 
 `COPY ... TO STDOUT` and `COPY ... FROM STDIN` are both supported.
 
-**COPY TO STDOUT** — exports query results in PG COPY wire format. Two forms work:
+**COPY TO STDOUT.** Exports query results in PG COPY wire format. Two forms work:
 
 ```sql
 -- Table reference

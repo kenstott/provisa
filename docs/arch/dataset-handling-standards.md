@@ -214,9 +214,9 @@ Any name extracted from a SQL, Cypher, or GraphQL query must be resolvable to a 
 ### Implementation contract
 
 - Backend: `provisa.core.dataset_identity` module must expose:
-  - `resolve(ref, lang=None) -> DatasetIdentity` — accepts physical name, semantic `domain.table`, or query-language name (with `lang` in `{"sql", "cypher", "graphql"}`).
-  - `same_dataset(ref_a, ref_b) -> bool` — resolves both sides before comparing.
-  - `to_query_name(identity, lang) -> str` — applies the active naming convention to produce the correct form for a given query language.
+  - `resolve(ref, lang=None) -> DatasetIdentity`: accepts physical name, semantic `domain.table`, or query-language name (with `lang` in `{"sql", "cypher", "graphql"}`).
+  - `same_dataset(ref_a, ref_b) -> bool`: resolves both sides before comparing.
+  - `to_query_name(identity, lang) -> str`: applies the active naming convention to produce the correct form for a given query language.
 - Frontend: shared utility in `provisa-ui/src/utils/datasetIdentity.ts`, with no per-component name-matching logic.
 - All inline normalization (`_normalize_op_id`, ad-hoc `toSnakeCase` comparisons, etc.) must be replaced by calls to these utilities.
 - The service reads the active naming convention from `registered_tables.naming_convention` → `sources.naming_convention` → global default, in that priority order (three levels: table, source, global).

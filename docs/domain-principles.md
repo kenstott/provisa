@@ -29,8 +29,8 @@ A steward can claim tables privately and expose only curated views as public-fac
 
 A view always belongs to a single domain. There's only one kind of view, and it's always intradomain. A view exists for one of two purposes:
 
-- **Cross-domain import** — the source is outside the domain. Cross-domain data may only enter a domain via a view, which acts as a read-only adapter naming the external data as a domain business concept.
-- **Local derivation** — the source is same-domain. The view derives new or calculated data from existing domain assets. New or derived data may only exist as a view.
+- **Cross-domain import.** The source is outside the domain. Cross-domain data may only enter a domain via a view, which acts as a read-only adapter naming the external data as a domain business concept.
+- **Local derivation.** The source is same-domain. The view derives new or calculated data from existing domain assets. New or derived data may only exist as a view.
 
 A view may reference:
 
@@ -100,9 +100,9 @@ A field access grant is a permission from one domain to another: Domain A may us
 
 **Post-use notification:** When a view is created with granted fields, the source steward is told about it, without being asked to approve. The notification gives the view name, its declared business purpose, the fields used and the steward who approved it. That gives the source steward:
 
-- **Visibility** — awareness of how their data is being used
-- **Oversight** — grounds to raise a concern if usage looks inappropriate
-- **Recourse** — ability to revoke the grant, invalidating dependent views
+- **Visibility.** Awareness of how their data is being used.
+- **Oversight.** Grounds to raise a concern if usage looks inappropriate.
+- **Recourse.** Ability to revoke the grant, invalidating dependent views.
 
 The tradeoff: the source domain approves field access without knowing every future use. Per-view approval is correct in theory and unworkable in practice.
 
@@ -182,9 +182,9 @@ Suggestions corroborated by multiple evidence types accumulate confidence.
 
 For semantically inferred candidates, data probing provides a validation step:
 
-- **Value overlap** — proportion of source column values that appear in the target column
-- **Cardinality** — whether distribution matches the expected relationship type
-- **Null rate** — proportion of source column that is null, indicating optionality
+- **Value overlap.** Proportion of source column values that appear in the target column.
+- **Cardinality.** Whether distribution matches the expected relationship type.
+- **Null rate.** Proportion of source column that is null, indicating optionality.
 
 High correlation raises confidence, and low correlation suppresses or demotes the candidate. Probing corroborates; it doesn't prove. Integer ranges can overlap by coincidence, and partial referential integrity is common in analytical systems, so there's plenty of room for error. The steward's semantic judgment is the only reliable final check.
 
@@ -250,9 +250,9 @@ Every query that touches a domain asset is recorded in an append-only `query_aud
 
 - `tenant_id`, `user_id`, `role_id` — the identity context
 - A SHA-256 hash of the query; the verbatim query text is never stored
-- `table_ids` — the domain assets the query touched
+- `table_ids`: the domain assets the query touched
 - `source`, `status_code`, `duration_ms`
-- `logged_at` — the timestamp
+- `logged_at`: the timestamp
 
 The log is append-only (DELETE and UPDATE blocked at the database level) and indexed by `(tenant_id, logged_at)` and `(user_id, logged_at)`.
 
@@ -260,5 +260,5 @@ The steward's query history report is an aggregated view over this log, which yo
 
 **Two visibility mechanisms:**
 
-- **Push** — post-use notifications for structural acts (a new view was created using your fields)
-- **Pull** — query history for runtime usage patterns
+- **Push.** Post-use notifications for structural acts (a new view was created using your fields)
+- **Pull.** Query history for runtime usage patterns.

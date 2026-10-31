@@ -24,9 +24,9 @@ magic(1) | version(1) | len(wrapped_dek):u32-be | wrapped_dek | iv(12) | ciphert
 
 Set via the JDBC URL query string or `Properties`:
 
-- `kms_provider` — `aws` | `azure` | `gcp` | `local`
-- `kms_key_arn` — the client-owned CMK identifier
-- `kms_master_key` — base64 32-byte key, `local` provider only (tests / local use)
+- `kms_provider`: `aws` | `azure` | `gcp` | `local`
+- `kms_key_arn`: the client-owned CMK identifier
+- `kms_master_key`: base64 32-byte key, `local` provider only (tests / local use)
 
 Example:
 
@@ -36,18 +36,18 @@ jdbc:provisa://host:8001?kms_provider=aws&kms_key_arn=arn:aws:kms:us-east-1:...:
 
 ## Classes
 
-- `EnvelopeDecryptor` — parses the envelope, unwraps the DEK through a `KmsProvider`,
+- `EnvelopeDecryptor`: parses the envelope, unwraps the DEK through a `KmsProvider`,
   caches unwrapped DEKs in-process with a TTL, and AES-256-GCM decrypts. A bad
   envelope, a revoked grant, or a failed authentication tag throws
   `DecryptionException`; the driver never returns ciphertext.
-- `KmsProvider` — client-owned CMK operation (`unwrapDek`). `LocalKmsProvider` is the
+- `KmsProvider`: client-owned CMK operation (`unwrapDek`). `LocalKmsProvider` is the
   JDK-only implementation used for tests and local round-trips.
-- `AwsKmsProvider` — unwraps the DEK with `KmsClient.decrypt` (AWS SDK for Java v2).
-- `AzureKmsProvider` — unwraps the DEK with `CryptographyClient.decrypt`
+- `AwsKmsProvider`: unwraps the DEK with `KmsClient.decrypt` (AWS SDK for Java v2).
+- `AzureKmsProvider`: unwraps the DEK with `CryptographyClient.decrypt`
   (`RSA-OAEP-256`, Azure Key Vault Keys).
-- `GcpKmsProvider` — unwraps the DEK with `KeyManagementServiceClient.decrypt`
+- `GcpKmsProvider`: unwraps the DEK with `KeyManagementServiceClient.decrypt`
   (google-cloud-kms).
-- `KmsProviders` — factory selecting the provider by `kms_provider`, wired into
+- `KmsProviders`: factory selecting the provider by `kms_provider`, wired into
   `ProvisaConnection.configureEncryption`.
 
 Each cloud provider holds only the CMK identifier plus an injected SDK client, never raw key material, and maps any SDK failure (including an `AccessDenied` /

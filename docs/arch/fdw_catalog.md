@@ -44,10 +44,10 @@ Derive everything else from `pg_config`, never a hardcoded path:
 
 An externally compiled `.so` must match three axes, or the server refuses to load it:
 
-1. **PG major ABI** — the module magic block. Cross-major never loads; same-major
+1. **PG major ABI.** The module magic block. Cross-major never loads; same-major.
    cross-minor generally does.
-2. **Platform / arch** — `.so` vs `.dylib` vs `.dll`; x86_64 vs arm64.
-3. **libc + C++ ABI (Linux)** — the wheel's glibc floor, and for C++ extensions
+2. **Platform / arch.** `.so` vs `.dylib` vs `.dll`; x86_64 vs arm64.
+3. **libc + C++ ABI (Linux).** The wheel's glibc floor, and for C++ extensions.
    (Arrow / DuckDB) the libstdc++ / GCC ABI and `_GLIBCXX_USE_CXX11_ABI` setting.
 
 The safe build is inside the same manylinux image the wheel was built with, using the
@@ -89,7 +89,7 @@ wheel to the base's PG major. Bundled native deps (libsqlite3, Arrow, DuckDB) mu
 ### file_fdw — CSV (`csv` source type)
 
 - Repo: in-tree `contrib/file_fdw` (PostgreSQL License). In core contrib.
-- **No compile needed** — ships with any PG built with contrib; activate with
+- **No compile needed.** Ships with any PG built with contrib; activate with.
   `CREATE EXTENSION file_fdw;`. If absent:
   `cd contrib/file_fdw && make PG_CONFIG=<bundled> && make install PG_CONFIG=<bundled>`.
 - Read-only, no pushdown, **no IMPORT FOREIGN SCHEMA**: every column must be declared
@@ -245,10 +245,10 @@ Not in v1: `parquet_s3_fdw` (pg_duckdb covers parquet read), `mysql_fdw` (deferr
 
 Build-order notes for this set:
 
-- **file_fdw** — no artifact; the wheel just documents `CREATE EXTENSION file_fdw`.
-- **sqlite_fdw, tds_fdw** — lightest builds; a single system dev lib each. Start here to validate
+- **file_fdw.** No artifact; the wheel just documents `CREATE EXTENSION file_fdw`.
+- **sqlite_fdw, tds_fdw.** Lightest builds; a single system dev lib each. Start here to validate.
   the CI triple harness.
-- **pg_duckdb** — vendored DuckDB is a long compile; one `.so`, no sidecar. Covers parquet,
+- **pg_duckdb.** Vendored DuckDB is a long compile; one `.so`, no sidecar. Covers parquet,.
   iceberg, and delta read in a single extension: the one heavy C++ build in v1.
-- **oracle_fdw** — build only; Instant Client + `ORACLE_HOME`/`LD_LIBRARY_PATH` are supplied at
+- **oracle_fdw.** Build only; Instant Client + `ORACLE_HOME`/`LD_LIBRARY_PATH` are supplied at.
   the deployment, never shipped in the wheel.

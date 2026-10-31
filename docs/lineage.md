@@ -51,10 +51,10 @@ taint closure continuously from the source relation's declared columns to each o
 
 Additional rings on a node:
 
-- **Orange ring** — a final output column of the statement.
-- **Double border** — the column's relation is a materialized view (MV/CTAS snapshot).
-- **Red ring** — member of a cycle classified as an error.
-- **Yellow ring** — member of a cycle classified as a feedback loop.
+- **Orange ring.** A final output column of the statement.
+- **Double border.** The column's relation is a materialized view (MV/CTAS snapshot).
+- **Red ring.** Member of a cycle classified as an error.
+- **Yellow ring.** Member of a cycle classified as a feedback loop.
 
 ### Named transforms on edges
 
