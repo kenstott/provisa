@@ -36,7 +36,7 @@ import {
 } from "../../components/graph3d/productGraphData";
 import type { ContractVersion } from "../../types/admin";
 import type { GraphData } from "../../components/graph3d/graphModel";
-import { quoteIdent, tableSqlRef } from "../../naming";
+import { catalogTableName, quoteIdent, tableSqlRef } from "../../naming";
 import type { DataContract, DataProduct } from "../../types/admin";
 import type { LifecycleStatus } from "../../types/lifecycle";
 
@@ -330,7 +330,7 @@ export function modelName(t: {
   tableName: string;
   alias: string | null;
 }): string {
-  return `${t.domainId}.${t.alias || t.tableName}`;
+  return catalogTableName({ domainId: t.domainId, tableName: t.alias || t.tableName });
 }
 
 /** modelName of a table a REST endpoint answers, under its physical column names. */

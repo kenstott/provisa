@@ -16,6 +16,7 @@
 // the terms, so the query returns only what a term reaches: no table, column or product apart.
 
 import { termRole, type TermGrounding } from "../../api/glossary";
+import { catalogTableName } from "../../naming";
 import { NEIGHBOURHOOD } from "./neighbourhood";
 import { TERM_STATUSES } from "./graphModel";
 import {
@@ -473,7 +474,7 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       ...(t.definition ? { definition: t.definition } : {}),
       // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.
       ...(t.identityGap
-        ? { unlinkedTables: (t.tables ?? []).map((g) => `${g.domainId}.${g.tableName}`) }
+        ? { unlinkedTables: (t.tables ?? []).map((g) => catalogTableName(g)) }
         : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
@@ -494,7 +495,7 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       node({
         id: tid,
         type: "table",
-        label: `${g.domainId}.${g.tableName}`,
+        label: catalogTableName(g),
         domains: [g.domainId],
         stored: true,
         layers: ["ontology"],
@@ -510,7 +511,7 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       node({
         id: tid,
         type: "table",
-        label: `${r.domainId}.${r.tableName}`,
+        label: catalogTableName(r),
         domains: [r.domainId],
         stored: true,
         layers: [],

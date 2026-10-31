@@ -555,7 +555,7 @@ export function toGraphData(
       edge(pid, `f:${c.name}`, "command");
     }
     for (const t of p.memberTables ?? []) {
-      const label = `${t.domainId}.${t.tableName}`;
+      const label = catalogTableName(t);
       if (t.dqContract != null) {
         // A checker assigned to the product (REQ-1443): its rows are quality evidence.
         const kid = `k:${t.id}`;
@@ -615,7 +615,7 @@ export function toGraphData(
           node({
             id: xid,
             type: "relation",
-            label: `${to.domainId}.${to.tableName}`,
+            label: catalogTableName(to),
             domains: [to.domainId],
           });
           edge(tid, xid, "relationship_outside");
