@@ -32,6 +32,9 @@ export type OpenClassMenu = (
   target: Omit<ContextMenuState, "x" | "y">,
 ) => void;
 
+/** What a relationship's menu is opened on, as a right click on its pill does. */
+export type OpenRelMenu = (e: React.MouseEvent, type: string) => void;
+
 /** What the drawing computes of every node, so a label of any kind can be sized by them. */
 const GRAPH_DEGREES = ["degIn", "degOut", "degTotal", "degreeCentrality"];
 
@@ -80,7 +83,7 @@ interface SidebarProps {
   onMaxNodesChange: (n: number) => void;
   /** A second vocabulary's panel (SPARQL's) in place of Cypher's labels, types and keys, given what
    *  opens the menu a label pill's right click opens on Cypher's. */
-  vocabulary?: (openClassMenu: OpenClassMenu) => React.ReactNode;
+  vocabulary?: (openClassMenu: OpenClassMenu, openRelMenu: OpenRelMenu) => React.ReactNode;
   /** The user's graph session (REQ-2176), listed beside the model's labels and types. */
   session?: React.ReactNode;
 }
@@ -384,7 +387,7 @@ export function Sidebar({
 
       <div className="graph-sidebar-body">
         {/* REQ-2135: SPARQL's vocabulary, where Cypher's labels and types are. */}
-        {section === "db" && vocabulary?.(openClassMenu)}
+        {section === "db" && vocabulary?.(openClassMenu, handleRelRightClick)}
         {section === "db" && !vocabulary && (
           <>
             {!schemaLoading &&
