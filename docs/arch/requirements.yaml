@@ -89657,7 +89657,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and that is the floor of every role built on it, since a child only adds to what it inherits. This replaces
     the part of the DATA BUYER amendment under which viewer does not read data products. What a role is
     shown of a product stays cut to its own rights (REQ-2152). A Data buyer role, if built, adds requesting
-    a product.'
+    a product. (Amended 2026-10-29, A ROLE NARROWS ITS PARENTS:) Maintainer 2026-10-31: a role with parents
+    is always a subset of the union of its parents, for capabilities and domains alike. A role stores what
+    it is given; what it holds is that intersected with the union of its parents'' rights. A role with no
+    parents holds what it is given. This replaces inheriting capabilities by union, and domain reach being
+    the role''s own: a parent''s narrowing reaches every descendant, and a capability Provisa adds to a
+    standard role reaches a child only when it is given. Saving a right no parent holds is refused by name.
+    Standard roles stay locked and are the palette. The role form lists what the parents hold, all selected,
+    and a person unselects; domains keep * for every data domain, and capabilities have no such form. Column
+    grants are unchanged.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
