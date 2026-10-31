@@ -1,7 +1,7 @@
 # The hosted demo sandbox
 
 The live demos page on provisa.dev opens each published demo in a sandbox on cloud.provisa.dev.
-No account is needed. The sandbox is your own copy of the demo: its model, and its data landed
+No account is needed. The sandbox is your own copy of the demo, with its model and its data landed
 ahead of time, so the first query answers at once. Anything you add or change stays in your copy.
 
 A "Try it Out" invitation opens the same kind of sandbox for a signed-in person. That sandbox is

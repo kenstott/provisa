@@ -24,7 +24,7 @@ A contract holds:
 | `status` | `proposed`, `draft`, `active`, `deprecated` or `retired` |
 | `description` | What the port is for |
 | `terms` | `usage`, `limitations` and `notice_period` (for example `P3M`) |
-| `sla` | Service levels such as availability or retention. Freshness is not declared here: it comes from the table's cache TTL |
+| `sla` | Service levels such as availability or retention. Freshness is not declared here; it comes from the table's cache TTL |
 | `columns` | The columns the port declares: name, type, description and whether the column is never null |
 
 Two rules keep a contract and its table in step:
@@ -83,9 +83,9 @@ Only catalogs with a native data-product concept publish it as an entity of its 
 | OpenMetadata | `DataProduct` entity (native) |
 | DataHub | Native `dataProduct` URN entity with its own properties/ownership aspects |
 | Collibra | Asset of a `Data Product` community type, related to member tables |
-| Apache Atlas | Best-effort custom `provisa_data_product` typedef — Atlas has no native data-product type |
-| Atlan | Best-effort custom `DataProduct` typedef guess — Atlan has no documented stable type for this |
-| OpenLineage | Not a listing — member tables carry a `provisa_data_product` custom facet naming the product |
+| Apache Atlas | Best-effort custom `provisa_data_product` typedef, because Atlas has no native data-product type |
+| Atlan | Best-effort custom `DataProduct` typedef guess, because Atlan has no documented stable type for this |
+| OpenLineage | Not a listing. Member tables carry a `provisa_data_product` custom facet naming the product |
 
 ## Fields
 

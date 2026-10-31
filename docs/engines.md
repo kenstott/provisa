@@ -16,7 +16,7 @@ every input first.
 | Key | Engine | Notes |
 | --- | --- | --- |
 | `trino` | Trino (embedded MPP) | Provisa-managed Trino cluster; JVM heap and cluster config are editable in Admin and regenerate on restart |
-| `trino-byo` | Trino (bring your own) | External coordinator — same runtime, connection only, no cluster tuning |
+| `trino-byo` | Trino (bring your own) | External coordinator; same runtime, connection only, no cluster tuning |
 | `pg` | PostgreSQL | BYO or embedded; federates via FDWs or pg_duckdb |
 | `duckdb` | DuckDB (in-process) | Native partial federator; the desktop and demo default |
 | `clickhouse` | ClickHouse (embedded chdb) | OLAP federator; the only engine with a Hudi path |
@@ -77,7 +77,7 @@ library.
 | `redshift`, `vertica`, `exasol`, `monetdb` | Analytic stores |
 | `firebird` | Firebird |
 
-File-embedded stores are absent on purpose: the engine's store must be reachable over the network
+File-embedded stores are absent on purpose, because the engine's store must be reachable over the network
 from wherever Provisa runs, which a local file on someone else's disk is not.
 
 ## Two narrower lists
@@ -86,7 +86,7 @@ The 32 keys are the complete set, but two other places name a subset on purpose,
 the same list:
 
 - **The install wizard** offers 5 options: `duckdb`, `pg_duckdb`, `postgres_fdw`, `trino`,
-  `sqlalchemy`. These are provisioning choices, not builder keys: `pg_duckdb` and `postgres_fdw`
+  `sqlalchemy`. These are provisioning choices, not builder keys. `pg_duckdb` and `postgres_fdw`
   are two ways to provision the one `pg` engine. A wizard option must declare its platforms,
   provisioning route and startup cost, and the demo preset may only use bundled instant ones.
 
@@ -97,7 +97,7 @@ the same list:
 ## What an engine changes
 
 Engine choice decides which sources are reachable in place versus landed as a replica. Ask the
-running system rather than inferring it: `reachable_source_types(engine_key)` returns what an
+running system. `reachable_source_types(engine_key)` returns what an
 engine can federate, and `live_source_types(engine_key)` returns the subset it queries without
 materializing.
 
@@ -125,7 +125,7 @@ behavior below applies to it.
 
 **Cold starts.** When the first query arrives after an idle period, Provisa wakes the shard before
 dispatching. Autopilot needs 2–4 minutes to provision a node and start Trino. The query waits
-rather than failing: the wake happens at the top of `_execute_plan`, so the statement runs once
+rather than failing. The wake happens at the top of `_execute_plan`, so the statement runs once
 with its full retry budget intact once the engine is ready.
 
 **UI status.** A query waiting behind a cold start is not the same as a hung server. The UI
@@ -161,7 +161,7 @@ route: if a cross-source query collapsed to a single live source after inlining,
 not `engine`.
 
 **EXPLAIN and ANALYZE.** The `POST /data/sql/explain` endpoint wraps the governed SQL in the
-dialect's EXPLAIN syntax. Passing `analyze: true` runs EXPLAIN ANALYZE: the query actually executes and the plan carries real row counts and timings. ANALYZE requires connector support;
+dialect's EXPLAIN syntax. Passing `analyze: true` runs EXPLAIN ANALYZE. The query actually executes, and the plan carries real row counts and timings. ANALYZE requires connector support;
 the dialects that collect statistics are:
 
 | Dialect | EXPLAIN | EXPLAIN ANALYZE |
@@ -173,5 +173,5 @@ the dialects that collect statistics are:
 | `sqlite` | `EXPLAIN QUERY PLAN` | not supported |
 
 Other dialects are not supported for EXPLAIN. Requesting ANALYZE on an unsupported dialect returns
-`400`. The plan the endpoint explains is the governed plan: the SQL that actually ran under the
+`400`. The plan the endpoint explains is the governed plan, the SQL that actually ran under the
 caller's role, after RLS and masking.

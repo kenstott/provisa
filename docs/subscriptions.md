@@ -71,7 +71,7 @@ Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutatio
 
 ### Polling
 
-Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes: a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
+Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes, because a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
 
 Table poll config (in `provisa.yaml`):
 
@@ -140,7 +140,7 @@ A registry that is down or rejects the credentials is refused when the subscript
 | `bearer` | `schema_registry_token` | `Authorization: Bearer <token>` (a static token) |
 | `mtls` | `schema_registry_client_cert`, `schema_registry_client_key` | The client certificate, in the TLS handshake |
 
-`schema_registry_ca` is optional with every method: a CA bundle to trust when the registry's certificate is not signed by a public authority.
+`schema_registry_ca` is optional with every method. It is a CA bundle to trust when the registry's certificate is not signed by a public authority.
 
 The password and the token follow the secrets contract. A value typed in the source form is stored in the org vault and the source keeps a `${secret:NAME}` reference; a reference written in a config file (`${env:...}`, `${secret:...}`) is kept as written. The certificate, key and CA bundle are files the Provisa server process opens, named by absolute path.
 

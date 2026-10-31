@@ -121,7 +121,7 @@ Three stages, in order.
 **Stage 2: Relationship approval** (consequential, because it is structural and permanent)
 
 - Decided by the domains the relationship touches, as described under [Relationships](#relationships)
-- Is this a legitimate traversal path? Is the join semantically valid?
+- Reviewers judge whether this is a legitimate traversal path and whether the join is semantically valid
 - Two different users, neither of them the requester, must approve, and every domain involved must have an approver; the relationship then becomes a permanent catalog entry
 
 **Stage 3: Query creation**
@@ -149,11 +149,11 @@ Discovery is structured across five tiers of increasing governance. Each tier is
 
 | Tier | Description | Governance state |
 | --- | --- | --- |
-| 1 — Registered source schema | Every table, column, and type from a registered source. Admin-level visibility. | None — raw inventory |
-| 2 — Unclaimed tables | Tables introspected from registered sources with no domain owner. Visible to stewards with source access. | Available but ungoverned |
-| 3 — Domain assets | Claimed tables and steward-defined views. Fully governed, owned, catalog-visible. | Fully governed |
-| 4 — Relationships | Approved traversal paths between Tier 3 assets. Prerequisite for cross-domain view creation. | Approved by both stewards |
-| 5 — Field grants | Domain-to-domain field access permissions. The most specific and deliberate governed access. | Approved by source steward |
+| 1: Registered source schema | Every table, column, and type from a registered source. Admin-level visibility. | None; raw inventory |
+| 2: Unclaimed tables | Tables introspected from registered sources with no domain owner. Visible to stewards with source access. | Available but ungoverned |
+| 3: Domain assets | Claimed tables and steward-defined views. Fully governed, owned, catalog-visible. | Fully governed |
+| 4: Relationships | Approved traversal paths between Tier 3 assets. Prerequisite for cross-domain view creation. | Approved by both stewards |
+| 5: Field grants | Domain-to-domain field access permissions. The most specific and deliberate governed access. | Approved by source steward |
 
 An unclaimed table points to a gap. If the data you need exists only at Tier 2, a steward must claim it before governance can go further. When no tier has any candidate, escalate to an admin.
 
@@ -164,17 +164,17 @@ FK constraints belong to a single source, so they can't span sources. Cross-sour
 Within a source:
 
 - FK constraints are surfaced automatically as candidate relationships on source registration
-- They represent explicit modeling intent: unenforced in most analytical SQL systems, but declared on purpose
+- They represent explicit modeling intent, unenforced in most analytical SQL systems but declared on purpose
 - Steward validation is still required before a candidate becomes an approved relationship
 
 ### Relationship Confidence Hierarchy
 
 | Evidence | Confidence |
 | --- | --- |
-| Approved catalog relationship — cross-source, validated by both stewards | Highest |
-| Intra-source FK constraint — explicit modeling intent, unenforced but purposeful | High |
-| Intra-source semantic inference — column name/type similarity within a consistent schema | Medium |
-| Cross-source semantic inference — naming conventions diverge across systems; high false positive risk | Low |
+| Approved catalog relationship (cross-source, validated by both stewards) | Highest |
+| Intra-source FK constraint (explicit modeling intent, unenforced but purposeful) | High |
+| Intra-source semantic inference (column name/type similarity within a consistent schema) | Medium |
+| Cross-source semantic inference (naming conventions diverge across systems; high false positive risk) | Low |
 
 Suggestions corroborated by multiple evidence types accumulate confidence.
 
@@ -261,4 +261,4 @@ The steward's query history report is an aggregated view over this log, which yo
 **Two visibility mechanisms:**
 
 - **Push.** Post-use notifications for structural acts (a new view was created using your fields)
-- **Pull.** Query history for runtime usage patterns.
+- **Pull.** Query history for runtime usage patterns

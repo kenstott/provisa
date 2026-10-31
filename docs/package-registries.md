@@ -2,7 +2,7 @@
 
 Node and Python sources install their own code and their dependencies. **Admin → Package registries** says where they install from: the organization's npm registries, PyPI indexes and Git hosts. An organization administrator enters them once, and every Node and Python install of the organization uses them. The public npm registry and the public PyPI need no entry.
 
-Every field holds what was typed: a value, or a reference such as `${secret:npm_token}` or `${env:NPM_TOKEN}`, resolved in the organization's own vault each time an install runs. A reference that resolves to nothing stops the install and names the registry and the field. Provisa never writes to the vault or makes up a secret's name. See [Secrets](secrets.md).
+Every field holds what was typed, either a value or a reference such as `${secret:npm_token}` or `${env:NPM_TOKEN}`, resolved in the organization's own vault each time an install runs. A reference that resolves to nothing stops the install and names the registry and the field. Provisa never writes to the vault or makes up a secret's name. See [Secrets](secrets.md).
 
 ---
 
@@ -45,7 +45,7 @@ A token alone is sent with the user `x-access-token`. Other providers expect a u
 
 | Provider | User |
 |---|---|
-| GitHub | `x-access-token`, the default: enter the token alone |
+| GitHub | `x-access-token`, the default; enter the token alone |
 | GitLab | Any non-blank user name |
 | Bitbucket Cloud | `x-token-auth` for a repository or workspace access token; your user name or email for an API token |
 | Bitbucket Data Center | Your user name; `x-token-auth` for a project or repository token |

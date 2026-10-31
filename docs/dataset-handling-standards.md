@@ -18,7 +18,7 @@
 
 ## Source Type Reference
 
-### Direct-route RDBMS — Trino connector + dialect
+### Direct-route RDBMS: Trino connector and dialect
 
 These types are in both `SOURCE_TO_CONNECTOR` and `SOURCE_TO_DIALECT`. They support direct-route execution (single-source queries bypass Trino) and federated execution.
 
@@ -44,7 +44,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ---
 
-### TRINO_ONLY lake sources — Trino connector, no direct driver
+### TRINO_ONLY lake sources: Trino connector, no direct driver
 
 These types are in `SOURCE_TO_CONNECTOR` and `TRINO_ONLY_SOURCES`. All queries route through Trino. No dialect; no direct driver. Time-travel (`as_of`) is supported on `iceberg` and `delta_lake`.
 
@@ -58,7 +58,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ---
 
-### NoSQL / non-relational — Trino connector, no direct driver
+### NoSQL / non-relational: Trino connector, no direct driver
 
 These types are in `SOURCE_TO_CONNECTOR` but have no dialect and no direct driver. All queries route through Trino using the mapping DSL. Introspection falls back to Trino.
 
@@ -74,7 +74,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ---
 
-### Calcite-based connectors — Trino connector via Apache Calcite
+### Calcite-based connectors: Trino connector via Apache Calcite
 
 These types are in `SOURCE_TO_CONNECTOR` using the `kenstott/calcite` Trino plugin. All queries route through Trino.
 
@@ -90,7 +90,7 @@ Kaggle datasets are staged and registered as `files` sources, so they have no se
 
 ---
 
-### Flat sources — fixed schema constant, native introspection
+### Flat sources: fixed schema constant, native introspection
 
 These types have no Trino connector. `native_schemas` returns a fixed constant; `native_tables` queries the source directly.
 
@@ -101,8 +101,8 @@ These types have no Trino connector. `native_schemas` returns a fixed constant; 
 | `graphql_remote` | `"graphql"` | Query-type fields returning LIST | GraphQL HTTP introspection endpoint |
 | `grpc_remote` | `"grpc"` | Server-streaming RPCs + non-streaming RPCs with repeated response | Remote gRPC server via proto reflection or proto file |
 | `sqlite` | `"main"` | `sqlite_master WHERE type='table'` | Local file via `sqlite3` |
-| `neo4j` | `"neo4j"` | No list introspection — user supplies a Cypher query | Bolt connection |
-| `sparql` | `"sparql"` | No list introspection — user supplies a SPARQL query | SPARQL HTTP endpoint |
+| `neo4j` | `"neo4j"` | No list introspection; user supplies a Cypher query | Bolt connection |
+| `sparql` | `"sparql"` | No list introspection; user supplies a SPARQL query | SPARQL HTTP endpoint |
 | `govdata` | Category names from `sources.database` | `fetch_tables` per category | GovData JDBC adapter |
 
 Note: `kafka` is in `SOURCE_TO_CONNECTOR` (Trino `kafka` connector used for execution) but uses native config-DB introspection for schema/table discovery; it does not use Trino for introspection.
@@ -117,19 +117,19 @@ For `sparql`: datasets are user-supplied SPARQL queries that must return a JSON 
 
 ---
 
-### Event / embedded / file sources — no introspection (return `[]`)
+### Event / embedded / file sources: no introspection (return `[]`)
 
 These types have no Trino connector and no native introspection path. Both `available_schemas` and `available_tables` return `[]`. Table definitions are supplied by config, user query, or file path.
 
 | Source type | Description |
 | --- | --- |
-| `websocket` | External WebSocket feed — schema is event-driven; no introspection |
-| `rss` | RSS 2.0 / Atom feed — schema fixed to feed fields; no introspection |
-| `csv` | Local or remote CSV file — schema from file headers at registration |
-| `parquet` | Local or remote Parquet file — schema from file metadata at registration |
-| `google_sheets` | Google Sheets API — schema from spreadsheet columns at registration |
-| `ingest` | HTTP push receiver — schema defined in config at registration |
-| `pinot` | Apache Pinot — Trino `pinot` connector (`pinot.controller-urls`); introspects live via Trino |
+| `websocket` | External WebSocket feed. Schema is event-driven; no introspection |
+| `rss` | RSS 2.0 / Atom feed. Schema fixed to feed fields; no introspection |
+| `csv` | Local or remote CSV file. Schema from file headers at registration |
+| `parquet` | Local or remote Parquet file. Schema from file metadata at registration |
+| `google_sheets` | Google Sheets API. Schema from spreadsheet columns at registration |
+| `ingest` | HTTP push receiver. Schema defined in config at registration |
+| `pinot` | Apache Pinot. Trino `pinot` connector (`pinot.controller-urls`); introspects live via Trino |
 
 ---
 
@@ -204,7 +204,7 @@ A dataset may also be referenced by name inside a query payload. Each query lang
 | Cypher | PascalCase node label or relationship type | `PetByStatus` |
 | GraphQL | camelCase field name | `petByStatus` |
 
-The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name. It is not a hint; it is the name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
+The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
 
 Resolution priority for the query-language name of a dataset:
 

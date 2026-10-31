@@ -13,7 +13,7 @@ Three reference forms are valid wherever Provisa resolves credentials:
 | Form | Resolves from | Who can use it |
 | ------ | -------------- | --------------- |
 | `${env:VAR_NAME}` | The server process's environment | Deployment configuration only |
-| `${secret:NAME}` | The org vault — shared by all members | Any field that accepts a credential reference |
+| `${secret:NAME}` | The org vault, shared by all members | Any field that accepts a credential reference |
 | `${user:NAME}` | The acting person's personal vault | Any field that accepts a credential reference |
 
 On a multi-tenant deployment, keep platform credentials in a secrets service and out of environment variables. A tenant admin can write `${env:...}` into a credential field of their own, so any value in the process environment is within every tenant's reach. Leave only the secrets backend's own credential in the environment.
@@ -94,7 +94,7 @@ A reference is refused, by name, when:
 - its name is too long for the service once prefixed (GCP 255 characters, Azure 127); this is refused when the reference is saved, with the limit stated;
 - no organization is bound to the operation that reads it.
 
-A deployment of one organization reads a reference exactly as written, with no prefix: the service it is wired to is that organization's own, and nothing has to be moved.
+A deployment of one organization reads a reference exactly as written, with no prefix, because the service it is wired to is that organization's own and nothing has to be moved.
 
 **Moving to the prefix.** On a deployment of many organizations, every secret an organization references has to sit under that organization's prefix. Copy each one there with the service's own tooling, then shorten the reference to the name inside the prefix (`${secret:teams/data/db}` kept at `orgs/acme/db` becomes `${secret:db}`). A reference whose secret has not been moved fails as not found; it is not read from where it was.
 
@@ -112,7 +112,7 @@ Encryption is never optional. When no process-wide encryption key is configured,
 | `owner_id` | Text | `"*"` for org vault; user id for personal vault |
 | `name` | Text | The reference name |
 | `value` | LargeBinary | Encrypted envelope blob |
-| `description` | Text | What the secret is for — never derived from the value |
+| `description` | Text | What the secret is for; never derived from the value |
 | `updated_by` | Text | Who last set it |
 
 An organization that has created its own encryption key has its secrets wrapped under that key; otherwise they are wrapped under the deployment's. See [Encryption at Rest](security.md#encryption-at-rest-and-the-organizations-own-keys).

@@ -5,7 +5,7 @@ embedded local platform, so the region-specific admin UX is visible end to end. 
 embedded Postgres (the model store and both regions' stores), each runs its own DuckDB engine, and a
 single fakeredis TCP server is the cache.
 
-Two regions share one Postgres here: every schema and cache name a region keeps carries the
+Two regions share one Postgres here. Every schema and cache name a region keeps carries the
 region, so the two do not collide. `scripts/launch-demo-regions.sh --check` validates the layout
 without starting anything.
 
@@ -39,9 +39,9 @@ Open the **eu** UI at http://127.0.0.1:8310 and the **us** UI at http://127.0.0.
   region or to "all regions"; the line next to it says how many rows the current selection hides. Each
   row shows its region in the region column. Searching by name crosses regions and labels each result.
 - **A cross-region read.** On the **us** node, query the `intake_eu` table (homed in eu). The us node
-  reads it from eu's replica store: the data is processed and kept in eu and read from us under one model.
+  reads it from eu's replica store. The data is processed and kept in eu and read from us under one model.
 - **The 503 refusal when a home region is stopped.** Stop just the eu node (leave us up), then on the
-  us node read `intake_eu` again: the read is refused by name, because eu's store is not reachable.
+  us node read `intake_eu` again. The read is refused by name, because eu's store is not reachable.
 - **A data_residency refusal, by name.** data_residency is the right to SET an object's region, not
   a read filter. The launcher seeds two basic-auth logins (printed on start): `operator` (the seed
   `org_admin`, plus `residency_steward` whose grant covers every region, so it can register and move
