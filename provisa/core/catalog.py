@@ -34,6 +34,19 @@ log = logging.getLogger(__name__)
 _STARTING_UP = "SERVER_STARTING_UP"
 
 
+class TrinoCatalogNotCreated(RuntimeError):
+    """A source whose type Trino reaches over JDBC, but whose JDBC URL Provisa cannot build."""
+
+    def __init__(self, source_id: str, source_type: str, connector: str) -> None:
+        super().__init__(
+            f"No Trino catalog was created for source {source_id!r}: its type {source_type!r} "
+            f"is read through Trino's {connector!r} connector, but Source.jdbc_url() builds no "
+            f"JDBC URL for {source_type!r}."
+        )
+        self.source_id = source_id
+        self.source_type = source_type
+
+
 def drop_refused(catalog: str, exc: TrinoQueryError) -> RuntimeError:
     """Why Trino would not drop ``catalog``, for the operator who has to fix it.
 
@@ -160,6 +173,13 @@ def create_catalog(
     props = _build_catalog_properties(source, resolved_password)
 
     if not props:
+        from provisa.federation.trino_connectors import _TrinoJdbcConnector
+
+        if isinstance(trino_connector, _TrinoJdbcConnector):
+            # A JDBC type is built from the source's own host and port, so empty props mean
+            # Source.jdbc_url() has no URL for the type. Returning here left the planner addressing
+            # a catalog that was never made ("Catalog 'x' not found"), with nothing saying why.
+            raise TrinoCatalogNotCreated(source.id, stype, trino_connector.trino_connector)
         # A reachable type with no Source-row props (e.g. kafka, registered via create_kafka_catalog).
         return
 
