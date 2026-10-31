@@ -90831,7 +90831,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     name on a dialect whose failing cast does not raise, or whose arithmetic checks no range (MySQL, SQLite,
     Spark, and Databricks with it, since the dialect name cannot show ANSI mode), until a replay shows otherwise.
     A function whose answer depends on an argument type the transpiler cannot see (set_masklen of a column)
-    is refused unless the statement says the type.'
+    is refused unless the statement says the type. (Amended 2026-10-29, JSON NUMBERS COMPARE BY VALUE:)
+    Maintainer 2026-10-31: JSON returns untyped numbers, so an answer holding JSON numbers is compared as
+    int or float, with decimals as float, not as text: 1.50 and 1.5 are the same answer.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
