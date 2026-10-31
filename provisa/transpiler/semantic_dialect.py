@@ -100,3 +100,5 @@ from sqlglot.dialects.duckdb import DuckDB  # noqa: E402
 _reads_containment(DuckDB.Parser)
 DuckDB.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e, "<<=")
 DuckDB.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")
+
+from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML

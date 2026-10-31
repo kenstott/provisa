@@ -1000,7 +1000,10 @@ class PgClickHouseFdwConnector(Connector):  # REQ-1870
     alongside the existing Mechanism.DIRECT (native driver, materialize-required) — not a
     replacement (REQ-947/951). No apt/PGDG package exists for pg_clickhouse (confirmed), so it is
     bundled+built into provisa_pg_ext (scripts/ci/build_pg_extensions.sh), unlike the
-    operator-installed FDWs (oracle_fdw, mongo_fdw candidate).
+    operator-installed FDWs (oracle_fdw, mongo_fdw candidate). The source's port is ClickHouse's
+    HTTP port (as for the native driver and DuckDBClickHouseConnector), so the attach uses
+    pg_clickhouse's http driver; ``secure`` in federation_hints selects TLS, stated outright
+    because pg_clickhouse would infer it only from the default TLS ports.
     """
 
     engine = "postgres"
@@ -1025,11 +1028,14 @@ class PgClickHouseFdwConnector(Connector):  # REQ-1870
         server = engine_attach_name("ch", attach_catalog(source))
         local_schema = engine_attach_name("ch", attach_catalog(source))
         remote_database = source.database or source.federation_hints.get("database") or "default"
+        secure = str(source.federation_hints.get("secure", "")).lower() in ("1", "true", "yes")
+        port = source.port or (8443 if secure else 8123)
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS pg_clickhouse",
                 f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER clickhouse_fdw '
-                f"OPTIONS (driver 'binary', host '{source.host}', dbname '{remote_database}')",
+                f"OPTIONS (driver 'http', host '{source.host}', port '{port}', "
+                f"secure '{'on' if secure else 'off'}', dbname '{remote_database}')",
                 f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (user '{source.username or 'default'}', password '{source.password}')",
                 f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',

@@ -172,6 +172,20 @@ def _macro(name: str, params: str, duckdb: str, others: Forms | None = None) -> 
     )
 
 
+#: typeof without a list's brackets or a decimal's size.
+_TYPE_BASE = "split_part(replace(typeof(value), '[]', ''), '(', 1)"
+#: pg_typeof: DuckDB's name of the value's type as format_type writes PostgreSQL's, with each of a
+#: list's dimensions. A type that holds another's value is named by the statement
+#: (pg_functions._type_said).
+_PG_TYPEOF = (
+    f"CASE {_TYPE_BASE} WHEN 'VARCHAR' THEN 'text' WHEN 'DOUBLE' THEN 'double precision' "
+    "WHEN 'FLOAT' THEN 'real' WHEN 'DECIMAL' THEN 'numeric' WHEN 'HUGEINT' THEN 'numeric' "
+    "WHEN 'TINYINT' THEN 'smallint' WHEN 'TIMESTAMP' THEN 'timestamp without time zone' "
+    "WHEN 'TIME' THEN 'time without time zone' WHEN 'BLOB' THEN 'bytea' "
+    f"WHEN '\"NULL\"' THEN 'unknown' ELSE lower({_TYPE_BASE}) END || "
+    "repeat('[]', (length(typeof(value)) - length(replace(typeof(value), '[]', ''))) // 2)"
+)
+
 #: oid_send: an oid's four bytes, for the send functions of the object identifier types.
 _OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
 _INT8_BYTES = "unhex(printf('%016x', CAST(v AS UBIGINT)))"
@@ -320,6 +334,41 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
     ),
     _macro("aclitemeq", "a, b", strict("a, b", "BOOLEAN", "a = b")),
     _macro("aclcontains", "acl, item", strict("acl, item", "BOOLEAN", "list_contains(acl, item)")),
+)
+
+#: An XML value's escaped text, as an element's content or an attribute's value reads it.
+_XML_TEXT = (
+    "provisa_xml_value(CAST(value AS VARCHAR), typeof(value), CASE WHEN typeof(value) LIKE '%[]' "
+    "THEN CAST(to_json(value) AS VARCHAR) END, {content})"
+)
+_XML_SPACES = "CAST(to_json(spaces) AS VARCHAR)"
+
+#: DuckDB's XML, over the UDFs of provisa.federation.duckdb_pg_xml. A dialect with none is refused
+#: by provisa.transpiler.pg_xml.for_dialect before any row is read.
+_XML: tuple[Macro, ...] = (
+    # A value that needs no reading: what query_to_xml wrote (provisa.compiler.xml_mapping).
+    _macro("provisa_xml", "value", "CAST(value AS VARCHAR)"),
+    _macro("provisa_xml_text", "value", _XML_TEXT.format(content="true")),
+    _macro("provisa_xml_attribute", "value", _XML_TEXT.format(content="false")),
+    _macro("xml_is_well_formed", "value", "provisa_xml_well_formed(value, false)"),
+    _macro("xml_is_well_formed_content", "value", "provisa_xml_well_formed(value, false)"),
+    _macro("xml_is_well_formed_document", "value", "provisa_xml_well_formed(value, true)"),
+    _macro("xml_send", "value", "provisa_xml_send(value)"),
+    _macro("xmlcomment", "value", "provisa_xmlcomment(value)"),
+    _macro("xmltext", "value", "provisa_xmltext(value)"),
+    _macro("xmlconcat2", "a, b", "provisa_xmlconcat2(a, b)"),
+    _macro("xmlexists", "path, value", "provisa_xpath_exists(path, value, '[]')"),
+    _macro("xpath", "path, value", "provisa_xpath(path, value, '[]')"),
+    _macro("xpath", "path, value, spaces", f"provisa_xpath(path, value, {_XML_SPACES})"),
+    _macro("xpath_exists", "path, value", "provisa_xpath_exists(path, value, '[]')"),
+    _macro(
+        "xpath_exists", "path, value, spaces", f"provisa_xpath_exists(path, value, {_XML_SPACES})"
+    ),
+    _macro(
+        "xmlvalidate",
+        "value, dtd",
+        strict("value, dtd", "BOOLEAN", raising("0A000", "'xmlvalidate is not implemented'")),
+    ),
 )
 
 _ROWS: tuple[Macro, ...] = (
@@ -512,6 +561,7 @@ _ROWS: tuple[Macro, ...] = (
         "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
         "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
     ),
+    _macro("pg_typeof", "value", _PG_TYPEOF),
     _macro("area", "value", "provisa_area(CAST(value AS VARCHAR))"),
     _macro("center", "value", "provisa_center(CAST(value AS VARCHAR))"),
     _macro("diagonal", "value", "provisa_diagonal(CAST(value AS VARCHAR))"),
@@ -620,6 +670,7 @@ _ROWS: tuple[Macro, ...] = (
         "error('function returning record called in context that cannot accept type record') "
         "ELSE CAST(NULL AS VARCHAR) END",
     ),
+    *_XML,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
 )

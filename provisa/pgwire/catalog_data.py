@@ -52,6 +52,7 @@ _PG_TYPE_ROWS = [
     # REQ-2171: the subtypes' types, as PostgreSQL's pg_type has them.
     (26, "oid", 11, 4, "b", "N", False, 0, True, "i", "p"),
     (142, "xml", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (143, "_xml", 11, -1, "b", "A", False, 0, False, "i", "x"),
     (600, "point", 11, 16, "b", "G", False, 0, False, "d", "p"),
     (650, "cidr", 11, -1, "b", "I", False, 0, False, "i", "m"),
     (790, "money", 11, 8, "b", "N", False, 0, True, "d", "p"),

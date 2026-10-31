@@ -105,6 +105,55 @@ def _touches(col: exp.Column, subtype: str) -> bool:
     return isinstance(parent, exp.In) and parent.this is node
 
 
+def _sorted_by(node: exp.Expr, scope: exp.Expr) -> exp.Expr | None:
+    """The projection of ``scope`` an ORDER BY's ``node`` names, as PostgreSQL reads it: a bare
+    name is the output column of that name before any input column, an integer the column at that
+    position. None for any other sort key."""
+    if not isinstance(node.parent, exp.Ordered) or not isinstance(scope, exp.Select):
+        return None
+    if isinstance(node, exp.Literal) and node.is_int:
+        position = int(node.this)
+        projections = scope.selects
+        chosen = projections[position - 1] if 0 < position <= len(projections) else None
+    elif isinstance(node, exp.Column) and not node.table:
+        named = [s for s in scope.selects if s.alias_or_name.lower() == node.name.lower()]
+        chosen = named[0] if len(named) == 1 else None
+    else:
+        chosen = None
+    return None if chosen is None else chosen.unalias()
+
+
+def _mark_sorted_projections(
+    tree: exp.Expr,
+    scopes: dict[int, dict[str, tuple[str, str]]],
+    subtype_columns: SubtypeColumns,
+) -> bool:
+    """Each ORDER BY of an alias or a position naming a subtyped column, sorted as the column is
+    (the sort is of the column's value, which the alias's text form does not order)."""
+    from provisa.compiler.sql_rewrite import _scope_tables
+
+    changed = False
+    for ordered in list(tree.find_all(exp.Ordered)):
+        key = ordered.this
+        scope = key.find_ancestor(exp.Select)
+        if scope is None or not isinstance(key, (exp.Column, exp.Literal)):
+            continue
+        projected = _sorted_by(key, scope)
+        if not isinstance(projected, exp.Column) or marked(projected.parent) is not None:
+            continue
+        tables = scopes.setdefault(id(scope), _scope_tables(scope))
+        subtype = _resolve(projected, tables, subtype_columns)
+        if subtype is None or not _sorts_by_semantics(subtype):
+            continue
+        key.replace(subtype_marker(projected.copy(), subtype))
+        changed = True
+    return changed
+
+
+def _sorts_by_semantics(subtype: str) -> bool:
+    return SUBTYPES[subtype].semantics in (*_ORDERED, "money")
+
+
 def _reads_a_range(parent: exp.Expr | None) -> bool:
     if isinstance(parent, (*_RANGE_OPERATORS, *_RANGE_FUNCTIONS)):
         return True
@@ -131,7 +180,7 @@ def mark_subtype_operations(sql: str, subtype_columns: SubtypeColumns) -> str:
     ):
         return sql
     scopes: dict[int, dict[str, tuple[str, str]]] = {}
-    changed = False
+    changed = _mark_sorted_projections(tree, scopes, subtype_columns)
     for col in list(tree.find_all(exp.Column)):
         if isinstance(col.this, exp.Star) or marked(col.parent) is not None:
             continue
