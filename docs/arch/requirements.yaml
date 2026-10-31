@@ -90437,7 +90437,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     pass on all of them are the guaranteed list, which is what Provisa promises anywhere, and each engine
     has its own list beneath it. Expansions are a judgement made function by function, not a target. A function
     not served still counts as failed, and is refused by name where its answer would differ. This replaces
-    THE GOAL IS 571 as a target.'
+    THE GOAL IS 571 as a target. (Amended 2026-10-29, INTERNAL FUNCTIONS:) Maintainer 2026-10-31: a pg_catalog
+    function PostgreSQL itself cannot call from SQL (an internal argument, a trigger or binary upgrade context)
+    is an internal function. It needs no support and is not a gap: it is reported as skipped by design under
+    Internal functions, the one function group allowed, and the probe proves each one against PostgreSQL.
+    This narrows PG_CATALOG FUNCTIONS ARE GAPS to functions SQL can call.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
