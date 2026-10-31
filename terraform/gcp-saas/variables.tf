@@ -475,9 +475,9 @@ variable "sandbox_internal_ip" {
 }
 
 variable "sandbox_disk_gb" {
-  description = "Boot disk of the sandbox VM: the image, the demo bundles, the templates and the sandboxes' folders."
+  description = "Boot disk of the sandbox VM: the image, the demo bundles, the templates and the sandboxes' folders. Read when the VM is created; an existing VM's disk is grown with gcloud compute disks resize, which replaces nothing."
   type        = number
-  default     = 50
+  default     = 100
 }
 
 variable "sandbox_idle_stop_minutes" {

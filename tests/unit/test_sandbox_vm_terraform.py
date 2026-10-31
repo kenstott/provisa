@@ -41,6 +41,21 @@ def test_the_sandbox_vm_runs_the_tier_alone_against_the_coordinator():
     assert "desired_status = null" in startup
 
 
+def test_the_sandbox_disk_grows_without_replacing_the_vm():
+    """google 5.45.2 forces a replacement on initialize_params.size (terraform plan, 2026-10-31:
+    50 -> 100 # forces replacement): the size is left out of terraform's changes, and an existing
+    VM's disk is grown with gcloud."""
+    sandbox = (_TF / "sandbox.tf").read_text()
+    variables = (_TF / "variables.tf").read_text()
+    instance = sandbox[sandbox.index('resource "google_compute_instance" "sandbox"') :]
+    instance = instance[: instance.index('resource "google_project_iam_custom_role"')]
+    assert "ignore_changes = [boot_disk[0].initialize_params[0].size]" in instance
+    declared = variables[variables.index('variable "sandbox_disk_gb"') :]
+    declared = declared[: declared.index("\n}\n")]
+    assert "default     = 100" in declared
+    assert "gcloud compute disks resize" in declared
+
+
 def test_the_coordinator_hands_the_tier_over_only_when_asked():
     sandbox = (_TF / "sandbox.tf").read_text()
     main = (_TF / "main.tf").read_text()
