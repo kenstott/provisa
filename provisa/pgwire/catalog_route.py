@@ -169,7 +169,14 @@ def _surface_rows() -> dict[tuple[str, str], list[dict[str, object]]]:
             for row in extensions
         ],
         (_PG, "pg_available_extension_versions"): [
-            {"name": row[1], "version": row[5], "installed": True, "schema": _PG}
+            {
+                "name": row[1],
+                "version": row[5],
+                "installed": True,
+                "superuser": False,
+                "relocatable": False,
+                "schema": _PG,
+            }
             for row in extensions
         ],
         (_PG, "pg_type"): [
@@ -403,6 +410,11 @@ def _as_cast(select: exp.Expr) -> None:
     if called is None:
         return
     name = called[0].name.lower()
+    if name == "pg_partition_ancestors":
+        called[0].set("this", "pg_partition_ancestors_named")
+        if select is target:
+            select.replace(exp.alias_(called[1].copy(), name))
+        return
     reg = _CALLS_OF_REG_TYPE.get(name)
     if reg is None:
         return

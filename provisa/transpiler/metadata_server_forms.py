@@ -938,7 +938,10 @@ _IDENTIFIED = (
     "ON _n.oid = _p.pronamespace WHERE classid = 1255 AND _p.oid = objid "
     "UNION ALL "
     "SELECT 'type', CAST(_n.nspname AS TEXT), QUOTE_IDENT(_t.typname), "
-    "QUOTE_IDENT(_n.nspname) || '.' || QUOTE_IDENT(_t.typname), "
+    "CASE WHEN _t.typname IN ("
+    + ", ".join(f"'{internal}'" for internal, _ in _TYPE_SPELLINGS)
+    + ") THEN format_type(_t.oid, NULL) "
+    "ELSE QUOTE_IDENT(_n.nspname) || '.' || QUOTE_IDENT(_t.typname) END, "
     "'type ' || format_type(_t.oid, NULL) "
     "FROM meta.catalog_pg_type _t JOIN meta.catalog_pg_namespace _n "
     "ON _n.oid = _t.typnamespace WHERE classid = 1247 AND _t.oid = objid "
@@ -1063,6 +1066,13 @@ def _catalog_objects(a: _Answers) -> None:
     )
     a.selected(
         "pg_partition_ancestors",
+        "rel:bigint",
+        f"SELECT _c.oid AS relid {partitionable}",
+        "_r.relid",
+    )
+    # As a result column: a regclass, sent with its oid and its name together.
+    a.selected(
+        "pg_partition_ancestors_named",
         "rel:bigint",
         f"SELECT _c.oid AS relid {partitionable}",
         _pair("_r.relid", _NAME_OF_RELID),

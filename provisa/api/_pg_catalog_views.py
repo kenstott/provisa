@@ -1224,6 +1224,10 @@ def _reference(name: str) -> str:
     )
 
 
+#: raw_array_subscript_handler, which a domain over name subscripts by, as name does.
+_NAME_SUBSCRIPT = 6180
+
+
 def _pg_type() -> str:
     """PostgreSQL's types, and the two PostgreSQL has only with PostGIS (ir_types.SUBTYPES)."""
     relation = (_PG, "pg_type")
@@ -1282,7 +1286,7 @@ def _pg_type() -> str:
             "typisdefined": "TRUE",
             "typdelim": "','",
             "typrelid": "0",
-            "typsubscript": "0",
+            "typsubscript": f"CASE d.typbasetype WHEN 19 THEN {_NAME_SUBSCRIPT} ELSE 0 END",
             "typelem": "0",
             "typarray": "0",
             "typinput": "0",

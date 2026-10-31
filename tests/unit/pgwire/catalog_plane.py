@@ -17,7 +17,6 @@ tested through the pipeline (tests/unit/pgwire/test_catalog_on_meta.py)."""
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from psycopg.types.string import TextLoader
@@ -205,7 +204,7 @@ class Plane:
                 raise
             described = [int(d[1]) for d in result.cursor.description]
             names = list(result.keys())
-            rows = [_plain(tuple(r)) for r in result.fetchall()]
+            rows = [tuple(r) for r in result.fetchall()]
         # Governance leaves a view's scope out of a star; this read is not governed.
         kept = [i for i, name in enumerate(names) if name != SCOPE_COLUMN]
         return catalog._as_declared(
@@ -233,10 +232,6 @@ def _named(setting: str) -> str:
     import re
 
     return re.sub(r"\$(\d+)", lambda m: f"%(p{int(m[1]) - 1})s", setting)
-
-
-def _plain(row: tuple) -> tuple:
-    return tuple(json.loads(v) if isinstance(v, str) and v[:2] == '{"' else v for v in row)
 
 
 def _text(value: Any) -> str | None:
