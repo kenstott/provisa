@@ -2,7 +2,8 @@
 # time (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS). First match wins: a function is in a family by its
 # name (names, pattern), an argument type (argument) or its result type (returns), each matched
 # against format_type. Read by pgwire_function_probe.py; a family says what a function is, never
-# that it may go unserved.
+# that it may go unserved, with one exception: "Index support" decides the Index functions group
+# (by_design.FUNCTION_GROUPS), so a name in it is a decision and btrim stays out of it.
 
 - family: Trigger
   # called only by the trigger manager
@@ -17,7 +18,7 @@
   pattern: '^(ascii|big5|euc|gb18030|gbk|iso|johab|koi8|latin|mic|shift_jis|sjis|uhc|utf8|win)\w*_to_\w+$'
 
 - family: Index support
-  pattern: '^(bt|brin|gin|gist|spg|hash|gtsvector|gtsquery|inet_gist|inet_spg|multirange_gist|range_gist)|(am|index_am|tableam|_tableam)_?handler$|^amvalidate$'
+  pattern: '^(bt(?!rim$)|brin|gin|gist|spg|hash|gtsvector|gtsquery|inet_gist|inet_spg|multirange_gist|range_gist)|(am|index_am|tableam|_tableam)_?handler$|^amvalidate$'
   names: [
     brin_bloom_summary_send, brin_minmax_multi_summary_send, brin_summarize_new_values,
     btboolcmp, btbpchar_pattern_cmp, btcharcmp, btequalimage, btfloat48cmp, btfloat4cmp,

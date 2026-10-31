@@ -1,7 +1,32 @@
 # pgwire (REQ-2167). scripts/conformance/by_design.py.
 #
-# No group here names a pg_catalog function: one not served is failed, whatever its family (REQ-2167,
-# amended 2026-10-29, PG_CATALOG FUNCTIONS ARE GAPS), and by_design.groups refuses such a group.
+# Two groups here name pg_catalog functions, and by_design.groups refuses any other: a function not
+# served is otherwise failed, whatever its family (REQ-2167, amended 2026-10-29, PG_CATALOG FUNCTIONS
+# ARE GAPS, INTERNAL FUNCTIONS and INDEXES BELONG TO THE DATABASE).
+
+# Catalog functions (pgwire_catalog_types.py, part 1). Each case keeps PostgreSQL's proof as its
+# reason: an internal argument, or the refusal function_probe.INTERNAL_REFUSAL recognizes. A refusal
+# that names this server's state is no proof, and stays failed.
+
+- group: Internal functions
+  requirement: REQ-2167
+  decision: >-
+    PostgreSQL itself cannot call these from SQL: each takes an internal argument, or runs only
+    from a trigger, an event trigger, binary upgrade or initdb, or is the input or output function
+    of a pseudo-type. They are parts of the server rather than functions a client calls.
+  case: "^catalog function::"
+  reason: "^no call reaches it: "
+
+# Family "Index support" of function_families.yaml and not served. Index metadata (pg_index,
+# pg_get_indexdef and the like) is in no such family, and stays served (REQ-2190).
+- group: Index functions
+  requirement: REQ-2167
+  decision: >-
+    Indexes belong to the source database, and Provisa does not handle them: these are the support
+    and maintenance functions of index access methods. Index metadata stays served.
+  case: "^catalog function::"
+  reason: "^not served: "
+  family: Index support
 
 # Type conversions (pgwire_catalog_types.py, part 3): a statement whose every difference from
 # PostgreSQL is one a design decision makes. Each group names the statements (case) and the only

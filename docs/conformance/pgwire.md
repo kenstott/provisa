@@ -44,7 +44,16 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 
 Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
 
-Every overload of every `pg_catalog` function is a conformance case, and each case is passed, skipped by design or failed. No `pg_catalog` function is skipped by design: one not served counts as failed until it is served, whatever its family. The suite calls each overload the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. An overload no call can reach, such as one taking an `internal` argument or a trigger function, is listed as failed by name. The failed cases are listed by family under the pass rate.
+Every overload of every `pg_catalog` function is a conformance case, and each case is passed, skipped by design or failed. The suite calls each overload the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`.
+
+| Outcome | Which functions |
+|---|---|
+| Passed | Served, with the result type PostgreSQL gives the same call. |
+| Skipped by design: Internal functions | PostgreSQL itself cannot call them. Each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state: a trigger function, a binary upgrade function, a pseudo-type's input or output function. Each case records its proof. |
+| Skipped by design: Index functions | Index access method support and index maintenance functions (btree, hash, GiST, GIN, SP-GiST, BRIN support, `brin_summarize_range` and its kin) that are not served. Indexes belong to the source database. Index metadata is unaffected: `pg_index`, `pg_get_indexdef` and the like stay served. |
+| Failed | Every other function: one not served, one whose result type differs from PostgreSQL's, and one PostgreSQL refuses only for the state of the server the suite ran on, such as a recovery function on a server not in recovery. |
+
+The skipped and failed cases are listed by group and by family under the pass rate.
 
 ### Advisory locks
 
