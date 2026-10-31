@@ -90836,7 +90836,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     int or float, with decimals as float, not as text: 1.50 and 1.5 are the same answer. (Amended 2026-10-29,
     JSON SPACING AND KEY ORDER ARE NOT A DIFFERENCE:) Maintainer 2026-10-31: spacing and key order are not
     a difference in JSON, which guarantees neither. A json or jsonb answer is compared as parsed JSON, with
-    numbers by value.'
+    numbers by value. (Amended 2026-10-29, ARRAY ORDER NEEDS AN ORDER BY:) Maintainer 2026-10-31: the order
+    of an array an aggregate builds is guaranteed only by an ORDER BY in the statement. Without one its
+    elements compare in any order; an array stated as a value keeps its order.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
