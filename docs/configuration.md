@@ -49,10 +49,10 @@ All sources share a common field set.
 | `id` | required | Alphanumeric, hyphens, underscores |
 | `type` | required | See table below |
 | `host` | `""` | Hostname or IP |
-| `port` | `0` | `0` means each connector supplies its own default — there is no central default-port map |
+| `port` | `0` | `0` means each connector supplies its own default; there is no central default-port map |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Supports `${env:VAR}` and `${secret:NAME}` credential references — see [Secrets](secrets.md) |
+| `password` | `""` | Supports `${env:VAR}` and `${secret:NAME}` credential references; see [Secrets](secrets.md) |
 | `path` | `null` | File path or URI for file-based sources |
 | `base_url` | `null` | Base URL for API sources |
 | `pool_min` / `pool_max` | `1` / `5` | Connection pool bounds |
@@ -705,7 +705,7 @@ A table holds no write grant by default, so no role can write it. A grant gives 
 | `check` | What every row an `INSERT` writes, or an `UPDATE` leaves behind, must satisfy: a SQL predicate. A `delete` grant has none. |
 | `presets` | Columns the grant sets itself. The statement may not supply them, so a preset column is not also in `columns`. |
 
-Leave `rows` or `check` out and the grant takes the role's read row filter on the table: a role writes the rows it reads unless the grant says otherwise. `"TRUE"` means every row. The older column `writable_by` and table `column_presets` keys are refused by name; the configuration fails to load until they are replaced by `write_grants`.
+Leave `rows` or `check` out and the grant takes the role's read row filter on the table, so a role writes the rows it reads unless the grant says otherwise. `"TRUE"` means every row. The older column `writable_by` and table `column_presets` keys are refused by name; the configuration fails to load until they are replaced by `write_grants`.
 
 Every write on every surface is admitted in this order: the role holds the `write` right; the role holds a grant for the operation on the table; every column the statement writes is in the grant; the grant's presets are added to the statement; the grant's `rows` predicate is ANDed into the `WHERE` of an `UPDATE` or `DELETE`; and the `check` is evaluated on the new rows before anything is sent to the source. A statement the check cannot decide is refused. The grant's columns also decide which mutation fields GraphQL offers a role: one field per operation it holds a grant for, taking exactly those columns.
 
@@ -958,7 +958,7 @@ SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-
 
 A point answers the version of each key in force then. A range answers every version in force at any time within it, one row per version.
 
-**As recorded.** A correction recorded later changes what a view says about the past: the version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `as_recorded`, one ISO 8601 time:
+**As recorded.** A correction recorded later changes what a view says about the past. The version in force on 30 September is the corrected one once the correction is recorded. To read the view as Provisa had recorded it at a time, before any later correction, add `as_recorded`, one ISO 8601 time:
 
 ```sql
 SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
@@ -1118,7 +1118,7 @@ Without the hint the request neither reads nor writes the cache. With it, the se
 
 The hint only accepts older data in exchange for speed. It never makes a read fresher than the operator's settings allow: landing and replica freshness (`cache_ttl`, `change_signal`), `row_materialize`, `load_protected` snapshots and freshness gates apply to a hinted request exactly as to an unhinted one. See [Freshness and load: who decides](#freshness-and-load-who-decides).
 
-`@noCache` and `-- @provisa no_cache=true` no longer exist: with caching off by default there is nothing to bypass.
+`@noCache` and `-- @provisa no_cache=true` no longer exist, because with caching off by default there is nothing to bypass.
 
 A write invalidates every cached entry the writing org holds for the tables it wrote; another org's entries for the same table are untouched. A failed invalidation fails the request instead of leaving stale entries behind.
 
@@ -1373,7 +1373,7 @@ Presets are added to the statement during compilation, before SQL generation. Th
 
 ## Inherited Roles
 
-A role names the roles it inherits from in `parents`, in order. The inheritance is flattened at startup. A role holds the union of its own capabilities and every ancestor's; a column, metric, function or webhook granted to an ancestor is granted to it. Its `domain_access` is its own: reach says where the role's capabilities apply, so a child of a role that reaches every domain reaches only the domains it lists.
+A role names the roles it inherits from in `parents`, in order. The inheritance is flattened at startup. A role holds the union of its own capabilities and every ancestor's; a column, metric, function or webhook granted to an ancestor is granted to it. Its `domain_access` is its own. Reach says where the role's capabilities apply, so a child of a role that reaches every domain reaches only the domains it lists.
 
 RLS resolves per table. A role's own rule for a table stands. Without one, the rules its parents resolve are combined with OR, and a parent with no rule adds nothing, so adding a parent never lifts a row rule. A role with no rule anywhere among its ancestors reads every row its grants allow. Write grants resolve the same way per operation. A property such as `max_rows`, `rate_limit` or a session value comes from the role itself, else from the first ancestor that sets it, ancestors walked depth-first in the order `parents` lists them.
 
@@ -1510,7 +1510,7 @@ Provisa runs two independent OTLP export paths: your internal collector and the 
 | `redact_sql_literals` | bool | `true` | Replaces string and numeric literals in `db.statement` with `?` |
 | `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
 
-A redacted `db.statement`. With `redact_sql_literals: true`, this span attribute:
+With `redact_sql_literals: true`, this span attribute:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1686,7 +1686,7 @@ When a source cannot attach live (no ATTACH connector for the selected engine), 
 
 The `pg` engine's store is the database it runs in. Other engines declare their own default, most often `TENANT_DATABASE_URL` (PostgreSQL). Override any engine but `pg` with `PROVISA_MATERIALIZE_URL`. On `pg`, a store naming any other database stops the server at start.
 
-The store decides what a replica's indexes do for joins: a PostgreSQL store indexes replicas and an engine that runs SQL in it reads those indexes, while DuckDB joins its embedded file's replicas over a per-statement copy. See [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it).
+The store decides what a replica's indexes do for joins. A PostgreSQL store indexes replicas and an engine that runs SQL in it reads those indexes, while DuckDB joins its embedded file's replicas over a per-statement copy. See [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it).
 
 ### Per-source federation hints
 
@@ -1736,7 +1736,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Config file path |
 | `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | Control-plane store URI (SQLAlchemy); accepts `sqlite+pysqlite://…` / `duckdb://…` for the embedded desktop store |
 | `PLATFORM_DATABASE_URL` | — | Platform registry URI (tenant directory, engine registry); required at startup, no fallback |
-| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` uses embedded fakeredis instead of a Redis server — no Docker |
+| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` uses embedded fakeredis instead of a Redis server, with no Docker |
 | `PG_HOST` | `localhost` | PostgreSQL host |
 | `PG_PORT` | `5432` | PostgreSQL port |
 | `PG_DATABASE` | `provisa` | PostgreSQL database |

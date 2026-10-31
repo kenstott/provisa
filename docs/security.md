@@ -8,35 +8,35 @@ The checks run in order. A request has to pass each one before the next is looke
 
 ## Layered Model
 
-### Layer 0 — Introspection filtering
+### Layer 0: Introspection filtering
 
 A role is shown only the tables its `domain_access` reaches and the columns its `visible_to` rules allow. Anything else doesn't exist as far as that role can tell. It can't be queried, autocompleted or guessed at. The GraphQL schema, the SQL catalog and the query editor's schema browser all show the same narrowed view.
 
 See [Schema Visibility](#schema-visibility).
 
-### Layer 1 — Public access
+### Layer 1: Public access
 
 A column published with scope `public` is served to every role in the org, even one whose `domain_access` doesn't reach the table's domain. That role sees the table with its public columns and nothing else. A column with scope `listed` shows its table's name and its own name in every role's catalog, and serves nothing. Nothing is listed or public until whoever registered the table says so. See [Public columns](#public-columns).
 
-### Layer 2 — Domain access
+### Layer 2: Domain access
 
 Each role has a `domain_access` list of domain IDs, and a query that touches a table in any other domain is refused before it runs. This is the coarse ownership line. An HR role can't reach finance tables, however the SQL is written.
 
 See [Rights Model](#rights-model).
 
-### Layer 3 — Row-level security
+### Layer 3: Row-level security
 
 Once domain access is settled, the role's row filter for each table is added to every `SELECT` as a `WHERE` predicate, evaluated against the raw data. A regional manager who runs `SELECT *` on the shared orders table still gets back only their region's rows.
 
 See [Row-Level Security (RLS)](#row-level-security-rls).
 
-### Layer 4 — Column visibility and masking
+### Layer 4: Column visibility and masking
 
 A column whose `visible_to` list leaves out your role is dropped from the output. A masked column has its values replaced before they leave the server, by a regex, a constant or a truncation. That holds in every query language and every output format.
 
 See [Column Permission Model](#column-permission-model) and [Column-Level Masking](#column-level-masking).
 
-### Layer 5 — Predicate guard
+### Layer 5: Predicate guard
 
 You can't filter on a masked column. `WHERE` and `HAVING` refuse it when the query is parsed. Otherwise a caller could recover the real value by binary search, one filter at a time, even though every result it saw was masked.
 
@@ -127,13 +127,13 @@ When a request names more than one role, Provisa builds an ephemeral meta-role i
 
 Rights are the union of every member's. Row filters are the OR of each member's resolved filter; if any member that reads a table has no filter, the meta-role has none either. No filter means all rows. A meta-role is never stored, listed, or exported. It is rebuilt from its members when the model changes.
 
-Each row's columns are masked and shown according to the roles whose row filter admitted that row: of those roles, the least restrictive reading of the column applies, and a role that did not admit the row contributes nothing to how it is read. Masks apply where the table is read, before any join or aggregate, so an aggregate reads the masked values. Writes are checked the same way: a column is written on a row only where a role granting that column admits the row.
+Each row's columns are masked and shown according to the roles whose row filter admitted that row. Of those roles, the least restrictive reading of the column applies, and a role that did not admit the row contributes nothing to how it is read. Masks apply where the table is read, before any join or aggregate, so an aggregate reads the masked values. Writes are checked the same way: a column is written on a row only where a role granting that column admits the row.
 
-The audit record names every acting role, not the meta-role id. Since a meta-role is never stored, it has no description of its own: wherever one is shown, its description is its members', each id with its own.
+The audit record names every acting role, not the meta-role id. Since a meta-role is never stored, it has no description of its own. Wherever one is shown, its description is its members', each id with its own.
 
 ### Descriptions
 
-Every role and every row rule says what it is for. An access review reads who may see what and why. A role or a rule nobody can explain is one nobody can review, so the description is required: a role, a derived parent role or a row rule with an empty one is refused by the configuration load, the admin API and the UI, with the reason. The Roles and Row rules lists show each description, and their detail panels show and edit it.
+Every role and every row rule says what it is for. An access review reads who may see what and why. A role or a rule nobody can explain is one nobody can review, so the description is required. A role, a derived parent role or a row rule with an empty one is refused by the configuration load, the admin API and the UI, with the reason. The Roles and Row rules lists show each description, and their detail panels show and edit it.
 
 A role has one description, not one per domain. A general role that does not describe its responsibilities within a particular domain means that domain needs a role of its own, usually a child of the general role, which inherits its rights and describes what it does there.
 
@@ -141,13 +141,13 @@ A role has one description, not one per domain. A general role that does not des
 
 A client sends one role, or a comma-separated set, in `X-Provisa-Role`. Each named role must be held. A role the identity is not assigned is refused by name.
 
-Rights and data follow only the roles the request acts as: holding a role is not acting as it. One role is that role; two or more act as their meta-role. An acting role that brought every held role's rights with it would mean nothing, so a request gets least privilege and the audit record names exactly what acted.
+Rights and data follow only the roles the request acts as. Holding a role is not acting as it. One role is that role; two or more act as their meta-role. An acting role that brought every held role's rights with it would mean nothing, so a request gets least privilege and the audit record names exactly what acted.
 
-Named derived roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights: as a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role.
+Named derived roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights. As a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role.
 
 An MCP agent never acts beyond the roles it was given. A remote agent names only roles its token's principal holds. A local stdio agent names only roles within the set pinned in `mcp.role` (`PROVISA_MCP_ROLE`), and acts as that set when it names none; any other role is refused by name.
 
-An agent asks which role it acts as with the MCP tool `describe_role`. The answer is that role and what it is for (a meta-role with each of its members), and the roles the agent may switch to, each with its description. It never carries a row rule, mask, grant or condition. Provisa never tells an agent why a result was narrowed, and a result carries no "filtered" flag: a role's data is its whole view, and a reason for what is missing would invite probing for it.
+An agent asks which role it acts as with the MCP tool `describe_role`. The answer is that role and what it is for (a meta-role with each of its members), and the roles the agent may switch to, each with its description. It never carries a row rule, mask, grant or condition. Provisa never tells an agent why a result was narrowed, and a result carries no "filtered" flag, because a role's data is its whole view, and a reason for what is missing would invite probing for it.
 
 ### What `+` means
 
@@ -163,7 +163,7 @@ An attribute-based policy asks: "can this user, with these attributes, see this 
 
 "Unmask this email only for an analyst in the EU" is a mask entry `{to: [analyst+region__eu], mask: null}`. Any reader holding both the `analyst` role and the `region__eu` derived role reads the column unmasked, with no policy language and no role per combination.
 
-The trade-off is computation over enumeration. A small role catalogue keeps maintenance low, but "who can see this EU email?" becomes a computed answer: composite entries are evaluated against each user's assignments and claims. Provisa can answer that in both directions because the model is one definition. The column editor's Check access (`POST /admin/masks/check`) runs that evaluation for a chosen set of roles.
+The trade-off is computation over enumeration. A small role catalogue keeps maintenance low, but "who can see this EU email?" becomes a computed answer. Composite entries are evaluated against each user's assignments and claims. Provisa can answer that in both directions because the model is one definition. The column editor's Check access (`POST /admin/masks/check`) runs that evaluation for a chosen set of roles.
 
 ### Benefits
 
@@ -343,7 +343,7 @@ Each entry has a `to` list naming the readers it targets, and an optional `mask`
 
 The mask expression is pushed into the SQL SELECT projection. The database returns the masked value; unmasked data never crosses the wire for masked roles. Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent value inference through filtering.
 
-**A mask covers every name of the column, not a related column.** A column read by its alias or its physical name is masked alike. A mask does not hide a key that an approved relationship joins to a column the role can see: the join compares the real values, so the related column shows what the masked key holds. Mask the related column too, or don't approve the relationship for that role.
+**A mask covers every name of the column, not a related column.** A column read by its alias or its physical name is masked alike. A mask does not hide a key that an approved relationship joins to a column the role can see, because the join compares the real values, so the related column shows what the masked key holds. Mask the related column too, or don't approve the relationship for that role.
 
 **No entry held means completely masked.** Once a column has any mask, a reader that holds no entry reads it completely masked: `****` for a text column, `NULL` for any other type. Unmasked is only ever given by an entry. To leave the readers a list does not name unmasked, end it with an entry that has no `to` and no `mask`, written out. A column with no masks is unaffected.
 
@@ -463,7 +463,7 @@ A rate limit caps how many requests a role sends. The complexity limit caps what
 
 Every statement has a complexity score: the relations it reads, its joins, the columns it selects (a `*` counts as the columns it stands for), and the queries nested inside it. A relation read from a remote API source (OpenAPI, remote GraphQL, remote gRPC) counts as 10, because each read spends a budget the remote system sets for everyone using that source.
 
-The limit is `max_query_complexity` in a role's `rate_limit`. The org-wide setting `limits.max_query_complexity` is a ceiling for every role: a role may set a lower limit, and a higher one has no effect. Neither is set by default.
+The limit is `max_query_complexity` in a role's `rate_limit`. The org-wide setting `limits.max_query_complexity` is a ceiling for every role. A role may set a lower limit, and a higher one has no effect. Neither is set by default.
 
 ```yaml
 roles:
@@ -493,7 +493,7 @@ Pluggable auth providers:
 
 `saml` is SP-initiated Web Browser SSO. The response's XML signature is verified against the identity provider's metadata, and claims are read only from the signed element. Issuer, Audience, the ACS URL, expiry and `InResponseTo` are all checked. Unsolicited (IdP-initiated) responses, encrypted assertions, documents with a DOCTYPE, multiple assertions and SHA-1 signatures are refused. A SAML session is not checked again with the identity provider: a user removed there keeps access until the session token expires.
 
-Role mapping: identity claims → Provisa role via configurable rules. The `assignments_source` field controls where role assignments come from: `claims` reads them from JWT token claims (default), `provisa` reads them from Provisa's internal assignment store. A multi-tenant deployment (`multitenancy: true`) grants roles itself, per org, so it must use `assignments_source: provisa`: with `claims` it does not start, and a settings change that would produce that combination is refused. A single-tenant deployment may use either.
+Role mapping: identity claims → Provisa role via configurable rules. The `assignments_source` field controls where role assignments come from: `claims` reads them from JWT token claims (default), `provisa` reads them from Provisa's internal assignment store. A multi-tenant deployment (`multitenancy: true`) grants roles itself, per org, so it must use `assignments_source: provisa`. With `claims` it does not start, and a settings change that would produce that combination is refused. A single-tenant deployment may use either.
 
 A superuser configured in `provisa.yaml` (username plus a password from an env secret) always receives the admin role and all capabilities regardless of the configured provider, a bootstrap path for initial setup.
 
@@ -543,7 +543,7 @@ Client-certificate verification moves the first check to the TLS handshake, so a
 | `PROVISA_MTLS_MODE` | `required` (the default once a CA is set) or `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | When true, the certificate's common name must equal the username the connection then authenticates as |
 
-Per-protocol overrides follow the same naming as the TLS settings. Nothing is inferred: a mode set without a CA refuses to start, and an unrecognized mode refuses to start rather than being read as the safest neighbour. A deployment that believes it requires client certificates and does not is worse off than one that fails to start.
+Per-protocol overrides follow the same naming as the TLS settings. Nothing is inferred. A mode set without a CA refuses to start, and an unrecognized mode refuses to start rather than being read as the safest neighbour. A deployment that believes it requires client certificates and does not is worse off than one that fails to start.
 
 ### TLS versions
 
@@ -561,7 +561,7 @@ The key is the principal the protocol carries. A bearer-only surface carries no 
 
 Naming a role the caller does not hold is treated as a detected security event of high severity, on every surface: the HTTP API, MCP, pgwire, Bolt, Arrow Flight, the airport Flight service and gRPC. A legitimate client names the roles it was given; one that names another is either broken or probing.
 
-The request is refused. The caller is told only "not permitted", nothing about whether the role exists, and the connection or session ends where there is one: the pgwire connection, the Bolt session, the gRPC call, the MCP session. The exception is the HTTP API with any credential but a personal access token: the browser presents its session or its identity provider's token there, so the refusal keeps naming the role.
+The request is refused. The caller is told only "not permitted", nothing about whether the role exists, and the connection or session ends where there is one: the pgwire connection, the Bolt session, the gRPC call, the MCP session. The exception is the HTTP API with any credential but a personal access token, because the browser presents its session or its identity provider's token there, so the refusal keeps naming the role.
 
 What else happens depends on the credential and the transport:
 
@@ -663,15 +663,15 @@ The desktop and native tiers run PostgreSQL embedded. On macOS and Linux it list
 
 ### Sources on a shared deployment
 
-On a deployment that holds many organizations, an organization's sources may reach only public addresses: never the platform's private network, where its model store, cache and object store are. The check applies when a source is saved, by the UI, the admin API or a configuration apply, and again at every connection and every HTTP redirect. A demo sandbox's sources are further held to the address they were checked at. The deployment's own organization, whose sources the operator configures, is not held.
+On a deployment that holds many organizations, an organization's sources may reach only public addresses, never the platform's private network, where its model store, cache and object store are. The check applies when a source is saved, by the UI, the admin API or a configuration apply, and again at every connection and every HTTP redirect. A demo sandbox's sources are further held to the address they were checked at. The deployment's own organization, whose sources the operator configures, is not held.
 
 ## Encryption at Rest and the Organization's Own Keys
 
 Encryption under an organization's own key is available, and it is off until the organization turns it on. Nothing is encrypted under a key of the organization's unless an organization admin creates one.
 
-**The organization's encryption key** wraps the organization's secrets, its encrypted columns and its audit query text. An organization admin creates it under **Admin → Org Secrets → Org Key**, or with `PUT /admin/org-encryption`: with no body Provisa generates the key, which is never shown, and a `key_b64` body supplies 32 bytes of your own. `GET /admin/org-encryption` reports only its fingerprint. Without an organization key, the organization's data is wrapped with the deployment's key (`encryption.provider` in `provisa.yaml`). A deployment that configures no encryption provider stores encrypted columns and audit query text unencrypted; secrets are never stored in the clear (see [Secrets](secrets.md#provisas-built-in-store)).
+**The organization's encryption key** wraps the organization's secrets, its encrypted columns and its audit query text. An organization admin creates it under **Admin → Org Secrets → Org Key**, or with `PUT /admin/org-encryption`. With no body Provisa generates the key, which is never shown, and a `key_b64` body supplies 32 bytes of your own. `GET /admin/org-encryption` reports only its fingerprint. Without an organization key, the organization's data is wrapped with the deployment's key (`encryption.provider` in `provisa.yaml`). A deployment that configures no encryption provider stores encrypted columns and audit query text unencrypted; secrets are never stored in the clear (see [Secrets](secrets.md#provisas-built-in-store)).
 
-**The organization's folder** holds its uploaded and landed files, its engine's spill files and its temporary files. An organization admin turns its encryption on under **Admin → Org Secrets → File folder encryption**, or with `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` answers a new 256-bit key once, to be stored in the vault. The key stays in the organization's own vault (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault or HashiCorp Vault): Provisa stores only the reference, and gocryptfs keeps the folder's files encrypted on disk under the key. This needs FUSE, so a Linux host or container with `/dev/fuse`; on macOS the setting is refused.
+**The organization's folder** holds its uploaded and landed files, its engine's spill files and its temporary files. An organization admin turns its encryption on under **Admin → Org Secrets → File folder encryption**, or with `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` answers a new 256-bit key once, to be stored in the vault. The key stays in the organization's own vault (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault or HashiCorp Vault). Provisa stores only the reference, and gocryptfs keeps the folder's files encrypted on disk under the key. This needs FUSE, so a Linux host or container with `/dev/fuse`; on macOS the setting is refused.
 
 On a self-hosted deployment, which typically runs one organization on its own engines, turning both on encrypts that organization's secrets, files, spill files and temporary files under its keys:
 
@@ -698,7 +698,7 @@ Explore's Python and Notebook tabs run Python in the visitor's browser. Every re
 - **Data endpoints require proof of client-side decryption.** Everything under `/data/` returns 403 unless the caller presents the `X-Provisa-KMS-Key` header, the marker of a JDBC or Python client configured to decrypt locally. A browser or a plaintext REST consumer carries no such key and is refused. The gate is a default-deny over the whole tree: a route added tomorrow is gated on the day it ships, and an exemption has to be argued for.
 - **Schema-metadata endpoints stay open.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` and `/data/compile` return no row data, and a client has to read the schema (including which fields are `@encrypted`) before it can connect at all.
 - **gRPC and Arrow Flight keep serving, under the same proof.** They are the transports encrypting clients actually use; closing them would leave a high-security deployment with no wire protocol. A data call on either must carry the same KMS key as call metadata.
-- **pgwire, Bolt and MCP do not start.** None of the three has a per-connection handshake that can carry a decryption context: a pgwire row set and a Cypher result are plaintext on the wire, and an MCP tool call hands its results to a model as text. A configured port for any of them is refused at startup rather than served.
+- **pgwire, Bolt and MCP do not start.** None of the three has a per-connection handshake that can carry a decryption context. A pgwire row set and a Cypher result are plaintext on the wire, and an MCP tool call hands its results to a model as text. A configured port for any of them is refused at startup rather than served.
 - **The relationship guard cannot be bypassed.** `ignore_relationships` and `relationship_guard: false` are both ignored; see [Relationship governance](#relationship-governance-v002).
 
 **Verifying a deployment is in the mode:** the startup log names it, a `/data/sql` request without a KMS key answers 403 with a message naming high-security mode, and the pgwire, Bolt and MCP ports are not listening.

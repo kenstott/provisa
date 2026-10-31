@@ -165,8 +165,8 @@ Results above a configured row threshold (or when `X-Provisa-Redirect: true`) ar
 
 | Redirect Format | Written by | Memory |
 | --- | --- | --- |
-| `application/vnd.apache.parquet` | federated CTAS | None — data never passes through Provisa |
-| `application/x-orc` | federated CTAS | None — data never passes through Provisa |
+| `application/vnd.apache.parquet` | federated CTAS | None; data never passes through Provisa |
+| `application/x-orc` | federated CTAS | None; data never passes through Provisa |
 | `application/json` | Provisa | Memory-bound |
 | `application/x-ndjson` | Provisa | Memory-bound |
 | `text/csv` | Provisa | Memory-bound |
@@ -274,7 +274,7 @@ Possible values:
 
 | State | Meaning |
 | --- | --- |
-| `always-on` | Desktop, self-hosted, or BYO coordinator — no lifecycle management |
+| `always-on` | Desktop, self-hosted, or BYO coordinator; no lifecycle management |
 | `ready` | Shard is up and accepting queries |
 | `starting` | Cold-start in progress |
 | `stopped` | Shard is scaled to zero |
@@ -338,7 +338,7 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 - `groupBy`: comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see.
 - `includeNodes`: `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details.
 
-- `include`: comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`: each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
+- `include`: comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`. Each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
 
 Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` is its table's primary key: the key column's value, or for a composite key its columns' values in key order joined by `:` (order 7's line 2 of a table keyed `(order_id, line)` is `7:2`). A `:` or `\` inside a value is escaped with `\`. A table with no declared primary key uses its `id` column; a table with neither returns `400`, as does an `include` that reaches one. Errors follow the JSON:API error object shape.
 
@@ -648,7 +648,7 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
 }
 ```
 
-API keys are never sent back: `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
+API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -872,7 +872,7 @@ Set or rotate the org's at-rest encryption key.
 
 Leave out `key_b64` to have Provisa generate a key. That's the safest choice, since the key never shows up in a clipboard or a request log. Supplying `key_b64` brings your own key.
 
-Rotation adds a new active entry to the key ring and retains the old one, so data written under the previous key remains readable. Rotation is not re-encryption. There is no delete endpoint: retiring the last key would make every wrapped payload unreadable.
+Rotation adds a new active entry to the key ring and retains the old one, so data written under the previous key remains readable. Rotation is not re-encryption. There is no delete endpoint, because retiring the last key would make every wrapped payload unreadable.
 
 The live ring is rebound in the same call, so the next encrypted write uses the new key immediately.
 
@@ -1023,9 +1023,9 @@ Register a tracked function (command).
 | --- | --- | --- |
 | `name` | Yes | Unique command name |
 | `kind` | Yes | `"query"` → GraphQL Query field; `"mutation"` → Mutation field |
-| `implKind` | No | How the command runs — see table below (default `source_procedure`) |
+| `implKind` | No | How the command runs (see table below; default `source_procedure`) |
 | `binding` | No | `implKind`-specific connection details (JSON object) |
-| `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — makes the command set-returning on every surface |
+| `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}`; makes the command set-returning on every surface |
 | `arguments` | No | `[{name, type}]` argument definitions; positional order matters for SQL and Bolt callers |
 | `visibleTo` | No | Role IDs the command is assigned to (empty: every role). A `mutation` also needs the `write` right |
 | `domainId` | No | Domain for GraphQL placement and access control |
@@ -1397,8 +1397,8 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Remove an edge (query params: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Tag a user as an expert or author for a term |
 | `DELETE` | `/admin/glossary/terms/{term_id}/experts/{user_id}` | Remove a user's expert/author designation |
-| `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model — returns text only, nothing persists until saved |
-| `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none — never overwrites human-authored text |
+| `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model; returns text only, and nothing persists until saved |
+| `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none; never overwrites human-authored text |
 | `POST` | `/admin/glossary/relationships/generate` | Propose and persist typed edges across the whole glossary using the org's AI model |
 
 A term's role is derived from what it grounds and is never set. A `PATCH` or create that sets `is_abstract` is refused (`glossary.abstract_is_derived`).
@@ -1482,7 +1482,7 @@ Deleting a term that still holds columns returns `400 glossary.invalid`, naming 
 
 The kinds are `unlinked_tables`, `class_and_attribute`, `tag_wrong_kind`, `retirement_blocked` and `no_data`. A term with no findings is left out, and a plain draft is not a finding. The endpoint reports and changes nothing.
 
-**`PATCH /admin/glossary/terms/{term_id}` — `export_excluded` field:**
+**`PATCH /admin/glossary/terms/{term_id}`, `export_excluded` field:**
 
 ```json
 {"export_excluded": true}
@@ -1508,7 +1508,7 @@ Response:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write: unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently. Re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms.
+Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write. Unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently. Re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms.
 
 Response:
 
@@ -1516,7 +1516,7 @@ Response:
 {"added": 5}
 ```
 
-`added` is the number of edges written. An edge that already existed still counts: the upsert succeeds, but the edge's data doesn't change.
+`added` is the number of edges written. An edge that already existed still counts. The upsert succeeds, but the edge's data doesn't change.
 
 ### MCP `search_terms` Tool
 
@@ -1575,7 +1575,7 @@ Every vendor adapter publishes the term graph natively, into a glossary containe
 | OpenMetadata | Provisa glossary via `/v1/glossaries` | fqn-keyed PUT, renames PATCH-rebind by stored UUID | KIND_OF → native parent hierarchy, SYNONYM_OF → `synonyms`, others → `relatedTerms` | `entityStatus` |
 | Collibra | Glossary-type domain "Provisa Glossary" | Business Term assets via the Import API | native Business Term relation types | asset status |
 
-What counts is the binding. A matching name means nothing. Each published term's vendor id is recorded in `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa changes or deletes a glossary item on the vendor side only when it holds that binding, or when the item lives in the container Provisa created. A glossary item with no Provisa binding came from the external system and is never touched. Updates read and merge, so fields a steward added to Provisa's own terms survive, and nothing is deleted when a term leaves the snapshot. Each term carries its role (class, property or concept) as a property of the term: `provisaRole` in DataHub's custom properties, an OpenMetadata custom property, the term's additional attributes in Atlas, Purview and Atlan, and the `Provisa Role` attribute in Collibra. In DataHub the org's Provisa node has a child node for each role, named Classes, Properties and Concepts. OpenMetadata has no glossary node other than a term, so each role is a group term holding the role's top-level terms, and a term with a `KIND_OF` parent stays beneath that parent. Provisa also assigns each term to the data it means. A class term is assigned to the published tables it grounds, a property term to its published columns, and a concept to nothing. Each assignment is written as the catalog's own automated one and attributed to Provisa: an `Automated` label in OpenMetadata, a term association attributed to Provisa's actor in DataHub, a semantic assignment whose source is Provisa in Atlas and Atlan, and a relation created by Provisa's user in Collibra. Provisa adds and withdraws only those, so an assignment a steward made is never removed or duplicated. An assignment is not withdrawn because a request failed. On Collibra the assignments go through the relations API rather than the Import API, because the import would replace a steward's relations of the same type. On Collibra in particular, the Import API replaces what it's sent, and safety rests on containment: the payload names only assets inside the Provisa glossary domain and relations only between Provisa terms, so steward glossaries and their relations are out of reach.
+What counts is the binding. A matching name means nothing. Each published term's vendor id is recorded in `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa changes or deletes a glossary item on the vendor side only when it holds that binding, or when the item lives in the container Provisa created. A glossary item with no Provisa binding came from the external system and is never touched. Updates read and merge, so fields a steward added to Provisa's own terms survive, and nothing is deleted when a term leaves the snapshot. Each term carries its role (class, property or concept) as a property of the term: `provisaRole` in DataHub's custom properties, an OpenMetadata custom property, the term's additional attributes in Atlas, Purview and Atlan, and the `Provisa Role` attribute in Collibra. In DataHub the org's Provisa node has a child node for each role, named Classes, Properties and Concepts. OpenMetadata has no glossary node other than a term, so each role is a group term holding the role's top-level terms, and a term with a `KIND_OF` parent stays beneath that parent. Provisa also assigns each term to the data it means. A class term is assigned to the published tables it grounds, a property term to its published columns, and a concept to nothing. Each assignment is written as the catalog's own automated one and attributed to Provisa: an `Automated` label in OpenMetadata, a term association attributed to Provisa's actor in DataHub, a semantic assignment whose source is Provisa in Atlas and Atlan, and a relation created by Provisa's user in Collibra. Provisa adds and withdraws only those, so an assignment a steward made is never removed or duplicated. An assignment is not withdrawn because a request failed. On Collibra the assignments go through the relations API rather than the Import API, because the import would replace a steward's relations of the same type. On Collibra in particular, the Import API replaces what it's sent, and safety rests on containment. The payload names only assets inside the Provisa glossary domain and relations only between Provisa terms, so steward glossaries and their relations are out of reach.
 
 ---
 
@@ -1658,7 +1658,7 @@ Deleting a product clears `product_id` from every member table, removing their m
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | `String` | Yes | Machine-readable stable identifier, e.g. `customer_360` |
-| `domain_id` | `String` | Yes | Owning domain. Member tables must share this `domain_id` — mismatches are rejected at save time |
+| `domain_id` | `String` | Yes | Owning domain. Member tables must share this `domain_id`; mismatches are rejected at save time |
 | `name` | `String` | Yes | Display name |
 | `owner_role` | `String` | No | Role accountable for this product; distinct from the domain steward |
 | `team_role` | `String` | No | Role whose holders maintain this product day-to-day; resolves to individuals |
@@ -1667,7 +1667,7 @@ Deleting a product clears `product_id` from every member table, removing their m
 | `usage` | `String` | No | How to consume this product |
 | `version` | `String` | No | e.g. `1.2.0` |
 | `status` | `String` | No | e.g. `proposed`, `active`, `deprecated`, `retired` |
-| `sla` | `String` | No | Service-level commitments; prose — a product spans multiple tables and structured SLA cannot unambiguously name which member it describes |
+| `sla` | `String` | No | Service-level commitments as prose, because a product spans multiple tables and a structured SLA cannot unambiguously name which member it describes |
 | `support` | `String` | No | Free-text support guidance |
 | `custom_properties` | `JSON` | No | Arbitrary key-value metadata not covered by the standard fields |
 
@@ -1696,11 +1696,11 @@ A product with no exported members gets no snapshot entry, because a listing wit
 
 | Target | Data product representation |
 | --- | --- |
-| Snowflake Horizon | Each product becomes a `SHARE` over its member tables' physical addresses, wrapped in an internal `CREATE ORGANIZATION LISTING` — a native Horizon Catalog Data Product. `publish=true` takes the listing live immediately; otherwise it lands as DRAFT. |
+| Snowflake Horizon | Each product becomes a `SHARE` over its member tables' physical addresses, wrapped in an internal `CREATE ORGANIZATION LISTING`, a native Horizon Catalog Data Product. `publish=true` takes the listing live immediately; otherwise it lands as DRAFT. |
 | BigQuery Dataplex | Each product becomes an Analytics Hub listing via `/v1/dataProducts`. |
 | OpenMetadata | Each product becomes a native `DataProduct` entity (`/api/v1/dataProducts`), with domain-derived ownership. |
 | DataHub | Each product becomes a native `dataProduct` entity (`urn:li:dataProduct:...`) with its own `dataProductProperties`/ownership aspects. |
 | Collibra | Each product becomes an asset of a `Data Product` community type, related to its member tables via a `Data Product groups Table` relation. |
-| Atlan | Published as a custom `DataProduct` typedef guess — Atlan has no documented stable type name for this concept, so the mapping is best-effort. |
-| Apache Atlas | Published as a custom `provisa_data_product` typedef with a `provisa_data_product_members` relation — Atlas has no native data-product entity type. |
+| Atlan | Published as a custom `DataProduct` typedef guess. Atlan has no documented stable type name for this concept, so the mapping is best-effort. |
+| Apache Atlas | Published as a custom `provisa_data_product` typedef with a `provisa_data_product_members` relation, because Atlas has no native data-product entity type. |
 | OpenLineage | No entity of its own; member tables carry a `provisa_data_product` custom facet naming the owning product. |

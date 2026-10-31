@@ -8,8 +8,8 @@ Every query ends up running through the federation engine, which is what lets an
 | --- | --- | --- | --- |
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
-| **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine |
-| **Direct (no cross-source connector)** | Yes | No | Athena — single-source statements run whole in Athena; cross-source joins land a full replica |
+| **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse. The driver reads data and lands a replica; queries run against the replica in the active engine |
+| **Direct (no cross-source connector)** | Yes | No | Athena. Single-source statements run whole in Athena; cross-source joins land a full replica |
 | **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
 **Direct-capable** sources answer a query that touches only them through their own driver, in under 100 ms, without going through the federation engine. They keep their full connector, so they still join other sources through the engine.
@@ -46,8 +46,8 @@ Provisa registers **73** source types, the ones the Sources form offers. The tab
 | 68 | [GovData](#govdata) | `govdata` |
 | 69–70 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
 | 71 | [Data profiler](#data-profiler) | `data_profiler` |
-| 72 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages — see [Wikipedia](#wikipedia)) |
+| 72 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 73 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -267,8 +267,8 @@ Each line's words are searched for, with its own sonnet's points left out throug
 | Source Type | Mechanism | Mutations |
 | ------------ | ----------- | ----------- |
 | `kafka` | Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference | No; a table's live output publishes to Kafka |
-| `websocket` | External WebSocket feed — connect, subscribe, receive events; results materialized | No |
-| `rss` | RSS 2.0 / Atom feed — poll, watermark by pubDate/updated; results materialized | No |
+| `websocket` | External WebSocket feed: connect, subscribe, receive events; results materialized | No |
+| `rss` | RSS 2.0 / Atom feed: poll, watermark by pubDate/updated; results materialized | No |
 
 **Kafka on the hosted engines.** On the hosted platform's provisioned engines a Kafka source must name a schema registry (`schema_registry_url`). One whose topics' columns only the model declares is refused by name when saved or applied (HTTP 422, `sources.kafka_needs_schema_registry`), since its table descriptions would need a directory the running engine cannot be given. SASL credentials reach those engines in memory (see [Security](security.md#the-federation-engine-trino)).
 
@@ -326,7 +326,7 @@ A path with any other scheme (`ftp://`, say) is refused: "DuckDB reads no file a
 - **Paths on the server.** A server path must be a file under a directory listed in the setting `sources.download_roots` (environment `PROVISA_SOURCES_DOWNLOAD_ROOTS`), once its symlinks are followed. None is listed by default. A path outside them is refused by name and nothing is copied.
 - **Many organizations.** On a server of many organizations (`multitenancy: true`) a server path is refused by name whatever the setting holds, and only `https://` and `s3://` are offered. An address whose host resolves inside the server's own network (private, loopback or link-local) is refused by name too, at every redirect.
 - **Its table, as a draft.** When the source is created, the form offers to set up its table at once, as a draft, in the domain you pick. The table is named after the source and typed from the file as Register Table would propose it, and it stays out of service until a steward takes it out of draft. The choice is on by default.
-- **Through Polly.** Give Polly one fully resolved path to a single CSV or Parquet file and she proposes the source with its download and draft table, and creates it once you confirm. A directory, a glob or several files becomes a files source instead.
+- **Through Polly.** Give Polly one fully resolved path to a single CSV or Parquet file and it proposes the source with its download and draft table, and creates it once you confirm. A directory, a glob or several files becomes a files source instead.
 
 **Writes to a local SQLite or DuckDB file, and locks.** A write takes the file's lock and never waits for it. When another process or node holds the file, the write is refused, naming the source and that its file is locked.
 
@@ -341,7 +341,7 @@ A folder shared without encryption must be mounted with locks that reach every n
 
 | Formats | Transports |
 | --- | --- |
-| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, and documents converted to tables — HTML, Markdown, DOCX, PPTX | Local filesystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST and Microsoft Graph) |
+| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, and documents converted to tables (HTML, Markdown, DOCX, PPTX) | Local filesystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST and Microsoft Graph) |
 
 ```yaml
 - id: sales_files
@@ -349,7 +349,7 @@ A folder shared without encryption must be mounted with locks that reach every n
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
-Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia): the source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
+Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia). The source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
 
 #### Excel workbooks
 
@@ -506,7 +506,7 @@ Then register the tables you want on the normal Register Table screen. Each file
 
 #### Wikipedia {: #wikipedia }
 
-Wikipedia crawls the pages you name. Each data table on a page, and each linked CSV, TSV, Excel, JSON or Parquet file, becomes a table of the source. Like Kaggle, it registers as a `files` source with a `crawl` in its mapping. Adding it registers nothing: a steward registers the tables wanted through the normal Register Table screen.
+Wikipedia crawls the pages you name. Each data table on a page, and each linked CSV, TSV, Excel, JSON or Parquet file, becomes a table of the source. Like Kaggle, it registers as a `files` source with a `crawl` in its mapping. Adding it registers nothing. A steward registers the tables wanted through the normal Register Table screen.
 
 **Setup fields.**
 
@@ -523,7 +523,7 @@ Wikipedia crawls the pages you name. Each data table on a page, and each linked 
 
 Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. For any other edition with "See also" off, the form asks what the edition calls that section; type its title as a page shows it (for example `Voir aussi`). A source saved without it is refused (`wikipedia.see_also_heading_needed`).
 
-**Which links are followed.** A link is chosen by what the page's own markup says it is, never by a name in its address: such names differ in every language edition and also occur in ordinary titles.
+**Which links are followed.** A link is chosen by what the page's own markup says it is, never by a name in its address, because such names differ in every language edition and also occur in ordinary titles.
 
 - Followed: links to other articles that sit in the article's own text, lists and data tables. The markup mark is `a[rel='mw:WikiLink']`.
 - Not followed: pages not yet written, the page itself, book-source lookups, file pages, other wikis and external sites.
@@ -567,7 +567,7 @@ Only tables that editors mark as data tables (`table.wikitable`) become tables, 
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materialized) | No |
-| `prometheus` | prometheus | No | A metric is a table and a sample is a row (`timestamp`, `value`, one column per label); on every engine without a live connector Provisa reads the HTTP API — metric names and labels for Register Table, `query_range` over the table's range for landing
+| `prometheus` | prometheus | No | A metric is a table and a sample is a row (`timestamp`, `value`, one column per label); on every engine without a live connector Provisa reads the HTTP API: metric names and labels for Register Table, `query_range` over the table's range for landing
 
 ### Enterprise SaaS Connectors
 
@@ -584,10 +584,10 @@ SharePoint lists are enumerated as schemas and exposed as queryable tables. Two 
 | `password` | `client-secret` | Azure app client secret |
 | `database` | `tenant-id` | Azure tenant UUID |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (default) or `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` — must be ABSOLUTE |
-| `mapping.certificate_password` | `certificate-password` | PFX password — the key must be present, empty string for a password-less PFX |
+| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE`; must be ABSOLUTE |
+| `mapping.certificate_password` | `certificate-password` | PFX password; the key must be present, empty string for a password-less PFX |
 
-Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built. `certificate_path` must be absolute: the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string. The Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field.
+Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built. `certificate_path` must be absolute, because the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string. The Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field.
 
 When the connector does not expose `information_schema.columns`, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the `registerTable` mutation.
 
@@ -637,7 +637,7 @@ For `CLIENT_CREDENTIALS` the connected app needs *Enable Client Credentials Flow
 
 **Reads.** On Trino the source is read through the `salesforce` catalog, which reads only. On every other engine the engine attaches the source's pgwire server and reads it in place.
 
-**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes: a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A write is one plain statement on one table: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` and `TRUNCATE` are refused, naming the form. A SharePoint source is written the same way.
+**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes, so a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A write is one plain statement on one table: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` and `TRUNCATE` are refused, naming the form. A SharePoint source is written the same way.
 
 **Startup.** Before it listens, the source's server reads the columns of every sObject, about four minutes for an org with 1,200 of them. That is paid once: the describe results are kept in the source's own state directory under the instance's data directory. The server is started when the source is registered or loaded. On Trino the `salesforce` catalog keeps its own describe results, one directory per source under `/data/trino/cache/salesforce-describe` in the coordinator, so the cost is paid once there too when that path is a volume that outlives the container: the compose stack's `trino_cache` volume, or the Helm chart's coordinator cache volume (`trino.coordinator.cache.persistence`). Until it listens, Register Table shows the connector as starting and a write is answered with the same message instead of waiting.
 
@@ -712,7 +712,7 @@ A form's table names its project and issue type in its `arguments` (`project`, `
 
 **Links.** The source's `issue_links` table holds the links between the issues of its forms: `link_id`, `link_type`, `outward_key` and `inward_key`, each link once. A relationship between two forms is declared through it as a junction, its `link_type` the discriminator, so GraphQL and Cypher walk issue to linked issue by link type.
 
-**Reads.** A lookup by key (`key =`, `key IN`) is fetched by key, so a key that names no issue is no row. A date or number comparison is sent to Jira as JQL. Every other filter, and every sort, is applied to the rows read: an equality on text, an option, a status or a user is not sent, since JQL refuses a value that names nothing where SQL returns no rows. A multi-value field (labels, a multi-select, components, versions) is text holding a JSON array, and is written the same way.
+**Reads.** A lookup by key (`key =`, `key IN`) is fetched by key, so a key that names no issue is no row. A date or number comparison is sent to Jira as JQL. Every other filter, and every sort, is applied to the rows read. An equality on text, an option, a status or a user is not sent, since JQL refuses a value that names nothing where SQL returns no rows. A multi-value field (labels, a multi-select, components, versions) is text holding a JSON array, and is written the same way.
 
 On DuckDB, PostgreSQL and ClickHouse the engine attaches the source's pgwire server and reads it in place. On Trino the source has no catalog of its own and is landed through its server.
 
@@ -742,7 +742,7 @@ tables:
 
 Cloud inventory lays out the resources of Azure, AWS and GCP as one set of tables: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, and `compute_security_groups`, which ties a compute resource to its security groups. Each table has one set of columns across the three clouds, and its `cloud_provider` column names the cloud a row came from. The source reads only, and its tables are registered by a steward like any other.
 
-A source names one or more clouds. Each cloud is all or nothing: a cloud with some of its required values and not the rest is refused, naming what is missing, and so is a source naming no cloud. The source reads exactly the clouds it names. Every value lives in `mapping`, and each secret may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
+A source names one or more clouds. Each cloud is all or nothing. A cloud with some of its required values and not the rest is refused, naming what is missing, and so is a source naming no cloud. The source reads exactly the clouds it names. Every value lives in `mapping`, and each secret may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
 
 | Cloud | `mapping` key | Connector property | Notes |
 | --- | --- | --- | --- |
@@ -1013,7 +1013,7 @@ organization the request is running as.
 
 A value with no `${…}` in it is used as it is. `${env:VAR}` reads the deployment's process
 environment and needs nothing bound. `${secret:NAME}` names a secret an organization owns, so it
-resolves only inside that organization's own operations: the admin introspection seams and the
+resolves only inside that organization's own operations. The admin introspection seams and the
 query terminal every surface reaches establish that binding.
 
 The field holds what you put in it, however the source was registered:
@@ -1026,7 +1026,7 @@ The field holds what you put in it, however the source was registered:
   (see [Secrets](secrets.md)) and type `${secret:NAME}` into the field.
 
 A value typed as a value is stored in the control-plane database as typed. Retyping the password
-replaces the field's text. Deleting the source removes its row and nothing from the vault: a
+replaces the field's text. Deleting the source removes its row and nothing from the vault, because a
 secret you created is yours.
 
 `password_ref` does not travel between environments. A branch or a copied environment
@@ -1045,7 +1045,7 @@ Two checkers are supported, and choosing between them is as much about the licen
 
 | Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
-| `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused — see below |
+| `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused; see below |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Allowed |
 
 Elastic License 2.0 forbids providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf would be exactly that. `config/capabilities.yaml` records this as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves.
