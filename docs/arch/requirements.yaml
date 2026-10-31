@@ -62112,7 +62112,11 @@
     in the same org, may not be the role itself, and may not close a cycle; each is refused at save with
     the reason. `parent_role_id` is exposed on the admin GraphQL role type and input, on the roles REST
     router, and on the Security page''s role form as "Inherits from". Deleting a role that other roles inherit
-    from is refused naming them.'
+    from is refused naming them. (Amended 2026-10-29, A CHILD''S RULE ONLY NARROWS:) Maintainer 2026-10-31:
+    row rules follow REQ-2155: a role reads no row its parents could not. A role''s rows are its own rule
+    AND the rules of its parents ORed; a parent with no rule stands for every row, and a role with no rule
+    of its own reads under its parents'' rules. This replaces a child''s rule replacing its parent''s and
+    the two never being ANDed. It stays one plain predicate per right, role and target.'
   code:
   - provisa/security/inheritance.py
   - provisa/core/models.py
