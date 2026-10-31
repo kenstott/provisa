@@ -86,6 +86,10 @@ class NodeMapping:
     #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
     #: and its _id hold every one. Empty for a key of one column (``id_column``).
     key_columns: tuple[str, ...] = ()
+    #: Whether the role is served the whole of the table's key as registered (``key_is_served``).
+    #: A subject's IRI is its key's values, so where it is not, none of the role's subjects of this
+    #: table can be named: SPARQL leaves the table out of an open pattern and refuses it by name.
+    key_readable: bool = True
     #: A graph session's date time properties, each with the zone its values were written in
     #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
     property_zones: tuple[tuple[str, str], ...] = ()
@@ -509,7 +513,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         ctx_typed: CompilationContext = ctx  # type: ignore[assignment]
 
         target_pk = _build_target_pk(ctx_typed)
-        _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table)
+        _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table, all_tables)
         aliases = _build_relationship_mappings(ctx_typed, relationships)
 
         _all_access = reaches_all_domains(domain_access)
@@ -698,8 +702,12 @@ def _build_node_mappings(
     nodes: dict[str, NodeMapping],
     domains: dict[str, list[str]],
     nodes_by_table: dict[str, list[str]],
+    all_tables: list[dict] | None = None,
 ) -> None:
-    """Populate nodes/domains/nodes_by_table from ctx tables. Mutates all three dicts."""
+    """Populate nodes/domains/nodes_by_table from ctx tables. Mutates all three dicts.
+    ``all_tables`` is the registry (every column, whoever may read it), what a table's key is read
+    from: the role's own columns can only say what its key would be were the rest not there."""
+    registered = {t["id"]: t for t in all_tables or []}
     # REQ-1991: the declared object columns, by physical name (gql_json_columns names a column as
     # the schema spells it).
     object_columns = {
@@ -719,6 +727,15 @@ def _build_node_mappings(
         col_names = [c for c, _ in col_list]
         user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
         _phys_id = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
+        _table = registered.get(table_meta.table_id)
+        _key = (
+            registered_key(table_meta.type_name, _table, target_pk)
+            if _table is not None and _table.get("columns")
+            else None
+        )
+        key_readable = _key is None or set(_key) <= set(col_names)
+        if _key is not None and key_readable:
+            _phys_id = _key[0]
         id_col = ctx_typed.physical_to_sql.get((table_meta.table_id, _phys_id), _phys_id)
         _gov_obj = ctx_typed.gql_governed_object_cols
         props: dict[str, str] = {
@@ -787,6 +804,7 @@ def _build_node_mappings(
             )
             if len(user_pks) > 1
             else (),
+            key_readable=key_readable,
         )
 
         if domain_label:
@@ -1100,6 +1118,18 @@ def _add_cross_domain_nodes(
 _ID_EXACT = {"id", "_id", "pk", "oid"}
 _ID_SUFFIX = ("_id", "_pk", "_oid")
 _ID_PREFIX = ("id_",)
+
+
+def registered_key(type_name: str, table: dict, target_pk: dict[str, str]) -> list[str]:
+    """The key of a registered table, by the registry's columns, whoever may read them: its primary
+    key's columns, else the one column ``_resolve_id_column`` resolves. A parameter column is an
+    argument and no key. A role's columns alone would resolve another key where it may not read
+    this one, naming a subject by a column that tells no row from another."""
+    columns = [c for c in table["columns"] if not c.get("native_filter_type")]
+    primary = [c["column_name"] for c in columns if c.get("is_primary_key")]
+    return primary or [
+        _resolve_id_column(type_name, [c["column_name"] for c in columns], target_pk, [])
+    ]
 
 
 def _resolve_id_column(  # REQ-392, REQ-394

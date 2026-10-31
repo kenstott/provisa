@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
 from provisa.core.repositories import rls as rls_repo
 from provisa.security.inheritance import effective_capabilities
+from provisa.security.row_filters import with_owner_grant
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
@@ -1096,6 +1097,8 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
+        from provisa.core.repositories import data_product as data_product_repo
+
         active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -1110,9 +1113,11 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
+            # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
+            held = with_owner_grant(rows, await data_product_repo.owner_roles(conn))
             return [
                 _role_from_row(
-                    r, detail=full(r["id"]), effective=effective_capabilities(r["id"], rows)
+                    r, detail=full(r["id"]), effective=effective_capabilities(r["id"], held)
                 )
                 for r in rows
             ]

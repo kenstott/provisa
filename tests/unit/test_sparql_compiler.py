@@ -772,10 +772,12 @@ def test_the_union_limit_defaults_to_256():
 
 def test_the_explorers_default_query_compiles_on_a_wide_model():
     compiled, lm = _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
-    assert len(compiled.ast.union_parts) == 71  # 72 combinations, the head being one
+    # 72 combinations of classes, each a part per predicate (rdf:type, id, name), the head being
+    # one: 216 parts. The union limit counts the combinations, as the tests below hold.
+    assert len(compiled.ast.union_parts) == 215
     sql, _, _ = cypher_to_sql(compiled.ast, lm, {})
     text = sql.sql(dialect="postgres")
-    assert text.count("UNION ALL") >= 71
+    assert text.count("UNION ALL") >= 215
     # The LIMIT sits outside the union, so the engine stops reading branches once it has 25 rows.
     assert text.rstrip().endswith("LIMIT 25")
     assert text.index("LIMIT 25") > text.rindex("UNION ALL")

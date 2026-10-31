@@ -61,25 +61,24 @@ async def _handle_client(
     writer: asyncio.StreamWriter,
 ) -> None:
     peer = writer.get_extra_info("peername")
-    _dbg = logging.getLogger("uvicorn.error")
-    _dbg.warning("[BOLT] connection from %s", peer)
+    log.debug("[BOLT] connection from %s", peer)
     try:
         from provisa.bolt.websocket import detect_and_upgrade
 
         bolt_reader, bolt_writer = await detect_and_upgrade(reader, writer)
-        _dbg.warning("[BOLT] protocol detected for %s", peer)
+        log.debug("[BOLT] protocol detected for %s", peer)
         await _bolt_handshake_and_serve(bolt_reader, bolt_writer)
     except asyncio.IncompleteReadError:
-        _dbg.warning("[BOLT] client %s disconnected (IncompleteRead)", peer)
+        log.debug("[BOLT] client %s disconnected (IncompleteRead)", peer)
     except Exception as exc:
-        _dbg.warning("[BOLT] error for %s: %r", peer, exc)
+        log.warning("[BOLT] error for %s: %r", peer, exc)
     finally:
         try:
             writer.close()
             await writer.wait_closed()
         except Exception:
             pass
-        _dbg.warning("[BOLT] connection closed %s", peer)
+        log.debug("[BOLT] connection closed %s", peer)
 
 
 async def _bolt_handshake_and_serve(
@@ -94,11 +93,10 @@ async def _bolt_handshake_and_serve(
 
     # 2. Read four version proposals; each is [minor, major, range, 0]
     #    range > 0 means client accepts (major, minor) down to (major, minor-range)
-    _dbg = logging.getLogger("uvicorn.error")
     raw_proposals: list[bytes] = []
     for _ in range(4):
         raw_proposals.append(await reader.readexactly(4))
-    _dbg.warning("[BOLT] raw proposals: %s", [b.hex() for b in raw_proposals])
+    log.debug("[BOLT] raw proposals: %s", [b.hex() for b in raw_proposals])
 
     def _candidates(b4: bytes) -> list[tuple[int, int]]:
         # Wire format: [0x00, range, minor, major]
@@ -108,7 +106,7 @@ async def _bolt_handshake_and_serve(
     # 3. Negotiate version — first SUPPORTED_VERSIONS entry that any proposal covers wins
     chosen: tuple[int, int] | None = None
     all_candidates = [c for b in raw_proposals for c in _candidates(b)]
-    _dbg.warning("[BOLT] candidates: %s", all_candidates)
+    log.debug("[BOLT] candidates: %s", all_candidates)
     for supported in SUPPORTED_VERSIONS:
         if supported in all_candidates:
             chosen = supported
@@ -117,7 +115,7 @@ async def _bolt_handshake_and_serve(
     if chosen is None:
         writer.write(b"\x00\x00\x00\x00")
         await writer.drain()
-        _dbg.warning("[BOLT] no supported version; candidates=%s", all_candidates)
+        log.warning("[BOLT] no supported version; candidates=%s", all_candidates)
         return
 
     writer.write(encode_version(*chosen))
@@ -157,7 +155,7 @@ async def _serve(session: BoltSession, reader: BoltReader, writer: BoltWriter) -
             await writer.drain()
             continue
 
-        log.debug("[BOLT] recv tag=0x%02X fields=%r", message.tag, message.fields)
+        _log_received(message)
 
         await _dispatch(session, message)
         await writer.drain()
@@ -166,11 +164,17 @@ async def _serve(session: BoltSession, reader: BoltReader, writer: BoltWriter) -
             break
 
 
+def _log_received(message: BoltMessage) -> None:
+    """A message as received, at DEBUG: its fields, but for those that carry a credential."""
+    if message.tag in (msg.HELLO, msg.LOGON):
+        log.debug("[BOLT] recv tag=0x%02X", message.tag)
+    else:
+        log.debug("[BOLT] recv tag=0x%02X fields=%r", message.tag, message.fields)
+
+
 async def _dispatch(session: BoltSession, message: BoltMessage) -> None:
     tag = message.tag
     fields = message.fields
-    _dbg = logging.getLogger("uvicorn.error")
-    _dbg.warning("[BOLT] dispatch tag=0x%02X fields=%r", tag, fields)
 
     if tag == msg.GOODBYE:
         return  # client is done; no response expected

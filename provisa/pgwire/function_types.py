@@ -27,6 +27,7 @@ import sqlglot.expressions as exp
 
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+from provisa.transpiler.xml_syntax import RETURNS_XML, XML_VALUES
 
 #: sqlglot's type of an argument -> PostgreSQL's format_type name of it. A varchar is text to
 #: overload resolution (every pg_catalog function taking a string takes text).
@@ -147,12 +148,14 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
 
 
 def _fits(argument: str | None, parameter: str) -> bool:
-    """A string argument fits a character varying parameter as it fits a text one; a range or
-    multirange fits the pseudo-type of its kind."""
+    """A string argument fits a character varying parameter as it fits a text one, any argument a
+    parameter of pseudo-type "any", and a range or multirange the pseudo-type of its kind."""
     return (
         argument is None
         or argument == parameter
+        or parameter == '"any"'
         or (argument == "text" and parameter == "character varying")
+        or (parameter == "anyarray" and argument.endswith("[]"))
         or (parameter == "anyrange" and argument in RANGE_TYPES)
         or (parameter == "anymultirange" and argument in MULTIRANGE_TYPES)
     )
@@ -175,10 +178,16 @@ def _resolved(returns: str, arg_types: list[str | None]) -> str:
 def call_result_type(expression: exp.Expr) -> str | None:
     """The format_type name of what a call of a pg_catalog function returns; None when the
     expression is not such a call or its overload is not known from the statement."""
+    if isinstance(expression, exp.Dot):
+        expression = expression.expression
+    if isinstance(expression, XML_VALUES):
+        return "xml"  # PostgreSQL's grammar has these, and pg_proc none
     call = _call(expression)
     if call is None:
         return None
     names, args = call
+    if names[0] in RETURNS_XML and names[0] not in FUNCTION_OVERLOADS:
+        return "xml"
     if names[0] in MULTIRANGE_TYPES:
         return names[0]  # a multirange's constructor is variadic: any number of ranges
     # An unknown-type literal fits any overload; where that leaves the call ambiguous, it is text,

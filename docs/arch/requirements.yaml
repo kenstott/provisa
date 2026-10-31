@@ -12323,8 +12323,12 @@
     at query time. Raw Trino session-prop keys still pass through (deprecated) for backward compatibility.
     (Amended 2026-09-30, source hints are the operator''s floor:) A request''s engine session hints (@join/@reorder/@broadcastSize,
     the -- @provisa comment forms, and /*+ ... */ hints) may set a property the operator''s source federation_hints
-    left open, but never override one the operator set: compiler.directives.merge_session_props raises
-    SessionPropFloorViolation naming the property (REQ-030). Repeating the operator''s value is accepted.'
+    left open, but never override one the operator set: compiler.directives.merge_session_props raises SessionPropFloorViolation
+    naming the property (REQ-030). Repeating the operator''s value is accepted. (Amended 2026-10-29, ONLY
+    THE VOCABULARY REACHES THE SESSION:) Maintainer 2026-10-30: only the @provisa vocabulary reaches an
+    engine''s session. A raw session key in a source''s federation_hints is no longer passed through; the
+    bag''s other keys are connector settings, read by that source''s driver or connector. This supersedes
+    the earlier text that unknown keys pass through.'
   use_case: Source-level federation hints vocabulary is translated to Trino session props, keeping query
     authors decoupled from engine-specific property names.
   code:
@@ -88649,7 +88653,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     does. (Amended 2026-10-29, A LIMIT NEEDS NO FULL UNION:) Maintainer 2026-10-30: graph.union_limit defaults
     to 256. A query with LIMIT and no ORDER BY, DISTINCT or aggregate is allowed ten times the limit, because
     the engine stops the union once it has its rows. Past that it is refused by name, since every branch
-    is still compiled.'
+    is still compiled. (Amended 2026-10-29, AN OPEN PATTERN READS WHAT THE ROLE MAY NAME:) Decided 2026-10-30:
+    ?s ?p ?o answers what naming each predicate answers, one union part per predicate, and edges go through
+    their registered relationship. A table whose whole registered key the role cannot read is left out of
+    an open subject, with the edges into it. Naming such a table and asking for its subject is refused by
+    the table''s name, without naming the column; reading its columns without its subject is still answered.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

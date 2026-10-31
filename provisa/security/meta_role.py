@@ -94,6 +94,14 @@ def refuse_named_meta_role(requested: list[str]) -> None:
             )
 
 
+def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
+    """The roles ``role_id`` names: a meta-role's, from its id (:func:`meta_role_id`), else
+    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
+    if not is_meta_role_id(role_id):
+        return (role_id,)
+    return tuple(role_id[len(META_PREFIX) :].split("+"))
+
+
 def acting_roles(state: Any, role_id: str) -> tuple[str, ...]:
     """The roles ``role_id`` acts as: its members for a meta-role, else itself."""
     return tuple(state.meta_roles[role_id]) if is_meta_role_id(role_id) else (role_id,)
@@ -181,17 +189,9 @@ def _fold_write_grants(
             def _folded(stated: str) -> str | None:
                 terms: list[str] = []
                 for g in holders:
-                    member = by_id[g["role"]]
-                    expr = g.get(stated)
-                    if expr is None:
-                        ctx = _member_surface(state.surfaces[member["id"]]).rls
-                        expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(
-                            t.get("domain_id") or ""
-                        )
-                    if _every_row(expr):
+                    terms.append(_own(g, stated))
+                    if terms[-1] == "TRUE":
                         return "TRUE"
-                    assert expr is not None
-                    terms.append(_inlined(expr, member.get("session_vars") or {}))
                 return _or(terms)
 
             first = {p["column"]: p for p in holders[0]["presets"]}
@@ -204,14 +204,18 @@ def _fold_write_grants(
             def _own(g: dict, stated: str) -> str:
                 """One holder's own predicate, as _folded reads it: TRUE for every row."""
                 member = by_id[g["role"]]
+                ctx = _member_surface(state.surfaces[member["id"]]).rls
                 expr = g.get(stated)
                 if expr is None:
-                    ctx = _member_surface(state.surfaces[member["id"]]).rls
                     expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(t.get("domain_id") or "")
-                if _every_row(expr):
+                # REQ-2188: the member's U or D rule holds the rows only it writes: a member
+                # holding no grant is no holder, so its rule, or its lack of one, changes nothing.
+                rule = ctx.write_rules.get(operation, {}).get(t["id"]) if stated == "rows" else None
+                terms = [p for p in (expr, rule) if p is not None and not _every_row(p)]
+                if not terms:
                     return "TRUE"
-                assert expr is not None
-                return _inlined(expr, member.get("session_vars") or {})
+                held = terms[0] if len(terms) == 1 else f"({terms[0]}) AND ({terms[1]})"
+                return _inlined(held, member.get("session_vars") or {})
 
             t["write_grants"].append(
                 {
@@ -448,6 +452,7 @@ def _build(
     )
     _fold_write_grants(state, meta_id, member_roles, inputs["tables"])  # REQ-2074
     role = _role(member_roles, meta_id)
+    role["acting_chain"] = chains[meta_id][1:]  # REQ-2188: its members and their ancestors
     state.masking_rules = {**state.masking_rules, **masks}
     state.roles[meta_id] = role
     register_role_surface(state, role, rls)

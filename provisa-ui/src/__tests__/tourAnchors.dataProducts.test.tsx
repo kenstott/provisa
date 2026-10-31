@@ -44,7 +44,7 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
     selectedRoles: [{ id: "admin" }],
-    availableRoles: [],
+    availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
 vi.mock("../hooks/useCapability", () => ({ useCapability: () => true }));
@@ -65,6 +65,7 @@ vi.mock("../api/lineage", () => ({
       outputs: [],
       members: [],
       inputs: [],
+      consumers: [],
       dq: { expectations: [], promises: [], related: [], unattached: [] },
     }),
 }));

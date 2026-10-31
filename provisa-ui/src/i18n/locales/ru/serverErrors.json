@@ -357,6 +357,7 @@
       "request_rejected": "Отклонен запрос на создание #{{id}}",
       "rls_rule_deleted": "Правило RLS удалено",
       "rls_rule_not_found": "Правило RLS не найдено",
+      "rls_rule_right_taken": "Право {{right}} роли «{{role}}» уже есть в правиле {{rule}}. Право может быть не более чем в одном правиле: уберите его из этого правила или измените это правило.",
       "rls_rule_saved_domain": "Правило RLS для домена '{{domain}}' / роли '{{role}}' сохранено",
       "rls_rule_saved_table": "Правило RLS для таблицы {{table}} / роли '{{role}}' сохранено",
       "rls_rule_saved_tag": "Правило RLS для тега '{{tag}}' / роли '{{role}}' сохранено",

@@ -42,6 +42,7 @@ class TestRequestSessionVars:
         assert out == {
             "user_id": "u-7",
             "role": "analyst",
+            "acting_roles": "analyst",  # REQ-2188
             "hasura_user_id": "3",
             "hasura_org_id": "acme",
         }
@@ -86,7 +87,7 @@ class TestRequestSessionVars:
             {"x-provisa-session-user-id": "2"},
             honor_session_headers=True,
         )
-        assert out == {"user_id": "2", "role": "user"}
+        assert out == {"user_id": "2", "role": "user", "acting_roles": "user"}
 
     def test_with_an_auth_provider_a_header_never_replaces_a_claim(self):
         # A client header must not redirect a row filter that reads the verified identity.

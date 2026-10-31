@@ -34,7 +34,7 @@ ORG = "org"
 
 #: Bound from the acting identity on every request: who the caller is and the role they act as. A
 #: recorded attribute of either name would be an administrator writing a user's identity.
-RESERVED_NAMES = frozenset({"user_id", "role"})
+RESERVED_NAMES = frozenset({"user_id", "role", "acting_roles"})
 
 #: Claims that describe the TOKEN rather than the user. They differ at every sign-in, so the record
 #: of what a provider supplies for a user (REQ-1383) leaves them out: it is rewritten only when what

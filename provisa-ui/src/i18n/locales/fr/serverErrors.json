@@ -357,6 +357,7 @@
       "request_rejected": "Demande de création n° {{id}} rejetée",
       "rls_rule_deleted": "Règle de sécurité au niveau des lignes supprimée",
       "rls_rule_not_found": "Règle de sécurité au niveau des lignes introuvable",
+      "rls_rule_right_taken": "Le droit {{right}} du rôle « {{role}} » figure déjà dans la règle {{rule}}. Un droit figure dans une seule règle au plus : retirez-le de cette règle ou modifiez cette règle.",
       "rls_rule_saved_domain": "Règle de sécurité au niveau des lignes enregistrée pour le domaine « {{domain}} » / rôle « {{role}} »",
       "rls_rule_saved_table": "Règle de sécurité au niveau des lignes enregistrée pour la table {{table}} / rôle « {{role}} »",
       "rls_rule_saved_tag": "Règle de sécurité au niveau des lignes enregistrée pour le tag « {{tag}} » / rôle « {{role}} »",

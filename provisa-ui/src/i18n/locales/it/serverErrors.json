@@ -357,6 +357,7 @@
       "request_rejected": "Rifiutata la richiesta di creazione n. {{id}}",
       "rls_rule_deleted": "Regola RLS eliminata",
       "rls_rule_not_found": "Regola RLS non trovata",
+      "rls_rule_right_taken": "Il diritto {{right}} del ruolo '{{role}}' è già nella regola {{rule}}. Un diritto può stare al massimo in una regola: toglilo da quella regola o modifica quella regola.",
       "rls_rule_saved_domain": "Regola RLS per il dominio '{{domain}}' / ruolo '{{role}}' salvata",
       "rls_rule_saved_table": "Regola RLS per la tabella {{table}} / ruolo '{{role}}' salvata",
       "rls_rule_saved_tag": "Regola RLS per il tag '{{tag}}' / ruolo '{{role}}' salvata",

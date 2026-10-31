@@ -112,19 +112,25 @@ export function DataProductsPage() {
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
-  // REQ-2155: data_product_owned_rw edits the products whose owner role the caller holds, itself
-  // or through an ancestor; creating and deleting stay data_product_rw's.
-  const canEditOwned = useCapability("data_product_owned_rw");
-  // REQ-2160: a product's owner is a reader holding its owner or team role.
   const { selectedRoles, availableRoles } = useAuth();
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
   );
+  // REQ-2188: a holder of data_product_rw sees the owner's view of every product, its read rights
+  // capping what is in it (REQ-2152). REQ-2160: and so does a reader holding the owner or team role.
   const ownsProduct = (p: DataProduct) =>
-    (p.ownerRole != null && held.has(p.ownerRole)) || (p.teamRole != null && held.has(p.teamRole));
+    canEdit ||
+    (p.ownerRole != null && held.has(p.ownerRole)) ||
+    (p.teamRole != null && held.has(p.teamRole));
+  // REQ-2188: RW that comes only from an Owner field reaches the products naming a role the caller
+  // holds; the store's row rule is what enforces it, and this only keeps Edit off the others. RW
+  // of a role's own (or an ancestor's) is offered every product.
+  const rwOfItsOwn = availableRoles.some(
+    (r) => held.has(r.id) && r.capabilities?.includes("data_product_rw"),
+  );
   const mayEdit = (p: DataProduct) =>
-    canEdit || (canEditOwned && p.ownerRole != null && held.has(p.ownerRole));
+    canEdit && (rwOfItsOwn || (p.ownerRole != null && held.has(p.ownerRole)));
   // REQ-2146: each product's findings, and the list narrowed to the products that have any.
   const productFindings = useDataProductFindings();
   const statusActions = useDataProductStatus();
@@ -651,7 +657,7 @@ export function DataProductsPage() {
                                 coreError={core.error}
                                 reader={reader}
                                 canEdit={mayEdit(p)}
-                                canDelete={canEdit}
+                                canDelete={mayEdit(p)}
                                 owner={ownsProduct(p)}
                                 lineageLoading={lineageLoading}
                                 lineageError={lineageError}

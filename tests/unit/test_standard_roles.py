@@ -96,19 +96,29 @@ class TestWhatEachHolds:
 
     def test_data_steward_is_meaning_plus_access(self):
         """REQ-1944's governance and its delegation of read, composed from security_admin and
-        analyst, with the glossary, relationships and data products on top."""
+        analyst, with the glossary and relationships on top. REQ-2188: not data products."""
         assert STANDARD_ROLES["data_steward"].parents == ("security_admin", "analyst")
         assert _rights("security_admin") | _rights("analyst") <= _rights("data_steward")
-        assert {"glossary_rw", "create_relationship", "data_product_rw", "full_results"} <= (
-            _rights("data_steward")
-        )
+        assert {"glossary_rw", "create_relationship", "full_results"} <= _rights("data_steward")
+        assert "data_product_rw" not in _rights("data_steward")
 
     def test_data_quality_needs_no_table_registration(self):
         assert _rights("dq_steward") == _rights("viewer") | {"dq_read", "dq_rw"}
         assert _rights("dq_reader") == _rights("viewer") | {"dq_read"}
 
-    def test_a_data_product_owner_edits_only_what_it_owns(self):
-        assert _rights("data_product_owner") == _rights("viewer") | {"data_product_owned_rw"}
+    def test_a_data_product_owner_holds_nothing_until_an_owner_field_names_it(self):
+        """REQ-2188: the Owner field gives RW, with the generated rules, to any role it names."""
+        assert _rights("data_product_owner") == _rights("viewer")
+
+    def test_org_admin_holds_data_product_rw_directly(self):
+        assert "data_product_rw" in STANDARD_ROLES["org_admin"].capabilities
+
+    def test_the_sandbox_keeps_data_product_rw_as_its_own(self):
+        assert "data_product_rw" in STANDARD_ROLES["sandbox"].capabilities
+
+    def test_only_org_admin_and_the_sandbox_hold_data_product_rw(self):
+        holders = {r for r in STANDARD_ROLES if "data_product_rw" in _rights(r)}
+        assert holders == {"org_admin", "sandbox"}
 
     def test_org_admin_holds_every_other_standard_role_and_its_own(self):
         for rid in set(STANDARD_ROLES) - {"org_admin", "modeler", "sandbox", "platform_admin"}:
@@ -132,6 +142,7 @@ class TestTheSandbox:
             "create_view",
             "write",
             "environment_switch",
+            "data_product_rw",  # REQ-2188: its own, so a visitor can try products
         }
         assert _rights("developer") - _rights(SANDBOX) == {"environment_owned_management"}
         assert set(STANDARD_ROLES[SANDBOX].parents) == {

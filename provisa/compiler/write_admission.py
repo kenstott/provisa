@@ -25,7 +25,9 @@ table for the operation (REQ-2074), in this order:
    the grant presets is the grant's to set: the statement may not supply it, and the grant's
    value (a session variable, a literal, or the time of the write) is added to the statement.
 4. **The rows it may touch.** The grant's rows predicate is ANDed into the WHERE of an UPDATE
-   or DELETE.
+   or DELETE, and beside it the role's U rule into an UPDATE and its D rule into a DELETE
+   (REQ-2188). A rule only narrows: it is read after the grant, so it gives nothing to a role
+   holding no grant for the operation, and a role with no rule for a right is not narrowed.
 5. **The rows it leaves behind.** An INSERT's rows, and the new values of an UPDATE that sets a
    column the grant's check reads, are checked against the check before anything is sent to a
    source: the supplied values are put in the check's place for those columns and the resulting
@@ -59,6 +61,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.definitions import NotAvailableHere
 
 from provisa.compiler.rls import _qualified_predicate, cast_session_terms
+from provisa.core.session_terms import expand_list_settings
 from provisa.security.mutation_authz import ColumnNotWritable
 
 if TYPE_CHECKING:
@@ -254,6 +257,11 @@ def _predicate(gov: "GovernanceContext", table_id: int, stated: str | None) -> s
     return gov.rls_rules.get(table_id)
 
 
+def _rule(gov: "GovernanceContext", table_id: int, operation: str) -> str | None:  # REQ-2188
+    """The role's U rule on the table for an update, its D rule for a delete, or None."""
+    return gov.write_rules.get(operation, {}).get(table_id)
+
+
 def _label(grant: dict, stated: str) -> str:
     """What a predicate is called in a refusal: the grant's own, or the read row filter it took."""
     return (
@@ -314,6 +322,7 @@ def _filter_over(
     column_types = dict(gov.all_columns.get(table_id, []))
     qualified = _qualified_predicate(predicate, None)
     cast_session_terms(qualified, column_types)
+    expand_list_settings(qualified, session_vars)  # REQ-2188
     resolved: exp.Expression = sqlglot.parse_one(  # pyright: ignore[reportAssignmentType]  # sqlglot stub types parse_one as Expr
         _with_session_values(qualified.sql(dialect="postgres"), session_vars), read="postgres"
     )
@@ -610,6 +619,12 @@ def admit_write(
                 f"TRUNCATE of {name!r}: role {gov.role_id!r} has a {_label(grant, 'rows')} on "
                 f"this table ({rows}), which a TRUNCATE cannot apply. Use DELETE, which does."
             )
+        rule = _rule(gov, table_id, "delete")  # REQ-2188
+        if rule is not None:
+            raise WriteNotAdmitted(
+                f"TRUNCATE of {name!r}: role {gov.role_id!r} has a D rule on this table ({rule}), "
+                "which a TRUNCATE cannot apply. Use DELETE, which does."
+            )
         return tree
 
     if isinstance(tree, exp.Merge):
@@ -619,7 +634,8 @@ def admit_write(
             _require_columns(gov, grant, name, every)
             grant = for_columns(grant, every)
             stated = [grant.get("check")] + ([grant.get("rows")] if operation == "update" else [])
-            if not all(_every_row(_predicate(gov, table_id, p)) for p in stated):
+            narrowed = operation == "update" and _rule(gov, table_id, "update") is not None
+            if narrowed or not all(_every_row(_predicate(gov, table_id, p)) for p in stated):
                 raise WriteNotAdmitted(
                     f"MERGE into {name!r}: role {gov.role_id!r}'s {operation} grant limits the "
                     "rows it may write, and the rows a MERGE would write cannot be checked "
@@ -645,9 +661,13 @@ def admit_write(
             ]
             _require_columns(gov, update, name, set_columns)
             update = for_columns(update, set_columns)
-            if update.get("presets") or not (
-                _every_row(_predicate(gov, table_id, update.get("rows")))
-                and _every_row(_predicate(gov, table_id, update.get("check")))
+            if (
+                update.get("presets")
+                or _rule(gov, table_id, "update") is not None  # REQ-2188
+                or not (
+                    _every_row(_predicate(gov, table_id, update.get("rows")))
+                    and _every_row(_predicate(gov, table_id, update.get("check")))
+                )
             ):
                 raise WriteNotAdmitted(
                     f"INSERT ... ON CONFLICT DO UPDATE on {name!r}: role {gov.role_id!r}'s "
@@ -691,9 +711,11 @@ def admit_write(
                 tree, gov, table_id, name, check, session_vars, params, _label(grant, "check")
             )
     rows = _predicate(gov, table_id, grant.get("rows"))
-    if _every_row(rows):
-        return tree
-    assert rows is not None
     column_types = dict(gov.all_columns.get(table_id, []))
-    touched = _qualify_filter(rows, _alias_for(table), column_types)
-    return tree.where(f"({touched})", dialect="postgres", append=True)
+    for predicate in (rows, _rule(gov, table_id, operation)):
+        if _every_row(predicate):
+            continue
+        assert predicate is not None
+        touched = _qualify_filter(predicate, _alias_for(table), column_types)
+        tree = tree.where(f"({touched})", dialect="postgres", append=True)
+    return tree

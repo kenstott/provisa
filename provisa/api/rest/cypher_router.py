@@ -469,7 +469,8 @@ def access_violations(
     return cypher_error(
         403,
         "cypher.access_violations",
-        "; ".join(v["message"] for v in listed),
+        # A statement of many parts repeats one violation in each: said once, and listed for each.
+        "; ".join(dict.fromkeys(v["message"] for v in listed)),
         violations=listed,
         count=len(listed),
     )

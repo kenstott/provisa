@@ -64,6 +64,7 @@ class TestHolding:
             "region": "eu",
             "user_id": "u1",
             "role": "analyst",
+            "acting_roles": "analyst",  # REQ-2188
         }
 
 

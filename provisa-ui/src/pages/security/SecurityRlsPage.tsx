@@ -13,6 +13,7 @@
 
 import { Tip } from "../../components/Tip";
 import { RlsRuleRead } from "./RlsRuleRead";
+import { RULE_RIGHTS, RULE_RIGHT_LABEL } from "./ruleRights";
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
@@ -21,6 +22,7 @@ import { Trash2, Pencil } from "lucide-react";
 import {
   Alert,
   Button,
+  Checkbox,
   Group,
   ActionIcon,
   Select,
@@ -34,7 +36,7 @@ import { FilterInput } from "../../components/admin/FilterInput";
 import { HelpBubble } from "../../components/HelpBubble";
 import { useRoles, useTables, useDomains } from "../../hooks/useAdminQueries";
 import { useRLSRules, useUpsertRlsRule, useDeleteRlsRule } from "../../hooks/useSecurityQueries";
-import { baseTagId, type RLSRule } from "../../types/admin";
+import { baseTagId, type RLSRule, type RuleRight } from "../../types/admin";
 import { useTags, useTagAssignments } from "../../hooks/useTagQueries";
 import { fetchActions } from "../../api/actions";
 import { useDomainFilter } from "../../context/DomainFilterContext";
@@ -61,6 +63,7 @@ const EMPTY_RULE = {
   roleId: "",
   filterExpr: "",
   description: "", // REQ-2081: required
+  rights: ["R"] as RuleRight[], // REQ-2188: what the rule narrows
   domainFilter: "",
   applyToDomain: false,
   applyToAction: false,
@@ -166,6 +169,7 @@ export function SecurityRlsPage() {
     const missing = [
       target,
       [ruleForm.roleId, "securityPage.role"],
+      [ruleForm.rights.join(""), "securityPage.ruleRight"],
       [ruleForm.filterExpr, "securityPage.filterExpression"],
       [ruleForm.description.trim(), "securityPage.ruleDescription"],
     ]
@@ -189,6 +193,9 @@ export function SecurityRlsPage() {
         roleId: ruleForm.roleId,
         filterExpr: ruleForm.filterExpr,
         description: ruleForm.description.trim(),
+        rights: ruleForm.rights, // REQ-2188
+        id: editingRuleInRow, // the rule being edited; null for a new one
+        creating: editingRuleInRow === null,
       });
       if (!res.success) {
         setError(serverMessage(res, res.message));
@@ -215,6 +222,7 @@ export function SecurityRlsPage() {
         rule.domainId,
         rule.actionName ?? null,
         rule.tagId ?? null,
+        rule.id,
       );
       if (expandedRule === rule.id) setExpandedRule(null);
       await reload();
@@ -233,6 +241,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        rights: rule.rights,
         applyToTag: true,
       });
     } else if (rule.actionName) {
@@ -242,6 +251,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        rights: rule.rights,
         domainFilter: actions.find((a) => a.name === rule.actionName)?.domainId ?? "",
         applyToAction: true,
       });
@@ -253,6 +263,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        rights: rule.rights,
         domainFilter: rule.domainId,
         applyToDomain: true,
       });
@@ -267,6 +278,7 @@ export function SecurityRlsPage() {
         roleId: rule.roleId,
         filterExpr: rule.filterExpr,
         description: rule.description,
+        rights: rule.rights,
         domainFilter: tbl ? tbl.domainId : "",
         applyToDomain: false,
       });
@@ -307,6 +319,8 @@ export function SecurityRlsPage() {
         : r.domainId
           ? r.domainId
           : (tableLabelById[r.tableId!] ?? String(r.tableId));
+  const rightsLabel = (r: RLSRule) =>
+    r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", ");
   const ruleColumns: ListColumn<RLSRule>[] = [
     { key: "id", label: t("securityPage.colId"), sortValue: (r) => r.id },
     {
@@ -320,6 +334,13 @@ export function SecurityRlsPage() {
       label: t("securityPage.colRole"),
       sortValue: (r) => r.roleId,
       groupValue: (r) => r.roleId,
+    },
+    // REQ-2188: what the rule narrows.
+    {
+      key: "right",
+      label: t("securityPage.colRight"),
+      sortValue: rightsLabel,
+      groupValue: rightsLabel,
     },
     { key: "filter", label: t("securityPage.colFilter"), sortValue: (r) => r.filterExpr },
     // REQ-2081: what each rule is for, beside what it filters.
@@ -366,6 +387,8 @@ export function SecurityRlsPage() {
                   tableId: "",
                   actionName: "",
                   tagId: "",
+                  // An action's rows are only read (REQ-2188).
+                  rights: v === "action" ? ["R"] : ruleForm.rights,
                 })
               }
               allowDeselect={false}
@@ -381,6 +404,7 @@ export function SecurityRlsPage() {
                 data={domains.map((d) => ({ value: d.id, label: d.id }))}
                 value={ruleForm.domainFilter || null}
                 onChange={(v) => setRuleForm({ ...ruleForm, domainFilter: v ?? "", tableId: "" })}
+                data-testid="rule-domain-select"
               />
             </FormField>
           )}
@@ -444,6 +468,33 @@ export function SecurityRlsPage() {
               data-testid="rule-role-select"
             />
           </FormField>
+          {/* REQ-2188: the rights this one filter narrows. An action has no row to update. */}
+          {!ruleForm.applyToAction && (
+            <FormField size="medium" help={t("securityPage.ruleRightHelp")}>
+              <Checkbox.Group
+                label={t("securityPage.ruleRight")}
+                value={ruleForm.rights}
+                onChange={(picked) =>
+                  setRuleForm({
+                    ...ruleForm,
+                    rights: RULE_RIGHTS.filter((right) => picked.includes(right)),
+                  })
+                }
+                data-testid="rule-rights"
+              >
+                <Group gap="md" mt={4}>
+                  {RULE_RIGHTS.map((right) => (
+                    <Checkbox
+                      key={right}
+                      value={right}
+                      label={t(RULE_RIGHT_LABEL[right])}
+                      data-testid={`rule-right-${right}`}
+                    />
+                  ))}
+                </Group>
+              </Checkbox.Group>
+            </FormField>
+          )}
         </FormLayout>
       </Group>
       <FormLayout>
@@ -634,20 +685,21 @@ export function SecurityRlsPage() {
           backToList: t("tablesPage.backToList"),
         }}
         list={
-          <ListTable minWidth={640} testId="rules-list">
+          <ListTable minWidth={720} testId="rules-list">
             <ListHead
               sortGroup={ruleSortGroup}
               columns={[
                 { col: "id" },
                 { col: "scope" },
                 { col: "role" },
+                { col: "right" },
                 { col: "filter" },
                 { col: "description" },
               ]}
             />
             <Table.Tbody>
               {filtered.length === 0 && (
-                <ListEmpty colSpan={5}>
+                <ListEmpty colSpan={6}>
                   {rules.length === 0
                     ? t("securityPage.noRulesDefined")
                     : t("securityPage.noRulesMatchFilter")}
@@ -655,7 +707,7 @@ export function SecurityRlsPage() {
               )}
               <ListItems
                 state={ruleSortGroup}
-                colSpan={5}
+                colSpan={6}
                 rowKey={(r) => r.id}
                 render={(r) => (
                   <React.Fragment>
@@ -697,6 +749,9 @@ export function SecurityRlsPage() {
                         )}
                       </Table.Td>
                       <Table.Td>{r.roleId}</Table.Td>
+                      <Table.Td data-testid={`rule-right-${r.id}`}>
+                        {rightsLabel(r)}
+                      </Table.Td>
                       <Table.Td>
                         <Text component="code">{r.filterExpr}</Text>
                       </Table.Td>

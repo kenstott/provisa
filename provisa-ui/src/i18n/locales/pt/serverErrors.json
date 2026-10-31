@@ -357,6 +357,7 @@
       "request_rejected": "Solicitação de criação nº {{id}} rejeitada",
       "rls_rule_deleted": "Regra de RLS excluída",
       "rls_rule_not_found": "Regra de RLS não encontrada",
+      "rls_rule_right_taken": "A permissão {{right}} da função '{{role}}' já está na regra {{rule}}. Uma permissão fica em no máximo uma regra: remova-a dessa regra ou edite essa regra.",
       "rls_rule_saved_domain": "Regra de RLS para o domínio '{{domain}}' / função '{{role}}' salva",
       "rls_rule_saved_table": "Regra de RLS para a tabela {{table}} / função '{{role}}' salva",
       "rls_rule_saved_tag": "Regra de RLS para a tag '{{tag}}' / função '{{role}}' salva",
