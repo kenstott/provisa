@@ -103,6 +103,9 @@ class _TrinoJdbcConnector(_TrinoConnector):
     """Any JDBC-reachable relational/warehouse/lake source: a connection-url + credentials, built from
     the source's ``jdbc_url``. One class parametrized by ``source_type`` + ``trino_connector``."""
 
+    # Catalog properties a source type needs beyond the connection (see ``_TRINO_JDBC_EXTRA``).
+    extra_properties: dict[str, str] = {}
+
     def details(self, source: Source) -> dict:
         from provisa.core.secrets import resolve_secrets
 
@@ -117,6 +120,7 @@ class _TrinoJdbcConnector(_TrinoConnector):
         }
         if self.trino_connector in _STATISTICS_CONNECTORS:
             props["statistics.enabled"] = "false"
+        props.update(self.extra_properties)
         return props
 
 
@@ -257,6 +261,8 @@ def _jdbc_trino(source_type: str, trino_connector: str) -> type[_TrinoJdbcConnec
     attrs: dict = {"source_type": source_type, "trino_connector": trino_connector}
     if source_type in _TRINO_SCAN_TYPES:
         attrs["mechanism"] = Mechanism.SCAN
+    if source_type in _TRINO_JDBC_EXTRA:
+        attrs["extra_properties"] = _TRINO_JDBC_EXTRA[source_type]
     return type(f"Trino_{source_type}_Connector", (_TrinoJdbcConnector,), attrs)
 
 
@@ -275,6 +281,14 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "redshift": "redshift",
     "databricks": "delta_lake",
     "exasol": "exasol",
+}
+
+
+# Per-type catalog properties. A type the engine lacks is held as varchar: ClickHouse's String is
+# read as varbinary unless the connector is told otherwise, and varbinary cannot be carried into a
+# JSON object (the GraphQL nesting) or compared with text.
+_TRINO_JDBC_EXTRA: dict[str, dict[str, str]] = {
+    "clickhouse": {"clickhouse.map-string-as-varchar": "true"},
 }
 
 
