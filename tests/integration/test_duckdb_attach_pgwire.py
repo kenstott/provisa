@@ -16,7 +16,7 @@ exercises, in one flow, the capability set DuckDB's `postgres` extension drives:
 
   (1) libpq startup + auth handshake (trust mode here)
   (2) catalog introspection over pg_namespace/pg_class/pg_attribute/pg_type/... —
-      answered by the real catalog intercept from a real compilation context
+      answered by the real catalog route, on a real control plane holding the model
   (3) the bulk read path: DuckDB wraps the scan as
       `COPY (SELECT ...) TO STDOUT (FORMAT binary)` and decodes the PG binary
       COPY stream using the OIDs the catalog reported — so a type/OID mismatch
@@ -25,7 +25,8 @@ exercises, in one flow, the capability set DuckDB's `postgres` extension drives:
   (5) SINGLE-STREAM scan only — ctid parallelism is a non-goal (PGW-023): the
       catalog reports relpages/reltuples ~ 0 so DuckDB never elects it.
 
-The catalog is REAL (built from SchemaInput). Only the two data-execution seams
+The catalog is REAL (the model of SchemaInput, on a control plane's meta views: REQ-2190). Only
+the two data-execution seams
 (`plan_pgwire_sql` → DIRECT, `_execute_plan` → rows) are stubbed, because a live
 Trino/RDBMS source is not available in unit-tier CI; the wire, catalog, and
 binary-COPY encoder under test are all real.
@@ -50,8 +51,11 @@ from provisa.compiler import naming as _naming  # noqa: E402  # imports follow t
 from provisa.compiler.schema_gen import SchemaInput  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler.context import build_context  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.executor.result import QueryResult  # noqa: E402  # imports follow the duckdb importorskip guard
+from provisa.pgwire import catalog  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: E402  # imports follow the duckdb importorskip guard
 from tests.integration.conftest import no_replica_routes  # noqa: E402
+from tests.pg_control_plane import fresh_control_plane  # noqa: E402
+from tests.unit.pgwire.catalog_plane import Plane, plane_engine  # noqa: E402
 from tests.role_state import with_surfaces  # noqa: E402
 
 
@@ -192,7 +196,9 @@ def pgwire_port():
     loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
     loop_thread.start()
 
+    held = fresh_control_plane()
     with (
+        patch.object(catalog, "_read_meta", Plane(plane_engine(held)).read),
         patch("provisa.api.app.state", state),
         patch.object(_srv, "state", state, create=True),
         patch.object(_pl, "plan_pgwire_sql", _fake_plan),
@@ -220,6 +226,7 @@ def pgwire_port():
         finally:
             server.shutdown()
             loop.call_soon_threadsafe(loop.stop)
+            held.close()
 
 
 def _attach(port: int):

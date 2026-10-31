@@ -127,6 +127,21 @@ class ClientSettingRefused(PermissionError):
         super().__init__("set_config() is not available on a statement reading the meta domain")
 
 
+class CatalogViewRefused(ValueError):
+    """A catalog view on a route other than the admin terminal: only that terminal tells a statement
+    who asks, and its row scope and the views read that, so no other route can answer it."""
+
+    code = "query.catalog_view_refused"
+    sqlstate = "0A000"  # feature_not_supported
+
+    def __init__(self, view: str) -> None:
+        self.params = {"view": view}
+        super().__init__(
+            f"{view} is a catalog view of the meta domain and cannot be read in one statement with "
+            "a table of a data source: read them in two statements"
+        )
+
+
 def refuse_client_settings(sql: str) -> None:
     """Raise :class:`ClientSettingRefused` for a statement that calls set_config, by any spelling:
     the settings a view trusts are the terminal's alone. A statement that merely holds the word,

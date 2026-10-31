@@ -23,7 +23,9 @@ from provisa.pgwire.catalog_pg17 import RELATIONS
 from provisa.pgwire.catalog_route import CatalogRequest, addressed_statement
 from provisa.transpiler.metadata_facts import catalog_facts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+from provisa.transpiler.metadata_settings import CatalogViewRefused
 from provisa.transpiler.metadata_views import catalog_view_name
+from provisa.transpiler.router import Route
 
 _REQUEST = CatalogRequest(
     role_id="reader",
@@ -194,3 +196,102 @@ async def test_a_catalog_statements_route_is_never_kept_for_its_shape(monkeypatc
         current_request.reset(token)
     assert answer == "routed as itself"
     assert state.compiled_query_cache.mock_calls == []
+
+
+_CATALOG_VIEW, _USER_TABLE = 90, 7
+
+
+def _meta_and_a_source():
+    from provisa.compiler.sql_gen import CompilationContext
+    from provisa.compiler.sql_types import TableMeta
+
+    ctx = CompilationContext()
+    ctx.tables = {
+        "catalog_pg_class": TableMeta(
+            table_id=_CATALOG_VIEW,
+            field_name="meta__catalog_pg_class",
+            type_name="MetaCatalogPgClass",
+            source_id="provisa-admin",
+            catalog_name="provisa_admin",
+            schema_name="meta",
+            table_name="catalog_pg_class",
+            domain_id="meta",
+        ),
+        "orders": TableMeta(
+            table_id=_USER_TABLE,
+            field_name="sales__orders",
+            type_name="SalesOrders",
+            source_id="sales",
+            catalog_name="sales",
+            schema_name="public",
+            table_name="orders",
+            domain_id="sales",
+        ),
+    }
+    return ctx
+
+
+def _two_stores():
+    from types import SimpleNamespace
+
+    from provisa.federation.replica_address import ReplicaRoutes
+    from provisa.mv.registry import MVRegistry
+
+    return SimpleNamespace(
+        _active_runtime=lambda: SimpleNamespace(unbound_sources=frozenset()),
+        mv_registry=MVRegistry(),
+        hot_manager=None,
+        api_endpoints={},
+        graphql_remote_sources={},
+        source_types={"provisa-admin": "postgresql", "sales": "postgresql"},
+        source_dialects={"provisa-admin": "postgres", "sales": "postgres"},
+        source_dsns={},
+        source_pools=SimpleNamespace(source_ids={"provisa-admin", "sales"}, has=lambda _: True),
+        replica_routes=ReplicaRoutes(),
+        federation_engine=SimpleNamespace(engine=None),
+        tables=[],
+    )
+
+
+async def _routed(sql: str, table_ids: tuple[int, ...], *, catalog_statement: bool):
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.stage2 import build_governance_context
+    from provisa.pgwire._pipeline import _optimize_and_route
+    from provisa.pgwire.catalog_route import current_request
+    from tests.helpers import unscoped_role
+
+    ctx = _meta_and_a_source()
+    gov = build_governance_context(
+        "reader", RLSContext.empty(), {}, ctx, tables=[], role=unscoped_role("reader")
+    )
+    token = current_request.set(_REQUEST) if catalog_statement else None
+    try:
+        return await _optimize_and_route(
+            sql, sql, gov, ctx, _two_stores(), table_ids=table_ids, nf_args={}
+        )
+    finally:
+        if token is not None:
+            current_request.reset(token)
+
+
+@pytest.mark.parametrize("catalog_statement", [True, False])
+async def test_a_catalog_view_read_with_a_user_table_is_refused_by_name(catalog_statement):
+    """Row scope reads CURRENT_SETTING, which only the admin terminal gives a statement: on the
+    engine it would fail as an engine's error about a function, and no client could tell why."""
+    with pytest.raises(CatalogViewRefused, match="meta.catalog_pg_class") as refused:
+        await _routed(
+            "SELECT c.relname FROM meta.catalog_pg_class c JOIN sales.orders o ON o.id = c.oid",
+            (_CATALOG_VIEW, _USER_TABLE),
+            catalog_statement=catalog_statement,
+        )
+    assert refused.value.sqlstate == "0A000"
+    assert refused.value.params == {"view": "meta.catalog_pg_class"}
+
+
+async def test_a_catalog_statement_alone_is_the_admin_terminals():
+    _, decision, *_ = await _routed(
+        "SELECT c.relname FROM meta.catalog_pg_class c",
+        (_CATALOG_VIEW,),
+        catalog_statement=True,
+    )
+    assert (decision.route, decision.source_id) == (Route.DIRECT, "provisa-admin")

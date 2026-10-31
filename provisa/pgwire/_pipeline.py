@@ -502,6 +502,10 @@ async def _optimize_and_route(
             dialect=state.source_dialects.get("provisa-admin", "postgres"),
             reason="a catalog statement reads the control plane",
         )
+    if "provisa-admin" in routed and (
+        decision.route != Route.DIRECT or decision.source_id != "provisa-admin"
+    ):
+        _refuse_catalog_views_off_the_admin_terminal(ctx, table_ids)
     from provisa.api.region_ops_views import reads_region_views
 
     if (
@@ -749,13 +753,38 @@ def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
     return bounds
 
 
+def _catalog_views_read(ctx: Any, table_ids: Any) -> list[str]:
+    """REQ-2190: the catalog views of the meta domain among ``table_ids``, as a client names them."""
+    from provisa.security.rights import SQL_CATALOG_TABLES
+
+    read = set(table_ids)
+    return sorted(
+        {
+            f"{tm.domain_id}.{tm.table_name}"
+            for tm in ctx.tables.values()
+            if tm.table_id in read
+            and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES
+        }
+    )
+
+
+def _refuse_catalog_views_off_the_admin_terminal(ctx: Any, table_ids: Any) -> None:
+    """REQ-2190: what a catalog view and its row scope read of a statement, the admin terminal alone
+    tells it. On any other route they would read a setting nothing gave them, so the statement is
+    refused by name, whatever an engine would make of CURRENT_SETTING."""
+    from provisa.transpiler.metadata_settings import CatalogViewRefused
+
+    read = _catalog_views_read(ctx, table_ids)
+    if read:
+        raise CatalogViewRefused(read[0])
+
+
 def _catalog_settings(
     gov_ctx: Any, ctx: Any, state: Any, source_id: str, table_ids: Any
 ) -> dict[str, str] | None:
     """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
     request; None for any other, which pays no round trip."""
     from provisa.pgwire.catalog_data import served_database_name
-    from provisa.security.rights import SQL_CATALOG_TABLES
     from provisa.transpiler.metadata_settings import statement_settings
 
     if source_id != "provisa-admin":
@@ -770,12 +799,7 @@ def _catalog_settings(
             session=request.session,
             scope=gov_ctx.meta_scope,
         )
-    read = set(table_ids)
-    if not any(
-        tm.table_id in read
-        and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES
-        for tm in ctx.tables.values()
-    ):
+    if not _catalog_views_read(ctx, table_ids):
         return None
     return statement_settings(
         gov_ctx.role_id,
