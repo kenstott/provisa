@@ -125,7 +125,8 @@ def _config() -> dict:
             {
                 "id": _OUTSIDER,
                 "description": "Reads the data and the catalog, not the checks.",
-                "capabilities": ["query_development", "catalog_read"],
+                "parents": ["viewer"],
+                "capabilities": ["query_development"],
                 "domain_access": ["hold", "fx"],
             }
         ],
