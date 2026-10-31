@@ -1217,6 +1217,7 @@ class Column(
     # require it. The parameter is required when either says so.
     required_by_steward: bool = False
     is_primary_key: bool = False  # user-designated PK (informational, not enforced)
+    not_null: bool = False  # REQ-2190: its source declares it NOT NULL, recorded at registration
     is_foreign_key: bool = False  # derived from relationships (source_column side)
     is_alternate_key: bool = (
         False  # derived from relationships (target_column when PK already exists)

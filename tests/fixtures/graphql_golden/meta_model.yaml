@@ -339,6 +339,6265 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: catalog_pg_aggregate
+  columns:
+  - name: aggcombinefn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggdeserialfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggfinalextra
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: aggfinalfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggfinalmodify
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: aggfnoid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: agginitval
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: aggkind
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: aggmfinalextra
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: aggmfinalfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggmfinalmodify
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: aggminitval
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: aggminvtransfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggmtransfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggmtransspace
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: aggmtranstype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: aggnumdirectargs
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: aggserialfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggsortop
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: aggtransfn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: aggtransspace
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: aggtranstype
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_am
+  columns:
+  - name: amhandler
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: amname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: amtype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_amop
+  columns:
+  - name: amopfamily
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amoplefttype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amopmethod
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amopopr
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amoppurpose
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: amoprighttype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amopsortfamily
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amopstrategy
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_amproc
+  columns:
+  - name: amproc
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: amprocfamily
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amproclefttype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: amprocnum
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: amprocrighttype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_attrdef
+  columns:
+  - name: adbin
+    data_type: text
+    visible_to:
+    - viewer
+  - name: adnum
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: adrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_attribute
+  columns:
+  - name: attacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: attalign
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: attbyval
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: attcacheoff
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: attcollation
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: attcompression
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: attfdwoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: attgenerated
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: atthasdef
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: atthasmissing
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: attidentity
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: attinhcount
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: attisdropped
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: attislocal
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: attlen
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: attmissingval
+    data_type: text
+    visible_to:
+    - viewer
+  - name: attname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: attndims
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: attnotnull
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: attnum
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: attoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: attrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: attstattarget
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: attstorage
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: atttypid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: atttypmod
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_auth_members
+  columns:
+  - name: admin_option
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: inherit_option
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: member
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: roleid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: set_option
+    data_type: boolean
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_authid
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rolbypassrls
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolcanlogin
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolconnlimit
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: rolcreatedb
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolcreaterole
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolinherit
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: rolpassword
+    data_type: text
+    visible_to:
+    - viewer
+  - name: rolreplication
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolsuper
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolvaliduntil
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_available_extension_versions
+  columns:
+  - name: comment
+    data_type: text
+    visible_to:
+    - viewer
+  - name: installed
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: name
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relocatable
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: requires
+    data_type: text
+    visible_to:
+    - viewer
+  - name: schema
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: superuser
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: trusted
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: version
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_available_extensions
+  columns:
+  - name: comment
+    data_type: text
+    visible_to:
+    - viewer
+  - name: default_version
+    data_type: text
+    visible_to:
+    - viewer
+  - name: installed_version
+    data_type: text
+    visible_to:
+    - viewer
+  - name: name
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_backend_memory_contexts
+  columns:
+  - name: free_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: free_chunks
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: ident
+    data_type: text
+    visible_to:
+    - viewer
+  - name: level
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: parent
+    data_type: text
+    visible_to:
+    - viewer
+  - name: total_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: total_nblocks
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: used_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_cast
+  columns:
+  - name: castcontext
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: castfunc
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: castmethod
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: castsource
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: casttarget
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_class
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: relallvisible
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relam
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relchecks
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: relfilenode
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relforcerowsecurity
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relfrozenxid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: relhasindex
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relhasrules
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relhassubclass
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relhastriggers
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relispartition
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relispopulated
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relisshared
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: relkind
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relminmxid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: relnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relnatts
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: reloftype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: reloptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: relowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relpages
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relpartbound
+    data_type: text
+    visible_to:
+    - viewer
+  - name: relpersistence
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relreplident
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relrewrite
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relrowsecurity
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: reltablespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: reltoastrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: reltuples
+    data_type: real
+    visible_to:
+    - viewer
+  - name: reltype
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_collation
+  columns:
+  - name: collcollate
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: collctype
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: collencoding
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: collicurules
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: collisdeterministic
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: colllocale
+    data_type: text
+    visible_to:
+    - viewer
+  - name: collname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: collnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: collowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: collprovider
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: collversion
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_config
+  columns:
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: setting
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_constraint
+  columns:
+  - name: conbin
+    data_type: text
+    visible_to:
+    - viewer
+  - name: condeferrable
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: condeferred
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: conexclop
+    data_type: text
+    visible_to:
+    - viewer
+  - name: confdelsetcols
+    data_type: text
+    visible_to:
+    - viewer
+  - name: confdeltype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: conffeqop
+    data_type: text
+    visible_to:
+    - viewer
+  - name: confkey
+    data_type: text
+    visible_to:
+    - viewer
+  - name: confmatchtype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: confrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: confupdtype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: conindid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: coninhcount
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: conislocal
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: conkey
+    data_type: text
+    visible_to:
+    - viewer
+  - name: conname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: connamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: connoinherit
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: conparentid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: conpfeqop
+    data_type: text
+    visible_to:
+    - viewer
+  - name: conppeqop
+    data_type: text
+    visible_to:
+    - viewer
+  - name: conrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: contype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: contypid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: convalidated
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_conversion
+  columns:
+  - name: condefault
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: conforencoding
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: conname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: connamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: conowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: conproc
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: contoencoding
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_cursors
+  columns:
+  - name: creation_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: is_binary
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: is_holdable
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: is_scrollable
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: statement
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_database
+  columns:
+  - name: datacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: datallowconn
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: datcollate
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datcollversion
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datconnlimit
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: datctype
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datdba
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datfrozenxid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: dathasloginevt
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: daticurules
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datistemplate
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: datlocale
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datlocprovider
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: datminmxid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: dattablespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: encoding
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_db_role_setting
+  columns:
+  - name: setconfig
+    data_type: text
+    visible_to:
+    - viewer
+  - name: setdatabase
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: setrole
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_default_acl
+  columns:
+  - name: defaclacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: defaclnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: defaclobjtype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: defaclrole
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_depend
+  columns:
+  - name: classid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: deptype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: objid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: refclassid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: refobjid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: refobjsubid
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_description
+  columns:
+  - name: classoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: description
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_enum
+  columns:
+  - name: enumlabel
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: enumsortorder
+    data_type: real
+    visible_to:
+    - viewer
+  - name: enumtypid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_event_trigger
+  columns:
+  - name: evtenabled
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: evtevent
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: evtfoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: evtname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: evtowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: evttags
+    data_type: text
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_extension
+  columns:
+  - name: extcondition
+    data_type: text
+    visible_to:
+    - viewer
+  - name: extconfig
+    data_type: text
+    visible_to:
+    - viewer
+  - name: extname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: extnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: extowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: extrelocatable
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: extversion
+    data_type: text
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_file_settings
+  columns:
+  - name: applied
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: error
+    data_type: text
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: seqno
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: setting
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sourcefile
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sourceline
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_foreign_data_wrapper
+  columns:
+  - name: fdwacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: fdwhandler
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: fdwname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: fdwoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: fdwowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: fdwvalidator
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_foreign_server
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srvacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: srvfdw
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srvname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: srvoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: srvowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srvtype
+    data_type: text
+    visible_to:
+    - viewer
+  - name: srvversion
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_foreign_table
+  columns:
+  - name: ftoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: ftrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: ftserver
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_group
+  columns:
+  - name: grolist
+    data_type: text
+    visible_to:
+    - viewer
+  - name: groname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: grosysid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_hba_file_rules
+  columns:
+  - name: address
+    data_type: text
+    visible_to:
+    - viewer
+  - name: auth_method
+    data_type: text
+    visible_to:
+    - viewer
+  - name: database
+    data_type: text
+    visible_to:
+    - viewer
+  - name: error
+    data_type: text
+    visible_to:
+    - viewer
+  - name: file_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: line_number
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: netmask
+    data_type: text
+    visible_to:
+    - viewer
+  - name: options
+    data_type: text
+    visible_to:
+    - viewer
+  - name: rule_number
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: user_name
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_ident_file_mappings
+  columns:
+  - name: error
+    data_type: text
+    visible_to:
+    - viewer
+  - name: file_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: line_number
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: map_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: map_number
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: pg_username
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sys_name
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_index
+  columns:
+  - name: indcheckxmin
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indclass
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: indcollation
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: indexprs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indimmediate
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisclustered
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisexclusion
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indislive
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisprimary
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisready
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisreplident
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisunique
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indisvalid
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indkey
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: indnatts
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: indnkeyatts
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: indnullsnotdistinct
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: indoption
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: indpred
+    data_type: text
+    visible_to:
+    - viewer
+  - name: indrelid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_indexes
+  columns:
+  - name: indexdef
+    data_type: text
+    visible_to:
+    - viewer
+  - name: indexname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: tablespace
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_inherits
+  columns:
+  - name: inhdetachpending
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: inhparent
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: inhrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: inhseqno
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_init_privs
+  columns:
+  - name: classoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: initprivs
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: objoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: privtype
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_language
+  columns:
+  - name: lanacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: laninline
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: lanispl
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: lanname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: lanowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: lanplcallfoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: lanpltrusted
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: lanvalidator
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_largeobject
+  columns:
+  - name: data
+    data_type: bytea
+    visible_to:
+    - viewer
+  - name: loid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: pageno
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_largeobject_metadata
+  columns:
+  - name: lomacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: lomowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_locks
+  columns:
+  - name: classid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: database
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: fastpath
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: granted
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: locktype
+    data_type: text
+    visible_to:
+    - viewer
+  - name: mode
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: page
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relation
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: transactionid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: tuple
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: virtualtransaction
+    data_type: text
+    visible_to:
+    - viewer
+  - name: virtualxid
+    data_type: text
+    visible_to:
+    - viewer
+  - name: waitstart
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_matviews
+  columns:
+  - name: definition
+    data_type: text
+    visible_to:
+    - viewer
+  - name: hasindexes
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: ispopulated
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: matviewname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: matviewowner
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablespace
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_namespace
+  columns:
+  - name: nspacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: nspname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: nspowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_opclass
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opcdefault
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: opcfamily
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opcintype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opckeytype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opcmethod
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opcname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: opcnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opcowner
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_operator
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprcanhash
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: oprcanmerge
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: oprcode
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: oprcom
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprjoin
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: oprkind
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: oprleft
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: oprnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprnegate
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprrest
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: oprresult
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oprright
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_opfamily
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opfmethod
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opfname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: opfnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: opfowner
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_parameter_acl
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: paracl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: parname
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_partitioned_table
+  columns:
+  - name: partattrs
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: partclass
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: partcollation
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: partdefid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: partexprs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: partnatts
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: partrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: partstrat
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_policies
+  columns:
+  - name: cmd
+    data_type: text
+    visible_to:
+    - viewer
+  - name: permissive
+    data_type: text
+    visible_to:
+    - viewer
+  - name: policyname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: qual
+    data_type: text
+    visible_to:
+    - viewer
+  - name: roles
+    data_type: text
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: with_check
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_policy
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: polcmd
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: polname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: polpermissive
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: polqual
+    data_type: text
+    visible_to:
+    - viewer
+  - name: polrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: polroles
+    data_type: text
+    visible_to:
+    - viewer
+  - name: polwithcheck
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_prepared_statements
+  columns:
+  - name: custom_plans
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: from_sql
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: generic_plans
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: parameter_types
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: prepare_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: result_types
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: statement
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_prepared_xacts
+  columns:
+  - name: database
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: gid
+    data_type: text
+    visible_to:
+    - viewer
+  - name: owner
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: prepared
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: transaction
+    data_type: 'null'
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_proc
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: proacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: proallargtypes
+    data_type: text
+    visible_to:
+    - viewer
+  - name: proargdefaults
+    data_type: text
+    visible_to:
+    - viewer
+  - name: proargmodes
+    data_type: text
+    visible_to:
+    - viewer
+  - name: proargnames
+    data_type: text
+    visible_to:
+    - viewer
+  - name: proargtypes
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: probin
+    data_type: text
+    visible_to:
+    - viewer
+  - name: proconfig
+    data_type: text
+    visible_to:
+    - viewer
+  - name: procost
+    data_type: real
+    visible_to:
+    - viewer
+  - name: proisstrict
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: prokind
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: prolang
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: proleakproof
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: proname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: pronamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: pronargdefaults
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: pronargs
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: proowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: proparallel
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: proretset
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: prorettype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: prorows
+    data_type: real
+    visible_to:
+    - viewer
+  - name: prosecdef
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: prosqlbody
+    data_type: text
+    visible_to:
+    - viewer
+  - name: prosrc
+    data_type: text
+    visible_to:
+    - viewer
+  - name: prosupport
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: protrftypes
+    data_type: text
+    visible_to:
+    - viewer
+  - name: provariadic
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: provolatile
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_publication
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: puballtables
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: pubdelete
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: pubinsert
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: pubname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: pubowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: pubtruncate
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: pubupdate
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: pubviaroot
+    data_type: boolean
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_publication_namespace
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: pnnspid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: pnpubid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_publication_rel
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: prattrs
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: prpubid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: prqual
+    data_type: text
+    visible_to:
+    - viewer
+  - name: prrelid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_publication_tables
+  columns:
+  - name: attnames
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pubname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: rowfilter
+    data_type: text
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_range
+  columns:
+  - name: rngcanonical
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: rngcollation
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rngmultitypid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rngsubdiff
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: rngsubopc
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rngsubtype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rngtypid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_replication_origin
+  columns:
+  - name: roident
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: roname
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_replication_origin_status
+  columns:
+  - name: external_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: local_id
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: local_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: remote_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_replication_slots
+  columns:
+  - name: active
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: active_pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: catalog_xmin
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: confirmed_flush_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: conflicting
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: database
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: datoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: failover
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: inactive_since
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: invalidation_reason
+    data_type: text
+    visible_to:
+    - viewer
+  - name: plugin
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: restart_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: safe_wal_size
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: slot_name
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: slot_type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: synced
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: temporary
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: two_phase
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: wal_status
+    data_type: text
+    visible_to:
+    - viewer
+  - name: xmin
+    data_type: 'null'
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_rewrite
+  columns:
+  - name: ev_action
+    data_type: text
+    visible_to:
+    - viewer
+  - name: ev_class
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: ev_enabled
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: ev_qual
+    data_type: text
+    visible_to:
+    - viewer
+  - name: ev_type
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: is_instead
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rulename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_roles
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: rolbypassrls
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolcanlogin
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolconfig
+    data_type: text
+    visible_to:
+    - viewer
+  - name: rolconnlimit
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: rolcreatedb
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolcreaterole
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolinherit
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: rolpassword
+    data_type: text
+    visible_to:
+    - viewer
+  - name: rolreplication
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolsuper
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: rolvaliduntil
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_rules
+  columns:
+  - name: definition
+    data_type: text
+    visible_to:
+    - viewer
+  - name: rulename
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_seclabel
+  columns:
+  - name: classoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: label
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: provider
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_seclabels
+  columns:
+  - name: classoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: label
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objname
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: objtype
+    data_type: text
+    visible_to:
+    - viewer
+  - name: provider
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_sequence
+  columns:
+  - name: seqcache
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seqcycle
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: seqincrement
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seqmax
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seqmin
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seqrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: seqstart
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seqtypid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_sequences
+  columns:
+  - name: cache_size
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: cycle
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: increment_by
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: last_value
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: max_value
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: min_value
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: sequencename
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: sequenceowner
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: start_value
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_settings
+  columns:
+  - name: boot_val
+    data_type: text
+    visible_to:
+    - viewer
+  - name: category
+    data_type: text
+    visible_to:
+    - viewer
+  - name: context
+    data_type: text
+    visible_to:
+    - viewer
+  - name: enumvals
+    data_type: text
+    visible_to:
+    - viewer
+  - name: extra_desc
+    data_type: text
+    visible_to:
+    - viewer
+  - name: max_val
+    data_type: text
+    visible_to:
+    - viewer
+  - name: min_val
+    data_type: text
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pending_restart
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: reset_val
+    data_type: text
+    visible_to:
+    - viewer
+  - name: setting
+    data_type: text
+    visible_to:
+    - viewer
+  - name: short_desc
+    data_type: text
+    visible_to:
+    - viewer
+  - name: source
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sourcefile
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sourceline
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: unit
+    data_type: text
+    visible_to:
+    - viewer
+  - name: vartype
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_shadow
+  columns:
+  - name: passwd
+    data_type: text
+    visible_to:
+    - viewer
+  - name: usebypassrls
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: useconfig
+    data_type: text
+    visible_to:
+    - viewer
+  - name: usecreatedb
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: usename
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: userepl
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: usesuper
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: usesysid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: valuntil
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_shdepend
+  columns:
+  - name: classid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: dbid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: deptype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: objid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: objsubid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: refclassid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: refobjid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_shdescription
+  columns:
+  - name: classoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: description
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objoid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_shmem_allocations
+  columns:
+  - name: allocated_size
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: 'off'
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: size
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_shseclabel
+  columns:
+  - name: classoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: label
+    data_type: text
+    visible_to:
+    - viewer
+  - name: objoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: provider
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_activity
+  columns:
+  - name: application_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: backend_start
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: backend_type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: backend_xid
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: backend_xmin
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: client_addr
+    data_type: inet
+    visible_to:
+    - viewer
+  - name: client_hostname
+    data_type: text
+    visible_to:
+    - viewer
+  - name: client_port
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: leader_pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: query
+    data_type: text
+    visible_to:
+    - viewer
+  - name: query_id
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: query_start
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: state
+    data_type: text
+    visible_to:
+    - viewer
+  - name: state_change
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: usename
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: usesysid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: wait_event
+    data_type: text
+    visible_to:
+    - viewer
+  - name: wait_event_type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: xact_start
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_all_indexes
+  columns:
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indexrelname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: last_idx_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_all_tables
+  columns:
+  - name: analyze_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: autoanalyze_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: autovacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: last_analyze
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_autoanalyze
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_autovacuum
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_idx_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_seq_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_vacuum
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: n_dead_tup
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_ins_since_vacuum
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_live_tup
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_mod_since_analyze
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_del
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_hot_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_ins
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_newpage_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: seq_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seq_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: vacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_archiver
+  columns:
+  - name: archived_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: failed_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: last_archived_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_archived_wal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: last_failed_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_failed_wal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_bgwriter
+  columns:
+  - name: buffers_alloc
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: buffers_clean
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: maxwritten_clean
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_checkpointer
+  columns:
+  - name: buffers_written
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: num_requested
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: num_timed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: restartpoints_done
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: restartpoints_req
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: restartpoints_timed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: sync_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: write_time
+    data_type: double precision
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_database
+  columns:
+  - name: active_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: blk_read_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: blk_write_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: checksum_failures
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: checksum_last_failure
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: conflicts
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: deadlocks
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idle_in_transaction_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: numbackends
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: session_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: sessions
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: sessions_abandoned
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: sessions_fatal
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: sessions_killed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: temp_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: temp_files
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tup_deleted
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tup_fetched
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tup_inserted
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tup_returned
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tup_updated
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: xact_commit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: xact_rollback
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_database_conflicts
+  columns:
+  - name: confl_active_logicalslot
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: confl_bufferpin
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: confl_deadlock
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: confl_lock
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: confl_snapshot
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: confl_tablespace
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_gssapi
+  columns:
+  - name: credentials_delegated
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: encrypted
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: gss_authenticated
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_io
+  columns:
+  - name: backend_type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: context
+    data_type: text
+    visible_to:
+    - viewer
+  - name: evictions
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: extend_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: extends
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: fsync_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: fsyncs
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: hits
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: object
+    data_type: text
+    visible_to:
+    - viewer
+  - name: op_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: read_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: reads
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: reuses
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: write_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: writeback_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: writebacks
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: writes
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_progress_analyze
+  columns:
+  - name: child_tables_done
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: child_tables_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: current_child_table_relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: ext_stats_computed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: ext_stats_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: phase
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: sample_blks_scanned
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: sample_blks_total
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_progress_basebackup
+  columns:
+  - name: backup_streamed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: backup_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: phase
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: tablespaces_streamed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tablespaces_total
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_progress_cluster
+  columns:
+  - name: cluster_index_relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: command
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: heap_blks_scanned
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_tuples_scanned
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_tuples_written
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: index_rebuild_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: phase
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_progress_copy
+  columns:
+  - name: bytes_processed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: bytes_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: command
+    data_type: text
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tuples_excluded
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tuples_processed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tuples_skipped
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: type
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_progress_create_index
+  columns:
+  - name: blocks_done
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blocks_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: command
+    data_type: text
+    visible_to:
+    - viewer
+  - name: current_locker_pid
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: index_relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: lockers_done
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: lockers_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: partitions_done
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: partitions_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: phase
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tuples_done
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tuples_total
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_progress_vacuum
+  columns:
+  - name: datid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: datname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: dead_tuple_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_scanned
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_vacuumed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: index_vacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexes_processed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexes_total
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: max_dead_tuple_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: num_dead_item_ids
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: phase
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_recovery_prefetch
+  columns:
+  - name: block_distance
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: io_depth
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: prefetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: skip_fpw
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: skip_init
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: skip_new
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: skip_rep
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: wal_distance
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_replication
+  columns:
+  - name: application_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: backend_start
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: backend_xmin
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: client_addr
+    data_type: inet
+    visible_to:
+    - viewer
+  - name: client_hostname
+    data_type: text
+    visible_to:
+    - viewer
+  - name: client_port
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: flush_lag
+    data_type: interval
+    visible_to:
+    - viewer
+  - name: flush_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: replay_lag
+    data_type: interval
+    visible_to:
+    - viewer
+  - name: replay_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: reply_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: sent_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: state
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sync_priority
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: sync_state
+    data_type: text
+    visible_to:
+    - viewer
+  - name: usename
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: usesysid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: write_lag
+    data_type: interval
+    visible_to:
+    - viewer
+  - name: write_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_replication_slots
+  columns:
+  - name: slot_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: spill_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: spill_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: spill_txns
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: stream_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stream_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stream_txns
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: total_bytes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: total_txns
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_slru
+  columns:
+  - name: blks_exists
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_written
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_zeroed
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: flushes
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: truncates
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_ssl
+  columns:
+  - name: bits
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: cipher
+    data_type: text
+    visible_to:
+    - viewer
+  - name: client_dn
+    data_type: text
+    visible_to:
+    - viewer
+  - name: client_serial
+    data_type: numeric
+    visible_to:
+    - viewer
+  - name: issuer_dn
+    data_type: text
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: ssl
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: version
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_subscription
+  columns:
+  - name: last_msg_receipt_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_msg_send_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: latest_end_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: latest_end_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: leader_pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: received_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: subid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: subname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: worker_type
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_subscription_stats
+  columns:
+  - name: apply_error_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: subid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: subname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: sync_error_count
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_sys_indexes
+  columns:
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indexrelname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: last_idx_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_sys_tables
+  columns:
+  - name: analyze_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: autoanalyze_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: autovacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: last_analyze
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_autoanalyze
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_autovacuum
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_idx_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_seq_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_vacuum
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: n_dead_tup
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_ins_since_vacuum
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_live_tup
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_mod_since_analyze
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_del
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_hot_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_ins
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_newpage_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: seq_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seq_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: vacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_user_functions
+  columns:
+  - name: calls
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: funcid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: funcname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: self_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: total_time
+    data_type: double precision
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_user_indexes
+  columns:
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indexrelname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: last_idx_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_user_tables
+  columns:
+  - name: analyze_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: autoanalyze_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: autovacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: last_analyze
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_autoanalyze
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_autovacuum
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_idx_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_seq_scan
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_vacuum
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: n_dead_tup
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_ins_since_vacuum
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_live_tup
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_mod_since_analyze
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_del
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_hot_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_ins
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_newpage_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: seq_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seq_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: vacuum_count
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_wal
+  columns:
+  - name: stats_reset
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: wal_buffers_full
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: wal_bytes
+    data_type: numeric
+    visible_to:
+    - viewer
+  - name: wal_fpi
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: wal_records
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: wal_sync
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: wal_sync_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: wal_write
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: wal_write_time
+    data_type: double precision
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_wal_receiver
+  columns:
+  - name: conninfo
+    data_type: text
+    visible_to:
+    - viewer
+  - name: flushed_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: last_msg_receipt_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: last_msg_send_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: latest_end_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: latest_end_time
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: pid
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: receive_start_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: receive_start_tli
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: received_tli
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: sender_host
+    data_type: text
+    visible_to:
+    - viewer
+  - name: sender_port
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: slot_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: status
+    data_type: text
+    visible_to:
+    - viewer
+  - name: written_lsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_xact_all_tables
+  columns:
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_del
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_hot_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_ins
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_newpage_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: seq_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seq_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_xact_sys_tables
+  columns:
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_del
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_hot_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_ins
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_newpage_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: seq_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seq_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_xact_user_functions
+  columns:
+  - name: calls
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: funcid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: funcname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: self_time
+    data_type: double precision
+    visible_to:
+    - viewer
+  - name: total_time
+    data_type: double precision
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stat_xact_user_tables
+  columns:
+  - name: idx_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_tup_fetch
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_del
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_hot_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_ins
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_newpage_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: n_tup_upd
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: seq_scan
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: seq_tup_read
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_all_indexes
+  columns:
+  - name: idx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indexrelname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_all_sequences
+  columns:
+  - name: blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_all_tables
+  columns:
+  - name: heap_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tidx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tidx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: toast_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: toast_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_sys_indexes
+  columns:
+  - name: idx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indexrelname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_sys_sequences
+  columns:
+  - name: blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_sys_tables
+  columns:
+  - name: heap_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tidx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tidx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: toast_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: toast_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_user_indexes
+  columns:
+  - name: idx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: indexrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: indexrelname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_user_sequences
+  columns:
+  - name: blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statio_user_tables
+  columns:
+  - name: heap_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: heap_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: idx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: relid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tidx_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: tidx_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: toast_blks_hit
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: toast_blks_read
+    data_type: bigint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statistic
+  columns:
+  - name: staattnum
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: stacoll1
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stacoll2
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stacoll3
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stacoll4
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stacoll5
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stadistinct
+    data_type: real
+    visible_to:
+    - viewer
+  - name: stainherit
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: stakind1
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: stakind2
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: stakind3
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: stakind4
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: stakind5
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: stanullfrac
+    data_type: real
+    visible_to:
+    - viewer
+  - name: stanumbers1
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stanumbers2
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stanumbers3
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stanumbers4
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stanumbers5
+    data_type: text
+    visible_to:
+    - viewer
+  - name: staop1
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: staop2
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: staop3
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: staop4
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: staop5
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: starelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stavalues1
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stavalues2
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stavalues3
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stavalues4
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stavalues5
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stawidth
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statistic_ext
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stxexprs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stxkeys
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: stxkind
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stxname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: stxnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stxowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stxrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: stxstattarget
+    data_type: smallint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_statistic_ext_data
+  columns:
+  - name: stxddependencies
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: stxdexpr
+    data_type: text
+    visible_to:
+    - viewer
+  - name: stxdinherit
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: stxdmcv
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: stxdndistinct
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: stxoid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stats
+  columns:
+  - name: attname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: avg_width
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: correlation
+    data_type: real
+    visible_to:
+    - viewer
+  - name: elem_count_histogram
+    data_type: text
+    visible_to:
+    - viewer
+  - name: histogram_bounds
+    data_type: text
+    visible_to:
+    - viewer
+  - name: inherited
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: most_common_elem_freqs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_elems
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_freqs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_vals
+    data_type: text
+    visible_to:
+    - viewer
+  - name: n_distinct
+    data_type: real
+    visible_to:
+    - viewer
+  - name: null_frac
+    data_type: real
+    visible_to:
+    - viewer
+  - name: range_bounds_histogram
+    data_type: text
+    visible_to:
+    - viewer
+  - name: range_empty_frac
+    data_type: real
+    visible_to:
+    - viewer
+  - name: range_length_histogram
+    data_type: text
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stats_ext
+  columns:
+  - name: attnames
+    data_type: text
+    visible_to:
+    - viewer
+  - name: dependencies
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: exprs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: inherited
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: kinds
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_base_freqs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_freqs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_val_nulls
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_vals
+    data_type: text
+    visible_to:
+    - viewer
+  - name: n_distinct
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: statistics_name
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: statistics_owner
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: statistics_schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_stats_ext_exprs
+  columns:
+  - name: avg_width
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: correlation
+    data_type: real
+    visible_to:
+    - viewer
+  - name: elem_count_histogram
+    data_type: text
+    visible_to:
+    - viewer
+  - name: expr
+    data_type: text
+    visible_to:
+    - viewer
+  - name: histogram_bounds
+    data_type: text
+    visible_to:
+    - viewer
+  - name: inherited
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: most_common_elem_freqs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_elems
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_freqs
+    data_type: text
+    visible_to:
+    - viewer
+  - name: most_common_vals
+    data_type: text
+    visible_to:
+    - viewer
+  - name: n_distinct
+    data_type: real
+    visible_to:
+    - viewer
+  - name: null_frac
+    data_type: real
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: statistics_name
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: statistics_owner
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: statistics_schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_subscription
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: subbinary
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: subconninfo
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subdbid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: subdisableonerr
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: subenabled
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: subfailover
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: subname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: suborigin
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: subpasswordrequired
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: subpublications
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subrunasowner
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: subskiplsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: subslotname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: substream
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: subsynccommit
+    data_type: text
+    visible_to:
+    - viewer
+  - name: subtwophasestate
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_subscription_rel
+  columns:
+  - name: srrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srsubid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srsublsn
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: srsubstate
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_tables
+  columns:
+  - name: hasindexes
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: hasrules
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: hastriggers
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: rowsecurity
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: tablename
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: tableowner
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tablespace
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_tablespace
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: spcacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: spcname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: spcoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: spcowner
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_timezone_abbrevs
+  columns:
+  - name: abbrev
+    data_type: text
+    visible_to:
+    - viewer
+  - name: is_dst
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: utc_offset
+    data_type: interval
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_timezone_names
+  columns:
+  - name: abbrev
+    data_type: text
+    visible_to:
+    - viewer
+  - name: is_dst
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: utc_offset
+    data_type: interval
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_transform
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: trffromsql
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: trflang
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: trftosql
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: trftype
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_trigger
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tgargs
+    data_type: bytea
+    visible_to:
+    - viewer
+  - name: tgattr
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: tgconstraint
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tgconstrindid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tgconstrrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tgdeferrable
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: tgenabled
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tgfoid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tginitdeferred
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: tgisinternal
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: tgname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tgnargs
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: tgnewtable
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tgoldtable
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tgparentid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tgqual
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tgrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tgtype
+    data_type: smallint
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_ts_config
+  columns:
+  - name: cfgname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: cfgnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: cfgowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: cfgparser
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_ts_config_map
+  columns:
+  - name: mapcfg
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: mapdict
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: mapseqno
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: maptokentype
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_ts_dict
+  columns:
+  - name: dictinitoption
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: dictname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: dictnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: dictowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: dicttemplate
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_ts_parser
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: prsend
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: prsheadline
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: prslextype
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: prsname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: prsnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: prsstart
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: prstoken
+    data_type: 'null'
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_ts_template
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: tmplinit
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: tmpllexize
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: tmplname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: tmplnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_type
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typacl
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typalign
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: typanalyze
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typarray
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typbasetype
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typbyval
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: typcategory
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: typcollation
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typdefault
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: typdefaultbin
+    data_type: text collate "c"
+    visible_to:
+    - viewer
+  - name: typdelim
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: typelem
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typinput
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typisdefined
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: typispreferred
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: typlen
+    data_type: smallint
+    visible_to:
+    - viewer
+  - name: typmodin
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typmodout
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: typnamespace
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typndims
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: typnotnull
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: typoutput
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typreceive
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typrelid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: typsend
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typstorage
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: typsubscript
+    data_type: 'null'
+    visible_to:
+    - viewer
+  - name: typtype
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: typtypmod
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_user
+  columns:
+  - name: passwd
+    data_type: text
+    visible_to:
+    - viewer
+  - name: usebypassrls
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: useconfig
+    data_type: text
+    visible_to:
+    - viewer
+  - name: usecreatedb
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: usename
+    data_type: varchar collate "default"
+    visible_to:
+    - viewer
+  - name: userepl
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: usesuper
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: usesysid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: valuntil
+    data_type: timestamp
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_user_mapping
+  columns:
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: umoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: umserver
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: umuser
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_user_mappings
+  columns:
+  - name: srvid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srvname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: umid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: umoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: umuser
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: usename
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_views
+  columns:
+  - name: definition
+    data_type: text
+    visible_to:
+    - viewer
+  - name: schemaname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: viewname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: viewowner
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: catalog_pg_wait_events
+  columns:
+  - name: description
+    data_type: text
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: type
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: column_details
+  columns:
+  - name: column_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: comment
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: native_type
+    data_type: text
+    visible_to:
+    - viewer
+  - name: ordinal_position
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: subtype
+    data_type: text
+    visible_to:
+    - viewer
+  - name: table_id
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: data_product_edges
   columns:
   - name: aliases
@@ -618,6 +6877,3167 @@ tables:
     - viewer
   - name: via
     data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is__pg_foreign_data_wrappers
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: fdwoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: fdwowner
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_language
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is__pg_foreign_servers
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_version
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srvoptions
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is__pg_foreign_table_columns
+  columns:
+  - name: attfdwoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: attname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: nspname
+    data_type: varchar
+    visible_to:
+    - viewer
+  - name: relname
+    data_type: varchar
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is__pg_foreign_tables
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ftoptions
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is__pg_user_mappings
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: oid
+    data_type: oid
+    visible_to:
+    - viewer
+  - name: srvowner
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: umoptions
+    data_type: text
+    visible_to:
+    - viewer
+  - name: umuser
+    data_type: oid
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_administrable_role_authorizations
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: role_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_applicable_roles
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: role_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_attributes
+  columns:
+  - name: attribute_default
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: attribute_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: attribute_udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: attribute_udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: attribute_udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_derived_reference_attribute
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_nullable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordinal_position
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_character_sets
+  columns:
+  - name: character_repertoire
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: default_collate_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: default_collate_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: default_collate_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: form_of_use
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_check_constraint_routine_usage
+  columns:
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_check_constraints
+  columns:
+  - name: check_clause
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_collation_character_set_applicability
+  columns:
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_collations
+  columns:
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: pad_attribute
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_column_column_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dependent_column
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_column_domain_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_column_options
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_value
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_column_privileges
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_column_udt_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_columns
+  columns:
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: column_default
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: generation_expression
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: identity_cycle
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: identity_generation
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: identity_increment
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: identity_maximum
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: identity_minimum
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: identity_start
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_generated
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_identity
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_nullable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_self_referencing
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_updatable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordinal_position
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_constraint_column_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_constraint_table_usage
+  columns:
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_data_type_privileges
+  columns:
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_type
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_domain_constraints
+  columns:
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: initially_deferred
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_deferrable
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_domain_udt_usage
+  columns:
+  - name: domain_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_domains
+  columns:
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_default
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: domain_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_element_types
+  columns:
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collection_type_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_enabled_roles
+  columns:
+  - name: role_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_foreign_data_wrapper_options
+  columns:
+  - name: foreign_data_wrapper_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_foreign_data_wrappers
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_language
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: library_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_foreign_server_options
+  columns:
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_foreign_servers
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_data_wrapper_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_version
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_foreign_table_options
+  columns:
+  - name: foreign_table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_foreign_tables
+  columns:
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_information_schema_catalog_name
+  columns:
+  - name: catalog_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_key_column_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordinal_position
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: position_in_unique_constraint
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_parameters
+  columns:
+  - name: as_locator
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_result
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordinal_position
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: parameter_default
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: parameter_mode
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: parameter_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_referential_constraints
+  columns:
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: delete_rule
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: match_option
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: unique_constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: unique_constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: unique_constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: update_rule
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_role_column_grants
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_role_routine_grants
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_role_table_grants
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: with_hierarchy
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_role_udt_grants
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_role_usage_grants
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_routine_column_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_routine_privileges
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_routine_routine_usage
+  columns:
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_routine_sequence_usage
+  columns:
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sequence_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sequence_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sequence_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_routine_table_usage
+  columns:
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_routines
+  columns:
+  - name: as_locator
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: created
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: external_language
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: external_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_deterministic
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_implicitly_invocable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_null_call
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_udt_dependent
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_user_defined_cast
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: last_altered
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: max_dynamic_result_sets
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: module_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: module_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: module_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: new_savepoint_level
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: parameter_style
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_as_locator
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_char_max_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_char_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_char_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_char_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_char_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_from_data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_maximum_cardinality
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_type_udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_type_udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: result_cast_type_udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_body
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_definition
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: routine_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: schema_level_routine
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: scope_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: security_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sql_data_access
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sql_path
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: to_sql_specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: to_sql_specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: to_sql_specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: type_udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: type_udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: type_udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_schemata
+  columns:
+  - name: catalog_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: default_character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: default_character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: default_character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: schema_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: schema_owner
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sql_path
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_sequences
+  columns:
+  - name: cycle_option
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: increment
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: maximum_value
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: minimum_value
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sequence_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sequence_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sequence_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: start_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_sql_features
+  columns:
+  - name: comments
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: feature_id
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: feature_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_supported
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_verified_by
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sub_feature_id
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sub_feature_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_sql_implementation_info
+  columns:
+  - name: character_value
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: comments
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: implementation_info_id
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: implementation_info_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: integer_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_sql_parts
+  columns:
+  - name: comments
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: feature_id
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: feature_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_supported
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_verified_by
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_sql_sizing
+  columns:
+  - name: comments
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sizing_id
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: sizing_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: supported_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_table_constraints
+  columns:
+  - name: constraint_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: constraint_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: enforced
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: initially_deferred
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_deferrable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: nulls_distinct
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_table_privileges
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: with_hierarchy
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_tables
+  columns:
+  - name: commit_action
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_insertable_into
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_typed
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: reference_generation
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: self_referencing_column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_transforms
+  columns:
+  - name: group_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: transform_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_triggered_update_columns
+  columns:
+  - name: event_object_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_object_column
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_object_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_object_table
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: trigger_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: trigger_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: trigger_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_triggers
+  columns:
+  - name: action_condition
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_order
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_orientation
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_reference_new_row
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_reference_new_table
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_reference_old_row
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_reference_old_table
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_statement
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: action_timing
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: created
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_manipulation
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_object_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_object_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: event_object_table
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: trigger_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: trigger_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: trigger_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_udt_privileges
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: udt_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_usage_privileges
+  columns:
+  - name: grantee
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: grantor
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_grantable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: object_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: privilege_type
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_user_defined_types
+  columns:
+  - name: character_maximum_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_octet_length
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: character_set_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: collation_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: data_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: datetime_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: interval_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_final
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_instantiable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_precision_radix
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: numeric_scale
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordering_category
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordering_form
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordering_routine_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordering_routine_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ordering_routine_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: ref_dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: reference_type
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: source_dtd_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_category
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: user_defined_type_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_user_mapping_options
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: option_value
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_user_mappings
+  columns:
+  - name: authorization_identifier
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: foreign_server_name
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_view_column_usage
+  columns:
+  - name: column_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_view_routine_usage
+  columns:
+  - name: specific_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: specific_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_view_table_usage
+  columns:
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_schema
+    data_type: domain
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: is_views
+  columns:
+  - name: check_option
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_insertable_into
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_trigger_deletable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_trigger_insertable_into
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_trigger_updatable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: is_updatable
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_catalog
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_name
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: table_schema
+    data_type: domain
+    visible_to:
+    - viewer
+  - name: view_definition
+    data_type: domain
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -1218,6 +10638,92 @@ tables:
     visible_to:
     - viewer
   - name: visible_to
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: table_details
+  columns:
+  - name: comment
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: modeling_history
+    data_type: text
+    visible_to:
+    - viewer
+  - name: modeling_role
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: table_keys
+  columns:
+  - name: column_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: column_sql_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: key_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: key_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: kind
+    data_type: text
+    visible_to:
+    - viewer
+  - name: position
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: referenced_column
+    data_type: text
+    visible_to:
+    - viewer
+  - name: referenced_column_sql_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: referenced_schema_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: referenced_table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: referenced_table_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: schema_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: table_name
     data_type: text
     visible_to:
     - viewer

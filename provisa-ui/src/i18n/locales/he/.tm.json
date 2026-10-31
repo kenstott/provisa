@@ -8921,5 +8921,6 @@
   "he/findTerms.json::findTerms.variantAbbreviation": "abbreviation",
   "he/findTerms.json::findTerms.variantAlternativeName": "another name",
   "he/findTerms.json::findTerms.variantForm": "form",
-  "he/findTerms.json::findTerms.variantReference": "reference"
+  "he/findTerms.json::findTerms.variantReference": "reference",
+  "he/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
 }

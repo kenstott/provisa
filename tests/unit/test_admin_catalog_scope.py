@@ -362,6 +362,22 @@ async def test_a_table_saved_since_the_last_build_is_answered_by_its_stored_colu
         _DRAFT_GRANTS.clear()
 
 
+async def test_a_table_only_a_sql_catalog_reads_is_listed_to_no_person(monkeypatch):
+    """REQ-2190: meta's catalog views are for a SQL catalog; the admin catalog, and the tables page
+    and ERD built on it, list neither them nor a table of the same name in another domain less."""
+    catalog = {"id": 6, "domain_id": "meta", "source_id": "pg", "table_name": "table_keys"}
+    business = {"id": 7, "domain_id": "sales", "source_id": "pg", "table_name": "table_keys"}
+    monkeypatch.setattr(_Conn, "_extra", [catalog, business], raising=False)
+    _COLUMNS[6] = _COLUMNS[7] = ["id"]
+    _DRAFT_GRANTS.update({(6, "id"): ["auditor"], (7, "id"): ["auditor"]})
+    try:
+        listed = await Query().tables(_caller("auditor"))
+        assert [t.id for t in listed if t.table_name == "table_keys"] == [7]
+    finally:
+        del _COLUMNS[6], _COLUMNS[7]
+        _DRAFT_GRANTS.clear()
+
+
 async def test_a_control_plane_role_is_answered_no_data_catalog():
     assert await _tables(_caller("platform")) == {}
 

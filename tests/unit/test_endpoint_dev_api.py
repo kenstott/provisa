@@ -183,25 +183,31 @@ async def sql_client(monkeypatch):
 
 
 class TestSqlEndpointCapability:
-    async def test_no_query_development_capability_403(self, sql_client):
+    async def test_no_query_development_capability_reads(self, sql_client):
+        """REQ-2155: a read needs no query_development; its grants decide what it answers."""
         import provisa.api.app as app_mod
 
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
             "description": "Test role.",
             "capabilities": [],
+            "domain_access": ["*"],
         }
-        resp = await sql_client.post(
-            "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
-        )
-        assert resp.status_code == 403
+        answer = _make_query_result(rows=[(1,)], column_names=["id"])
+        with patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=answer)):
+            resp = await sql_client.post(
+                "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["sql"] == [{"id": 1}]
 
-    async def test_no_request_field_can_waive_the_capability_check(self, sql_client):
+    async def test_no_request_field_can_waive_the_table_check(self, sql_client):
         """A request body cannot grant itself rights the role does not hold.
 
         ``discovery_mode`` used to be a body flag that skipped this capability check, the domain
         check and the relationship guard at once — a break-out chosen by the caller rather than by
-        a grant. It is gone; the field is now ignored and the gate holds.
+        a grant. It is gone; the field is now ignored and a table the role does not reach stays
+        refused.
         """
         import provisa.api.app as app_mod
 
@@ -209,11 +215,12 @@ class TestSqlEndpointCapability:
             "id": "org_admin",
             "description": "Test role.",
             "capabilities": [],
+            "domain_access": ["*"],
         }
         resp = await sql_client.post(
             "/data/sql",
             json={
-                "sql": "SELECT id FROM orders",
+                "sql": "SELECT id FROM secrets",
                 "role": "org_admin",
                 "discovery_mode": True,
             },

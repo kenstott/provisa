@@ -29,6 +29,7 @@ from dataclasses import dataclass
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.security.rights import SQL_CATALOG_TABLES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment, tags_by_object
 
 log = logging.getLogger(__name__)
@@ -132,6 +133,8 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
         (r["tag_id"], r["object_type"], r["table_id"], r["column_name"]) for r in tag_rows
     )
 
+    # REQ-2190: the catalog's own views are no table of it.
+    rows = [r for r in rows if (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES]
     named = {row["id"]: (row["domain_id"], row["table_name"]) for row in rows}
     # A column is listed under the name SQL reads it by, so a name taken from the catalog can be
     # written into a query: the role's compiled context has it for every column the role is
