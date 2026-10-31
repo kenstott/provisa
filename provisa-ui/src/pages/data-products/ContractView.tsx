@@ -10,11 +10,11 @@
 
 // REQ-2158: a product member's contract, its output port, as its open row in the product's contracts
 // list shows it: every ODCS 3.1 element, declared or derived (REQ-2118), in the same dense card
-// panels the product uses -- details, fields promised, SLAs and freshness, quality promises,
-// consumers, versions and changes. An element nothing provides is shown as not declared. Elements
-// are named by their ODCS names, the standard's own vocabulary.
+// panels the product uses -- details, versions and changes, fields promised, SLAs and freshness,
+// support and team, servers, pricing, custom properties and tags, consumers, quality promises. The
+// cards are peers. An element nothing provides is shown as not declared. Elements are named by their
+// ODCS names, the standard's own vocabulary.
 
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
@@ -29,10 +29,6 @@ import { PromisesTable } from "./PromisesTable";
 // the panel's full width beneath them, its promises a table.
 const COLUMN_WIDTH = "320px";
 const COLUMN_GAP = "var(--mantine-spacing-sm)";
-
-/** The Details card's further ODCS sections, each a row collapsed to a one-line summary. */
-const DETAIL_SECTIONS = ["support", "servers", "pricing", "custom"] as const;
-type Section = (typeof DETAIL_SECTIONS)[number];
 
 /** A value as one line of text: a list joined, a record as its fields. */
 function shown(value: unknown): string {
@@ -270,58 +266,16 @@ export function ContractView({
 }) {
   const { t } = useTranslation();
   const status = t(`dataProductsTab.contract.status.${contract.status}`);
-  const notDeclared = t("dataProductsTab.contract.notDeclared");
   const object = contract.schema?.[0];
   const properties = object?.properties ?? [];
   const sla = contract.slaProperties ?? [];
   const price = contract.price;
   const custom = contract.customProperties ?? [];
   const tags = contract.tags ?? [];
-  const count = (key: string, n: number) =>
-    t(`dataProductsTab.contract.summary.${key}`, { count: n });
-  const summaries: Record<Section, string> = {
-    support: [
-      count("supportChannels", contract.support?.length ?? 0),
-      count("roles", contract.roles?.length ?? 0),
-    ].join(" · "),
-    servers: contract.servers?.length
-      ? contract.servers.map((s) => String(s.server ?? s.type)).join(", ")
-      : notDeclared,
-    pricing: price ? record(price) : notDeclared,
-    custom: [count("customProperties", custom.length), count("tags", tags.length)].join(" · "),
-  };
-  const bodies: Record<Section, ReactNode> = {
-    support: (
-      <>
-        <Records name="support" items={contract.support} />
-        <Element name="team.name" value={contract.team?.name} />
-        <Element name="team.description" value={contract.team?.description} />
-        <Records name="team.members" items={contract.team?.members} />
-        <Records name="roles" items={contract.roles} />
-      </>
-    ),
-    servers: <Records name="servers" items={contract.servers} />,
-    pricing: (
-      <>
-        <Element name="priceAmount" value={price?.priceAmount} />
-        <Element name="priceCurrency" value={price?.priceCurrency} />
-        <Element name="priceUnit" value={price?.priceUnit} />
-      </>
-    ),
-    custom: (
-      <>
-        <Records
-          name="customProperties"
-          items={custom.map((c) => `${c.property}: ${shown(c.value)}`)}
-        />
-        <Element name="tags" value={tags} />
-      </>
-    ),
-  };
-  const card = (key: string) => ({
+  const card = (key: string, label = `card.${key}`) => ({
     section: `contract.${key}`,
     testId: `data-contract-${tableId}-${key}`,
-    label: t(`dataProductsTab.contract.card.${key}`),
+    label: t(`dataProductsTab.contract.${label}`),
   });
   return (
     <div data-testid={`data-contract-${tableId}`}>
@@ -337,36 +291,6 @@ export function ContractView({
             <Element name="description.purpose" value={contract.description?.purpose} />
             <Element name="description.limitations" value={contract.description?.limitations} />
             <Element name="description.usage" value={contract.description?.usage} />
-            <Collapsibles id={`data-product.contract.${tableId}`}>
-              {DETAIL_SECTIONS.map((section) => (
-                <CollapsibleItem
-                  key={section}
-                  value={section}
-                  defaultOpen={false}
-                  mountWhenOpen
-                  testId={`data-contract-${tableId}-${section}`}
-                  controlTestId={`data-contract-${tableId}-${section}-toggle`}
-                  title={
-                    <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                      <Text size="sm" fw={500} style={{ flexShrink: 0 }}>
-                        {t(`dataProductsTab.contract.section.${section}`)}
-                      </Text>
-                      <Text
-                        size="sm"
-                        c="dimmed"
-                        truncate="end"
-                        style={{ minWidth: 0 }}
-                        data-testid={`data-contract-${tableId}-${section}-summary`}
-                      >
-                        {summaries[section]}
-                      </Text>
-                    </Group>
-                  }
-                >
-                  <Stack gap={2}>{bodies[section]}</Stack>
-                </CollapsibleItem>
-              ))}
-            </Collapsibles>
           </Stack>
         </DetailCard>
         <DetailCard {...card("versions")}>
@@ -400,6 +324,34 @@ export function ContractView({
             <Records name="slaProperties" items={sla} testId={`data-contract-sla-${tableId}`} />
           </Stack>
         </DetailCard>
+        <DetailCard {...card("support", "section.support")}>
+          <Stack gap={2}>
+            <Records name="support" items={contract.support} />
+            <Element name="team.name" value={contract.team?.name} />
+            <Element name="team.description" value={contract.team?.description} />
+            <Records name="team.members" items={contract.team?.members} />
+            <Records name="roles" items={contract.roles} />
+          </Stack>
+        </DetailCard>
+        <DetailCard {...card("servers", "section.servers")}>
+          <Records name="servers" items={contract.servers} />
+        </DetailCard>
+        <DetailCard {...card("pricing", "section.pricing")}>
+          <Stack gap={2}>
+            <Element name="priceAmount" value={price?.priceAmount} />
+            <Element name="priceCurrency" value={price?.priceCurrency} />
+            <Element name="priceUnit" value={price?.priceUnit} />
+          </Stack>
+        </DetailCard>
+        <DetailCard {...card("custom", "section.custom")}>
+          <Stack gap={2}>
+            <Records
+              name="customProperties"
+              items={custom.map((c) => `${c.property}: ${shown(c.value)}`)}
+            />
+            <Element name="tags" value={tags} />
+          </Stack>
+        </DetailCard>
         {consumers && (
           <DetailCard {...card("consumers")}>
             <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
@@ -410,9 +362,6 @@ export function ContractView({
         {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
         {promises && promises.length > 0 ? (
           <div data-testid={`data-contract-promises-${tableId}`}>
-            <Text size="sm" fw={500} mb="xs">
-              {t("dataProductCore.promises", { count: promises.length })}
-            </Text>
             <PromisesTable promises={promises} testId={`data-contract-promises-table-${tableId}`} />
           </div>
         ) : (

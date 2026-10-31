@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 // REQ-2158: a contract's cards flow in 320px columns -- Details, Versions & changes, Columns, SLAs &
-// freshness, Consumers -- and the Promises card runs full width beneath them. jsdom lays nothing
-// out, so this proves the structure and the column styles that make the layout.
+// freshness, Support and team, Servers, Pricing, Custom properties and tags, Consumers -- and the
+// Promises card runs full width beneath them. jsdom lays nothing out, so this proves the structure
+// and the column styles that make the layout.
 
 import { describe, expect, it } from "vitest";
 import { render, screen } from "../../../test-utils/render";
@@ -59,10 +60,36 @@ describe("a contract's card layout", () => {
     const [flow, promises] = Array.from(root.children) as HTMLElement[];
     expect(flow.style.columnWidth).toBe("320px");
     expect(Array.from(flow.children).map((c) => c.getAttribute("data-testid"))).toEqual(
-      ["details", "versions", "fields", "sla", "consumers"].map((k) => `data-contract-7-${k}`),
+      [
+        "details",
+        "versions",
+        "fields",
+        "sla",
+        "support",
+        "servers",
+        "pricing",
+        "custom",
+        "consumers",
+      ].map((k) => `data-contract-7-${k}`),
     );
     expect(promises).toBe(screen.getByTestId("data-contract-7-quality"));
     expect(promises.style.breakInside).toBe("");
     expect(flow.contains(promises)).toBe(false);
+  });
+
+  it("heads each further section as a card of its own, none of them inside Details", () => {
+    renderView();
+    const details = screen.getByTestId("data-contract-7-details");
+    const labels = {
+      support: "Support and team",
+      servers: "Servers",
+      pricing: "Pricing",
+      custom: "Custom properties and tags",
+    };
+    for (const [key, label] of Object.entries(labels)) {
+      const card = screen.getByTestId(`data-contract-7-${key}`);
+      expect(details.contains(card)).toBe(false);
+      expect(screen.getByTestId(`data-contract-7-${key}-toggle`)).toHaveTextContent(label);
+    }
   });
 });
