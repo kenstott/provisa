@@ -35,7 +35,7 @@
 # time, including that posture, so this script doesn't add a login step that doesn't exist.
 #
 # Each engine's results land in results/<engine>/ (run_benchmark.py's JSON report +
-# artillery-saturation.json), so a run can be repeated for one engine without disturbing the
+# artillery-saturation.json + artillery-graphql-saturation.json), so a run can be repeated for one engine without disturbing the
 # others' results.
 
 set -euo pipefail
@@ -135,11 +135,9 @@ ulimit -n "$(ulimit -Hn)"
 engine_env() {
   case "$1" in
     pg)
-      # Row-level replicas land where the engine reads them, not in the control plane's database.
       export PROVISA_ENGINE_URL="postgresql://provisa:provisa@localhost:${PROVISA_BENCH_POSTGRESQL_PORT:-25632}/provisa_bench"
-      export PROVISA_MATERIALIZE_URL="$PROVISA_ENGINE_URL"
       ;;
-    *) unset PROVISA_ENGINE_URL PROVISA_MATERIALIZE_URL ;;
+    *) unset PROVISA_ENGINE_URL ;;
   esac
 }
 
@@ -339,6 +337,9 @@ for engine in "${ENGINES[@]}"; do
 
   echo "Running Artillery saturation test..."
   run_artillery_ramp "results/$engine/artillery-saturation.json" artillery-concurrency-ramp.yml
+
+  echo "Running Artillery GraphQL saturation test..."
+  run_artillery_ramp "results/$engine/artillery-graphql-saturation.json" artillery-graphql-ramp.yml
 
   stop_steal_logging
 
