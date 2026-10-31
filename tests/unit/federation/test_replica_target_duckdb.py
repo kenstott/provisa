@@ -171,3 +171,23 @@ async def test_a_view_at_the_replicas_name_is_refused(store):
             _source(_rows(10)), _target(broker), _ReadsStore(), batch_rows=10
         ).run(_noop)
     assert _look(path, "SELECT count(*) FROM duckdb_tables()") == [(0,)]
+
+
+async def test_a_landed_table_is_seen_through_the_engines_attach_of_a_server_store():
+    """REQ-2176: a session's schema, dropped and landed again by the store's own connection, is
+    missing from the catalog the ATTACH cached until the cache is cleared."""
+    from types import SimpleNamespace
+
+    from provisa.federation.duckdb_backend import DuckDBBackend
+
+    done: list[str] = []
+    runtime = SimpleNamespace(
+        ensure_materialize_attached=lambda: done.append("attached"),
+        _see_store_writes=lambda: done.append("seen"),
+    )
+    backend = DuckDBBackend.__new__(DuckDBBackend)
+    backend._store_runtime = lambda: runtime  # type: ignore[method-assign]
+
+    await backend.after_replica_swap(object())
+
+    assert done == ["attached", "seen"]

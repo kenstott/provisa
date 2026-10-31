@@ -110,8 +110,7 @@ interface DataProductDetailPanelProps {
   coreError: string | null;
   /** The acting role's schema and root fields, for the member tables' drill-down queries. */
   reader: MetaReader | null;
-  // REQ-1634, REQ-2155: gates Edit (data_product_rw, or data_product_owned_rw on a product whose
-  // owner role the caller holds) and Delete (data_product_rw alone).
+  // REQ-1634, REQ-2188: gates Edit and Delete: data_product_rw, on the products its rules leave it.
   canEdit: boolean;
   canDelete: boolean;
   /** REQ-2160: the reader holds the product's owner or team role. The owner also sees its

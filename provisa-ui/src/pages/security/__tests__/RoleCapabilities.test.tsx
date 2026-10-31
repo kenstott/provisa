@@ -29,13 +29,13 @@ const VIEW: RoleEffective = {
   adds: {
     viewer: ["read"],
     dq_steward: ["dq_rw"],
-    dp_owner: ["data_product_owned_rw"],
+    dp_owner: ["data_product_rw"],
     dq_lead: ["export"],
   },
   standards: ["dq_steward", "viewer", "dp_owner"],
   capabilities: [
     // Entering in two branches, it comes from both.
-    { right: "data_product_owned_rw", from: ["dp_owner", "dq_steward"] },
+    { right: "data_product_rw", from: ["dp_owner", "dq_steward"] },
     { right: "dq_rw", from: ["dq_steward"] },
     { right: "export", from: ["dq_lead"] },
     { right: "read", from: ["viewer"] },
@@ -65,8 +65,8 @@ describe("a role's Capabilities tab (REQ-2161)", () => {
     const row = (right: string) => within(list).getByTestId(`role-capability-${right}`);
     expect(row("dq_rw")).toHaveTextContent("dq_steward");
     expect(row("dq_rw")).toHaveTextContent("standard role");
-    expect(row("data_product_owned_rw")).toHaveTextContent("dp_owner");
-    expect(row("data_product_owned_rw")).toHaveTextContent("dq_steward");
+    expect(row("data_product_rw")).toHaveTextContent("dp_owner");
+    expect(row("data_product_rw")).toHaveTextContent("dq_steward");
     expect(row("export")).toHaveTextContent("its own");
     expect(row("export")).not.toHaveTextContent("standard role");
     // The lineage: a box per role, a kind row each plus what each adds and the accumulated set.

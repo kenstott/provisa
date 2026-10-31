@@ -24,6 +24,7 @@ const rule = (over: Partial<RLSRule>): RLSRule => ({
   roleId: "analyst",
   filterExpr: "region = 'east'",
   description: "Analysts read only the east region's rows.",
+  rights: ["R"],
   ...over,
 });
 
@@ -43,6 +44,7 @@ describe("an RLS rule's read view", () => {
       ["Domain", "sales"],
       ["Table", "sales.orders"],
       ["Role", "analyst"],
+      ["Right", "Read"],
       ["Filter Expression", "region = 'east'"],
     ]);
   });
@@ -61,6 +63,7 @@ describe("an RLS rule's read view", () => {
       ["Apply To", "Entire Domain"],
       ["Domain", "ops"],
       ["Role", "analyst"],
+      ["Right", "Read"],
       ["Filter Expression", "region = 'east'"],
     ]);
     unmount();

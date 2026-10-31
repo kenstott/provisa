@@ -16,7 +16,8 @@ every operation acquires it (a blocking OS-level mutex -- no polling, no backoff
 DuckDB's own error text to guess whether a failure means "busy" or "broken"), ATTACHes the actual
 store file (now guaranteed uncontested), does its one operation, DETACHes (closes the connection),
 and releases the lock. No process ever holds either the lock or the file open longer than a single
-call, and `flock` is tied to the file descriptor -- a process that dies mid-operation (crash,
+call -- what outlives a call is an empty in-memory database the next call attaches to (`_take_host`),
+because opening one is what an operation would otherwise spend most of its time on -- and `flock` is tied to the file descriptor -- a process that dies mid-operation (crash,
 SIGKILL) releases it automatically, with no stale-socket or stale-lock cleanup logic needed at all.
 
 This replaces an earlier persistent-broker-process design (one process elected via a Unix socket +
@@ -27,7 +28,7 @@ self-loopback connect that broke on reconnect, and — confirmed live under a re
 benchmark run — a genuine split-brain recurrence (`Unique file handle conflict`) in a scenario
 (an established broker plus one respawned worker rejoining) the earlier design's own tests never
 covered. None of that exists here: there is no persistent state to split, and no connection to
-lose and reconnect, because no connection ever outlives one call.
+lose and reconnect, because no connection to the store ever outlives one call.
 """
 
 from __future__ import annotations
@@ -158,6 +159,38 @@ def _bump_generation(db_path: str) -> None:
     os.replace(tmp, db_path + _GEN_SUFFIX)
 
 
+#: How many empty databases stay open for the next operations: one is taken per operation running
+#: at once, so this bounds what is kept, never what may run.
+_IDLE_HOSTS = 4
+
+#: Each database kept open between operations, with the memory cap it was opened under.
+_idle_hosts: list[tuple[engine_memory.DuckDBConfig, Any]] = []
+_idle_hosts_guard = threading.Lock()
+
+
+def _take_host() -> tuple[engine_memory.DuckDBConfig, Any]:
+    """An in-memory database with no store attached, under the deployment's cap as it stands now,
+    with that cap. Opening one costs several times what the whole operation on the store does
+    (ATTACH, a statement and DETACH), and one operation after another is how a store is used."""
+    cap = engine_memory.config()
+    with _idle_hosts_guard:
+        while _idle_hosts:
+            held_cap, host = _idle_hosts.pop()
+            if held_cap == cap:
+                return cap, host
+            host.close()
+    return cap, engine_memory.connect()
+
+
+def _give_back_host(cap: engine_memory.DuckDBConfig, host: Any) -> None:
+    """Keep ``host``, which holds no store, for the next operation, past :data:`_IDLE_HOSTS` not."""
+    with _idle_hosts_guard:
+        if len(_idle_hosts) < _IDLE_HOSTS:
+            _idle_hosts.append((cap, host))
+            return
+    host.close()
+
+
 def _with_store(
     db_path: str,
     fn: Any,
@@ -194,15 +227,27 @@ def _with_store(
     with open(lock_path, "a+") as lockfile:
         _lock_exclusive(lockfile.fileno(), lock_path)
         try:
-            con = engine_memory.connect()
-            con.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")
+            cap, host = _take_host()
             try:
-                with request_deadline.cancel_on_deadline(con.interrupt):
-                    result = fn(con)
+                host.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")
+                # A cursor is its own connection onto the database: what the operation registers
+                # goes with it, and DETACH checkpoints the store, leaving the file whole on disk
+                # for whichever process takes the lock next. Any failure closes the database, so
+                # nothing it left behind reaches a later operation.
+                con = host.cursor()
+                try:
+                    with request_deadline.cancel_on_deadline(con.interrupt):
+                        result = fn(con)
+                finally:
+                    con.close()
+                host.execute(f"DETACH {_MAT_STORE_ALIAS}")
+            except BaseException:
+                host.close()
+                raise
             finally:
-                con.close()
                 if not read_only and not unseen:
                     _bump_generation(db_path)
+            _give_back_host(cap, host)
             return (result, store_canary(db_path)) if canary else result
         finally:
             unlock_fd(lockfile.fileno())

@@ -2134,6 +2134,13 @@
        }
       },
       {
+       "name": "rights",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
        "name": "roleId",
        "type": {
         "kind": "SCALAR",

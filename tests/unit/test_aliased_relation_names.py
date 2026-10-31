@@ -55,7 +55,13 @@ def _governance():
     ]
     role = {"id": "analyst", "capabilities": [], "domain_access": [META_DOMAIN_ID]}
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}), {}, ctx, tables, role, relationships=[]
+        "analyst",
+        SimpleNamespace(rules={}, write_rules={}),
+        {},
+        ctx,
+        tables,
+        role,
+        relationships=[],
     )
     return ctx, gov
 

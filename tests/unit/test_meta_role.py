@@ -265,6 +265,61 @@ def _meta_grants(grants: list[dict], members: list[str]) -> dict[str, dict]:
     }
 
 
+def test_a_meta_role_acts_as_its_members_and_their_ancestors():  # REQ-2188
+    state, _ = _state(
+        rls={"east": RLSContext(rules={}), "west": RLSContext(rules={})},
+        reads={"east": [1], "west": [1]},
+        roles={"east": _role("east"), "west": _role("west")},
+    )
+    state.role_build_inputs["role_chains"]["east"] = ["east", "regional"]
+    meta = ensure_meta_role(state, ["east", "west"])
+    assert state.roles[meta]["acting_chain"] == ["east", "regional", "west"]
+
+
+def test_a_member_u_rule_holds_only_the_rows_that_member_writes():  # REQ-2188
+    state, _ = _state(
+        rls={
+            "east": RLSContext(rules={}, write_rules={"update": {1: "region = 'east'"}}),
+            "west": RLSContext(rules={}),
+        },
+        reads={"east": [1], "west": [1]},
+        roles={"east": _role("east", caps=["write"]), "west": _role("west", caps=["write"])},
+    )
+    state.role_build_inputs["tables"][0]["write_grants"] = [
+        _grant("east", "update", ["region"], rows="id > 0", check="TRUE"),
+        _grant("west", "update", ["email"], rows="email IS NOT NULL", check="TRUE"),
+    ]
+    meta = ensure_meta_role(state, ["east", "west"])
+    folded = next(
+        g for g in state.role_build_inputs["tables"][0]["write_grants"] if g["role"] == meta
+    )
+    assert folded["rows"] == "((id > 0) AND (region = 'east')) OR (email IS NOT NULL)"
+    by_columns = {tuple(h["columns"]): h["rows"] for h in folded["holders"]}
+    assert by_columns == {
+        ("region",): "(id > 0) AND (region = 'east')",
+        ("email",): "email IS NOT NULL",
+    }
+
+
+def test_a_member_holding_no_grant_gives_nothing_by_its_u_rule():  # REQ-2188
+    state, _ = _state(
+        rls={
+            "east": RLSContext(rules={}),
+            "west": RLSContext(rules={}, write_rules={"update": {1: "region = 'west'"}}),
+        },
+        reads={"east": [1], "west": [1]},
+        roles={"east": _role("east", caps=["write"]), "west": _role("west")},
+    )
+    state.role_build_inputs["tables"][0]["write_grants"] = [
+        _grant("east", "update", ["region"], rows="id > 0", check="TRUE"),
+    ]
+    meta = ensure_meta_role(state, ["east", "west"])
+    folded = next(
+        g for g in state.role_build_inputs["tables"][0]["write_grants"] if g["role"] == meta
+    )
+    assert folded["rows"] == "(id > 0)"
+
+
 _PLACED = {"column": "status", "source": "literal", "value": "placed"}
 _NOW = {"column": "status", "source": "now"}
 

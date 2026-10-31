@@ -357,6 +357,7 @@
       "request_rejected": "निर्माण अनुरोध #{{id}} अस्वीकृत किया गया",
       "rls_rule_deleted": "RLS नियम हटाया गया",
       "rls_rule_not_found": "RLS नियम नहीं मिला",
+      "rls_rule_right_taken": "भूमिका '{{role}}' का अधिकार {{right}} पहले से नियम {{rule}} में है। कोई अधिकार अधिकतम एक नियम में हो सकता है: उसे उस नियम से हटाएँ या उस नियम को संपादित करें।",
       "rls_rule_saved_domain": "डोमेन '{{domain}}' / भूमिका '{{role}}' के लिए RLS नियम सहेजा गया",
       "rls_rule_saved_table": "टेबल {{table}} / भूमिका '{{role}}' के लिए RLS नियम सहेजा गया",
       "rls_rule_saved_tag": "टैग '{{tag}}' / भूमिका '{{role}}' के लिए RLS नियम सहेजा गया",

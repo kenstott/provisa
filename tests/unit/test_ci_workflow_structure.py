@@ -1159,3 +1159,52 @@ def test_a_ui_lane_can_be_run_for_named_specs_only(workflow):
         run = with_["run"]
         assert run.startswith('for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}"'), job
         assert run.endswith("$PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}"), job
+
+
+def _refusal_step():
+    job = yaml.safe_load((REPO / ".github/workflows/focused-tests.yml").read_text())["jobs"][
+        "python"
+    ]
+    steps = job["steps"]
+    step = next(s for s in steps if s.get("name") == "Refuse integration files")
+    # It runs before anything is checked out or installed.
+    assert steps.index(step) == 0
+    assert step["env"] == {"TESTS": "${{ inputs.python }}"}
+    return step["run"]
+
+
+def _refusal(tests: str):
+    import subprocess
+
+    return subprocess.run(
+        ["bash", "-c", _refusal_step()],
+        env={"TESTS": tests, "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "tests",
+    [
+        "tests/integration/test_x.py",
+        "tests/unit/test_a.py tests/integration/test_x.py::test_one",
+        "./tests/integration/sub/test_y.py",
+        "tests/steps/steps_security.py",
+        "tests/features/a.feature",
+        "tests/e2e/test_z.py::test_one",
+    ],
+)
+def test_focused_tests_refuses_an_integration_file_by_name(tests):
+    """An integration file is refused at once, named, with the run that does take it."""
+    done = _refusal(tests)
+    assert done.returncode == 1
+    named = next(t for t in tests.split() if not t.startswith("tests/unit"))
+    assert f"::error::{named} is an integration, steps, features or e2e test" in done.stdout
+    assert "Integration suite workflow" in done.stdout
+
+
+def test_focused_tests_passes_files_that_need_no_stack():
+    done = _refusal("tests/unit/test_a.py tests/unit/test_b.py::test_c")
+    assert done.returncode == 0 and done.stdout == ""

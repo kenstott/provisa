@@ -8,9 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2155, REQ-2160: data_product_owned_rw edits the products whose owner role the caller holds,
-// itself or through an ancestor; deleting stays data_product_rw's. The owner view follows the
-// owner and team roles, the same way.
+// REQ-2188: RW from an Owner field reaches the products naming a role the caller holds, itself or
+// through an ancestor; a holder of data_product_rw sees the owner's view of every product.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "../../test-utils/render";
@@ -46,9 +45,9 @@ vi.mock("../../context/AuthContext", () => ({
     availableRoles: [{ id: "vet_lead", parents: ["care_owner"] }],
   }),
 }));
-// Not data_product_rw: data_product_owned_rw alone.
+// data_product_rw that no role of the caller holds of its own: an Owner field gave it.
 vi.mock("../../hooks/useCapability", () => ({
-  useCapability: (cap: string) => cap === "data_product_owned_rw",
+  useCapability: (cap: string) => cap === "data_product_rw",
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
@@ -147,19 +146,20 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { DataProductsPage } from "../DataProductsPage";
 
-describe("editing a product with data_product_owned_rw (REQ-2155)", () => {
-  it("edits the product whose owner role it inherits, and deletes none", async () => {
+describe("editing a product with RW from an Owner field (REQ-2188)", () => {
+  it("edits and deletes the product whose owner role it inherits", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
     const panel = await screen.findByTestId("panel-pet_health");
     expect(panel).toHaveAttribute("data-edit", "true");
-    expect(panel).toHaveAttribute("data-delete", "false");
+    expect(panel).toHaveAttribute("data-delete", "true");
     expect(panel).toHaveAttribute("data-owner", "true");
   });
 
-  it("edits no product whose owner role it does not hold", async () => {
+  it("edits no product whose owner role it does not hold, and sees the owner's view of it", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=workforce_ops"] });
     const panel = await screen.findByTestId("panel-workforce_ops");
     expect(panel).toHaveAttribute("data-edit", "false");
-    expect(panel).toHaveAttribute("data-owner", "false");
+    expect(panel).toHaveAttribute("data-delete", "false");
+    expect(panel).toHaveAttribute("data-owner", "true");
   });
 });
