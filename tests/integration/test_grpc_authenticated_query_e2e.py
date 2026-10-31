@@ -11,8 +11,9 @@
 """Integration: gRPC answers on a deployment with auth on (REQ-273, REQ-1263, REQ-1266).
 
 One real isolated server configured with an auth provider, over a Postgres source table this
-module creates. A caller signs in over HTTP, presents the token over gRPC and reads the rows, so
-the interceptor, the org binding and the query pipeline are all the real ones. A caller with no
+module creates. A caller signs in over HTTP, presents the token over gRPC, is described its service by
+reflection and reads the rows, so the interceptor, the org binding and the query pipeline are all
+the real ones. A caller with no
 credential, or a rejected one, reads nothing.
 """
 
@@ -122,14 +123,17 @@ def _auth() -> dict:
 
 
 class _Client:
-    """A signed-in caller's token and a native client for the orders type, compiled from the
-    ``.proto`` its role is published."""
+    """A signed-in caller's token and a native client for the orders type, built from what server
+    reflection describes to that caller."""
 
     def __init__(self, srv) -> None:
+        import grpc
         from google.protobuf import descriptor_pb2
+        from google.protobuf.descriptor_pool import DescriptorPool
         from google.protobuf.message_factory import GetMessageClass
+        from grpc_reflection.v1alpha import reflection_pb2, reflection_pb2_grpc
 
-        from tests.grpc_proto_client import compile_proto
+        from provisa.grpc.descriptor import SERVICE_NAME
 
         self.srv = srv
         login = httpx.post(
@@ -139,17 +143,20 @@ class _Client:
         )
         login.raise_for_status()
         self.token = login.json()["access_token"]
-        proto = httpx.get(
-            f"{srv.base_url}/data/proto/{_ROLE}",
-            headers={"Authorization": f"Bearer {self.token}"},
-            timeout=30,
-        )
-        proto.raise_for_status()
-        pool = compile_proto(proto.text)
-        fdp = descriptor_pb2.FileDescriptorProto()
-        pool.FindFileByName("provisa.proto").CopyToProto(fdp)
-        name = next(s.name for s in fdp.service if s.name.endswith("Service"))
-        service = pool.FindServiceByName(f"{fdp.package}.{name}")
+        channel = grpc.insecure_channel(f"127.0.0.1:{srv.grpc_port}")
+        try:
+            (described,) = reflection_pb2_grpc.ServerReflectionStub(channel).ServerReflectionInfo(
+                iter([reflection_pb2.ServerReflectionRequest(file_containing_symbol=SERVICE_NAME)]),
+                metadata=(("authorization", f"Bearer {self.token}"),),
+                timeout=120,
+            )
+        finally:
+            channel.close()
+        pool = DescriptorPool()
+        # The file comes first and the files it imports after it: added imports first.
+        for raw in reversed(described.file_descriptor_response.file_descriptor_proto):
+            pool.Add(descriptor_pb2.FileDescriptorProto.FromString(raw))
+        service = pool.FindServiceByName(SERVICE_NAME)
         self.service = service.full_name
         self.query = next(
             m for m in service.methods if m.name.startswith("Query") and m.name.endswith("Orders")
