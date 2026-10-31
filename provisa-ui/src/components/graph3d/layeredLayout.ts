@@ -96,12 +96,9 @@ function backEdges(ids: string[], edges: { from: string; to: string; id: string 
 }
 
 /** How a graph is laid out when it opens (REQ-2174), and whether Layered is possible. */
-export function layeredFit(g: GraphData): { layered: boolean; possible: boolean } {
-  const directed = directedEdges(g);
+export function layeredFit(g: GraphData): { possible: boolean } {
   const ids = g.nodes.map((n) => n.id).sort();
-  const possible = backEdges(ids, directed).size === 0;
-  const classes = new Set(directed.map((e) => e.cls));
-  return { layered: possible && classes.size === 1, possible };
+  return { possible: backEdges(ids, directedEdges(g)).size === 0 };
 }
 
 export interface Levels {

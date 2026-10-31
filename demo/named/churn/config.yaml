@@ -63,7 +63,7 @@ tables:
   description: Every customer, their plan and region, and the date they cancelled if they have
   columns:
   - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, churn_analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [data_steward, churn_analyst], masks: [{to: [churn_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [data_steward, churn_analyst], masks: [{to: [churn_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: 'Where the customer is billed: NA, EU or APAC', visible_to: [data_steward, churn_analyst]}
   - {name: plan, data_type: varchar, description: 'The plan they are on: basic, pro or team', visible_to: [data_steward, churn_analyst]}
   - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst]}
@@ -95,7 +95,7 @@ views:
     GROUP BY c.id, c.email, c.region, c.plan, c.tenure_months, c.cancelled_on
   columns:
   - {name: customer_id, data_type: integer, description: The customer's id, visible_to: [data_steward, churn_analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [data_steward, churn_analyst], masks: [{to: [churn_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analyst, visible_to: [data_steward, churn_analyst], masks: [{to: [churn_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [data_steward, churn_analyst]}
   - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [data_steward, churn_analyst]}
   - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst]}

@@ -129,6 +129,7 @@ tables:
         type: regex
         pattern: ^[^@]+
         replace: '***'
+    - mask: null
   - name: phone
     data_type: varchar
     description: The customer's phone number; its digits masked for a bidder
@@ -141,6 +142,7 @@ tables:
         type: regex
         pattern: '[0-9]'
         replace: X
+    - mask: null
   - name: segment
     data_type: varchar
     description: consumer, small business or enterprise

@@ -158,8 +158,16 @@ export async function fetchRelatedGlossaryTerms(
   return res.json();
 }
 
+/** The term asked for does not exist (or not for this viewer): a remembered one is dropped. */
+export class GlossaryTermGone extends Error {
+  constructor(termId: number) {
+    super(`Glossary term ${termId} not found`);
+  }
+}
+
 export async function fetchGlossaryTerm(termId: number): Promise<GlossaryTermDetail> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`);
+  if (res.status === 404) throw new GlossaryTermGone(termId);
   if (!res.ok) throw new Error(requestFailed("fetchGlossaryTerm", res.status));
   return res.json();
 }

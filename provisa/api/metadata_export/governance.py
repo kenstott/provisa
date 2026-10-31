@@ -51,14 +51,18 @@ def _mask_tags(
     """One tag per entry of the column's mask list that masks (REQ-2059): the roles that read the
     column through it are restricted by it, the roles that read it unmasked are exempt. A role
     reads through the first entry its chain holds (REQ-1677: it and its ancestors), as the build
-    resolves it (app_loaders._load_masking_rules)."""
+    resolves it (app_loaders._load_masking_rules); a role holding none reads the column completely
+    masked, one more tag after the list's entries."""
     from provisa.security.masking import entry_for
 
     masks = [e.model_dump() for e in column.masks]
     reads = {r: entry_for(masks, chains[r]) for r in all_roles}
-    exempt = tuple(sorted(r for r, i in reads.items() if i is None or masks[i]["mask"] is None))
+    exempt = tuple(
+        sorted(r for r, i in reads.items() if i is not None and masks[i]["mask"] is None)
+    )
     uri = column_uri(org_id, table, column.name, column.alias)
-    return [
+    unmatched = tuple(r for r in all_roles if reads[r] is None)
+    tags = [
         GovernanceTag(
             asset=column_ref(table, column.name),
             signal=GovernanceSignal.MASKED,
@@ -72,6 +76,17 @@ def _mask_tags(
         for i, entry in enumerate(masks)
         if entry["mask"] is not None
     ]
+    if masks and unmatched:
+        tags.append(
+            GovernanceTag(
+                asset=column_ref(table, column.name),
+                signal=GovernanceSignal.MASKED,
+                rule_id=f"mask:{uri}:{len(masks)}:constant",
+                restricted_roles=unmatched,
+                exempt_roles=exempt,
+            )
+        )
+    return tags
 
 
 def _visibility_tags(

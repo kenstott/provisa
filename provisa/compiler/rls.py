@@ -26,7 +26,8 @@ from sqlglot import exp
 
 
 #: A member's treatment of a column, ordered least restrictive first: read as it is (0), through
-#: entry i of the column's mask list (1 + i), or not served (HIDDEN).
+#: entry i of the column's mask list (1 + i), the complete mask of a reader holding no entry
+#: (1 + the list's length), or not served (HIDDEN).
 PLAIN = 0
 HIDDEN = 1 << 30
 

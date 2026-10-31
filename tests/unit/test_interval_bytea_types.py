@@ -199,7 +199,7 @@ def test_an_arrow_interval_column_reads_as_ir_intervals():
             "3 days 04:05:06.5",
             (14_706_500_000, 3, 0),
         ),
-        (relativedelta(months=-14, days=1), "-1 years -2 mons 1 day", (0, 1, -14)),
+        (relativedelta(months=-14, days=1), "-1 years -2 mons +1 day", (0, 1, -14)),
         (timedelta(microseconds=-5), "-00:00:00.000005", (-5, 0, 0)),
         (timedelta(0), "00:00:00", (0, 0, 0)),
     ],

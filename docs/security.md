@@ -188,8 +188,8 @@ Each column has a permission model controlling read, write, and masking access p
 | Tier | Condition | Result |
 | ------ | ----------- | -------- |
 | **Hidden** | Role not in `visible_to` | Column absent from schema and catalog |
-| **Masked** | Role in `visible_to`; first mask entry it holds has a `mask` | Column visible, value replaced in output |
-| **Unmasked** | Role in `visible_to`; first mask entry it holds has no `mask`, or it holds none | Full read access |
+| **Masked** | Role in `visible_to`; first mask entry it holds has a `mask`, or the column has masks and it holds none | Column visible, value replaced in output |
+| **Unmasked** | Role in `visible_to`; first mask entry it holds has no `mask`, or the column has no masks | Full read access |
 
 ### Public columns
 
@@ -345,7 +345,9 @@ The mask expression is pushed into the SQL SELECT projection. The database retur
 
 **A mask covers every name of the column, not a related column.** A column read by its alias or its physical name is masked alike. A mask does not hide a key that an approved relationship joins to a column the role can see: the join compares the real values, so the related column shows what the masked key holds. Mask the related column too, or don't approve the relationship for that role.
 
-**No entry held means unmasked.** A reader that holds no entry reads the column unmasked. End a list with an entry that has no `to` when every reader should have some mask applied. The column editor warns when a list has no such entry (`unlisted_unmasked`).
+**No entry held means completely masked.** Once a column has any mask, a reader that holds no entry reads it completely masked: `****` for a text column, `NULL` for any other type. Unmasked is only ever given by an entry. To leave the readers a list does not name unmasked, end it with an entry that has no `to` and no `mask`, written out. A column with no masks is unaffected.
+
+**An entry no reader can reach is refused.** A save of a mask list holding one is refused with `You have defined a mask that is not reachable: ` followed by the unreachable entries, each named by its roles. This holds for the admin UI, the admin API and a config load.
 
 **Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first. That is how restriction works here.
 

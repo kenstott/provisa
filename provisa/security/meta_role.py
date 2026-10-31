@@ -249,7 +249,7 @@ def _member_reads(
     column is decided by its own chain (its ancestors) and the derived roles the set was named
     with, which contribute grants only."""
     from provisa.compiler.rls import HIDDEN, PLAIN, MemberReads
-    from provisa.security.masking import entry_for, rule_of
+    from provisa.security.masking import entry_for, resolve
     from provisa.security.rights import column_served, reaches_domain
 
     from provisa.security.masking import MaskType
@@ -300,11 +300,14 @@ def _member_reads(
                     rule, fake_type = faked[(t["id"], name)]
                     treatments.append((1, rule, fake_type))
                     continue
-                i = entry_for(masks, [*chains[m["id"]], *qualifiers])
-                if i is None or masks[i].get("mask") is None:
+                chain = [*chains[m["id"]], *qualifiers]
+                rule = resolve(masks, chain, dtype)
+                if rule is None:
                     treatments.append((PLAIN, None, dtype))
-                else:
-                    treatments.append((1 + i, rule_of(masks[i]["mask"]), dtype))
+                    continue
+                i = entry_for(masks, chain)
+                # REQ-2059: no entry held is the complete mask, ranked after every entry.
+                treatments.append((1 + (len(masks) if i is None else i), rule, dtype))
             columns[name] = tuple(treatments)
         out[t["id"]] = MemberReads(flags=tuple(flags), columns=columns)
     return out
