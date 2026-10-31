@@ -203,6 +203,7 @@ def new_york():
     [
         ("timetz('2024-02-29 12:30:01.5+02'::timestamptz)", "05:30:01.5-05"),
         ("pg_catalog.\"time\"('2024-02-29 12:30:01.5+02'::timestamptz)", "05:30:01.5"),
+        ("time('2024-02-29 12:30:01.5+02'::timestamptz)", "05:30:01.5"),
         ("timestamptz('2024-02-29'::date)", "2024-02-29 00:00:00-05"),
         ("timestamptz('2024-07-01'::date, '12:00:00'::time)", "2024-07-01 12:00:00-04"),
         ("timestamptz('2024-02-29 12:30:01.5'::timestamp)", "2024-02-29 12:30:01.5-05"),
@@ -212,6 +213,8 @@ def new_york():
 def test_the_session_zone_reads_as_postgresql_reads_it(new_york, call: str, want: str):
     written = transpile_to_duckdb(f"SELECT {call} AS v")
     assert new_york.execute(f"SELECT v::VARCHAR FROM ({written})").fetchone()[0] == want
+    transpiled = transpile(f"SELECT {call} AS v", "duckdb")
+    assert new_york.execute(f"SELECT v::VARCHAR FROM ({transpiled})").fetchone()[0] == want
 
 
 def test_a_time_takes_the_sessions_offset_today(new_york):

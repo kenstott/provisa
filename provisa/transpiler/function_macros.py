@@ -1228,6 +1228,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return _READ_AS[type(node)], [node.this]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
+    if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
+        return "time", [a for a in (node.this, node.args.get("zone")) if a is not None]
     if isinstance(node, exp.RegexpSubstr):
         keys = ("this", "expression", "position", "occurrence", "parameters", "group")
         return "regexp_substr", [node.args[k] for k in keys if node.args.get(k) is not None]
