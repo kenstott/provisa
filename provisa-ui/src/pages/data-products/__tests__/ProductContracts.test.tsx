@@ -271,15 +271,17 @@ describe("a product's contracts list (REQ-2158)", () => {
     expect(screen.queryByTestId("data-contract-item-9")).toBeNull();
   });
 
-  it("heads each row with its port, version, status, consumers, SLA, last check and warning", () => {
+  it("heads each row with its port, version, status, SLA, last check and warning", () => {
     panel(3);
     const pets = screen.getByTestId("data-contract-row-1");
     expect(pets).toHaveTextContent("pet-store.pets");
     expect(screen.getByTestId("data-contract-version-1")).toHaveTextContent("v1.2.0");
     expect(screen.getByTestId("data-contract-status-1")).toHaveTextContent("Active");
-    expect(screen.getByTestId("data-contract-consumer-count-1")).toHaveTextContent("2 consumers");
-    expect(screen.getByTestId("data-contract-consumer-count-2")).toHaveTextContent("1 consumer");
-    expect(screen.getByTestId("data-contract-consumer-count-3")).toHaveTextContent("0 consumers");
+    // Who consumes a port is the owner's, not the contract's (REQ-2160): no count, owner or not.
+    for (const id of [1, 2, 3]) {
+      expect(screen.queryByTestId(`data-contract-consumer-count-${id}`)).toBeNull();
+      expect(screen.getByTestId(`data-contract-row-${id}`)).not.toHaveTextContent(/consumer/i);
+    }
     // Freshness first; else the first declared service level; never expiring is said so.
     expect(screen.getByTestId("data-contract-sla-headline-1")).toHaveTextContent("300s");
     expect(screen.getByTestId("data-contract-sla-headline-2")).toHaveTextContent(
@@ -304,11 +306,14 @@ describe("a product's contracts list (REQ-2158)", () => {
     await screen.findByTestId("data-contract-1");
     expect(fetchProductContract).toHaveBeenCalledTimes(1);
     expect(fetchProductContract).toHaveBeenCalledWith("pet_health", "pg.public.pets");
-    for (const card of ["details", "fields", "sla", "quality", "consumers", "versions"]) {
+    for (const card of ["details", "fields", "sla", "quality", "versions"]) {
       expect(screen.getByTestId(`data-contract-1-${card}`)).toBeInTheDocument();
     }
-    // Its consumers and promises are its own port's.
-    expect(screen.getByTestId("data-contract-consumers-1")).toHaveTextContent("pet_report");
+    // No card says who reads the port, though this reader owns the product and two consumers do.
+    expect(screen.queryByTestId("data-contract-1-consumers")).toBeNull();
+    expect(screen.queryByTestId("data-contract-consumers-1")).toBeNull();
+    expect(screen.getByTestId("data-contract-1")).not.toHaveTextContent("pet_report");
+    // Its promises are its own port's.
     expect(screen.getByTestId("data-contract-promises-1")).toHaveTextContent("2 promises");
     expect(screen.getByTestId("data-contract-1-versions")).toHaveTextContent(
       "contractCreatedTs2026-10-01T00:00:00Z",

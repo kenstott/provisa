@@ -10,23 +10,23 @@
 
 // REQ-2158: a product member's contract, its output port, as its open row in the product's contracts
 // list shows it: every ODCS 3.1 element, declared or derived (REQ-2118), in the same dense card
-// panels the product uses -- details, versions and changes, fields promised, SLAs and freshness,
-// support and team, servers, pricing, custom properties and tags, consumers, quality promises. The
-// cards are peers. An element nothing provides is shown as not declared. Elements are named by their
-// ODCS names, the standard's own vocabulary.
+// panels the product uses -- details, versions and changes, SLAs and freshness, support and team,
+// servers, pricing, custom properties and tags, fields promised, quality promises. The cards are
+// peers. A contract is what a product's user reads, so it never says who consumes the port: that is
+// the owner's, on the product (REQ-2160). An element nothing provides is shown as not declared.
+// Elements are named by their ODCS names, the standard's own vocabulary.
 
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
 import type { ContractVersion } from "../../types/admin";
-import type { ProductConsumer, ProductDqEntry } from "../../api/lineage";
+import type { ProductDqEntry } from "../../api/lineage";
 import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
 import { DetailCard } from "./DetailCard";
-import { ConsumersList } from "./dataProductDq";
 import { PromisesTable } from "./PromisesTable";
 
-// The contract's cards flow in columns this wide, as the product's own do; the Promises card runs
-// the panel's full width beneath them, its promises a table.
+// The contract's cards flow in columns this wide, as the product's own do; the Columns and Promises
+// cards run the panel's full width beneath them, its promises a table.
 const COLUMN_WIDTH = "320px";
 const COLUMN_GAP = "var(--mantine-spacing-sm)";
 
@@ -253,7 +253,6 @@ export function ContractView({
   versions,
   tableId,
   promises,
-  consumers,
 }: {
   contract: OdcsContract;
   /** Its saved versions, oldest first (REQ-2158). */
@@ -261,8 +260,6 @@ export function ContractView({
   tableId: number;
   /** The product's promises on this port (REQ-2132); null while the product's lineage is read. */
   promises: ProductDqEntry[] | null;
-  /** Who reads this port, one hop downstream; null when the reader is not shown them (REQ-2160). */
-  consumers: ProductConsumer[] | null;
 }) {
   const { t } = useTranslation();
   const status = t(`dataProductsTab.contract.status.${contract.status}`);
@@ -301,23 +298,6 @@ export function ContractView({
             <Versions versions={versions} tableId={tableId} />
           </Stack>
         </DetailCard>
-        <DetailCard {...card("fields")}>
-          <Stack gap={2}>
-            <Element name="name" value={object?.name} />
-            <Element name="physicalName" value={object?.physicalName} />
-            <Element name="physicalType" value={object?.physicalType} />
-            <Element name="description" value={object?.description} />
-            <Element name="businessName" value={object?.businessName} />
-            <Element name="dataGranularityDescription" value={object?.dataGranularityDescription} />
-            <Records name="relationships" items={object?.relationships} />
-            <Element name="tags" value={object?.tags} />
-            <Properties
-              properties={properties}
-              tableId={tableId}
-              testId={`data-contract-columns-${tableId}`}
-            />
-          </Stack>
-        </DetailCard>
         <DetailCard {...card("sla")}>
           <Stack gap={2}>
             <Element name="slaDefaultElement" value={contract.slaDefaultElement} />
@@ -352,12 +332,24 @@ export function ContractView({
             <Element name="tags" value={tags} />
           </Stack>
         </DetailCard>
-        {consumers && (
-          <DetailCard {...card("consumers")}>
-            <ConsumersList consumers={consumers} testId={`data-contract-consumers-${tableId}`} />
-          </DetailCard>
-        )}
       </div>
+      <DetailCard {...card("fields")} wide>
+        <Stack gap={2}>
+          <Element name="name" value={object?.name} />
+          <Element name="physicalName" value={object?.physicalName} />
+          <Element name="physicalType" value={object?.physicalType} />
+          <Element name="description" value={object?.description} />
+          <Element name="businessName" value={object?.businessName} />
+          <Element name="dataGranularityDescription" value={object?.dataGranularityDescription} />
+          <Records name="relationships" items={object?.relationships} />
+          <Element name="tags" value={object?.tags} />
+          <Properties
+            properties={properties}
+            tableId={tableId}
+            testId={`data-contract-columns-${tableId}`}
+          />
+        </Stack>
+      </DetailCard>
       <DetailCard {...card("quality")} wide>
         {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
         {promises && promises.length > 0 ? (

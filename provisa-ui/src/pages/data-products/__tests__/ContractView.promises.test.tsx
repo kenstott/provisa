@@ -76,7 +76,6 @@ function renderView(promises = PROMISES) {
       versions={[]}
       tableId={7}
       promises={promises}
-      consumers={[]}
     />,
   );
 }
@@ -162,7 +161,6 @@ describe("a contract's promises table", () => {
           versions={[]}
           tableId={7}
           promises={[promise(9, [rule("expect_something_new", "")])]}
-          consumers={[]}
         />,
       ),
     ).toThrow(/expect_something_new/);

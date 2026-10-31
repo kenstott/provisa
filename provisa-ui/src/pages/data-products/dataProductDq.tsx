@@ -20,9 +20,9 @@ import { useNavigate } from "react-router-dom";
 import { Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@mantine/core";
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
-import { tableSqlRef } from "../../naming";
+import { relationName, tableSqlRef } from "../../naming";
 import type { ProductConsumer, ProductDqEntry, ProductInput } from "../../api/lineage";
-import { modelName } from "./productCore";
+import { modelName, type CoreTable } from "./productCore";
 import { COLOR, dqStatus } from "./dataProductClaims";
 
 /** The DQ icon of a dataset: its checks' latest result. Nothing when it has no checks. */
@@ -221,13 +221,16 @@ export function InputsList({
   );
 }
 
-/** REQ-2160: who reads the product one hop downstream, each by its model name, what it is, and the
- *  product it belongs to when it is another product's. */
+/** REQ-2160: who reads the product one hop downstream, each by its model name, what it is, the
+ *  product it belongs to when it is another product's, and, once ``ports`` (the product's members)
+ *  are read, which of them it reads. */
 export function ConsumersList({
   consumers,
+  ports,
   testId,
 }: {
   consumers: ProductConsumer[];
+  ports: CoreTable[] | undefined;
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -248,6 +251,25 @@ export function ConsumersList({
             ({t(`dataProductCore.consumerKind_${c.kind}`)}
             {c.product_id ? ` · ${t("dataProductCore.inProduct", { product: c.product_id })}` : ""})
           </Text>
+          {ports && (
+            <Text
+              c="var(--text-muted)"
+              ff="text"
+              size="xs"
+              data-testid={`${testId}-reads-${c.relation}`}
+            >
+              {t("dataProductCore.consumerReads", {
+                ports: ports
+                  .filter((p) =>
+                    c.reads.includes(
+                      relationName({ domainId: p.domain_id, tableName: p.table_name }),
+                    ),
+                  )
+                  .map(modelName)
+                  .join(", "),
+              })}
+            </Text>
+          )}
         </List.Item>
       ))}
     </List>

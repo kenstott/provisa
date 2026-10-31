@@ -877,6 +877,7 @@ export function DataProductDetailPanel({
           ) : lineageGraph ? (
             <ConsumersList
               consumers={lineageGraph.consumers}
+              ports={core.tables}
               testId={`data-product-detail-consumers-${p.id}`}
             />
           ) : (
@@ -972,7 +973,6 @@ export function DataProductDetailPanel({
         productId={p.id}
         core={core}
         lineage={lineageGraph}
-        owner={owner}
         version={contractsVersion}
       />
       {lifecycle.dialogs}
