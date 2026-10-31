@@ -119,7 +119,7 @@ async def test_only_the_relationships_whose_columns_the_caller_is_served_are_off
 ):
     _db(monkeypatch, [])
 
-    async def _tables(conn):
+    async def _tables(conn, **_kw):
         return [
             {"id": 7, "table_name": "orders"},
             {"id": 8, "table_name": "customers"},

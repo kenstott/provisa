@@ -1659,7 +1659,7 @@ async def govern_statement(
 
     from provisa.api.app import state
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.compiler.stage2 import apply_governance
     from provisa.compiler.sql_validator import validate_sql
 
     from provisa.audit.pipeline import write_denial
@@ -1679,7 +1679,6 @@ async def govern_statement(
     await resolve_trace_scope(state, role_id, hint=cache_hint_for("sql", sql).debug_trace)
 
     ctx = surface.context
-    rls = surface.rls
     # REQ-1620: domain_access follows the UNION of every role the caller is acting as ("Role:
     # All"); role_id/RLS/masking/capabilities stay single-role. See
     # security.rights.effective_domain_access_role — the one place this is computed, so every
@@ -1693,7 +1692,7 @@ async def govern_statement(
     # statement's bound values — so a governed statement is kept in the org's compiled-query cache
     # (generation-keyed, TTL-evicted, bounded) and a repeat is not parsed, validated or governed
     # again. Every raw-SQL surface reaches the pipeline here, so they all share it.
-    from provisa.pgwire.governed_plan import PlanSlot
+    from provisa.pgwire.governed_plan import PlanSlot, role_governance
     from provisa.core.request_context import session_vars_for
 
     _session_vars = session_vars if session_vars is not None else session_vars_for(role)
@@ -1733,19 +1732,7 @@ async def govern_statement(
 
     def _governance() -> Any:
         if not built:
-            built.append(
-                build_governance_context(
-                    role_id,
-                    rls,
-                    state.masking_rules,
-                    ctx,
-                    getattr(state, "tables", []),
-                    role=role,
-                    relationships=getattr(state, "relationships", None),
-                    source_types=state.source_types,
-                    engine=getattr(state, "federation_engine", None),
-                )
-            )
+            built.append(role_governance(state, surface, role_id))
         return built[0]
 
     # REQ-1163: a relation's time-travel arguments are lifted off it before anything else reads
@@ -5160,7 +5147,7 @@ async def _govern_compiled(
     import sqlglot as _sg
 
     from provisa.audit.pipeline import resolve_table_ids
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.compiler.stage2 import apply_governance
 
     # REQ-1882: sqlglot tokenization off-loaded — see _off_loop's own docstring. This is the
     # Flight SQL / gRPC compiled path's own parse, the same class of blocking call the raw-SQL
@@ -5208,23 +5195,13 @@ async def _govern_compiled(
     from provisa.security.rights import require_role
 
     from provisa.api.role_surface import built_surface
+    from provisa.pgwire.governed_plan import role_governance
 
     # One snapshot: context and row filters of one build.
     surface = built_surface(state.surfaces[role_id])
     ctx = surface.context
-    rls = surface.rls
 
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=require_role(state.roles, role_id),
-        relationships=getattr(state, "relationships", None),
-        source_types=state.source_types,
-        engine=getattr(state, "federation_engine", None),
-    )
+    gov_ctx = role_governance(state, surface, role_id)
     # REQ-1163: a GraphQL field's as_of/as_recorded are compiled onto its relation's reference
     # (the SQL call form); lifted here, as on the raw-SQL stage, each reference is read at its
     # own time.

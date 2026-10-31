@@ -21,6 +21,8 @@ surface therefore keeps the result the same way, in the org's one ``compiled_que
 - the GraphQL endpoint (``api.data.graphql_plan``), which also keeps the parse and compile.
 - the generated-GraphQL stage (``api.generated_plan``): the parse and compile of the GraphQL text
   REST and JSON:API synthesize from a request, one plan per request shape with values bound.
+- the role's governance context (:func:`role_governance`), which a statement not seen before reads:
+  a graph statement carries its values in its text, so each new value is a new statement.
 
 One :class:`PlanSlot` per request holds the rules they share:
 
@@ -51,6 +53,7 @@ deployment) is that stage's own rule, applied before it calls :meth:`PlanSlot.ke
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass
@@ -156,3 +159,37 @@ class PlanSlot:
         if (state.schema_boot_id, state.schema_version) != self._generation:
             return
         state.compiled_query_cache.put(self._key, _Kept(value, self._anchors, self._settings))
+
+
+def role_governance(state: Any, surface: Any, role_id: str) -> Any:
+    """``role_id``'s governance context on ``surface``, built once per role and model version under
+    the rules above. The governance objects are the anchors, and the surface read is one of them, so
+    a context built from a surface a rebuild has since replaced answers no later request. Each
+    caller gets its own copy, since a statement's governance sets its own limits on the context."""
+    from provisa.compiler.stage2 import build_governance_context
+    from provisa.fakes.measurement import MEASURING
+    from provisa.security.rights import effective_domain_access_role
+
+    # What the model build's measurement reads differs: no fakes (stage2._bind_fakes).
+    slot = PlanSlot(
+        state,
+        "governance",
+        role_id,
+        MEASURING.get(),
+        extra_anchors=(surface.context, surface.rls),
+    )
+    governance = slot.cached()
+    if governance is None:
+        governance = build_governance_context(
+            role_id,
+            surface.rls,
+            state.masking_rules,
+            surface.context,
+            getattr(state, "tables", []),
+            role=effective_domain_access_role(role_id, state.roles),
+            relationships=getattr(state, "relationships", None),
+            source_types=state.source_types,
+            engine=getattr(state, "federation_engine", None),
+        )
+        slot.keep(governance)
+    return dataclasses.replace(governance)

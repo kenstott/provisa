@@ -434,21 +434,13 @@ def access_violations(
     """The 403 naming each access violation of a graph statement the role sent, or None: the
     validation every graph surface over HTTP runs before the pipeline (Cypher's, SPARQL's)."""
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.security.rights import effective_domain_access_role
 
     role = effective_domain_access_role(role_id, state.roles)
     ctx = surface.context
-    governance = build_governance_context(
-        role_id,
-        surface.rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-    )
+    governance = role_governance(state, surface, role_id)
     violations = validate_sql(
         semantic_sql,
         ctx,
