@@ -82146,7 +82146,11 @@
     2026-10-29, BETA VERSIONING:) Maintainer 2026-10-31: beta is the product''s stage and SemVer states
     it: major 0 with an enumerated minor (v0.2.0, v0.2.1, v0.3.0) is a release partners use. A pre-release
     of the next version is v0.3.0-rc.1, a release candidate, which sorts below v0.3.0 and reaches only a
-    partner who pins it. Alpha numbering ends at the first beta release.'
+    partner who pins it. Alpha numbering ends at the first beta release. (Amended 2026-10-29, BETA RELEASES
+    CARRY UPGRADE CODE:) Maintainer 2026-10-31: from the first beta release, each release that changes stored
+    structure or the meaning of stored data carries the code that upgrades an existing install, keeping
+    what it holds, and an upgrade test proves it on an older install. Until then no migrations are written,
+    and the first beta release is the baseline they start from.'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
