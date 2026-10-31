@@ -66,6 +66,15 @@ class _NoEngineCalls:
         return SimpleNamespace(column_names=[], rows=[])
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization, as provisa.api.app declares it for a single-tenant state.
+    The API layer says it at import, which these tests do not make."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 @pytest.fixture
 def registry(monkeypatch):
     sources = [
