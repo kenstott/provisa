@@ -10,8 +10,7 @@
 
 // REQ-2006: a live demo opens on its own: the environment a tour left picked in this browser is not
 // the next visit's. An earlier visit left in Test (synthetic) opened the next sandbox's tour there,
-// where a run's results hold nothing (provisa/synthetic/env_model.py) and its first statement over
-// them answered "No results".
+// where a statement over a run's results is refused: their relation is not in that environment.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENV_STORAGE_KEY, selectedEnv } from "../lib/authFetch";
