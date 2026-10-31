@@ -2,7 +2,7 @@
 
 Business logic in Python or Node.
 
-If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type: over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
+If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type. Over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
 
 What differs from a resolver you write by hand:
 
@@ -62,7 +62,7 @@ SELECT code, name
 FROM sales.regions
 ```
 
-Node works the same way, with JSDoc tags and TypeScript types: see [Node](#node).
+Node works the same way, with JSDoc tags and TypeScript types; see [Node](#node).
 
 ## Build {: #build }
 
@@ -151,7 +151,7 @@ Commands and `@columns` functions keep their own parameters, each its own argume
 
 ### What reaches your function {: #what-reaches-your-function }
 
-A call gets the read's inputs and its read context, and nothing else of the request. Your function never sees who is asking: the caller's identity and roles stay with Provisa, which governs the rows your function returns.
+A call gets the read's inputs and its read context, and nothing else of the request. Your function never sees who is asking. The caller's identity and roles stay with Provisa, which governs the rows your function returns.
 
 ### The read context {: #read-context }
 
@@ -257,7 +257,7 @@ Joined to a table of customers, its context holds keys such as `{"9f2c...": {"cu
 
 ### Column transforms: `@columns` {: #column-transforms }
 
-A function tagged `@columns` computes new columns from the columns of rows you already have: it splits an address into its parts, classifies a description, or enriches a name. It takes a batch of rows and returns one result per row, in the same order.
+A function tagged `@columns` computes new columns from the columns of rows you already have, such as splitting an address into its parts, classifying a description or enriching a name. It takes a batch of rows and returns one result per row, in the same order.
 
 Each parameter is one input column, given as a list of that batch's values in row order. The function returns a list with one object per input row, and the object's fields are the output columns. In Python:
 
@@ -279,7 +279,7 @@ def clean_address(raw_address: list[str]) -> list[Address]:
 
 In TypeScript, declare it as `clean_address(raw_address: string[]): Promise<Address[]>` with `@columns` in its JSDoc.
 
-You register it as a command, one at a time like any other: on the **Commands** page, pick the source, and its `@columns` functions are offered to pick from. The function's declaration supplies the input and output columns. Register it into a domain with the roles that may use it.
+You register it as a command, one at a time like any other. On the **Commands** page, pick the source, and its `@columns` functions are offered to pick from. The function's declaration supplies the input and output columns. Register it into a domain with the roles that may use it.
 
 Apply it in a select list, and its output columns take the place of the call:
 
@@ -289,13 +289,13 @@ SELECT id, clean_address(raw_address) FROM suppliers
 
 This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list or of a CTE's select list (see [Column transforms in CTEs](#column-transforms-in-ctes) below). A call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused, and so is an alias on the call. Each output column is a named step of the projection's lineage.
 
-**Streaming.** Column transforms stream. The statement reads its input as Arrow record batches; each batch is cut to 1,000 rows before being sent to a worker, and the worker's output columns are passed on as soon as that batch is answered. The result is never materialized whole: memory stays flat whatever the row count, and the first rows reach the caller before the last rows are read. Order is kept.
+**Streaming.** Column transforms stream. The statement reads its input as Arrow record batches; each batch is cut to 1,000 rows before being sent to a worker, and the worker's output columns are passed on as soon as that batch is answered. The result is never materialized whole, so memory stays flat whatever the row count, and the first rows reach the caller before the last rows are read. Order is kept.
 
 The workers run batches in parallel when you set more than one on the source's form (`workers` in its mapping, see [Dev mode and workers](#workers)); each added worker adds throughput. A function that keeps no state between calls benefits most. A batch answered with a different number of results than rows it was given is refused, naming the function.
 
 The function can call Provisa's services, the LLM service among them, so one model call can clean, classify or enrich a whole batch. Each call is metered and capped against the source like any of its other calls ([Calling a model](#calling-a-model)).
 
-A view that applies a column transform is landed, whether or not you declare it a materialized view: Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
+A view that applies a column transform is landed, whether or not you declare it a materialized view. Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
 
 #### Column transforms in CTEs {: #column-transforms-in-ctes }
 
@@ -366,7 +366,7 @@ Writing works the way it does for any table:
 - An `UPDATE` or a `DELETE` first reads the rows it touches: an ordinary read of the table's key columns over the statement's own `FROM` and `WHERE`, joins included, routed as any read is. The command is then called with those keys. An update whose `SET` is computed per row (`SET total = total * 2`) is called once for each distinct set of changes.
 - The affected count is the number of rows written or keys given.
 - A GraphQL mutation on the table goes the same way.
-- The read and the call are not one transaction: a row can change between the two.
+- The read and the call are not one transaction, so a row can change between the two.
 
 When two commands fit one operation, tag the one it is with `@insert <table>`, `@update <table>` or `@delete <table>`, where `<table>` is the table's `@table` function. Two that fit with no tag are refused when you register the table, and so is a tag on a command that doesn't fit. A write to a table with no command bound for it is refused, naming the operation.
 
@@ -468,14 +468,14 @@ A source runs on the Provisa server by default; this is dev mode.
 
 - Your code runs in a worker process of its own, one per source and version of its code in each Provisa process, started on its first call.
 - A worker that crashes fails the calls in flight, naming the source and the function. The next call starts a new one.
-- A call is cancelled when its request's deadline passes: the worker is told to stop it, and the waiting request is released at once.
+- A call is cancelled when its request's deadline passes. The worker is told to stop it, and the waiting request is released at once.
 
 ### Reading a table {: #reading-a-table }
 
 How a read reaches your function depends on what else it reads:
 
 - **A read of one code source's tables alone** goes straight to your function. Nothing is landed. Provisa calls it with the read's inputs and its read context, and applies the whole statement to the rows it returns.
-- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it: your function gets the read's inputs and an empty context, and returns the whole table for them, which is kept under those inputs for the table's cache TTL.
+- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it. Your function gets the read's inputs and an empty context, and returns the whole table for them, which is kept under those inputs for the table's cache TTL.
 - **A built source's table** in such a join is read live from its remote host, which the engine attaches as a Postgres catalog. The host gives your function the read context of the part of the statement the engine sends it. It is landed instead when its source is replicated or floored, when the table is kept for good, when it declares a landing TTL above 0, or on an engine that can't attach a host.
 
 Either way, visibility, masks and row rules apply to the rows, as they do for any table. You pass arguments the way you pass any table parameter: `_nf_` conditions in SQL, field arguments in GraphQL.

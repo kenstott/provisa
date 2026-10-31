@@ -125,7 +125,7 @@ The stores, the federation engine and these telemetry services publish on `PROVI
 ### Telemetry backend (`otlp2sql`)
 
 The `--observability` stack above (Collector → Tempo/Prometheus/Grafana) is one
-telemetry path. The other is `otlp2sql` (`provisa.observability.otlp2sql`): an
+telemetry path. The other is `otlp2sql` (`provisa.observability.otlp2sql`), an
 OTLP/HTTP receiver that writes traces, metrics, and logs to a SQL database
 chosen by a SQLAlchemy URL, extracting the `provisa.*` span attributes at ingest
 so no separate compaction job runs. Writes are batched
@@ -139,11 +139,11 @@ the backend with `PROVISA_OPS_DB_URL`:
 | *(unset)* | dedicated DuckDB under `~/.provisa/telemetry/` | default; no server, no Docker |
 | `clickhouse+native://user@host/otel` | ClickHouse | high-rate ingest with automatic background merges |
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | moderate volume |
-| `trino://user@host:8080/otel` | Trino / Iceberg | technically works, **not recommended** — see below |
+| `trino://user@host:8080/otel` | Trino / Iceberg | technically works, **not recommended**; see below |
 
 **On `trino://`:** the SQLAlchemy Trino dialect emits valid Trino DDL and `INSERT`s, so it can work as an `otlp2sql` backend, but we recommend it only for low ingest rates. Every batch flush becomes a distributed Trino `INSERT` plus an Iceberg snapshot, so high-rate telemetry produces many small files and snapshots, and still needs a periodic `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots`, which `otlp2sql` doesn't run. It also puts the query engine in the ingest hot path.
 
-For high-volume telemetry into Trino/Iceberg, use `otlp2parquet` instead: it
+For high-volume telemetry into Trino/Iceberg, use `otlp2parquet` instead. It
 writes parquet to object storage without going through Trino, and a scheduled
 Trino compaction rolls the raw files into the live Iceberg tables. For a single
 engine that handles both high-rate ingest and compaction, prefer ClickHouse.
@@ -203,7 +203,7 @@ All data is stored in `%USERPROFILE%\.provisa\`.
 
 ---
 
-## Linux AppImage — Single or Multi-Node VM
+## Linux AppImage: Single or Multi-Node VM
 
 ### What it is
 
@@ -224,7 +224,7 @@ The Provisa image is built when it's packaged, and Python source is never includ
 
 ---
 
-### Steps — Single Node
+### Steps: Single Node
 
 1. Download `Provisa.AppImage` from the [GitHub releases page](https://github.com/provisa/provisa/releases) and transfer to the target machine
 2. Make it executable:
@@ -254,7 +254,7 @@ The Provisa image is built when it's packaged, and Python source is never includ
 
 ---
 
-### Steps — Multi-Node (Primary)
+### Steps: Multi-Node (Primary)
 
 Run these steps on the primary node first. Secondaries must be set up after the primary is running.
 
@@ -290,7 +290,7 @@ Run these steps on the primary node first. Secondaries must be set up after the 
 
 ---
 
-### Steps — Multi-Node (Each Secondary)
+### Steps: Multi-Node (Each Secondary)
 
 Repeat these steps on each additional node after the primary is running and reachable.
 
@@ -368,7 +368,7 @@ Non-interactive mode installs a systemd unit (`/etc/systemd/system/provisa.servi
 
 ---
 
-## Cloud VM Deployment — Terraform (AWS)
+## Cloud VM Deployment: Terraform (AWS)
 
 One interactive command provisions a full multi-node Provisa cluster on AWS: VPC, security groups, EC2 instances, ALB and NLB.
 
@@ -376,7 +376,7 @@ One interactive command provisions a full multi-node Provisa cluster on AWS: VPC
 
 | File | Purpose |
 | ------ | --------- |
-| `terraform/deploy.sh` | Interactive wrapper — collects parameters, validates credentials, writes `terraform.tfvars`, runs apply |
+| `terraform/deploy.sh` | Interactive wrapper that collects parameters, validates credentials, writes `terraform.tfvars` and runs apply |
 | `terraform/aws/variables.tf` | All variable definitions with defaults |
 | `terraform/aws/main.tf` | VPC, subnets, security groups, IAM, EC2, ALB, NLB |
 | `terraform/aws/outputs.tf` | Endpoint URLs and node IPs |
@@ -519,7 +519,7 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    - **PostgreSQL.** In-cluster (`postgresql.enabled: true`) or external managed (`postgresql.host`)? External recommended for production.
    - **Redis.** In-cluster or external (`redis.host`)?
    - **Store credentials.** Create the Secret `credentials.existingSecret` names, with keys `pg-password`, `redis-password`, `minio-access-key`, `minio-secret-key`, `grafana-admin-password` and `trino-shared-secret`. The chart sets no password of its own and does not render without it.
-   - **TLS.** On by default (`tls.enabled: true`): create the `kubernetes.io/tls` Secret `tls.secretName` names, or set `tls.enabled: false`
+   - **TLS.** On by default (`tls.enabled: true`); create the `kubernetes.io/tls` Secret `tls.secretName` names, or set `tls.enabled: false`
    - **MinIO / S3.** In-cluster MinIO or native S3? For AWS, use S3 with an IAM role.
    - **Secrets.** Pass via `--set` for evaluation; use External Secrets or Vault Agent for production.
    - **Trino coordinator cache.** A 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it.
@@ -562,7 +562,7 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
 
    The Trino coordinator runs each org's statements in that org's own resource group,
    `global.tenant-<org>`, from the resource-group file the chart ships. Statements through the
-   Arrow Flight proxy share one group, `global.flight`: the proxy opens its own Trino connection
+   Arrow Flight proxy share one group, `global.flight`, because the proxy opens its own Trino connection
    and cannot carry the org.
 
    If using an internal registry, add image overrides:
@@ -690,7 +690,7 @@ The system-level items (the ODBC driver, cloud CLIs, service-account keys) have 
 | `pyodbc` | Fabric, Synapse | ODBC connection to T-SQL endpoints |
 | `azure-identity` | Fabric, Synapse | Azure AD token via `DefaultAzureCredential` |
 | `clickhouse-connect` | ClickHouse | HTTP columnar reads |
-| `protobuf>=6.33.5,<7` | BigQuery, gRPC | Compatibility pin — `google-cloud-*` and OTel share a protobuf runtime; `<7` keeps them aligned |
+| `protobuf>=6.33.5,<7` | BigQuery, gRPC | Compatibility pin: `google-cloud-*` and OTel share a protobuf runtime; `<7` keeps them aligned |
 | `grpcio-status<1.82` | gRPC | Aligns with the `protobuf<7` pin |
 
 ### System-level requirements

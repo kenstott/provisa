@@ -95,9 +95,9 @@ A definition alone approves nothing. Approve a term once its definition says wha
 
 ## Grounding
 
-Grounding says whether a term reaches data. Nobody sets it: Provisa works it out from the term's relationships each time the graph changes.
+Grounding says whether a term reaches data. Nobody sets it. Provisa works it out from the term's relationships each time the graph changes.
 
-A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table: the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
+A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table, the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
 
 | Grounding | Mark | Meaning |
 | --- | --- | --- |
@@ -303,7 +303,7 @@ A column that is PII through its term can't be unmarked on its own. Unmark the t
 
 ### Moves that lose tags
 
-Moving a column to another term can take a tag off it: moving `customers.email` from `customer email` (tagged `pii`) to an untagged term would leave the email column unprotected. Every move a person makes is checked first. That covers claiming or moving a column, retiring a term, and saving or deleting a relationship that re-homes key columns.
+Moving a column to another term can take a tag off it. Moving `customers.email` from `customer email` (tagged `pii`) to an untagged term would leave the email column unprotected. Every move a person makes is checked first. That covers claiming or moving a column, retiring a term, and saving or deleting a relationship that re-homes key columns.
 
 When a column would stop carrying `pii` altogether, the move is refused until you decide. The UI shows one summary of what each moved column loses and gains, losses first.
 
@@ -371,7 +371,7 @@ Beside Edit, the panel offers the status actions the term allows: **Approve** a 
 
 From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes.
 
-The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data: relate it to a term that has data.
+The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data. Relate it to a term that has data.
 
 ## Querying the ontology
 
