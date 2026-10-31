@@ -12,28 +12,39 @@
 is a per-dialect rewrite of a function a dialect does not have, applied at transpile time, so every
 transport and every engine that can run it gets it.
 
-``MACROS`` is the one table: a row is a function's overload and its form on each dialect. A form is
-SQL over the overload's parameters, in the target's own dialect, or in PostgreSQL's (``Pg``) where
-sqlglot writes one rewrite for each dialect listed. PostgreSQL has every one of them itself. A
-call on a dialect with no form is refused by name, never sent to fail as an engine error.
+The rule (REQ-2171, THE RULE FOR TYPES AND FUNCTIONS, THE SAME TYPE UNDER ANOTHER NAME) is here and
+nowhere else, in this order: :class:`Step`. ``Macro.resolved`` is the one place it is applied:
+
+1. the dialect's own function, under any name (``own``, and PostgreSQL has every one of them);
+2. the functions the dialect does have (``forms``);
+3. its inline operators (``operators``);
+4. otherwise the call is refused by name, never sent to fail as an engine error.
+
+``MACROS`` is the one table: a row is a function's overload and its forms. A form is SQL over the
+overload's parameters, in the target's own dialect, or in PostgreSQL's (``Pg``) where sqlglot writes
+one rewrite for each dialect listed. An overload is chosen by the type the statement says of its
+first argument (``OVERLOADS``), never by the engine's type: PostgreSQL's own name for it, as pg_proc
+has it, is its row. The row of the function's own name answers an argument whose type the statement
+does not say.
 
 A DuckDB form that names a ``provisa_`` function calls a Python UDF of
 provisa.federation.duckdb_pg_scalars: that function is DuckDB's alone until it is written as SQL."""
 
-# Requirements: REQ-2167
+# Requirements: REQ-2167, REQ-2171
 
 from __future__ import annotations
 
+import enum
 import functools
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
 
 import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import raising
+from provisa.transpiler import pg_forms
 from provisa.transpiler.metadata_functions import VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
@@ -66,20 +77,39 @@ MAPPED = None
 Forms = Mapping[frozenset[str], "str | None"]
 
 
+class Step(enum.Enum):
+    """The rule's steps, in the order it takes them."""
+
+    OWN = "the dialect's own function, under any name"
+    FUNCTIONS = "the functions the dialect has"
+    OPERATORS = "the dialect's inline operators"
+    REFUSED = "refused by name"
+
+
 @dataclass(frozen=True)
 class Macro:
-    """One overload of a function: its parameters and its form on each dialect."""
+    """One overload of a function: its parameters and its forms, by the step of the rule."""
 
     name: str
     params: tuple[str, ...]
-    forms: Forms
+    forms: Forms = field(default_factory=dict)
+    own: Forms = field(default_factory=dict)
+    operators: Forms = field(default_factory=dict)
 
-    def form(self, dialect: str) -> str | None | Literal[False]:
-        """The form on ``dialect``; False where it has none."""
-        for dialects, sql in self.forms.items():
-            if dialect in dialects or "*" in dialects:
-                return sql
-        return False
+    def resolved(self, dialect: str) -> tuple[Step, str | None]:
+        """The rule: the first step with a form on ``dialect``, and that form."""
+        if dialect in NATIVE:
+            return Step.OWN, MAPPED
+        steps = (
+            (Step.OWN, self.own),
+            (Step.FUNCTIONS, self.forms),
+            (Step.OPERATORS, self.operators),
+        )
+        for step, forms in steps:
+            for dialects, sql in forms.items():
+                if dialect in dialects or "*" in dialects:
+                    return step, sql
+        return Step.REFUSED, None
 
 
 class FunctionRefused(ValueError):
@@ -140,37 +170,72 @@ def _text_matches() -> tuple[Macro, ...]:
     ilike = {_DUCKDB: _ILIKE, _LIKES: Pg(_ILIKE)}
     negated_like = {k: type(v)(f"NOT {v}") for k, v in like.items()}
     negated_ilike = {k: type(v)(f"NOT {v}") for k, v in ilike.items()}
-    family: dict[str, Forms] = {
+    operators: dict[str, Forms] = {
         "like": like,
         "nlike": negated_like,
         "iclike": ilike,
         "icnlike": negated_ilike,
+    }
+    functions: dict[str, Forms] = {
         "regexeq": _regex_forms(1, False),
         "regexne": _regex_forms(1, True),
         "icregexeq": _regex_forms(2, False),
         "icregexne": _regex_forms(2, True),
     }
     return tuple(
-        Macro(f"{prefix}{suffix}", ("a", "b"), forms)
+        Macro(
+            f"{prefix}{suffix}",
+            ("a", "b"),
+            functions.get(suffix, {}),
+            {},
+            operators.get(suffix, {}),
+        )
         for prefix in ("text", "name", "bpchar")
-        for suffix, forms in family.items()
+        for suffix in (*operators, *functions)
     )
 
 
 def _comparisons(prefix: str, *suffixes: str) -> tuple[Macro, ...]:
     operators = {"eq": "=", "ne": "<>", "lt": "<", "le": "<=", "gt": ">", "ge": ">="}
     return tuple(
-        Macro(f"{prefix}{suffix}", ("a", "b"), {_DUCKDB: f"a {operators[suffix]} b"})
-        for suffix in suffixes
+        _operators(f"{prefix}{suffix}", "a, b", f"a {operators[suffix]} b") for suffix in suffixes
     )
 
 
-def _macro(name: str, params: str, duckdb: str, others: Forms | None = None) -> Macro:
-    """An overload, its DuckDB form and any other dialect's."""
+def _macro(
+    name: str,
+    params: str,
+    duckdb: str,
+    others: Forms | None = None,
+    own: Forms | None = None,
+) -> Macro:
+    """An overload, its DuckDB form, any other dialect's, and any dialect's own function."""
     return Macro(
-        name, tuple(p for p in params.split(", ") if p), {_DUCKDB: duckdb, **(others or {})}
+        name,
+        tuple(p for p in params.split(", ") if p),
+        {_DUCKDB: duckdb, **(others or {})},
+        own or {},
     )
 
+
+def _operators(name: str, params: str, sql: str, others: Forms | None = None) -> Macro:
+    """An overload whose form is the dialect's operators alone."""
+    return Macro(name, tuple(params.split(", ")), operators={_DUCKDB: sql, **(others or {})})
+
+
+#: typeof without a list's brackets or a decimal's size.
+_TYPE_BASE = "split_part(replace(typeof(value), '[]', ''), '(', 1)"
+#: pg_typeof: DuckDB's name of the value's type as format_type writes PostgreSQL's, with each of a
+#: list's dimensions. A type that holds another's value is named by the statement
+#: (pg_functions._type_said).
+_PG_TYPEOF = (
+    f"CASE {_TYPE_BASE} WHEN 'VARCHAR' THEN 'text' WHEN 'DOUBLE' THEN 'double precision' "
+    "WHEN 'FLOAT' THEN 'real' WHEN 'DECIMAL' THEN 'numeric' WHEN 'HUGEINT' THEN 'numeric' "
+    "WHEN 'TINYINT' THEN 'smallint' WHEN 'TIMESTAMP' THEN 'timestamp without time zone' "
+    "WHEN 'TIME' THEN 'time without time zone' WHEN 'BLOB' THEN 'bytea' "
+    f"WHEN '\"NULL\"' THEN 'unknown' ELSE lower({_TYPE_BASE}) END || "
+    "repeat('[]', (length(typeof(value)) - length(replace(typeof(value), '[]', ''))) // 2)"
+)
 
 #: oid_send: an oid's four bytes, for the send functions of the object identifier types.
 _OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
@@ -189,16 +254,6 @@ _PG_QUOTED_LITERAL = (
     f"REPLACE(REPLACE(CAST(value AS TEXT), '{_BACKSLASH}', '{_BACKSLASH * 2}'), '''', '''''') "
     "|| '''' ELSE '''' || REPLACE(CAST(value AS TEXT), '''', '''''') || '''' END AS TEXT)"
 )
-
-#: A geometric value's numbers, in the order its text form writes them.
-_NUMBERS = (
-    "regexp_extract_all(CAST(value AS VARCHAR), '[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?')"
-)
-
-
-def _number(position: int) -> str:
-    return f"CAST({_NUMBERS}[{position}] AS DOUBLE)"
-
 
 #: The bits of an integer's two's complement, as to_bin and to_oct read them.
 _TWOS_COMPLEMENT = (
@@ -322,10 +377,174 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
     _macro("aclcontains", "acl, item", strict("acl, item", "BOOLEAN", "list_contains(acl, item)")),
 )
 
+#: An XML value's escaped text, as an element's content or an attribute's value reads it.
+_XML_TEXT = (
+    "provisa_xml_value(CAST(value AS VARCHAR), typeof(value), CASE WHEN typeof(value) LIKE '%[]' "
+    "THEN CAST(to_json(value) AS VARCHAR) END, {content})"
+)
+_XML_SPACES = "CAST(to_json(spaces) AS VARCHAR)"
+
+#: xmlEncodeSpecialChars, which any dialect's REPLACE can write.
+_XML_ESCAPED = (
+    "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(value, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), "
+    "'\"', '&quot;'), CHR(13), '&#13;')"
+)
+_COMMENT_REFUSED = (
+    "strpos(value, '--') > 0 OR substr(value, length(value)) = '-' THEN fail('invalid XML comment')"
+)
+
+#: XML: DuckDB's forms, over the UDFs of provisa.federation.duckdb_pg_xml, and what another dialect
+#: can do itself. A dialect with no form is refused by provisa.transpiler.pg_xml.for_dialect before
+#: any row is read.
+_XML: tuple[Macro, ...] = (
+    # A value that needs no reading: what query_to_xml wrote (provisa.compiler.xml_mapping).
+    _macro("provisa_xml", "value", "CAST(value AS VARCHAR)"),
+    _macro("provisa_xml_text", "value", _XML_TEXT.format(content="true")),
+    _macro("provisa_xml_attribute", "value", _XML_TEXT.format(content="false")),
+    _macro("xml_is_well_formed", "value", "provisa_xml_well_formed(value, false)"),
+    _macro("xml_is_well_formed_content", "value", "provisa_xml_well_formed(value, false)"),
+    _macro(
+        "xml_is_well_formed_document",
+        "value",
+        "provisa_xml_well_formed(value, true)",
+        own={
+            frozenset(
+                {"snowflake"}
+            ): "CASE WHEN value IS NOT NULL THEN CHECK_XML(value) IS NULL END"
+        },
+    ),
+    _macro("xml_send", "value", "provisa_xml_send(value)"),
+    _macro(
+        "xmlcomment",
+        "value",
+        "provisa_xmlcomment(value)",
+        {_TRINO: f"CASE WHEN {_COMMENT_REFUSED} ELSE '<!--' || value || '-->' END"},
+    ),
+    _macro("xmltext", "value", "provisa_xmltext(value)", {_STRINGS: Pg(_XML_ESCAPED)}),
+    _macro("xmlconcat2", "a, b", "provisa_xmlconcat2(a, b)"),
+    _macro("xmlexists", "path, value", "provisa_xpath_exists(path, value, '[]')"),
+    _macro("xpath", "path, value", "provisa_xpath(path, value, '[]')"),
+    _macro("xpath", "path, value, spaces", f"provisa_xpath(path, value, {_XML_SPACES})"),
+    _macro("xpath_exists", "path, value", "provisa_xpath_exists(path, value, '[]')"),
+    _macro(
+        "xpath_exists", "path, value, spaces", f"provisa_xpath_exists(path, value, {_XML_SPACES})"
+    ),
+    _macro(
+        "xmlvalidate",
+        "value, dtd",
+        strict("value, dtd", "BOOLEAN", raising("0A000", "'xmlvalidate is not implemented'")),
+    ),
+)
+
+#: A shape's functions. Trino's form is its geometry where a geometry function answers
+#: (REQ-2171: Trino uses its geometry, not inline arithmetic).
+_NOT_OPEN = "NOT starts_with(ltrim(CAST(value AS VARCHAR)), '(')"
+_SHAPES: tuple[Macro, ...] = (
+    _macro("area", "value", pg_forms.AREA, own={_TRINO: pg_forms.TRINO_AREA}),
+    _macro("box_area", "value", pg_forms.BOX_AREA, own={_TRINO: pg_forms.TRINO_BOX_AREA}),
+    _macro("path_area", "value", pg_forms.PATH_AREA, own={_TRINO: pg_forms.TRINO_PATH_AREA}),
+    _macro("circle_area", "value", pg_forms.CIRCLE_AREA, {_TRINO: pg_forms.CIRCLE_AREA}),
+    _macro("center", "value", pg_forms.CENTER, own={_TRINO: pg_forms.TRINO_CENTER}),
+    _macro("box_center", "value", pg_forms.BOX_CENTER, own={_TRINO: pg_forms.TRINO_BOX_CENTER}),
+    _macro(
+        "circle_center", "value", pg_forms.CIRCLE_CENTER, {_TRINO: pg_forms.TRINO_CIRCLE_CENTER}
+    ),
+    _macro("diagonal", "value", pg_forms.BOX_DIAGONAL, own={_TRINO: pg_forms.TRINO_BOX_DIAGONAL}),
+    _macro("lseg_length", "value", pg_forms.LSEG_LENGTH, own={_TRINO: pg_forms.TRINO_LSEG_LENGTH}),
+    _macro("path_length", "value", pg_forms.PATH_LENGTH, own={_TRINO: pg_forms.TRINO_PATH_LENGTH}),
+    _macro(
+        "height",
+        "value",
+        f"abs({pg_forms.number('value', 4)} - {pg_forms.number('value', 2)})",
+        own={_TRINO: pg_forms.TRINO_HEIGHT},
+    ),
+    _macro(
+        "width",
+        "value",
+        f"abs({pg_forms.number('value', 3)} - {pg_forms.number('value', 1)})",
+        own={_TRINO: pg_forms.TRINO_WIDTH},
+    ),
+    _macro("radius", "value", pg_forms.number("value", 3), {_TRINO: pg_forms.number("value", 3)}),
+    _macro("isclosed", "value", pg_forms.is_closed("value"), {_TRINO: pg_forms.is_closed("value")}),
+    _macro("isopen", "value", _NOT_OPEN, {_TRINO: _NOT_OPEN}),
+    *(
+        _macro(name, params, form, {_TRINO: form})
+        for of in (None, "lseg", "line")
+        for name, params, form in (
+            (f"{of}_horizontal" if of else "ishorizontal", "value", pg_forms.horizontal(of)),
+            (f"{of}_vertical" if of else "isvertical", "value", pg_forms.vertical(of)),
+            (f"{of}_parallel" if of else "isparallel", "a, b", pg_forms.parallel(of)),
+            (f"{of}_perp" if of else "isperp", "a, b", pg_forms.perpendicular(of)),
+        )
+    ),
+    _macro(
+        "ishorizontal",
+        "a, b",
+        pg_forms.points_differ_by_nothing(2),
+        {_TRINO: pg_forms.points_differ_by_nothing(2)},
+    ),
+    _macro(
+        "isvertical",
+        "a, b",
+        pg_forms.points_differ_by_nothing(1),
+        {_TRINO: pg_forms.points_differ_by_nothing(1)},
+    ),
+    _macro(
+        "pt_contained_circle",
+        "p, c",
+        pg_forms.POINT_IN_CIRCLE,
+        own={_TRINO: pg_forms.TRINO_POINT_IN_CIRCLE},
+    ),
+    _macro(
+        "pt_contained_poly",
+        "p, poly",
+        pg_forms.POINT_IN_POLYGON,
+        own={_TRINO: pg_forms.TRINO_POINT_IN_POLYGON},
+    ),
+)
+
+_TSVECTOR: tuple[Macro, ...] = (
+    _macro(
+        "tsvector_strip",
+        "value",
+        pg_forms.TSVECTOR_STRIP,
+        {_TRINO: pg_forms.TRINO_TSVECTOR_STRIP},
+    ),
+    _macro("strip", "value", pg_forms.TSVECTOR_STRIP, {_TRINO: pg_forms.TRINO_TSVECTOR_STRIP}),
+    _macro(
+        "tsvector_length",
+        "value",
+        pg_forms.TSVECTOR_LENGTH,
+        {_TRINO: pg_forms.TRINO_TSVECTOR_LENGTH},
+    ),
+    _macro("tsvector_unnest", "value", pg_forms.TSVECTOR_UNNEST),
+)
+
+_ABBREVS: tuple[Macro, ...] = (
+    _macro("inet_abbrev", "value", pg_forms.INET_ABBREV, {_TRINO: pg_forms.INET_ABBREV}),
+    _macro("cidr_abbrev", "value", pg_forms.CIDR_ABBREV, {_TRINO: pg_forms.TRINO_CIDR_ABBREV}),
+    # A value whose type the statement does not say is the engine's inet, or a cidr's text.
+    _macro(
+        "abbrev",
+        "value",
+        f"CASE typeof(value) WHEN 'INET' THEN {pg_forms.INET_ABBREV} "
+        f"ELSE {pg_forms.CIDR_ABBREV} END",
+    ),
+)
+
+#: Money over its numeric base, for provisa.transpiler.pg_money: no name of PostgreSQL's, so these
+#: never read a statement's own call.
+_MONEY: tuple[Macro, ...] = (
+    _macro("money_text", "value", pg_forms.MONEY_TEXT, {_TRINO: pg_forms.TRINO_MONEY_TEXT}),
+    _macro("money_words", "value", pg_forms.MONEY_WORDS),
+    _macro("money_bytes", "value", pg_forms.MONEY_BYTES, own={_TRINO: pg_forms.TRINO_MONEY_BYTES}),
+    _macro("money_input", "value", pg_forms.MONEY_INPUT),
+)
+
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
-    _macro("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
-    _macro("notlike", "a, b", f"NOT {_LIKE}", {_LIKES: Pg(f"NOT {_LIKE}")}),
+    _operators("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
+    _operators("notlike", "a, b", f"NOT {_LIKE}", {_LIKES: Pg(f"NOT {_LIKE}")}),
     _macro("textcat", "a, b", "CAST(a || b AS VARCHAR)", {_CONCATS: Pg("CAST(a || b AS TEXT)")}),
     _macro("byteacat", "a, b", "CAST(a || b AS BLOB)"),
     _macro("bytealike", "a, b", "provisa_bytea_like(a, b)"),
@@ -433,7 +652,8 @@ _ROWS: tuple[Macro, ...] = (
         Macro(
             "regexp_substr",
             params,
-            {_DUCKDB: f"provisa_regexp_substr(value, pattern, {rest})", **others},
+            {_DUCKDB: f"provisa_regexp_substr(value, pattern, {rest})"},
+            others,
         )
         for params, rest, others in (
             (
@@ -488,12 +708,7 @@ _ROWS: tuple[Macro, ...] = (
     _macro("to_ascii", "value, encoding", "provisa_to_ascii(value, CAST(encoding AS VARCHAR))"),
     _macro("parse_ident", "value", "provisa_parse_ident(value, true)"),
     _macro("parse_ident", "value, strict_", "provisa_parse_ident(value, strict_)"),
-    _macro(
-        "abbrev",
-        "value",
-        "provisa_abbrev(CAST(value AS VARCHAR), CASE typeof(value) WHEN 'INET' THEN 'inet' "
-        "ELSE 'cidr' END)",
-    ),
+    *_ABBREVS,
     _macro(
         "nameconcatoid",
         "name, oid",
@@ -512,33 +727,9 @@ _ROWS: tuple[Macro, ...] = (
         "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
         "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
     ),
-    _macro("area", "value", "provisa_area(CAST(value AS VARCHAR))"),
-    _macro("center", "value", "provisa_center(CAST(value AS VARCHAR))"),
-    _macro("diagonal", "value", "provisa_diagonal(CAST(value AS VARCHAR))"),
-    _macro("height", "value", f"abs({_number(4)} - {_number(2)})"),
-    _macro("width", "value", f"abs({_number(3)} - {_number(1)})"),
-    _macro("radius", "value", _number(3)),
-    _macro("isclosed", "value", "starts_with(trim(CAST(value AS VARCHAR)), '(')"),
-    _macro("isopen", "value", "NOT starts_with(trim(CAST(value AS VARCHAR)), '(')"),
-    _macro("ishorizontal", "a", "provisa_is_horizontal(CAST(a AS VARCHAR))"),
-    _macro(
-        "ishorizontal", "a, b", "provisa_points_horizontal(CAST(a AS VARCHAR), CAST(b AS VARCHAR))"
-    ),
-    _macro("isvertical", "a", "provisa_is_vertical(CAST(a AS VARCHAR))"),
-    _macro("isvertical", "a, b", "provisa_points_vertical(CAST(a AS VARCHAR), CAST(b AS VARCHAR))"),
-    _macro("isparallel", "a, b", "provisa_is_parallel(CAST(a AS VARCHAR), CAST(b AS VARCHAR))"),
-    _macro("isperp", "a, b", "provisa_is_perpendicular(CAST(a AS VARCHAR), CAST(b AS VARCHAR))"),
-    _macro(
-        "pt_contained_circle",
-        "p, c",
-        "provisa_point_in_circle(CAST(p AS VARCHAR), CAST(c AS VARCHAR))",
-    ),
-    _macro(
-        "pt_contained_poly",
-        "p, poly",
-        "provisa_point_in_polygon(CAST(p AS VARCHAR), CAST(poly AS VARCHAR))",
-    ),
-    _macro("strip", "value", "provisa_tsvector_strip(CAST(value AS VARCHAR))"),
+    _macro("pg_typeof", "value", _PG_TYPEOF),
+    *_SHAPES,
+    *_TSVECTOR,
     _macro(
         "mul_d_interval",
         "d, i",
@@ -620,27 +811,70 @@ _ROWS: tuple[Macro, ...] = (
         "error('function returning record called in context that cannot accept type record') "
         "ELSE CAST(NULL AS VARCHAR) END",
     ),
+    *_XML,
+    *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
 )
 
 #: A call's name and argument count -> its overload: the one table.
 MACROS: dict[tuple[str, int], Macro] = {(m.name, len(m.params)): m for m in _ROWS}
-_NAMES = frozenset(name for name, _ in MACROS)
+#: (function, argument count, the type the statement says of its first argument) -> its row:
+#: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
+OVERLOADS: dict[tuple[str, int, str], str] = {
+    ("area", 1, "box"): "box_area",
+    ("area", 1, "path"): "path_area",
+    ("area", 1, "circle"): "circle_area",
+    ("center", 1, "box"): "box_center",
+    ("center", 1, "circle"): "circle_center",
+    ("length", 1, "lseg"): "lseg_length",
+    ("length", 1, "path"): "path_length",
+    ("length", 1, "tsvector"): "tsvector_length",
+    ("unnest", 1, "tsvector"): "tsvector_unnest",
+    ("strip", 1, "tsvector"): "tsvector_strip",
+    ("abbrev", 1, "inet"): "inet_abbrev",
+    ("abbrev", 1, "cidr"): "cidr_abbrev",
+    **{
+        (name, arity, of): f"{of}_{suffix}"
+        for of in ("lseg", "line")
+        for name, arity, suffix in (
+            ("ishorizontal", 1, "horizontal"),
+            ("isvertical", 1, "vertical"),
+            ("isparallel", 2, "parallel"),
+            ("isperp", 2, "perp"),
+        )
+    },
+}
+#: An overload's row -> the function a statement called, which names its column.
+_CALLED = {row: name for (name, _, _), row in OVERLOADS.items()}
+_NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS}
 _MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
 
 
+def said_type(node: exp.Expr) -> str | None:
+    """The PostgreSQL type the statement says an argument is; None where it does not."""
+    if isinstance(node, exp.Paren):
+        return said_type(node.this)
+    return node.to.sql(dialect="postgres").lower() if isinstance(node, exp.Cast) else None
+
+
+def overload(name: str, args: list[exp.Expr]) -> str:
+    """The row a call reads: the overload of the type its first argument is said to be, else the
+    row of its own name."""
+    said = said_type(args[0]) if args else None
+    return name if said is None else OVERLOADS.get((name, len(args), said), name)
+
+
 def outcome(name: str, arity: int, dialect: str) -> str:
     """What a call does on ``dialect``: native, mapped, emulated or refused."""
-    macro = MACROS[(name, arity)]
+    step, _ = MACROS[(name, arity)].resolved(dialect)
     if dialect in NATIVE:
         return "native"
-    form = macro.form(dialect)
-    if form is False:
+    if step is Step.REFUSED:
         return "refused"
-    return "mapped" if form is MAPPED else "emulated"
+    return "mapped" if step is Step.OWN else "emulated"
 
 
 def mentioned(sql: str, dialect: str) -> bool:
@@ -651,7 +885,7 @@ def mentioned(sql: str, dialect: str) -> bool:
 
 @functools.lru_cache(maxsize=2048)
 def _parsed(name: str, arity: int, dialect: str) -> exp.Expr:
-    form = MACROS[(name, arity)].form(dialect)
+    _, form = MACROS[(name, arity)].resolved(dialect)
     assert isinstance(form, str)
     return sqlglot.parse_one(form, read="postgres" if isinstance(form, Pg) else dialect)
 
@@ -660,7 +894,16 @@ def _parsed(name: str, arity: int, dialect: str) -> exp.Expr:
 _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp.Boolean)
 
 
+#: The types a row of an overload reads as their text, which is how a dialect without them holds
+#: them: once the type has chosen the row, a cast to it says nothing more.
+_HELD_AS_TEXT = frozenset(
+    {"point", "line", "lseg", "box", "path", "polygon", "circle", "tsvector", "inet", "cidr"}
+)
+
+
 def _argument(value: exp.Expr) -> exp.Expr:
+    if said_type(value) in _HELD_AS_TEXT:
+        value = value.unnest().this
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
 
 
@@ -681,6 +924,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call the table may hold."""
     if isinstance(node, exp.Anonymous):
         return node.name.lower(), list(node.expressions)
+    if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
+        return "length", [node.this]
     if isinstance(node, exp.RegexpSubstr):
         keys = ("this", "expression", "position", "occurrence", "parameters", "group")
         return "regexp_substr", [node.args[k] for k in keys if node.args.get(k) is not None]
@@ -705,19 +950,20 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         call = _call(target)
         if call is None:
             return node
-        name, args = call
+        called, args = call
+        name = overload(called, args)
         macro = MACROS.get((name, len(args)))
         if macro is None:
             return node
-        form = macro.form(dialect)
-        if form is False:
-            raise FunctionRefused(name, dialect)
+        step, form = macro.resolved(dialect)
+        if step is Step.REFUSED:
+            raise FunctionRefused(called, dialect)
         if form is MAPPED:
             return target
         # transform does not revisit what a replaced node holds: a call in an argument.
         written = _written(macro, [a.transform(rewrite) for a in args], dialect)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
-            return exp.alias_(written, name)  # the column is named for the function
+            return exp.alias_(written, _CALLED.get(name, called))  # named for the function
         return written
 
     return tree.transform(rewrite)

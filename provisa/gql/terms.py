@@ -19,9 +19,11 @@ An RDF term of the answer is one JSON value:
 - a glossary term, ``{"term": name}`` -- the writer builds its vocabulary IRI (REQ-2163);
 - a literal, ``{"literal": v}``, with ``"datatype"`` or ``"lang"`` when known.
 
-A variable predicate (``?s ?p ?o``) is a union, made at compile time, of one branch per mapped
-predicate of the subject's label, each a row ``(s_id, p, o)``; more branches than graph.union_limit
-are refused, naming it. A CONSTRUCT is one SELECT of ``(s, p, o)`` per template triple over the
+A variable predicate as a pattern of its own (the SPARQL front end instead reads each as a UNION
+ALL part per predicate, :meth:`provisa.sparql_query.compiler._Lowering.predicate_reads`) is a
+union, made at compile time, of one branch per mapped predicate of the subject's label, each a row
+``(s_id0..., p, o)`` joined on the subject's whole key; more branches than graph.union_limit are
+refused, naming it. A CONSTRUCT is one SELECT of ``(s, p, o)`` per template triple over the
 statement's matches, the selects put together with UNION ALL: an RDF graph is a set, and its writer
 keeps each triple once.
 """
@@ -128,6 +130,15 @@ def literal_term(
     )
 
 
+def subject_key(nm: NodeMapping) -> list[str]:
+    """The columns a subject of ``nm`` is named by, refused, by the table's name and not the
+    column's, where the role is not served the whole of its key: no IRI of it can be built without
+    reading a column hidden from the role, and any other column would name another thing."""
+    if not nm.key_readable:
+        raise CypherTranslateError(f"{nm.table_name}'s key is not readable by this role")
+    return nm.pk_columns or [nm.id_column]
+
+
 def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """A subject as its table's identity and key values; NULL where an OPTIONAL match found none.
     Its IRI needs server.public_url, so a statement that answers with one is refused while that is
@@ -137,7 +148,7 @@ def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
         raise CypherTranslateError(
             f"{nm.table_name} belongs to no domain, and a subject's IRI names its domain"
         )
-    keys = [_col(k, alias, quoted=True) for k in (nm.pk_columns or [nm.id_column])]
+    keys = [_col(k, alias, quoted=True) for k in subject_key(nm)]
     return exp.Case(
         ifs=[exp.If(this=exp.Is(this=keys[0].copy(), expression=exp.null()), true=exp.null())],
         default=_json(
@@ -264,6 +275,10 @@ class TermsMixin:  # REQ-2135
         for b in branches[1:]:
             union = exp.Union(this=union, expression=b, distinct=False)
         tr = f"_tr{len(self._term_vars) // 2}_{triple.subject}"
+        on: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for i, column in enumerate(subject_key(nm)):
+            eq = exp.EQ(this=_col(f"s_id{i}", tr), expression=_col(column, alias, quoted=True))
+            on = eq if on is None else exp.And(this=on, expression=eq)
         for var in (triple.predicate, triple.object):
             if var in self._term_vars or var in self._var_table:
                 raise CypherTranslateError(f"{var} is bound twice")
@@ -272,9 +287,7 @@ class TermsMixin:  # REQ-2135
         return [
             {
                 "table": exp.alias_(exp.Subquery(this=union), alias=tr),
-                "on": exp.EQ(
-                    this=_col("s_id", tr), expression=_col(nm.id_column, alias, quoted=True)
-                ),
+                "on": on,
                 "join_type": "LEFT" if clause.optional else "INNER",
             }
         ]
@@ -284,11 +297,14 @@ class TermsMixin:  # REQ-2135
             raise CypherTranslateError(
                 f"The predicate <{p.iri}> reads a property, an edge or a constant, and only one"
             )
-        s_id = exp.alias_(_col(nm.id_column, "_s", quoted=True), alias="s_id")
+        s_id = [
+            exp.alias_(_col(column, "_s", quoted=True), alias=f"s_id{i}")
+            for i, column in enumerate(subject_key(nm))
+        ]
         if p.constant is not None:
             return [
                 exp.select(
-                    s_id,
+                    *s_id,
                     exp.alias_(iri_term(p.iri), alias="p"),
                     exp.alias_(iri_term(p.constant), alias="o"),
                 ).from_(_table(nm, "_s"))
@@ -300,7 +316,7 @@ class TermsMixin:  # REQ-2135
             value = _col(column, "_s", quoted=True)
             return [
                 exp.select(
-                    s_id,
+                    *s_id,
                     exp.alias_(iri_term(p.iri), alias="p"),
                     exp.alias_(literal_term(value, p.datatype), alias="o"),
                 )
@@ -317,8 +333,10 @@ class TermsMixin:  # REQ-2135
         out = []
         for rel in rels:
             tgt = self._lm.nodes[rel.target_label]
+            if not tgt.key_readable:
+                continue  # its object can't be named: the edge is left out, as its table is
             hop = exp.select(
-                s_id.copy(),
+                *(c.copy() for c in s_id),
                 exp.alias_(iri_term(p.iri), alias="p"),
                 exp.alias_(node_term("_o", tgt), alias="o"),
             ).from_(_table(nm, "_s"))

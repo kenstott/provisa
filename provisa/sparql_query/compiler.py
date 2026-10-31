@@ -24,8 +24,19 @@ How a query's parts become the IR:
   combination of one label per node that every triple holds in is one interpretation, a UNION ALL
   part. The parts are bounded by graph.union_limit.
 - A property triple binds its object variable to the property, or compares it; an edge triple is a
-  relationship; a property path is a path expression under REACH; ``?s ?p ?o`` is a variable
-  predicate over the subject label's predicates.
+  relationship; a property path is a path expression under REACH; ``?s ?p ?o`` is each of the
+  subject label's predicates in turn, a UNION ALL part each, read as that predicate named is, so
+  governed as it is (:meth:`_Lowering.predicate_reads`). In a part ?p is an IRI and ?o the value
+  or node of that predicate, so a FILTER, BIND or ORDER BY reads them typed, and a value of the
+  wrong kind is SPARQL's error, not the engine's. An OPTIONAL over one is a part per predicate
+  and one where none matched. An aggregate reads the parts' rows as one.
+- A subject of a table with a registered key is one row, so each part reads that row, with no join
+  of a table to itself. A subject of a table with none can be several rows: past the lone triple
+  each row answers for itself, its other triples are read through a join of its rows on the
+  column that names it, which the join guard refuses (V002) by the table's name.
+- An open subject is of the classes the role can name a subject of: a table whose key it is not
+  served is left out, and so is an edge into one. A query naming one and asking for its subject is
+  refused by the table's name.
 - The answer: SELECT returns each projected variable as an RDF term (provisa.gql.terms), ASK one
   row when there is a solution, CONSTRUCT the template's triples.
 
@@ -38,6 +49,7 @@ the keys. What the front end does not lower is refused by name.
 from __future__ import annotations
 
 import copy
+import collections
 import dataclasses
 import itertools
 import re
@@ -89,12 +101,11 @@ from provisa.gql.ir import (
     ReturnClause,
     ReturnItem,
     SeqPath,
-    TriplePattern,
     TripleTemplate,
     WhereClause,
 )
 from provisa.gql.iri import parse_subject_iri
-from provisa.gql.terms import union_allowance, union_refusal
+from provisa.gql.terms import subject_key, union_allowance, union_refusal
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.security import universal_regex
 from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
@@ -111,6 +122,9 @@ from provisa.sparql_query.vocabulary import (
 )
 
 _ORDER_PREFIX = "__ord"
+_ORDER_LANES = ("k", "n", "t")  # the kind, number and text an ORDER BY over a variable predicate
+_GROUP_PREFIX = "__g"  # an aggregate over a variable predicate: a part's key
+_INPUT_PREFIX = "__a"  # ...and an aggregate's input
 
 # REQ-2163: the ontology schema as RDFS/OWL/SKOS, read from ontology._axioms. A triple is an axiom
 # when its predicate is one of these, or it is rdf:type with an OWL class; its object is a term
@@ -235,6 +249,9 @@ class _Group:
     filters: list[Any] = field(default_factory=list)
     binds: list[tuple[str, Any]] = field(default_factory=list)
     optionals: list["_Group"] = field(default_factory=list)
+    #: OPTIONALs with a variable predicate that did not match: this group holds where none of
+    #: their predicates does.
+    absent: list["_Group"] = field(default_factory=list)
 
     def joined(self, other: "_Group") -> "_Group":
         return _Group(
@@ -242,6 +259,7 @@ class _Group:
             [*self.filters, *other.filters],
             [*self.binds, *other.binds],
             [*self.optionals, *other.optionals],
+            [*self.absent, *other.absent],
         )
 
 
@@ -318,6 +336,70 @@ def _bound_vars(group: "_Group") -> set[str]:
     return out
 
 
+def _reads_a_variable_predicate(group: "_Group") -> bool:
+    """Whether ``group``, or an OPTIONAL in it, has a variable predicate."""
+    return any(_is_var(p) for _, p, _ in group.triples) or any(
+        _reads_a_variable_predicate(o) for o in group.optionals
+    )
+
+
+def _opened_vars(group: "_Group") -> set[str]:
+    """The predicates and objects of ``group``'s variable predicates: each is of another kind in
+    each part."""
+    out = {str(t) for _, p, o in group.triples if _is_var(p) for t in (p, o) if _is_var(t)}
+    for o in group.optionals:
+        out |= _opened_vars(o)
+    return out
+
+
+class _NoSolution(Exception):
+    """This part of the query has no solution: it is left out of the union."""
+
+
+def _holds_somewhere(condition: CypherExpr) -> None:
+    """Raises where a group's condition is settled false (or an error) for its part."""
+    if isinstance(condition, Literal) and condition.value in (False, None):
+        raise _NoSolution
+
+
+def _bind_iri(var: str, iri: str, bindings: dict[str, tuple[CypherExpr, str | None]]) -> None:
+    """``var`` is the IRI ``iri``: bound to it, or already that IRI."""
+    bound = bindings.get(var)
+    if bound is None:
+        bindings[var] = (IriConst(iri), None)
+    elif not (isinstance(bound[0], IriConst) and bound[0].iri == iri):
+        raise _NoSolution
+
+
+def _ends_of(reads: list[tuple[int, str, Predicate, str | None]]) -> dict[str, str] | None:
+    """The label each read's object takes, or None where the reads disagree on what it is: one
+    edge's target and another's, or a node and a value."""
+    ends: dict[str, str] = {}
+    values: set[str] = set()
+    for _, obj, _, target in reads:
+        if target is None:
+            values.add(obj)
+        elif ends.setdefault(obj, target) != target:
+            return None
+    return None if values & set(ends) else ends
+
+
+def _exists_body(matches: list[MatchClause], where: CypherExpr | None) -> CypherAST:
+    """The statement of an EXISTS over ``matches``, each of them required."""
+    return CypherAST(
+        pipeline=[
+            MatchStep(
+                [dataclasses.replace(m, optional=False) for m in matches],
+                WhereClause(where) if where is not None else None,
+            )
+        ],
+        return_clause=ReturnClause([ReturnItem(Literal(1, "number"), "one", name="one")]),
+        order_by=[],
+        skip=None,
+        limit=None,
+    )
+
+
 @dataclass
 class _Aggregation:
     """A query's GROUP BY: its keys (variables; empty for one group of every solution), its
@@ -377,6 +459,61 @@ _AGGREGATE_NAMES = {
     "Aggregate_GroupConcat": "group_concat",
 }
 _NUMERIC = {f"{XSD}{t}" for t in ("integer", "decimal", "double", "float")}
+
+# What one side of a comparison is, and the kinds a variable predicate's object takes part by part.
+_IRI, _NODE, _VALUE, _NUMBER, _TEXT = "iri", "node", "value", "number", "text"
+_DATES = frozenset({f"{XSD}date", f"{XSD}dateTime"})
+#: The kinds an operator or function takes, of what it is given.
+_WANTS = {
+    **dict.fromkeys(
+        (
+            "Builtin_CONTAINS",
+            "Builtin_STRSTARTS",
+            "Builtin_STRENDS",
+            "Builtin_STRLEN",
+            "Builtin_LCASE",
+            "Builtin_UCASE",
+            "Builtin_STRBEFORE",
+            "Builtin_STRAFTER",
+            "Builtin_SUBSTR",
+            "Builtin_REPLACE",
+            "Builtin_REGEX",
+            "Builtin_CONCAT",
+        ),
+        frozenset({_TEXT}),
+    ),
+    **dict.fromkeys(
+        (
+            "AdditiveExpression",
+            "MultiplicativeExpression",
+            "UnaryMinus",
+            "UnaryPlus",
+            "Builtin_ABS",
+            "Builtin_CEIL",
+            "Builtin_FLOOR",
+            "Builtin_ROUND",
+        ),
+        frozenset({_NUMBER}),
+    ),
+    **dict.fromkeys(
+        (
+            "Builtin_YEAR",
+            "Builtin_MONTH",
+            "Builtin_DAY",
+            "Builtin_HOURS",
+            "Builtin_MINUTES",
+            "Builtin_SECONDS",
+        ),
+        _DATES,
+    ),
+}
+
+
+def _kind_of(datatype: str | None) -> str | None:
+    """A column or literal's kind: a number, text, or its datatype; None where it has none."""
+    if datatype in _NUMERIC:
+        return _NUMBER
+    return _TEXT if datatype == f"{XSD}string" else datatype
 
 
 def _solution_modifiers(p: CompValue) -> tuple[CompValue, dict[str, Any]]:
@@ -496,11 +633,15 @@ def _is_var(t: Any) -> bool:
 class _Lowering:
     """One SPARQL query's lowering against ``vocab``."""
 
-    def __init__(self, vocab: Vocabulary, lm: Any) -> None:
+    def __init__(self, vocab: Vocabulary, lm: Any, limit: int, allowed: int) -> None:
         self.vocab = vocab
         self._lm = lm
+        self.limit = limit  # graph.union_limit
+        self.allowed = allowed  # the branches this query may have
         self._placed: set[str] = set()
         self._axioms = 0  # REQ-2163: the ontology._axioms nodes placed so far
+        self._rows = 0  # the subject-row joins placed in this statement
+        self._opened: set[str] = set()  # this part's variable predicates and their objects
 
     # -- node labels ----------------------------------------------------------------------
 
@@ -574,7 +715,9 @@ class _Lowering:
                 if ref is not None and self._is_table(label, ref.domain, ref.table)
             }
             allow(var, labels)
-        everything = set(self.vocab.classes_of)
+        # A subject nothing constrains names no class, so it is no request for one whose subjects
+        # the role cannot name.
+        everything = {label for label in self.vocab.classes_of if self._node(label).key_readable}
         options = []
         names = []
         for var, labels in allowed.items():
@@ -619,14 +762,18 @@ class _Lowering:
         bindings: dict[str, tuple[CypherExpr, str | None]],
         optional: bool,
         deferred: "_Deferred | None" = None,
+        reads: dict[int, Predicate] | None = None,
+        through_rows: bool = False,
     ) -> MatchStep:
         """The MATCH of ``group`` with its nodes labelled ``labels``. ``bindings`` gains each
-        variable the group binds to a value: (its expression, its datatype)."""
+        variable the group binds to a value: (its expression, its datatype). ``reads`` is the
+        predicate each variable predicate stands for in this part, by its triple's place in the
+        group (:meth:`predicate_reads`); ``through_rows`` reads them through the subject's rows
+        where its table has no key (:meth:`_row_of`)."""
         named: dict[str, str] = {}
         keys: dict[str, tuple] = {}
         conditions: list[CypherExpr] = []
         edges: list[tuple[str, RelPattern, str]] = []
-        triples: list[TriplePattern] = []
         nodes: list[str] = []
         bound_before = set(bindings)
 
@@ -636,7 +783,7 @@ class _Lowering:
                 nodes.append(var)
             return var
 
-        for s, p, o in group.triples:
+        for i, (s, p, o) in enumerate(group.triples):
             if _is_axiom(p, o):
                 closure = _closure_path(p)
                 axiom = self._axiom_node(labels, "_closure" if closure else "_axioms")
@@ -658,14 +805,31 @@ class _Lowering:
                     raise SparqlRefused(
                         "A variable predicate with a constant object is not supported"
                     )
-                triples.append(TriplePattern(sv, str(p), str(o), self._predicates_of(labels[sv])))
+                read = (reads or {})[i]
+                row = self._row_of(sv, labels, conditions, nodes) if through_rows else sv
+                bindings[str(p)] = (IriConst(read.iri), None)
+                if read.constant is not None:
+                    _bind_iri(str(o), read.constant, bindings)
+                elif read.property is not None:
+                    value = Property(Variable(row), read.property)
+                    conditions.extend(self._read_value(str(o), value, read.datatype, bindings))
+                else:
+                    if str(o) in bindings:
+                        raise _NoSolution
+                    rel = RelPattern(None, [read.rel_type], None, None, "right")  # type: ignore[list-item]
+                    edges.append((row, rel, node(o)))
                 continue
             iri = str(p)
             if iri == RDF_TYPE:
                 if _is_var(o):
-                    bindings.setdefault(
-                        str(o), (IriConst(self.vocab.classes_of[labels[sv]][0]), None)
-                    )
+                    try:
+                        if str(o) in labels:
+                            raise _NoSolution  # a class is no subject of the data
+                        _bind_iri(str(o), self.vocab.classes_of[labels[sv]][0], bindings)
+                    except _NoSolution:
+                        if not optional:
+                            raise
+                        conditions.append(Literal(False, "boolean"))  # it did not match
                 continue
             if iri in self.vocab.edges:
                 rel_type = self.vocab.edges[iri][0].rel_type
@@ -674,11 +838,15 @@ class _Lowering:
             cp = self._column(iri, labels[sv])
             value: CypherExpr = Property(Variable(sv), cp.prop)
             if _is_var(o):
-                if str(o) in bindings:
-                    conditions.append(Binary("=", value, bindings[str(o)][0]))
+                if str(o) in labels:
+                    conditions.append(Literal(False, "boolean"))  # a node is no value
                 else:
-                    bindings[str(o)] = (value, cp.datatype)
-                    conditions.append(IsNull(value, negated=True))
+                    try:
+                        conditions.extend(self._read_value(str(o), value, cp.datatype, bindings))
+                    except _NoSolution:
+                        if not optional:
+                            raise
+                        conditions.append(Literal(False, "boolean"))  # it did not match
             else:
                 conditions.append(Binary("=", value, _literal(o)))
 
@@ -688,16 +856,17 @@ class _Lowering:
             if deferred is not None and not _free_vars(expr) <= {*bindings, *labels}:
                 deferred.binds.append((var, expr))
             else:
-                bindings[var] = (self.expr(expr, bindings, labels), None)
+                bindings[var] = self._bound(var, expr, bindings, labels)
         if deferred is not None:
             deferred.filters.extend(group.filters)
         else:
             for f in group.filters:
                 conditions.append(self.expr(f, bindings, labels))
+                if not optional:
+                    _holds_somewhere(conditions[-1])
 
         placed_before = set(self._placed)
         matches = self._clauses(nodes, edges, labels, optional)
-        matches.extend(MatchClause(t, None, optional=optional) for t in triples)
         if optional:
             conditions = self._optional_bindings(
                 [v for v in nodes if v not in placed_before],
@@ -714,6 +883,282 @@ class _Lowering:
                 cond = Binary("AND", cond, c)
             where = WhereClause(cond)
         return MatchStep(matches, where)
+
+    # -- variable predicates --------------------------------------------------------------
+
+    def predicate_reads(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        mods: dict,
+        aggregation: "_Aggregation | None",
+    ) -> list[tuple[_Group, dict[str, str], dict[int, Predicate], bool]]:
+        """The UNION ALL parts of one interpretation of ``group``, each its group, its labels, the
+        predicate each variable predicate stands for and whether it reads them through the rows of
+        a subject with no key: ``?s ?p ?o`` is the union of ``?s <iri> ?o`` over the subject's
+        predicates, so each part reads a table, or an edge along its registered relationship, as
+        naming that predicate does. Only a lone triple, whose ?p and ?o nothing else reads, answers
+        row by row for a subject with no key."""
+        parts = []
+        for flat, flat_labels in self._without_optional_predicates(group, labels):
+            lone = aggregation is None and flat is group and self._is_lone(flat, flat_labels, mods)
+            for part_labels, reads in self._choices(flat, flat_labels):
+                parts.append((flat, part_labels, reads, not lone))
+        return parts
+
+    def _is_lone(self, group: _Group, labels: dict[str, str], mods: dict) -> bool:
+        """Whether nothing but its own triple reads each variable predicate's ?p and ?o."""
+        counts = collections.Counter(
+            str(t) for triple in group.triples for t in triple if _is_var(t)
+        )
+        read_elsewhere = {
+            *(v for e in group.filters for v in _expr_vars(e)),
+            *(v for _, e in group.binds for v in _expr_vars(e)),
+            *(v for c in mods.get("order", []) for v in _expr_vars(c.expr)),
+            *(v for o in group.optionals for v in _bound_vars(o)),
+        }
+
+        def own(var: Any) -> bool:
+            return (
+                _is_var(var)
+                and counts[str(var)] == 1
+                and str(var) not in read_elsewhere
+                and str(var) not in labels
+            )
+
+        return all(own(p) and own(o) for _, p, o in group.triples if _is_var(p))
+
+    def _without_optional_predicates(
+        self, group: _Group, labels: dict[str, str]
+    ) -> list[tuple[_Group, dict[str, str]]]:
+        """``group`` with each OPTIONAL holding a variable predicate gone, as the groups whose
+        solutions together are its own: one with the OPTIONAL's pattern required, whose parts are
+        its predicates, and one where it did not match. A LEFT JOIN of a union is no union of LEFT
+        JOINs: a part per predicate would leave a row of unbound values for each that did not."""
+        for i, opt in enumerate(group.optionals):
+            if not _reads_a_variable_predicate(opt):
+                continue
+            opt_labels = self._optional_labels(opt, labels)
+            before, after = group.optionals[:i], group.optionals[i + 1 :]
+            required = _Group(
+                [*group.triples, *opt.triples],
+                [*group.filters, *opt.filters],
+                [*group.binds, *opt.binds],
+                [*before, *opt.optionals, *after],
+                list(group.absent),
+            )
+            unmatched = dataclasses.replace(
+                group, optionals=[*before, *after], absent=[*group.absent, opt]
+            )
+            return [
+                *self._without_optional_predicates(required, {**labels, **opt_labels}),
+                *self._without_optional_predicates(unmatched, labels),
+            ]
+        return [(group, labels)]
+
+    def _optional_labels(self, opt: _Group, labels: dict[str, str]) -> dict[str, str]:
+        """The one interpretation of the OPTIONAL ``opt`` under ``labels``."""
+        found = self.interpretations(opt, labels)
+        if len(found) != 1:
+            raise SparqlRefused(
+                "An OPTIONAL whose nodes could be of several classes is not supported; "
+                "give them a class"
+            )
+        inner = {v for o in opt.optionals for v in _bound_vars(o)}
+        if any(v in inner for f in opt.filters for v in _expr_vars(f)):
+            raise SparqlRefused(
+                "A FILTER in an OPTIONAL naming a variable an OPTIONAL inside it binds is not "
+                "supported"
+            )
+        return found[0]
+
+    def _value_vars(self, group: _Group) -> set[str]:
+        """The variables a named column of ``group`` binds: values, so no edge's object."""
+        return {
+            str(o)
+            for _, p, o in group.triples
+            if _is_var(o) and not isinstance(p, Path) and str(p) in self.vocab.columns
+        }
+
+    def _bound(self, var: str, expr: Any, bindings, labels) -> tuple[CypherExpr, str | None]:
+        """What BIND(``expr`` AS ?``var``) binds. A variable is bound as what it is: a subject of
+        a variable predicate's edge stays a subject, and a value keeps its datatype."""
+        if isinstance(expr, RdfVariable):
+            if str(expr) in bindings:
+                if str(expr) in self._opened:
+                    self._opened.add(var)
+                return bindings[str(expr)]
+            if str(expr) in labels and str(expr) in self._opened:
+                self._opened.add(var)
+                return Variable(str(expr)), None
+        return self.expr(expr, bindings, labels), None
+
+    def _choices(
+        self, group: _Group, labels: dict[str, str], fixed: dict[str, str] | None = None
+    ) -> list[tuple[dict[str, str], dict[int, Predicate]]]:
+        """Each way of reading ``group``'s variable predicates, as its labels and the predicate of
+        each triple's place: one predicate IRI per variable, ``fixed`` holding those already
+        chosen, each triple reading that IRI of its subject."""
+        named: dict[str, str] = {}
+        keys: dict[str, tuple] = {}
+        values = self._value_vars(group)
+        triples: dict[str, list[tuple[int, str, list[tuple[Predicate, str | None]]]]] = {}
+        for i, (s, p, o) in enumerate(group.triples):
+            if _is_axiom(p, o):
+                continue
+            subject = self._subject_node(s, named, keys)
+            if isinstance(p, Path) or (not _is_var(p) and str(p) in self.vocab.edges):
+                self._subject_node(o, named, keys)
+            if not _is_var(p):
+                continue
+            if str(p) in labels:
+                return []  # a predicate is a vocabulary IRI, and no subject of the data
+            if not _is_var(o):
+                raise SparqlRefused("A variable predicate with a constant object is not supported")
+            reads = self._reads_of(labels[subject], labels.get(str(o)), str(o) in values)
+            if len(reads) > self.allowed:
+                raise SparqlRefused(
+                    union_refusal(
+                        f"A variable predicate on {self._node(labels[subject]).label} reads "
+                        f"{len(reads)} mapped predicates",
+                        self.limit,
+                        self.allowed,
+                    )
+                    + "; name the predicate, or raise the limit (graph.union_limit)"
+                )
+            triples.setdefault(str(p), []).append((i, str(o), reads))
+        axes = []
+        for var, reading in triples.items():
+            iris = list(dict.fromkeys(r.iri for r, _ in reading[0][2]))
+            for _, _, reads in reading[1:]:
+                iris = [iri for iri in iris if any(r.iri == iri for r, _ in reads)]
+            if fixed is not None and var in fixed:
+                iris = [iri for iri in iris if iri == fixed[var]]
+            axis = []
+            for iri in iris:
+                each = [
+                    [(i, obj, r, t) for r, t in reads if r.iri == iri] for i, obj, reads in reading
+                ]
+                axis.extend(itertools.product(*each))
+            axes.append(axis)
+        parts: list[tuple[dict[str, str], dict[int, Predicate]]] = []
+        for combo in itertools.product(*axes):
+            chosen = [read for axis_read in combo for read in axis_read]
+            ends = _ends_of(chosen)
+            if ends is None:
+                continue
+            parts.append(({**labels, **ends}, {i: read for i, _, read, _ in chosen}))
+            if len(parts) > self.allowed:
+                raise SparqlRefused(
+                    union_refusal(
+                        "The variable predicates of a pattern read "
+                        f"{len(parts)} combinations of predicates",
+                        self.limit,
+                        self.allowed,
+                    )
+                    + "; name a predicate, or raise the limit (graph.union_limit)"
+                )
+        return parts
+
+    def _reads_of(
+        self, label: str, object_label: str | None, value_only: bool
+    ) -> list[tuple[Predicate, str | None]]:
+        """Each predicate of ``label`` a variable predicate stands for, with the label of its
+        object where that is a node: an edge's target, whose subjects the role can name. An object
+        that is a node of ``object_label`` is only an edge's; one a column reads elsewhere
+        (``value_only``) is only a column's."""
+        if object_label is not None:
+            return [
+                (Predicate(iri, rel_type=ep.rel_type), ep.target)
+                for iri, ep in self.vocab.edges_of.get(label, [])
+                if ep.target == object_label and self._node(ep.target).key_readable
+            ]
+        out: list[tuple[Predicate, str | None]] = [
+            (Predicate(iri, property=cp.prop, datatype=cp.datatype), None)
+            for iri, cp in self.vocab.columns_of.get(label, [])
+        ]
+        if value_only:
+            return out
+        out[:0] = [(Predicate(RDF_TYPE, constant=c), None) for c in self.vocab.classes_of[label]]
+        out += [
+            (Predicate(iri, rel_type=ep.rel_type), ep.target)
+            for iri, ep in self.vocab.edges_of.get(label, [])
+            if self._node(ep.target).key_readable
+        ]
+        return out
+
+    def _row_of(
+        self, subject: str, labels: dict[str, str], conditions: list[CypherExpr], nodes: list[str]
+    ) -> str:
+        """The node a variable predicate of ``subject`` reads. A subject of a table with a
+        registered key is one row, the one matched, as is one whose key the role is not served,
+        which no query can name. One of a table with none is every row its
+        name names, so the read joins them, a join the guard refuses by the table's name (V002)
+        unless the role may join outside the relationships."""
+        nm = self._node(labels[subject])
+        if nm.pk_columns or not nm.key_readable:
+            return subject
+        row = f"_r{self._rows}"
+        self._rows += 1
+        labels[row] = labels[subject]
+        nodes.append(row)
+        conditions.append(self._same_node(subject, row, labels))
+        return row
+
+    def _read_value(
+        self,
+        var: str,
+        value: CypherExpr,
+        datatype: str | None,
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """``var`` is the column ``value``: bound to it, or equal to what it is bound to."""
+        bound = bindings.get(var)
+        if bound is None:
+            bindings[var] = (value, datatype)
+            return [IsNull(value, negated=True)]
+        if isinstance(bound[0], IriConst):
+            raise _NoSolution  # an IRI is no column's value
+        if _kind_of(bound[1]) != _kind_of(datatype):
+            raise _NoSolution
+        return [Binary("=", value, bound[0])]
+
+    def _absent(
+        self,
+        opt: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """The conditions that no predicate of the OPTIONAL ``opt`` matches the row, each read
+        where its own column or edge is. Raises where one always does."""
+        opt_labels = {**labels, **self._optional_labels(opt, labels)}
+        self._opened |= _opened_vars(opt)
+        fixed = {v: b[0].iri for v, b in bindings.items() if isinstance(b[0], IriConst)}
+        out: list[CypherExpr] = []
+        for part_labels, reads in self._choices(opt, opt_labels, fixed):
+            placed = set(self._placed)
+            local = dict(bindings)
+            try:
+                step = self.lower_group(
+                    dataclasses.replace(opt, optionals=[]),
+                    part_labels,
+                    local,
+                    optional=False,
+                    reads=reads,
+                )
+            except _NoSolution:
+                continue
+            finally:
+                self._placed = placed
+            where = step.where.expression if step.where is not None else None
+            if step.matches:
+                present: CypherExpr = SubqueryExpr("EXISTS", _exists_body(step.matches, where))
+            elif where is not None:
+                present = where
+            else:
+                raise _NoSolution  # holds of every row: the OPTIONAL always matches
+            out.append(Case(None, [(present, Literal(False, "boolean"))], Literal(True, "boolean")))
+        return out
 
     # -- the ontology's axioms (REQ-2163) -------------------------------------------------
 
@@ -931,14 +1376,7 @@ class _Lowering:
         else:
             # Edges between subjects already matched: no row of their own, it matched where they
             # exist between the two rows (#303).
-            body = CypherAST(
-                pipeline=[MatchStep([dataclasses.replace(m, optional=False) for m in matches])],
-                return_clause=ReturnClause([ReturnItem(Literal(1, "number"), "one", name="one")]),
-                order_by=[],
-                skip=None,
-                limit=None,
-            )
-            matched = SubqueryExpr("EXISTS", body)
+            matched = SubqueryExpr("EXISTS", _exists_body(matches, None))
             for c in conditions:
                 matched = Binary("AND", matched, c)
             matches.clear()
@@ -993,23 +1431,12 @@ class _Lowering:
                 return cp
         raise SparqlRefused(f"<{iri}> is no predicate of {label}")
 
-    def _predicates_of(self, label: str) -> tuple[Predicate, ...]:
-        out = [Predicate(RDF_TYPE, constant=c) for c in self.vocab.classes_of[label]]
-        out += [
-            Predicate(iri, property=cp.prop, datatype=cp.datatype)
-            for iri, cp in self.vocab.columns_of.get(label, [])
-        ]
-        out += [
-            Predicate(iri, rel_type=ep.rel_type) for iri, ep in self.vocab.edges_of.get(label, [])
-        ]
-        return tuple(out)
-
     def _key_conditions(self, var: str, label: str, iri: str) -> list[CypherExpr]:
         """``var`` is the row its IRI names: its key columns equal the key values."""
         ref = parse_subject_iri(self.vocab.base, iri)
         nm = self._node(label)
         assert ref is not None  # the interpretation only labels it with the table it names
-        key_columns = nm.pk_columns or [nm.id_column]
+        key_columns = subject_key(nm)
         if len(key_columns) != len(ref.keys):
             return [Literal(False, "boolean")]
         by_column = {col: prop for prop, col in nm.properties.items()}
@@ -1048,6 +1475,8 @@ class _Lowering:
         name = e.name
         if name == "RelationalExpression":
             return self._relational(e, bindings, labels)
+        if self._is_kind_error(e, bindings, labels):
+            return Literal(None, "null")
         if name in ("ConditionalAndExpression", "ConditionalOrExpression"):
             op = "AND" if name == "ConditionalAndExpression" else "OR"
             out = self.expr(e.expr, bindings, labels)
@@ -1073,8 +1502,89 @@ class _Lowering:
             return out
         return self._builtin(e, bindings, labels)
 
+    def _kind(self, arg: Any, bindings, labels) -> str | None:
+        """The kind of a variable of a variable predicate in this part (each part knows it):
+        ``_IRI`` for a node or an IRI, or a datatype's; None for anything else."""
+        if not isinstance(arg, RdfVariable) or str(arg) not in self._opened:
+            return None
+        side = self._side(arg, bindings, labels)
+        if side is None:
+            return None
+        return _IRI if side[0] != _VALUE else side[1]
+
+    def _is_kind_error(self, e: Any, bindings, labels) -> bool:
+        """Whether ``e`` applies to a variable of a variable predicate an operator or function not
+        of its kind in this part: SPARQL's error (17.2), which reads as unbound, where the engine
+        would refuse the whole statement for one predicate of many."""
+        wants = _WANTS.get(e.name)
+        if wants is None:
+            return False
+        operands = [v for k, v in e.items() if k != "_vars"]
+        for x in operands:
+            for arg in x if isinstance(x, (list, tuple)) else [x]:
+                kind = self._kind(arg, bindings, labels)
+                if kind is not None and kind not in wants:
+                    return True
+        return False
+
+    def _side(self, x: Any, bindings, labels) -> tuple[str, Any] | None:
+        """What one side of a comparison is when the query is read: an IRI, a node, or a value of
+        a kind (None where the query does not say). None where the variable is unbound."""
+        if isinstance(x, URIRef):
+            return _IRI, str(x)
+        if isinstance(x, RdfLiteral):
+            return _VALUE, _kind_of(str(x.datatype) if x.datatype else f"{XSD}string")
+        if not isinstance(x, RdfVariable):
+            return _VALUE, None
+        if str(x) in labels:
+            return _NODE, str(x)
+        bound = bindings.get(str(x))
+        if bound is None:
+            return None
+        if isinstance(bound[0], IriConst):
+            return _IRI, bound[0].iri
+        if isinstance(bound[0], Variable):
+            return _NODE, bound[0].name
+        return _VALUE, _kind_of(bound[1])
+
+    def _compare(self, op: str, a: Any, b: Any, bindings, labels) -> CypherExpr | None:
+        """``a op b`` where a variable of a variable predicate is a side and its kind in this part
+        settles it: SQL holds no IRI, a node is no value, and two values of two kinds are SPARQL's
+        error, however a column is typed. None where it is the values' to say."""
+        if not (self._kind(a, bindings, labels) or self._kind(b, bindings, labels)):
+            return None
+        left, right = self._side(a, bindings, labels), self._side(b, bindings, labels)
+        if left is None or right is None:
+            return None
+        equality = op in ("=", "<>")
+        tags = {left[0], right[0]}
+        if tags == {_VALUE}:
+            kinds = (left[1], right[1])
+            return Literal(None, "null") if None not in kinds and kinds[0] != kinds[1] else None
+        if _VALUE in tags:
+            return Literal(op == "<>", "boolean") if equality else Literal(None, "null")
+        if not equality:
+            return Literal(None, "null")
+        if tags == {_IRI}:
+            return Literal((left[1] == right[1]) == (op == "="), "boolean")
+        if tags == {_NODE}:
+            same = self._same_node(left[1], right[1], labels)
+        else:
+            node, iri = (left, right) if left[0] == _NODE else (right, left)
+            same = self._iri_match(node[1], iri[1], labels)
+        return same if op == "=" else Unary("NOT", same)
+
     def _relational(self, e: Any, bindings, labels) -> CypherExpr:
         op: str = {"!=": "<>"}.get(str(e.op), str(e.op))
+        if op in ("IN", "NOT IN") and self._kind(e.expr, bindings, labels) is not None:
+            found = [self._equal_to(e.expr, x, bindings, labels) for x in e.other]
+            out = found[0] if found else Literal(False, "boolean")
+            for f in found[1:]:
+                out = Binary("OR", out, f)
+            return out if op == "IN" else Unary("NOT", out)
+        settled = self._compare(op, e.expr, e.other, bindings, labels)
+        if settled is not None:
+            return settled
         left_var = str(e.expr) if isinstance(e.expr, RdfVariable) else None
         right_var = str(e.other) if isinstance(e.other, RdfVariable) else None
         if left_var in labels and right_var in labels and op in ("=", "<>"):
@@ -1100,6 +1610,11 @@ class _Lowering:
             cross_kinds="error",
         )
 
+    def _equal_to(self, a: Any, b: Any, bindings, labels) -> CypherExpr:
+        """``a = b``, as a RelationalExpression reads it."""
+        relation = CompValue("RelationalExpression", expr=a, op="=", other=b)
+        return self._relational(relation, bindings, labels)
+
     def _same_node(self, a: str, b: str, labels: dict[str, str]) -> CypherExpr:
         """Whether two subjects are the same: rows of one table with equal keys."""
         if labels[a] != labels[b]:
@@ -1107,7 +1622,7 @@ class _Lowering:
         nm = self._node(labels[a])
         by_column = {col: prop for prop, col in nm.properties.items()}
         out: CypherExpr | None = None
-        for col in nm.pk_columns or [nm.id_column]:
+        for col in subject_key(nm):
             prop = by_column.get(col)
             if prop is None:
                 raise SparqlRefused(f"{nm.table_name}'s key column {col} is not readable")
@@ -1131,7 +1646,7 @@ class _Lowering:
         args = lambda *keys: [self.expr(getattr(e, k), bindings, labels) for k in keys]  # noqa: E731
         if name == "Builtin_BOUND":
             var = str(e.arg)
-            if var in labels:
+            if var in labels or isinstance(bindings.get(var, (None,))[0], IriConst):
                 return Literal(True, "boolean")
             return IsNull(self.expr(e.arg, bindings, labels), negated=True)
         if name == "Builtin_REGEX":
@@ -1148,6 +1663,9 @@ class _Lowering:
         if name == "Builtin_UCASE":
             return FunctionCall("toUpper", args("arg"))
         if name == "Builtin_STR":
+            bound = bindings.get(str(e.arg), (None,))[0]
+            if isinstance(bound, IriConst):
+                return Literal(bound.iri, "string")
             return FunctionCall("toString", args("arg"))
         if name == "Builtin_ABS":
             return FunctionCall("abs", args("arg"))
@@ -1157,7 +1675,8 @@ class _Lowering:
             cond, then, other = args("arg1", "arg2", "arg3")
             return Case(None, [(cond, then)], other)
         if name == "Builtin_sameTerm":
-            return Binary("=", *args("arg1", "arg2"))
+            settled = self._compare("=", e.arg1, e.arg2, bindings, labels)
+            return settled if settled is not None else Binary("=", *args("arg1", "arg2"))
         if name in ("Builtin_isIRI", "Builtin_isURI", "Builtin_isLITERAL", "Builtin_isBLANK"):
             is_node = isinstance(e.arg, RdfVariable) and str(e.arg) in labels
             if name == "Builtin_isBLANK":
@@ -1199,6 +1718,8 @@ class _Lowering:
         if name == "Builtin_REPLACE":
             return self._replace(e, bindings, labels)
         if name == "Builtin_isNUMERIC":
+            if self._kind(e.arg, bindings, labels) == _IRI:
+                return Literal(False, "boolean")
             return Literal(self._datatype_of(e.arg, bindings) in _NUMERIC, "boolean")
         if name == "Function" and str(e.iri) == f"{XSD}integer":
             (given,) = e.expr
@@ -1359,8 +1880,11 @@ class _Lowering:
 
     # -- the statement --------------------------------------------------------------------
 
-    def _aggregate(self, a: Any, bindings, labels) -> tuple[CypherExpr, str | None]:
-        """One SPARQL aggregate as the IR's call, with the datatype of its result."""
+    def _aggregate(
+        self, a: Any, bindings, labels, input_: tuple[CypherExpr, str | None] | None = None
+    ) -> tuple[CypherExpr, str | None]:
+        """One SPARQL aggregate as the IR's call, with the datatype of its result, reading
+        ``input_`` (a value and its datatype) when given, else its own operand."""
         name = _AGGREGATE_NAMES.get(a.name)
         if name is None:
             raise SparqlRefused(
@@ -1371,12 +1895,14 @@ class _Lowering:
             return FunctionCall("count", [], distinct=distinct, star=True), f"{XSD}integer"
         operand = a.vars
         var = str(operand) if isinstance(operand, RdfVariable) else None
-        if var is not None and var in labels:
+        if input_ is not None:
+            arg, datatype = input_
+        elif var is not None and var in labels:
             if name not in ("count",):
                 raise SparqlRefused(
                     f"?{var} is a subject; COUNT it, or aggregate one of its properties"
                 )
-            arg: CypherExpr = self._key_of(var, labels)
+            arg = self._key_of(var, labels)
             datatype = None
         else:
             arg = self.expr(operand, bindings, labels)
@@ -1400,7 +1926,7 @@ class _Lowering:
         """A subject's first key column, which tells one subject of its table from another."""
         nm = self._node(labels[var])
         by_column = {col: prop for prop, col in nm.properties.items()}
-        column = (nm.pk_columns or [nm.id_column])[0]
+        column = subject_key(nm)[0]
         if column not in by_column:
             raise SparqlRefused(f"{nm.table_name}'s key column {column} is not readable")
         return Property(Variable(var), by_column[column])
@@ -1411,7 +1937,7 @@ class _Lowering:
             if key in labels:
                 nm = self._node(labels[key])
                 by_column = {col: prop for prop, col in nm.properties.items()}
-                for column in nm.pk_columns or [nm.id_column]:
+                for column in subject_key(nm):
                     if column not in by_column:
                         raise SparqlRefused(
                             f"{nm.table_name}'s key column {column} is not readable"
@@ -1423,6 +1949,104 @@ class _Lowering:
                 raise SparqlRefused(f"GROUP BY ?{key}: the pattern binds no ?{key}")
         return out
 
+    def _solution(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        reads: dict[int, Predicate],
+        through_rows: bool,
+    ) -> tuple[list[MatchStep], dict[str, tuple[CypherExpr, str | None]], dict[str, str]]:
+        """The steps of ``group`` under one interpretation, what each variable is bound to, and
+        the labels with its OPTIONALs' nodes."""
+        self._placed = set()
+        self._rows = 0
+        self._opened = _opened_vars(group)
+        labels = dict(labels)
+        bindings: dict[str, tuple[CypherExpr, str | None]] = {}
+        # A group's FILTER holds over its OPTIONALs' answers too, and a BIND may read what they
+        # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
+        deferred = _Deferred() if group.optionals else None
+        steps = [
+            self.lower_group(
+                group,
+                labels,
+                bindings,
+                optional=False,
+                deferred=deferred,
+                reads=reads,
+                through_rows=through_rows,
+            )
+        ]
+        labels = self._lower_optionals(group, labels, bindings, steps)
+        conditions: list[CypherExpr] = []
+        if deferred is not None:
+            for var, expr in deferred.binds:
+                bindings[var] = self._bound(var, expr, bindings, labels)
+            for f in deferred.filters:
+                conditions.append(self.expr(f, bindings, labels))
+                _holds_somewhere(conditions[-1])
+        for opt in group.absent:
+            conditions.extend(self._absent(opt, labels, bindings))
+        first = steps[0]
+        if first.where is not None:
+            conditions.insert(0, first.where.expression)
+        if conditions:
+            cond = conditions[0]
+            for c in conditions[1:]:
+                cond = Binary("AND", cond, c)
+            first.where = WhereClause(cond)
+        return steps, bindings, labels
+
+    def _rebound(self, aggregation: "_Aggregation", bindings, labels) -> CypherExpr | None:
+        """Bind the projection's rebindings over the aggregates in ``bindings``: its HAVING."""
+        having: CypherExpr | None = None
+        for var, expr in aggregation.rebinds:
+            source = (
+                aggregation.aggregates.get(str(expr)) if isinstance(expr, RdfVariable) else None
+            )
+            if source is not None and source.name == "Aggregate_Sample" and str(source.vars) == var:
+                continue
+            dt = (
+                bindings[str(expr)][1]
+                if isinstance(expr, RdfVariable) and str(expr) in bindings
+                else None
+            )
+            bindings[var] = (self.expr(expr, bindings, labels), dt)
+        for h in aggregation.having:
+            c = self.expr(h, bindings, labels)
+            having = c if having is None else Binary("AND", having, c)
+        return having
+
+    def _term(self, var: str, bindings, labels) -> CypherExpr:
+        """``var`` as an RDF term of the answer."""
+        if var in labels:
+            return Term(Variable(var))
+        bound = bindings.get(var)
+        if bound is None:
+            return Term(Literal(None, "null"))
+        return Term(bound[0], datatype=bound[1])
+
+    def _order_lanes(self, e: Any, bindings, labels) -> list[CypherExpr]:
+        """An ORDER BY over a variable predicate's variables as what every part can sort by, each
+        part of another kind: its kind (unbound, then IRIs, then numbers and other literals, as
+        SPARQL 1.1 15.1 has it), its number and its text."""
+        no_number = FunctionCall("toFloat", [Literal(None, "null")])
+        no_text = FunctionCall("toString", [Literal(None, "null")])
+        if isinstance(e, RdfVariable):
+            var = str(e)
+            if var in labels:
+                key = FunctionCall("toString", [self._key_of(var, labels)])
+                return [Literal(1, "number"), no_number, key]
+            bound = bindings.get(var)
+            if bound is None:
+                return [Literal(0, "number"), no_number, no_text]
+            if isinstance(bound[0], IriConst):
+                return [Literal(1, "number"), no_number, Literal(bound[0].iri, "string")]
+        value = self.expr(e, bindings, labels)
+        if self._is_numeric(e, bindings):
+            return [Literal(2, "number"), FunctionCall("toFloat", [value]), no_text]
+        return [Literal(3, "number"), no_number, FunctionCall("toString", [value])]
+
     def statement(
         self,
         group: _Group,
@@ -1431,29 +2055,12 @@ class _Lowering:
         form: str,
         template,
         aggregation: "_Aggregation | None" = None,
+        reads: dict[int, Predicate] | None = None,
+        through_rows: bool = False,
     ):
-        """One UNION ALL part: ``group`` under one interpretation, answered as ``form``."""
-        self._placed = set()
-        bindings: dict[str, tuple[CypherExpr, str | None]] = {}
-        # A group's FILTER holds over its OPTIONALs' answers too, and a BIND may read what they
-        # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
-        deferred = _Deferred() if group.optionals else None
-        steps = [self.lower_group(group, labels, bindings, optional=False, deferred=deferred)]
-        labels = self._lower_optionals(group, labels, bindings, steps)
-        if deferred is not None:
-            conditions: list[CypherExpr] = []
-            for var, expr in deferred.binds:
-                bindings[var] = (self.expr(expr, bindings, labels), None)
-            for f in deferred.filters:
-                conditions.append(self.expr(f, bindings, labels))
-            first = steps[0]
-            if first.where is not None:
-                conditions.insert(0, first.where.expression)
-            if conditions:
-                cond = conditions[0]
-                for c in conditions[1:]:
-                    cond = Binary("AND", cond, c)
-                first.where = WhereClause(cond)
+        """One UNION ALL part: ``group`` under one interpretation, its variable predicates standing
+        for ``reads``, answered as ``form``."""
+        steps, bindings, labels = self._solution(group, labels, reads or {}, through_rows)
 
         group_keys: list[CypherExpr] | None = None
         having: CypherExpr | None = None
@@ -1464,37 +2071,9 @@ class _Lowering:
                 if a.name == "Aggregate_Sample" and str(a.vars) in aggregation.keys:
                     continue
                 bindings[res] = self._aggregate(a, bindings, labels)
-            for var, expr in aggregation.rebinds:
-                source = (
-                    aggregation.aggregates.get(str(expr)) if isinstance(expr, RdfVariable) else None
-                )
-                if (
-                    source is not None
-                    and source.name == "Aggregate_Sample"
-                    and str(source.vars) == var
-                ):
-                    continue
-                dt = (
-                    bindings[str(expr)][1]
-                    if isinstance(expr, RdfVariable) and str(expr) in bindings
-                    else None
-                )
-                bindings[var] = (self.expr(expr, bindings, labels), dt)
-            conds = [self.expr(h, bindings, labels) for h in aggregation.having]
-            for c in conds:
-                having = c if having is None else Binary("AND", having, c)
+            having = self._rebound(aggregation, bindings, labels)
             # A subject that is not a key is no value of the group.
             labels = {v: lab for v, lab in labels.items() if v in aggregation.keys}
-
-        def term(var: str) -> CypherExpr:
-            if var in labels:
-                return Term(Variable(var))
-            if var in self._term_vars(steps):
-                return Variable(var)
-            bound = bindings.get(var)
-            if bound is None:
-                return Term(Literal(None, "null"))
-            return Term(bound[0], datatype=bound[1])
 
         ast = CypherAST(
             pipeline=list(steps), return_clause=None, order_by=[], skip=None, limit=None
@@ -1502,7 +2081,10 @@ class _Lowering:
         if form == "CONSTRUCT":
             ast.construct = [
                 TripleTemplate(
-                    *(self._template_term(x, term) for x in triple)  # type: ignore[arg-type]
+                    *(  # type: ignore[arg-type]
+                        self._template_term(x, lambda v: self._term(v, bindings, labels))
+                        for x in triple
+                    )
                 )
                 for triple in template
             ]
@@ -1510,8 +2092,13 @@ class _Lowering:
         if form == "ASK":
             ast.return_clause = ReturnClause([ReturnItem(Literal(1, "number"), "ask", name="ask")])
             return ast
-        items = [ReturnItem(term(v), v, name=v) for v in mods["project"]]
+        items = [ReturnItem(self._term(v, bindings, labels), v, name=v) for v in mods["project"]]
         for i, cond in enumerate(mods.get("order", [])):
+            if i in mods.get("lanes", ()):
+                lanes = self._order_lanes(cond.expr, bindings, labels)
+                for suffix, lane in zip(_ORDER_LANES, lanes, strict=True):
+                    items.append(ReturnItem(lane, f"{_ORDER_PREFIX}{i}{suffix}", name=""))
+                continue
             items.append(
                 ReturnItem(self.expr(cond.expr, bindings, labels), f"{_ORDER_PREFIX}{i}", name="")
             )
@@ -1519,6 +2106,137 @@ class _Lowering:
             items, distinct=bool(mods.get("distinct")), group_by=group_keys, having=having
         )
         return ast
+
+    def aggregate_rows(
+        self,
+        spec: tuple[_Group, dict[str, str], dict[int, Predicate], bool],
+        aggregation: "_Aggregation",
+        inputs: dict[str, tuple[set[str | None], set[str | None]]],
+    ) -> CypherAST:
+        """One part's rows of an aggregate over a variable predicate: each key as its term's text,
+        which compares across parts as no JSON does on every engine, and each aggregate's input.
+        ``inputs`` gains the kinds and datatypes each aggregate reads across the parts."""
+        group, part_labels, reads, through_rows = spec
+        steps, bindings, labels = self._solution(group, part_labels, reads, through_rows)
+        items = [
+            ReturnItem(
+                FunctionCall("toString", [self._term(key, bindings, labels)]),
+                f"{_GROUP_PREFIX}{i}",
+                name=f"{_GROUP_PREFIX}{i}",
+            )
+            for i, key in enumerate(aggregation.keys)
+        ]
+        for j, (res, a) in enumerate(aggregation.aggregates.items()):
+            if str(a.vars) == "*" or (
+                a.name == "Aggregate_Sample" and str(a.vars) in aggregation.keys
+            ):
+                continue
+            kinds, datatypes = inputs.setdefault(res, (set(), set()))
+            operand = a.vars
+            var = str(operand) if isinstance(operand, RdfVariable) else None
+            if a.name == "Aggregate_Count":
+                term = (
+                    self._term(var, bindings, labels)
+                    if var is not None
+                    else Term(self.expr(operand, bindings, labels))
+                )
+                value: CypherExpr = FunctionCall("toString", [term])
+            else:
+                side = self._side(operand, bindings, labels)
+                value = Literal(None, "null")
+                if side is not None and side[0] == _VALUE:
+                    kinds.add(side[1] if var is not None else None)
+                    datatypes.add(bindings[var][1] if var is not None else None)
+                    value = self.expr(operand, bindings, labels)
+                elif side is not None:
+                    kinds.add(side[0])
+                    if side[0] == _IRI:
+                        value = Literal(side[1], "string")
+            items.append(ReturnItem(value, f"{_INPUT_PREFIX}{j}", name=f"{_INPUT_PREFIX}{j}"))
+        if not items:
+            items.append(ReturnItem(Literal(1, "number"), "one", name="one"))
+        return CypherAST(
+            pipeline=list(steps),
+            return_clause=ReturnClause(items),
+            order_by=[],
+            skip=None,
+            limit=None,
+        )
+
+    def aggregate_over(
+        self,
+        rows: CypherAST,
+        aggregation: "_Aggregation",
+        inputs: dict[str, tuple[set[str | None], set[str | None]]],
+        mods: dict,
+    ) -> CypherAST:
+        """The statement grouping the parts' rows ``rows`` (:meth:`aggregate_rows`). A key is its
+        term's text, so only the answer and an ORDER BY of it read one."""
+        keys = {key: Variable(f"{_GROUP_PREFIX}{i}") for i, key in enumerate(aggregation.keys)}
+        samples = {
+            res
+            for res, a in aggregation.aggregates.items()
+            if a.name == "Aggregate_Sample" and str(a.vars) in keys
+        }
+        reading = [*aggregation.having, *(e for _, e in aggregation.rebinds)]
+        read = {v for e in reading if not isinstance(e, RdfVariable) for v in _expr_vars(e)}
+        if read & ({*keys, *samples}):
+            raise SparqlRefused(
+                "A key grouped across the predicates of a variable predicate is of no one kind: "
+                "an expression can't read it; project it, or name the predicate"
+            )
+        bindings: dict[str, tuple[CypherExpr, str | None]] = {}
+        for j, (res, a) in enumerate(aggregation.aggregates.items()):
+            if a.name == "Aggregate_Sample" and str(a.vars) in aggregation.keys:
+                continue
+            if str(a.vars) == "*":
+                bindings[res] = self._aggregate(a, {}, {})
+                continue
+            column = Variable(f"{_INPUT_PREFIX}{j}")
+            kinds, datatypes = inputs.get(res, (set(), set()))
+            name = a.name.removeprefix("Aggregate_").upper()
+            if len(kinds) > 1:
+                raise SparqlRefused(
+                    f"{name} reads values of several kinds across the predicates of a variable "
+                    "predicate; FILTER them to one, or name the predicate"
+                )
+            if _NODE in kinds:
+                raise SparqlRefused(
+                    f"{name} reads subjects across the predicates of a variable predicate; "
+                    "COUNT them, or aggregate one of their properties"
+                )
+            datatype = next(iter(datatypes)) if len(datatypes) == 1 else None
+            bindings[res] = self._aggregate(a, {}, {}, input_=(column, datatype))
+        having = self._rebound(aggregation, bindings, {})
+        items = [
+            ReturnItem(
+                Term(keys[v]) if v in keys else self._term(v, bindings, {}),
+                v,
+                name=v,
+            )
+            for v in mods["project"]
+        ]
+        for i, cond in enumerate(mods.get("order", [])):
+            expr = cond.expr
+            ordered = (
+                keys[str(expr)]
+                if isinstance(expr, RdfVariable) and str(expr) in keys
+                else self.expr(expr, bindings, {})
+            )
+            items.append(ReturnItem(ordered, f"{_ORDER_PREFIX}{i}", name=""))
+        return CypherAST(
+            pipeline=[],
+            return_clause=ReturnClause(
+                items,
+                distinct=bool(mods.get("distinct")),
+                group_by=list(keys.values()),
+                having=having,
+            ),
+            order_by=[],
+            skip=None,
+            limit=None,
+            parts=rows,
+        )
 
     def _lower_optionals(
         self,
@@ -1531,22 +2249,14 @@ class _Lowering:
         OPTIONALs nested in each after it: an inner OPTIONAL extends its outer one's solutions
         (REQ-2135). Returns the labels with the OPTIONALs' nodes."""
         for opt in group.optionals:
-            opt_labels = self.interpretations(opt, labels)
-            if len(opt_labels) != 1:
-                raise SparqlRefused(
-                    "An OPTIONAL whose nodes could be of several classes is not supported; "
-                    "give them a class"
-                )
-            inner = {v for o in opt.optionals for v in _bound_vars(o)}
-            if any(v in inner for f in opt.filters for v in _expr_vars(f)):
-                raise SparqlRefused(
-                    "A FILTER in an OPTIONAL naming a variable an OPTIONAL inside it binds is not "
-                    "supported"
-                )
-            steps.append(
-                self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
-            )
-            labels = self._lower_optionals(opt, {**labels, **opt_labels[0]}, bindings, steps)
+            if any(
+                _is_var(s) and str(s) in bindings and str(s) not in labels
+                for s, _, _ in opt.triples
+            ):
+                continue  # its subject is a value in this part: a literal has no triples
+            opt_labels = self._optional_labels(opt, labels)
+            steps.append(self.lower_group(opt, {**labels, **opt_labels}, bindings, optional=True))
+            labels = self._lower_optionals(opt, {**labels, **opt_labels}, bindings, steps)
         return labels
 
     def _template_term(self, x: Any, term) -> CypherExpr:
@@ -1559,16 +2269,6 @@ class _Lowering:
                 _literal(x), datatype=str(x.datatype) if x.datatype else None, lang=x.language
             )
         raise SparqlRefused("A blank node in a CONSTRUCT template is not supported")
-
-    @staticmethod
-    def _term_vars(steps: list[MatchStep]) -> set[str]:
-        return {
-            v
-            for s in steps
-            for m in s.matches
-            if isinstance(m.pattern, TriplePattern)
-            for v in (m.pattern.predicate, m.pattern.object)
-        }
 
 
 def _literal(lit: Any) -> CypherExpr:
@@ -1627,28 +2327,50 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
         mods["project"] = [str(v) for v in algebra.PV]
     template = list(algebra.template) if form == "CONSTRUCT" else None
 
-    lowering = _Lowering(vocab, lm)
-    parts: list[CypherAST] = []
-    for group in _alternatives(pattern):
-        for expanded in lowering.expand_axiom_joins(group):
-            for labels in lowering.interpretations(expanded, {}):
-                parts.append(
-                    lowering.statement(expanded, labels, mods, form, template, aggregation)
-                )
-    if aggregation is not None and len(parts) > 1:
-        raise SparqlRefused(
-            "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
-            "give the subjects one class"
-        )
     limit, allowed = union_allowance(
         mods.get("limit") is not None
         and not mods.get("order")
         and not mods.get("distinct")
         and aggregation is None
     )
-    if len(parts) > allowed:
+    lowering = _Lowering(vocab, lm, limit, allowed)
+    specs = []
+    combinations = 0
+    alternatives = _alternatives(pattern)
+    for group in alternatives:
+        for expanded in lowering.expand_axiom_joins(group):
+            for labels in lowering.interpretations(expanded, {}):
+                combinations += 1
+                specs.extend(lowering.predicate_reads(expanded, labels, mods, aggregation))
+    opened = {v for group in alternatives for v in _opened_vars(group)}
+    mods["lanes"] = {i for i, c in enumerate(mods.get("order", [])) if _expr_vars(c.expr) & opened}
+    over_parts = aggregation is not None and bool(opened)
+    if aggregation is not None and not over_parts and len(specs) > 1:
         raise SparqlRefused(
-            union_refusal(f"The query matches {len(parts)} combinations of classes", limit, allowed)
+            "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
+            "give the subjects one class"
+        )
+    parts: list[CypherAST] = []
+    inputs: dict[str, tuple[set[str | None], set[str | None]]] = {}
+    for spec in specs:
+        try:
+            if over_parts:
+                assert aggregation is not None
+                parts.append(lowering.aggregate_rows(spec, aggregation, inputs))
+            else:
+                flat, part_labels, reads, through_rows = spec
+                parts.append(
+                    lowering.statement(
+                        flat, part_labels, mods, form, template, aggregation, reads, through_rows
+                    )
+                )
+        except _NoSolution:
+            continue
+    if combinations > allowed:
+        raise SparqlRefused(
+            union_refusal(
+                f"The query matches {combinations} combinations of classes", limit, allowed
+            )
             + "; give its subjects classes, or raise the limit (graph.union_limit)"
         )
     variables = mods.get("project", []) if form == "SELECT" else []
@@ -1667,9 +2389,18 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
         return CompiledSparql(form, None, variables, empty=True, empty_row=empty_row)
     head = parts[0]
     head.union_parts = [(p, True) for p in parts[1:]]
+    if over_parts:
+        assert aggregation is not None
+        head = lowering.aggregate_over(head, aggregation, inputs, mods)
+        mods["lanes"] = set()
     head.order_by = [
-        OrderItem(Variable(f"{_ORDER_PREFIX}{i}"), "DESC" if c.order == "DESC" else "ASC")
+        OrderItem(Variable(name), "DESC" if c.order == "DESC" else "ASC")
         for i, c in enumerate(mods.get("order", []))
+        for name in (
+            [f"{_ORDER_PREFIX}{i}{lane}" for lane in _ORDER_LANES]
+            if i in mods["lanes"]
+            else [f"{_ORDER_PREFIX}{i}"]
+        )
     ]
     head.skip = mods.get("offset")
     head.limit = 1 if form == "ASK" else mods.get("limit")

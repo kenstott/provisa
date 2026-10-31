@@ -32,12 +32,13 @@ from psycopg import pq
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.native_subtype import mark_subtype_operations
+from provisa.compiler.parameter_types import parameter_types
 from provisa.compiler.result_shape import derive_result_shape
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.core import pg_money
 from provisa.core.pg_error import PostgresError
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
-from provisa.pgwire._pipeline import _kept_result_shape
+from provisa.pgwire._pipeline import _Described, _kept_result_shape
 from provisa.pgwire.server import ProvisaSession
 from provisa.transpiler.native_subtype import SubtypeOperationRefused
 from provisa.transpiler.pg_money import MONEY, lowered, money_type
@@ -45,6 +46,7 @@ from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.pgwire_describe_parity import RuntimeEngine
 from tests.role_state import with_surfaces
 from tests.unit.pgwire.pg17_money_answers import COLUMNS, RECORDED
+from tests.unit.pgwire.test_extended_protocol_live import _answered
 from tests.unit.pgwire.test_extended_protocol_portals import _engine_plan
 from tests.unit.pgwire.test_type_conversions import ROLE, conn, pgwire  # noqa: F401
 
@@ -162,10 +164,33 @@ def money_table(request: Any, pgwire: int):
     async def _no_cache(plan, st):
         return None
 
+    async def _resident(st, plan):
+        return None
+
+    async def _describe(text, role_id, *, as_of=None):
+        physical = re.sub(r"\bFROM m\b", "FROM conformance.m", text)
+        ctx.physical_to_sql = {}
+        columns = {_TABLE_ID: _COLUMN_TYPES}
+        shape = derive_result_shape(physical, _MAP, ctx, columns)
+        parameters = parameter_types(physical, _MAP, ctx, columns)
+        return _Described(shape, ("governed", text), parameters)  # type: ignore[arg-type]
+
+    async def _plan(held, params, wire_formats=None, *, deliver):
+        plan = await _govern(held[1], ROLE, params, deliver=deliver)
+        plan.exec_params = params or []
+        return plan
+
     with (
         patch("provisa.api.app.state", state),
         patch("provisa.pgwire._pipeline.govern_pgwire_plan", _govern),
+        patch("provisa.pgwire._pipeline.describe_pgwire_statement", _describe),
+        patch("provisa.pgwire._pipeline.plan_pgwire_statement", _plan),
+        patch(
+            "provisa.pgwire._pipeline.governed_statement_is_current",
+            lambda held, st, as_of=None: True,
+        ),
         patch("provisa.pgwire._pipeline.prepare_residency_and_check_cache", _no_cache),
+        patch("provisa.federation.query_residency.prepare_engine_residency", _resident),
         patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status, **kw: None),
     ):
         c = psycopg.connect(
@@ -189,6 +214,54 @@ def test_a_registered_money_column_answers_what_postgresql_17_answered(money_tab
         if (problem := _problem(money_table, sql, sql, expected)) is not None
     }
     assert not problems
+
+
+def test_a_described_money_expression_is_described_as_money(money_table: Any):
+    pgconn = money_table.pgconn
+    sql = "SELECT price + price FROM m ORDER BY id"
+    pgconn.send_prepare(b"money_probe", sql.encode())
+    _answered(pgconn, pq.ExecStatus.COMMAND_OK)
+    pgconn.send_describe_prepared(b"money_probe")
+    assert _answered(pgconn, pq.ExecStatus.COMMAND_OK).ftype(0) == 790
+    pgconn.send_query_prepared(b"money_probe", None, result_format=1)
+    executed = _answered(pgconn, pq.ExecStatus.TUPLES_OK)
+    assert executed.ftype(0) == 790
+    assert executed.get_value(0, 0).hex() == COLUMNS[sql][3]
+
+
+#: Sorted as money, not as its text form, however the ORDER BY names the column: the table's prices
+#: are $1,234.56, -$5.00, $0.35 and NULL (PostgreSQL 16.11 answered the order).
+_ORDERED_BY_NAME = {
+    "SELECT price AS p FROM m ORDER BY p": ["-$5.00", "$0.35", "$1,234.56", None],
+    "SELECT price AS p FROM m ORDER BY p DESC": [None, "$1,234.56", "$0.35", "-$5.00"],
+    "SELECT price p FROM m ORDER BY p DESC NULLS LAST": ["$1,234.56", "$0.35", "-$5.00", None],
+    "SELECT price FROM m ORDER BY 1": ["-$5.00", "$0.35", "$1,234.56", None],
+    "SELECT id, price AS p FROM m ORDER BY 2 DESC NULLS LAST": None,
+    "SELECT price + price AS d FROM m ORDER BY d": ["-$10.00", "$0.70", "$2,469.12", None],
+}
+
+
+@pytest.mark.parametrize("sql", list(_ORDERED_BY_NAME))
+def test_order_by_an_alias_or_position_sorts_money_as_money(money_table: Any, sql: str):
+    res = money_table.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+    last = res.nfields - 1
+    got = [
+        None if (v := res.get_value(i, last)) is None else v.decode() for i in range(res.ntuples)
+    ]
+    assert got == (_ORDERED_BY_NAME[sql] or ["$1,234.56", "$0.35", "-$5.00", None])
+
+
+def test_an_uncast_parameter_compared_with_money_is_money(money_table: Any):
+    pgconn = money_table.pgconn
+    pgconn.send_prepare(b"money_param", b"SELECT id FROM m WHERE price > $1 ORDER BY id")
+    _answered(pgconn, pq.ExecStatus.COMMAND_OK)
+    pgconn.send_describe_prepared(b"money_param")
+    described = _answered(pgconn, pq.ExecStatus.COMMAND_OK)
+    assert [described.param_type(i) for i in range(described.nparams)] == [790]
+    pgconn.send_query_prepared(b"money_param", [b"$1.00"])
+    executed = _answered(pgconn, pq.ExecStatus.TUPLES_OK)
+    assert [executed.get_value(i, 0) for i in range(executed.ntuples)] == [b"1"]
 
 
 @pytest.mark.parametrize(
@@ -269,7 +342,8 @@ def test_a_double_is_sent_in_postgresqls_text(value: float, text: str):
 
 def test_a_bound_parameter_is_read_as_moneys_input():
     written = lowered("SELECT $1::money AS v", "duckdb")
-    assert "PROVISA_CASH_IN(CAST($1 AS VARCHAR))" in written.upper()
+    assert "MONEY_INPUT($1)" in written.upper()
+    assert "PROVISA_CASH_IN" not in written.upper()
 
 
 @pytest.mark.parametrize(
@@ -284,6 +358,40 @@ def test_a_bound_parameter_is_read_as_moneys_input():
 def test_pg_typeof_names_what_money_operators_return(conn: Any, sql: str, expected: str):
     res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
     assert _rows(res) == [expected]
+
+
+#: money[], OID 791: the array of money, as PostgreSQL 16.11 answered it. array_send of a money
+#: element is its int8 cents.
+_MONEY_ARRAYS = {
+    "SELECT '{$1.00}'::money[] AS v": (
+        "{$1.00}",
+        "0000000100000000000003160000000100000001000000080000000000000064",
+    ),
+    "SELECT '{$1.00,-$2.50}'::money[] AS v": ("{$1.00,-$2.50}", None),
+    "SELECT '{\"$1,234.56\",NULL}'::money[] AS v": ('{"$1,234.56",NULL}', None),
+    "SELECT ARRAY['$1'::money, NULL] AS v": ("{$1.00,NULL}", None),
+    "SELECT ARRAY['$1', '$2.50']::money[] AS v": ("{$1.00,$2.50}", None),
+    "SELECT '{}'::money[] AS v": ("{}", None),
+}
+
+
+@pytest.mark.parametrize("sql", list(_MONEY_ARRAYS))
+def test_a_money_array_is_sent_as_oid_791(conn: Any, sql: str):
+    text, binary = _MONEY_ARRAYS[sql]
+    as_text = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert as_text.status == pq.ExecStatus.TUPLES_OK, (as_text.error_message or b"").decode()
+    assert (as_text.ftype(0), as_text.get_value(0, 0).decode()) == (791, text)
+    as_binary = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=1)
+    assert as_binary.status == pq.ExecStatus.TUPLES_OK, (as_binary.error_message or b"").decode()
+    assert as_binary.ftype(0) == 791
+    if binary is not None:
+        assert as_binary.get_value(0, 0).hex() == binary
+
+
+def test_a_malformed_money_array_is_postgresqls_error(conn: Any):
+    res = conn.conn.pgconn.exec_params(b"SELECT 'x'::money[] AS v", [], result_format=0)
+    assert res.status == pq.ExecStatus.FATAL_ERROR
+    assert res.error_field(pq.DiagnosticField.SQLSTATE) == b"22P02"
 
 
 def test_lc_monetary_is_reported_and_fixed(conn: Any):

@@ -351,6 +351,7 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
         _refuse_not_landed(tree, left_out, single=live_tables == 0 and len(replica_aliases) == 1)
     if changed:
         from provisa.transpiler.native_json import strip_native_json
+        from provisa.transpiler.native_subtype import strip_reads
 
         def _read_from_a_replica(column: exp.Expr) -> bool:
             qualifier = column.args.get("table")
@@ -359,6 +360,7 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
             return qualifier.name.lower() in replica_aliases if qualifier else live_tables == 0
 
         strip_native_json(tree, _read_from_a_replica)
+        strip_reads(tree, _read_from_a_replica)
     return tree.sql(dialect="postgres") if changed else pg_sql
 
 

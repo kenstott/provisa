@@ -53,6 +53,7 @@ from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
 from provisa.security.rights import reaches_all_domains
+from provisa.transpiler.xml_syntax import MAPPINGS
 
 
 @dataclass
@@ -125,6 +126,8 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
     violations += _check_dag(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
+    violations += _check_masked_in_xmltable(tree, gov_ctx, cte_names_set)
+    violations += _check_xml_mappings(tree)
 
     return violations
 
@@ -133,9 +136,11 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
 # V006 – Registered relations only                                             #
 # --------------------------------------------------------------------------- #
 
-# Table functions that only generate rows from their literal arguments — no engine state, no
-# file or network read.
-_ROW_GENERATORS = (exp.GenerateSeries, exp.ExplodingGenerateSeries)
+# Table functions that only generate rows from their arguments — no engine state, no file or
+# network read. XMLTABLE reads the document it is passed, and a document cannot reach outside
+# itself (provisa.federation.duckdb_pg_xml); what it is passed is the statement's own, governed as
+# the statement is (_check_masked_in_xmltable).
+_ROW_GENERATORS = (exp.GenerateSeries, exp.ExplodingGenerateSeries, exp.XMLTable)
 
 
 def _check_registered_relations(  # REQ-001, REQ-266
@@ -751,6 +756,50 @@ def _filters_plaintext(gov_ctx: GovernanceContext, tid: int, col_name: str) -> b
     from provisa.security.masking import MaskType
 
     return entry[0].mask_type != MaskType.fake
+
+
+def _check_xml_mappings(tree: exp.Expr) -> list[ValidationViolation]:  # REQ-2167
+    """Reject query_to_xml and its kin: what they read is in a string, which this statement's
+    governance cannot see, and a PostgreSQL source would run it as Provisa's own connection. A
+    surface that serves them answers each first, through governed reads (compiler.xml_mapping)."""
+    return [
+        ValidationViolation("V006", f"{call.name.lower()} is not a governed relation")
+        for call in tree.find_all(exp.Anonymous)
+        if call.name.lower() in MAPPINGS
+    ]
+
+
+def _check_masked_in_xmltable(  # REQ-040, REQ-2167
+    tree: exp.Expr,
+    gov_ctx: GovernanceContext,
+    cte_names_set: frozenset[str] = frozenset(),
+) -> list[ValidationViolation]:
+    """Reject a masked or hidden column anywhere in XMLTABLE: its document, a path or a default.
+    Masks are written on the statement's projections and visibility checked on its select lists,
+    and XMLTABLE is in FROM, so its rows would come from the plaintext."""
+    violations = []
+    for select in tree.find_all(exp.Select):
+        am = _alias_map(select, gov_ctx, cte_names_set)
+        for table in select.find_all(exp.XMLTable):
+            for col in table.find_all(exp.Column):
+                tids = [am[col.table]] if col.table in am else []
+                tids = tids if col.table else list(am.values())
+                written = col.sql(dialect="postgres")
+                if any(_filters_plaintext(gov_ctx, tid, col.name) for tid in tids):
+                    violations.append(
+                        ValidationViolation(
+                            "V005", f"Column {written} is masked and may not be read by XMLTABLE"
+                        )
+                    )
+                for tid in tids:
+                    vis = gov_ctx.visible_columns.get(tid)
+                    if vis is not None and registered_name(gov_ctx, tid, col.name) not in vis:
+                        violations.append(
+                            ValidationViolation(
+                                "V003", f"Column {written} is not visible to this role"
+                            )
+                        )
+    return violations
 
 
 def _check_masked_in_predicate(  # REQ-040, REQ-263

@@ -25,8 +25,9 @@ in a double, a result outside int8 cents is PostgreSQL's error where the dialect
 A use PostgreSQL has no operator for is refused as PostgreSQL refuses it, wherever the statement
 says the operand's type.
 
-Refused by name, as every subtype's operation is (:class:`SubtypeOperationRefused`): an operation
-the dialect has no form of."""
+Money's text, words, bytes and input are rows of provisa.transpiler.function_macros, which applies
+the rule. Refused by name, as every subtype's operation is (:class:`SubtypeOperationRefused`): an
+operation the dialect has no form of."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -44,9 +45,11 @@ from sqlglot.optimizer.scope import Scope, traverse_scope
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_money import cash_in
+from provisa.transpiler.function_macros import outcome
 from provisa.transpiler.native_subtype import COMPARISONS, SubtypeOperationRefused, marked
 
 MONEY = "money"
+MONEY_ARRAY = "money[]"
 DOUBLE = "double precision"
 
 _MAX = Decimal("92233720368547758.07")
@@ -85,12 +88,23 @@ _TEXT_HELD = frozenset({"duckdb", "trino", "athena"})
 
 _NOT_FOR_MONEY: dict[type, str] = {exp.Avg: "avg", exp.Abs: "abs", exp.Round: "round"}
 
+#: One element of an array literal: a quoted one, or one bare up to its comma.
+_ARRAY_ITEM = re.compile(r'"((?:[^"\\]|\\.)*)"|([^,]+)')
+
 #: The statements ``lowered`` has anything to do in.
 _NAMED = re.compile(r"\bmoney\b|cash", re.IGNORECASE)
 
 
 def _base() -> exp.DataType:
     return exp.DataType.build(SUBTYPES[MONEY].base, dialect="postgres")
+
+
+def _base_array() -> exp.DataType:
+    return exp.DataType.build(f"{SUBTYPES[MONEY].base}[]", dialect="postgres")
+
+
+def _is_money_array(to: exp.DataType) -> bool:
+    return to.this == _T.ARRAY and bool(to.expressions) and to.expressions[0].this == _T.MONEY
 
 
 def _no_column(_column: exp.Column) -> str | None:
@@ -151,7 +165,11 @@ def money_type(node: exp.Expr, column: ColumnType = _no_column) -> str | None:  
     if isinstance(node, exp.Column):
         return column(node)
     if isinstance(node, exp.Cast):
+        if _is_money_array(node.to):
+            return MONEY_ARRAY
         return MONEY if node.to.this == _T.MONEY else None
+    if isinstance(node, exp.Array):
+        return MONEY_ARRAY if _first_money(node.expressions, column) == MONEY else None
     if isinstance(node, (exp.Add, exp.Sub, exp.Mul, exp.Div)):
         left = money_type(node.this, column)
         right = money_type(node.expression, column)
@@ -430,44 +448,32 @@ def _chosen(a: exp.Expr, b: exp.Expr, larger: bool) -> exp.Expr:
     return exp.Case(ifs=[exp.If(this=first, true=a), exp.If(this=second, true=b)])
 
 
+def _by_the_rule(row: str, operation: str, value: exp.Expr, dialect: str) -> exp.Expr:
+    """A money function, as function_macros writes it for ``dialect``."""
+    if outcome(row, 1, dialect) == "refused":
+        raise SubtypeOperationRefused(MONEY, operation, dialect)
+    return exp.Anonymous(this=row, expressions=[value])
+
+
 def _money_text(value: exp.Expr, dialect: str) -> exp.Expr:
     """money's text form."""
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_out", expressions=[_cents(value)])
-    if dialect in ("trino", "athena"):
-        unsigned = exp.Anonymous(
-            this="format",
-            expressions=[
-                exp.Literal.string("$%,.2f"),
-                exp.Abs(this=_as(value.copy(), _DOLLARS_TYPE)),
-            ],
-        )
-        negative = exp.LT(this=value.copy(), expression=exp.Literal.number(0))
-        sign = _case(negative, exp.Literal.string("-"), exp.Literal.string(""))
-        return exp.DPipe(this=sign, expression=unsigned)
-    raise SubtypeOperationRefused(MONEY, "cast to text", dialect)
+    return _by_the_rule("money_text", "cast to text", value, dialect)
 
 
 def _money_words(value: exp.Expr, dialect: str) -> exp.Expr:
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_words", expressions=[_cents(value)])
-    raise SubtypeOperationRefused(MONEY, "cash_words", dialect)
+    return _by_the_rule("money_words", "cash_words", value, dialect)
 
 
 def _money_bytes(value: exp.Expr, dialect: str) -> exp.Expr:
     """cash_send: the int8, big-endian."""
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_send", expressions=[_cents(value)])
-    if dialect in ("trino", "athena"):
-        return exp.Anonymous(this="to_big_endian_64", expressions=[_cents(value)])
-    raise SubtypeOperationRefused(MONEY, "cash_send", dialect)
+    return _by_the_rule("money_bytes", "cash_send", value, dialect)
 
 
 def _money_input(value: exp.Expr, dialect: str) -> exp.Expr:
     """A value read as money: money's input of its text, which reads a number's digits exactly as
     numeric's cast to money rounds them."""
-    if dialect == "duckdb":
-        return exp.Anonymous(this="provisa_cash_in", expressions=[_as(value, "VARCHAR")])
+    if outcome("money_input", 1, dialect) != "refused":
+        return exp.Anonymous(this="money_input", expressions=[value])
     return _base_of_text(value)
 
 
@@ -487,6 +493,27 @@ def _column_value(column: exp.Expr, dialect: str) -> exp.Expr:
     if dialect == "postgres":
         return _as(column, MONEY)
     return _base_of_text(column) if dialect in _TEXT_HELD else exp.Cast(this=column, to=_base())
+
+
+def _array_items(text: str) -> list[str | None]:
+    """array_in of a one-dimensional literal: its elements, None for an unquoted NULL."""
+    malformed = PostgresError("22P02", f'malformed array literal: "{text}"')
+    stripped = text.strip()
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        raise malformed
+    body = stripped[1:-1].strip()
+    if not body:
+        return []
+    items: list[str | None] = []
+    for match in _ARRAY_ITEM.finditer(body):
+        quoted, bare = match.group(1), match.group(2)
+        if quoted is not None:
+            items.append(re.sub(r"\\(.)", r"\1", quoted))
+        elif bare.strip().upper() == "NULL":
+            items.append(None)
+        else:
+            items.append(bare.strip())
+    return items
 
 
 # --- PostgreSQL's refusals -----------------------------------------------------------------------
@@ -530,8 +557,25 @@ class _Lowering:
         self.types[id(new)] = self.types.get(id(old))
         self.said[id(new)] = self.said.get(id(old))
 
+    def _to_money_array(self, value: exp.Expr) -> exp.Expr:
+        """A value read as money[]: over the base, an array of it."""
+        if isinstance(value, exp.Null):
+            return exp.Cast(this=exp.Null(), to=_base_array())
+        if isinstance(value, exp.Array):
+            items = [self._to_money(item) for item in value.expressions]
+        elif _is_string(value):
+            items = [
+                exp.Cast(this=exp.Null(), to=_base()) if item is None else _money_of(cash_in(item))
+                for item in _array_items(value.this)
+            ]
+        else:
+            raise SubtypeOperationRefused(MONEY, f"cast to {MONEY_ARRAY}", self.dialect)
+        return exp.Cast(this=exp.Array(expressions=items), to=_base_array())
+
     def _cast(self, node: exp.Cast) -> exp.Expr:
         value = node.this
+        if _is_money_array(node.to):
+            return self._to_money_array(value)
         if node.to.this == _T.MONEY:
             return self._to_money(value)
         if self.kind(value) != MONEY:
@@ -759,4 +803,12 @@ def lowered(sql: str, dialect: str) -> str:
     return sql if after == before else after
 
 
-__all__ = ["DOUBLE", "MONEY", "lowered", "money_type", "names_money", "statement_columns"]
+__all__ = [
+    "DOUBLE",
+    "MONEY",
+    "MONEY_ARRAY",
+    "lowered",
+    "money_type",
+    "names_money",
+    "statement_columns",
+]

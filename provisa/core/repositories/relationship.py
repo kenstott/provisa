@@ -203,7 +203,8 @@ async def upsert(
                     table_columns.c.table_id == target_tbl_id,
                     table_columns.c.column_name == rel.target_column,
                 )
-                .values(is_primary_key=True)
+                # REQ-2190: a primary key is NOT NULL, as the column's registration records it.
+                .values(is_primary_key=True, not_null=True)
             )
     # REQ-2141: a foreign key's ref is its target's Class term; the relationship says which.
     from provisa.core.repositories import glossary as glossary_repo

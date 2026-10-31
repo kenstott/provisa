@@ -1879,6 +1879,8 @@ async def govern_statement(
                     {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
                 for tbl in parsed_tree.find_all(exp.Table):
+                    if isinstance(tbl.this, exp.XMLTable):
+                        continue  # REQ-2167: no relation; what it reads is the statement's own
                     if (
                         isinstance(tbl.this, exp.Anonymous)
                         and tbl.this.name.lower() in _table_functions
@@ -5924,6 +5926,8 @@ class _Described:
     # None for a registered-function call: a command has no governed statement to hold — its
     # Execute invokes it through ``govern_pgwire_plan``.
     governed: _Governed | None
+    # $N -> its type, for each uncast parameter the statement types (REQ-2167).
+    parameters: dict[int, str] = field(default_factory=dict)
 
 
 def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
@@ -5956,6 +5960,7 @@ async def describe_pgwire_statement(  # REQ-589
     from provisa.api.app import state
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
     from provisa.pgwire.function_call import detect_sql_function_call
+    from provisa.compiler.parameter_types import parameter_types
     from provisa.compiler.result_shape import derive_result_shape
 
     sql = rewrite_surface_operators(sql)
@@ -5997,7 +6002,14 @@ async def describe_pgwire_statement(  # REQ-589
             # REQ-2131: a column transform's inputs are read; its outputs are what is answered.
             shape = reshape(shape, transformed.calls)
         governed.memo["result_shape"] = shape
-    return _Described(shape, governed)
+    parameters = await _off_loop(
+        parameter_types,
+        governed.governed_semantic,
+        governed.gov_ctx.table_map,
+        governed.ctx,
+        state.schema_build_cache["column_types"],
+    )
+    return _Described(shape, governed, parameters)
 
 
 async def plan_pgwire_statement(  # REQ-589

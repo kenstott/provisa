@@ -109,6 +109,11 @@ FIELDS = {
 BY_DESIGN = ("design", "client", "suite")
 
 
+#: REQ-2167 (amended 2026-10-29, PG_CATALOG FUNCTIONS ARE GAPS): what a group naming catalog
+#: functions starts with. No such group loads: a function not served is failed.
+FUNCTION_CASE = "^catalog function::"
+
+
 @dataclass
 class Group:
     group: str
@@ -138,6 +143,11 @@ def groups(surface: str) -> list[Group]:
     out = []
     for entry in yaml.safe_load(path.read_text()) or []:
         kind = entry.get("kind", "design")
+        if str(entry.get("case") or "").startswith(FUNCTION_CASE):
+            raise ValueError(
+                f"{path.name}: the group {entry.get('group')!r} names catalog functions; a "
+                "pg_catalog function not served is failed, never skipped by design"
+            )
         if kind not in FIELDS:
             raise ValueError(f"{path.name}: the group {entry.get('group')!r} is of no kind: {kind}")
         if kind in BY_DESIGN and not re.fullmatch(

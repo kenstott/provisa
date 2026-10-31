@@ -30,6 +30,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import ParseError
 
+from provisa.transpiler import function_macros, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -66,13 +67,31 @@ _NAMED = re.compile(
 #: The statements ``typed_calls`` has anything to do in.
 _CALLED = re.compile(
     r"\b("
-    + "|".join(sorted({*_TYPE_CALLS, *_SIZED_CALLS, *(n for n, _ in _UDF_CALLS)}))
+    + "|".join(
+        sorted(
+            {
+                *_TYPE_CALLS,
+                *_SIZED_CALLS,
+                *(n for n, _ in _UDF_CALLS),
+                *(n for n, _, _ in function_macros.OVERLOADS),
+            }
+        )
+    )
     + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
     r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
     r"|notlike|like_escape|convert|json_object|unnest|trunc|pg_get_object_address"
-    r"|regexp_split_to_table|strpos)\"?\s*\(",
+    r"|regexp_split_to_table|strpos|pg_typeof)\"?\s*\(",
     re.IGNORECASE,
 )
+
+#: A cast's type that DuckDB holds as another, so its typeof cannot say it.
+_HELD_AS_ANOTHER = {
+    exp.DataType.Type.JSONB: "jsonb",
+    exp.DataType.Type.VARCHAR: "character varying",
+    exp.DataType.Type.CHAR: "character",
+    exp.DataType.Type.BPCHAR: "character",
+    exp.DataType.Type.NAME: "name",
+}
 
 _RANDOM_BOUNDS = "lower bound must be less than or equal to upper bound"
 
@@ -300,24 +319,6 @@ def _text_array(node: exp.Expr) -> str:
     return f"CAST(ARRAY[{written}] AS TEXT[])"
 
 
-def _tsvector_call(name: str, args: list[exp.Expr]) -> str | None:
-    if not args or not _is_kind(args[0], "tsvector"):
-        return None
-    value = _sql(args[0])
-    if name == "unnest":
-        return f"UNNEST(PROVISA_TSVECTOR_ITEMS({value}))"
-    if name == "length":
-        return f"LEN(PROVISA_TSVECTOR_ITEMS({value}))"
-    return None
-
-
-def _geometry_call(name: str, args: list[exp.Expr]) -> str | None:
-    """length of a line segment or a path, which DuckDB's length would count as text."""
-    if name == "length" and len(args) == 1 and _is_kind(args[0], "lseg", "path"):
-        return f"PROVISA_GEOMETRY_LENGTH({_sql(args[0])})"
-    return None
-
-
 def _mac_call(name: str, args: list[exp.Expr]) -> str | None:
     if name == "trunc" and len(args) == 1 and _is_kind(args[0], "macaddr", "macaddr8"):
         zeros = "00:00:00" if _is_kind(args[0], "macaddr") else "00:00:00:00:00"
@@ -485,6 +486,18 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     return args[0], flat
 
 
+def _type_said(value: exp.Expr) -> str | None:
+    """pg_typeof of what the statement says and the engine's type does not: a literal of unknown
+    type, a type DuckDB holds as another, or a call of pg_typeof. None: the engine's type says it
+    (the ``pg_typeof`` macro)."""
+    if isinstance(value, exp.Null) or (isinstance(value, exp.Literal) and value.is_string):
+        return "unknown"
+    if isinstance(value, exp.Cast):
+        return _HELD_AS_ANOTHER.get(value.to.this)
+    named = _named(value)
+    return "regtype" if named is not None and named[0] == "pg_typeof" else None
+
+
 def _call(node: exp.Expr) -> exp.Expr:
     """A call of an overload DuckDB's function of the name does not take."""
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
@@ -496,12 +509,22 @@ def _call(node: exp.Expr) -> exp.Expr:
     if isinstance(node, exp.BitString):
         # A bit string's digits: sqlglot writes it for DuckDB as an integer, of another length.
         return exp.Cast(this=exp.Literal.string(node.this), to=exp.DataType.build("BIT"))
+    xml = pg_xml.rewritten(node, _sql)
+    if xml is not None:
+        return xml
     named = _named(node)
     if named is None:
         return node
     name, args = named
+    if name == "pg_typeof" and len(args) == 1:
+        said = _type_said(args[0])
+        return node if said is None else exp.Literal.string(said)
     if name == "pg_get_object_address" and len(args) == 3:  # noqa: PLR2004
         written = f"pg_get_object_address({_sql(args[0])}, {_text_array(args[1])}, {_text_array(args[2])})"
+        return sqlglot.parse_one(written, read="postgres")
+    chosen = function_macros.overload(name, args)
+    if chosen != name:  # REQ-2171: by the type the statement says, while the cast is there to read
+        written = f"{chosen}({', '.join(_sql(a) for a in args)})"
         return sqlglot.parse_one(written, read="postgres")
     written = (
         _type_call(name, args)
@@ -509,8 +532,6 @@ def _call(node: exp.Expr) -> exp.Expr:
         or _bytea_call(name, args)
         or _bit_call(name, args)
         or _time_call(name, args)
-        or _tsvector_call(name, args)
-        or _geometry_call(name, args)
         or _mac_call(name, args)
     )
     if written is None and name == "convert" and len(args) == 3:  # noqa: PLR2004
@@ -565,7 +586,11 @@ def readable(pg_sql: str) -> str:
 def typed_calls(pg_sql: str) -> str:
     """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
     pg_sql = readable(pg_sql)
-    if _CALLED.search(pg_sql) is None and _SPECIAL_LITERAL.search(pg_sql) is None:
+    if (
+        _CALLED.search(pg_sql) is None
+        and _SPECIAL_LITERAL.search(pg_sql) is None
+        and pg_xml.MENTIONED.search(pg_sql) is None
+    ):
         return pg_sql
     rewritten = False
 

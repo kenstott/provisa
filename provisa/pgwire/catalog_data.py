@@ -19,6 +19,7 @@ through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path
 from __future__ import annotations
 
 from provisa.core.pg_money import LC_MONETARY
+from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_tables import (
     CLIENT_RELATIONS,
@@ -52,6 +53,7 @@ _PG_TYPE_ROWS = [
     # REQ-2171: the subtypes' types, as PostgreSQL's pg_type has them.
     (26, "oid", 11, 4, "b", "N", False, 0, True, "i", "p"),
     (142, "xml", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (143, "_xml", 11, -1, "b", "A", False, 0, False, "i", "x"),
     (600, "point", 11, 16, "b", "G", False, 0, False, "d", "p"),
     (650, "cidr", 11, -1, "b", "I", False, 0, False, "i", "m"),
     (790, "money", 11, 8, "b", "N", False, 0, True, "d", "p"),
@@ -581,7 +583,7 @@ _TABLE_MAP.update(
     }
 )
 
-# Every other PostgreSQL 17 relation, which no client queries (catalog_pg17_tables, tier 4).
+# Every other PostgreSQL 17 relation (catalog_pg17_tables, tier 4).
 UNQUERIED_RELATIONS: tuple[tuple[str, str], ...] = tuple(
     key for key in RELATIONS if key not in _TABLE_MAP
 )
@@ -615,6 +617,8 @@ _DESCRIBED_TYPE_OIDS = sorted(
         # The types a result column is sent as besides: a cast's (cast_types) and an object
         # identifier's (catalog_regs).
         | {1042, 2205, 2206, 4089}
+        # REQ-2171: a registered column of a built-in type is sent as it.
+        | {sub.pg_oid for sub in SUBTYPES.values() if sub.pg_oid in TYPES}
     )
     - {row[0] for row in _PG_TYPE_ROWS}
 )
@@ -630,6 +634,12 @@ for _oid in _DESCRIBED_TYPE_OIDS:
         (_ns, _name, _kind, _base or None, _element or None, TYPES[_oid][11] if _element else None)
         + (None,),
     )
+
+# REQ-2171: a registered column of a built-in type is stored as PostgreSQL 17 stores it.
+for _sub in SUBTYPES.values():
+    if _sub.pg_oid in TYPES:
+        _, _, _len, _, _, _, _, _byval, _align, _storage, *_ = TYPES[_sub.pg_oid]
+        _PG_OID_ATTR_META.setdefault(_sub.pg_oid, (_len, _byval, _align, _storage))
 
 
 def typeinfo() -> dict[int, tuple]:

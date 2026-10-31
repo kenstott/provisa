@@ -31,11 +31,19 @@ from typing import Any, Callable
 from buenavista.core import BVType
 
 from provisa.core.pg_range import RANGE_TYPES
+from provisa.federation.duckdb_pg_xml import xml_out
+from provisa.transpiler.xml_syntax import XmlSerialize
 
 #: The header PostgreSQL adds to a typmod that carries a length or a precision (VARHDRSZ).
 _VARHDRSZ = 4
 
 _TEXT_FORMS = frozenset({BVType.TEXT})
+
+_XML_FORMS = frozenset({BVType.TEXT, BVType.XML})
+
+#: xml[]'s wire type. Sending only looks a wire type up (BVTYPE_TO_PGTYPE, provisa.pgwire.server),
+#: so one the vendored BVType does not list needs only its entry there.
+XML_ARRAY: Any = "xml[]"
 
 
 @dataclass(frozen=True)
@@ -105,6 +113,10 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
         return CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}))
     if kind == t.JSONB:
         return CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB}))
+    if kind == t.XML:  # REQ-2171: held as its text; xml_out writes its declaration
+        return CastType(142, -1, BVType.XML, _XML_FORMS, xml_out)
+    if kind == t.ARRAY and data_type.expressions and data_type.expressions[0].this == t.XML:
+        return _RETURNED["xml[]"]
     ranged = RANGE_CASTS.get(kind.name) if isinstance(kind, exp.DataType.Type) else None
     if ranged is not None:
         return ranged
@@ -164,9 +176,19 @@ _RETURNED: dict[str, CastType] = {
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
     "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET})),
     "void": CastType(2278, -1, BVType.TEXT, _TEXT_FORMS),
+    "xml": CastType(142, -1, BVType.XML, _XML_FORMS, xml_out),
+    "xml[]": CastType(143, -1, XML_ARRAY, frozenset({BVType.STRINGARRAY, XML_ARRAY})),
     "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
     # The engine holds money as its base; its encoder sends the value as money.
     "money": CastType(790, -1, BVType.MONEY, _NUMBERS | {BVType.TEXT, BVType.MONEY}),
+    "money[]": CastType(
+        791,
+        -1,
+        BVType.MONEYARRAY,
+        frozenset({BVType.DECIMALARRAY, BVType.MONEYARRAY, BVType.STRINGARRAY}),
+    ),
+    # The engine answers a regtype as its name; its encoder sends it as a regtype.
+    "regtype": CastType(2206, -1, BVType.REGTYPE, _TEXT_FORMS | {BVType.REGTYPE}),
 }
 
 
@@ -230,6 +252,18 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         return _RETURNED[typed]
     if isinstance(expression, exp.Cast):
         return _cast_type(expression.to)
+    if isinstance(expression, XmlSerialize):
+        return _cast_type(expression.args["to"])
+    if isinstance(expression, exp.Paren):
+        return _result_type(expression.this, columns)
+    if isinstance(expression, exp.Array):
+        elements = [_result_type(element, columns) for element in expression.expressions]
+        xml_elements = elements and all(e is not None and e.oid == 142 for e in elements)
+        return _RETURNED["xml[]"] if xml_elements else None
+    if isinstance(expression, exp.Bracket):
+        # An element of an array function's result, as (xpath(...))[1] reads one.
+        array = call_result_type(expression.this.unnest())
+        return _RETURNED.get(array[:-2]) if array and array.endswith("[]") else None
     if isinstance(expression, (exp.Add, exp.Sub, exp.Mul)):
         return _operand_type(expression.this) or _operand_type(expression.expression)
     if isinstance(expression, _PREDICATES):
@@ -240,6 +274,58 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         return _BOOLEAN  # << and >> of a range: on anything else, a shift
     returned = call_result_type(expression)
     return None if returned is None else _RETURNED.get(returned)
+
+
+def _derived_xml(tree: Any, name: str) -> CastType | None:
+    """The xml type of a column read from a lone subquery or CTE that says it. The engine holds
+    xml as text, so its own type says nothing past the expression that made the value."""
+    import sqlglot.expressions as exp
+
+    source = tree.args.get("from_")
+    inner = None if source is None or tree.args.get("joins") else source.this
+    if isinstance(inner, exp.Table):
+        with_ = tree.args.get("with_")
+        ctes = with_.expressions if with_ is not None else ()
+        inner = next((cte.this for cte in ctes if cte.alias == inner.name), None)
+    elif isinstance(inner, exp.Subquery):
+        inner = inner.this
+    if not isinstance(inner, exp.Select):
+        return None
+    for select in inner.selects:
+        if select.alias_or_name == name:
+            typed = _column_type(inner, select.unalias(), None)
+            return typed if typed is not None and typed.oid in (142, 143) else None
+    return None
+
+
+def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
+    import sqlglot.expressions as exp
+
+    if isinstance(expression, exp.Column):
+        xml = _xmltable_columns(tree).get(expression.name) or _derived_xml(tree, expression.name)
+        if xml is not None:
+            return xml
+    return _result_type(expression, columns)
+
+
+def _xmltable_column(column: Any) -> CastType | None:
+    if column.args.get("ordinality"):
+        return _RETURNED["integer"]
+    kind = column.args["kind"]
+    return _cast_type(kind) if kind.expressions or kind.sql() != "DECIMAL" else _RETURNED["numeric"]
+
+
+def _xmltable_columns(tree: Any) -> dict[str, CastType | None]:
+    """The columns a lone XMLTABLE gives its statement, by name; none for any other FROM."""
+    import sqlglot.expressions as exp
+
+    source = tree.args.get("from_")
+    table = None if source is None else source.this
+    if tree.args.get("joins") or not isinstance(table, exp.Table):
+        return {}
+    if not isinstance(table.this, exp.XMLTable):
+        return {}
+    return {column.name: _xmltable_column(column) for column in table.this.args["columns"]}
 
 
 @functools.lru_cache(maxsize=4096)
@@ -261,11 +347,13 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
         return None
     columns = statement_columns(tree) if names_money(sql) else None
     out: list[CastType | None] = []
+    xmltable = _xmltable_columns(tree)
     for select in tree.selects:
         expression = select.unalias()
         if isinstance(expression, exp.Star):
-            return None  # its columns are known only to the engine
-        out.append(_result_type(expression, columns))
+            # A star's columns are otherwise known only to the engine.
+            return tuple(xmltable.values()) if xmltable else None
+        out.append(_column_type(tree, expression, columns))
     return tuple(out)
 
 

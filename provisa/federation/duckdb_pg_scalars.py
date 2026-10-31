@@ -596,165 +596,6 @@ def typemod(name: str) -> int:
     raise _error("42601", f'type modifier is not allowed for type "{base}"')
 
 
-_TSVECTOR_ITEM = re.compile(r"'((?:[^']|'')*)'(?::([0-9A-D,]+))?|(\S+?)(?::([0-9A-D,]+))?(?=\s|$)")
-
-
-def tsvector_items(value: str) -> list[dict[str, Any]]:
-    """A tsvector's lexemes in text form, in order, with their positions and weights: what
-    unnest(tsvector) answers."""
-    items = []
-    for found in _TSVECTOR_ITEM.finditer(value):
-        lexeme = found[3] if found[3] is not None else found[1].replace("''", "'")
-        marks = (found[2] or found[4] or "").split(",") if (found[2] or found[4]) else []
-        items.append(
-            {
-                "lexeme": lexeme,
-                "positions": [int(m.rstrip("ABCD")) for m in marks] or None,
-                "weights": [m[-1] if m[-1] in "ABC" else "D" for m in marks] or None,
-            }
-        )
-    return sorted(items, key=lambda item: item["lexeme"])
-
-
-def tsvector_strip(value: str) -> str:
-    return " ".join("'" + item["lexeme"].replace("'", "''") + "'" for item in tsvector_items(value))
-
-
-# --- geometry -------------------------------------------------------------------------------------
-
-_NUMBER = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
-#: geo_decls.h's fuzz: PostgreSQL's geometric comparisons allow it.
-_EPSILON = 1.0e-06
-
-
-def _numbers(value: str) -> list[float]:
-    return [float(n) for n in _NUMBER.findall(value)]
-
-
-def _points(value: str) -> list[tuple[float, float]]:
-    numbers = _numbers(value)
-    return list(zip(numbers[0::2], numbers[1::2]))
-
-
-def _is_circle(value: str) -> bool:
-    return value.lstrip().startswith("<")
-
-
-def _shoelace(points: list[tuple[float, float]]) -> float:
-    pairs = zip(points, points[1:] + points[:1])
-    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in pairs)) / 2.0
-
-
-def _box(value: str) -> tuple[float, float, float, float]:
-    (x1, y1), (x2, y2) = _points(value)
-    return max(x1, x2), max(y1, y2), min(x1, x2), min(y1, y2)
-
-
-def area(value: str) -> float | None:
-    """area(box), area(circle) or area(path): a path's only if it is closed."""
-    if _is_circle(value):
-        return math.pi * _numbers(value)[2] ** 2
-    stripped = value.strip()
-    if stripped.startswith("["):
-        return None  # an open path has no area
-    points = _points(value)
-    if len(points) == 2:  # noqa: PLR2004 -- a box's two corners, or a two-point closed path
-        high_x, high_y, low_x, low_y = _box(value)
-        return (high_x - low_x) * (high_y - low_y)
-    return _shoelace(points)
-
-
-def _text_point(x: float, y: float) -> str:
-    return f"({x:g},{y:g})"
-
-
-def center(value: str) -> str:
-    if _is_circle(value):
-        x, y, _ = _numbers(value)
-        return _text_point(x, y)
-    high_x, high_y, low_x, low_y = _box(value)
-    return _text_point((high_x + low_x) / 2.0, (high_y + low_y) / 2.0)
-
-
-def diagonal(value: str) -> str:
-    """diagonal(box): the line segment between its corners, upper right first."""
-    high_x, high_y, low_x, low_y = _box(value)
-    return f"[{_text_point(high_x, high_y)},{_text_point(low_x, low_y)}]"
-
-
-def path_is_closed(value: str) -> bool:
-    return value.strip().startswith("(")
-
-
-def _direction(value: str) -> tuple[float, float]:
-    """The direction of a line segment, or of a line {A,B,C}: (dx, dy)."""
-    if value.strip().startswith("{"):
-        a, b, _ = _numbers(value)
-        return b, -a
-    (x1, y1), (x2, y2) = _points(value)
-    return x2 - x1, y2 - y1
-
-
-def is_horizontal(value: str) -> bool:
-    return abs(_direction(value)[1]) <= _EPSILON
-
-
-def is_vertical(value: str) -> bool:
-    return abs(_direction(value)[0]) <= _EPSILON
-
-
-def is_parallel(a: str, b: str) -> bool:
-    (ax, ay), (bx, by) = _direction(a), _direction(b)
-    return abs(ax * by - ay * bx) <= _EPSILON
-
-
-def is_perpendicular(a: str, b: str) -> bool:
-    (ax, ay), (bx, by) = _direction(a), _direction(b)
-    return abs(ax * bx + ay * by) <= _EPSILON
-
-
-def _points_differ_in(a: str, b: str, index: int) -> bool:
-    return abs(_numbers(a)[index] - _numbers(b)[index]) <= _EPSILON
-
-
-def points_horizontal(a: str, b: str) -> bool:
-    return _points_differ_in(a, b, 1)
-
-
-def points_vertical(a: str, b: str) -> bool:
-    return _points_differ_in(a, b, 0)
-
-
-def point_in_circle(point: str, circle: str) -> bool:
-    x, y = _numbers(point)
-    cx, cy, radius = _numbers(circle)
-    return math.hypot(x - cx, y - cy) <= radius + _EPSILON
-
-
-def point_in_polygon(point: str, polygon: str) -> bool:
-    """Whether a point is on or inside a polygon, by the even-odd rule."""
-    x, y = _numbers(point)
-    corners = _points(polygon)
-    inside = False
-    for (x1, y1), (x2, y2) in zip(corners, corners[1:] + corners[:1]):
-        length = math.hypot(x2 - x1, y2 - y1)
-        offset = abs((x - x1) * (y2 - y1) - (y - y1) * (x2 - x1))
-        along = (x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)
-        if length and offset / length <= _EPSILON and 0 <= along <= length**2:
-            return True  # on an edge
-        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
-            inside = not inside
-    return inside
-
-
-def geometry_length(value: str) -> float:
-    """length(lseg) or length(path): a closed path's includes its closing segment."""
-    points = _points(value)
-    if path_is_closed(value) and len(points) > 1:
-        points = [*points, points[0]]
-    return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
-
-
 # --- numeric, as text -----------------------------------------------------------------------------
 
 
@@ -798,19 +639,6 @@ def numeric_series(start: str, stop: str, step: str | None) -> list[str]:
     return out
 
 
-def abbrev(value: str, kind: str) -> str:
-    """abbrev(inet) drops a /32 (or /128); abbrev(cidr) also drops the zero bytes the mask covers."""
-    address, _, bits = value.partition("/")
-    if kind != "cidr":
-        full = 128 if ":" in address else 32
-        return address if bits in ("", str(full)) else value
-    if ":" in address or not bits:
-        return value
-    octets = address.split(".")
-    keep = max(math.ceil(int(bits) / 8), 1)
-    return ".".join(octets[:keep]) + "/" + bits
-
-
 # --- the registrations ----------------------------------------------------------------------------
 
 _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
@@ -837,32 +665,12 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_numeric_gcd", numeric_gcd, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_numeric_lcm", numeric_lcm, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
-    ("provisa_abbrev", abbrev, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_aclitem", aclitem, ["VARCHAR", "VARCHAR", "VARCHAR", "BOOLEAN"], "VARCHAR"),
     ("provisa_typemod", typemod, ["VARCHAR"], "INTEGER"),
-    (
-        "provisa_tsvector_items",
-        tsvector_items,
-        ["VARCHAR"],
-        "STRUCT(lexeme VARCHAR, positions SMALLINT[], weights VARCHAR[])[]",
-    ),
-    ("provisa_tsvector_strip", tsvector_strip, ["VARCHAR"], "VARCHAR"),
-    ("provisa_center", center, ["VARCHAR"], "VARCHAR"),
-    ("provisa_diagonal", diagonal, ["VARCHAR"], "VARCHAR"),
-    ("provisa_is_horizontal", is_horizontal, ["VARCHAR"], "BOOLEAN"),
-    ("provisa_is_vertical", is_vertical, ["VARCHAR"], "BOOLEAN"),
-    ("provisa_is_parallel", is_parallel, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
-    ("provisa_is_perpendicular", is_perpendicular, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
-    ("provisa_points_horizontal", points_horizontal, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
-    ("provisa_points_vertical", points_vertical, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
-    ("provisa_point_in_circle", point_in_circle, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
-    ("provisa_point_in_polygon", point_in_polygon, ["VARCHAR", "VARCHAR"], "BOOLEAN"),
-    ("provisa_geometry_length", geometry_length, ["VARCHAR"], "DOUBLE"),
 )
 
 #: Strict UDFs that answer NULL themselves.
 _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
-    ("provisa_area", area, ["VARCHAR"], "DOUBLE"),
     ("provisa_regexp_match", regexp_match, ["VARCHAR"] * 3, "VARCHAR[]"),
     (
         "provisa_regexp_substr",
@@ -906,9 +714,6 @@ def _null_for_a_required_argument(function: Any) -> Any:
 
 def register(con: Any) -> None:
     """Create the UDFs on DuckDB connection ``con``."""
-    from provisa.federation.duckdb_pg_money import register as register_money
-
-    register_money(con)
     for name, function, parameters, returns in _UDFS:
         con.create_function(name, function, parameters, returns, side_effects=False)
     special = (

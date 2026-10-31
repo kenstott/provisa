@@ -17,6 +17,7 @@ else a bigint. Flight SQL's prepared statements answer the same (REQ-2175)."""
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Container
 
 #: A cast's type name as the PostgreSQL type oid a placeholder takes from it; any other name is
 #: text.
@@ -32,8 +33,27 @@ _CAST_OID = {
 }
 #: A placeholder the statement casts nowhere: a bigint.
 _UNCAST_OID = 20
+_TEXT_OID = 25
+_VARCHAR_OID = 1043
 #: A string literal: a ``$1`` in one ('$10'::money) is its text, no placeholder.
 _LITERAL = re.compile(r"'(?:[^']|'')*'")
+
+
+#: What ``spaced_placeholders`` reads past, then a ``$N`` with a character straight before it.
+_JOINED_PLACEHOLDER = re.compile(
+    r"""'(?:[^']|'')*'|"(?:[^"]|"")*"|\$(?P<tag>[A-Za-z_]\w*)?\$.*?\$(?P=tag)?\$|(?<=[^\s(])\$\d+""",
+    re.DOTALL,
+)
+
+
+def spaced_placeholders(sql: str) -> str:
+    """``sql`` with a space before each ``$N`` a character is joined to. sqlglot reads ``$1,$`` as
+    the start of a dollar quote, whose tag PostgreSQL does not let start with a digit. A string, a
+    quoted name and a dollar quote are left as written."""
+    return _JOINED_PLACEHOLDER.sub(
+        lambda m: f" {m[0]}" if m[0][1:].isdigit() else m[0],
+        sql,
+    )
 
 
 def placeholder_oids(sql: str) -> list[int]:
@@ -44,3 +64,18 @@ def placeholder_oids(sql: str) -> list[int]:
         return []
     cast = {int(m): _CAST_OID.get(t.lower(), 25) for m, t in re.findall(r"\$(\d+)::(\w+)", sql)}
     return [cast.get(i, _UNCAST_OID) for i in range(1, max(indices) + 1)]
+
+
+def resolved_oids(
+    oids: list[int], types: dict[int, str], oid_of: Callable[[str], int], bindable: Container[int]
+) -> list[int]:
+    """``oids`` with each placeholder the compiler typed (``types``, $N to its type) as that type,
+    as PostgreSQL resolves it: a varchar has no operators of its own, so what meets one is text.
+    A type Bind has no decoder of is text: its value is sent in its text form."""
+    resolved = list(oids)
+    for index, spelled in types.items():
+        oid = oid_of(spelled)
+        known = oid if oid in bindable and oid != _VARCHAR_OID else _TEXT_OID
+        if index <= len(resolved):
+            resolved[index - 1] = known
+    return resolved

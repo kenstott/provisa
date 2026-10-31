@@ -81,15 +81,15 @@ const PRODUCT = {
 
 const table = (id: number, name: string, over: Record<string, unknown> = {}) => ({
   id,
-  source_id: "pet-store-sqlite",
-  domain_id: "pet-store",
-  schema_name: "pet_store",
-  table_name: name,
+  sourceId: "pet-store-sqlite",
+  domainId: "pet-store",
+  schemaName: "pet_store",
+  tableName: name,
   alias: null,
   description: `The ${name} table`,
-  dq_contract: null,
-  table_columns: [],
-  profile_results: [],
+  dqContract: null,
+  tableColumns: [],
+  profileResults: [],
   ...over,
 });
 
@@ -98,49 +98,49 @@ const CORE: ProductCore = {
   product: PRODUCT,
   tables: [
     table(1, "pets", {
-      profile_results: [{ id: 9, domain_id: "pet-store", table_name: "pets_profile", alias: null }],
+      profileResults: [{ id: 9, domainId: "pet-store", tableName: "pets_profile", alias: null }],
       // A relationship between two members, with its effective names as meta stores them.
-      source_relationships: [
+      sourceRelationships: [
         {
           id: "pets-to-vets",
           alias: null,
-          graphql_field: "vet",
-          cypher_type: "BELONGS_TO_VET",
+          graphqlField: "vet",
+          cypherType: "BELONGS_TO_VET",
           cardinality: "many-to-one",
-          source_column: "vet_id",
-          target_column: "id",
-          disable_cypher: false,
-          target_table: { id: 2, domain_id: "pet-store", table_name: "vets" },
+          sourceColumn: "vet_id",
+          targetColumn: "id",
+          disableCypher: false,
+          targetTable: { id: 2, domainId: "pet-store", tableName: "vets" },
         },
       ],
     }),
     table(2, "vets"),
     table(3, "pets_quality", {
-      dq_contract: "name: pets_quality",
-      checks: { id: 1, domain_id: "pet-store", table_name: "pets", alias: null },
-      dq_rules: [{ position: 1, column_name: "name", check_type: "missing", definition: "" }],
+      dqContract: "name: pets_quality",
+      checks: { id: 1, domainId: "pet-store", tableName: "pets", alias: null },
+      dqRules: [{ position: 1, columnName: "name", checkType: "missing", definition: "" }],
     }),
   ],
-  commands: [{ name: "add_pet", description: "Add a pet", domain_id: "pet-store" }] as never,
+  commands: [{ name: "add_pet", description: "Add a pet", domainId: "pet-store" }] as never,
   tags: ["pii"],
   terms: [
-    { id: 7, name: "Customer", definition: "Someone who buys.", is_abstract: false, live: true },
+    { id: 7, name: "Customer", definition: "Someone who buys.", isAbstract: false, live: true },
   ] as never,
   edges: [
     {
       id: "pet_health:related:12",
       kind: "related",
-      target_product_id: null,
-      target_table_id: 12,
+      targetProductId: null,
+      targetTableId: 12,
       direct: true,
       hops: 1,
-      path_count: 1,
+      pathCount: 1,
       aliases: "HAS_OWNER",
-      supporting_tables: null,
-      target_table: {
+      supportingTables: null,
+      targetTable: {
         id: 12,
-        domain_id: "pet-store",
-        table_name: "owners",
+        domainId: "pet-store",
+        tableName: "owners",
         alias: null,
         description: null,
       },
