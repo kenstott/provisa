@@ -395,6 +395,9 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     #: The ORDER BY, SKIP and LIMIT apply to the whole UNION (SPARQL's solution modifiers), not to
     #: its first part as a Cypher statement's own do (REQ-2135).
     modifiers_of_whole: bool = False
+    #: The rows this statement reads, in place of a pattern: a statement whose every column is
+    #: named by a RETURN item (a UNION's parts, an aggregate reading them as one, REQ-2135).
+    parts: "CypherAST | None" = None
     comments: list[str] = field(
         default_factory=list
     )  # // comment text (without //) in source order
