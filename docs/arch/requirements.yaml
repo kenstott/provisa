@@ -90974,7 +90974,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
     the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
     Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
-    between 9px and 10px, replacing 11.5px and 20px.'
+    between 9px and 10px, replacing 11.5px and 20px. (Amended 2026-10-29, A VIEW OPENS IN FORCE:) Maintainer
+    2026-10-31: a view opens in force, unless its preset names its own layout or the reader has saved a
+    choice. Taxonomy keeps its top-down tree (REQ-2130). Layered stays disabled where a cycle makes it impossible.
+    This replaces opening layered when the drawn edges are of one class and form no cycle.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
