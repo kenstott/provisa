@@ -141,6 +141,26 @@ describe("a demo's steps, as the runner walks them", () => {
       capability: "create_relationship",
       element: '[data-tour-relationship="SCORED_AS"]',
     });
+    // A step continuing on the page searches by its own alias, under the page's right: the search
+    // it would inherit is the step before's, which filters its row away.
+    const [, next] = demoTourSteps(
+      [
+        {
+          key: "j",
+          route: "/relationships",
+          capability: "create_relationship",
+          relationship: "SCORED_AS",
+        },
+        { key: "k", relationship: "USED_BY" },
+      ],
+      EXAMPLES,
+    );
+    expect(next).toEqual({
+      key: "k",
+      route: "/relationships?search=USED_BY",
+      capability: "create_relationship",
+      element: '[data-tour-relationship="USED_BY"]',
+    });
     expect(example.openQuery).toEqual({ stateKey: "query", text: EXAMPLES[0].query });
     expect(example.element).toBe(".graphiql-response");
     expect(sql.openQuery).toEqual({ stateKey: "sql", text: "SELECT 1" });

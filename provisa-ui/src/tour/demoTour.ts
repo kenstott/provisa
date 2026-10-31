@@ -167,6 +167,8 @@ const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-gr
 // load window is refused by design, and its step shows the refusal rather than ending the tour.
 const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
 
+const RELATIONSHIPS_PAGE = "/relationships";
+
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
   examples: readonly ExampleQuery[],
@@ -174,15 +176,23 @@ export function demoTourSteps(
 ): TourStep[] {
   const steps: TourStep[] = [];
   let onPage: string | undefined;
+  let pageCapability: Capability | undefined;
   // What each `sql` step ran as: the SQL explorer's role and time travel set by the steps before
   // it (REQ-2083), so a later step can run its statement again as it ran then.
   const ran = new Map<string, StatementRun>();
   const context: Omit<StatementRun, "sql"> = {};
   for (const def of defs) {
     onPage = def.route ?? onPage;
+    pageCapability = def.route !== undefined ? def.capability : pageCapability;
     if (def.role !== undefined && onPage === "/sql") context.role = def.role;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
-    const step = demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran);
+    // A relationship step continuing on the Relationships page opens it again with its own search:
+    // the route it would inherit searches for the step before's alias, which filters its row away.
+    const own =
+      def.relationship !== undefined && def.route === undefined && onPage === RELATIONSHIPS_PAGE
+        ? { ...def, route: onPage, capability: pageCapability }
+        : def;
+    const step = demoTourStep(own, examples, notebook, steps[steps.length - 1], onPage, ran);
     steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
   }
   return steps;
