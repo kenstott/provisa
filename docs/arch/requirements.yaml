@@ -90754,7 +90754,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the rewrite applies, and if that does not match the function is refused on that engine. Replaying the
     recorded PostgreSQL answers on the engine decides it. Floats compare within one part in 10^14, since
     math libraries differ in the last digits. A function that answers differently only for some values or
-    settings is refused for those.'
+    settings is refused for those. (Amended 2026-10-29, A REWRITE IS A SQLGLOT EXPANSION:) Maintainer 2026-10-31:
+    a function sqlglot understands needs nothing written; replay still decides it, since sqlglot can change
+    an answer (sha512 renders as SHA256 on DuckDB). A function it passes through is taught to it as an expansion:
+    a small table of definitions into sqlglot expressions, which sqlglot renders per dialect. There is no
+    separate rewriter. An engine tweak is added only after a replay fails.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
