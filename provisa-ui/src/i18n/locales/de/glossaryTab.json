@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "Nicht verankert",
     "pendingOn": "Die Freigabe von {{terms}} verankert ihn.",
     "filterStatus": "Status",
+    "filterStatusHint": "Nur diese Status anzeigen",
     "filterGrounding": "Verankerung",
     "approve": "Freigeben",
     "approveHint": "Diesen Begriff freigeben: Agents und Kataloge finden und zitieren Daten über freigegebene, verankerte Begriffe.",

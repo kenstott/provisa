@@ -8922,5 +8922,7 @@
   "ru/findTerms.json::findTerms.variantAlternativeName": "another name",
   "ru/findTerms.json::findTerms.variantForm": "form",
   "ru/findTerms.json::findTerms.variantReference": "reference",
-  "ru/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
+  "ru/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}",
+  "glossaryTab.json::glossaryTab.filterStatusHint": "Show only these statuses",
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
 }

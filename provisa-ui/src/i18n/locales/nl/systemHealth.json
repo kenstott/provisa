@@ -26,6 +26,7 @@
     "running": "Actief",
     "unreachable": "Onbereikbaar",
     "port": "poort {{port}}",
+    "cypherOverHttp": "Cypher via HTTP",
     "mvRefreshLoop": "MV-verversingslus",
     "stopped": "Gestopt"
   }

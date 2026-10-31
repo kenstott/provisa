@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "No anclado",
     "pendingOn": "Aprobar {{terms}} lo ancla.",
     "filterStatus": "Estado",
+    "filterStatusHint": "Mostrar solo estos estados",
     "filterGrounding": "Anclaje",
     "approve": "Aprobar",
     "approveHint": "Aprobar este término: los agentes y los catálogos encuentran y citan datos a través de términos aprobados y anclados.",

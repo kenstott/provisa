@@ -26,6 +26,7 @@
     "running": "פועל",
     "unreachable": "אינו נגיש",
     "port": "פורט {{port}}",
+    "cypherOverHttp": "Cypher על גבי HTTP",
     "mvRefreshLoop": "לולאת רענון MV",
     "stopped": "מופסק"
   }

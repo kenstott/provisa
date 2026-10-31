@@ -140,18 +140,14 @@ export function GlossaryTab() {
     setQueryState(value);
     writeStored("glossary.search", value);
   };
-  // REQ-1387: checked = show that category; both default on so the list starts unfiltered. Choice
-  // is a per-viewer UI preference, not server state, so it's remembered in localStorage.
-  const [showDeprecated, setShowDeprecated] = useState(() =>
-    readStoredBool("glossary.showDeprecated", true),
+  // REQ-2144: the list filtered by a term's status and, apart, by its grounding (REQ-1387). No
+  // status picked shows every status; the choice is remembered as a comma-separated list.
+  const [statusFilter, setStatusFilterState] = useState<TermStatus[]>(
+    () => (readStoredString("glossary.status") ?? "").split(",").filter(Boolean) as TermStatus[],
   );
-  // REQ-2144: the list filtered by a term's status and, apart, by its grounding (REQ-1387).
-  const [statusFilter, setStatusFilterState] = useState<TermStatus | null>(
-    () => readStoredString("glossary.status") as TermStatus | null,
-  );
-  const setStatusFilter = (value: TermStatus | null) => {
+  const setStatusFilter = (value: TermStatus[]) => {
     setStatusFilterState(value);
-    writeStored("glossary.status", value ?? "");
+    writeStored("glossary.status", value.join(","));
   };
   const [groundingFilter, setGroundingFilterState] = useState<TermGrounding | null>(
     () => readStoredString("glossary.grounding") as TermGrounding | null,
@@ -183,10 +179,6 @@ export function GlossaryTab() {
   // The RELATED_TO edges the assistant just added, each with the shapes that may resolve it.
   const [review, setReview] = useState<RelatedToReview[]>([]);
 
-  useEffect(() => {
-    writeStoredBool("glossary.showDeprecated", showDeprecated);
-  }, [showDeprecated]);
-
   const navigate = useNavigate();
   const [detail, setDetail] = useState<GlossaryTermDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -216,11 +208,12 @@ export function GlossaryTab() {
   const refreshList = useCallback(async () => {
     setListLoading(true);
     try {
-      setTerms(await listGlossaryTerms(query, showDeprecated, viewDomains && [...viewDomains]));
+      // Every status is fetched: the Status filter narrows the list in the browser.
+      setTerms(await listGlossaryTerms(query, true, viewDomains && [...viewDomains]));
     } finally {
       setListLoading(false);
     }
-  }, [query, showDeprecated, viewDomains]);
+  }, [query, viewDomains]);
 
   useEffect(() => {
     // Deferred so the loading flag is never set synchronously inside the effect body
@@ -479,7 +472,7 @@ export function GlossaryTab() {
     .map((term) => ({ value: String(term.id), label: term.name }));
   const displayedTerms = terms.filter(
     (term) =>
-      (!statusFilter || term.status === statusFilter) &&
+      (statusFilter.length === 0 || statusFilter.includes(term.status)) &&
       (!groundingFilter || term.grounding === groundingFilter) &&
       (!toReviewOnly || toReview(term)) &&
       (!relatedToOnly || term.related_to > 0),
@@ -608,15 +601,6 @@ export function GlossaryTab() {
             <Group gap="sm" px="xs" pb={6} wrap="wrap">
               <Checkbox
                 size="xs"
-                label={t("glossaryTab.deprecated")}
-                checked={showDeprecated}
-                onChange={(e) => setShowDeprecated(e.currentTarget.checked)}
-                styles={{ label: { whiteSpace: "nowrap" } }}
-                data-testid="glossary-show-deprecated"
-              />
-
-              <Checkbox
-                size="xs"
                 label={t("glossaryTab.toReview")}
                 checked={toReviewOnly}
                 onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
@@ -626,17 +610,21 @@ export function GlossaryTab() {
               <RelatedToFilter checked={relatedToOnly} onChange={setRelatedToOnly} />
             </Group>
             <Group gap={6} px="xs" pb={6} wrap="nowrap" grow>
-              <Select
-                size="xs"
-                placeholder={t("glossaryTab.filterStatus")}
-                aria-label={t("glossaryTab.filterStatus")}
-                data={statusOptions}
-                value={statusFilter}
-                onChange={(v) => setStatusFilter(v as TermStatus | null)}
-                clearable
-                comboboxProps={{ withinPortal: true, width: "max-content" }}
-                data-testid="glossary-status-filter"
-              />
+              <Tip text={t("glossaryTab.filterStatusHint")}>
+                <div>
+                  <MultiSelect
+                    size="xs"
+                    placeholder={statusFilter.length === 0 ? t("glossaryTab.filterStatus") : undefined}
+                    aria-label={t("glossaryTab.filterStatus")}
+                    data={statusOptions}
+                    value={statusFilter}
+                    onChange={(v) => setStatusFilter(v as TermStatus[])}
+                    clearable
+                    comboboxProps={{ withinPortal: true, width: "max-content" }}
+                    data-testid="glossary-status-filter"
+                  />
+                </div>
+              </Tip>
               <Select
                 size="xs"
                 placeholder={t("glossaryTab.filterGrounding")}

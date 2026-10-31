@@ -528,7 +528,7 @@ describe("GlossaryTab", () => {
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
   });
 
-  it("passes the search text and the deprecated toggle to the list endpoint", async () => {
+  it("passes the search text to the list endpoint and always fetches deprecated terms", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 
@@ -537,10 +537,8 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", true, null));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-3")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
-
-    mockList.mockResolvedValue([REVENUE, CHURN]);
-    fireEvent.click(screen.getByTestId("glossary-show-deprecated"));
-    await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", false, null));
+    expect(mockList).not.toHaveBeenCalledWith(expect.anything(), false, expect.anything());
+    expect(screen.queryByTestId("glossary-show-deprecated")).toBeNull();
   });
 
   it("reads every value of the term, under the form's labels", async () => {

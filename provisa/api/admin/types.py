@@ -1948,15 +1948,19 @@ class MaterializeStoreInfoType:
 
 @strawberry.type
 class ProtocolHealthType:
-    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt).
+    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt), or of a query
+    surface on the HTTP listener (SPARQL, GraphQL, Cypher, REST, JSON:API).
 
     ``status`` is one of "running" | "down" | "disabled". "disabled" means the protocol was
-    never started (no bound port); "down"/"running" come from a TCP-connect liveness probe.
+    never started (no bound port) or its routes are not mounted; "down"/"running" come from a
+    TCP-connect liveness probe, or for an HTTP surface from its routes being mounted. A listener
+    has a ``port``, an HTTP surface a ``path``.
     """
 
     name: str
     status: str
     port: int | None
+    path: str | None = None
 
 
 @strawberry.type
