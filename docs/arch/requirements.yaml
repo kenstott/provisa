@@ -89665,7 +89665,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     standard role reaches a child only when it is given. Saving a right no parent holds is refused by name.
     Standard roles stay locked and are the palette. The role form lists what the parents hold, all selected,
     and a person unselects; domains keep * for every data domain, and capabilities have no such form. Column
-    grants are unchanged.'
+    grants are unchanged. (Amended 2026-10-29, NO FLOOR:) Maintainer 2026-10-31: there is no floor. viewer
+    holds catalog_read, glossary_read and data_product_read, and a child may unselect any of them; such
+    a role has no catalog, glossary or data products. This replaces the floor in the VIEWER IS THE FLOOR
+    amendment; what viewer holds stands.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
