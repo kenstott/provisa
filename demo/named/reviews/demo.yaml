@@ -11,7 +11,7 @@
 title: Product reviews
 description: >-
   An electronics shop's catalog in MongoDB, its customers' reviews in Elasticsearch and who bought
-  what in Neo4j, joined on the product: which products do reviews say the battery dies on, and
+  what in Neo4j, joined on the product. Which products do reviews say the battery dies on, and
   what else did their buyers buy?
 screenshot: card.png
 published: true

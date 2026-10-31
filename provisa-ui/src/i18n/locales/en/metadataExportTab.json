@@ -1,7 +1,7 @@
 {
   "metadataExportTab": {
     "loading": "Loading metadata export settings…",
-    "intro": "Publish this organization's governed metadata — tables, columns, domains, stewards, approved relationships and column-level lineage — to the catalogs below. Each catalog is connected in Admin → Catalogs and is published its own domains' tables and data products.",
+    "intro": "Publish this organization's governed metadata to the catalogs below: tables, columns, domains, stewards, approved relationships and column-level lineage. Each catalog is connected in Admin → Catalogs and is published its own domains' tables and data products.",
     "notEntitledTitle": "Not included in this plan",
     "notEntitled": "Metadata export requires the {{tier}} plan. Upgrade to configure catalog targets.",
     "enabled": "Publish metadata to external catalogs",

@@ -140,7 +140,7 @@ describe("the transports on offer", () => {
     render(<MailTab />);
     await waitFor(() => expect(screen.getByTestId("mail-tab")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("mail-provider"));
-    const option = await screen.findByText(/Amazon SES — install boto3/);
+    const option = await screen.findByText(/Amazon SES \(install boto3\)/);
     expect(option).toBeInTheDocument();
   });
 });

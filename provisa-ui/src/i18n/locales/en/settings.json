@@ -192,7 +192,7 @@
       },
       "hot_threshold": {
         "label": "Busy table threshold",
-        "help": "How many governed statements a table must receive within the busy table window before it is replicated, so later reads come from its copy."
+        "help": "How many governed statements a table must receive within the busy table window before it is replicated, so later reads come from its replica."
       },
       "hot_interval": {
         "label": "Busy table window",

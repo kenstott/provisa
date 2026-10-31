@@ -1,11 +1,11 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "AI Vendor API Keys",
-    "apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved. You may paste a vault reference instead of the key itself — ${secret:NAME} is resolved against your org's secrets each time it is used.",
+    "apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved. You may paste a vault reference such as ${secret:NAME} in place of the key; it is resolved against your org's secrets each time it is used.",
     "apiKeyLabel": "{{vendor}} API key",
     "apiKeyPlaceholder": "API key",
     "apiKeySet": "Key is set",
-    "apiKeyNotSet": "No key set — using deployment default",
+    "apiKeyNotSet": "No key set. Using the deployment default.",
     "apiKeyClear": "Clear key",
     "apiKeyWillClear": "The key will be cleared when you save.",
     "modelsHeading": "AI Model Assignments",
@@ -42,7 +42,7 @@
     "addEndpoint": "Add endpoint",
     "removeEndpoint": "Remove",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score ontology relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present.",
+    "jevIntro": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present. With neither, those features use the model's confidence alone.",
     "saveButtonLabel": "Save AI model settings",
     "loading": "Loading…",
     "saved": "Saved.",

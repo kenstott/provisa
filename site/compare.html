@@ -51,22 +51,15 @@
         <h1>Where Provisa fits</h1>
         <p class="lead">
           Most data tools are bound to one engine, or sit beside your systems
-          after the data already exists. That is the root of fragmented, hand-integrated
-          architectures: each tool describes or governs a slice of the picture, and
-          nothing keeps the slices in sync. Provisa is a data kernel — a compiler and
-          runtime for your data control plane. You declare the model once. APIs, governance,
-          catalog entries and semantic definitions are generated from that declaration. Nothing
-          exists outside the model to drift.
+          after the data already exists. That is how architectures end up fragmented and hand-integrated. Each tool describes or governs a slice of the picture, and nothing keeps the slices in sync. Provisa is a data kernel, a compiler and runtime for your data control plane. You declare the model once, and APIs, governance, catalog entries and semantic definitions are generated from that declaration, so nothing exists outside the model to drift.
         </p>
         <p class="lead">
-          And skip the platform-selection project. No more months of meetings to pick the one
-          engine everything must live in: use the best one for each job, keep the ones you
-          already have, and switch when a choice turns out wrong.
+          You can also skip the platform-selection project and its months of meetings to pick the one engine everything must live in. Use the best engine for each job, keep the ones you already have, and switch when a choice turns out wrong.
         </p>
       </div>
 
       <div class="doc-body">
-        <h2>The landscape</h2>
+        <h2>The categories</h2>
         <div class="cmp-wrap">
           <table class="cmp">
             <thead>
@@ -76,12 +69,12 @@
               <tr>
                 <th>Catalogs and governance</th>
                 <td>Atlan, Collibra, Alation, DataHub</td>
-                <td>Describes it after the fact. Helps you see it. Does not stop it forming.</td>
+                <td>Describes it after the fact, which helps you see it but doesn't stop it forming.</td>
               </tr>
               <tr>
                 <th>Engines and lakehouses</th>
                 <td>Starburst, Dremio, Databricks, Snowflake, Microsoft Fabric</td>
-                <td>Centralises it in one platform. Each offers some reach beyond itself (federated queries, external tables, mirroring or shortcuts) and its own governance tools, and each has its pros and cons. All of them want your data moved in, and most leave you on their cloud. So why choose one? Use the best one for each job, and if a choice turns out wrong, switch.</td>
+                <td>Centralises it in one platform. Each offers some reach beyond itself (federated queries, external tables, mirroring or shortcuts) and its own governance tools, and each has its pros and cons. All of them want your data moved in, and most leave you on their cloud. You don't have to choose one. Use the best one for each job, and if a choice turns out wrong, switch.</td>
               </tr>
               <tr>
                 <th>Data virtualisation</th>
@@ -100,7 +93,7 @@
               </tr>
               <tr>
                 <th class="is-us">Provisa</th>
-                <td class="is-us" colspan="2">Stops the mess from forming, or freezes it and lets you unwind it issue by issue. Declares the model once — sources, governance, semantics, APIs — and keeps the others in sync, or runs alone.</td>
+                <td class="is-us" colspan="2">Stops the mess from forming, or freezes it and lets you unwind it issue by issue. Declares the model once, covering sources, governance, semantics and APIs, and keeps the others in sync, or runs alone.</td>
               </tr>
             </tbody>
           </table>
@@ -118,7 +111,7 @@
           </a>
           <a class="card" href="/vs/denodo" style="text-decoration: none;">
             <h4>Data virtualisation</h4>
-            <p>Denodo. Same premise — governed access over distributed data without duplicating it. Different engine story.</p>
+            <p>Denodo shares the premise of governed access over distributed data without duplicating it. The two differ on which engine runs the query.</p>
           </a>
           <a class="card" href="/vs/hasura" style="text-decoration: none;">
             <h4>API layers</h4>
@@ -127,8 +120,7 @@
           <div class="card">
             <h4>Semantic layers</h4>
             <p>
-              dbt Semantic Layer, Cube, AtScale. Provisa imports models from these tools through Apache Ossie — the open standard
-              for describing what metrics mean. Each import is a proposal you review before it registers. You can use
+              dbt Semantic Layer, Cube, AtScale. Provisa imports models from these tools through Apache Ossie, the open standard for describing what metrics mean. Each import is a proposal you review before it registers. You can use
               Provisa alongside your semantic layer, or let the model replace it over time.
             </p>
           </div>
@@ -157,7 +149,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>

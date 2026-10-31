@@ -89,7 +89,7 @@
     "roleSynthesis": "Used",
     "roleSupporting": "Supporting",
     "conflicts": "Explanations that disagree",
-    "conflictsHint": "These passages cannot both be true. They are shown side by side, never blended.",
+    "conflictsHint": "These passages cannot both be true, so they are shown side by side.",
     "accept": "Accept",
     "merge": "Merge",
     "mergeInto": "Merge into",

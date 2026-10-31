@@ -6,7 +6,7 @@
     "fitToScreen": "Fit to screen",
     "switchToHierarchy": "Switch to hierarchical layout",
     "switchToForce": "Switch to force layout",
-    "nudgeLayout": "Nudge layout — nudges selected nodes (or all if none selected); hold to keep iterating",
+    "nudgeLayout": "Nudges selected nodes, or all if none are selected. Hold to keep iterating.",
     "edgeLength": "Edge length",
     "edgeLengthValue": "{{value}}px"
   }

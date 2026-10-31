@@ -13,8 +13,7 @@
 title: Provisioning datasets to downstream teams
 description: >-
   A coffee roaster's warehouse builds a dataset from its order, price and stock feeds as they land,
-  and provisions it to finance and data science: each team is told on Kafka when it is ready and
-  pulls it over Arrow Flight as of that moment, each seeing its own governed view, with no copies.
+  and provisions it to finance and data science. Each team is told on Kafka when it is ready and pulls it over Arrow Flight as of that moment, seeing its own governed view, with no copies.
 screenshot: card.png
 published: true
 group: provision
