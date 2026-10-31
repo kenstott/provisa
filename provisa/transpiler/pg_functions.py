@@ -24,6 +24,7 @@ placeholder function."""
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import sqlglot
@@ -58,6 +59,12 @@ _UDF_CALLS = {
     ("regexp_split_to_array", 3): "PROVISA_REGEXP_SPLIT",
 }
 
+#: How a row reads its argument, by the type that opens the row's name.
+_SPELLED = {
+    "numeric": lambda node: _numeric_digits(node),
+    "jsonb": lambda node: _jsonb_digits(node),
+}
+
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
     r"\b(sha(224|256|384|512)|random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
@@ -80,7 +87,8 @@ _CALLED = re.compile(
     + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
     r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
     r"|notlike|like_escape|convert|json_object|unnest|trunc|pg_get_object_address"
-    r"|regexp_split_to_table|strpos|pg_typeof)\"?\s*\(",
+    r"|regexp_split_to_table|strpos|pg_typeof|make_interval|overlaps|random_normal|trim_scale"
+    r"|min_scale|int2vectorsend)\"?\s*\(",
     re.IGNORECASE,
 )
 
@@ -92,6 +100,10 @@ _HELD_AS_ANOTHER = {
     exp.DataType.Type.BPCHAR: "character",
     exp.DataType.Type.NAME: "name",
 }
+
+#: make_interval's parameters, and what one not given is.
+_MAKE_INTERVAL = ("years", "months", "weeks", "days", "hours", "mins", "secs")
+_NO_INTERVAL = ("0", "0", "0", "0", "0", "0", "0.0")
 
 _RANDOM_BOUNDS = "lower bound must be less than or equal to upper bound"
 
@@ -330,6 +342,44 @@ def _is_numeric(node: exp.Expr) -> bool:
     return _cast_to(node, exp.DataType.Type.DECIMAL) or _scale(node) is not None
 
 
+def _digits(text: str) -> str | None:
+    """A number's text as numeric_out writes it; None for what numeric_in would refuse."""
+    try:
+        number = Decimal(text.strip())
+    except InvalidOperation:
+        return None
+    if number.is_nan():
+        return "NaN"
+    if number.is_infinite():
+        return "Infinity" if number > 0 else "-Infinity"
+    return f"{number:f}"
+
+
+def _numeric_digits(node: exp.Expr) -> str:
+    """An argument of a numeric row: its digits. A cast to the engine's DECIMAL would keep three of
+    a fraction, and could not hold a NaN, an infinity or more than 38 digits, so a numeric of no
+    stated size reaches the row uncast: what it reads is its text."""
+    if not (isinstance(node, exp.Cast) and _cast_to(node, exp.DataType.Type.DECIMAL)):
+        return _sql(node)
+    if node.to.expressions:
+        return _sql(node)
+    held = node.this.unnest()
+    digits = _digits(held.this) if isinstance(held, exp.Literal) else None
+    if digits is None:
+        return _sql(node.this)
+    return exp.Literal.string(digits).sql(dialect="postgres")
+
+
+def _jsonb_digits(node: exp.Expr) -> str:
+    """An argument of a jsonb row: a number's digits as jsonb_out writes them, which is how a
+    refusal of it quotes it. A string, an object and the like are left as they are."""
+    if _cast_to(node, exp.DataType.Type.JSONB) and isinstance(node.this, exp.Literal):
+        digits = _digits(node.this.this)
+        if digits is not None and digits.lstrip("-")[0].isdigit():
+            return f"CAST({exp.Literal.string(digits).sql(dialect='postgres')} AS JSONB)"
+    return _sql(node)
+
+
 def _sql(node: exp.Expr) -> str:
     return node.transform(_call).sql(dialect="postgres")
 
@@ -368,7 +418,21 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
     return None
 
 
+def _int2vector(value: exp.Expr) -> str:
+    """An int2vector's value: the engine holds a list, and its literal is its numbers."""
+    if isinstance(value, exp.Literal):
+        numbers = ", ".join(value.this.split())
+        return f"CAST(ARRAY[{numbers}] AS SMALLINT[])"
+    return f"CAST({_sql(value)} AS SMALLINT[])"
+
+
 def _numeric_call(name: str, args: list[exp.Expr]) -> str | None:
+    if name in ("trim_scale", "min_scale") and len(args) == 1:
+        return f"{name}({_numeric_digits(args[0])})"
+    if name == "int2vectorsend" and len(args) == 1 and _is_kind(args[0], "int2vector"):
+        return f"int2vectorsend({_int2vector(args[0].this)})"
+    if name == "random_normal" and any(isinstance(a, exp.Kwarg) for a in args):
+        return f"random_normal({_by_keyword(('mean', 'stddev'), ('0.0', '1.0'), args)})"
     if name in ("gcd", "lcm") and len(args) == 2 and any(map(_is_numeric, args)):  # noqa: PLR2004
         return f"PROVISA_NUMERIC_{name.upper()}({_as_text(args[0])}, {_as_text(args[1])})"
     if name == "factorial" and len(args) == 1:
@@ -418,9 +482,46 @@ def _bit_call(name: str, args: list[exp.Expr]) -> str | None:
     return None
 
 
-def _time_call(name: str, args: list[exp.Expr]) -> str | None:
+def _by_keyword(names: tuple[str, ...], defaults: tuple[str, ...], args: list[exp.Expr]) -> str:
+    """A call's arguments in the order of its parameters: by position, then named as ``=>`` names
+    them, with each default for one not given."""
+    given = dict(zip(names, defaults))
+    for position, arg in enumerate(args):
+        if isinstance(arg, exp.Kwarg):
+            given[arg.this.name.lower()] = _sql(arg.expression)
+        else:
+            given[names[position]] = _sql(arg)
+    return ", ".join(given.values())
+
+
+def _ended_at(start: str, end: exp.Expr) -> str:
+    """An end of an overlaps period; pg_proc writes an interval's overload as start + interval."""
+    is_interval = isinstance(end, exp.Interval) or _cast_to(end, exp.DataType.Type.INTERVAL)
+    return f"{start} + {_sql(end)}" if is_interval else _sql(end)
+
+
+def _time_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 -- one per form
     interval = exp.DataType.Type.INTERVAL
+    if name == "make_interval":
+        return f"make_interval_fields({_by_keyword(_MAKE_INTERVAL, _NO_INTERVAL, args)})"
     written = [_sql(a) for a in args]
+    if name == "time" and len(args) == 1:  # a value whose type the statement does not say
+        return f"CAST({written[0]} AS TIME)"
+    if name == "time" and len(args) == 2:  # noqa: PLR2004
+        return f"time_scale({written[0]}, {written[1]})"
+    if name == "interval" and len(args) == 1:  # pg_proc's other overload takes a typmod
+        return f"time_interval({written[0]})"
+    if name == "interval" and len(args) == 2:  # noqa: PLR2004
+        return f"interval_scale({written[0]}, {written[1]})"
+    if name == "timestamp" and len(args) == 2:  # noqa: PLR2004
+        row = "datetime_pl" if _cast_to(args[1], exp.DataType.Type.TIME) else "timestamp_scale"
+        return f"{row}({written[0]}, {written[1]})"
+    if name == "overlaps" and len(args) == 4:  # noqa: PLR2004
+        first, second = written[0], written[2]
+        return (
+            f"overlaps_timestamp({first}, {_ended_at(first, args[1])}, "
+            f"{second}, {_ended_at(second, args[3])})"
+        )
     if (
         name == "isfinite"
         and len(args) == 1
@@ -448,7 +549,15 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:
             return f"TIMEZONE({written[0]}, {written[1]})"
         return f"(CAST({written[1]} - {written[0]} AS TIMESTAMP) AT TIME ZONE 'UTC')"
     if name == "sum" and len(args) == 1 and _cast_to(args[0], interval):
-        return f"TO_SECONDS(SUM(EPOCH({written[0]})))"
+        # Field by field, as interval_accum adds: a day does not become 24 hours.
+        value = written[0]
+        return (
+            f"TO_MONTHS(CAST(SUM(EXTRACT(YEAR FROM {value}) * 12 + EXTRACT(MONTH FROM {value})) "
+            f"AS INT)) + TO_DAYS(CAST(SUM(EXTRACT(DAY FROM {value})) AS INT)) + "
+            f"TO_MICROSECONDS(CAST(SUM(EXTRACT(HOUR FROM {value}) * 3600000000 + "
+            f"EXTRACT(MINUTE FROM {value}) * 60000000 + EXTRACT(MICROSECOND FROM {value})) "
+            "AS BIGINT))"
+        )
     return None
 
 
@@ -456,8 +565,11 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call of a function a parser class stands for."""
     if isinstance(node, exp.Anonymous):
         return node.name.lower(), list(node.expressions)
-    if isinstance(node, exp.Chr):
-        return "char", list(node.expressions)
+    if isinstance(node, exp.Overlaps):
+        periods = (node.this, node.expression)
+        if not all(isinstance(p, exp.Tuple) for p in periods):
+            return None  # && of two values of a range or a shape
+        return "overlaps", [e for p in periods for e in p.expressions]
     if isinstance(node, exp.Normalize):
         form = node.args.get("form")
         if isinstance(form, (exp.Column, exp.Var)):
@@ -478,6 +590,12 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         exp.StrPosition: ("position", ("this", "substr")),
         exp.Sum: ("sum", ("this",)),
         exp.DateAdd: ("date_add", ("this", "expression", "unit")),
+        exp.Time: ("time", ("this", "zone")),
+        exp.Timestamp: ("timestamp", ("this", "zone")),
+        exp.MakeInterval: (
+            "make_interval",
+            ("year", "month", "week", "day", "hour", "minute", "second"),
+        ),
     }.get(type(node))
     if args is None:
         return None
@@ -524,7 +642,8 @@ def _call(node: exp.Expr) -> exp.Expr:
         return sqlglot.parse_one(written, read="postgres")
     chosen = function_macros.overload(name, args)
     if chosen != name:  # REQ-2171: by the type the statement says, while the cast is there to read
-        written = f"{chosen}({', '.join(_sql(a) for a in args)})"
+        spell = _SPELLED.get(chosen.split("_")[0], _sql)
+        written = f"{chosen}({', '.join(spell(a) for a in args)})"
         return sqlglot.parse_one(written, read="postgres")
     written = (
         _type_call(name, args)

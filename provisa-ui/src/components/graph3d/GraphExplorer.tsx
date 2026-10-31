@@ -161,7 +161,7 @@ export function GraphExplorer({
     grid: true as boolean,
     // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
     flat: false as boolean,
-    // REQ-2174: auto opens in the layout the drawn edges call for; else the reader's Force or Layered.
+    // REQ-2174: auto opens in the preset's own layout, else Force; else the reader's Force or Layered.
     layout: "auto" as string,
     // null: every domain, every edge type (or the preset's own), so a new one is drawn too.
     domains: null as string[] | null,
@@ -356,7 +356,10 @@ export function GraphExplorer({
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
   }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
-  const layout = chosenLayout(shown, savedLayout(saved.layout as string));
+  const layout = chosenLayout(
+    shown,
+    savedLayout(saved.layout as string) ?? presetOf(preset).layout ?? null,
+  );
   const layeredPossible = useMemo(() => openingLayout(shown).layeredPossible, [shown]);
   // REQ-2174: in 2D the graph is a lane diagram (laneDiagram.ts), laid out by ELK as it is drawn.
   const lanes = useMemo(

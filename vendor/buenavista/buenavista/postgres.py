@@ -174,7 +174,11 @@ class ClientCommand:
 
 def _interval_parts(v):
     """(months, days, microseconds) of an interval value: a timedelta, or a relativedelta when it
-    has months (a year-month interval)."""
+    has months (a year-month interval). A value marked with its ``pg_parts`` is one neither keeps
+    the fields of, 26:01:00 apart from 1 day 02:01:00."""
+    exact = getattr(v, "pg_parts", None)
+    if exact is not None:
+        return exact
     if isinstance(v, datetime.timedelta):
         micros = v // datetime.timedelta(microseconds=1)
         days = int(micros / 86_400_000_000)
@@ -188,16 +192,20 @@ def _interval_text(v) -> str:
     04:05:06.5), the text a client's interval parser reads."""
     months, days, micros = _interval_parts(v)
     years, months = int(months / 12), months - int(months / 12) * 12
-    parts = [
-        f"{n} {unit}{'' if n == 1 else plural}"
-        for n, unit, plural in ((years, "year", "s"), (months, "mon", "s"), (days, "day", "s"))
-        if n
-    ]
+    parts = []
+    # EncodeInterval: a field after a negative one says its own sign.
+    after_negative = False
+    for n, unit, plural in ((years, "year", "s"), (months, "mon", "s"), (days, "day", "s")):
+        if n:
+            sign = "+" if after_negative and n > 0 else ""
+            parts.append(f"{sign}{n} {unit}{'' if n == 1 else plural}")
+            after_negative = n < 0
     if micros or not parts:
         hours, rem = divmod(abs(micros), 3_600_000_000)
         minutes, rem = divmod(rem, 60_000_000)
         secs, frac = divmod(rem, 1_000_000)
-        clock = f"{'-' if micros < 0 else ''}{hours:02d}:{minutes:02d}:{secs:02d}"
+        sign = "-" if micros < 0 else "+" if after_negative else ""
+        clock = f"{sign}{hours:02d}:{minutes:02d}:{secs:02d}"
         parts.append(clock + (f".{frac:06d}".rstrip("0") if frac else ""))
     return " ".join(parts)
 
