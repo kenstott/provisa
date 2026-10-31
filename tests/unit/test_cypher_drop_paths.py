@@ -214,3 +214,13 @@ def test_a_junctions_types_are_each_a_join():
 def test_a_join_declared_twice_answers_once(declared_twice, query):
     rows = _rows(declared_twice, query)
     assert rows == list(dict.fromkeys(rows)), rows
+
+
+def test_a_domain_drop_never_reads_a_parameterized_table(around):
+    # graph-drop's onDomainDrop: one untyped hop to whatever of the domain joins.
+    lm, con = around
+    lm.domains = {"D": ["B", "P"]}
+    query = "MATCH (a:A) OPTIONAL MATCH (a)-[]-(z:D) RETURN a, z"
+    assert '"p"' not in _sql(around, query)
+    rows = sorted(_rows(around, query), key=str)
+    assert len(rows) == 2 and all(z is not None for _, z in rows)
