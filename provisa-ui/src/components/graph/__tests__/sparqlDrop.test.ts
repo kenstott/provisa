@@ -13,6 +13,8 @@
 import { describe, expect, it } from "vitest";
 import { droppedQuery, type SparqlDrop, type SparqlDropped } from "../sparqlDrop";
 import type { SparqlVocabulary } from "../sparql";
+import type { CyElement, CyInstance } from "../cytoscape-types";
+import { nodeAtPoint, nodeUnder } from "../canvas/canvas-helpers";
 
 const B = "https://x.example/vocab";
 const cls = (domain: string, name: string): SparqlVocabulary["classes"][number] => ({
@@ -270,5 +272,32 @@ describe("a domain dropped on a frame", () => {
       key: "graphFrame.sparqlDropNoPath",
       values: { name: "hr" },
     });
+  });
+});
+
+describe("the node at a point of a drawing", () => {
+  const node = (id: string, x1: number, y1: number): CyElement =>
+    ({
+      id: () => id,
+      data: () => ({ id: 1, label: id, tableLabel: id, properties: {} }),
+      renderedPosition: () => ({ x: x1 + 10, y: y1 + 10 }),
+      renderedBoundingBox: () => ({ x1, y1, x2: x1 + 20, y2: y1 + 20, w: 20, h: 20 }),
+    }) as unknown as CyElement;
+  const a = node("a", 0, 0);
+  const b = node("b", 5, 5);
+  const far = node("far", 100, 100);
+  const cy = {
+    nodes: () => [a, b, far],
+    container: () => ({ getBoundingClientRect: () => ({ left: 200, top: 100 }) }),
+  } as unknown as CyInstance;
+
+  it("reads a page's point against the canvas", () => {
+    expect(nodeAtPoint(cy, 310, 210)?.label).toBe("far");
+    expect(nodeAtPoint(cy, 260, 160)).toBeNull();
+  });
+
+  it("finds what a dragged node was let go on, never itself", () => {
+    expect(nodeUnder(cy, a)?.label).toBe("b");
+    expect(nodeUnder(cy, far)).toBeNull();
   });
 });

@@ -586,14 +586,15 @@ export function GraphCanvas({
       const after = evt.target.position();
       grabPositions.delete(id);
       if (!before || (Math.abs(after.x - before.x) < 1 && Math.abs(after.y - before.y) < 1)) return;
+      // Before the nudge moves either of them.
+      const dragged = evt.target.data("_node") as GNode | undefined;
+      const under = nodeUnder(cy, evt.target);
       anchoredRef.current.add(id);
       evt.target.addClass("pinned");
       pendingNudgesRef.current = 2;
       pendingNudgeFreeNodesRef.current = undefined;
       nudgeLayoutRef.current();
       nodeDraggedRef.current?.(id);
-      const dragged = evt.target.data("_node") as GNode | undefined;
-      const under = nodeUnder(cy, evt.target);
       if (dragged && under) nodeDroppedRef.current?.(dragged, under);
     });
 

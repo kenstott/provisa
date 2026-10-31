@@ -16,7 +16,7 @@ function nodeAt(cy: CyInstance, x: number, y: number, except?: CyElement): GNode
   let found: GNode | null = null;
   cy.nodes().forEach((n) => {
     const gn = n.data("_node") as GNode | undefined;
-    if (!gn || n === except) return;
+    if (!gn || n.id() === except?.id()) return;
     const box = n.renderedBoundingBox();
     if (x >= box.x1 && x <= box.x2 && y >= box.y1 && y <= box.y2) found = gn;
   });
