@@ -91514,7 +91514,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     FROM THE LIBRARY OR A NEW DOCUMENT:) Find terms in a document offers two ways to choose the document:
     pick one already in the reference library (REQ-2185), or give a new one as a file or an http(s) URL,
     which joins the library as a proposed document. Either way the scan is the same and its proposals cite
-    the library''s copy.'
+    the library''s copy. (Amended 2026-10-29, A SCAN ALWAYS ENDS:) A scan runs in background work that outlives
+    the request. glossary_term_finding has no default model: a scan is refused at start, saying where to
+    set one, until an org names it. Each model call has 300 seconds; a scan with no progress for 660 seconds,
+    or from an earlier launch, fails with the reason. The scan shows its model and step, a person can cancel
+    it, and a cancelled scan is stored failed with who cancelled it.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document
