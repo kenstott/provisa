@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "../test-utils/render";
 import { DomainFilterProvider, useDomainFilter } from "../context/DomainFilterContext";
+import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
 import type { Role, Capability } from "../types/auth";
 
 vi.mock("../context/AuthContext", () => ({ useAuth: vi.fn() }));
@@ -56,11 +57,22 @@ const OPS: Role = {
 };
 
 // Every domain the server knows about — what a wildcard role is entitled to.
-const ALL_DOMAINS = ["meta", "ops", "shelter", "pet-store"];
+const ALL_DOMAINS = ["meta", "ontology", "ops", "shelter", "pet-store"];
+// What /data/domains answers each role: its list plus the system domains, which the server names.
+const SERVED: Record<string, string[]> = {
+  org_admin: ALL_DOMAINS,
+  analyst: ["meta", "ontology", "pet-store", "shelter"],
+  ops: ["meta", "ontology", "ops"],
+};
 
 function Probe() {
-  const { domains } = useDomainFilter();
-  return <div data-testid="domains">{[...domains].sort().join(",")}</div>;
+  const { domains, checkedDomains } = useDomainFilter();
+  return (
+    <>
+      <div data-testid="domains">{[...domains].sort().join(",")}</div>
+      <div data-testid="checked">{[...checkedDomains].sort().join(",")}</div>
+    </>
+  );
 }
 
 function renderWith(selectedRoles: Role[]) {
@@ -78,10 +90,18 @@ async function domainsShown(): Promise<string[]> {
   return el.textContent!.split(",");
 }
 
+async function checkedShown(): Promise<string[]> {
+  const el = await screen.findByTestId("checked");
+  await waitFor(() => expect(el.textContent).not.toBe(""));
+  return el.textContent!.split(",");
+}
+
 beforeEach(() => {
   localStorage.clear();
-  // @ts-expect-error -- jsdom has no fetch; the provider calls /data/domains for wildcard roles
-  global.fetch = vi.fn(() => Promise.resolve({ json: () => Promise.resolve(ALL_DOMAINS) }));
+  // @ts-expect-error -- jsdom has no fetch; the provider asks /data/domains as each role
+  global.fetch = vi.fn((_url: string, init: { headers: Record<string, string> }) =>
+    Promise.resolve({ json: () => Promise.resolve(SERVED[init.headers["X-Provisa-Role"]]) }),
+  );
   mockFetchSettings.mockResolvedValue({ naming: { use_domains: true } } as never);
 });
 
@@ -95,9 +115,24 @@ describe("DomainFilterContext domain resolution", () => {
     expect(await domainsShown()).toEqual([...ALL_DOMAINS].sort());
   });
 
-  it("gives a named-domain role exactly its domains", async () => {
+  it("gives a named-domain role its domains and the system domains the server names", async () => {
     renderWith([ANALYST]);
-    expect(await domainsShown()).toEqual(["pet-store", "shelter"]);
+    expect(await domainsShown()).toEqual(["meta", "ontology", "pet-store", "shelter"]);
+  });
+
+  it("asks the server as that role, not from a list of its own", async () => {
+    renderWith([ANALYST]);
+    await domainsShown();
+    expect(global.fetch).toHaveBeenCalledWith("/data/domains", {
+      headers: { "X-Provisa-Role": "analyst" },
+    });
+  });
+
+  it("checks a system domain a returning user has not seen, keeping what they unchecked", async () => {
+    localStorage.setItem(CHECKED_DOMAINS_KEY, JSON.stringify(["pet-store"]));
+    localStorage.setItem(KNOWN_DOMAINS_KEY, JSON.stringify(["pet-store", "shelter"]));
+    renderWith([ANALYST]);
+    expect(await checkedShown()).toEqual(["meta", "ontology", "pet-store"]);
   });
 
   it("a wildcard role anywhere in the set means the whole catalog", async () => {
@@ -118,7 +153,7 @@ describe("DomainFilterContext domain resolution", () => {
 
   it("unions the named domains of several non-wildcard roles", async () => {
     renderWith([ANALYST, OPS]);
-    expect(await domainsShown()).toEqual(["ops", "pet-store", "shelter"]);
+    expect(await domainsShown()).toEqual(["meta", "ontology", "ops", "pet-store", "shelter"]);
   });
 
   it("adding a role never removes a domain the user already had", async () => {
