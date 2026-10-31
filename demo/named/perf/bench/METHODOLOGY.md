@@ -84,12 +84,12 @@ The mixed workload is never published and never runs in this session. It remains
 
 A run is valid when all of these hold. If any fails, the affected figures are withheld and the point reruns.
 
-- Every machine records its CPU platform and instance id, and all repetitions of a figure come from the same three instances. The report refuses a mix. Two VMs with the same type and CPU platform differed by 1.29x to 1.61x, and J363 and J309 differed by 1.3x with no code cause. A replaced machine therefore means a new run, and Spot cannot produce a valid result.
+- Every machine records its CPU platform and instance id, and all repetitions of a figure come from the same three instances. The report refuses a mix. Two VMs with the same type and CPU platform differed by 1.29x to 1.61x in the last mini benchmark, more than any code change in it. A replaced machine therefore means a new run, and Spot cannot produce a valid result.
 - The version is one commit, on a clean checkout.
 - The published step has zero errors and is not client-limited.
 - Telemetry is off, as Provisa's agent states it.
 - The server served each repetition from a fresh start with every worker ready.
-- Over the five repetitions, the highest and lowest requests per second are within 1.2x of each other. Same-VM repeats in J377 spread by 0.88 to 1.08, so a wider spread means something moved during the run.
+- Over the five repetitions, the highest and lowest requests per second are within 1.2x of each other. Repeats on one VM have spread by 0.88 to 1.08, so a wider spread means something moved during the run.
 - The `zero` and `zero_end` variants of the features pass agree within 1.1x.
 - No device paged during a published step: `pswpin` and `pswpout` are zero.
 - The round trip between machines stays under 1 ms at p99.
