@@ -22,6 +22,7 @@ import sqlglot
 
 from provisa.transpiler import function_macros, pg_functions, pg_money
 from provisa.transpiler.native_json import resolve_native_json
+from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
@@ -1252,6 +1253,8 @@ def transpile(
     # REQ-1965: each read of a natively array/struct/map column becomes this backend's own
     # to-JSON expression here, the one place every route's dialect is known.
     result = resolve_native_json(result, target_dialect)
+    # REQ-2171: each subtyped column read as a value, in PostgreSQL's canonical text.
+    result = resolve_reads(result, target_dialect)
     from provisa.vector.similarity import lower as _lower_similarity
 
     # REQ-423: a governed similarity search, in the target's own form. REQ-2000: Qdrant's driver

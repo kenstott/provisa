@@ -31,6 +31,12 @@ def test_pk_in_clause_writes_each_value_by_the_engines_literal_rule():
     )
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    # The API layer says this at import; a run of this file alone does not import it.
+    monkeypatch.setattr("provisa.core.secrets_providers._many_organisations", lambda: False)
+
+
 def test_pk_in_clause_single_column():
     clause = _pk_in_clause(["id"], [(1,), (2,)], "postgres")
     assert clause == '"id" IN (1, 2)'

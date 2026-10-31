@@ -27,7 +27,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.native_nested import mark_native_nested_reads
-from provisa.compiler.native_subtype import mark_subtype_operations
+from provisa.compiler.native_subtype import mark_subtype_operations, mark_subtype_reads
 from provisa.compiler.ontology_classes import is_class_table_id
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.core.ir_types import EPOCH_UNITS
@@ -617,6 +617,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
     # catalog normalize_table_refs re-attaches for already-qualified refs (REQ-641/REQ-863).
     sql = translate_epoch_temporal_columns(strip_catalog(sql), ctx.epoch_columns)  # REQ-1908
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
+    sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
@@ -677,6 +678,7 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         _apply_replacements(sql, replacements), ctx.epoch_columns
     )
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
+    sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
