@@ -289,14 +289,14 @@ A daily export at 06:00:
 
 ## What is published
 
-- **Sources, tables and columns.** Names, data types, descriptions and aliases. Only tables.
+- **Sources, tables and columns.** Names, data types, descriptions and aliases. Only tables
   marked **Data Product** in their registration are published; a relationship, lineage edge or
   governance tag that touches an unmarked table is withheld with it, so the catalog never
   receives a reference to a table that was not sent.
 
-- **Domains.** Each domain's description and its steward. A domain with no steward publishes.
+- **Domains.** Each domain's description and its steward. A domain with no steward publishes
   without one rather than with an invented owner.
-- **Approved relationships.** The modeled joins, with cardinality, alias, owner and version. Each.
+- **Approved relationships.** The modeled joins, with cardinality, alias, owner and version. Each
   edge also carries its `kind`. A `junction` edge reaches its target through an associative table
   rather than a column pair, so its `sourceColumn`/`targetColumn` are the two endpoint keys and a
   catalog that read them as a join condition would invent a foreign key that does not exist; the

@@ -21,17 +21,17 @@ does not disclaim the author's own priority in any jurisdiction.
 
 Terms used throughout:
 
-- **Semantic model.** A declarative registration of sources, tables, columns, relationships,.
+- **Semantic model.** A declarative registration of sources, tables, columns, relationships,
   aliases, descriptions, and policy. State, not a program.
-- **Semantic SQL.** SQL written against semantic names (`domain.table`), the only reference form.
+- **Semantic SQL.** SQL written against semantic names (`domain.table`), the only reference form
   a client is permitted to use.
-- **IR.** The intermediate representation into which every accepted query is lowered before.
+- **IR.** The intermediate representation into which every accepted query is lowered before
   governance. Concretely a relational algebra tree; the disclosures below assume node types for
   projection, filter, join, aggregate, set operation, table reference, CTE, and limit.
-- **Governed IR.** The IR after the governance pass has run. Every downstream stage consumes only.
+- **Governed IR.** The IR after the governance pass has run. Every downstream stage consumes only
   governed IR.
 - **Physical SQL.** Dialect-specific SQL emitted from governed IR for one execution target.
-- **Federation engine.** Any engine capable of executing a query spanning more than one registered.
+- **Federation engine.** Any engine capable of executing a query spanning more than one registered
   source. Treated throughout as a replaceable component behind an interface.
 
 ---

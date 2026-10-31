@@ -98,7 +98,7 @@ and `evidence` move, or the column it concerned is gone.
 
 ### 4. Findings and where the checks run
 
-- **Table.** `judgment_findings` in the org model, one row per (object, judgment, finding kind).
+- **Table.** `judgment_findings` in the org model, one row per (object, judgment, finding kind)
   Its columns are `object_type`, `object_key`, `judgment` (tag, fake, mask, row_rule,
   write_grant, posture), `category` (`wrong`, `dated_by_data`, `dated_by_context`, `undecided`,
   `worth_a_look`), `finding`, `observed` (JSON: what changed, then and now), `first_seen`,

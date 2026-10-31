@@ -2,7 +2,7 @@
 
 The ontology is a living vocabulary over your data model. Every physical column resolves to a term, and columns that carry the same meaning share one term, however differently they spell it. Each term can hold a definition, typed relationships to other terms, a list of subject-matter experts, and tags such as `pii` that every column with that meaning carries.
 
-It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
+It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics. A term says what a concept is, and a metric says how a number is computed.
 
 That shared vocabulary connects business language to physical data. An AI agent that knows "customer" names every column carrying a customer identifier doesn't have to guess which of `cust_id`, `customerId` and `CUSTOMER_KEY` is the right one. They all resolve to the same term, and the term carries the definition.
 
@@ -238,7 +238,7 @@ Most Related to pairs lack a term in between. One new term turns the placeholder
 
 Follow the grounding down each row. In the first two shapes, cake reaches the data of candles through the new term. In the last three, the new term is the broader end of both edges, so it reaches the data of both. Neither cake nor candles reaches the other's.
 
-Sometimes the term in between already exists, and you only need to retype the links. The shipped shelter demo has a Concept, `shift coverage`, defined as the window and place a staff member is scheduled to work. Its parts `shift start`, `shift end` and `schedule location` each hold a column. Linked to them by Related to, shift coverage reached no data. With each of the three linked as Part of shift coverage, it is grounded through all three columns. That is a common whole, and the whole was there all along.
+Sometimes the term in between already exists, and you only need to retype the links. The shipped shelter demo has a Concept, `shift coverage`, defined as the window and place a staff member is scheduled to work. Its parts `shift start`, `shift end` and `schedule location` each hold a column. Linked to them by Related to, shift coverage reached no data. With each of the three linked as Part of shift coverage, it is grounded through all three columns. That is a common whole, which was there all along.
 
 ### Prefer the tightest shape
 
@@ -437,7 +437,7 @@ The same statements are rows of `ontology._axioms` in SQL, and the kind-of pairs
 
 ## The ontology schema
 
-The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST, and MCP — the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
+The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST and MCP, the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
 
 Two parts make up the schema: definition views and class tables.
 
@@ -453,15 +453,15 @@ Five views expose the glossary's contents:
 | `_domains` | Domain membership: the term name and each domain it belongs to. |
 | `_experts` | Expert assignments: the term name, user ID, and role (`expert` or `author`). |
 
-A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
+A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express, one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
 
-A **term binding** — a term bound to a column, recorded in `_term_refs` — is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
+A **term binding**, a term bound to a column and recorded in `_term_refs`, is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
 
 ### Class tables
 
 Each Class term that is not retired becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
 
-In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from: it holds the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
+In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from by holding the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
 
 Every column in a Class view corresponds to a bound Property. The view is governed through the same pipeline as any other read.
 

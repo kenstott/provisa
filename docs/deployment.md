@@ -15,7 +15,7 @@ Provisa supports six deployment paths. Choose based on your audience and operati
 
 ### VM vs Kubernetes
 
-Both suit production. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained. It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
+Both suit production. The VM/AppImage path is simpler, with no cluster to provision and no CNI or RBAC policies to configure, and the AppImage is entirely self-contained. It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
 
 Choose Kubernetes only if your team already runs a K8s cluster and wants Provisa to fit that way of operating (rolling deploys, HPA, unified observability). Both give you the same capabilities; Kubernetes adds operational overhead.
 
@@ -61,9 +61,9 @@ UI:      http://localhost:3000
 
 **Options:**
 
-`--reset-volumes` — Runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate: after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
+`--reset-volumes` runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate: after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
 
-`--observability` — Adds full tracing and metrics instrumentation. Downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`). The `jvm.config` patch is automatically reverted on Ctrl+C.
+`--observability` adds full tracing and metrics instrumentation. It downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`). The `jvm.config` patch is automatically reverted on Ctrl+C.
 
 ### Manual steps (backend only, no UI)
 
@@ -94,7 +94,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ### Services
 
-**Core (`docker-compose.core.yml`) — always required:**
+**Core (`docker-compose.core.yml`), always required:**
 
 | Service | Port | Purpose |
 | --------- | ------ | --------- |
@@ -104,7 +104,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Redis | 6379 | Query result cache |
 | MinIO | 9000/9001 | S3-compatible object storage |
 
-**Demo (`docker-compose.dev.yml`) — optional, included by `start-ui.sh`:**
+**Demo (`docker-compose.dev.yml`), optional and included by `start-ui.sh`:**
 
 | Service | Port | Purpose |
 | --------- | ------ | --------- |
@@ -156,7 +156,7 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 
 ## macOS Installer
 
-For developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
+This path is for developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
 
 The base installer is a **native install**: the DuckDB federation engine, an embedded PostgreSQL model store (pgserver) and an in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis or MinIO. You choose the federation engine in the wizard: DuckDB (native, the default), Trino on Docker, or an external engine. Observability is self-telemetry that's always on and viewable in Admin; the Docker collector, Prometheus and Grafana stack is a separate optional demonstration, and it doesn't switch that on or off. The demo data pack is optional and off by default. Trino, the Docker observability stack and the demo are heavy add-ons. They're looked for locally first (the directory next to the installer, mounted volumes, `~/Downloads`) and only then fetched from the GitHub release, so enterprises can pre-stage the tarballs for air-gapped installs.
 
@@ -181,7 +181,7 @@ All data is stored in `~/.provisa/`. To remove everything: `provisa uninstall`.
 
 ## Windows Installer
 
-For developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
+This path is for developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
 
 Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL model store (pgserver), shipping no Docker, no VM, and no container images. The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer.
 

@@ -112,10 +112,10 @@ materialized arrow terminal (`execute_engine_arrow`) on the ENGINE route and `.r
 Airport must drain the one streaming terminal like Flight SQL. Its two real needs are separable
 catalog-identity concerns, not result-path buffering:
 
-- **byte-stable schema.** Advertise from the plan's typed output columns (already known.
+- **byte-stable schema.** Advertise from the plan's typed output columns (already known
   pre-execution), not by scanning rows. Empty-result retyping (`_retype_null_columns`,
   query.py) already reads column types independent of row data.
-- **`is_rowid` for UPDATE/DELETE echo.** Derive from the source's key metadata / a streamed rowid.
+- **`is_rowid` for UPDATE/DELETE echo.** Derive from the source's key metadata / a streamed rowid
   column, not by holding the whole table. If a genuinely unbounded rowid mapping is needed, land it
   as a CTAS side-table (off-heap), not an in-RAM cache.
 

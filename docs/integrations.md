@@ -18,7 +18,7 @@
 
 Provisa implements the PostgreSQL wire protocol (protocol version 3.0). Any client that speaks PostgreSQL connects without a custom driver.
 
-Enable by setting `PROVISA_PGWIRE_PORT` (e.g. `5433`) before starting Provisa. Disabled when unset or `0`.
+Enable it by setting `PROVISA_PGWIRE_PORT` (e.g. `5433`) before starting Provisa. It is disabled when unset or `0`.
 
 ### Why pgwire instead of JDBC?
 
@@ -73,7 +73,7 @@ The full surface × method table is in [Security Model](security.md#surfaces-and
 
 The Provisa JDBC driver uses Arrow Flight as its underlying transport. It is the recommended path for BI tools with a JDBC connection wizard.
 
-Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server — a refused credential, a role the user does not hold, a failed statement — is raised to the caller with the server's message; it is not retried over HTTP.
+Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server, such as a refused credential, a role the user does not hold or a failed statement, is raised to the caller with the server's message; it is not retried over HTTP.
 
 Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential: the driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`): the server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered.
 
@@ -208,7 +208,7 @@ spark = SparkSession.builder \
 
 ## Protobuf gRPC (port 50051)
 
-Service-to-service path. Provisa generates a `.proto` per role and regenerates it whenever the model or the role changes. Each role sees only the tables and columns it has access to. The service has an RPC for each table at the root of the role's schema; related tables are reached through their relationships, as in GraphQL.
+This is the service-to-service path. Provisa generates a `.proto` per role and regenerates it whenever the model or the role changes. Each role sees only the tables and columns it has access to. The service has an RPC for each table at the root of the role's schema; related tables are reached through their relationships, as in GraphQL.
 
 Download the proto for your role:
 
@@ -323,9 +323,9 @@ See [docs/sources.md](sources.md#kafka-sources) for Kafka topic configuration as
 
 ## Data Quality Checkers
 
-Soda Core and Great Expectations connect to Provisa through pgwire, like any other postgres client. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
+Soda Core and Great Expectations connect to Provisa through pgwire, like any other postgres client. That is the whole integration. The checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
 
-The scan runs in a child interpreter — `python -m provisa.dq.worker` — which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop.
+The scan runs in a child interpreter, `python -m provisa.dq.worker`, which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop.
 
 Scan results land as ordinary source rows, so cadence, freshness, events, lineage, governance, RLS, the grid and export all apply without a second mechanism. Contract authoring, the result envelope and the derived registration are covered in [docs/sources.md](sources.md#data-quality-checkers).
 
@@ -528,7 +528,7 @@ two were not tried.
 
 ## Metrics Across Protocols
 
-A governed metric's definition — its expression, description, and `ai_context` — travels with the
+A governed metric's definition, meaning its expression, description and `ai_context`, travels with the
 value into every query surface through one compiler expansion. There are no copies. The compiler
 reserves the `metrics` schema for SQL access; each protocol then adds its own metadata channel.
 
@@ -568,9 +568,9 @@ schema-aware tools and codegen pick it up automatically.
 
 Two tools expose metrics to MCP clients:
 
-- **`list_metrics`.** Returns all governed metrics visible to the session, with `name`,.
+- **`list_metrics`.** Returns all governed metrics visible to the session, with `name`,
   `description`, and `ai_context`.
-- **`query_metric`.** Accepts a metric name plus a dimension list and calls the compiler's.
+- **`query_metric`.** Accepts a metric name plus a dimension list and calls the compiler's
   semantic-SQL path, returning the aggregate result.
 
 Agents that call `list_metrics` before constructing a query select a governed metric by name

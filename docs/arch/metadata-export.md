@@ -217,17 +217,17 @@ Phases 5 and 6 are independent of each other.
 
 ## Decisions, as settled
 
-1. **Snapshot cadence vs. event granularity.** Settled as *full snapshot on both paths*,.
+1. **Snapshot cadence vs. event granularity.** Settled as *full snapshot on both paths*,
    against the original recommendation of a delta on the event path. A delta would need a
    second builder and a second correctness argument; the full snapshot already has one, and
    one snapshot shape is what makes the event path and the reconcile converge on the same
    catalog state rather than race into different ones.
-2. **Purview auth.** Settled as a widened `MetadataExportConfig` (`auth_mode` plus the.
+2. **Purview auth.** Settled as a widened `MetadataExportConfig` (`auth_mode` plus the
    Entra fields), not a pluggable strategy object. Atlas then forced a third mode anyway:
    stock Apache Atlas rejects a bearer token, so `basic` joined `api_key`, `bearer` and
    `entra`. Four flat modes on one config beat four strategy classes for a branch this
    small, and the admin form renders the modes directly.
-3. **Tier names.** Settled as `free` / `standard` / `premium`, with metadata export.
+3. **Tier names.** Settled as `free` / `standard` / `premium`, with metadata export
    requiring `premium`. An unrecognised tier is refused, never defaulted.
 
 ## Not executed against a live service

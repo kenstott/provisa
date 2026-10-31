@@ -214,9 +214,9 @@ names, identifiers and codes.
 ### Three modes
 
 - **`vector_first`** (default) — similarity seeds, expansions widen.
-- **`graph_first`.** `RelationshipIndex` traversal drives, vector reranks. For.
+- **`graph_first`.** `RelationshipIndex` traversal drives, vector reranks. For
   questions about how things connect rather than what mentions a term.
-- **`global`.** Searches community-summary chunks only. With.
+- **`global`.** Searches community-summary chunks only. With
   `map_reduce_global_context` (map an LLM over each community summary, score,
   reduce to the top) this answers corpus-wide sensemaking: "what themes run
   through these documents." **The semantic layer cannot answer this class of
@@ -270,13 +270,13 @@ search box. Every one resolves namespaces from the caller's domains, denies on
 empty, and goes through the same `require_role` / `_role_domains` path as the
 relational tools. None accepts a namespace argument from the caller.
 
-- **`search_documents`.** Cohort search. Exposes `k`, `query_text` (BM25 lane),.
+- **`search_documents`.** Cohort search. Exposes `k`, `query_text` (BM25 lane),
   and `mode`. Returns chunks with their provenance dimension.
-- **`explore_topics`.** `mode="global"` plus `map_reduce_global_context`.
+- **`explore_topics`.** `mode="global"` plus `map_reduce_global_context`
   Corpus-wide themes. The tool with no relational equivalent.
-- **`trace_connections`.** `mode="graph_first"`. How entities relate, rather.
+- **`trace_connections`.** `mode="graph_first"`. How entities relate, rather
   than what mentions them.
-- **`document_context`.** `assemble_graph_context` for a query: entities,.
+- **`document_context`.** `assemble_graph_context` for a query: entities,
   relationships, community reports and source text within a token budget.
 - **`search_entities`.** Matched entities and the chunks they appear in.
 - **`list_documents`.** Documents in reach, with version state.

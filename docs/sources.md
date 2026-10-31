@@ -204,7 +204,7 @@ These source types are federation-only. They have no direct driver and no dialec
 
 ### Qdrant
 
-`qdrant` is read and written by Qdrant's own client, `qdrant-client`. Qdrant is **live-only**: a property of the source type, not a setting. Its vector index and Query API are what it answers with, and no replica can answer the same, so its tables are never replicated. There is no Replicate choice for a Qdrant source or its tables; a `replicate` value or `row_materialize` on one is refused.
+`qdrant` is read and written by Qdrant's own client, `qdrant-client`. Qdrant is **live-only**. That is a property of the source type, so no setting changes it. Its vector index and Query API are what it answers with, and no replica can answer the same, so its tables are never replicated. There is no Replicate choice for a Qdrant source or its tables; a `replicate` value or `row_materialize` on one is refused.
 
 **Connection.** `host` is the instance's URL with its port (`https://<cluster>.cloud.qdrant.io:6333`, or a self-hosted `http://qdrant:6333`); `password` is its API key, a secret reference resolved when the source is read, empty for an instance without one. `federation_hints.prefer_grpc: true` reads over Qdrant's gRPC port instead of REST. The source has one schema, `default`.
 
@@ -946,7 +946,7 @@ A branded source ships its own exclusions as part of its curation, and an operat
 
 ### GovData
 
-U.S. government open data. Access is partitioned by subject grouping.
+GovData serves U.S. government open data, with access partitioned by subject grouping.
 
 A source is given one or more subjects, and each subject brings the adapter schemas listed below. A schema may belong to more than one subject (`census`). The `ref` and `geo` schemas are linker schemas: reference data and geography that every subject's tables join through, so every source serves them whatever subjects it is given. The list is stated once on the server and is held, by a test, to the schemas the pinned adapter bundle serves.
 
@@ -1039,7 +1039,7 @@ A data profiler is a source that holds a name, a schedule and run defaults, and 
 
 ### Data Quality Checkers
 
-A data-quality checker is just another source type. Its scan output is data: each check result is an observation, so it lands through the ordinary source path and gets what every other source gets, from cadence, freshness, events and lineage to governance, RLS, the grid and export.
+A data-quality checker is another source type. Its scan output is data. Each check result is an observation, so it lands through the ordinary source path and gets what every other source gets, from cadence, freshness, events and lineage to governance, RLS, the grid and export.
 
 Two checkers are supported, and choosing between them is as much about the licence as about features.
 
@@ -1052,7 +1052,7 @@ Elastic License 2.0 forbids providing the software to third parties as a hosted 
 
 Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), the only place `soda_core` or `great_expectations` is imported. A source-available checker therefore never reaches the server process, and if a checker crashes, it takes down a subprocess and leaves the event loop alone.
 
-**The source points at Provisa's own pgwire endpoint.** That's how one postgres driver can check a table backed by Snowflake or Iceberg: the checker scans the federated view, never the system underneath. Policy applies to that connection, so you declare the scan identity explicitly. If it were inherited, a filtered set of rows could make a check pass without anyone noticing.
+**The source points at Provisa's own pgwire endpoint.** That's how one postgres driver can check a table backed by Snowflake or Iceberg, since the checker scans the federated view and never the system underneath. Policy applies to that connection, so you declare the scan identity explicitly. If it were inherited, a filtered set of rows could make a check pass without anyone noticing.
 
 ```yaml
 sources:
@@ -1149,7 +1149,7 @@ Availability is verified at attach time against each engine's standard discovery
 - **DuckDB.** Runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`.
 - **ClickHouse.** Checks `system.table_engines` for the declared `ch_engine`; absent from the build fails loud.
 
-A declared extension that is not installable fails loud. No silent skip, no fallback. A connector whose probe fails is simply not active for that deployment.
+A declared extension that is not installable fails loud, with no silent skip or fallback. A connector whose probe fails is not active for that deployment.
 
 ### Template variables
 
@@ -1161,7 +1161,7 @@ A template referencing an unknown field fails loud at attach time, surfacing a d
 
 ### Examples
 
-**Postgres — MongoDB via `mongo_fdw` (no schema import; columns supplied per table)**
+**Postgres: MongoDB via `mongo_fdw` (no schema import; columns supplied per table)**
 
 ```yaml
 # config/custom_connectors.yaml
@@ -1183,7 +1183,7 @@ connectors:
       collection: "{table_name}"
 ```
 
-**DuckDB — Excel files via `read_xlsx` (scan table-function)**
+**DuckDB: Excel files via `read_xlsx` (scan table-function)**
 
 ```yaml
   - engine: duckdb
