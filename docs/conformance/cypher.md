@@ -3758,14 +3758,14 @@ Dates, times and durations are held in the engine's own types: a date as `DATE`,
 
 - **Precision is the microsecond.** Every temporal value, read from a column or built in a query, has microsecond precision. Its `nanosecond` property is its microseconds times 1000, so the last three digits are always 000. A value written with digits below the microsecond keeps the microsecond and is not refused, and the answer writes that value as openCypher formats it. TCK scenarios that expect non-zero digits below the microsecond fail by this rule.
 - **Zones.** When a query names a zone or an offset, in a literal (`'2015-07-21T21:40:32.142+01:00[Europe/Stockholm]'`) or with `timezone:`, the engine computes with it by its own time zone rules, daylight saving included, and the answer presents it as openCypher writes it: `2015-07-21T21:40:32.142+01:00[Europe/Stockholm]`. A date time read from a column that stores only an instant is presented with its offset and no zone name.
-- **A duration built from computed text.** `duration('P1Y2M')` written in the statement is read as openCypher reads it. A duration built from text the query computes is read by the engine's interval parser: PostgreSQL reads ISO-8601, DuckDB does not.
+- **A duration built from computed text.** `duration('P1Y2M')` written in the statement is read as openCypher reads it. A duration built from text the query computes is read by the engine's interval parser. PostgreSQL reads ISO-8601; DuckDB does not.
 - **Fractions of computed components.** `duration({months: 0.75})` written in the statement carries a fraction of a month down as openCypher's average month. When the fraction is computed, the engine carries it as 30 days.
 - **The engine's range.** Years beyond the engine's (openCypher allows -999999999 to +999999999) and DuckDB offsets beyond ±15:59 are refused by the engine.
 - **Engines with no interval of months and seconds.** Trino has no interval type that holds both a month part and a time part, so a statement with a duration is refused by Trino and answered as the engine's refusal. A source whose own SQL has no interval reads such a statement through the engine.
 
 ### Scenarios that build their own graph
 
-TCK scenarios that create their graph (`CREATE` in their setup, a named TCK graph, a test procedure) are not runnable: a Provisa graph's labels and relationship types are its model's. The pass rate counts the scenarios that run.
+TCK scenarios that create their graph (`CREATE` in their setup, a named TCK graph, a test procedure) are not runnable, because a Provisa graph's labels and relationship types are its model's. The pass rate counts the scenarios that run.
 
 ## Tools
 
