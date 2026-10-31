@@ -1,6 +1,6 @@
 # Arrow Flight SQL Conformance
 
-**Suite.** ADBC driver validation suite 9f9f441 (with adbc-driver-flightsql 1.12.0).
+**Suite:** ADBC driver validation suite 9f9f441 (with adbc-driver-flightsql 1.12.0).
 
 **Pass rate:** 100.0% (217 of 217); 18 cases not runnable by design; 37 not sent by the client; 11 skipped by the suite.
 

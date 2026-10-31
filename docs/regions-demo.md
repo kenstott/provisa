@@ -1,6 +1,6 @@
 # Two-region demo (eu + us)
 
-A Docker-free demo that runs two Provisa nodes — one in region `eu`, one in region `us` — on the
+A Docker-free demo that runs two Provisa nodes, one in region `eu` and one in region `us`, on the
 embedded local platform, so the region-specific admin UX is visible end to end. Both nodes share one
 embedded Postgres (the model store and both regions' stores), each runs its own DuckDB engine, and a
 single fakeredis TCP server is the cache.

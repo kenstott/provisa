@@ -1,6 +1,6 @@
 # Python Client (`provisa-client`)
 
-Python client for Provisa. Provides four interfaces:
+The Python client for Provisa provides four interfaces:
 
 | Interface | Use case |
 | ----------- | ---------- |
@@ -256,7 +256,7 @@ The dialect posts the username and password to `/auth/login` once and holds the 
 
 ## DB-API 2.0
 
-Standard [PEP 249](https://peps.python.org/pep-0249/) interface. Works with any tool that accepts a DB-API connection.
+This is a standard [PEP 249](https://peps.python.org/pep-0249/) interface, so it works with any tool that accepts a DB-API connection.
 
 ```python
 from provisa_client import connect

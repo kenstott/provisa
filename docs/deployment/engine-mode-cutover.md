@@ -81,7 +81,7 @@ call 404.
 
 ### 4. Re-provision the shard and verify
 
-No shard survives the replacement. The first query re-creates it — cold start is ~60-90s.
+No shard survives the replacement. The first query re-creates it, with a cold start of ~60-90s.
 
 ```
 ./scripts/deploy-cloud.sh patch

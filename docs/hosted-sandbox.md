@@ -9,7 +9,7 @@ yours from every device you sign in on, and nobody else can be admitted to it.
 
 ## What the sandbox is
 
-It is a lightweight version of Provisa. The same product, with these limits:
+It is a lightweight version of Provisa, the same product with these limits:
 
 <!-- The values below are the settings' shipped defaults; tests/unit/test_hosted_sandbox_doc.py
      fails when this table and provisa/core/settings_catalog_sandbox.py disagree. A deployment

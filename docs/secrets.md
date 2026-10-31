@@ -1,8 +1,8 @@
 # Secrets
 
-**Names go in. Values never come back out.**
+**Secret names go in, and values never come back out.**
 
-No API endpoint returns a stored secret value, and no UI offers a "show" button. Someone who has lost a value replaces it, with the same call and the same form that created it. This isn't a policy choice: the read path simply doesn't exist in the code.
+No API endpoint returns a stored secret value, and no UI offers a "show" button. Someone who has lost a value replaces it, with the same call and the same form that created it. This isn't a policy choice. The read path doesn't exist in the code.
 
 ---
 
@@ -52,7 +52,7 @@ Five backends ship:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (secrets) | `azure-keyvault-secrets` |
 
-Selection fails closed: an unknown or unavailable backend stops startup with an error, and Provisa never falls back to another one quietly.
+Selection fails closed. An unknown or unavailable backend stops startup with an error, and Provisa never falls back to another one quietly.
 
 ### The backend's own credential
 

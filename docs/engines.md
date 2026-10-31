@@ -1,6 +1,6 @@
 # Federation Engines
 
-A source type says where data lives. A federation **engine** is the runtime Provisa compiles that data's queries into: the thing that holds the connectors, executes the plan, and owns the
+A source type says where data lives. A federation **engine** is the runtime Provisa compiles that data's queries into, which holds the connectors, executes the plan and owns the
 materialization store. The two are separate registries: `SourceType` in `provisa/core/models.py`
 lists what you can register, `_ENGINE_BUILDERS` in `provisa/federation/engine.py` lists what can run
 it. `trino` and several warehouses appear in both, meaning Provisa can read a Trino cluster as a
@@ -49,7 +49,7 @@ extensions the service offers.
 
 ## Warehouse engines
 
-Partial federators: the warehouse executes, and sources it cannot reach natively land into it
+These are partial federators. The warehouse executes, and sources it cannot reach natively land into it
 first. Each reads Arrow-natively where the vendor's client supports it.
 
 | Key | Engine | Notes |
@@ -62,7 +62,7 @@ first. Each reads Arrow-natively where the vendor's client supports it.
 
 ## SQLAlchemy engines
 
-One runtime with zero federation connectors: every source LANDs into the target store and is then
+This is one runtime with zero federation connectors, so every source LANDs into the target store and is then
 federated with plain SQL. `sqlalchemy` takes any URL from `$PROVISA_ENGINE_URL`; the 20 keys below
 are the same runtime pre-named per database so a picker can name the product rather than the
 library.
@@ -129,7 +129,7 @@ rather than failing: the wake happens at the top of `_execute_plan`, so the stat
 with its full retry budget intact once the engine is ready.
 
 **UI status.** A query waiting behind a cold start is not the same as a hung server. The UI
-polls `GET /data/engine/state` — which never wakes the engine — and shows a timed banner while
+polls `GET /data/engine/state`, which never wakes the engine, and shows a timed banner while
 the state is `starting`. The banner clears when the shard reports `ready`. Possible states:
 `always-on` (desktop/self-hosted or BYO coordinator), `ready`, `starting`, `stopped`.
 

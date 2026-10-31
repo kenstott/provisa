@@ -5,7 +5,7 @@ Provisa can convert existing Hasura metadata into a Provisa `config.yaml`, prese
 ## Interactive import (Admin → Import Hasura Config)
 
 The admin surface runs the same converters, so an import needs no shell access and no config file
-round-trip. Requires the `org_settings` capability; the import lands in the organization the
+round-trip. It requires the `org_settings` capability, and the import lands in the organization the
 session is acting in.
 
 1. **Upload.** Choose a zipped Hasura v2 metadata directory, a zipped DDN project, a consolidated

@@ -1,8 +1,8 @@
 # pgwire Conformance
 
-**Suite.** Postgres conformance suite plus psycopg and JDBC driver test suites. TBD: version recorded from CI.
+**Suite:** Postgres conformance suite plus psycopg and JDBC driver test suites. TBD: version recorded from CI.
 
-**Pass rate.** TBD: generated from CI.
+**Pass rate:** TBD: generated from CI.
 
 ## Deliberate differences
 

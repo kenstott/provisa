@@ -590,7 +590,7 @@ The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 1. **Open on the Sources page.** Show the registered sources and their types. Then show **Tables**: every source becomes the same kind of table.
 2. **Take the product tour.** The first time the UI opens, it offers a guided tour. The compass icon in the toolbar starts it again at any time. It registers a source, exposes tables and then queries them in several languages, in about five minutes. Press `Esc` or click outside to leave.
 3. **Run one query that crosses tables.** Use the SQL page. The retail query above joins orders to stores and totals revenue by region. To show a join across sources, join a retail table to a pet-store table, or add a toy source with `--source`.
-4. **Show the same query in GraphQL.** One model, many query languages.
+4. **Show the same query in GraphQL.** The one model answers in many query languages.
 5. **Show governance.** Open **Security** and show roles and row rules. Connect a SQL client to pgwire (`postgresql://admin:ignored@localhost:5439/provisa`) and show the same data there.
 6. **Ask Polly.** Polly is the data assistant, in a panel at the side of the UI. It needs an LLM key first. Put `ANTHROPIC_API_KEY=...` (or `OPENAI_API_KEY=...`) in your own `.env` at the repository root before the session. The launcher loads it. Without a key, Polly shows "Polly isn't set up yet" and a button to the AI Models page (`/admin/ai-models`). For a vendor other than Anthropic, set a model there too. The natural-language page in the tour uses seeded answers and works without one.
 7. **End on your customer's question.** Name the question first, then show it answered over their sources, in their domain's words.

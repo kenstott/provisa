@@ -1,8 +1,8 @@
 # RDF 1.1 Syntax Conformance
 
-**Suite.** W3C rdf-tests (Turtle, N-Triples). TBD: version recorded from CI.
+**Suite:** W3C rdf-tests (Turtle, N-Triples). TBD: version recorded from CI.
 
-**Pass rate.** TBD: generated from CI.
+**Pass rate:** TBD: generated from CI.
 
 ## Deliberate differences
 
