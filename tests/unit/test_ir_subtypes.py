@@ -214,6 +214,7 @@ def _hosts(*columns: tuple[str, str]) -> Table:
         domain_id="net",
         schema_name="public",
         table_name="hosts",
+        original_table_name="hosts",
         columns=[Column(name=n, data_type=t, visible_to=["admin"]) for n, t in columns],
     )
 
