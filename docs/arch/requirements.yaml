@@ -10116,7 +10116,10 @@
     the label of a domain in the org; creating or renaming a domain is refused by name when its label equals
     a registered table''s resolved label. An ephemeral session label matching a domain is refused at CREATE
     (REQ-2176). The check runs where the model is saved, so a config carrying such a collision is refused
-    on load and names both objects.'
+    on load and names both objects. (Amended 2026-10-29, THE ANSWER COMES FROM THE LABEL MAP:) Lead 2026-10-31:
+    db.labels, db.relationshipTypes and db.propertyKeys answer from the label map and read no source. A
+    form with YIELD columns or WHERE may run that answer as a VALUES relation on the engine; a statement
+    of one CALL with named YIELDs and no RETURN returns what it yields.'
   use_case: Returning schema introspection data from the semantic layer (not the database) lets Neo4j-compatible
     clients discover the graph schema via standard procedure calls.
   code:
@@ -89970,7 +89973,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a product''s Input Ports and Consumers cards always appear. The owner or team sees the list, or None
     when there is nothing. Any other reader sees that the list is visible to the product''s owner, never
     None, because the product may have entries that reader cannot see. What a non-owner may read does not
-    change.'
+    change. (Amended 2026-10-29, CONSUMERS ARE NOT IN THE CONTRACT:) Maintainer 2026-10-31: a contract is
+    what a product''s user reads, so it shows neither a Consumers card nor a consumer count. Consumers are
+    the owner''s, on the product''s own Consumers card, which names the port each one reads. In the contract,
+    Columns is a full-width panel, as Promises is.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
@@ -90665,7 +90671,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     as text. A value of a type the dialect does not support MUST be in PostgreSQL''s canonical text form,
     the form pgwire sends, when it leaves the source, on a landing and on a direct read alike: the compiler''s
     read form gives it, and nothing after that corrects it. An operation on such a value is chosen by its
-    type, not by the engine''s.'
+    type, not by the engine''s. (Amended 2026-10-29, EXTENSIONS AND TOTAL LANDING:) Maintainer 2026-10-31:
+    a function DuckDB SQL cannot express (xpath, xmltable, xml parsing, sha224/384/512, normalize, convert)
+    is served by a DuckDB extension where one answers as PostgreSQL does, as the first step of the rule;
+    no UDF is kept for it. Landing is total: a reader with no form reads the value as text, so no column
+    is left out of a replica and the not-landed refusal is removed. A replica built without a column is
+    rebuilt on deploy.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
