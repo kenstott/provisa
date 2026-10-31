@@ -91485,7 +91485,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     an access request names a list of roles and a set of columns, for example from the listed metadata,
     and needs no data product. Approval writes ordinary grants for those roles on those columns (REQ-2154),
     so what was granted is visible as any grant is. A product request is the same request with the product''s
-    member columns.'
+    member columns. (Amended 2026-10-29, THE DATA STEWARD APPROVES A COLUMN REQUEST:) Maintainer 2026-10-31:
+    an access request for columns goes to the data steward of their domain, who approves or declines it.
+    A product request still goes to the product''s owner role.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
