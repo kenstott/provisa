@@ -60,6 +60,11 @@ class MaterializeStoreUnconfigured(Exception):  # REQ-826
         )
 
 
+class StoreOutsideEngineDatabase(ValueError):
+    """A store an engine that reads its replicas only in the database it runs in cannot read:
+    rows landed there are never seen by a query, so it is refused rather than written."""
+
+
 class DriverClass(str, Enum):  # REQ-840
     BROAD = "broad"  # reaches many external source types (Trino)
     PARTIAL = "partial"  # reaches a subset (DuckDB)

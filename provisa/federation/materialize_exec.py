@@ -335,6 +335,10 @@ async def apply_persistence(
     raise ValueError(f"unhandled persistence outcome {persist!r}")  # pragma: no cover — validated
 
 
+#: Rows land in batches of this many. An ``IN`` list of them stays within every store's limit on
+#: one statement (Oracle's 1000 list items, SQL Server's 2100 parameters on a two-column key).
+LAND_BATCH_ROWS = 1000
+
 _ROW_CACHED_AT = "_row_cached_at"
 _ROW_EXPIRES_AT = "_row_expires_at"
 
