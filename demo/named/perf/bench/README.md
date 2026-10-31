@@ -30,7 +30,7 @@ A trial checks that the benchmark code works. Every cell should answer, and row 
 
 Run it from the repository root. `harness_trial.py` brings up a compose project of its own (`provisa-benchtrial-<pid>`) with the four bench sources on leased loopback ports. It seeds them with 40,000 orders, the smallest data at which every query in the matrix returns rows. It then starts an isolated Provisa server on `demo/named/perf/config.yaml` and runs `run_benchmark.py --skip-saturation` against it. On exit it removes the server and runs `docker compose down -v`.
 
-Repeat `--engine` to run several engines on one stack. `--engine pg` builds the perf Postgres image (`Dockerfile.postgres`) and federates through it. `--engine trino` adds a Trino coordinator, a Zaychik proxy built from `zaychik/` and a MinIO for the OTel store. Both engines run in containers on the host's network, so they need a Linux host with Docker and its compose plugin; on any other platform the trial refuses them. `--engine duckdb` runs anywhere. Publishing ClickHouse's native port 9000 for `--engine pg` stands in for the attach ignoring the source's port, so that port must be free.
+Repeat `--engine` to run several engines on one stack. `--engine pg` builds the perf Postgres image (`Dockerfile.postgres`) and federates through it. `--engine trino` adds a Trino coordinator, a Zaychik proxy built from `zaychik/` and a MinIO for the OTel store. Both engines run in containers on the host's network, so they need a Linux host with Docker and its compose plugin; on any other platform the trial refuses them. `--engine duckdb` runs anywhere.
 
 `--optimistic` runs the optimistic ramp on all 11 transports in place of the matrix.
 

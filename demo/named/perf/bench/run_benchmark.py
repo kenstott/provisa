@@ -189,8 +189,8 @@ class QueryResult:
     # "nocache": no request opts into the response cache (it is opt-in, REQ-544 amended
     # 2026-09-30) — no hit is possible, so ALL iterations are real, independent executions and the
     # full percentile set over them is a statistically valid "cold" measurement (not one sample).
-    # "cache": the request opts in (GraphQL @cached; SQL `-- @provisa cache=true`; gRPC and
-    # Cypher have no opt-in and never cache) — iteration 1 is dropped before computing
+    # "cache": the request opts in (GraphQL @cached; SQL `-- @provisa cache=true`; Cypher
+    # `// @provisa cache=true`; gRPC sends none here and never caches) — iteration 1 is dropped before computing
     # percentiles (per-maintainer instruction) because it is not guaranteed cache-cold (a prior
     # pass, or another query sharing the same governed shape/role, may have already warmed this
     # exact cache key), so it is neither a reliable cold sample nor a reliable warm one.
@@ -459,7 +459,9 @@ class BoltTransport(Transport):
 
     def __init__(self, host: str, port: int, role: str = "org_admin"):
         self._driver = None
-        self._session = None
+        self._thread = threading.local()
+        self._sessions: list = []
+        self._sessions_lock = threading.Lock()
         try:
             # provisa/bolt/session.py's no-auth branch (_resolve_user) offers EVERY compiled
             # role as selectable and takes role_id = roles[0] — with auth=None (no principal at
@@ -489,30 +491,40 @@ class BoltTransport(Transport):
 
             self._driver = GraphDatabase.driver(f"bolt://{host}:{port}", auth=basic_auth(role, ""))
             self._driver.verify_connectivity()
-            # One session for the transport's whole lifetime, matching FlightTransport's single
-            # persistent FlightClient (and every other transport's own connection reuse): a
-            # session opened/closed per call pays a real network RESET round trip on close
+            # One session per thread for the transport's whole lifetime, matching
+            # FlightTransport's single persistent FlightClient (and every other transport's own
+            # connection reuse). Per thread because a neo4j Session is not thread-safe: the
+            # saturation ramp's threads sharing one failed `Expected structure, found marker`,
+            # where the driver itself is safe to share. A session opened/closed per call pays a real network RESET round trip on close
             # (confirmed live: neo4j's driver, _sync/io/_pool.py's release(), calls
             # connection.reset() -- an actual RESET-message send+consume over the wire -- for
             # any connection not already in the reset state, which a just-run auto-commit query
             # never is). That per-call RESET is real Bolt-wire-protocol traffic a steady-state
             # client never pays (it keeps its session open across queries), so measuring it on
             # every iteration overstated Bolt's true per-query overhead.
-            self._session = self._driver.session()
+            self._thread_session()
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
+
+    def _thread_session(self):
+        session = getattr(self._thread, "session", None)
+        if session is None:
+            assert self._driver is not None
+            session = self._thread.session = self._driver.session()
+            with self._sessions_lock:
+                self._sessions.append(session)
+        return session
 
     def available(self) -> bool:
         return self._driver is not None
 
     def run_cypher(self, cypher: str, params: dict) -> tuple[int, int, float]:
         assert self._driver is not None
-        assert self._session is not None
         # Raw neo4j Records, not dicts — same reasoning as PgwireTransport: dict() conversion
         # exists only to feed _payload_bytes; _ByteEstimator only pays it for sampled batches.
         batch: list = []
         estimator = _ByteEstimator()
-        result = self._session.run(cypher, params)  # type: ignore[arg-type]
+        result = self._thread_session().run(cypher, params)  # type: ignore[arg-type]
         for r in result:
             batch.append(r)
             if len(batch) >= _FETCH_BATCH_SIZE:
@@ -523,8 +535,8 @@ class BoltTransport(Transport):
         return estimator.row_count, estimator.byte_count, estimator.overhead_s
 
     def close(self) -> None:
-        if self._session:
-            self._session.close()
+        for session in self._sessions:
+            session.close()
         if self._driver:
             self._driver.close()
 
@@ -1021,6 +1033,8 @@ _CALL_METHOD: dict[str, str] = {
     "grpc": "run_grpc",
 }
 
+_CACHE_HINT = {"sql": "-- @provisa cache=true", "cypher": "// @provisa cache=true"}
+
 
 def _run_sequential(
     transport: Transport, q: Query, method: str, text: str | dict, no_cache: bool = False
@@ -1037,10 +1051,10 @@ def _run_sequential(
         dialect=method,
     )
     call = getattr(transport, _CALL_METHOD[method])
-    if method == "sql" and not no_cache and isinstance(text, str):
-        # REQ-544 (amended 2026-09-30): pgwire and Flight SQL opt into the response cache per
-        # statement with a `-- @provisa cache=true` comment; the "nocache" pass sends none.
-        text = "-- @provisa cache=true\n" + text
+    if method in _CACHE_HINT and not no_cache and isinstance(text, str):
+        # REQ-544 (amended 2026-09-30): pgwire, Flight SQL, Bolt and /data/cypher opt into the
+        # response cache per statement with a comment; the "nocache" pass sends none.
+        text = f"{_CACHE_HINT[method]}\n{text}"
     for i in range(q.iterations):
         t0 = time.perf_counter()
         try:
