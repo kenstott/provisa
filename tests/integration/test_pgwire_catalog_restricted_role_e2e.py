@@ -143,8 +143,8 @@ def test_a_listed_column_the_role_is_not_served_answers_false(server):
     assert _read(
         server,
         _RESTRICTED,
-        "SELECT has_column_privilege('customers', 'email', 'SELECT'), "
-        "has_column_privilege('customers', 'name', 'SELECT')",
+        "SELECT has_column_privilege('sales_analytics.customers', 'email', 'SELECT'), "
+        "has_column_privilege('sales_analytics.customers', 'name', 'SELECT')",
     ) == [(False, True)]
 
 
