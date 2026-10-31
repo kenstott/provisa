@@ -62,7 +62,7 @@ class RoleState(SimpleNamespace):
         if "compiled_query_cache" not in attrs:
             from provisa.compiler.compiled_query_cache import CompiledQueryCache
 
-            attrs["compiled_query_cache"] = CompiledQueryCache()
+            attrs["compiled_query_cache"] = CompiledQueryCache(ttl_seconds=0.0, expires=False)
         if "org_registry" not in attrs:
             # As the real state: it always holds a registry, empty until an org's runtime is built.
             from provisa.api.org_runtime import OrgRegistry

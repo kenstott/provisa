@@ -153,7 +153,9 @@ def _sparql(boot, role: str = "reader") -> str:
             content_type="application/json",
         )
     )
-    predicate = next(p["iri"] for p in vocabulary["predicates"] if p["iri"].endswith("#region"))
+    predicate = next(
+        p["iri"] for p in vocabulary["predicates"] if p["iri"].endswith("ledger#region")
+    )
     table = predicate.rpartition("#")[0]
     query = f"SELECT ?region WHERE {{ ?l a <{table}> . ?l <{predicate}> ?region }}"
     return _call(
