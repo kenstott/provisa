@@ -61,7 +61,7 @@ def _source() -> SimpleNamespace:
     )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def clickhouse_table():
     client = clickhouse_connect.get_client(
         host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
@@ -84,7 +84,7 @@ def clickhouse_table():
     client.close()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def runtime():
     pg = start_local_postgres(fdws=True)
     rt = PgFederationRuntime(engine_dsn=pg.dsn())
