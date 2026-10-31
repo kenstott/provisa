@@ -90028,7 +90028,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
     by ODPS outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer
     2026-10-30: Support and team, Servers, Pricing, and Custom properties and tags are cards at the same
-    level as Details, Versions, Columns and SLAs, not panels inside Details.'
+    level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
+    TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
+    tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
+    declared fold into one quiet line per panel, in place of a row each.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
