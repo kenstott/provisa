@@ -251,7 +251,10 @@ def _pg_offset(offset) -> str:
 
 def _pg_clock(v) -> str:
     """A time of day as PostgreSQL writes it: HH:MM:SS, then the fraction of a second with its
-    trailing zeros dropped, and the UTC offset when the value has one."""
+    trailing zeros dropped, and the UTC offset when the value has one. A value read as its text
+    is that text (REQ-2171)."""
+    if isinstance(v, str):
+        return v
     text = f"{v.hour:02d}:{v.minute:02d}:{v.second:02d}"
     if v.microsecond:
         text += f".{v.microsecond:06d}".rstrip("0")
@@ -288,8 +291,13 @@ def _micros_since_2000_utc(dt):
     return _micros_since_2000(dt)
 
 
+_FULL_OFFSET = re.compile(r"[+-]\d\d:\d\d$")
+
+
 def _timetz_to_pg_binary(t):
     """timetz binary: int64 microseconds since midnight + int32 zone offset in seconds WEST of UTC."""
+    if isinstance(t, str):  # read as its PostgreSQL text (REQ-2171)
+        t = datetime.time.fromisoformat(t if _FULL_OFFSET.search(t) else t + ":00")
     offset = t.utcoffset()
     if offset is None:
         raise ValueError(f"timetz value without a time zone: {t!r}")
@@ -494,6 +502,44 @@ def _tsvector_binary(r):
             + struct.pack(f"!H{len(positions)}H", len(positions), *positions)
         )
     return struct.pack("!i", len(lexemes)) + b"".join(lexemes)
+
+
+def _text_only(name):
+    """A type held as its text whose binary form that text does not give: its value is built by
+    PostgreSQL itself. Listed as a difference in docs/conformance/pgwire.md."""
+
+    def binary(_value):
+        raise ValueError(f"{name} is sent in text format only")
+
+    return binary
+
+
+def _text_bytes(r):
+    return str(r).encode("utf-8")
+
+
+def _unsigned_binary(width):
+    """xid, cid, xid8: an unsigned integer, whose text form is its digits."""
+    return lambda r: int(r).to_bytes(width, "big", signed=False)
+
+
+def _tid_binary(r):
+    """tidsend: the block number and offset of ``(block,offset)``."""
+    block, offset = str(r).strip("()").split(",")
+    return struct.pack("!IH", int(block), int(offset))
+
+
+def _snapshot_binary(r):
+    """txid_snapshot_send / pg_snapshot_send: the in-progress count, xmin, xmax and each xid of
+    ``xmin:xmax:xip,xip``."""
+    xmin, xmax, xip = str(r).split(":")
+    running = [int(x) for x in xip.split(",") if x]
+    return struct.pack(f"!iqq{len(running)}q", len(running), int(xmin), int(xmax), *running)
+
+
+def _jsonpath_binary(r):
+    """jsonpath_send: a version byte, then its text."""
+    return b"\x01" + _text_bytes(r)
 
 
 def _wkb_not_sent(r):
@@ -753,6 +799,33 @@ BVTYPE_TO_PGTYPE = {
     BVType.BIT: (1560, str, _bit_binary),
     BVType.VARBIT: (1562, str, _bit_binary),
     BVType.TSVECTOR: (3614, str, _tsvector_binary),
+    # PostgreSQL's other built-in types (REQ-2171), each value its canonical text.
+    BVType.CHAR: (18, str, lambda r: str(r).encode("latin-1")),
+    BVType.NAME: (19, str, _text_bytes),
+    BVType.TID: (27, str, _tid_binary),
+    BVType.XID: (28, str, _unsigned_binary(4)),
+    BVType.CID: (29, str, _unsigned_binary(4)),
+    BVType.PG_NODE_TREE: (194, str, _text_bytes),
+    BVType.ACLITEM: (1033, str, _text_only("aclitem")),
+    BVType.REFCURSOR: (1790, str, _text_bytes),
+    BVType.REGPROCEDURE: (2202, str, _text_only("regprocedure")),
+    BVType.REGOPER: (2203, str, _text_only("regoper")),
+    BVType.REGOPERATOR: (2204, str, _text_only("regoperator")),
+    BVType.TXID_SNAPSHOT: (2970, str, _snapshot_binary),
+    BVType.PG_NDISTINCT: (3361, str, _text_only("pg_ndistinct")),
+    BVType.PG_DEPENDENCIES: (3402, str, _text_only("pg_dependencies")),
+    BVType.TSQUERY: (3615, str, _text_only("tsquery")),
+    BVType.GTSVECTOR: (3642, str, _text_only("gtsvector")),
+    BVType.REGCONFIG: (3734, str, _text_only("regconfig")),
+    BVType.REGDICTIONARY: (3769, str, _text_only("regdictionary")),
+    BVType.JSONPATH: (4072, str, _jsonpath_binary),
+    BVType.REGROLE: (4096, str, _text_only("regrole")),
+    BVType.REGCOLLATION: (4191, str, _text_only("regcollation")),
+    BVType.PG_BRIN_BLOOM_SUMMARY: (4600, str, _text_only("pg_brin_bloom_summary")),
+    BVType.PG_BRIN_MINMAX_MULTI_SUMMARY: (4601, str, _text_only("pg_brin_minmax_multi_summary")),
+    BVType.PG_MCV_LIST: (5017, str, _text_only("pg_mcv_list")),
+    BVType.PG_SNAPSHOT: (5038, str, _snapshot_binary),
+    BVType.XID8: (5069, str, _unsigned_binary(8)),
 }
 
 for _range_type, _multirange_type, _multirange_oid in (
@@ -829,11 +902,17 @@ BVTYPE_TO_PGTYPE.update(
 
 def _vector_entry(element: BVType, vector_oid: int):
     """oidvector / int2vector: written as their elements separated by spaces (oidvectorout,
-    int2vectorout), sent as a one-dimensional array of the element type (array_send)."""
+    int2vectorout), sent as a one-dimensional array of the element type (array_send). A column
+    read as its PostgreSQL text (REQ-2171) is that text."""
+    array_binary = _array_entry(element, vector_oid)[2]
+
+    def binary(values):
+        return array_binary([int(v) for v in values.split()] if isinstance(values, str) else values)
+
     return (
         vector_oid,
-        lambda values: " ".join(str(v) for v in values),
-        _array_entry(element, vector_oid)[2],
+        lambda values: values if isinstance(values, str) else " ".join(str(v) for v in values),
+        binary,
     )
 
 

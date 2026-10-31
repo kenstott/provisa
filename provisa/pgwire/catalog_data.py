@@ -19,6 +19,7 @@ through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path
 from __future__ import annotations
 
 from provisa.core.pg_money import LC_MONETARY
+from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_tables import (
     CLIENT_RELATIONS,
@@ -615,6 +616,8 @@ _DESCRIBED_TYPE_OIDS = sorted(
         # The types a result column is sent as besides: a cast's (cast_types) and an object
         # identifier's (catalog_regs).
         | {1042, 2205, 2206, 4089}
+        # REQ-2171: a registered column of a built-in type is sent as it.
+        | {sub.pg_oid for sub in SUBTYPES.values() if sub.pg_oid in TYPES}
     )
     - {row[0] for row in _PG_TYPE_ROWS}
 )
@@ -630,6 +633,12 @@ for _oid in _DESCRIBED_TYPE_OIDS:
         (_ns, _name, _kind, _base or None, _element or None, TYPES[_oid][11] if _element else None)
         + (None,),
     )
+
+# REQ-2171: a registered column of a built-in type is stored as PostgreSQL 17 stores it.
+for _sub in SUBTYPES.values():
+    if _sub.pg_oid in TYPES:
+        _, _, _len, _, _, _, _, _byval, _align, _storage, *_ = TYPES[_sub.pg_oid]
+        _PG_OID_ATTR_META.setdefault(_sub.pg_oid, (_len, _byval, _align, _storage))
 
 
 def typeinfo() -> dict[int, tuple]:

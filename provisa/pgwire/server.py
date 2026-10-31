@@ -65,7 +65,7 @@ from provisa.otel_compat import HeldRequestSpan
 from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_REDIRECTED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
 from provisa.executor.result import ResultStream
-from provisa.core.ir_types import SUBTYPES
+from provisa.core.ir_types import HELD_AS_TEXT, SUBTYPES
 from provisa.pgwire import advisory_locks
 from provisa.pgwire.constant_arguments import is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
@@ -582,7 +582,7 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "INET": BVType.INET,
     "PG_LSN": BVType.PG_LSN,
     # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
-    **{name.upper(): BVType[name.upper()] for name in SUBTYPES},
+    **{name.upper(): BVType[name.upper().strip('"')] for name in SUBTYPES},
     "BIT VARYING": BVType.VARBIT,
 }
 _INT_TYPES = {
@@ -654,6 +654,8 @@ _WIRE_FAMILIES = (
             BVType.TSVECTOR,
             BVType.MACADDR,
             BVType.MACADDR8,
+            # REQ-2171: every type held as its text, which the column is read as.
+            *(BVType[name.upper().strip('"')] for name in HELD_AS_TEXT),
         }
     ),
     frozenset({BVType.STRINGARRAY, BVType.ACLITEMARRAY, BVType.CHARARRAY, BVType.NAMEARRAY}),
@@ -692,11 +694,13 @@ def _reg_binary(value: Any) -> bytes:
     return value.to_bytes(4, "big", signed=False)
 
 
-def _named_text(value: dict) -> str:  # REQ-2167
-    return value["name"]
+def _named_text(value: dict | str) -> str:  # REQ-2167
+    return value if isinstance(value, str) else value["name"]  # a source's own column: its text
 
 
-def _named_binary(value: dict) -> bytes:  # REQ-2167
+def _named_binary(value: dict | str) -> bytes:  # REQ-2167
+    if isinstance(value, str):
+        raise TypeError(f"a reg* value read as its text form {value!r} has no binary form here")
     return value["oid"].to_bytes(4, "big", signed=False)
 
 

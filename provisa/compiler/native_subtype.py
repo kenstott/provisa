@@ -15,9 +15,10 @@ join or one of the type's own operators touches it, what it means is the native 
 orders by address, not as text; a range overlaps another by its bounds. Each such use of the
 column in the physical statement is wrapped in the marker ``provisa.transpiler.native_subtype``
 resolves once the routed dialect is known -- into the dialect's native type, an emulation, or a
-refusal by name. A column read as a value (a select list, a function's argument) is left as it
-is: its value is its text form. This runs in both physical rewrites, beside the datasource cast
-(REQ-1965), so it is derived with the governed statement and kept with it.
+refusal by name. A column projected as a value, held as text, is wrapped in the read marker, which
+resolves into the subtype's read form there: PostgreSQL's canonical text, nothing after correcting
+it. This runs in both physical rewrites, beside the datasource cast (REQ-1965), so it is derived
+with the governed statement and kept with it.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from provisa.transpiler.native_subtype import (
     OPERATORS,
     is_spatial_call,
     marked,
+    read_marker,
     subtype_marker,
 )
 
@@ -40,7 +42,7 @@ from provisa.transpiler.native_subtype import (
 SubtypeColumns = dict[tuple[str, str], dict[str, str]]
 
 # The semantics a comparison, a membership or an ordering on a column changes.
-_ORDERED = frozenset({"address", "mac", "range", "multirange"})
+_ORDERED = frozenset({"address", "mac", "range", "multirange", "zoned_time"})
 _RANGED = frozenset({"range", "multirange"})
 # A range's own value operators, which on any other column are arithmetic.
 _RANGE_OPERATORS = (exp.Add, exp.Sub, exp.Mul)
@@ -147,4 +149,40 @@ def mark_subtype_operations(sql: str, subtype_columns: SubtypeColumns) -> str:
     return tree.sql(dialect="postgres") if changed else sql
 
 
-__all__ = ["SubtypeColumns", "mark_subtype_operations"]
+def mark_subtype_reads(sql: str, read_columns: SubtypeColumns) -> str:
+    """``sql`` (PostgreSQL dialect, physical table names) with every column of ``read_columns``
+    projected by a select list wrapped in the read marker, keeping its output name. Idempotent, and
+    a statement that names no affected table is returned as given, unparsed."""
+    if not read_columns:
+        return sql
+    lowered = sql.lower()
+    if not any(table in lowered for (_schema, table) in read_columns):
+        return sql
+    from provisa.compiler.sql_rewrite import _scope_tables
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    if not any(
+        (t.db.lower(), t.name.lower()) in read_columns for t in tree.find_all(exp.Table) if t.db
+    ):
+        return sql
+    scopes: dict[int, dict[str, tuple[str, str]]] = {}
+    changed = False
+    for col in list(tree.find_all(exp.Column)):
+        parent = col.parent
+        aliased = isinstance(parent, exp.Alias) and isinstance(parent.parent, exp.Select)
+        if isinstance(col.this, exp.Star) or not (aliased or isinstance(parent, exp.Select)):
+            continue
+        scope = col.find_ancestor(exp.Select)
+        if scope is None or (parent if aliased else col) not in scope.expressions:
+            continue  # a clause of the select, not its list
+        tables = scopes.setdefault(id(scope), _scope_tables(scope))
+        subtype = _resolve(col, tables, read_columns)
+        if subtype is None:
+            continue
+        read = read_marker(col.copy(), subtype)
+        col.replace(read if aliased else exp.alias_(read, col.name, quoted=True))
+        changed = True
+    return tree.sql(dialect="postgres") if changed else sql
+
+
+__all__ = ["SubtypeColumns", "mark_subtype_operations", "mark_subtype_reads"]

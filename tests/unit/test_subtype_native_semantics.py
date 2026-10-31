@@ -289,17 +289,18 @@ def _landing_table(*columns):
 _HOSTS_TABLE = (("id", "integer", None), ("ip", "text", "inet"), ("area", "text", "geography"))
 
 
-def test_a_column_no_reader_can_land_in_its_own_form_is_left_out_and_named():
+def test_a_column_a_reader_has_no_form_of_its_own_for_lands_as_its_text():
     from provisa.federation.data_replicator import COLUMN_NOT_LANDED, not_landed_notes
     from provisa.federation.residency import resolve_landing_args
 
-    # A PostgreSQL source on the DuckDB engine: the engine has a form for inet, not for geography.
+    # A PostgreSQL source on the DuckDB engine: the engine reads a geography as text.
     args = resolve_landing_args(
         _landing_source("postgres"), _landing_table(*_HOSTS_TABLE), platform="duckdb"
     )
-    assert args.columns == [("id", "integer"), ("ip", "text")]
-    assert args.not_landed == (("area", "geography", "duckdb"),)
-    (note,) = not_landed_notes(args.not_landed)
+    assert args.columns == [("id", "integer"), ("ip", "text"), ("area", "text")]
+    assert args.not_landed == ()
+    # A build that left a column out still names it.
+    (note,) = not_landed_notes((("area", "geography", "duckdb"),))
     assert (note.code, note.params) == (
         COLUMN_NOT_LANDED,
         {"column": "area", "subtype": "geography", "reader": "duckdb"},
@@ -347,7 +348,7 @@ def test_the_landing_reads_each_subtyped_column_in_its_own_form():
     )
 
 
-def test_an_adapter_source_lands_only_what_it_delivers_in_the_subtypes_form():
+def test_an_adapter_source_lands_what_it_delivers():
     from provisa.federation.residency import resolve_landing_args
 
     es = _landing_source(None, kind="elasticsearch")
@@ -356,8 +357,8 @@ def test_an_adapter_source_lands_only_what_it_delivers_in_the_subtypes_form():
         _landing_table(("ip", "text", "inet"), ("where", "text", "geography")),
         platform="duckdb",
     )
-    assert args.columns == [("ip", "text")]
-    assert args.not_landed == (("where", "geography", "elasticsearch"),)
+    assert args.columns == [("ip", "text"), ("where", "text")]
+    assert args.not_landed == ()
 
 
 def test_a_read_of_a_column_not_landed_is_refused_by_name():

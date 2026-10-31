@@ -97,6 +97,33 @@ class BVType(enum.Enum):
     TSMULTIRANGE = 69
     TSTZMULTIRANGE = 70
     DATEMULTIRANGE = 71
+    # PostgreSQL's other built-in types (REQ-2171), each held as its text and sent as its type.
+    CHAR = 72
+    NAME = 73
+    TID = 74
+    XID = 75
+    CID = 76
+    PG_NODE_TREE = 77
+    ACLITEM = 78
+    REFCURSOR = 79
+    REGPROCEDURE = 80
+    REGOPER = 81
+    REGOPERATOR = 82
+    TXID_SNAPSHOT = 83
+    PG_NDISTINCT = 84
+    PG_DEPENDENCIES = 85
+    TSQUERY = 86
+    GTSVECTOR = 87
+    REGCONFIG = 88
+    REGDICTIONARY = 89
+    JSONPATH = 90
+    REGROLE = 91
+    REGCOLLATION = 92
+    PG_BRIN_BLOOM_SUMMARY = 93
+    PG_BRIN_MINMAX_MULTI_SUMMARY = 94
+    PG_MCV_LIST = 95
+    PG_SNAPSHOT = 96
+    XID8 = 97
 
 
 class RawDataRowBytes(bytes):
