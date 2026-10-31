@@ -290,7 +290,7 @@ def test_the_catalog_reports_a_subtype_as_its_postgresql_type(name):
     assert _physical_to_pg_name(name) == name
     assert {row[0]: row[1] for row in pg_type_rows()}[oid] == name.strip('"')
     assert oid in _PG_OID_ATTR_META
-    assert _TYPEINFO[oid][1] == name
+    assert _TYPEINFO[oid][1] == name.strip('"')
 
 
 def _catalog_ctx():

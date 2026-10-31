@@ -635,7 +635,19 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
 
 _WIRE_FAMILIES = (
     frozenset(
-        {BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID, BVType.REGPROC, BVType.REGTYPE}
+        {
+            BVType.SMALLINT,
+            BVType.INTEGER,
+            BVType.BIGINT,
+            BVType.OID,
+            BVType.REGPROC,
+            BVType.REGTYPE,
+            # A catalog's transaction and tuple ids are served as their numbers.
+            BVType.XID,
+            BVType.CID,
+            BVType.XID8,
+            BVType.TID,
+        }
     ),
     frozenset({BVType.REAL, BVType.FLOAT}),
     frozenset({BVType.REALARRAY, BVType.FLOATARRAY}),
