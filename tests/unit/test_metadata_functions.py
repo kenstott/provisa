@@ -123,7 +123,10 @@ def test_no_form_is_left_native_on_the_control_plane():
     """A form that named its own function would run the control plane's: only format_type does,
     which reads no object but a type, and whose every other type is PostgreSQL's own."""
     for (name, _), form in FORMS.items():
-        called = {f.name.lower() for f in sqlglot.parse_one(form.sql).find_all(exp.Anonymous)}
+        called = {
+            f.name.lower()
+            for f in sqlglot.parse_one(form.sql, read="postgres").find_all(exp.Anonymous)
+        }
         assert name not in called or name == "format_type"
 
 

@@ -385,11 +385,44 @@ def _reg_cast(node: exp.Cast) -> exp.Expr | None:
     return None
 
 
+#: Calls answering a relation or a schema: an oid wherever a statement computes with one, and with
+#: its name where it is a result column, as a cast to the type is.
+_CALLS_OF_REG_TYPE = {
+    "pg_filenode_relation": "regclass",
+    "pg_get_replica_identity_index": "regclass",
+    "pg_partition_root": "regclass",
+    "regclass": "regclass",
+    "to_regclass": "regclass",
+    "to_regnamespace": "regnamespace",
+}
+
+
+def _as_cast(select: exp.Expr) -> None:
+    target = select.this if isinstance(select, exp.Alias) else select
+    called = _call(target)
+    if called is None:
+        return
+    name = called[0].name.lower()
+    reg = _CALLS_OF_REG_TYPE.get(name)
+    if reg is None:
+        return
+    operand = called[0].expressions[0] if name == "regclass" else called[1]
+    cast_to = exp.Cast(
+        this=operand.copy(), to=exp.DataType.build(reg, dialect="postgres", udt=True)
+    )
+    if select is target:
+        select.replace(exp.alias_(cast_to, name))
+    else:
+        target.replace(cast_to)
+
+
 def _result_regs(tree: exp.Expr) -> None:
     """A regclass or regnamespace result column is sent with its oid and its name together: the
     wire's text form is the name, its binary form the oid."""
     if not isinstance(tree, exp.Select):
         return
+    for select in list(tree.selects):
+        _as_cast(select)
     for select in tree.selects:
         target = select.this if isinstance(select, exp.Alias) else select
         if not isinstance(target, exp.Cast):
@@ -400,7 +433,7 @@ def _result_regs(tree: exp.Expr) -> None:
         oid = f"({_oid_sql(reg, target.this)})"
         pair = _parsed(
             f"CASE WHEN {oid} IS NOT NULL THEN "
-            f"JSON_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {_name_sql(reg, oid)}) END"
+            f"JSONB_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {_name_sql(reg, oid)}) END"
         )
         if select is target:
             select.replace(exp.alias_(pair, reg))
@@ -549,8 +582,6 @@ def _named_relation_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
     PostgreSQL reads the argument, and one naming no relation is its error."""
     if not (args and isinstance(args[0], exp.Literal) and args[0].is_string):
         return None
-    if name == "regclass" and len(args) == 1:
-        return _parsed(f"({_class_oid(args[0].this)})")
     if name == "setval":
         oid = _parsed(f"({_class_oid(args[0].this)})")
         return exp.Anonymous(this=name, expressions=[oid, *(a.copy() for a in args[1:])])

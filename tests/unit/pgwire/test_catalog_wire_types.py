@@ -185,7 +185,7 @@ def test_a_regproc_is_its_function_name_as_text_and_its_oid_as_binary():
         (REGPROC, "bthandler", (330).to_bytes(4, "big"))
     ]
     assert _wire("SELECT typinput FROM pg_catalog.pg_type WHERE oid = 23") == [
-        (REGPROC, "-", (0).to_bytes(4, "big"))
+        (REGPROC, "int4in", (42).to_bytes(4, "big"))
     ]
 
 
@@ -354,10 +354,10 @@ def test_psqls_text_search_and_large_object_lists_run():
 
 
 def test_the_available_extensions_are_the_installed_ones(monkeypatch):
-    from provisa.pgwire import catalog_populate
+    from provisa.pgwire import catalog_route
 
     monkeypatch.setattr(
-        catalog_populate,
+        catalog_route,
         "extension_rows",
         lambda: [(90000, "vector", 10, 11, False, "0.8.0", None, None)],
     )
@@ -424,7 +424,7 @@ _ANSWERED_ALONE = {
     'pg_catalog."pg_get_indexdef"(NULL::oid)': (TEXT, None),
     'pg_catalog."pg_get_functiondef"(NULL::oid)': (TEXT, None),
     'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, None),
-    'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, "UTF8"),
+    'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, None),
     'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, None),
     "pg_total_relation_size(NULL::regclass)": (INT8, None),
     'pg_catalog."pg_tablespace_location"(NULL::oid)': (TEXT, None),

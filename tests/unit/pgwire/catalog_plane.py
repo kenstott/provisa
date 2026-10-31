@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from psycopg.types.string import TextLoader
 from sqlalchemy.engine import Engine
 
 from provisa.core import schema_org
@@ -193,6 +194,7 @@ class Plane:
         setting, values = set_statement(settings)
         positional = dict(zip([f"p{i}" for i in range(len(values))], values))
         with self.engine.begin() as conn:
+            conn.connection.driver_connection.adapters.register_loader("json", TextLoader)
             conn.exec_driver_sql(_named(setting), positional)
             try:
                 result = conn.exec_driver_sql(addressed.replace("%", "%%"))

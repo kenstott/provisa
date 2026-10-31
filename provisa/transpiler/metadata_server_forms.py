@@ -151,8 +151,13 @@ _VOID = "''"
 _BINARY_UPGRADE = raising(
     "55P02", "'function can only be called when server is in binary upgrade mode'"
 )
-_NO_SLOTS = raising("55000", "'replication slots can only be used if max_replication_slots > 0'")
-_NO_ORIGINS = raising("55000", "'cannot manage replication origins when max_replication_slots = 0'")
+_NO_SLOTS = raising(
+    "55000", "'replication slots can only be used if \"max_replication_slots\" > 0'"
+)
+_NO_ORIGINS = raising(
+    "55000",
+    "'cannot query or manipulate replication origin when \"max_replication_slots\" is 0'",
+)
 _NOT_IN_RECOVERY = raising("55000", "'recovery is not in progress'")
 _NO_LSN = "'0/0'"
 _FIXED_STATS = "('archiver', 'bgwriter', 'checkpointer', 'io', 'slru', 'wal')"
@@ -740,7 +745,7 @@ def _qualifier(name: str) -> str:
 
 def _pair(oid: str, name: str) -> str:
     """An object identifier value with the name its text form writes."""
-    return f"JSON_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {name})"
+    return f"JSONB_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {name})"
 
 
 _CLASSES = "meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace"
@@ -765,16 +770,16 @@ def _to_reg(a: _Answers) -> None:
     a.strict(
         "to_regclass",
         "name",
-        "JSON",
-        f"(SELECT {_pair('_c.oid', _named_in_path('_n.nspname', '_c.relname'))} FROM {_CLASSES} "
+        "OID",
+        f"(SELECT _c.oid FROM {_CLASSES} "
         f"WHERE _c.relname = {_last_part('name')} AND (_n.nspname = {_qualifier('name')} "
         f"OR ({_qualifier('name')} IS NULL AND _n.nspname IN {_IN_PATH})) LIMIT 1)",
     )
     a.strict(
         "to_regnamespace",
         "name",
-        "JSON",
-        f"(SELECT {_pair('_n.oid', '_n.nspname')} FROM meta.catalog_pg_namespace _n "
+        "OID",
+        f"(SELECT _n.oid FROM meta.catalog_pg_namespace _n "
         f"WHERE _n.nspname = {_last_part('name')})",
     )
     a.strict(
@@ -825,7 +830,13 @@ def _to_reg(a: _Answers) -> None:
         "name",
         "INTEGER",
         f"CASE WHEN {_type_lookup("REGEXP_REPLACE(name, '\\s*\\(.*$', '')")} IS NOT NULL "
-        "THEN COALESCE(CASE WHEN LOWER(name) ~ '^\\s*(numeric|decimal)\\s*\\(' THEN "
+        "THEN COALESCE(CASE WHEN LOWER(name) ~ '^\\s*(time|timestamp|interval)' THEN "
+        "CAST((REGEXP_MATCH(name, '\\((\\d+)\\)'))[1] AS INTEGER) "
+        "WHEN LOWER(name) ~ '^\\s*text\\s*\\(' THEN "
+        + raising("42601", "'type modifier is not allowed for type \"text\"'").replace(
+            _ITS_TYPE, "INTEGER"
+        )
+        + " WHEN LOWER(name) ~ '^\\s*(numeric|decimal)\\s*\\(' THEN "
         "CAST(SPLIT_PART((REGEXP_MATCH(name, '\\(([^)]*)\\)'))[1], ',', 1) AS INTEGER) * 65536 "
         "+ COALESCE(CAST(NULLIF(TRIM(SPLIT_PART((REGEXP_MATCH(name, '\\(([^)]*)\\)'))[1], ',', 2)), "
         "'') AS INTEGER), 0) + 4 ELSE "
@@ -888,7 +899,8 @@ def _type_names(vector: str, separator: str, qualified: bool) -> str:
     return (
         f"(SELECT COALESCE(STRING_AGG({name}, '{separator}' ORDER BY _v._i), '') FROM "
         f"UNNEST(CAST(REGEXP_SPLIT_TO_ARRAY(TRIM(BOTH '{{}}' FROM CAST({vector} AS TEXT)), '[ ,]+') "
-        "AS _OID)) WITH ORDINALITY _v(_k, _i)"
+        "AS _TEXT)) WITH ORDINALITY _v0(_t, _i) "
+        "JOIN LATERAL (SELECT CAST(NULLIF(_v0._t, '') AS OID) AS _k, _v0._i AS _i) _v ON _v._k IS NOT NULL"
         f"{joined})"
     )
 
@@ -952,7 +964,8 @@ def _addresses(a: _Answers) -> None:
     a.selected(
         "pg_identify_object_as_address",
         _OBJECT_PARAMS,
-        "SELECT _i.type, STRING_TO_ARRAY(_i.identity, '.') AS object_names, "
+        "SELECT _i.type, CASE _i.type WHEN 'type' THEN ARRAY[SUBSTR(_i.description, 6)] "
+        "ELSE STRING_TO_ARRAY(_i.identity, '.') END AS object_names, "
         f"CAST(ARRAY[] AS TEXT[]) AS object_args FROM ({_IDENTIFIED}) _i",
     )
     names = "names:text[]"
@@ -993,8 +1006,23 @@ def _addresses(a: _Answers) -> None:
     )
 
 
+def _walfile(a: _Answers) -> None:
+    """pg_walfile_name, which PostgreSQL 17 reads as the file holding the position itself, and
+    earlier servers as the file before it: PostgreSQL 17's on every server."""
+    part = "CAST(CAST('x' || LPAD(SPLIT_PART(lsn, '/', {n}), 16, '0') AS BIT(64)) AS BIGINT)"
+    position = f"({part.format(n=1)} * 4294967296 + {part.format(n=2)})"
+    segment = f"({position} / {WAL_SEGMENT})"
+    written = (
+        "UPPER('00000001' "
+        f"|| LPAD(pg_catalog.to_hex({segment} / 256), 8, '0') "
+        f"|| LPAD(pg_catalog.to_hex({segment} % 256), 8, '0'))"
+    )
+    a.strict("pg_walfile_name", "lsn", "TEXT", written)
+
+
 def _catalog_objects(a: _Answers) -> None:
     """The functions on what the catalog holds, answered from it."""
+    _walfile(a)
     _to_reg(a)
     _addresses(a)
     a.selected(
@@ -1042,10 +1070,10 @@ def _catalog_objects(a: _Answers) -> None:
     a.strict(
         "pg_partition_root",
         "rel:bigint",
-        "JSON",
-        f"(SELECT {_pair('_c.oid', _named_in_path('_n.nspname', '_c.relname'))} {partitionable})",
+        "OID",
+        f"(SELECT _c.oid {partitionable})",
     )
-    a.strict("pg_get_replica_identity_index", "rel", "JSON", "CAST(NULL AS JSON)")
+    a.strict("pg_get_replica_identity_index", "rel", "OID", "CAST(NULL AS OID)")
     a.strict("pg_get_statisticsobjdef_expressions", "s", "TEXT[]", "CAST(NULL AS TEXT[])")
     for name in _ALWAYS_PRIVILEGED:
         a.strict(name, "thing, priv", "BOOLEAN", "TRUE")
@@ -1085,9 +1113,13 @@ def _catalog_objects(a: _Answers) -> None:
         "makeaclitem",
         "grantee:bigint, grantor:bigint, priv, grantable:boolean",
         "TEXT",
-        role_name.format(oid="grantee", other="''")
+        f"CASE WHEN ({rights}) = '' THEN "
+        + raising("22023", "'unrecognized privilege type: \"' || priv || '\"'")
+        + " ELSE "
+        + role_name.format(oid="grantee", other="''")
         + f" || '=' || {rights} || '/' || "
-        + role_name.format(oid="grantor", other="CAST(grantor AS TEXT)"),
+        + role_name.format(oid="grantor", other="CAST(grantor AS TEXT)")
+        + " END",
     )
     a.strict("acldefault", "kind, owner", "TEXT[]", "CAST(NULL AS TEXT[])")
     a.strict(
@@ -1120,7 +1152,7 @@ def _catalog_objects(a: _Answers) -> None:
         "BOOLEAN",
         f"coalesce({is_table}, false)",
     )
-    a.strict("pg_filenode_relation", "tablespace, filenode", "JSON", "CAST(NULL AS JSON)")
+    a.strict("pg_filenode_relation", "tablespace, filenode", "OID", "CAST(NULL AS OID)")
     a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")
     a.strict("pg_relation_filepath", "rel", "VARCHAR", "CAST(NULL AS VARCHAR)")
     a.strict("pg_get_function_arg_default", "f, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
@@ -1266,11 +1298,10 @@ def _files(a: _Answers) -> None:
             + _missing_file("f", missing_ok, "stat", "TEXT")
             + " END"
         )
-        fields = ", ".join(f"CAST(NULL AS {t})" for _, t in _STAT_COLUMNS)
         a.body(
             "pg_stat_file",
             params,
-            f"CASE WHEN ({check}) IS NULL THEN CAST(ROW({fields}) AS TEXT) END",
+            f"CASE WHEN ({check}) IS NULL THEN CAST(NULL AS TEXT) END",
         )
         columns = ", ".join(f"CAST(NULL AS {t}) AS {c}" for c, t in _STAT_COLUMNS)
         a.table.setdefault("pg_stat_file", []).append(

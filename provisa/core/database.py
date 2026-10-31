@@ -978,7 +978,18 @@ class Connection:
         self, sql: str, *args: Any, bind_as_given: bool = False
     ) -> tuple[list[str], list[int], list[Row]]:
         """:meth:`fetch_with_columns` with each column's type oid, as PostgreSQL described it."""
-        result = self._run(sql, args, bind_as_given=bind_as_given)
+        from psycopg.types.json import JsonLoader
+        from psycopg.types.string import TextLoader
+
+        # A client is sent json as PostgreSQL wrote it, which a value parsed here would not be.
+        driver = self._sc.connection.driver_connection
+        assert driver is not None  # a statement of this connection is running on it
+        adapters = driver.adapters
+        adapters.register_loader("json", TextLoader)
+        try:
+            result = self._run(sql, args, bind_as_given=bind_as_given)
+        finally:
+            adapters.register_loader("json", JsonLoader)
         columns = list(result.keys())
         oids = [int(d[1]) for d in result.__dict__["described"]]
         rows = [Row(r) for r in result.fetchall()]
