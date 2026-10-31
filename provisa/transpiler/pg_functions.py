@@ -13,8 +13,8 @@ PGWIRE'S CATALOG FUNCTIONS); a rewrite of a name is a row of provisa.transpiler.
 
 ``before`` reads the PostgreSQL statement, ahead of sqlglot's transpile, for the calls that
 transpile drops arguments of or sends to a DuckDB function of the same name and another meaning:
-``random(min, max)``, ``regexp_matches``, ``substring(text FROM pattern)``, ``sha256`` (DuckDB's
-answers hex text, PostgreSQL's the digest), ``btrim`` of a bytea, and so on. ``after`` writes, on
+``random(min, max)``, ``regexp_matches``, ``substring(text FROM pattern)``, ``btrim`` of a bytea,
+and so on. ``after`` writes, on
 the DuckDB statement, what PostgreSQL's parser would not keep (it reads ``->`` as a JSON operator,
 a third REGEXP_EXTRACT argument as a position, and DATE_PART as EXTRACT): those calls cross the transpile as a
 placeholder function."""
@@ -67,7 +67,7 @@ _SPELLED = {
 
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
-    r"\b(sha(224|256|384|512)|random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
+    r"\b(random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
     r"|overlay|substring|extract|decode|encode|pg_size_pretty|current_schemas)\b",
     re.IGNORECASE,
 )
@@ -248,11 +248,6 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
             written = "ARRAY['pg_catalog', 'public']"
         else:
             written = "ARRAY['public']"
-    elif isinstance(node, exp.SHA2):
-        length = node.args.get("length")
-        bits = length.this if isinstance(length, exp.Literal) else "256"
-        value = text(node.this)
-        written = f"UNHEX(SHA256({value}))" if bits == "256" else f"PROVISA_SHA{bits}({value})"
     elif isinstance(node, exp.Rand) and node.args.get("lower") is not None:
         low, high = node.this, node.args["lower"]
         written = _random(text(low), text(high), (low, high))
@@ -292,11 +287,7 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
     elif isinstance(node, exp.Anonymous):
         name = node.name.lower()
         args = node.expressions
-        if name == "sha224" and len(args) == 1:
-            written = (
-                f"PROVISA_SHA224({text(args[0])})"  # sha256's kin: a UDF, as it is not DuckDB's
-            )
-        elif name == "timezone" and len(args) == 1:
+        if name == "timezone" and len(args) == 1:
             written = f"TIMEZONE(CURRENT_SETTING('TimeZone'), {text(args[0])})"
         elif name == "regexp_matches":
             written = f"{_REGEXP_MATCHES}({', '.join(text(a) for a in args)})"
