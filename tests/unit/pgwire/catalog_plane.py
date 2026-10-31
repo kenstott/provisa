@@ -22,6 +22,7 @@ from typing import Any
 from psycopg.types.string import TextLoader
 from sqlalchemy.engine import Engine
 
+from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.core import schema_org
 from provisa.core.pg_error import PostgresError, postgres_error
 from provisa.executor.result import QueryResult
@@ -31,8 +32,13 @@ from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
-from provisa.transpiler.metadata_views import SCOPE_COLUMN
+from provisa.transpiler.metadata_views import (
+    CATALOG_VIEW_NAMES,
+    NEUTRAL_VIEW_NAMES,
+    SCOPE_COLUMN,
+)
 
+_SCHEMA = "org_default"
 _SOURCE = "src"
 _MODEL_TABLES = (
     "table_write_grants",
@@ -163,6 +169,23 @@ def _facts(state: Any, role_id: str) -> CatalogFacts:
     from provisa.pgwire.catalog_facts import role_facts
 
     return role_facts(role_id, state)
+
+
+def plane_engine(held: Any) -> Engine:
+    """An engine on control plane ``held`` with the catalog's views and what its forms call."""
+    engine = held.engine(f"{held.url}?options=-csearch_path%3D{_SCHEMA},public")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS meta")
+        for ddl in _META_TABLE_VIEWS.values():
+            conn.exec_driver_sql(ddl.replace("%", "%%"))
+        for name in (*NEUTRAL_VIEW_NAMES, *CATALOG_VIEW_NAMES):
+            conn.exec_driver_sql(f"CREATE VIEW meta.{name} AS SELECT * FROM {_SCHEMA}.{name}")
+        conn.exec_driver_sql(
+            "CREATE OR REPLACE FUNCTION provisa_raise(sqlstate TEXT, message TEXT) RETURNS TEXT "
+            "LANGUAGE plpgsql AS $$ BEGIN "
+            "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
+        )
+    return engine
 
 
 class Plane:

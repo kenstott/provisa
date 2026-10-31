@@ -31,6 +31,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput
 from provisa.compiler.context import build_context
+from provisa.pgwire import catalog
 from provisa.pgwire.catalog import (
     answer,
     classify,
@@ -40,6 +41,8 @@ from provisa.pgwire.catalog_populate import (
     _populate_is_columns,
 )
 from tests.integration.conftest import no_replica_routes
+from tests.pg_control_plane import fresh_control_plane
+from tests.unit.pgwire.catalog_plane import Plane, plane_engine
 from tests.role_state import with_surfaces
 
 pytestmark = [pytest.mark.integration]
@@ -227,9 +230,9 @@ class TestJDBCGetColumnsRoleVisibility:
             f"customer_pii must not appear in _is_columns for analyst, got: {col_names}"
         )
 
-    def test_answer_get_columns_returns_role_filtered_columns(self):
-        # REQ-128: answer() for an information_schema.columns query respects role visibility;
-        # verify via classify() then answer() end-to-end with a mocked state.
+    def test_answer_get_columns_returns_role_filtered_columns(self, monkeypatch):
+        # REQ-128, REQ-2190 (HOW THE CATALOG READS META): a listed column the role is not served is
+        # listed, and has_column_privilege answers false for it; what it reads is what decides.
         sql = (
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema = 'sales' AND table_name = 'orders'"
@@ -243,6 +246,7 @@ class TestJDBCGetColumnsRoleVisibility:
         state = with_surfaces(no_replica_routes(MagicMock()))
         state.multitenancy = False  # single-tenant: the catalog names its one database (REQ-1235)
         state.contexts = {"analyst": ctx}
+        state.roles = {"analyst": _make_role("analyst")}
         state.schema_build_cache = {
             "column_types": _COL_TYPES,
             "tables": _TABLES,
@@ -250,11 +254,22 @@ class TestJDBCGetColumnsRoleVisibility:
         }
         state.engine_conn = None
 
-        result = answer(sql, "analyst", state)
-        returned_cols = {row[0] for row in result.rows}
+        held = fresh_control_plane()
+        try:
+            monkeypatch.setattr(catalog, "_read_meta", Plane(plane_engine(held)).read)
+            result = answer(sql, "analyst", state)
+            returned_cols = {row[0] for row in result.rows}
+            ((pii, own),) = answer(
+                "SELECT has_column_privilege('sales.orders', 'customer_pii', 'SELECT'), "
+                "has_column_privilege('sales.orders', 'id', 'SELECT')",
+                "analyst",
+                state,
+            ).rows
+        finally:
+            held.close()
 
-        assert "customer_pii" not in returned_cols, (
-            f"answer() must not return customer_pii for analyst, got: {returned_cols}"
-        )
+        assert "customer_pii" in returned_cols
+        assert pii is False
+        assert own is True
         # id and amount should be present when available
         # (virtual cols _name_/_domain_ may also appear — that is acceptable)
