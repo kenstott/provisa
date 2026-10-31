@@ -18,7 +18,7 @@ terminal is refused (:func:`refuse_client_settings`)."""
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -37,6 +37,7 @@ NAMES = (
     "backend_start",
     "query",
     "scope",
+    "asked",
 )
 _PREFIX = "provisa.catalog"
 _WRITES_SETTINGS = re.compile(r"\bset_config\b", re.IGNORECASE)
@@ -64,6 +65,21 @@ def scope_ids_sql() -> str:
     list written into the statement would be parsed, governed and planned for each view it
     reads. A statement that was not told them reads none."""
     return f"SELECT UNNEST(CAST({setting('scope')} AS INTEGER[]))"
+
+
+def asked_sql(*names: str) -> str:
+    """Whether a row with any of ``names`` (SQL) is one the statement asks about: the relation
+    names a statement's pin tells its views (provisa.pgwire.catalog_pin), all of them where none
+    was told."""
+    asked = f"CAST({setting('asked')} AS TEXT[])"
+    matches = " OR ".join(f"{name} = ANY({asked})" for name in names)
+    return f"({setting('asked')} IS NULL OR {matches})"
+
+
+def relation_names_literal(names: Iterable[str]) -> str:
+    """``names`` as the array literal :func:`asked_sql` reads."""
+    written = (name.replace("\\", "\\\\").replace('"', '\\"') for name in sorted(names))
+    return "{" + ",".join(f'"{name}"' for name in written) + "}"
 
 
 def set_statement(values: Mapping[str, str]) -> tuple[str, tuple[str, ...]]:

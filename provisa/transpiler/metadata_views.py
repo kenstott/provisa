@@ -59,6 +59,12 @@ SCOPED_BY_COLUMN: frozenset[str] = frozenset(
     }
 )
 
+#: The relations a pinned statement reads whole: each lists the same rows whichever tables a
+#: statement is about, reading no column or key of any (provisa.pgwire.catalog_pin).
+READ_WHOLE: frozenset[str] = frozenset(
+    {"catalog_pg_namespace", "catalog_pg_am", "catalog_pg_type", "catalog_pg_collation"}
+)
+
 #: Every view of rows about a registered table, and the expressions over its columns naming the
 #: tables a row is about, all of which a role must list to read it. An expression is NULL for a
 #: row about no registered table (a system relation, a metric), which every role reads: this is

@@ -59,6 +59,7 @@ from provisa.transpiler.metadata_functions import (
     pg_typmod_sql,
 )
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, metric_oid, table_oid
+from provisa.transpiler.metadata_settings import scope_ids_sql, statement_settings
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     LISTS_EVERY_SCHEMA,
@@ -148,6 +149,32 @@ def test_a_form_reads_the_meta_views_a_statement_is_governed_on():
     assert "meta.table_keys" in _expanded(f"SELECT pg_get_indexdef({KEY_OID_BASE})")
     assert "meta.catalog_pg_description" in _expanded("SELECT col_description(16385, 1)")
     assert "meta.catalog_pg_class" in _expanded("SELECT pg_table_is_visible(16385)")
+
+
+def test_a_per_row_form_is_read_once_by_the_statement():
+    """However many rows ask: each answer is one lookup in what the statement read once."""
+    sql = _expanded("SELECT pg_get_constraintdef(c.oid) FROM meta.catalog_pg_constraint c")
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert sql.count("meta.table_keys") == 1
+    held = next(cte for cte in tree.find_all(exp.CTE) if "meta.table_keys" in cte.sql("postgres"))
+    assert held.args.get("materialized") is True
+    assert [t for t in tree.selects[0].find_all(exp.Table) if t.db == "meta"] == []
+
+
+def test_a_form_in_a_clients_own_with_reads_what_the_statement_read():
+    sql = _expanded(
+        "WITH a AS (SELECT pg_get_constraintdef(c.oid) AS d FROM meta.catalog_pg_constraint c) "
+        "SELECT d FROM a"
+    )
+    names = [cte.alias for cte in sqlglot.parse_one(sql, read="postgres").find_all(exp.CTE)]
+    assert names.index("_provisa_key_definitions") < names.index("a")
+
+
+def test_only_the_indexes_asked_about_read_the_keys():
+    sql = _expanded("SELECT pg_table_is_visible(c.oid) FROM meta.catalog_pg_class c")
+    assert "_provisa_listed_indexes" in sql and "CAST(c.oid AS BIGINT) >= 1000000" in sql.replace(
+        '"', ""
+    )
 
 
 def test_only_what_a_privilege_function_reads_is_carried():
@@ -362,9 +389,11 @@ def test_a_default_tier_role_reads_a_catalog_view_scoped_to_its_neighbourhood():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, tables, role, []
     )
-    assert gov.rls_rules[10] == "table_id IN (1) AND referenced_table_id IN (1)"
-    assert gov.rls_rules[11] == "table_id IN (1)"
-    assert gov.rls_rules[12] == "id IN (1)"
+    ids = scope_ids_sql()
+    assert gov.meta_scope == "{1}"
+    assert gov.rls_rules[10] == f"table_id IN ({ids}) AND referenced_table_id IN ({ids})"
+    assert gov.rls_rules[11] == f"table_id IN ({ids})"
+    assert gov.rls_rules[12] == f"id IN ({ids})"
 
 
 def test_a_catalog_view_names_no_governance_column():
@@ -469,10 +498,30 @@ def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    assert "IS NULL OR" in gov.rls_rules[10]
-    assert "IN (1)" in gov.rls_rules[10]
-    assert gov.rls_rules[11] == ("((provisa_table_id) IS NULL OR (provisa_table_id) IN (1))")
-    assert gov.rls_rules[12].count("IN (1)") == 2  # both ends of a foreign key
+    ids = scope_ids_sql()
+    assert gov.meta_scope == "{1}"
+    assert f"IN ({ids}), TRUE)" in gov.rls_rules[10]
+    assert gov.rls_rules[11] == f"COALESCE((provisa_table_id) IN ({ids}), TRUE)"
+    assert gov.rls_rules[12].count(ids) == 2  # both ends of a foreign key
+
+
+def test_a_table_under_two_names_is_scoped_once():
+    """ctx.tables holds a table under each name it has; a statement's text pays for each copy."""
+    from provisa.compiler.stage2 import build_governance_context
+
+    ctx = _meta_context("catalog_pg_class")
+    ctx.tables["other_name"] = next(iter(ctx.tables.values()))
+    gov = build_governance_context(
+        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
+    )
+    assert gov.rls_rules[10].count("COALESCE") == 1
+
+
+def test_the_scope_is_told_once_and_a_statement_not_told_it_reads_nothing_of_the_model():
+    settings = statement_settings("analyst", False, "provisa", False, scope="{1,2}")
+    assert settings["scope"] == "{1,2}"
+    assert "scope" not in statement_settings("analyst", False, "provisa", False)
+    assert "UNNEST" in scope_ids_sql() and "provisa.catalog.scope" in scope_ids_sql()
 
 
 def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
@@ -516,7 +565,7 @@ def test_a_scope_survives_governance_on_an_aliased_read(view, column):
     )
     governed = apply_governance(f"SELECT c.{column} FROM meta.{view} AS c", gov)
     tree = sqlglot.parse_one(governed, read="postgres")
-    assert "IS NULL" in governed and "IN (1)" in governed
+    assert "COALESCE" in governed and "provisa.catalog.scope" in governed
     assert tree.args["where"] is not None
     for reference in tree.args["where"].find_all(exp.Column):
         assert reference.table == "c", reference.sql()

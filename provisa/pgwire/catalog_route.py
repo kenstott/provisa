@@ -30,6 +30,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
+from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
 from provisa.pgwire.ext_surfaces import extension_rows, surface_pg_type_rows
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
@@ -675,10 +676,21 @@ def _server_state(tree: exp.Expr, extra: Mapping) -> exp.Expr:
     return tree
 
 
-def addressed_statement(sql: str, request: CatalogRequest) -> str:
-    """``sql``, a client's statement on PostgreSQL's catalog, as a statement on the meta domain."""
+def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | None]:
+    """``sql``, a client's statement on PostgreSQL's catalog, as a statement on the meta domain, and
+    the relations it is about where it says (:mod:`provisa.pgwire.catalog_pin`)."""
     tree = _parsed(_readable(sql))
     _coerce_reg_comparisons(tree)
     _result_regs(tree)
     routed = tree.transform(_rewriter(request, _cte_names(tree)))
-    return _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres")
+    asked = asked_relations(routed)
+    narrow_kinds(routed)
+    return (
+        _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres"),
+        asked,
+    )
+
+
+def addressed_statement(sql: str, request: CatalogRequest) -> str:
+    """``sql`` as :func:`address` writes it."""
+    return address(sql, request)[0]

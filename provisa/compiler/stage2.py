@@ -405,7 +405,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         id_list = ",".join(str(i) for i in sorted(meta_scope)) or "-1"  # empty → matches no row
         gov.meta_scope = "{" + id_list + "}"
         scoped_ids = scope_ids_sql()
-        for tm in ctx.tables.values():
+        # A table is in ctx.tables under each name it has; its scope is one predicate.
+        by_id = {tm.table_id: tm for tm in ctx.tables.values()}
+        for tm in by_id.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
             scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
@@ -414,9 +416,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 ids = scoped_ids if tm.table_name in NEUTRAL_VIEW_NAMES else id_list
                 predicate = " AND ".join(f"{col} IN ({ids})" for col in scope_cols)
             elif catalog_scope is not None:
-                # REQ-2190: a row about no registered table is every role's.
+                # REQ-2190: a row about no registered table is every role's: its NULL stays
+                # true, and the scope is never an empty list (-1 above).
                 predicate = " AND ".join(
-                    f"(({expr}) IS NULL OR ({expr}) IN ({scoped_ids}))" for expr in catalog_scope
+                    f"COALESCE(({expr}) IN ({scoped_ids}), TRUE)" for expr in catalog_scope
                 )
             else:
                 continue

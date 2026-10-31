@@ -37,9 +37,11 @@ from provisa.api._pg_catalog_views import (
     CATALOG_COLUMN_VIEWS,
     CATALOG_KEY_VIEWS,
     CATALOG_VIEWS,
+    LISTED_TABLE,
     SERVED_COLUMN_NAMES,
     registered_column_sql_name,
 )
+from provisa.transpiler.metadata_settings import asked_sql
 from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
 
 
@@ -504,7 +506,14 @@ def _table_keys_sql() -> str:
     target column is a one-column key. A relationship to any other column is a semantic join,
     and no key. Each row names its columns' aliases, so a reader needs no join to table_columns,
     which a relationship would have to approve (REQ-603). A table's link to its registration is
-    the foreign key slot 1024 holds, as catalog_constraints publishes it."""
+    the foreign key slot 1024 holds, as catalog_constraints publishes it.
+
+    A statement about some tables reads their keys alone, after the numbering, so a key has one
+    number whatever a statement asks; each index goes by its own name as well as its table's."""
+    asked = asked_sql("t.table_name", "'pk_' || t.table_name", "k.key_name")
+    table_asked = asked_sql("t.table_name", "'pk_' || t.table_name")
+    unique_asked = asked_sql("u.key_name")
+    registration_asked = asked_sql("'uq_registered_tables_table_query_name'")
     return f"""
         CREATE OR REPLACE VIEW table_keys AS
         WITH tables AS (
@@ -512,24 +521,13 @@ def _table_keys_sql() -> str:
             FROM catalog_tables WHERE table_id IS NOT NULL
         ),
         served AS (
-            SELECT table_id AS id FROM tables
+            SELECT id, domain_id FROM registered_tables rt WHERE {LISTED_TABLE}
         ),
         registrations AS (
-            SELECT t.table_id
-            FROM tables t
-            JOIN registered_tables rt ON rt.id = t.table_id
+            SELECT rt.id AS table_id
+            FROM registered_tables rt
+            JOIN served s ON s.id = rt.id
             WHERE rt.domain_id = 'meta' AND rt.table_name = 'registered_tables'
-        ),
-        primary_keys AS (
-            SELECT c.table_id, c.column_name,
-                   CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
-                       AS position
-            FROM table_columns c
-            JOIN served s ON s.id = c.table_id
-            WHERE c.is_primary_key
-        ),
-        primary_sizes AS (
-            SELECT table_id, COUNT(*) AS size FROM primary_keys GROUP BY table_id
         ),
         unique_keys AS (
             SELECT t.id AS table_id, CAST(u.slot AS INTEGER) AS slot,
@@ -542,14 +540,10 @@ def _table_keys_sql() -> str:
             CROSS JOIN LATERAL jsonb_array_elements_text(u.definition -> 'columns')
                 WITH ORDINALITY AS k(column_name, position)
         ),
-        single_column_keys AS (
-            SELECT table_id, column_name FROM primary_keys
-            WHERE table_id IN (SELECT table_id FROM primary_sizes WHERE size = 1)
-            UNION
-            SELECT u.table_id, u.column_name FROM unique_keys u
-            WHERE NOT EXISTS (
-                SELECT 1 FROM unique_keys o
-                WHERE o.table_id = u.table_id AND o.slot = u.slot AND o.position > 1)
+        wanted AS (
+            SELECT t.table_id FROM tables t WHERE {table_asked}
+            UNION SELECT u.table_id FROM unique_keys u WHERE {unique_asked}
+            UNION SELECT r.table_id FROM registrations r WHERE {registration_asked}
         ),
         links AS (
             SELECT MIN(r.id) AS relationship_id, r.source_table_id, r.source_column,
@@ -560,8 +554,31 @@ def _table_keys_sql() -> str:
             JOIN table_columns sc
               ON sc.table_id = r.source_table_id AND sc.column_name = r.source_column
             WHERE r.target_column IS NOT NULL
+              AND r.source_table_id IN (SELECT table_id FROM wanted)
               AND r.cardinality IN ('many-to-one', 'one-to-one')
             GROUP BY r.source_table_id, r.source_column, r.target_table_id, r.target_column
+        ),
+        primary_keys AS (
+            SELECT c.table_id, c.column_name,
+                   CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
+                       AS position
+            FROM table_columns c
+            JOIN served s ON s.id = c.table_id
+            WHERE c.is_primary_key
+              AND c.table_id IN (SELECT table_id FROM wanted
+                                 UNION SELECT target_table_id FROM links)
+        ),
+        primary_sizes AS (
+            SELECT table_id, COUNT(*) AS size FROM primary_keys GROUP BY table_id
+        ),
+        single_column_keys AS (
+            SELECT table_id, column_name FROM primary_keys
+            WHERE table_id IN (SELECT table_id FROM primary_sizes WHERE size = 1)
+            UNION
+            SELECT u.table_id, u.column_name FROM unique_keys u
+            WHERE NOT EXISTS (
+                SELECT 1 FROM unique_keys o
+                WHERE o.table_id = u.table_id AND o.slot = u.slot AND o.position > 1)
         ),
         composites AS (
             SELECT l.source_table_id, l.target_table_id, MIN(l.relationship_id) AS relationship_id
@@ -616,9 +633,10 @@ def _table_keys_sql() -> str:
             CROSS JOIN (VALUES (1, 'domain_id'), (2, 'table_query_name'))
                 AS q(position, column_name)
             UNION ALL
-            SELECT t.table_id, {FOREIGN_KEY_SLOT}, 'f', NULL, r.table_id, q.position,
+            SELECT t.id, {FOREIGN_KEY_SLOT}, 'f', NULL, r.table_id, q.position,
                    q.column_name, q.referenced_column
-            FROM tables t
+            FROM served t
+            JOIN wanted w ON w.table_id = t.id
             CROSS JOIN registrations r
             CROSS JOIN (VALUES (1, '_domain_', 'domain_id'), (2, '_name_', 'table_query_name'))
                 AS q(position, column_name, referenced_column)
@@ -641,7 +659,8 @@ def _table_keys_sql() -> str:
           ON c.table_id = k.table_id AND c.column_name = k.column_name
         LEFT JOIN table_columns rc
           ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
-        WHERE c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES}
+        WHERE (c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES})
+          AND {asked}
     """
 
 

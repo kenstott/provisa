@@ -35,6 +35,7 @@ from provisa.transpiler.metadata_oids import metric_oid, table_oid
 from provisa.transpiler.metadata_settings import (
     ClientSettingRefused,
     refuse_client_settings,
+    relation_names_literal,
     set_statement,
     statement_settings,
 )
@@ -403,6 +404,72 @@ def test_the_scope_of_a_view_is_the_scope_of_table_columns(plane):
             f"WHERE {_scoped('is_columns', listed)} AND {SCOPE_COLUMN} IS NOT NULL ORDER BY 1",
         )
     assert keys == [(1,), (2,)]
+
+
+_PINNED_RELATION = "customer_orders"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "SELECT c.oid, c.relname, c.relnatts, c.relkind FROM meta.catalog_pg_class c "
+        "WHERE c.relname = '{name}'",
+        "SELECT a.attname, a.attnum, a.atttypid, a.atttypmod, a.attnotnull "
+        "FROM meta.catalog_pg_class c JOIN meta.catalog_pg_attribute a ON a.attrelid = c.oid "
+        "WHERE c.relname = '{name}' ORDER BY a.attnum",
+        "SELECT k.oid, k.conname, k.contype, k.conkey, k.confrelid, k.confkey "
+        "FROM meta.catalog_pg_class c JOIN meta.catalog_pg_constraint k ON k.conrelid = c.oid "
+        "WHERE c.relname = '{name}' ORDER BY k.oid",
+        "SELECT i.indexrelid, i.indkey, x.relname, x.relnatts FROM meta.catalog_pg_class c "
+        "JOIN meta.catalog_pg_index i ON i.indrelid = c.oid "
+        "JOIN meta.catalog_pg_class x ON x.oid = i.indexrelid "
+        "WHERE c.relname = '{name}' ORDER BY i.indexrelid",
+        "SELECT d.objoid, d.objsubid, d.description FROM meta.catalog_pg_class c "
+        "JOIN meta.catalog_pg_description d ON d.objoid = c.oid "
+        "WHERE c.relname = '{name}' ORDER BY d.objsubid",
+    ),
+)
+def test_a_statement_about_a_table_reads_what_the_whole_catalog_says_of_it(plane, sql):
+    """The pin changes what a statement pays and nothing it gets: every row, and every oid, is
+    the one a statement reading the model whole is shown."""
+    statement = sql.replace("{name}", _PINNED_RELATION)
+    with plane.begin() as conn:
+        _told(conn)
+        whole = _read(conn, statement)
+    with plane.begin() as conn:
+        _told(conn, asked=relation_names_literal([_PINNED_RELATION]))
+        pinned = _read(conn, statement)
+    assert whole
+    assert pinned == whole
+
+
+def test_an_index_goes_by_its_own_name_as_well_as_its_tables(plane):
+    statement = "SELECT relname, relkind FROM meta.catalog_pg_class WHERE relname = 'pk_{}'"
+    statement = statement.format(_PINNED_RELATION)
+    with plane.begin() as conn:
+        _told(conn)
+        whole = _read(conn, statement)
+    with plane.begin() as conn:
+        _told(conn, asked=relation_names_literal([f"pk_{_PINNED_RELATION}"]))
+        assert _read(conn, statement) == whole
+    assert whole == [(f"pk_{_PINNED_RELATION}", "i")]
+
+
+def test_a_key_keeps_its_number_whichever_tables_a_statement_asks_about(plane):
+    statement = "SELECT DISTINCT key_id, table_id FROM meta.table_keys ORDER BY key_id"
+    with plane.begin() as conn:
+        _told(conn)
+        whole = _read(conn, statement)
+        tables = _read(
+            conn,
+            "SELECT DISTINCT table_name, table_id FROM meta.table_keys ORDER BY table_id",
+        )
+    for name, table_id in tables:
+        with plane.begin() as conn:
+            _told(conn, asked=relation_names_literal([name]))
+            asked = _read(conn, statement)
+        assert asked and set(asked) <= set(whole)
+        assert {row for row in whole if row[1] == table_id} <= set(asked)
 
 
 def test_a_foreign_key_to_a_table_not_listed_is_not_read(plane):

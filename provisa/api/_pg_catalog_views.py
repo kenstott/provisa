@@ -60,7 +60,7 @@ from provisa.transpiler.metadata_oids import (
     schema_oid_sql,
     table_oid_sql,
 )
-from provisa.transpiler.metadata_settings import setting
+from provisa.transpiler.metadata_settings import asked_sql, setting
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     PG_CLASS_OID,
@@ -131,6 +131,26 @@ def _literal(value: object) -> str:
     return sql_literal(str(value), "postgres")
 
 
+def _array(values, array_type: str) -> str:
+    """``values`` as one array value, whose size a statement's plan does not pay for."""
+    written = (
+        "NULL"
+        if v is None
+        else ("t" if v else "f")
+        if isinstance(v, bool)
+        else '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+        for v in values
+    )
+    return f"CAST({sql_literal('{' + ','.join(written) + '}', 'postgres')} AS {array_type})"
+
+
+def _unnested(rows, columns: tuple[tuple[str, str], ...]) -> str:
+    """``rows`` as a derived table of ``columns`` (name, array type): the rows of a long fixed list, which
+    written as VALUES a statement reading its view would copy and plan row by row."""
+    arrays = ", ".join(_array(c, t) for c, (_, t) in zip(zip(*rows), columns))
+    return f"UNNEST({arrays}) AS s({', '.join(name for name, _ in columns)})"
+
+
 def _rows(rows, columns: str) -> str:
     """``rows`` as a derived table of ``columns``."""
     values = ", ".join("(" + ", ".join(_literal(v) for v in row) + ")" for row in rows)
@@ -144,14 +164,17 @@ _CATALOG_NAMES = ", ".join(
     f"'{name}'" for name in (*CATALOG_VIEW_NAMES, "table_details", "column_details", "table_keys")
 )
 _IS_ITSELF = f"rt.domain_id = 'meta' AND rt.table_name IN ({_CATALOG_NAMES})"
+#: Over ``rt``, a row of registered_tables: whether a catalog lists it.
+LISTED_TABLE = f"NOT rt.draft AND NOT ({_IS_ITSELF})"
 
 
 def _catalog_tables() -> str:
     """Every table a catalog lists, by the name a statement queries it by, and every metric:
     drafts are in no catalog, and these views are in none (security.rights.SQL_CATALOG_TABLES).
     The naming rules apply in order, each everywhere in the name, as naming._apply_naming_rules.
-    Each step of a name is read once by a LATERAL held apart by OFFSET 0: written out, a step
-    would be repeated in the next, and a statement plans every copy."""
+    Each step of a name is read once by a subquery held apart by OFFSET 0, and only for a table
+    with no alias: written out, a step would be repeated in the next, and a statement plans
+    every copy."""
     convention = (
         "COALESCE(t.gql_naming_convention, t.source_convention, " + setting("gql_convention") + ")"
     )
@@ -170,7 +193,7 @@ def _catalog_tables() -> str:
                    {without_domain_prefix_sql("rt.table_name", "rt.domain_id")} AS base
             FROM registered_tables rt
             JOIN sources s ON s.id = rt.source_id
-            WHERE NOT rt.draft AND NOT ({_IS_ITSELF})
+            WHERE {LISTED_TABLE}
         ),
         renamed (id, named, step) AS (
             SELECT id, base, CAST(0 AS BIGINT) FROM listed
@@ -190,10 +213,11 @@ def _catalog_tables() -> str:
             SELECT t.id AS table_id, t.domain_id, {schema} AS schema_name,
                    CASE WHEN t.alias IS NOT NULL AND t.alias <> ''
                         THEN {sql_name_sql("t.alias")}
-                        ELSE {sql_name_sql("b.bare")} END AS table_name
+                        ELSE (SELECT {sql_name_sql("b.bare")}
+                              FROM (SELECT {field} AS field OFFSET 0) f
+                              CROSS JOIN LATERAL (SELECT {bare} AS bare OFFSET 0) b)
+                   END AS table_name
             FROM final t
-            CROSS JOIN LATERAL (SELECT {field} AS field OFFSET 0) f
-            CROSS JOIN LATERAL (SELECT {bare} AS bare OFFSET 0) b
         )
         SELECT table_id, {table_oid_sql("table_id")} AS relation_oid, domain_id, schema_name,
                {schema_oid_sql("schema_name")} AS schema_oid, table_name
@@ -202,6 +226,16 @@ def _catalog_tables() -> str:
         SELECT NULL, {metric_oid_sql("name")}, NULL, '{_METRICS_SCHEMA}',
                {schema_oid_sql(f"'{_METRICS_SCHEMA}'")}, name
         FROM metrics
+    """
+
+
+def _catalog_asked_tables() -> str:
+    """The tables a statement is about (:func:`~provisa.transpiler.metadata_settings.asked_sql`):
+    every view of a table's columns or keys starts here, so a statement naming one table pays for
+    that table. Every table where the statement names none."""
+    return f"""
+        CREATE OR REPLACE VIEW catalog_asked_tables AS
+        SELECT t.* FROM catalog_tables t WHERE {asked_sql("t.table_name")}
     """
 
 
@@ -239,13 +273,16 @@ def _catalog_columns() -> str:
     listed = listed_type_sql("c.data_type", "c.native_type", "c.subtype")
     return f"""
         CREATE OR REPLACE VIEW catalog_columns AS
-        WITH registered AS (
+        WITH asked AS (
+            SELECT * FROM catalog_asked_tables
+        ),
+        registered AS (
             SELECT t.relation_oid, t.table_id, t.schema_name, t.table_name, c.column_name,
                    {registered_column_sql_name("c")} AS sql_name,
                    CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
                        AS attnum,
                    {listed} AS listed_type, c.not_null
-            FROM catalog_tables t
+            FROM asked t
             JOIN table_columns c ON c.table_id = t.table_id
         ),
         virtual AS (
@@ -253,7 +290,7 @@ def _catalog_columns() -> str:
                    v.column_name AS sql_name,
                    CAST(l.columns + v.place AS INTEGER) AS attnum,
                    {_VIRTUAL_TYPE} AS listed_type, FALSE AS not_null
-            FROM catalog_tables t
+            FROM asked t
             CROSS JOIN LATERAL (
                 SELECT COUNT(*) AS columns FROM table_columns o WHERE o.table_id = t.table_id
             ) l
@@ -264,7 +301,7 @@ def _catalog_columns() -> str:
             SELECT t.relation_oid, t.table_id, t.schema_name, t.table_name,
                    'value' AS column_name, 'value' AS sql_name, 1 AS attnum,
                    COALESCE(m.datatype, 'double') AS listed_type, FALSE AS not_null
-            FROM catalog_tables t
+            FROM asked t
             JOIN metrics m ON m.name = t.table_name
             WHERE t.table_id IS NULL
         ),
@@ -355,7 +392,10 @@ def _pg_namespace() -> str:
             f"SELECT {schema_oid_sql('s.name')} AS o, s.name AS n FROM (SELECT {domains} AS name "
             "FROM domains d WHERE d.id <> '') s "
             f"UNION ALL SELECT oid, name FROM {_rows(fixed, 'name, oid')} "
-            f"UNION ALL SELECT DISTINCT schema_oid, schema_name FROM catalog_tables) a) "
+            f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT DISTINCT "
+            f"{domain_sql_name_sql('rt.domain_id')} AS name FROM registered_tables rt "
+            f"WHERE {LISTED_TABLE} UNION SELECT '{_METRICS_SCHEMA}' "
+            "FROM metrics) s) a) "
             "AS n(oid, name)",
         ),
     )
@@ -422,7 +462,7 @@ def _pg_class() -> str:
                 "relnatts": "COALESCE(n.columns, 0)",
             }
         ),
-        "FROM catalog_tables t LEFT JOIN (SELECT c.relation_oid, COUNT(*) AS columns "
+        "FROM catalog_asked_tables t LEFT JOIN (SELECT c.relation_oid, COUNT(*) AS columns "
         "FROM catalog_columns c GROUP BY c.relation_oid) n ON n.relation_oid = t.relation_oid",
     )
     indexes = _select(
@@ -528,9 +568,19 @@ def _pg_attribute() -> str:
             }
         ),
         "FROM "
-        + _rows(
-            _system_attributes(), "relation, name, type_oid, length, attnum, byval, align, storage"
-        ).replace("AS _v(", "AS s("),
+        + _unnested(
+            _system_attributes(),
+            (
+                ("relation", "_oid"),
+                ("name", "_text"),
+                ("type_oid", "_oid"),
+                ("length", "_int2"),
+                ("attnum", "_int2"),
+                ("byval", "_bool"),
+                ("align", "_text"),
+                ("storage", "_text"),
+            ),
+        ),
     )
     return _view(relation, model, system)
 
@@ -593,7 +643,7 @@ def _pg_description() -> str:
             "objsubid": "0",
             "description": "d.comment",
         },
-        "FROM catalog_tables t JOIN table_details d ON d.id = t.table_id "
+        "FROM catalog_asked_tables t JOIN table_details d ON d.id = t.table_id "
         "WHERE d.comment IS NOT NULL",
     )
     columns = _select(
@@ -604,7 +654,7 @@ def _pg_description() -> str:
             "objsubid": "d.ordinal_position",
             "description": "d.comment",
         },
-        "FROM column_details d JOIN catalog_tables t ON t.table_id = d.table_id "
+        "FROM column_details d JOIN catalog_asked_tables t ON t.table_id = d.table_id "
         "WHERE d.comment IS NOT NULL",
     )
     schemas = _select(
@@ -1436,6 +1486,7 @@ def _ddl(relation: tuple[str, str]) -> str:
 #: read the views the meta domain lists (column_details, table_keys) after them.
 CATALOG_BASE_VIEWS: dict[str, str] = {
     "catalog_tables": _catalog_tables(),
+    "catalog_asked_tables": _catalog_asked_tables(),
 }
 CATALOG_COLUMN_VIEWS: dict[str, str] = {
     "catalog_columns": _catalog_columns(),
@@ -1474,6 +1525,7 @@ __all__ = [
     "CATALOG_COLUMN_VIEWS",
     "CATALOG_KEY_VIEWS",
     "CATALOG_VIEWS",
+    "LISTED_TABLE",
     "SERVED_COLUMN_NAMES",
     "registered_column_sql_name",
 ]

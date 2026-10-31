@@ -29,7 +29,7 @@ from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
     _INTERCEPT_SCHEMAS,
 )
-from provisa.pgwire.catalog_route import CatalogRequest, addressed_statement, next_txid
+from provisa.pgwire.catalog_route import CatalogRequest, address, next_txid
 from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TYPEINFO_COL_TYPES,
@@ -47,6 +47,7 @@ from provisa.transpiler.metadata_functions import (
     RELATION_FORMS,
     MetadataFunctionRefused,
 )
+from provisa.transpiler.metadata_settings import relation_names_literal
 
 log = logging.getLogger(__name__)
 
@@ -671,9 +672,12 @@ def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, ru
     # A $N a value was not bound for (Describe of an unbound statement): any value describes it.
     bare = re.sub(r"\$\d+", "NULL", sql)
     try:
-        addressed = addressed_statement(bare, request)
+        addressed, asked = address(bare, request)
     except MetadataFunctionRefused as exc:
         raise PostgresError("0A000", str(exc)) from exc
+    if asked is not None:
+        told = {**request.session, "asked": relation_names_literal(asked)}
+        request = dataclasses.replace(request, session=told)
 
     async def read():
         plan = await govern_catalog_plan(addressed, role_id, request)
