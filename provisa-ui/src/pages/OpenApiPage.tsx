@@ -19,8 +19,9 @@ import { useScreenInputsReader } from "../mcp/screenState";
 import {
   bodyInput,
   findOperation,
-  paramInput,
+  hasParam,
   parseCall,
+  setParam,
   shownOperation,
   typeInto,
 } from "./openapi/swaggerDocs";
@@ -170,10 +171,10 @@ export function OpenApiPage() {
         }
 
         const paramKeys = [...navParams.keys()];
-        await waitFor(() => paramKeys.every((key) => !!paramInput(block, key)));
+        await waitFor(() => paramKeys.every((key) => hasParam(block, key)));
         // A parameter the operation does not take is refused here: left out, the call would run
         // wider than the one handed over.
-        const unknown = paramKeys.filter((key) => !paramInput(block, key));
+        const unknown = paramKeys.filter((key) => !hasParam(block, key));
         if (unknown.length > 0) {
           setDriveError(`${named} has no parameter ${unknown.join(", ")}`);
           return;
@@ -181,10 +182,7 @@ export function OpenApiPage() {
 
         // REQ-1359: populate the try-it-out param inputs (e.g. aggregate/groupBy) from the
         // NL-forwarded querystring before executing, so the replicated call matches the NL query.
-        navParams.forEach((value, key) => {
-          const input = paramInput(block, key);
-          if (input) typeInto(input, value);
-        });
+        for (const [key, value] of navParams) await setParam(block, key, value, waitFor);
 
         if (body !== undefined) {
           await waitFor(() => !!bodyInput(block));

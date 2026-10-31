@@ -88,7 +88,11 @@ function splitUrl(url: string): { path: string; params: URLSearchParams } {
     : { path: url.slice(0, at), params: new URLSearchParams(url.slice(at + 1)) };
 }
 
+/** One parameter's value: JSON by content (OpenAPI's filter), else a comma-separated list in any
+ * order. */
 function sameList(a: string, b: string): boolean {
+  const [ja, jb] = [parsedBody(a), parsedBody(b)];
+  if (typeof ja === "object" && typeof jb === "object") return sameJson(ja, jb);
   return sameJson(a.split(",").sort(), b.split(",").sort());
 }
 

@@ -14,6 +14,8 @@
 type ParamInput = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
 const PARAM_INPUT = "input, select, textarea";
+const ADD_ITEM = ".json-schema-form-item-add";
+const REMOVE_ITEM = ".json-schema-form-item-remove";
 const BODY_INPUT = ".opblock-section-request-body textarea, textarea.body-param__text";
 
 /** A call as the page is handed it: `METHOD /path?query`. Null when it is not one. */
@@ -40,10 +42,45 @@ export function findOperation(doc: Document, method: string, fullPath: string) {
   );
 }
 
-export function paramInput(block: Element, name: string): ParamInput | null {
-  return block.querySelector<ParamInput>(
-    `tr[data-param-name="${CSS.escape(name)}"] :is(${PARAM_INPUT})`,
-  );
+function paramRow(block: Element, name: string): Element | null {
+  return block.querySelector(`tr[data-param-name="${CSS.escape(name)}"]`);
+}
+
+/** Whether the operation takes this query parameter. */
+export function hasParam(block: Element, name: string): boolean {
+  return paramRow(block, name) !== null;
+}
+
+type WaitFor = (predicate: () => boolean) => Promise<boolean>;
+
+/** A JSON list of objects (`filter`, `orderBy`) renders as an "Add item" editor, one field per
+ * item, and no field for the list. The list is typed in item by item, as the user would. */
+async function typeItems(row: Element, items: unknown[], waitFor: WaitFor): Promise<void> {
+  const add = () => row.querySelector<HTMLElement>(ADD_ITEM);
+  const fields = () => row.querySelectorAll<HTMLTextAreaElement>("textarea");
+  for (const remove of row.querySelectorAll<HTMLElement>(REMOVE_ITEM)) remove.click();
+  await waitFor(() => fields().length === 0);
+  for (const [i, item] of items.entries()) {
+    add()?.click();
+    await waitFor(() => fields().length > i);
+    typeInto(fields()[i], JSON.stringify(item));
+  }
+}
+
+/** Sets a parameter as the user would. */
+export async function setParam(
+  block: Element,
+  name: string,
+  value: string,
+  waitFor: WaitFor,
+): Promise<void> {
+  const row = paramRow(block, name);
+  if (row?.querySelector(ADD_ITEM)) {
+    await typeItems(row, JSON.parse(value) as unknown[], waitFor);
+    return;
+  }
+  const input = row?.querySelector<ParamInput>(PARAM_INPUT);
+  if (input) typeInto(input, value);
 }
 
 export function bodyInput(block: Element): HTMLTextAreaElement | null {
@@ -80,6 +117,16 @@ function inputValue(input: ParamInput): string {
   return input.value;
 }
 
+/** A list of items as the URL spells it, or a field's value. */
+function rowValue(row: Element): string {
+  if (row.querySelector(ADD_ITEM)) {
+    const items = Array.from(row.querySelectorAll("textarea"), (t) => t.value);
+    return items.length > 0 ? `[${items.join(",")}]` : "";
+  }
+  const input = row.querySelector<ParamInput>(PARAM_INPUT);
+  return input ? inputValue(input) : "";
+}
+
 /** What Swagger UI sent: the URL it shows for the last call. */
 function requestUrl(block: Element): string | null {
   return block.querySelector(".request-url pre")?.textContent?.trim() || null;
@@ -100,8 +147,7 @@ export function shownOperation(doc: Document | null | undefined): ShownOperation
   const parameters: Record<string, string> = {};
   for (const row of block.querySelectorAll("tr[data-param-name]")) {
     const name = row.getAttribute("data-param-name") ?? "";
-    const input = row.querySelector<ParamInput>(PARAM_INPUT);
-    const value = input ? inputValue(input) : "";
+    const value = rowValue(row);
     if (value) parameters[name] = value;
   }
   return {

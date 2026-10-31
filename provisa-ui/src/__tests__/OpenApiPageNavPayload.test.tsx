@@ -238,7 +238,7 @@ describe("OpenApiPage — what a handed call carries", () => {
   const OPERATION = `<div class="opblock"><span class="opblock-summary-method">GET</span>
     <span data-path="/pet-store/users"></span><button class="opblock-summary-control"></button>
     <table><tr data-param-name="limit"><td><input /></td></tr>
-    <tr data-param-name="filter"><td><textarea></textarea></td></tr>
+    <tr data-param-name="filter" data-param-in="query"><td><button class="json-schema-form-item-add">Add object item</button></td></tr>
     <tr data-param-name="fields"><td><select multiple><option value="id">id</option>
       <option value="name">name</option><option value="age">age</option></select></td></tr>
     </table></div>
@@ -266,8 +266,13 @@ describe("OpenApiPage — what a handed call carries", () => {
     ).Element.prototype.scrollIntoView = () => undefined;
     const doc = frame.contentDocument!;
     doc.body.innerHTML = OPERATION;
+    // Swagger UI's "Add item" editor: each press adds a field for one item.
+    const items = doc.querySelector('tr[data-param-name="filter"] td')!;
+    items.querySelector("button")!.addEventListener("click", () => {
+      items.appendChild(doc.createElement("textarea"));
+    });
     doc.querySelectorAll(".opblock").forEach((block) => {
-      block.querySelector("button")!.addEventListener("click", () => {
+      block.querySelector(".opblock-summary-control")!.addEventListener("click", () => {
         block.classList.add("is-open");
       });
     });
