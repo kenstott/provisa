@@ -14038,7 +14038,7 @@ AuthProvider takes an authVersion prop that is bumped by App whenever a token is
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed.
+An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed. (Amended 2026-10-29, A DEMO VISITOR IS EXEMPT:) Lead 2026-10-31: a demo visitor holds no account, so an unclaimed platform-admin slot does not end a visit. The demo route is served ahead of the onboarding gate for every browser, signed in or not, and the first-run tour is not offered in the platform org.
 
 **Use case:** A valid credential from before the admin-plane was wiped would otherwise skip sign-in entirely (where the first-login disclosure renders) and land on "create an organization" on a deployment with no administrator. This prevents accidental onboarding without understanding the implication of claiming the sole admin slot.
 
