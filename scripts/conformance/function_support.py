@@ -50,6 +50,10 @@ The result is text format under one set of session settings. Rows compare as a m
 has an ORDER BY of its own to hold them to); values exactly, except float4 and float8, and their
 arrays, within one part in 10^14 (REQ-2171). The NULL call of a stable or volatile function
 compares its type alone.
+
+The session is UTC, and so are a runner and its PostgreSQL service: an engine that ignores the
+session's TimeZone answers the same here and is not told apart. Run off UTC, the pg engine's
+timestamptz answers come back in the server's zone.
 """
 
 # Requirements: REQ-2167, REQ-2171
@@ -649,13 +653,14 @@ def measure(
         family = function_probe.family(fn, declared)
         if server_gone is None and time.monotonic() - started > LEG_BUDGET_S:
             server_gone = f"the leg ran out of its {LEG_BUDGET_S:.0f}s at {fn.signature}"
+            print(f"::error::{server_gone}")
         if server_gone is None:
             try:
                 overloads.append(measure_overload(fn, family, pg, provisa, classify))
             except psycopg.OperationalError as exc:
                 server_gone = f"Provisa stopped answering at {fn.signature}: {exc}".strip()
+                print(f"::error::{server_gone}")
         if server_gone is not None and len(overloads) == i:
-            print(f"::error::{server_gone}")
             overloads.append(
                 {
                     "function": fn.name,
