@@ -90359,7 +90359,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is a gap, not a deliberate difference. No pg_catalog function is listed as skipped by design, whatever
     its family and whether or not a client calls it: each one not served counts as failed until it is served,
     and a probe that cannot call a function is a gap in the probe. The conformance page reports them as
-    failed.'
+    failed. (Amended 2026-10-29, THE GOAL IS 571:) Maintainer 2026-10-31: 571 pg_catalog functions cannot
+    be called on PostgreSQL itself (517 take an internal argument, 54 are refused in every form). They stay
+    reported as failed. The lowest reachable failed count for catalog functions is therefore 571, and that
+    is the goal.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
