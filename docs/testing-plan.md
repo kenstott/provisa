@@ -2,7 +2,7 @@
 
 ## Overview
 
-Requirements live in a single YAML file (`docs/arch/requirements.yaml`). All other artifacts — markdown documentation, Gherkin feature files, feature matrices, traceability matrices, roadmap — are generated from it. No artifact is hand-edited after generation.
+Requirements live in a single YAML file (`docs/arch/requirements.yaml`). All other artifacts (markdown documentation, Gherkin feature files, feature matrices, traceability matrices, roadmap) are generated from it. No artifact is hand-edited after generation.
 
 This gives three things simultaneously:
 

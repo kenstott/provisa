@@ -11,7 +11,7 @@ pip install "provisa[embedded]"
 provisa run
 ```
 
-Python 3.12. The embedded profile brings its own PostgreSQL model store (pgserver) and DuckDB query engine. No Docker, no daemon. The wheel is published to PyPI with Sigstore attestation; the dependency set is pinned with hashes in `uv.lock`.
+It needs Python 3.12. The embedded profile brings its own PostgreSQL model store (pgserver) and DuckDB query engine, with no Docker or daemon. The wheel is published to PyPI with Sigstore attestation; the dependency set is pinned with hashes in `uv.lock`.
 
 To upgrade, install the newer version from PyPI.
 
@@ -36,7 +36,7 @@ Licensed per production core. The price does not change with connection count, q
 
 Provisa ships under Business Source License 1.1. The key terms:
 
-- **Evaluation is free forever**, for any size organisation. Non-production use — development, staging, demos, internal tooling — requires no licence.
+- **Evaluation is free forever**, for any size organisation. Non-production use (development, staging, demos, internal tooling) requires no licence.
 - **Small-organisation production grant.** Production use is free for organisations with fewer than 100 employees and contractors and under $1,000,000 in annual revenue, budget, or expenditures, counting all affiliates together.
 - **Commercial licence.** Organisations above those thresholds need a commercial licence for production use.
 - **Converts to GPL.** Each released version converts to GPL v2-or-later on the fourth anniversary of its public release.

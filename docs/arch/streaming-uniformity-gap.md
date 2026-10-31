@@ -61,7 +61,7 @@ hardcodes `ARROW_STREAM` into the capability `frozenset`, each with a comment na
 primitive the runtime never calls:
 
 - `build_databricks_engine` engine.py:756 — "lazy record-batch streaming via Flight (REQ-987)"
-- `build_bigquery_engine` engine.py:786 — "to_arrow_iterable — lazy record batches" (runtime calls
+- `build_bigquery_engine` engine.py:786 ("to_arrow_iterable) lazy record batches" (runtime calls
   full `to_arrow`, not `to_arrow_iterable`)
 - mssql builder engine.py:818 — "built from the ODBC cursor"
 
@@ -140,7 +140,7 @@ One terminal, `_execute_plan`, is the single decision point:
    transports straight to CTAS-land, never a streaming-shaped method that secretly materializes,
    and never the row→Arrow adapter over a materializing `run_sync` (that just moves the buffer).
 
-## Remediation sequence (highest leverage first)
+## Remediation sequence (biggest payoff first)
 
 1. **DIRECT streaming** (Defect 1): `execute_native` returns a lazy batch generator; DIRECT user
    scans stream. Amend REQ-1190; the biggest single OOM hole.

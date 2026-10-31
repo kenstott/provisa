@@ -52,7 +52,7 @@ New module: `provisa/federation/runtime_support.py` (pure helpers, no state).
 **Step 1 — `result_from_dbapi(obj) -> QueryResult`** (finding B)
 
 - What: extract the `cols`/`rows`-from-`.description` + `QueryResult(...)` build. Keyed
-  on the DBAPI-result protocol (`.description`, `.fetchall()`) — so it takes the
+  on the DBAPI-result protocol (`.description`, `.fetchall()`), so it takes the
   cursor *or* result object, covering all three drivers, not just the `cur`-named two.
 - Covers **3** sites: pg_runtime.py:99-102 (`cur`), sqlalchemy_runtime.py:60-64
   (`cur`), duckdb_runtime.py:187-189 (`res`) → each passes its object to the helper.

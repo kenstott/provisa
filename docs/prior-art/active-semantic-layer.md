@@ -221,7 +221,7 @@ executed outside any source's own optimizer, and memory held for the duration.
 
 The choice between those topologies is conventionally made from the query as written. A query
 joining a large fact relation in one source to a small dimension relation in another references two
-sources, so it is executed distributed — even when the second input is a few hundred rows and the
+sources, so it is executed distributed, even when the second input is a few hundred rows and the
 entire distributed apparatus exists to move them.
 
 The disclosure is that the topology choice need not be made from the query as written. It can be
@@ -237,11 +237,11 @@ Let a plan reference relations resident in N distinct data sources, N > 1.
    relation*: a literal tuple list carried in the plan itself, semantically equal to R, referencing
    no source.
 3. **Re-derivation.** Recompute the plan's source set from the rewritten plan. R's source no longer
-   appears in it — unless another relation independently holds it. N decreases.
+   appears in it, unless another relation independently holds it. N decreases.
 4. **Re-selection.** Choose the execution topology from the recomputed set rather than the original
    one. When N has fallen to 1, the plan is emittable as a single statement in that one source's
    dialect and executable by that source's own engine. The layer above the sources leaves the
-   execution path entirely — not as a coordinator, not as a pass-through.
+   execution path entirely, not as a coordinator, not as a pass-through.
 
 The mechanism is not specific to any architecture beyond the precondition that more than one
 execution topology is available. It applies to:
@@ -307,7 +307,7 @@ underlying entity. The cached payload is encrypted at rest; see §5.3.
 **Inlining.** When a governed plan references an inlinable relation, the reference is replaced,
 structurally on the tree, with a CTE whose body is a literal `VALUES` list of the cached rows. The
 substitution is done on the parsed tree: locate the table node by name, rename it to the CTE, and
-attach the CTE definition to the query's `WITH` node — never by matching or splicing query text,
+attach the CTE definition to the query's `WITH` node, never by matching or splicing query text,
 because text matching cannot distinguish the intended occurrence from a coincidental one and fails
 loudly only sometimes. An empty cached relation inlines as a typed empty set (`SELECT NULL, …
 WHERE 1=0`), preserving column arity and join semantics. An unaliased reference receives an alias
@@ -317,7 +317,7 @@ relation is renamed.
 **Raw rows in the CTE, and why that is safe.** The cached rows are inlined verbatim, ungoverned.
 This is sound only because of the stage order in §3: governance has already wrapped the surrounding
 query, so its filters and masking expressions apply to the CTE's rows exactly as they applied to
-the live relation. The alternative — caching a governed copy per principal — multiplies storage by
+the live relation. The alternative (caching a governed copy per principal) multiplies storage by
 role count and creates a store holding pre-filtered per-principal data, which is a disclosure
 surface the design does not need. Order of stages substitutes for per-role materialization.
 
@@ -341,7 +341,7 @@ texts submitted by principals with different policy do not.
 
 Shipping a small relation somewhere to make a join cheaper is long-established, and the author
 does not claim otherwise. Each established form optimizes execution *within* an already-chosen
-topology, leaving the plan's set of participating sources — and therefore the identity of the
+topology, leaving the plan's set of participating sources, and therefore the identity of the
 executing system — unchanged. The distinguishing property here is that the rewrite is applied
 *before* the topology is chosen, reduces the plan's source set, and thereby changes what is chosen.
 
@@ -588,7 +588,7 @@ cataloging program.
    pipelines, whose optimizers preserve the plan's source set.
 5. Plan-level source elimination as a topology decision: bounding a relation, replacing it with an
    inline constant relation carried in the plan, re-deriving the plan's source set from the
-   rewritten plan, and selecting the execution topology from the reduced set — so that a nominally
+   rewritten plan, and selecting the execution topology from the reduced set, so that a nominally
    cross-source query becomes a single statement executed by one source's own engine and the layer
    above the sources leaves the execution path. The class covers any source-eliminating reduction
    (literalization, materialization into an execution-local store, branch elimination, scalar
@@ -603,7 +603,7 @@ cataloging program.
 9. Threshold-triggered materialization executed by the engine directly to object storage with zero
    result rows in the gateway, carrying compile-time governance into the written object, returned
    as a protocol-native terminal frame — a structured error on a tabular wire protocol, a
-   payload-too-large response over HTTP, a small structured handle to an agent — so that an
+   payload-too-large response over HTTP, a small structured handle to an agent, so that an
    unmodified client surfaces it without hanging, truncating, or exhausting a context window.
 10. Role-bound envelope encryption of out-of-band payloads and cached relations, where the grant
     seals the creating principal alongside the data key and is opened only by an authenticated

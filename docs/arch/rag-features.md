@@ -241,7 +241,7 @@ the entity lane is over-expanding.
 ### LLM namespace routing, subordinate to entitlement
 
 `namespace_filter_llm_fn` / `domain_filter_llm_fn` ask an LLM to pick relevant
-namespaces from their descriptions, which chonk reports as the highest-leverage
+namespaces from their descriptions, which chonk reports as the highest-value
 accuracy lever on a cross-domain corpus. Provisa already computes domain
 descriptions (`provisa/api/mcp/tools.py:62`).
 

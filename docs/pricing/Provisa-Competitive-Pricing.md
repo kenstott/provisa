@@ -6,7 +6,7 @@ vendor's live pricing page before quoting a prospect; public rates change withou
 ## The one-liner
 
 Provisa undercuts or matches every direct competitor's entry rate, while reaching a broader set
-of source types — warehouses, graph databases, MongoDB, MSSQL, file sources, and more — under
+of source types (warehouses, graph databases, MongoDB, MSSQL, file sources, and more) under
 one federated query, through persistent protocol surfaces (SQL, GraphQL, Cypher, Bolt, gRPC,
 MCP) that request-driven competitors can't offer.
 

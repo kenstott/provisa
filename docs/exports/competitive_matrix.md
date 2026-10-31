@@ -81,7 +81,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 ### Governance Architecture
 
-**Compile-time enforcement, not runtime checks.** Provisa's two-stage compiler (Stage 1: GraphQL→SQL; Stage 2: AST rewrite) applies RLS, column masking, and sampling before any query reaches a data source. Stage 2 operates independently on any SQL string — including JDBC, DB-API, and pgwire traffic — so there is no ungoverned access path regardless of protocol. [tool-verified: REQ-001, REQ-002, REQ-038, REQ-262–266]
+**Compile-time enforcement, not runtime checks.** Provisa's two-stage compiler (Stage 1: GraphQL→SQL; Stage 2: AST rewrite) applies RLS, column masking, and sampling before any query reaches a data source. Stage 2 operates independently on any SQL string (including JDBC, DB-API, and pgwire traffic) so there is no ungoverned access path regardless of protocol. [tool-verified: REQ-001, REQ-002, REQ-038, REQ-262–266]
 
 **Pluggable approval hook with three transports.** The ABAC approval hook supports HTTP callback, persistent gRPC channel with circuit breaker, and inline function, chosen per source. gRPC channels are kept warm; there is no reconnect overhead per query. [tool-verified: REQ-246, REQ-555, REQ-556]
 
@@ -89,9 +89,9 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 ### Protocol Breadth
 
-**pgwire (PostgreSQL wire protocol) with governance.** Provisa embeds a native pgwire listener. Any tool that speaks PostgreSQL — DBeaver, Tableau, psql, JDBC — connects without a special driver. The pg_catalog and information_schema queries are intercepted and answered from an in-memory DuckDB built from the role's compilation context, so schema browsers see only the tables and columns the authenticated role may access. Trino/Presto, Hasura, and Dremio have no pgwire endpoint. [tool-verified: REQ-527, REQ-532]
+**pgwire (PostgreSQL wire protocol) with governance.** Provisa embeds a native pgwire listener. Any tool that speaks PostgreSQL (DBeaver, Tableau, psql, JDBC) connects without a special driver. The pg_catalog and information_schema queries are intercepted and answered from an in-memory DuckDB built from the role's compilation context, so schema browsers see only the tables and columns the authenticated role may access. Trino/Presto, Hasura, and Dremio have no pgwire endpoint. [tool-verified: REQ-527, REQ-532]
 
-**Arrow Flight across heterogeneous sources.** Provisa's Arrow Flight server (port 8815) applies the full security pipeline at the Flight layer — RLS, masking, tenant isolation — before streaming record batches. Dremio supports Flight but only for its own lakehouse engine. Hasura, Denodo, and Snowflake do not expose Arrow Flight at all. Results stream batch-by-batch via GeneratorStream; the full result never materializes in Provisa memory. [tool-verified: REQ-051, REQ-143, REQ-145]
+**Arrow Flight across heterogeneous sources.** Provisa's Arrow Flight server (port 8815) applies the full security pipeline at the Flight layer (RLS, masking, tenant isolation) before streaming record batches. Dremio supports Flight but only for its own lakehouse engine. Hasura, Denodo, and Snowflake do not expose Arrow Flight at all. Results stream batch-by-batch via GeneratorStream; the full result never materializes in Provisa memory. [tool-verified: REQ-051, REQ-143, REQ-145]
 
 **ADBC client over Arrow Flight.** `provisa_client.adbc_connect()` returns an ADBC connection backed by Arrow Flight, streaming RecordBatches natively. No competitor's client library offers ADBC over Arrow Flight. The ADBC Flight port is currently hardcoded at 8815, which is a known gap. [tool-verified: REQ-271, REQ-608]
 

@@ -31,7 +31,7 @@ Everything the engine holds is **ephemeral** or **reconstructable**:
 | Control-plane registry | source of truth | shared store |
 
 A crashed instance restarts, rebuilds its catalog from config, re-points at the
-shared stores, and loses nothing — because it never owned durable data.
+shared stores, and loses nothing, because it never owned durable data.
 
 ### 2. Durable state is shared by connection, selected by config
 
@@ -95,7 +95,7 @@ Two tiers, chosen per deployment:
   point (refresh scheduling).
 - The bottlenecks in the fleet model are the shared **sources** (need their own
   scale-out, e.g. read replicas) and the shared **stateful components** (materialization
-  store on S3/Iceberg scales; a single shared RDB store or Redis is a choke point) —
+  store on S3/Iceberg scales; a single shared RDB store or Redis is a choke point),
   not the engine.
 - Requires: the refresh-coordination catalog (REQ-879), the version stamps as the dedup
-  key (REQ-862), and — only for the distributed tier — an MV-definition determinism rule.
+  key (REQ-862), and (only for the distributed tier) an MV-definition determinism rule.
