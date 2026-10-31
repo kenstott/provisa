@@ -250,7 +250,7 @@ def _table(table: exp.Table, dialect: str) -> exp.Expr:
     alias = table.args.get("alias")
     return exp.Subquery(
         this=query.transform(bound),
-        alias=alias.copy() if alias else exp.TableAlias(this=exp.to_identifier(table.name)),
+        alias=alias.copy() if alias else exp.TableAlias(this=exp.to_identifier(name)),
     )
 
 
@@ -268,7 +268,10 @@ def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -
     """A call the table's rows do not take as they stand."""
     name = node.name.lower() if isinstance(node, exp.Anonymous) else node.sql_name().lower()
     lacking = name in REFUSED or (dialect in _OF[_C] and name in _NOT_ON_CLICKHOUSE)
-    if lacking or (node.find(exp.Variadic) and name.startswith("json")):
+    second = name in ("row_to_json", "array_to_json") and len(node.expressions) > 1
+    if lacking or second or name in TABLES:  # a Table's call never reaches here: _table has it
+        raise NoForm(name)
+    if node.find(exp.Variadic) and name.startswith("json"):
         raise NoForm(name)
     if name == "jsonb_build_array":
         if dialect not in _OF[_D]:
