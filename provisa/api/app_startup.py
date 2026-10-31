@@ -213,6 +213,11 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     from provisa.api.graph_session import keep as _keep_graph_sessions
 
     state._graph_session_task = spawn_long_lived(_keep_graph_sessions(state), name="graph-sessions")
+    # REQ-2179: and gives up, naming why, on the document scans a restart left running or that
+    # have stopped moving.
+    from provisa.api.admin.term_finding_router import keep as _keep_term_scans
+
+    state._term_scan_task = spawn_long_lived(_keep_term_scans(state), name="term-scans")
 
     if state.hot_manager is not None and state.federation_engine.is_connected():
         from provisa.cache.hot_tables import HotTableManager
