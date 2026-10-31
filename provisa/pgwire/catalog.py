@@ -142,6 +142,9 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
     {
         "pg_encoding_to_char",
         "has_table_privilege",
+        # REQ-2190: left to the engine, DuckDB's own answers TRUE for a column the role is not served.
+        "has_column_privilege",
+        "has_any_column_privilege",
         "pg_get_function_arguments",
         "pg_get_function_identity_arguments",
         "pg_get_function_result",
@@ -234,8 +237,11 @@ def _calls_a_catalog_function_alone(tree) -> bool:
 #: The types only the catalog has (name, and the object identifier types): a statement reading no
 #: table that casts to one is answered by the catalog (REQ-2167).
 _CATALOG_ONLY_TYPES = frozenset({"name", "regclass", "regtype", "regnamespace"})
-#: The types only the catalog DB can hold as a function's argument (REQ-2167).
-_FUNCTION_ARGUMENT_TYPES = frozenset({"regproc", "xid", "tid", "oidvector", *PG_ONLY_TYPE_NAMES})
+#: The types only the catalog DB can hold as a function's argument (REQ-2167). Not xml: its
+#: functions are the compiler's (provisa.transpiler.pg_xml), and the control plane has no libxml.
+_FUNCTION_ARGUMENT_TYPES = frozenset(
+    {"regproc", "xid", "tid", "oidvector", *(PG_ONLY_TYPE_NAMES - {"xml"})}
+)
 
 
 def _casts_to_a_catalog_type_alone(tree) -> bool:

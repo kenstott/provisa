@@ -33,6 +33,7 @@ _REPO_ROOT = Path(__file__).parents[2]
 _CAPABILITIES = ["query_development", "full_results", "usage"]
 _RESTRICTED = "catalog_restricted"
 _EVERYTHING = "catalog_everything"
+_CATALOG_READER = "viewer"  # REQ-2154: the catalog is read by every role built on Viewer
 _ITS_DOMAIN = "sales-analytics"
 _WITHHELD_COLUMN = ("customers", "email")
 
@@ -45,12 +46,14 @@ def _config(tmp_dir: Path) -> str:
     cfg["roles"] += [
         {
             "id": _RESTRICTED,
+            "parents": [_CATALOG_READER],
             "description": "Test role.",
             "capabilities": list(_CAPABILITIES),
             "domain_access": [_ITS_DOMAIN],
         },
         {
             "id": _EVERYTHING,
+            "parents": [_CATALOG_READER],
             "description": "Test role.",
             "capabilities": list(_CAPABILITIES),
             "domain_access": ["*"],
@@ -73,10 +76,12 @@ def _config(tmp_dir: Path) -> str:
 def server(tmp_path_factory):
     srv = IsolatedServer(
         _ORG,
+        engine="duckdb",
         enable_pgwire=True,
         config=_config(tmp_path_factory.mktemp("catalog-restricted-role")),
+        control_plane="own",
     )
-    srv.start()
+    srv.start(timeout=240)
     try:
         yield srv
     finally:
@@ -141,6 +146,12 @@ def test_a_listed_column_the_role_is_not_served_answers_false(server):
         "SELECT has_column_privilege('customers', 'email', 'SELECT'), "
         "has_column_privilege('customers', 'name', 'SELECT')",
     ) == [(False, True)]
+
+
+def test_a_column_the_role_is_not_served_is_refused_on_read(server):
+    with pytest.raises(psycopg2.Error) as refused:
+        _read(server, _RESTRICTED, "SELECT email FROM customers")
+    assert refused.value.pgcode == "42501"
 
 
 def test_every_system_row_is_every_roles(server):

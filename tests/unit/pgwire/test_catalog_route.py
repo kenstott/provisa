@@ -19,6 +19,7 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.pgwire.catalog import classify
 from provisa.pgwire.catalog_pg17 import RELATIONS
 from provisa.pgwire.catalog_route import CatalogRequest, addressed_statement
 from provisa.transpiler.metadata_facts import catalog_facts
@@ -196,6 +197,19 @@ async def test_a_catalog_statements_route_is_never_kept_for_its_shape(monkeypatc
         current_request.reset(token)
     assert answer == "routed as itself"
     assert state.compiled_query_cache.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT has_column_privilege('customers', 'email', 'SELECT')",
+        "SELECT pg_catalog.has_column_privilege('customers', 'email', 'SELECT')",
+        "SELECT has_any_column_privilege('customers', 'SELECT')",
+    ],
+)
+def test_a_column_privilege_alone_is_the_catalogs_and_not_the_engines(sql):
+    """DuckDB has these, and answers TRUE: only the form knows what the role is not served."""
+    assert classify(sql) == "INTERCEPT"
 
 
 _CATALOG_VIEW, _USER_TABLE = 90, 7
