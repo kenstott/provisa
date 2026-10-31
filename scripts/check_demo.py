@@ -100,7 +100,11 @@ def check_examples(home: Path) -> list[str]:
     queries = sorted((home / "queries").glob("*.graphql"))
     if not queries:
         return ["queries/ holds no example query"]
-    admin = {"id": "org_admin", "capabilities": [], "domain_access": ["*"]}
+    admin = {
+        "id": "org_admin",
+        "capabilities": [],
+        "domain_access": ["*", "meta", "ontology", "ops"],
+    }
     schema = _views_schema(home, admin, include_tables=True)
     problems = []
     for query in queries:

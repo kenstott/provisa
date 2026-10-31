@@ -181,7 +181,7 @@ def _role_rows(con, cypher: str, role_id: str, governed: set | None = None) -> l
     _, ctx = _build_schema_and_ctx(relationships=RELATIONSHIPS, role_id=role_id)
     if governed is not None:
         ctx.gql_governed_object_cols = governed
-    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
     return sorted(con.execute(transpile_to_duckdb(make_semantic_sql(sql, ctx))).fetchall())
@@ -207,7 +207,7 @@ def _write(cypher: str, role_id: str = "admin") -> str:
     from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write
 
     _, ctx = _build_schema_and_ctx(relationships=RELATIONSHIPS, role_id=role_id)
-    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     return WriteTranslator(lm).translate(parse_cypher_write(cypher))
 
 

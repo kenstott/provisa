@@ -46,6 +46,7 @@ from tests.unit.gate_identity import serve_every_column
 # The rights the role under test carries: the seeded steward's and, as an org admin may give a
 # steward (REQ-2188), data_product_rw.
 STEWARD_RIGHTS = [
+    "catalog_read",
     "access_config",
     "column_grant",
     "masking_config",

@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from provisa.security.rights import normalized_reach
+
 ALL_DOMAINS = "*"
 
 
@@ -116,7 +118,7 @@ def expand(domain_ids: Iterable[str], parents: dict[str, str | None]) -> list[st
     domains it holds and nothing to expand."""
     listed = set(domain_ids)
     if ALL_DOMAINS in listed:
-        return sorted(listed)
+        return normalized_reach(listed)
     for domain_id in list(listed):
         listed |= descendants(domain_id, parents)
     return sorted(listed)

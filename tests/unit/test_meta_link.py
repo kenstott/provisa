@@ -70,7 +70,11 @@ def ctx():
             3: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": "sales", "description": ""}, {"id": "meta", "description": ""}],
     )
     generate_schema(si)
@@ -190,11 +194,19 @@ def test_a_role_reads_the_link_columns_of_every_table_it_reads():
             3: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
         },
         naming_rules=[],
-        role={"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "analyst",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": "sales", "description": ""}, {"id": "meta", "description": ""}],
     )
     ctx = build_context(si)
-    role = {"id": "analyst", "domain_access": ["*"], "capabilities": ["query_development"]}
+    role = {
+        "id": "analyst",
+        "domain_access": ["*", "meta", "ontology", "ops"],
+        "capabilities": ["query_development"],
+    }
     gov = build_governance_context("analyst", RLSContext.empty(), {}, ctx, raw, role)
     for sql in (
         'SELECT o.id, o._domain_, o._name_ FROM "sales"."purchases" AS o',
@@ -227,11 +239,19 @@ def test_governance_keeps_the_link_columns_in_a_projection_and_a_join():
             3: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": "sales", "description": ""}, {"id": "meta", "description": ""}],
     )
     ctx = build_context(si)
-    role = {"id": "admin", "domain_access": ["*"], "capabilities": ["query_development"]}
+    role = {
+        "id": "admin",
+        "domain_access": ["*", "meta", "ontology", "ops"],
+        "capabilities": ["query_development"],
+    }
     gov = build_governance_context("admin", RLSContext.empty(), {}, ctx, raw, role)
     governed = sqlglot.parse_one(
         govern_fragment(

@@ -58,7 +58,7 @@ def state(monkeypatch):
                 "id": "r",
                 "description": "Test role.",
                 "capabilities": ["usage"],
-                "domain_access": ["*"],
+                "domain_access": ["*", "meta", "ontology", "ops"],
             }
         ],
         tables=[_table(ORDERS, "sales", "orders"), _table(PRODUCTS, "meta", "data_products")],

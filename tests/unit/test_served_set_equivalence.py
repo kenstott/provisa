@@ -309,10 +309,12 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
 def _narrowed_meta_scope(role: dict, tables: list[dict]) -> set[int] | None:
     """The catalog row scope as intended: of the tables in a domain the role reaches, those it is
     served at least one column of — the schema build's answer, not domain reach alone."""
-    old = _old_meta_scope(role, tables)
-    if old is None:
+    reach = role["domain_access"]
+    if "*" in reach:
         return None
-    return old & set(_old_schema_served(role, tables))
+    return {t["id"] for t in tables if t["domain_id"] in reach} & set(
+        _old_schema_served(role, tables)
+    )
 
 
 @pytest.mark.parametrize("tables, role", _CASES)
@@ -323,7 +325,8 @@ def test_the_catalog_row_scope_is_the_tables_the_role_is_served(tables, role):
     scope = compute_meta_row_scope(role, tables, [])
     assert scope == _narrowed_meta_scope(role, tables)
     old = _old_meta_scope(role, tables)
-    assert scope is None if old is None else scope <= old, "never wider than it was"
+    # REQ-1132: catalog_read opens meta and not its rows, so a role listing meta narrows too.
+    assert old is None or (scope is not None and scope <= old), "never wider than it was"
 
 
 def test_how_many_role_table_pairs_the_narrowing_removes():

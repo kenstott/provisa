@@ -113,8 +113,12 @@ def state(monkeypatch):
     expand_grants(shipped, {"reader": ["reader", "viewer"], "outsider": ["outsider"]})
     return SimpleNamespace(
         roles={
-            "reader": {"id": "reader", "capabilities": [], "domain_access": ["shelter"]},
-            "outsider": {"id": "outsider", "capabilities": [], "domain_access": ["shelter"]},
+            "reader": {"id": "reader", "capabilities": [], "domain_access": ["shelter", "meta"]},
+            "outsider": {
+                "id": "outsider",
+                "capabilities": [],
+                "domain_access": ["shelter", "meta"],
+            },
         },
         tracked_functions={f["name"]: f for f in shipped},
         tracked_webhooks={},

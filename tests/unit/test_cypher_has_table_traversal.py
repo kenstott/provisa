@@ -177,7 +177,11 @@ def test_a_registration_links_only_to_an_ops_row_naming_its_domain_and_table() -
             t["id"]: [_col(c["column_name"], "varchar") for c in t["columns"]] for t in tables
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": "meta", "description": "Meta"}, {"id": "ops", "description": "Ops"}],
         source_catalogs={"provisa-admin": "provisa_admin"},
     )

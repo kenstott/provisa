@@ -73,7 +73,11 @@ def _schema_input(root_domains: set[str] | None):
             for i in range(1, len(_TABLES) + 1)
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": d} for d, _ in _TABLES],
         domain_prefix=True,
         functions=[

@@ -229,7 +229,11 @@ def _schema_input():
             for i, (_name, cs) in enumerate(cols.items(), 1)
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": ONTOLOGY_DOMAIN_ID, "description": "Ontology", "graphql_alias": "ont"}],
         domain_prefix=True,
     )
@@ -246,7 +250,7 @@ def test_sql_reaches_axioms_and_graphql_and_cypher_do_not():
     ctx = build_context(si)
     # SQL reads it: the compilation context has it.
     assert any(m.table_name == "_axioms" for m in ctx.tables.values())
-    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     assert all(nm.table_name != "_axioms" for nm in lm.nodes.values())
     # SPARQL lowers to it through the map that holds the SQL-only tables too.
     assert any(nm.table_name == "_axioms" for nm in lm.with_sql_only().nodes.values())
@@ -337,7 +341,9 @@ def test_an_edge_into_a_table_sql_alone_serves_is_no_relationship_of_the_graph()
             "via_table_name": None,
         }
     ]
-    lm = CypherLabelMap.from_schema(build_context(si), domain_access=["*"])
+    lm = CypherLabelMap.from_schema(
+        build_context(si), domain_access=["*", "meta", "ontology", "ops"]
+    )
     for r in [*lm.relationships.values(), *(a for rs in lm.aliases.values() for a in rs)]:
         assert r.source_label in lm.nodes and r.target_label in lm.nodes, r
     sparql = lm.with_sql_only()
