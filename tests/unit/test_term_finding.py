@@ -195,15 +195,25 @@ def test_a_mention_the_resolution_leaves_out_is_counted():
 
 
 class _Guard:
-    def __init__(self, *, refuse: bool = False, room: int | None = None, budget: bool = True):
+    def __init__(
+        self,
+        *,
+        refuse: bool = False,
+        refuse_after: int | None = None,
+        room: int | None = None,
+        budget: bool = True,
+    ):
         self.refuse = refuse
+        self.refuse_after = refuse_after
+        self.admits = 0
         self.room = room
         self.admitted = types.SimpleNamespace(budget=object() if budget else None)
         self.debited: list[tuple[Any, str]] = []
 
     async def admit(self, model_name: str) -> None:
-        if self.refuse:
+        if self.refuse or self.admits == self.refuse_after:
             raise BudgetRefused("role steward's LLM budget for the day is spent")
+        self.admits += 1
 
     def allowance(self, model_name: str) -> int | None:
         return self.room
@@ -216,14 +226,19 @@ class _Client:
     vendor = "anthropic"
     model = "claude-test"
 
-    def __init__(self, usage: Any):
+    def __init__(self, usage: Any, *, cut_off: bool = False):
         self.usage = usage
+        self.cut_off = cut_off
         self.asked: list[tuple[str, int]] = []
 
     async def complete_detailed(self, prompt: str, system: str, max_tokens: int) -> Any:
         self.asked.append((prompt, max_tokens))
         return types.SimpleNamespace(
-            text="[]", vendor="anthropic", model="claude-test", usage=self.usage
+            text="[]",
+            vendor="anthropic",
+            model="claude-test",
+            usage=self.usage,
+            cut_off=self.cut_off,
         )
 
 
@@ -249,6 +264,174 @@ async def test_a_call_with_no_reported_usage_is_refused_when_a_budget_holds_the_
     with pytest.raises(scan.ScanFailed, match="reported no usage"):
         await model.Held(_Client(None), _Guard(), None)("p", 10)
     assert await model.Held(_Client(None), _Guard(budget=False), None)("p", 10) == "[]"
+
+
+async def test_a_cut_off_answer_is_counted_and_raised_naming_the_limit_it_stopped_at():
+    guard = _Guard(room=500)
+    with pytest.raises(scan.AnswerCutOff, match="anthropic:claude-test .* 500 output tokens"):
+        await model.Held(_Client(USAGE, cut_off=True), guard, None)("find terms", 4096)
+    assert len(guard.debited) == 1
+
+
+# -- an answer cut off, an answer that is not JSON ------------------------------------------------
+
+
+PARTS = [scan.Passage(n, "Terms", n + 1, f"text {n}") for n in range(5)]
+
+
+def _read(prompt: str) -> list[int]:
+    return [int(n) for n in re.findall(r"^\[P(\d+)\]", prompt, re.MULTILINE)]
+
+
+class _Reader:
+    """A model that answers each passage with one concept, or cuts off / garbles when told to."""
+
+    def __init__(
+        self,
+        *,
+        cut: Callable[[list[int]], bool] = lambda read: False,
+        cut_merge: bool = False,
+        garbled: Callable[[int, str], bool] = lambda asked, prompt: False,
+    ):
+        self.cut = cut
+        self.cut_merge = cut_merge
+        self.garbled = garbled
+        self.asked: list[str] = []
+
+    @property
+    def batches(self) -> list[list[int]]:
+        return [_read(p) for p in self.asked if "Group the mentions" not in p]
+
+    async def __call__(self, prompt: str, max_tokens: int) -> str:
+        self.asked.append(prompt)
+        merging = "Group the mentions" in prompt
+        if self.cut_merge if merging else self.cut(_read(prompt)):
+            raise scan.AnswerCutOff(
+                f"fake:model stopped at its limit of {max_tokens} output tokens"
+            )
+        if self.garbled(len(self.asked), prompt):
+            return '[\n  {"passage": 0, '
+        if merging:
+            ids = [int(n) for n in re.findall(r"^M(\d+) ", prompt, re.MULTILINE)]
+            return json.dumps([{"name": "c", "sense": "s", "mentions": ids}])
+        return json.dumps(
+            [
+                {
+                    "passage": n,
+                    "name": f"concept {n}",
+                    "category": "role",
+                    "sense": "s",
+                    "quote": f"text {n}",
+                    "explicit": True,
+                    "variants": [],
+                }
+                for n in _read(prompt)
+            ]
+        )
+
+
+class _Steps:
+    def __init__(self, stop_at: int | None = None):
+        self.heard: list[tuple[str, int, int]] = []
+        self.stop_at = stop_at
+
+    async def __call__(self, step: str, batch: int, batches: int) -> None:
+        if len(self.heard) == self.stop_at:
+            raise scan.ScanStopped
+        self.heard.append((step, batch, batches))
+
+
+async def test_a_cut_off_batch_is_read_in_halves_and_the_steps_count_the_extra_calls(monkeypatch):
+    monkeypatch.setattr(scan, "batches", lambda p: [list(p[:4]), list(p[4:])])
+    reader, steps = _Reader(cut=lambda read: len(read) > 2), _Steps()
+    result = await scan.run("t", PARTS, reader, steps)
+    assert reader.batches == [[0, 1, 2, 3], [0, 1], [2, 3], [4]]
+    assert steps.heard == [
+        ("reading", 1, 2),
+        ("reading", 2, 4),
+        ("reading", 3, 4),
+        ("reading", 4, 4),
+        ("merging", 0, 0),
+    ]
+    assert result.calls == len(reader.asked) == 5
+    assert result.mentions == 5
+    assert [p["ordinal"] for p in result.candidates[0].passages] == [0, 1, 2, 3, 4]
+
+
+async def test_a_batch_cut_off_again_is_split_again():
+    reader = _Reader(cut=lambda read: len(read) > 1)
+    result = await scan.run("t", PARTS, reader, _Steps())
+    assert reader.batches[:4] == [[0, 1, 2, 3, 4], [0, 1], [0], [1]]
+    assert result.mentions == 5
+    assert result.calls == 2 * len(PARTS) - 1 + 1
+
+
+async def test_a_passage_cut_off_on_its_own_is_named():
+    reader = _Reader(cut=lambda read: 2 in read)
+    with pytest.raises(scan.ScanFailed) as failed:
+        await scan.run("t", PARTS, reader, _Steps())
+    assert str(failed.value) == (
+        "the model's answer to passage 2 (section 'Terms', page 3) was cut off with that passage "
+        "read alone: fake:model stopped at its limit of 4096 output tokens"
+    )
+    assert reader.batches == [[0, 1, 2, 3, 4], [0, 1], [2, 3, 4], [2]]
+
+
+async def test_a_cut_off_resolution_fails_saying_so_and_is_asked_once():
+    reader = _Reader(cut_merge=True)
+    with pytest.raises(scan.ScanFailed) as failed:
+        await scan.run("t", PARTS, reader, _Steps())
+    assert str(failed.value) == (
+        "the model's answer to the mentions' resolution was cut off: "
+        "fake:model stopped at its limit of 8192 output tokens"
+    )
+    assert len(reader.asked) == 2
+
+
+async def test_a_scan_stopped_between_the_halves_makes_no_further_call():
+    reader = _Reader(cut=lambda read: len(read) > 2)
+    with pytest.raises(scan.ScanStopped):
+        await scan.run("t", PARTS, reader, _Steps(stop_at=1))
+    assert len(reader.asked) == 1
+
+
+@pytest.mark.parametrize(
+    ("garbled", "heard"),
+    [
+        (
+            lambda asked, prompt: asked == 1,
+            [("reading", 1, 1), ("reading", 2, 2), ("merging", 0, 0)],
+        ),
+        (
+            lambda asked, prompt: asked == 2,
+            [("reading", 1, 1), ("merging", 0, 0), ("merging", 0, 0)],
+        ),
+    ],
+    ids=["reading", "merging"],
+)
+async def test_an_answer_that_is_not_json_is_asked_for_once_more(garbled, heard):
+    reader, steps = _Reader(garbled=garbled), _Steps()
+    result = await scan.run("t", PARTS, reader, steps)
+    assert steps.heard == heard
+    assert result.calls == len(reader.asked) == 3
+    assert result.mentions == 5
+    assert len(result.candidates) == 1
+
+
+async def test_an_answer_that_is_not_json_twice_is_named():
+    reader = _Reader(garbled=lambda asked, prompt: True)
+    with pytest.raises(scan.ScanFailed, match="asked twice") as failed:
+        await scan.run("t", PARTS, reader, _Steps())
+    assert "the model's answer to passages 0-4 was not JSON" in str(failed.value)
+    assert len(reader.asked) == 2
+
+
+async def test_a_resolution_that_is_not_json_twice_is_named():
+    reader = _Reader(garbled=lambda asked, prompt: "Group the mentions" in prompt)
+    with pytest.raises(scan.ScanFailed, match="asked twice") as failed:
+        await scan.run("t", PARTS, reader, _Steps())
+    assert "the model's answer to the mentions' resolution was not JSON" in str(failed.value)
+    assert len(reader.asked) == 3
 
 
 # -- the API: scan, review queue, rescan ----------------------------------------------------------
@@ -712,9 +895,14 @@ def _settled(client: TestClient, scan_id: int) -> dict:
 class _Vendor:
     """aisuite with the vendor's answers replaced: the rest of the call is the real client's."""
 
-    def __init__(self, answer: Callable[[str], str] = fake_answer):
+    def __init__(
+        self,
+        answer: Callable[[str], str | None] = fake_answer,
+        finish: Callable[[str], str] = lambda prompt: "stop",
+    ):
         self.asked = 0
         self.answer = answer
+        self.finish = finish
         self.chat = types.SimpleNamespace(
             completions=types.SimpleNamespace(create=self.create),
         )
@@ -724,21 +912,26 @@ class _Vendor:
 
     def create(self, *, model: str, messages: list[dict], max_tokens: int) -> Any:
         self.asked += 1
-        text = self.answer(messages[-1]["content"])
+        prompt = messages[-1]["content"]
         return types.SimpleNamespace(
-            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=text))],
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(content=self.answer(prompt)),
+                    finish_reason=self.finish(prompt),
+                )
+            ],
             usage=USAGE,
         )
 
 
-def _real_client(monkeypatch, vendor: _Vendor) -> Any:
+def _real_client(monkeypatch, vendor: _Vendor, guard: _Guard | None = None) -> Any:
     monkeypatch.setattr("aisuite.Client", vendor)
     config = {"ai_models": {model.OPERATION: {"vendor": "anthropic", "model": "fake-model"}}}
     client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"anthropic": "k"})
-    guard = _Guard(budget=False)
+    held = guard or _Guard(budget=False)
 
     async def _model(request):
-        return model.Held(client, guard, None)
+        return model.Held(client, held, None)
 
     monkeypatch.setattr(router, "_model", _model)
     return client
@@ -848,6 +1041,82 @@ async def test_an_answer_that_is_garbage_fails_the_scan_saying_so(api, monkeypat
     assert "was not JSON" in found["scan"]["error"]
 
 
+def _cut_off_when_more_than_one(prompt: str) -> str:
+    return "length" if len(_read(prompt)) > 1 else "stop"
+
+
+async def test_a_dense_batch_is_read_in_halves_by_the_real_client_and_the_scan_ends(
+    api, monkeypatch
+):
+    def answer(prompt: str) -> str:
+        whole = fake_answer(prompt)
+        return whole[: len(whole) // 2] if len(_read(prompt)) > 1 else whole
+
+    vendor, guard = _Vendor(answer, _cut_off_when_more_than_one), _Guard()
+    _real_client(monkeypatch, vendor, guard)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["status"] == "done", found["scan"]
+    assert len(found["drafts"]) == 5
+    assert found["scan"]["summary"]["calls"] == vendor.asked > 2
+    assert guard.admits == len(guard.debited) == vendor.asked
+    assert found["scan"]["batch"] == found["scan"]["batches"] == 0
+
+
+async def test_a_model_that_spends_its_limit_before_any_text_is_read_in_halves(api, monkeypatch):
+    def answer(prompt: str) -> str | None:
+        return None if len(_read(prompt)) > 1 else fake_answer(prompt)
+
+    vendor, guard = _Vendor(answer, _cut_off_when_more_than_one), _Guard()
+    _real_client(monkeypatch, vendor, guard)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["status"] == "done", found["scan"]
+    assert guard.admits == len(guard.debited) == vendor.asked
+
+
+async def test_a_passage_cut_off_alone_fails_the_real_scan_naming_it_and_the_budget(
+    api, monkeypatch
+):
+    vendor = _Vendor(lambda prompt: "[{", lambda prompt: "length")
+    _real_client(monkeypatch, vendor, _Guard(room=500))
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["status"] == "failed"
+    error = found["scan"]["error"]
+    assert re.fullmatch(
+        r"the model's answer to passage \d+ \(.*\) was cut off with that passage read alone: "
+        r"anthropic:fake-model stopped at its limit of 500 output tokens "
+        r"\(the role's LLM budget held a call to 500 output tokens\)",
+        error,
+    ), error
+
+
+async def test_the_budget_refuses_an_extra_call_like_any_other(api, monkeypatch):
+    vendor = _Vendor(fake_answer, _cut_off_when_more_than_one)
+    _real_client(monkeypatch, vendor, _Guard(refuse_after=1))
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    assert found["scan"]["status"] == "failed"
+    assert found["scan"]["error"] == "role steward's LLM budget for the day is spent"
+    assert vendor.asked == 1
+
+
+async def test_an_extra_call_that_stalls_is_given_up_on_like_any_other(api, monkeypatch):
+    released = threading.Event()
+
+    def stalls_after_the_first(prompt: str) -> str:
+        if len(_read(prompt)) > 1 and vendor.asked == 1:
+            return "[{"
+        released.wait(30)
+        return "[]"
+
+    vendor = _Vendor(stalls_after_the_first, _cut_off_when_more_than_one)
+    _real_client(monkeypatch, vendor)
+    monkeypatch.setattr(llm_client, "CALL_TIMEOUT_S", 0.05)
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    released.set()
+    assert found["scan"]["status"] == "failed"
+    assert found["scan"]["error"] == "anthropic:fake-model gave no answer within 0.05 seconds"
+    assert vendor.asked == 2
+
+
 async def test_a_key_the_vendor_refuses_fails_the_scan_saying_where_to_set_it(api, monkeypatch):
     def refused(prompt: str) -> str:
         error = RuntimeError("Error code: 401")
@@ -949,7 +1218,7 @@ def test_a_stalled_call_is_tried_on_the_fallback(monkeypatch):
         calls.append(vendor)
         if vendor == "anthropic":
             threading.Event().wait(5)
-        return llm_client.Completion("answer", vendor, model_name, None)
+        return llm_client.Completion("answer", vendor, model_name, None, False)
 
     monkeypatch.setattr(ProvisaLLMClient, "_respond", respond)
     monkeypatch.setattr(llm_client, "CALL_TIMEOUT_S", 0.05)
@@ -965,7 +1234,7 @@ def test_a_stalled_call_is_tried_on_the_fallback(monkeypatch):
 
 def test_a_call_runs_in_the_callers_context(monkeypatch):
     def respond(self, vendor, model_name, prompt, system, max_tokens):
-        return llm_client.Completion(str(current_org.get()), vendor, model_name, None)
+        return llm_client.Completion(str(current_org.get()), vendor, model_name, None, False)
 
     monkeypatch.setattr(ProvisaLLMClient, "_respond", respond)
     token = current_org.set("acme")

@@ -16,7 +16,9 @@ org's own vendor keys. Every call is held to the LLM budget of the role the stew
 (REQ-1174, provisa.security.llm_budget): admitted before it runs, its output limited to what the
 role has room for, and what it used debited after. A refusal names the window that is full and
 ends the scan. A scan that could not run is refused before it starts (:func:`for_role`): no model
-named, or no key for it. Every other failure of a call ends the scan naming the model.
+named, or no key for it. Every other failure of a call ends the scan naming the model. An answer
+cut off at its output limit is counted like any other and raised as
+:class:`~provisa.term_finding.scan.AnswerCutOff`, for the scan to decide what to do about it.
 
 What the scan sends is redacted as everything Provisa sends out is (provisa.security.redaction).
 """
@@ -28,8 +30,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from provisa.llm.client import LLMTimeoutError
-from provisa.term_finding.scan import ScanFailed
+from provisa.llm.client import LLMEmptyResponseError, LLMTimeoutError
+from provisa.term_finding.scan import AnswerCutOff, ScanFailed
 
 #: The ``ai_models`` entry that names the scan's model.
 OPERATION = "glossary_term_finding"
@@ -102,6 +104,10 @@ class Held:
             answered = await client.complete_detailed(
                 redact(prompt, self._org_id), system=SYSTEM, max_tokens=max_tokens
             )
+        except LLMEmptyResponseError as exc:
+            if not exc.answer.cut_off:
+                raise ScanFailed(redact(_failure(exc, self.name), self._org_id)) from exc
+            answered = exc.answer
         except Exception as exc:
             raise ScanFailed(redact(_failure(exc, self.name), self._org_id)) from exc
         if answered.usage is None:
@@ -112,6 +118,11 @@ class Held:
                 )
         else:
             await budget.debit(usage_of(answered.vendor, answered.usage), answered.model)
+        if answered.cut_off:
+            raise AnswerCutOff(
+                f"{answered.vendor}:{answered.model} stopped at its limit of {max_tokens} output "
+                "tokens"
+            )
         return answered.text
 
 
