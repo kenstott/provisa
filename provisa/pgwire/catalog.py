@@ -623,7 +623,39 @@ def _as_declared(sql: str, result):
             )
             for row in rows
         ]
-    return QueryResult(rows=rows, column_names=result.column_names, column_types=col_types)
+    return _with_own_oids(
+        QueryResult(rows=rows, column_names=result.column_names, column_types=col_types),
+        oids,
+        served,
+    )
+
+
+def _array_text(value: list) -> str:
+    return "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
+
+
+def _with_own_oids(result, oids, served: list[str]):
+    """A column of a type the wire has no form of its own for (tsquery, xml[]) is sent as text under
+    PostgreSQL's oid, which is what its text form is: the client names it as PostgreSQL does."""
+    from provisa.pgwire.server import BVTYPE_TO_PGTYPE, _sql_type_to_bvtype
+
+    declared = result.column_types
+    own: list[int | None] = [None] * len(declared)
+    for i, oid in enumerate(oids):
+        if declared[i] == served[i] and BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(served[i])][0] != oid:
+            own[i] = oid
+            declared[i] = "text"
+    if not any(own):
+        return result
+    result.column_type_oids = own
+    result.rows = [
+        tuple(
+            _array_text(v) if own[i] is not None and isinstance(v, list) else v
+            for i, v in enumerate(row)
+        )
+        for row in result.rows
+    ]
+    return result
 
 
 def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, run):

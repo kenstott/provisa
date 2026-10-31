@@ -1184,6 +1184,10 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             if value_of is not None:
                 self._coerce.append((i, value_of))
         _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
+        # REQ-2190: a type PostgreSQL named that the wire has no form of its own for.
+        for i, oid in enumerate(getattr(engine_result, "column_type_oids", None) or ()):
+            if oid is not None:
+                self._type_oids[i] = oid
 
     def has_results(self) -> bool:
         return len(self._cols) > 0

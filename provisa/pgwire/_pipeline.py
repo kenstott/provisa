@@ -879,8 +879,11 @@ async def _optimize_and_route_cached(
 
     # A request's route hint is the request's own: its decision is not the shape's to keep. A
     # statement a view answers depends on the view being fresh now: never the shape's to keep.
+    # REQ-2190: nor is a catalog statement's: a form can read as a client's own statement does
+    # (CAST(NULL AS TIMESTAMPTZ)), which must not inherit the control plane as its route.
     if (
         steward_hint is not None
+        or current_catalog_request.get() is not None
         or would_materialize_optimize(exec_sql, state, table_ids=table_ids)
         or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
         is not None

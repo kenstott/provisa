@@ -166,3 +166,31 @@ def test_a_table_form_keeps_the_statements_alias():
 
 def test_an_array_cast_sqlglot_cannot_read_is_read():
     assert "_oid" in _addressed("SELECT 1 FROM pg_class WHERE oid = ANY(NULL::oid[])").lower()
+
+
+async def test_a_catalog_statements_route_is_never_kept_for_its_shape(monkeypatch):
+    """A form can read exactly as a client's own statement does (pg_last_xact_replay_timestamp() is
+    CAST(NULL AS TIMESTAMPTZ)): a route kept for that shape would send the client's statement to
+    the control plane."""
+    from unittest.mock import MagicMock
+
+    from provisa.api.data import materialization
+    from provisa.pgwire import _pipeline
+    from provisa.pgwire.catalog_route import current_request
+
+    async def routed(*_args, **_kwargs):
+        return "routed as itself"
+
+    monkeypatch.setattr(_pipeline, "_optimize_and_route", routed)
+    monkeypatch.setattr(materialization, "would_materialize_optimize", lambda *a, **k: False)
+    monkeypatch.setattr(_pipeline, "_view_answering", lambda *a, **k: None)
+    state = MagicMock()
+    token = current_request.set(_REQUEST)
+    try:
+        answer = await _pipeline._optimize_and_route_cached(
+            "SELECT 1", "SELECT 1", MagicMock(), MagicMock(), state, "reader", table_ids=()
+        )
+    finally:
+        current_request.reset(token)
+    assert answer == "routed as itself"
+    assert state.compiled_query_cache.mock_calls == []
