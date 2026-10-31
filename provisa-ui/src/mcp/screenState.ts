@@ -41,9 +41,14 @@ export type ScreenInputs = Record<string, unknown>;
 
 const editors = new Map<string, ScreenEditor>();
 const grids = new Map<symbol, ScreenGrid>();
-/** How to read each page's inputs, by route: read at the moment the screen is read, since the
- * OpenAPI page's inputs live in its docs frame and change without the page rendering. */
-const inputReaders = new Map<string, () => ScreenInputs>();
+/** How to read each page's inputs: read at the moment the screen is read, since the OpenAPI page's
+ * inputs live in its docs frame and change without the page rendering. A page may publish from
+ * more than one place (Tables and its ERD), so a route's readers are merged. */
+const inputReaders = new Map<symbol, { route: string; read: () => ScreenInputs }>();
+
+function readersOf(route: string) {
+  return [...inputReaders.values()].filter((reader) => reader.route === route);
+}
 /** Waiting for a page's editor or inputs to publish, by route. */
 const awaited = new Map<string, Set<() => void>>();
 
@@ -60,7 +65,15 @@ export const EDITOR_ROUTES: ReadonlySet<string> = new Set([
 
 /** The routes whose page publishes its inputs with useScreenInputs or useScreenInputsReader; as
  * with EDITOR_ROUTES, one that has not published yet is still loading. */
-export const INPUT_ROUTES: ReadonlySet<string> = new Set(["/grpc", "/jsonapi", "/openapi"]);
+export const INPUT_ROUTES: ReadonlySet<string> = new Set([
+  "/grpc",
+  "/jsonapi",
+  "/openapi",
+  "/tables",
+  "/relationships",
+  "/data-products",
+  "/admin/ontology",
+]);
 
 function wakeWaiters(route: string): void {
   for (const wake of awaited.get(route) ?? []) wake();
@@ -82,10 +95,11 @@ export function useScreenEditor(route: string, editor: ScreenEditor): void {
 /** Publish how to read the inputs `route` shows, while the calling component is mounted. */
 export function useScreenInputsReader(route: string, read: () => ScreenInputs): void {
   useEffect(() => {
-    inputReaders.set(route, read);
+    const id = Symbol("inputs");
+    inputReaders.set(id, { route, read });
     wakeWaiters(route);
     return () => {
-      inputReaders.delete(route);
+      inputReaders.delete(id);
     };
   }, [route, read]);
 }
@@ -155,7 +169,7 @@ export interface Screen {
 
 /** Resolves true once `route`'s editor or inputs have published, false after `waitMs`. */
 function pagePublished(route: string, waitMs: number): Promise<boolean> {
-  if (editors.has(route) || inputReaders.has(route)) return Promise.resolve(true);
+  if (editors.has(route) || readersOf(route).length > 0) return Promise.resolve(true);
   return new Promise((resolve) => {
     const wakers = awaited.get(route) ?? new Set<() => void>();
     awaited.set(route, wakers);
@@ -182,10 +196,11 @@ export async function readScreen(waitMs: number): Promise<Screen | string> {
   if (INPUT_ROUTES.has(pathname) && !(await pagePublished(pathname, waitMs))) {
     return `the page on ${pathname} has not loaded within ${waitMs / 1000}s`;
   }
+  const readers = readersOf(pathname);
   return {
     route: `${window.location.pathname}${window.location.search}`,
     editor: editors.get(pathname) ?? null,
-    inputs: inputReaders.get(pathname)?.() ?? null,
+    inputs: readers.length > 0 ? Object.assign({}, ...readers.map(({ read }) => read())) : null,
     fields: screenFields(),
     results: [...grids.values()],
   };

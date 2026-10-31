@@ -191,8 +191,10 @@ export async function executeClientTool(
     const actions = input.actions === undefined ? [] : parseUiActions(input.actions);
     if (typeof actions === "string") return { success: false, message: `navigate: ${actions}` };
     ctx.navigate(route, state ? { state } : undefined);
-    // Handed state is on the page only when the screen shows it: never "Navigated" on faith.
-    const opened = state ? await readBack(route, state, READ_BACK_WAIT_MS) : null;
+    // Handed state is on the page only when the screen shows it: never "Navigated" on faith. A
+    // link's query is state too, on a page that keeps its state in its URL.
+    const asked = state ?? (route.includes("?") ? {} : null);
+    const opened = asked ? await readBack(route, asked, READ_BACK_WAIT_MS) : null;
     const seen = opened?.screen ? `\nThe screen: ${JSON.stringify(opened.screen)}` : "";
     if (opened && !opened.shown) {
       const refused = `navigate: ${route} did not take what it was handed: ${opened.difference}.`;

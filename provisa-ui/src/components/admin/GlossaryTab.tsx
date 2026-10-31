@@ -48,6 +48,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { useScreenInputs } from "../../mcp/screenState";
 import { GlossaryOntologyView, OntologyToggle } from "../graph3d/GlossaryOntologyView";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
@@ -189,6 +190,10 @@ export function GlossaryTab() {
 
   const navigate = useNavigate();
   const [detail, setDetail] = useState<GlossaryTermDetail | null>(null);
+  // REQ-2115: the open term by name, once the glossary has answered for it.
+  useScreenInputs("/admin/ontology", {
+    termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
+  });
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Editable copies of the selected term's name/definition.

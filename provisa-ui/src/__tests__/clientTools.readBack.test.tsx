@@ -76,7 +76,7 @@ describe("read-back of an editor", () => {
 
   it("has nothing to read back on a route with no check", async () => {
     window.history.pushState({}, "", "/somewhere-else");
-    expect(await readBack("/tables", { view: "erd" }, WAIT)).toEqual({ shown: true, screen: null });
+    expect(await readBack("/sources", { view: "x" }, WAIT)).toEqual({ shown: true, screen: null });
   });
 });
 
@@ -239,5 +239,60 @@ describe("navigate", () => {
     });
     expect(navigate).toHaveBeenCalledOnce();
     vi.doUnmock("../mcp/readBack");
+  });
+});
+
+describe("read-back of a page that keeps its state in its URL", () => {
+  it("reads as shown when the page found what the link names", async () => {
+    open("/tables", { view: "erd", table: 7, domains: ["shop"], objects: [], collapsed: [] });
+    window.history.pushState({}, "", "/tables?view=erd&table=7&domains=shop");
+    const out = await readBack("/tables?view=erd&table=7&domains=shop", {}, WAIT);
+    expect(out.shown).toBe(true);
+  });
+
+  it("names a table the page did not open", async () => {
+    open("/tables", { view: "erd", table: null });
+    const out = await readBack("/tables?view=erd&table=7", {}, WAIT);
+    expect(out).toMatchObject({ shown: false, difference: "the page shows table none, not 7" });
+  });
+
+  it("names domains that did not collapse", async () => {
+    open("/tables", { view: "erd", collapsed: ["shop"] });
+    const out = await readBack("/tables?view=erd&collapsed=all", {}, WAIT);
+    expect(out).toMatchObject({ shown: false, difference: "the page shows collapsed shop, not all" });
+  });
+
+  it("reads a data product the list does not hold as not opened", async () => {
+    open("/data-products", { product: null });
+    const out = await readBack("/data-products?product=nope", {}, WAIT);
+    expect(out).toMatchObject({ shown: false, difference: "the page shows product none, not nope" });
+  });
+
+  it("reads the ontology graph's controls back", async () => {
+    const graph = { flat: true, layout: "layered" };
+    open("/admin/ontology", { panel: "graph", term: null, graph });
+    const state = { panel: "graph", graph: { flat: true } };
+    expect((await readBack("/admin/ontology", state, WAIT)).shown).toBe(true);
+    const out = await readBack("/admin/ontology", { graph: { flat: false } }, WAIT);
+    expect(out).toMatchObject({ shown: false, difference: "the graph shows flat true, not false" });
+  });
+
+  it("reads a term the glossary does not hold as not opened", async () => {
+    open("/admin/ontology", { panel: "terms", term: 9, termName: null });
+    const out = await readBack("/admin/ontology", { term: 9 }, WAIT);
+    expect(out).toMatchObject({ shown: false, difference: "the glossary has no term 9" });
+  });
+
+  it("merges what several components publish for one route", async () => {
+    window.history.pushState({}, "", "/tables");
+    render(
+      <>
+        <Inputs route="/tables" inputs={{ view: "erd" }} />
+        <Inputs route="/tables" inputs={{ collapsed: "all" }} />
+      </>,
+    );
+    const out = await readBack("/tables?view=erd&collapsed=all", {}, WAIT);
+    expect(out.shown).toBe(true);
+    expect(out.screen?.inputs).toEqual({ view: "erd", collapsed: "all" });
   });
 });

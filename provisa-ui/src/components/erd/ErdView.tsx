@@ -12,8 +12,9 @@
 // The pages differ only in the panel: a click on the page's own kind of item opens its panel there,
 // and a click on the other kind goes to the other page's ERD with that item's panel open.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useScreenInputs } from "../../mcp/screenState";
 import { useTranslation } from "react-i18next";
 import { Button, Group, Loader, Text } from "@mantine/core";
 import { useLeaveGuard } from "../list/panelLeave";
@@ -63,7 +64,10 @@ export function ErdView({
   const navigate = useNavigate();
   // A click leaves the form open in the panel, as a list row's does.
   const guard = useLeaveGuard();
-  const { focus, setFocus } = useErdView();
+  const { focus, setFocus, collapsed } = useErdView();
+  // Polly's read_screen reads the collapsed domains from here: they are the panel's own state.
+  const [collapsedDomains, setCollapsedDomains] = useState<string[] | "all">([]);
+  useScreenInputs(`/${page}`, { collapsed: collapsedDomains });
   const { checkedDomains, domains: filterDomains } = useDomainFilter();
   const { tables, loading: tablesLoading } = useTables();
   const { relationships, loading: relationshipsLoading } = useAllRelationships();
@@ -97,6 +101,8 @@ export function ErdView({
           highlightTableIds={resolved.highlighted}
           search={search}
           page={page}
+          collapsed={collapsed}
+          onCollapsed={setCollapsedDomains}
           onTableClick={(id) =>
             guard(() =>
               page === "tables"

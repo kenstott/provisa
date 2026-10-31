@@ -20,7 +20,7 @@ import { readScreen, type Screen, type ScreenInputs } from "./screenState";
 
 type Handed = Record<string, unknown>;
 /** The first difference between the payload and the screen; null when the screen shows it. */
-type Check = (state: Handed, screen: Screen) => string | null;
+type Check = (state: Handed, screen: Screen, query: URLSearchParams) => string | null;
 
 /** Whitespace is not a difference: an editor may lay a statement out as it likes. */
 function sameText(a: string, b: string): boolean {
@@ -149,6 +149,41 @@ const checkOpenApi: Check = (state, { inputs }) => {
   return runCheck(state, inputs);
 };
 
+/** The query parameters a page that keeps its state in its URL takes, and publishes by the same
+ * name: a link to it says only what was asked, the page's inputs say what it found. */
+const LINK_PARAMS = [
+  "view",
+  "table",
+  "relationship",
+  "domains",
+  "objects",
+  "collapsed",
+  "product",
+  "panel",
+  "term",
+];
+
+const checkPage: Check = (state, { inputs }, query) => {
+  if (!inputs) return "the page has published nothing";
+  for (const key of LINK_PARAMS) {
+    const handed = query.get(key) ?? (typeof state[key] === "undefined" ? null : String(state[key]));
+    if (handed === null) continue;
+    const shown = String(inputs[key] ?? "");
+    if (!sameList(handed, shown)) return `the page shows ${key} ${shown || "none"}, not ${handed}`;
+  }
+  // A term asked for that the glossary does not hold opens no term.
+  if (query.has("term") || "term" in state) {
+    if (inputs.termName === null) return `the glossary has no term ${String(inputs.term)}`;
+  }
+  const shownGraph = (inputs.graph ?? {}) as Handed;
+  for (const [key, value] of Object.entries((state.graph ?? {}) as Handed)) {
+    if (!sameJson(value, shownGraph[key])) {
+      return `the graph shows ${key} ${JSON.stringify(shownGraph[key])}, not ${JSON.stringify(value)}`;
+    }
+  }
+  return null;
+};
+
 const CHECKS: Record<string, Check> = {
   "/sql": editorCheck("sql"),
   "/query": editorCheck("query"),
@@ -158,6 +193,10 @@ const CHECKS: Record<string, Check> = {
   "/grpc": checkGrpc,
   "/jsonapi": checkJsonApi,
   "/openapi": checkOpenApi,
+  "/tables": checkPage,
+  "/relationships": checkPage,
+  "/data-products": checkPage,
+  "/admin/ontology": checkPage,
 };
 
 /** How often the screen is read while the page takes in what it was handed. */
@@ -170,7 +209,7 @@ export type ReadBack =
 /** Reads the screen until it shows `state`, up to `waitMs`. A route with no check takes no state
  * its screen can confirm, so there is nothing to read back. */
 export async function readBack(route: string, state: Handed, waitMs: number): Promise<ReadBack> {
-  const { path } = splitUrl(route);
+  const { path, params } = splitUrl(route);
   const check = CHECKS[path];
   if (!check) return { shown: true, screen: null };
   const deadline = Date.now() + waitMs;
@@ -179,7 +218,9 @@ export async function readBack(route: string, state: Handed, waitMs: number): Pr
     const screen = await readScreen(left);
     if (typeof screen === "string") return { shown: false, difference: screen, screen: null };
     const onRoute = screen.route.split("?")[0] === path;
-    const difference = onRoute ? check(state, screen) : `the browser is on ${screen.route}`;
+    const difference = onRoute
+      ? check(state, screen, params)
+      : `the browser is on ${screen.route}`;
     if (difference === null) return { shown: true, screen };
     if (Date.now() >= deadline) return { shown: false, difference, screen };
     await new Promise((resolve) => setTimeout(resolve, READ_EVERY_MS));

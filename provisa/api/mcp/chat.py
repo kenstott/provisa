@@ -44,7 +44,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from provisa.api.mcp import admin_api, model_tool_specs, polly_usage
+from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.sql_quoting import quote_identifiers
 
@@ -736,7 +736,7 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables, /relationships, /admin/ontology, /schema. Explore's query surfaces "
+            "/tables (the ERD at /tables?view=erd), /relationships, /admin/ontology, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
             "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
@@ -1151,7 +1151,11 @@ _SYSTEM = (
     "`ai_context` (what it means, when to use it), not a restatement of the expression. Always "
     "confirm with the user (present_choice, mode='yes_no') before delete_data_product/delete_"
     "metric specifically, since they're irreversible. Per the page-first rule: navigate to /data-products or "
-    "/metrics before calling any of these.\n\n" + model_tool_specs.SYSTEM_SECTION + "\n\n"
+    "/metrics before calling any of these.\n\n"
+    + model_tool_specs.SYSTEM_SECTION
+    + "\n\n"
+    + polly_pages.SYSTEM_SECTION
+    + "\n\n"
     "THE QUERY SURFACES: Provisa has TEN query surfaces under Explore, each its "
     "own route and each with its own exact deep-link format — never assume one surface's names or "
     "state shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "

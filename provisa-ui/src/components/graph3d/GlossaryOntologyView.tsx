@@ -34,7 +34,7 @@ import { NODE_BUDGET } from "./neighbourhood";
 import { GraphModal } from "./GraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
-import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import { ONTOLOGY_SETTINGS } from "../../pages/tables/profile3d/graphSettings";
 
 // Before the first scoped read: nothing drawn yet.
 const EMPTY: GraphData = { nodes: [], edges: [] };
@@ -71,9 +71,6 @@ async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | n
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
-/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
-const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
-
 export function OntologyToggle({
   open,
   onChange,
