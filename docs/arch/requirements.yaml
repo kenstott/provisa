@@ -89647,7 +89647,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     The data products page, data_products_meta and every other surface that lists products show them only
     to a role holding that capability. Inheriting Viewer gives Data buyer no data: a standard role carries
     capabilities, never grants, so over any connection a user acting as Data buyer reads only what Data
-    buyer is granted, masked and row-ruled as on the page (REQ-1959).'
+    buyer is granted, masked and row-ruled as on the page (REQ-1959). (Amended 2026-10-29, READING NEEDS
+    NO QUERY_DEVELOPMENT:) Maintainer 2026-10-31: no protocol requires query_development to read data. What
+    a role reads is decided by its grants, row rules, masks and the relationship guard, on every protocol
+    alike, so a viewer reads over GraphQL as it does over pgwire. query_development gates development features
+    only. A query a person writes is no wider than a generated API while the relationship guard applies,
+    so it is not an access boundary.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
