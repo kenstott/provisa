@@ -13,7 +13,7 @@
 // storage for this control plane and organization (lib/browserStorage), each one's last output in
 // IndexedDB. A browser that refuses its storage keeps the scripts for the session only.
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { uuid } from "../lib/uuid";
 import type { FromWorker } from "./protocol";
 
@@ -41,44 +41,28 @@ export function newScriptId(): string {
 /** The scripts kept for this organization, or ``fallback`` when none are (or the storage is
  * refused). */
 export function loadScripts(fallback: () => Scripts): Scripts {
-  try {
-    const meta = JSON.parse(getStored(TABS_KEY) ?? "null") as {
-      tabs: { id: string; title: string }[];
-      activeId: string;
-    } | null;
-    if (!meta || meta.tabs.length === 0) return fallback();
-    const tabs = meta.tabs.map((m) => ({ ...m, code: getStored(codeKey(m.id)) ?? "" }));
-    const activeId = tabs.some((s) => s.id === meta.activeId) ? meta.activeId : tabs[0].id;
-    return { tabs, activeId };
-  } catch {
-    // Storage refused (a private window, blocked site data): the scripts live for the session.
-    return fallback();
-  }
+  const meta = getStoredJson<{ tabs: { id: string; title: string }[]; activeId: string }>(TABS_KEY);
+  if (!meta || meta.tabs.length === 0) return fallback();
+  const tabs = meta.tabs.map((m) => ({ ...m, code: getStored(codeKey(m.id)) ?? "" }));
+  const activeId = tabs.some((s) => s.id === meta.activeId) ? meta.activeId : tabs[0].id;
+  return { tabs, activeId };
 }
 
 /** Keep ``scripts``: their order, titles, the active one and each one's code. */
 export function saveScripts(scripts: Scripts): void {
-  try {
-    setStored(
-      TABS_KEY,
-      JSON.stringify({
-        tabs: scripts.tabs.map(({ id, title }) => ({ id, title })),
-        activeId: scripts.activeId,
-      }),
-    );
-    for (const s of scripts.tabs) setStored(codeKey(s.id), s.code);
-  } catch {
-    // Storage refused or full: the scripts stay in the page for the session.
-  }
+  setStored(
+    TABS_KEY,
+    JSON.stringify({
+      tabs: scripts.tabs.map(({ id, title }) => ({ id, title })),
+      activeId: scripts.activeId,
+    }),
+  );
+  for (const s of scripts.tabs) setStored(codeKey(s.id), s.code);
 }
 
 /** Forget a closed script's code and output. */
 export function forgetScript(id: string): void {
-  try {
-    removeStored(codeKey(id));
-  } catch {
-    // Storage refused: nothing was kept.
-  }
+  removeStored(codeKey(id));
   void idbDel(outputKey(id)).catch(() => undefined);
 }
 
