@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -313,7 +314,8 @@ TCK_SESSION_USER = "tck-session"
 
 
 def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
-    """The model the conformance instance boots with.
+    """The model the conformance instance boots with, on the engine the job names in
+    ``$PROVISA_ENGINE`` (the DuckDB engine unless it names one).
 
     The basic provider with SCRAM: pgwire proves the job user's password, and the user acts as
     ``org_admin``. One domain, ``conformance``, which pgwire presents as the schema; one
@@ -326,7 +328,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     table."""
     registered = registrable_columns(pg_dsn)
     return {
-        "federation_engine": "duckdb",
+        "federation_engine": os.environ.get("PROVISA_ENGINE") or "duckdb",
         "auth": {
             # Password auth with SCRAM-SHA-256 (REQ-1394), so pgspec's auth tests prove a password
             # rather than meet trust mode. The break-glass account creates the job's one user
@@ -535,13 +537,13 @@ def catalog_relations(pg: Server, provisa: Server, names: dict[int, str]) -> dic
     }
 
 
-def _pg_functions(pg: Server) -> list[function_probe.Function]:
+def pg_functions(pg: Server) -> list[function_probe.Function]:
     """Every overload pg_proc lists in pg_catalog (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS)."""
     rows = pg.rows(
         "SELECT p.proname::text, pg_get_function_identity_arguments(p.oid)::text, "
         "p.prokind::text, p.provariadic NOT IN (0, '\"any\"'::regtype), "
         "COALESCE(a.aggkind::text, 'n'), COALESCE(a.aggnumdirectargs::int, 0), "
-        "format_type(p.prorettype, NULL), "
+        "format_type(p.prorettype, NULL), p.provolatile::text, "
         "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY u(t, i) "
         "      ORDER BY i)::text[] "
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
@@ -558,9 +560,10 @@ def _pg_functions(pg: Server) -> list[function_probe.Function]:
             aggkind=aggkind,
             direct=direct,
             rettype=rettype,
+            volatility=volatility,
             argtypes=tuple(argtypes),
         )
-        for name, overload, kind, variadic, aggkind, direct, rettype, argtypes in rows
+        for name, overload, kind, variadic, aggkind, direct, rettype, volatility, argtypes in rows
     ]
 
 
@@ -570,7 +573,7 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
     not served, or no call PostgreSQL accepts can reach it. None is skipped by design: a failure
     is classified by family, never by by_design/pgwire.yaml."""
     declared = function_probe.families()
-    fns = _pg_functions(pg)
+    fns = pg_functions(pg)
     matching: list[str] = []
     differing: dict[str, str] = {}
     not_served: dict[str, str] = {}

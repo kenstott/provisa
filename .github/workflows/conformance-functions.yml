@@ -1,0 +1,202 @@
+name: Conformance (functions)
+
+# REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED): which
+# pg_catalog functions work today, per federation engine. Measurement only: it writes no function
+# form, and nothing it finds fails a gate. Separate from Conformance (pgwire), whose land gate reads
+# its own report.
+#
+# One leg per free engine that boots on a runner, each the instance every conformance job tests
+# (.github/actions/conformance-instance) on that engine, measured against the same real PostgreSQL
+# by scripts/conformance/function_support.py, whose docstring says exactly what is compared. A leg
+# is failed only when it left the measurement unfinished, never by a wrong answer. A last job
+# merges the legs into scripts/conformance/function_support.json, with the guaranteed list, and is
+# failed when any leg left no complete result: such a list guarantees nothing.
+#
+# Engines left out: the paid warehouses (snowflake, databricks, bigquery, fabric, synapse,
+# motherduck) need credentials; clickhouse-server is the clickhouse leg's runtime and rewrites;
+# the generic SQLAlchemy engines (mysql, mssql and the rest) run no pg_catalog rewrites of their
+# own and each needs a server of its own.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-functions-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  probe:
+    name: functions on ${{ matrix.engine }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - engine: duckdb
+          # The PostgreSQL service below, as the engine.
+          - engine: pg
+            engine-url: postgresql://postgres:conformance@127.0.0.1:55432/conformance
+          # chdb, in-process.
+          - engine: clickhouse
+          # The compose stack the Trino UI lane runs: the engine, its object store, its Arrow
+          # proxy, its metastore, and the control plane Trino reads over JDBC.
+          - engine: trino
+            control-plane-url: postgresql+psycopg://provisa:provisa@localhost:5432/provisa
+            boot-attempts: "300"
+    env:
+      PROVISA_ENGINE: ${{ matrix.engine }}
+      PROVISA_ENGINE_URL: ${{ matrix.engine-url }}
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # Ephemeral, on a throwaway instance: not secrets (conformance-pgwire.yml).
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+      # What docker-compose.core.yml publishes (the Trino leg alone starts it).
+      PG_PORT: "5432"
+      TRINO_PORT: "8080"
+    services:
+      postgres:
+        # The PostgreSQL the catalog is generated from (scripts/gen_pgwire_pg17_catalog.py).
+        image: postgres:17.11
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
+      # the certificate. The app runs on this host and Trino in a container, so each is told the
+      # address the other side dials: playwright.config.ts's Trino webServer, name for name. The
+      # conformance source is addressed by the runner's own address, which both can reach.
+      - name: Start the Trino stack
+        if: matrix.engine == 'trino'
+        run: |
+          bash scripts/ci/test-store-env.sh | tee -a "$GITHUB_ENV" > "$RUNNER_TEMP/store-env"
+          set -a; . "$RUNNER_TEMP/store-env"; set +a
+          bash scripts/ci/lanes/trino-stack-prepare.sh placeholder-cert
+          {
+            echo "CONFORMANCE_PG_HOST=$(hostname -I | cut -d' ' -f1)"
+            echo "PROVISA_ENGINE_CONTROL_PLANE_HOST=postgres"
+            echo "PROVISA_ENGINE_CONTROL_PLANE_PORT=5432"
+            echo "PROVISA_OTEL_S3_ENDPOINT=http://localhost:9000"
+            echo "PROVISA_ENGINE_OTEL_S3_ENDPOINT=http://minio:9000"
+            echo "PROVISA_ENGINE_LAKEHOUSE_METASTORE_HOST=hive-metastore"
+            echo "PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT=9083"
+          } >> "$GITHUB_ENV"
+
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+        with:
+          control-plane-url: ${{ matrix.control-plane-url }}
+          boot-attempts: ${{ matrix.boot-attempts || '90' }}
+
+      - name: Measure every pg_catalog function
+        timeout-minutes: 110
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/function_support.py measure \
+            --engine "$PROVISA_ENGINE" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
+            --provisa "host=127.0.0.1 port=$PROVISA_PGWIRE_PORT dbname=provisa user=$CONFORMANCE_USER password=$CONFORMANCE_PASSWORD sslmode=disable" \
+            --out-json "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.json" \
+            --out-md "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.md"
+
+      - name: Summarise
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        run: |
+          cat "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.md" >> "$GITHUB_STEP_SUMMARY"
+          cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/server-$PROVISA_ENGINE.log"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-support-${{ matrix.engine }}
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+  merge:
+    name: guaranteed list
+    needs: probe
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: function-support-*
+          path: ${{ runner.temp }}/legs
+
+      - name: Merge the legs
+        run: |
+          status=0
+          .venv/bin/python scripts/conformance/function_support.py merge \
+            --engines duckdb,pg,clickhouse,trino \
+            --in "$RUNNER_TEMP/legs" \
+            --out scripts/conformance/function_support.json \
+            --out-md "$RUNNER_TEMP/function-support.md" || status=$?
+          cat "$RUNNER_TEMP/function-support.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Upload the data file
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-support
+          path: scripts/conformance/function_support.json
+          if-no-files-found: error

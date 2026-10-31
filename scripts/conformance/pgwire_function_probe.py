@@ -148,6 +148,7 @@ class Function:
     aggkind: str = "n"  # pg_aggregate: n, or o (ordered-set) or h (hypothetical-set)
     direct: int = 0  # pg_aggregate.aggnumdirectargs
     rettype: str = ""  # format_type of prorettype
+    volatility: str = "v"  # provolatile: i, s or v
 
     @property
     def signature(self) -> str:
@@ -174,8 +175,12 @@ def call(fn: Function) -> str | None:
         return None
     if fn.signature in STATEMENTS:
         return STATEMENTS[fn.signature]
+    return statement(fn, _args(fn))
+
+
+def statement(fn: Function, args: list[str]) -> str:
+    """The statement calling ``fn`` with ``args``, in the form its kind takes."""
     named = f'pg_catalog."{fn.name}"'
-    args = _args(fn)
     if fn.aggkind == "h":  # the one VARIADIC "any" is both the direct and the ordered arguments
         return f"SELECT {named}({args[0]}) WITHIN GROUP (ORDER BY {args[0]}) AS v"
     if fn.aggkind == "o":
