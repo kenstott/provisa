@@ -48,7 +48,7 @@ def test_the_encoding_is_utf8_and_its_number_six():
     assert _rows(
         "SELECT getdatabaseencoding(), pg_char_to_encoding('utf-8'), "
         "pg_char_to_encoding('LATIN1'), pg_char_to_encoding(NULL)"
-    ) == [("UTF8", 6, -1, None)]
+    ) == [("UTF8", 6, 8, None)]
     assert _rows(
         "SELECT c.collname FROM pg_catalog.pg_collation c WHERE c.collencoding IN "
         "(-1, pg_catalog.pg_char_to_encoding(pg_catalog.getdatabaseencoding()))"

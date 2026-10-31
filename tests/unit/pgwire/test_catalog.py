@@ -46,6 +46,10 @@ class _ColMeta:
     native_type: str | None = None  # REQ-1965, REQ-1961
 
 
+#: What every table lists beside its registered columns (REQ-2190).
+VIRTUAL_COLUMNS = ("_name_", "_domain_", "table_query_name")
+
+
 def _make_state(tables: dict, col_types: dict) -> Any:
     ctx = MagicMock()
     ctx.tables = tables
@@ -416,7 +420,7 @@ class TestDBeaverERDiagram:
             "testrole",
             state,
         )
-        col_names = [r[0] for r in result.rows]
+        col_names = [r[0] for r in result.rows if r[0] not in VIRTUAL_COLUMNS]
         assert "id" in col_names, f"id missing: {col_names}"
         assert "name" in col_names, f"name missing: {col_names}"
         assert "registered_table_id" in col_names, f"registered_table_id missing: {col_names}"
@@ -434,7 +438,8 @@ class TestDBeaverERDiagram:
             "testrole",
             state,
         )
-        assert len(result.rows) == 6, (
+        columns = [r for r in result.rows if r[1] not in VIRTUAL_COLUMNS]
+        assert len(columns) == 6, (
             f"expected 6 cols (4 pets + 2 reg), got {len(result.rows)}: {result.rows}"
         )
         col_names = [r[1] for r in result.rows]

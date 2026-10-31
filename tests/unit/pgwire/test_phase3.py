@@ -633,6 +633,7 @@ async def test_er_bulk_attribute_query(pgwire_server_er):
         )
         await conn.close()
 
+    rows = [r for r in rows if r["attname"] not in ("_name_", "_domain_", "table_query_name")]
     assert len(rows) == 6, (
         f"expected 6 (4 pets + 2 reg), got {len(rows)}: {[r['attname'] for r in rows]}"
     )

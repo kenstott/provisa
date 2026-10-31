@@ -119,12 +119,16 @@ _ARRAY_CAST = re.compile(
     r"\[\]",
     re.IGNORECASE,
 )
+#: Functions sqlglot reads as syntax of its own: a qualified, quoted call it reads as a call, and
+#: PostgreSQL as the same function.
+_SYNTAX_CALLS = re.compile(r"(?:\bpg_catalog\.)?\b(convert|json_object)\s*\(", re.IGNORECASE)
 #: sqlglot reads ``::bit varying`` as a bit and an alias.
 _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _CHAR_ARRAY_CAST = re.compile(r'::\s*(?:pg_catalog\.)?"char"\[\]', re.IGNORECASE)
 
 
 def _readable(sql: str) -> str:
+    sql = _SYNTAX_CALLS.sub(lambda m: f'pg_catalog."{m[1].lower()}"(', sql)
     sql = _BIT_VARYING.sub("::varbit", sql)
     sql = _CHAR_ARRAY_CAST.sub("::_char", sql)
     return _ARRAY_CAST.sub(lambda m: f"::_{m[1].lower()}", sql)
@@ -396,7 +400,7 @@ def _result_regs(tree: exp.Expr) -> None:
         oid = f"({_oid_sql(reg, target.this)})"
         pair = _parsed(
             f"CASE WHEN {oid} IS NOT NULL THEN "
-            f"JSON_BUILD_OBJECT('oid', {oid}, 'name', {_name_sql(reg, oid)}) END"
+            f"JSON_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {_name_sql(reg, oid)}) END"
         )
         if select is target:
             select.replace(exp.alias_(pair, reg))
@@ -540,6 +544,19 @@ def _reltuples(node: exp.Column, counts: Mapping[int, float]) -> exp.Expr:
     )
 
 
+def _named_relation_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
+    """A call taking a regclass, given a name: the name is resolved as the call is read, as
+    PostgreSQL reads the argument, and one naming no relation is its error."""
+    if not (args and isinstance(args[0], exp.Literal) and args[0].is_string):
+        return None
+    if name == "regclass" and len(args) == 1:
+        return _parsed(f"({_class_oid(args[0].this)})")
+    if name == "setval":
+        oid = _parsed(f"({_class_oid(args[0].this)})")
+        return exp.Anonymous(this=name, expressions=[oid, *(a.copy() for a in args[1:])])
+    return None
+
+
 def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
     extra = _surface_rows()
 
@@ -557,9 +574,13 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
         if called is not None:
             call, _ = called
             name = call.name.lower()
-            answered = _session_call(name, list(call.expressions), request)
+            args = list(call.expressions)
+            answered = _session_call(name, args, request)
             if answered is not None:
                 return _named(answered, node, name)
+            named_relation = _named_relation_call(name, args)
+            if named_relation is not None:
+                return named_relation
             return node
         if isinstance(node, exp.Cast):
             return _reg_cast(node) or node
@@ -586,11 +607,29 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
     return rewrite
 
 
-def _with_next_xid(node: exp.Expr) -> exp.Expr:
-    """A form's ``provisa_next_xid()`` is the session's next id."""
-    if isinstance(node, exp.Anonymous) and node.name.lower() == "provisa_next_xid":
-        return exp.cast(exp.Literal.number(next_txid()), "BIGINT")
-    return node
+def _server_state(tree: exp.Expr, extra: Mapping) -> exp.Expr:
+    """``tree`` with what forms leave to the session: ``provisa_next_xid()``, one id for the
+    statement however many times it is named, and a relation's rows no view holds."""
+    calls = [n for n in tree.find_all(exp.Anonymous) if n.name.lower() == "provisa_next_xid"]
+    if calls:
+        xid = next_txid()
+        for call in calls:
+            call.replace(exp.cast(exp.Literal.number(xid), "BIGINT"))
+    views = {catalog_view_name(*r): r for r in extra}
+    for table in list(tree.find_all(exp.Table)):
+        if (
+            (table.db or "").lower() == _META
+            and table.name in views
+            and table.alias.startswith("_")
+        ):
+            relation = views[table.name]
+            table.replace(
+                exp.Subquery(
+                    this=_with_rows(relation, table.name, extra[relation]),
+                    alias=table.args.get("alias"),
+                )
+            )
+    return tree
 
 
 def addressed_statement(sql: str, request: CatalogRequest) -> str:
@@ -599,5 +638,4 @@ def addressed_statement(sql: str, request: CatalogRequest) -> str:
     _coerce_reg_comparisons(tree)
     _result_regs(tree)
     routed = tree.transform(_rewriter(request, _cte_names(tree)))
-    expanded = expand(routed, request.facts).transform(_with_next_xid)
-    return expanded.sql(dialect="postgres")
+    return _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres")

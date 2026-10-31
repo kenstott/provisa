@@ -334,9 +334,9 @@ def test_every_object_type_relation_has_postgresqls_columns():
         assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
 
 
-def test_psqls_text_search_and_large_object_lists_are_empty():
-    # Provisa runs no text search configuration and holds no large object: psql's \dFp and \dl
-    # (describe.c) list none.
+def test_psqls_text_search_and_large_object_lists_run():
+    # The text search parsers are PostgreSQL's reference data (REQ-2190), and Provisa holds no large
+    # object: psql's \dFp lists the one parser, its \dl (describe.c) none.
     parsers = (
         'SELECT\n  n.nspname as "Schema",\n  p.prsname as "Name",\n'
         "  pg_catalog.obj_description(p.oid, 'pg_ts_parser') as \"Description\"\n"
@@ -349,7 +349,7 @@ def test_psqls_text_search_and_large_object_lists_are_empty():
         "pg_catalog.obj_description(oid, 'pg_largeobject') as \"Description\"\n"
         "FROM pg_catalog.pg_largeobject_metadata\nORDER BY oid"
     )
-    assert answer(parsers, "testrole", _state()).rows == []
+    assert [row[1] for row in answer(parsers, "testrole", _state()).rows] == ["default"]
     assert answer(large_objects, "testrole", _state()).rows == []
 
 
@@ -423,7 +423,7 @@ def test_a_regtype_array_is_written_as_type_names():
 _ANSWERED_ALONE = {
     'pg_catalog."pg_get_indexdef"(NULL::oid)': (TEXT, None),
     'pg_catalog."pg_get_functiondef"(NULL::oid)': (TEXT, None),
-    'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, "provisa"),
+    'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, None),
     'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, "UTF8"),
     'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, None),
     "pg_total_relation_size(NULL::regclass)": (INT8, None),

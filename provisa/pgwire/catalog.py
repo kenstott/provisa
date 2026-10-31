@@ -36,7 +36,7 @@ from provisa.pgwire.catalog_data import (
     _TYPEINFO_COLS,
     typeinfo,
 )
-from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
 from provisa.pgwire.constant_arguments import is_constant_sql
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES, REWRITTEN
@@ -201,8 +201,15 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
 )
 
 
-#: What is written in its form in any statement: a call left in a statement reading a table would
-#: run on that table's store, answering about the server under it.
+def _reads_only_meta(tree) -> bool:
+    """Whether every table ``tree`` reads is meta's: such a statement runs on the control plane."""
+    import sqlglot.expressions as exp
+
+    tables = list(tree.find_all(exp.Table))
+    return bool(tables) and all((t.db or "").lower() == "meta" for t in tables)
+
+
+#: What is written in its form in a statement on the control plane.
 _FORM_NAMES = frozenset({*(name for name, _ in (*FORMS, *RELATION_FORMS)), *READS_THE_SERVER})
 
 
@@ -272,8 +279,8 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
             fn = func.name.lower()
             if "current_setting" in fn or "set_config" in fn:
                 return "INTERCEPT"
-            if fn in _SCALAR_NAMES or fn in _FORM_NAMES:
-                return "INTERCEPT"  # REQ-2190: it answers about no control plane, wherever it is
+            if fn in _SCALAR_NAMES or (fn in _FORM_NAMES and _reads_only_meta(tree)):
+                return "INTERCEPT"  # REQ-2190: left in, it would answer about the control plane
             if any(
                 x in fn
                 for x in (
@@ -473,6 +480,8 @@ def _record_field(value: Any) -> str:
 
 def _record_text(value: Any) -> Any:
     """A record value (the engine's struct) in PostgreSQL's text form."""
+    if isinstance(value, tuple):
+        return "(" + ",".join(_record_field(v) for v in value) + ")"
     if not isinstance(value, dict):
         return value
     return "(" + ",".join(_record_field(v) for v in value.values()) + ")"
@@ -549,6 +558,9 @@ def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
     )
 
 
+#: regproc's oid, a value of which a driver hands over as the function's name.
+_REGPROC_OID = 24
+_PROC_OIDS = {name: oid for oid, name in PROC_NAMES.items()}
 #: PostgreSQL's oids of a value it sends in text as a vector of numbers.
 _VECTOR_OIDS = frozenset({22, 30})
 
@@ -592,16 +604,20 @@ def _as_declared(sql: str, result):
     if len(served) != len(result.column_names):
         served = ["text"] * len(result.column_names)
     col_types = _declared_types(sql, result.column_names, served)
-    vectors = [i for i, oid in enumerate(result.column_type_oids or ()) if oid in _VECTOR_OIDS]
+    oids = result.column_type_oids or ()
+    vectors = [i for i, oid in enumerate(oids) if oid in _VECTOR_OIDS]
+    procs = [i for i, oid in enumerate(oids) if oid == _REGPROC_OID]
     records = [i for i, declared in enumerate(col_types) if declared == "record"]
     rows = result.rows
-    if vectors or records:
+    if vectors or records or procs:
         rows = [
             tuple(
                 _record_text(v)
                 if i in records
                 else [int(n) for n in v.split()]
                 if i in vectors and isinstance(v, str)
+                else _PROC_OIDS.get(v, 0)
+                if i in procs and isinstance(v, str)
                 else v
                 for i, v in enumerate(row)
             )

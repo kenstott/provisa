@@ -29,7 +29,9 @@ from provisa.pgwire import catalog
 from provisa.pgwire.catalog_route import addressed_statement
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
+from provisa.transpiler.metadata_views import SCOPE_COLUMN
 
 _SOURCE = "src"
 _MODEL_TABLES = (
@@ -183,7 +185,7 @@ class Plane:
             raise PostgresError("0A000", str(exc)) from exc
         settings = statement_settings(
             role_id,
-            True,
+            _can_write(role_id, state),
             request.database,
             False,
             session=request.session,
@@ -202,9 +204,21 @@ class Plane:
             described = [int(d[1]) for d in result.cursor.description]
             names = list(result.keys())
             rows = [_plain(tuple(r)) for r in result.fetchall()]
+        # Governance leaves a view's scope out of a star; this read is not governed.
+        kept = [i for i, name in enumerate(names) if name != SCOPE_COLUMN]
         return catalog._as_declared(
-            sql, QueryResult(rows=rows, column_names=names, column_type_oids=described)
+            sql,
+            QueryResult(
+                rows=[tuple(row[i] for i in kept) for row in rows],
+                column_names=[names[i] for i in kept],
+                column_type_oids=[described[i] for i in kept],
+            ),
         )
+
+
+def _can_write(role_id: str, state: Any) -> bool:
+    roles = _dict(getattr(state, "roles", None))
+    return role_id in roles and has_capability(roles[role_id], Capability.WRITE)
 
 
 def _bare(sql: str) -> str:

@@ -177,7 +177,7 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
     "SELECT pg_last_wal_receive_lsn() AS v": (PG_LSN, [None]),
     "SELECT pg_last_xact_replay_timestamp() AS v": (TIMESTAMPTZ, [None]),
     "SELECT pg_wal_lsn_diff('0/10'::pg_lsn, '0/8'::pg_lsn) AS v": (NUMERIC, ["8"]),
-    "SELECT pg_walfile_name('0/1000000'::pg_lsn) AS v": (TEXT, ["000000010000000000000001"]),
+    "SELECT pg_walfile_name('0/1000000'::pg_lsn) AS v": (TEXT, ["000000010000000000000000"]),
     "SELECT pg_lsn(23::numeric) AS v": (PG_LSN, ["0/17"]),
     "SELECT pg_walfile_name_offset('0/1000010'::pg_lsn) AS v": (
         RECORD,
@@ -443,7 +443,7 @@ def test_an_acl_item_is_written_as_aclitemout_writes_it(conn: Any):
     res = _run(conn, "SELECT makeaclitem(0, 10, 'SELECT, INSERT', false) AS v")
     assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
     assert res.ftype(0) == 1033
-    assert _rows(res)[0].startswith("=ra/")
+    assert _rows(res)[0].startswith("=ar/")
 
 
 def test_a_transaction_id_advances_and_a_snapshot_is_after_it(conn: Any):

@@ -374,4 +374,6 @@ def test_the_catalog_lists_a_registered_column_with_its_type_and_typmod(register
         ("c_varchar_20", 1043, 24, "character varying(20)"),
         ("c_bpchar_5", 1042, 9, "character(5)"),
         ("c_oid", 26, -1, "oid"),
+        ("_name_", 1043, -1, "character varying"),
+        ("_domain_", 1043, -1, "character varying"),
     ]

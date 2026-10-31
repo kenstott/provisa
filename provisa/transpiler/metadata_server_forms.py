@@ -149,7 +149,7 @@ def _setval(*params: str) -> str:
 
 _VOID = "''"
 _BINARY_UPGRADE = raising(
-    "55000", "'function can only be called when server is in binary upgrade mode'"
+    "55P02", "'function can only be called when server is in binary upgrade mode'"
 )
 _NO_SLOTS = raising("55000", "'replication slots can only be used if max_replication_slots > 0'")
 _NO_ORIGINS = raising("55000", "'cannot manage replication origins when max_replication_slots = 0'")
@@ -740,11 +740,24 @@ def _qualifier(name: str) -> str:
 
 def _pair(oid: str, name: str) -> str:
     """An object identifier value with the name its text form writes."""
-    return f"JSON_BUILD_OBJECT('oid', {oid}, 'name', {name})"
+    return f"JSON_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {name})"
 
 
 _CLASSES = "meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace"
 _IN_PATH = "('pg_catalog', 'public')"
+#: The name of the relation a select's ``_r.relid`` holds.
+_NAME_OF_RELID = (
+    "(SELECT CASE WHEN _n.nspname IN ('pg_catalog', 'public') THEN '' "
+    "ELSE QUOTE_IDENT(_n.nspname) || '.' END || QUOTE_IDENT(_c.relname) "
+    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n "
+    "ON _n.oid = _c.relnamespace WHERE _c.oid = _r.relid)"
+)
+#: aclitemout's order of the rights, each by the word a grant names it with.
+_ACL_RIGHTS = (
+    ("a", "INSERT"), ("r", "SELECT"), ("w", "UPDATE"), ("d", "DELETE"), ("D", "TRUNCATE"),
+    ("x", "REFERENCES"), ("t", "TRIGGER"), ("X", "EXECUTE"), ("U", "USAGE"), ("C", "CREATE"),
+    ("T", "TEMP"), ("c", "CONNECT"),
+)  # fmt: skip
 
 
 def _to_reg(a: _Answers) -> None:
@@ -812,7 +825,11 @@ def _to_reg(a: _Answers) -> None:
         "name",
         "INTEGER",
         f"CASE WHEN {_type_lookup("REGEXP_REPLACE(name, '\\s*\\(.*$', '')")} IS NOT NULL "
-        "THEN COALESCE((REGEXP_MATCH(name, '\\((\\d+)\\)'))[1]::INTEGER + 4, -1) END",
+        "THEN COALESCE(CASE WHEN LOWER(name) ~ '^\\s*(numeric|decimal)\\s*\\(' THEN "
+        "CAST(SPLIT_PART((REGEXP_MATCH(name, '\\(([^)]*)\\)'))[1], ',', 1) AS INTEGER) * 65536 "
+        "+ COALESCE(CAST(NULLIF(TRIM(SPLIT_PART((REGEXP_MATCH(name, '\\(([^)]*)\\)'))[1], ',', 2)), "
+        "'') AS INTEGER), 0) + 4 ELSE "
+        "CAST((REGEXP_MATCH(name, '\\((\\d+)\\)'))[1] AS INTEGER) + 4 END, -1) END",
     )
 
 
@@ -870,7 +887,8 @@ def _type_names(vector: str, separator: str, qualified: bool) -> str:
     )
     return (
         f"(SELECT COALESCE(STRING_AGG({name}, '{separator}' ORDER BY _v._i), '') FROM "
-        f"UNNEST(CAST(STRING_TO_ARRAY(CAST({vector} AS TEXT), ' ') AS _OID)) WITH ORDINALITY _v(_k, _i)"
+        f"UNNEST(CAST(REGEXP_SPLIT_TO_ARRAY(TRIM(BOTH '{{}}' FROM CAST({vector} AS TEXT)), '[ ,]+') "
+        "AS _OID)) WITH ORDINALITY _v(_k, _i)"
         f"{joined})"
     )
 
@@ -1018,9 +1036,8 @@ def _catalog_objects(a: _Answers) -> None:
     a.selected(
         "pg_partition_ancestors",
         "rel:bigint",
-        f"SELECT _c.oid AS relid, {_named_in_path('_n.nspname', '_c.relname')} AS relname "
-        f"{partitionable}",
-        _pair("_r.relid", "_r.relname"),
+        f"SELECT _c.oid AS relid {partitionable}",
+        _pair("_r.relid", _NAME_OF_RELID),
     )
     a.strict(
         "pg_partition_root",
@@ -1055,6 +1072,24 @@ def _catalog_objects(a: _Answers) -> None:
         raising("42P01", "'relation \"' || rel || '\" does not exist'"),
     )
     a.strict("pg_basetype", "t:oid", "OID", "t")
+    rights = " || ".join(
+        f"CASE WHEN POSITION('{word}' IN UPPER(priv)) > 0 THEN '{letter}' "
+        "|| CASE WHEN grantable THEN '*' ELSE '' END ELSE '' END"
+        for letter, word in _ACL_RIGHTS
+    )
+    role_name = (
+        "COALESCE((SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
+        "WHERE _r.oid = {oid}), {other})"
+    )
+    a.strict(
+        "makeaclitem",
+        "grantee:bigint, grantor:bigint, priv, grantable:boolean",
+        "TEXT",
+        role_name.format(oid="grantee", other="''")
+        + f" || '=' || {rights} || '/' || "
+        + role_name.format(oid="grantor", other="CAST(grantor AS TEXT)"),
+    )
+    a.strict("acldefault", "kind, owner", "TEXT[]", "CAST(NULL AS TEXT[])")
     a.strict(
         "pg_collation_actual_version",
         "c:bigint",

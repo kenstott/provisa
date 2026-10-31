@@ -339,11 +339,16 @@ _PUBLISHABLE = (
     "FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid), FALSE)"
 )
 
+#: A relation's name as written: a quoted one as it is, an unquoted one folded to lower case.
+_WRITTEN_NAME = (
+    "CASE WHEN POSITION('\"' IN CAST(tbl AS TEXT)) > 0 "
+    "THEN REPLACE(CAST(tbl AS TEXT), '\"', '') ELSE LOWER(CAST(tbl AS TEXT)) END"
+)
 #: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
 #: its schema; the path's first where both hold the name.
 _NAMED_RELATION = (
     "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
-    "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
+    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
 )
@@ -369,7 +374,7 @@ _COLUMN_PRIVILEGE = (
     "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
     "JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
     "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
-    "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
+    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
 )
@@ -410,6 +415,7 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_table_size", (1,), "BIGINT"),
     ("pg_database_size", (1,), "BIGINT"),
     ("pg_tablespace_size", (1,), "BIGINT"),
+    ("pg_column_size", (1,), "INTEGER"),
 )
 #: Every object a catalog holds is on the search path, and every role holds every role.
 _ALWAYS = (
@@ -452,7 +458,11 @@ _FORMS: tuple[Form, ...] = (
     _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG),
     _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT),
     # Every table has one owner, the role a client is shown as owning it (pg_class.relowner).
-    _form("pg_get_userbyid", "role_oid", "CASE WHEN role_oid IS NOT NULL THEN 'provisa' END"),
+    _form(
+        "pg_get_userbyid",
+        "role_oid",
+        "CAST(CASE WHEN role_oid IS NOT NULL THEN 'provisa' END AS NAME)",
+    ),
     _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS),
     _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE),
     _form("pg_is_other_temp_schema", "schema_oid", "FALSE"),
@@ -593,6 +603,9 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     def rewrite(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Table) and isinstance(node.this, exp.Anonymous):
             return _relation_form(node, rewrite)
+        field_of = _field_of_call(node, rewrite)
+        if field_of is not None:
+            return field_of
         call = _call(node)
         if call is None:
             return node
@@ -650,6 +663,25 @@ def _statistic(name: str) -> exp.Expr:
     )
 
 
+def _field_of_call(node: exp.Expr, rewrite) -> exp.Expr | None:
+    """``(f(...)).field``: a field of a function a form answers as a text record is read from its
+    form in FROM, which has columns."""
+    if not (isinstance(node, exp.Dot) and isinstance(node.this, exp.Paren)):
+        return None
+    call = _call(node.this.this)
+    if call is None:
+        return None
+    form = RELATION_FORMS.get((call.name.lower(), len(call.expressions)))
+    if form is None:
+        return None
+    select = _written(form, [a.transform(rewrite) for a in call.expressions])
+    return exp.Subquery(
+        this=exp.select(exp.column(node.expression.name, table="_f")).from_(
+            exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_f")))
+        )
+    )
+
+
 def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
     """A function in FROM: its rows, under the name the statement gives them, a form of one column
     taking that name for its column as PostgreSQL's does."""
@@ -667,7 +699,7 @@ def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
         select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
     else:
         select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
-    if not alias.columns and len(select.selects) == 1:
+    if not alias.columns and len(select.selects) == 1 and not select.is_star:
         alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
     return exp.Subquery(this=select, alias=alias)
 

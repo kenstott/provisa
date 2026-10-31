@@ -280,7 +280,7 @@ def test_psqls_collation_list_runs():
         "SELECT c.collname, c.collcollate, c.collctype, c.colllocale, c.collicurules, "
         "c.collprovider FROM pg_catalog.pg_collation c ORDER BY 1"
     )
-    assert _rows(sql) == []
+    assert ("C", "C", "C", None, None, "c") in _rows(sql)
 
 
 def test_psqls_subscription_list_runs():

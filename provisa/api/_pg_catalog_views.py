@@ -1268,11 +1268,54 @@ def _pg_type() -> str:
         },
         "FROM (VALUES (8310, 'geometry'), (8311, 'geography')) AS o(oid, name)",
     )
-    return _view(
+    # information_schema's domains have an oid of each server's own, so a server's are not the
+    # ones a catalog column names (RELATIONS): PostgreSQL 17's are listed, as is its shape.
+    domains = _select(
         relation,
-        _select(relation, real, "FROM pg_catalog.pg_type r WHERE r.oid < 16384"),
-        own,
+        {
+            "typowner": "10",
+            "typlen": "d.typlen",
+            "typbyval": "d.typbyval",
+            "typtype": "'d'",
+            "typcategory": "d.typcategory",
+            "typispreferred": "FALSE",
+            "typisdefined": "TRUE",
+            "typdelim": "','",
+            "typrelid": "0",
+            "typsubscript": "0",
+            "typelem": "0",
+            "typarray": "0",
+            "typinput": "0",
+            "typoutput": "0",
+            "typreceive": "0",
+            "typsend": "0",
+            "typmodin": "0",
+            "typmodout": "0",
+            "typanalyze": "0",
+            "typalign": "d.typalign",
+            "typstorage": "d.typstorage",
+            "typnotnull": "FALSE",
+            "typbasetype": "d.typbasetype",
+            "typtypmod": "-1",
+            "typndims": "0",
+            "typcollation": "0",
+            "oid": "d.oid",
+            "typname": "d.typname",
+            "typnamespace": str(INFORMATION_SCHEMA_OID),
+        },
+        "FROM (VALUES "
+        + ", ".join(
+            f"({oid}, '{e[1]}', {e[2]}, {str(e[7]).upper()}, '{e[4]}', '{e[8]}', '{e[9]}', {e[6]})"
+            for oid, e in sorted(TYPES.items())
+            if e[0] == _IS and e[3] == "d"
+        )
+        + ") AS d(oid, typname, typlen, typbyval, typcategory, typalign, typstorage, typbasetype)",
     )
+    server = (
+        "FROM pg_catalog.pg_type r JOIN pg_catalog.pg_namespace rn ON rn.oid = r.typnamespace "
+        f"WHERE r.oid < 16384 AND rn.nspname <> '{_IS}'"
+    )
+    return _view(relation, _select(relation, real, server), own, domains)
 
 
 def _conformance(name: str) -> str:

@@ -353,9 +353,9 @@ def test_pg_get_indexdef_executes_null():
         "alice",
         state,
     )
-    # PK on dogs → one index row; pg_get_indexdef is a stub returning NULL
+    # PK on dogs → one index row; position 0 is the whole definition (metadata_functions)
     assert len(result.rows) >= 1
-    assert all(r[0] is None for r in result.rows)
+    assert all(r[0].startswith("CREATE UNIQUE INDEX") for r in result.rows)
 
 
 # ── current_setting() ───────────────────────────────────────────────────────
