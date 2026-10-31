@@ -94,7 +94,9 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   // but this effect read one arbitrary role, so a user holding analyst (pet-store, shelter) plus
   // org_admin (*) got analyst's two domains and lost meta and ops entirely. Which role won was an
   // accident of list order, so the same account showed different domains as its role set changed.
-  // Any active role with `*` means the whole catalog; otherwise the union of the named domains.
+  // Any active role with `*` means the whole catalog; otherwise the union of what each role reads,
+  // which the server answers: a role's list and the system domains (rights.read_domains), so meta
+  // and ontology are named once, there.
   // That one wildcard role is asked deliberately: it answers every domain, the most any set of
   // roles holding it can reach, so the set adds nothing to the answer.
   const roleIds = selectedRoles.map((r) => r.id).join(",");
@@ -104,25 +106,26 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   ].join(",");
   useEffect(() => {
     if (selectedRoles.length === 0) return;
-    if (wildcardRoleId !== null) {
-      fetch("/data/domains", { headers: { "X-Provisa-Role": wildcardRoleId } })
-        .then((r) => r.json())
-        .then((ids: string[]) => {
-          if (ids.length > 0) {
-            setDomains(ids);
-            setCheckedDomains(restoreCheckedDomains(ids));
-          }
-        })
-        .catch(() => {});
-    } else {
-      const ds = namedDomains ? namedDomains.split(",") : [];
-      if (ds.length > 0) {
-        /* eslint-disable-next-line react-hooks/set-state-in-effect --
-           reset domain filter state in sync with an external input (the active role set) */
-        setDomains(ds);
-        setCheckedDomains(restoreCheckedDomains(ds));
-      }
-    }
+    let stale = false;
+    const askedAs = wildcardRoleId !== null ? [wildcardRoleId] : selectedRoles.map((r) => r.id);
+    Promise.all(
+      askedAs.map((id) =>
+        fetch("/data/domains", { headers: { "X-Provisa-Role": id } }).then(
+          (r) => r.json() as Promise<string[]>,
+        ),
+      ),
+    )
+      .then((answers) => {
+        const ids = [...new Set(answers.flat())];
+        if (!stale && ids.length > 0) {
+          setDomains(ids);
+          setCheckedDomains(restoreCheckedDomains(ids));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the role SET (the joined ids), not the array identity, so the fetch does not re-run on every render
   }, [roleIds, wildcardRoleId, namedDomains]);
 

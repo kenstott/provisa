@@ -9,15 +9,15 @@
 // permission from the copyright holder.
 
 /**
- * The domains Provisa generates for itself: `meta` (the model's own metadata tables) and `ops`
- * (activity traces). They are read like any domain (the Domains menu, a role's domain access, a
+ * The domains Provisa generates for itself: `meta` (the model's own metadata tables), `ontology`
+ * (its glossary definitions) and `ops` (activity traces). They are read like any domain (the Domains menu, a role's domain access, a
  * filter) but no picker offers one as the domain to put something into: a table, view, model,
  * source, data product, command or glossary term.
  *
  * Not `Domain.isSystem`: that also marks the default domain of a single-domain org, which is where
  * everything of that org goes.
  */
-export const INTERNAL_DOMAIN_IDS: readonly string[] = ["meta", "ops"];
+export const INTERNAL_DOMAIN_IDS: readonly string[] = ["meta", "ontology", "ops"];
 
 export function isInternalDomain(domainId: string): boolean {
   return INTERNAL_DOMAIN_IDS.includes(domainId);
