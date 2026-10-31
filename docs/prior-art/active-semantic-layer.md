@@ -3,8 +3,8 @@
 **Author:** Kenneth Stott
 **First published:** 2026-08-17
 **Status.** Public technical disclosure. Published to establish prior art.
-**Scope.** Design disclosure. A reference implementation exists, but nothing here depends on it —
-each mechanism is described so that a person skilled in query compilation and distributed data
+**Scope.** Design disclosure. A reference implementation exists, but nothing here depends on it.
+Each mechanism is described so that a person skilled in query compilation and distributed data
 systems can implement it from this document alone.
 
 ---
@@ -66,7 +66,7 @@ then has as many implementations as there are front doors, and they drift.
 Requests converge in two stages before any policy logic runs.
 
 **Stage A — API canonicalization.** Resource-oriented and RPC-oriented API shapes (an OpenAPI
-operation, a JSON:API resource request, a gRPC method) are mapped to a graph selection set — a tree
+operation, a JSON:API resource request, a gRPC method) are mapped to a graph selection set, a tree
 of entity references, field selections, arguments, and nested traversals. GraphQL's selection set
 is used as that canonical form because it already expresses exactly the entity-traversal-projection
 triple that the mapping needs, and because generating the other three shapes' schemas from a
@@ -100,15 +100,15 @@ The mapping for each API shape:
 **The single-reference-form rule.** Only semantic names are accepted. A reference to a physical
 source catalog is rejected at parse time, before governance, with a diagnostic. This is what makes
 the governance pass total: policy binds to semantic entities, so if a physical reference could
-survive lowering it would reach the source unbound. The check is structural — walk every table node
-in the parsed tree and reject any whose leading qualifier matches a registered physical source
+survive lowering it would reach the source unbound. The check is structural. It walks every table node
+in the parsed tree and rejects any whose leading qualifier matches a registered physical source
 catalog.
 
 **Transport as a frame decoder only.** Wire protocols (a PostgreSQL wire implementation, Bolt,
 Arrow Flight, gRPC, JDBC, HTTP, WebSocket, MCP) are implemented as decoders that produce two
 things and nothing else: a query payload and an authenticated principal. Each transport normalizes
-its own credential form — a startup message, a bearer token, an OAuth token presented by an
-autonomous agent, a session cookie — into one principal record carrying role, org, and session
+its own credential form (a startup message, a bearer token, an OAuth token presented by an
+autonomous agent, a session cookie) into one principal record carrying role, org, and session
 variables. From that point the transport is out of the path. There is no transport-local branch in
 governance, routing, or delivery.
 
@@ -144,7 +144,7 @@ before the parser runs. The sparseness is part of the design, not a gap in it.
 ### 3.1 Problem
 
 Policy applied after execution has already moved the rows. Policy applied by a proxy that rewrites
-query text is fragile against the text's structure — subqueries, set operations, correlated
+query text is fragile against the text's structure, because subqueries, set operations, correlated
 predicates, and CTEs each offer a place for a rewrite to miss a reference. Policy expressed as
 per-role database views multiplies objects by roles and does not survive federation.
 
@@ -174,7 +174,7 @@ Layers applied within the pass, in order:
    the emitted plan carries no unresolved session state into an engine that would not know how to
    resolve it.
 5. **Column masking.** A masked column's projection is replaced with the masking expression
-   declared for that column and principal — redaction, hashing, partial reveal, or a null literal —
+   declared for that column and principal (redaction, hashing, partial reveal, or a null literal)
    at every position the column appears, including inside expressions and aggregates.
 6. **Result ceilings.** A limit node is injected or lowered to the most restrictive of the
    role-level ceiling and any per-entity ceiling on a referenced entity. Where the query's existing
@@ -215,8 +215,8 @@ plan rather than the submitted one. Disclosure 3 is that mechanism.
 Systems that answer a query from more than one data source have more than one way to execute it. A
 plan whose relations all reside in a single source can usually be handed to that source's own
 engine as one statement in its native dialect. A plan spanning two or more sources cannot, and must
-be executed by a layer above them — a federation coordinator, a distributed engine, a wrapper that
-pulls one side into the other. That layer costs an extra hop, serialization at both ends, a join
+be executed by a layer above them (a federation coordinator, a distributed engine, a wrapper that
+pulls one side into the other). That layer costs an extra hop, serialization at both ends, a join
 executed outside any source's own optimizer, and memory held for the duration.
 
 The choice between those topologies is conventionally made from the query as written. A query
@@ -249,7 +249,7 @@ execution topology is available. It applies to:
 - a distributed query engine that can also push an entire query into a single connector, where
   literalizing one catalog's small relation makes a two-catalog query fully pushable into the other;
 - a database with foreign data wrappers, whose join pushdown requires both relations to be on the
-  same foreign server — literalizing the local side makes a local-to-foreign join pushable;
+  same foreign server, and literalizing the local side makes a local-to-foreign join pushable;
 - a lakehouse or analytical engine joining a catalog-managed table to an external one;
 - a gateway or semantic layer choosing between a native driver to a source and a federating engine
   above several.
@@ -329,7 +329,7 @@ no source. Over the recomputed set, topology selection is a classification:
   execution;
 - one source with a direct driver and a dialect the plan can be emitted in: direct;
 - one source with no direct driver (a document store, a file-backed source, a stream, a lakehouse
-  catalog, an HTTP API) — engine, since only the engine's connector reaches it;
+  catalog, an HTTP API): engine, since only the engine's connector reaches it;
 - more than one source: engine;
 - any write: direct, never through the engine.
 
@@ -342,7 +342,7 @@ texts submitted by principals with different policy do not.
 Shipping a small relation somewhere to make a join cheaper is long-established, and the author
 does not claim otherwise. Each established form optimizes execution *within* an already-chosen
 topology, leaving the plan's set of participating sources, and therefore the identity of the
-executing system — unchanged. The distinguishing property here is that the rewrite is applied
+executing system, unchanged. The distinguishing property here is that the rewrite is applied
 *before* the topology is chosen, reduces the plan's source set, and thereby changes what is chosen.
 
 Specifically distinguished:
@@ -367,11 +367,11 @@ Specifically distinguished:
 
 | Technique | What is shipped | What it changes | Topology after |
 |---|---|---|---|
-| Broadcast / replicated join | The small side, to every worker | Data movement for the join | Unchanged — still distributed, same engine |
-| Dynamic filtering / semi-join reduction | Build-side values, **as a predicate** | Rows scanned on the probe side | Unchanged — join still executed distributed |
-| Materialized view or cached copy of the dimension | Nothing at plan time | Where the relation is read from | Unchanged — it is still a relation in a source, and still counts toward the source set |
-| Constant folding of a scalar subquery | Nothing | Plan size | Unchanged in general — folding is not applied with source-count reduction as its objective |
-| **This disclosure** | The relation itself, **as a plan-embedded constant relation** | The source set, hence the execution topology | Changed — the distributed layer leaves the path |
+| Broadcast / replicated join | The small side, to every worker | Data movement for the join | Unchanged; still distributed, same engine |
+| Dynamic filtering / semi-join reduction | Build-side values, **as a predicate** | Rows scanned on the probe side | Unchanged; join still executed distributed |
+| Materialized view or cached copy of the dimension | Nothing at plan time | Where the relation is read from | Unchanged; it is still a relation in a source, and still counts toward the source set |
+| Constant folding of a scalar subquery | Nothing | Plan size | Unchanged in general; folding is not applied with source-count reduction as its objective |
+| **This disclosure** | The relation itself, **as a plan-embedded constant relation** | The source set, hence the execution topology | Changed; the distributed layer leaves the path |
 
 The second distinguishing property is ordering. The rewrite must sit after policy application and
 before topology selection. A pipeline that selects topology first cannot benefit: the choice is
@@ -387,8 +387,8 @@ precondition that makes source-eliminating optimization both possible and safe.
 
 ### 5.1 Problem
 
-In an environment where clients compose queries dynamically — an analyst at a prompt, a generated
-dashboard query, an autonomous agent — result size is not known before execution and is not bounded
+In an environment where clients compose queries dynamically (an analyst at a prompt, a generated
+dashboard query, an autonomous agent), result size is not known before execution and is not bounded
 by anything the client did. The failure this produces is not a slow query; it is a gateway holding
 a multi-gigabyte serialization in memory, missing health checks, being declared dead, and taking
 its connection pool down with it.
@@ -433,8 +433,8 @@ configuration without standing up object storage, and so that the delivery contr
 with deployment shape.
 
 **Governance is inherited, not re-applied.** The statement handed to the engine's create-table-as-
-select is the governed physical SQL — row-level predicates already conjoined, masking expressions
-already substituted, ceilings already bound. The object written to storage is therefore governed at
+select is the governed physical SQL, with row-level predicates already conjoined, masking
+expressions already substituted and ceilings already bound. The object written to storage is therefore governed at
 the moment it is written. There is no second authorization at the storage layer, and no possibility
 of the exported copy carrying more than the principal could have read inline. This is the property
 that makes out-of-band delivery safe rather than a hole.
@@ -523,8 +523,8 @@ The planner reads traits. It never branches on an engine's name, and no per-engi
 the planning code. A trait that a decision depends on must be declared by the engine, so the
 dependency is explicit and enumerable rather than discovered when a swap breaks.
 
-Concrete terminal behavior — execute, dialect emission, lifecycle, introspection, create-table-as-
-select — sits behind a backend interface attached to the engine instance. This keeps every
+Concrete terminal behavior (execute, dialect emission, lifecycle, introspection, create-table-as-
+select) sits behind a backend interface attached to the engine instance. This keeps every
 engine-specific reference inside that engine's own object and out of the compiler.
 
 The consequence: the same governed IR runs against a distributed query engine, an embedded
@@ -562,7 +562,7 @@ type what a machine could read, and finished after the estate had moved.
 
 The disclosed combination is: automated structural discovery, model-proposed semantic edges with
 attached confidence and reasoning, a candidate state distinct from live state, human ratification
-as the only transition into live state, and precedence of explicit over discovered — arranged so
+as the only transition into live state, and precedence of explicit over discovered, arranged so
 that catalog coverage accretes as a side effect of individually-funded work rather than requiring a
 cataloging program.
 
@@ -572,7 +572,7 @@ cataloging program.
 
 1. Convergent lowering of multiple API shapes into one canonical graph selection set, of three
    query languages into one IR, and of many wire transports into one principal record and one
-   payload — such that policy has exactly one implementation regardless of front door, and an
+   payload, such that policy has exactly one implementation regardless of front door, and an
    autonomous agent's token is governed by the same pass as a person's.
 2. A single-reference-form rule that rejects physical source references at parse time, which is
    what makes the governance pass total.
@@ -581,7 +581,7 @@ cataloging program.
    applied as a pre-optimizer rewrite is prior practice and is not claimed; the guard, the layer
    composition, and the totality argument of item 2 are what is disclosed here.
 4. The stage ordering govern → optimize → select-topology, in which the optimizer is permitted to
-   remove a source from the governed plan and topology selection observes the reduced set —
+   remove a source from the governed plan and topology selection observes the reduced set,
    applicable to any system with more than one available execution topology, not to any particular
    architecture. The permission to eliminate a source, and the deferral of the topology decision
    until after that elimination, are the disclosed departure from conventional policy-rewrite
@@ -602,8 +602,8 @@ cataloging program.
    terminal, so that inline-versus-materialized is uniform across every transport by construction.
 9. Threshold-triggered materialization executed by the engine directly to object storage with zero
    result rows in the gateway, carrying compile-time governance into the written object, returned
-   as a protocol-native terminal frame — a structured error on a tabular wire protocol, a
-   payload-too-large response over HTTP, a small structured handle to an agent, so that an
+   as a protocol-native terminal frame (a structured error on a tabular wire protocol, a
+   payload-too-large response over HTTP, a small structured handle to an agent), so that an
    unmodified client surfaces it without hanging, truncating, or exhausting a context window.
 10. Role-bound envelope encryption of out-of-band payloads and cached relations, where the grant
     seals the creating principal alongside the data key and is opened only by an authenticated
