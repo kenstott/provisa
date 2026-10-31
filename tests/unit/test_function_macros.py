@@ -93,6 +93,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
 @pytest.mark.parametrize(
     ("sql", "dialect", "expected"),
     [
+        ("SELECT time(a) AS v FROM t", "duckdb", "SELECT CAST(a AS TIME) AS v FROM t"),
         (
             "SELECT textcat(a, b) AS v FROM t",
             "mysql",
@@ -141,6 +142,7 @@ def test_a_form_survives_the_engines_own_rewrites():
         ("SELECT a FROM t WHERE jsonb_typeof(a) = 'object'", "clickhouse", "jsonb_typeof"),
         ("SELECT textlike(a, b) FROM t", "mysql", "textlike"),
         ("SELECT regexp_substr(a, b) FROM t", "clickhouse", "regexp_substr"),
+        ("SELECT time(a) FROM t", "trino", "time"),
     ],
 )
 def test_a_function_with_no_form_is_refused_by_name(sql, dialect, function):

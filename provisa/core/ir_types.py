@@ -653,10 +653,15 @@ def bytea_hex(value: bytes | bytearray | memoryview) -> str:
     return "\\x" + bytes(value).hex()
 
 
+_TIMEDELTA_MAX_DAYS = 999_999_999
+
+
 def interval_parts(value: timedelta | relativedelta) -> tuple[int, int, int]:
     """An IR ``interval`` value as Postgres holds one: (months, days, microseconds). A duration with
     no months is a ``timedelta``; one with months (a year-month interval: Oracle's INTERVAL YEAR TO
     MONTH, Trino's and BigQuery's) is a ``relativedelta``, since a month has no fixed length."""
+    if isinstance(value, _ExactInterval):
+        return value.pg_parts
     if isinstance(value, timedelta):
         # A negative timedelta is held as negative days and positive seconds; its parts share a sign.
         if value < timedelta(0):
@@ -667,12 +672,28 @@ def interval_parts(value: timedelta | relativedelta) -> tuple[int, int, int]:
     return value.years * 12 + value.months, value.days, seconds * 1_000_000 + value.microseconds
 
 
+class _ExactInterval(relativedelta):
+    """An interval whose fields neither Python type keeps: each carries hours into days, and a
+    ``timedelta`` stops at a billion days. PostgreSQL keeps ``26:01:00`` apart from
+    ``1 day 02:01:00``, so the fields stay with it for the wire (``pg_parts``)."""
+
+    pg_parts: tuple[int, int, int]
+
+
 def interval_value(months: int, days: int, microseconds: int) -> timedelta | relativedelta:
     """The IR ``interval`` value of (months, days, microseconds), as a reader hands one on: a
-    ``timedelta`` when it has no months, else a ``relativedelta``."""
-    if not months:
-        return timedelta(days=days, microseconds=microseconds)
-    return relativedelta(months=months, days=days, microseconds=microseconds)
+    ``timedelta`` when it has no months and says the same fields back, a ``relativedelta`` when it
+    has months and is plain, else an :class:`_ExactInterval`."""
+    parts = (months, days, microseconds)
+    if abs(days) <= _TIMEDELTA_MAX_DAYS and not months:
+        plain: timedelta | relativedelta = timedelta(days=days, microseconds=microseconds)
+    else:
+        plain = relativedelta(months=months, days=days, microseconds=microseconds)
+    if interval_parts(plain) == parts:
+        return plain
+    exact = _ExactInterval(months=months, days=days, microseconds=microseconds)
+    exact.pg_parts = parts
+    return exact
 
 
 class _InfiniteDate(date):
