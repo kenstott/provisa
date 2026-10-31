@@ -61,6 +61,7 @@ def test_every_completion_role_of_a_sandbox_tier_org_uses_the_tier_model(tier_ai
                 "sql_generation",
                 "table_selection",
                 "mcp_chat",
+                "glossary_term_finding",
             )
         }
         assert "vector_models" not in defaults  # no embedding model in a sandbox
