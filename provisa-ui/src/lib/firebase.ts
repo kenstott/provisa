@@ -21,7 +21,7 @@ import {
   signOut as fbSignOut,
   type Auth,
 } from "firebase/auth";
-import { removeStored, setStored } from "./browserStorage";
+import { removeStored, SessionStorageError, setStored } from "./browserStorage";
 
 type FirebaseWebConfig = { apiKey: string; authDomain: string; projectId: string };
 
@@ -192,6 +192,7 @@ export function installFirebaseTokenSync(): Promise<void> {
           .getIdToken()
           .then((idToken) => setStored("provisa_token", idToken, { global: true }))
           .catch((err: unknown) => {
+            if (err instanceof SessionStorageError) return; // logged and noticed where it failed
             // A rejected refresh (revoked/disabled session) is a legitimate signed-out state,
             // not a bug to swallow: surface it, clear the dead bearer, and let boot proceed to
             // the login page rather than hanging render forever.
@@ -206,8 +207,14 @@ export function installFirebaseTokenSync(): Promise<void> {
           })
           .finally(settle);
       } else {
-        removeStored("provisa_token", { global: true });
-        settle();
+        try {
+          removeStored("provisa_token", { global: true });
+        } catch (err) {
+          if (!(err instanceof SessionStorageError)) throw err;
+          // Logged and noticed where it failed: boot goes on signed out, it must not hang here.
+        } finally {
+          settle();
+        }
       }
     });
   });

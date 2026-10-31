@@ -14,7 +14,8 @@ The page's **Suite:** and **Pass rate:** lines and its failing cases come from t
 conformance-<surface> workflow uploads, never typed: download the artifact of a run and point this
 at its JSON. Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28), and
 the page gives the three counts and the pass rate, passed over passed plus failed. On pgwire they
-are the whole run's: a pg_catalog function not served is failed, grouped by family.
+are the whole run's: a pg_catalog function PostgreSQL cannot call, or an index function not served,
+is skipped by design; any other not served is failed, grouped by family.
 
     .venv/bin/python3 scripts/conformance/fill_docs.py conformance-cypher.json [more.json ...]
 
@@ -83,7 +84,7 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
         parts = [spec, *(artifact[p] for p in COMPARED if artifact.get(p) is not None)]
         for part in parts[1:]:
             for f in part["failures"]:
-                # REQ-2167 (PG_CATALOG FUNCTIONS ARE GAPS): functions fail by family.
+                # REQ-2167 (PG_CATALOG FUNCTIONS ARE GAPS): what fails, fails by family.
                 group = f"Catalog function: {f['family']}" if "family" in f else f["feature"]
                 groups.setdefault(group, []).append((f["scenario"], f["reason"]))
         suite = f"pgspec {spec['version']}, against PostgreSQL {artifact.get('postgres_version')}"

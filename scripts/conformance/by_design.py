@@ -109,9 +109,23 @@ FIELDS = {
 BY_DESIGN = ("design", "client", "suite")
 
 
-#: REQ-2167 (amended 2026-10-29, PG_CATALOG FUNCTIONS ARE GAPS): what a group naming catalog
-#: functions starts with. No such group loads: a function not served is failed.
+#: What a group naming catalog functions says of its cases.
 FUNCTION_CASE = "^catalog function::"
+
+#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS and INDEXES BELONG TO THE DATABASE): the only
+#: groups that may name catalog functions, in the order a function is tried against them, each
+#: exactly as here. PostgreSQL's own refusal or an internal argument puts a function in the first
+#: (pgwire_catalog_types.py words its reason); the second takes what is left of the family and not
+#: served, so a function served with the wrong result type stays failed. Any other function not
+#: served is failed (PG_CATALOG FUNCTIONS ARE GAPS).
+FUNCTION_GROUPS = {
+    "Internal functions": {"case": FUNCTION_CASE, "reason": "^no call reaches it: "},
+    "Index functions": {
+        "case": FUNCTION_CASE,
+        "reason": "^not served: ",
+        "family": "Index support",
+    },
+}
 
 
 @dataclass
@@ -125,9 +139,12 @@ class Group:
     case: re.Pattern[str] | None = None
     cases: list[dict] = field(default_factory=list)  # each case named, with its recorded reason
     skipped: bool = False  # names only a case the suite skipped (always so for a suite group)
+    family: str = ""  # a catalog function's family (FUNCTION_GROUPS)
 
     def matches(self, failure: dict) -> bool:
         if (self.skipped or self.kind == "suite") and not failure.get("skipped"):
+            return False
+        if self.family and failure.get("family") != self.family:
             return False
         if self.reason is not None and not self.reason.search(failure["reason"]):
             return False
@@ -143,11 +160,14 @@ def groups(surface: str) -> list[Group]:
     out = []
     for entry in yaml.safe_load(path.read_text()) or []:
         kind = entry.get("kind", "design")
-        if str(entry.get("case") or "").startswith(FUNCTION_CASE):
-            raise ValueError(
-                f"{path.name}: the group {entry.get('group')!r} names catalog functions; a "
-                "pg_catalog function not served is failed, never skipped by design"
-            )
+        allowed = FUNCTION_GROUPS.get(entry.get("group"))
+        if allowed is not None or names_functions(entry):
+            if allowed is None or {f: entry.get(f) for f in allowed} != allowed:
+                raise ValueError(
+                    f"{path.name}: the group {entry.get('group')!r} names catalog functions; only "
+                    f"{sorted(FUNCTION_GROUPS)} may, each as declared in by_design.py: any other "
+                    "pg_catalog function not served is failed"
+                )
         if kind not in FIELDS:
             raise ValueError(f"{path.name}: the group {entry.get('group')!r} is of no kind: {kind}")
         if kind in BY_DESIGN and not re.fullmatch(
@@ -183,9 +203,22 @@ def groups(surface: str) -> list[Group]:
                 reason=re.compile(entry["reason"]) if entry.get("reason") else None,
                 case=re.compile(entry["case"]) if entry.get("case") else None,
                 skipped=bool(entry.get("skipped")),
+                family=entry.get("family", ""),
             )
         )
     return out
+
+
+def names_functions(entry: dict) -> bool:
+    """Whether a group's entry names catalog functions, by its case or by a family."""
+    return "catalog function" in str(entry.get("case") or "") or "family" in entry
+
+
+def function_groups(surface: str) -> list[Group]:
+    """The surface's groups a catalog function is classified by, in FUNCTION_GROUPS order: no other
+    group reaches a function, whatever its reason happens to match."""
+    declared = groups(surface)
+    return [g for name in FUNCTION_GROUPS for g in declared if g.group == name]
 
 
 #: REQ-2167 (amended 2026-10-28, EVERY CASE IS PASSED, BY DESIGN OR FAILED): the three outcomes a
@@ -318,7 +351,10 @@ def cases_lines(excluded: list[dict]) -> list[str]:
         out.append(f"<details><summary>{g['group']} ({g['count']})</summary>\n")
         out.append("| Case | Reason |")
         out.append("| --- | --- |")
-        out.extend(f"| {c['case']} | {c['reason'].replace('|', '/')} |" for c in g["cases"])
+        out.extend(
+            f"| {c['case']} | {' '.join(c['reason'].split()).replace('|', '/')} |"
+            for c in g["cases"]
+        )
         out.append("\n</details>\n")
     return out
 

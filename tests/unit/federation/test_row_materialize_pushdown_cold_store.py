@@ -140,6 +140,16 @@ def test_a_join_reached_replica_never_landed_is_created_before_the_probe_reads_i
     asyncio.run(cold_store.engine.execute_engine(_sql(cold_store.engine)))
 
 
+def test_a_statement_s_own_left_join_is_probed_as_one_left_join(cold_store):
+    """REQ-1915: a GraphQL to-one field into a row-level table compiles to a LEFT JOIN, and SQL can
+    write one. The probe flips a join to LEFT; one already LEFT must not be flipped twice."""
+    state = SimpleNamespace(federation_engine=cold_store.engine, org_id="acme")
+    sql = _sql(cold_store.engine).replace(" JOIN ", " LEFT JOIN ")
+    landed = asyncio.run(qr.pushdown_row_materialize(state, sql, "duckdb", reader_role=None))
+    assert landed == {_EDGE}
+    assert cold_store.fetched_keys == [[(7,), (8,)]]
+
+
 def test_without_the_replica_the_probe_is_refused_by_the_engine(cold_store):
     """Control: the stand-in engine is a real DuckDB that refuses a read of a table that does not
     exist -- the cold-store failure the test above guards against."""
