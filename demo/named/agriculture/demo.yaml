@@ -13,8 +13,7 @@
 title: Weather and crop insurance losses
 description: >-
   A crop insurer's portfolio of Corn Belt farms, in its own database, joined by county and crop year
-  to the USDA's crop insurance losses by cause, NOAA's daily weather and NASS's county yields from
-  government data: does weather explain the losses in our portfolio?
+  to the USDA's crop insurance losses by cause, NOAA's daily weather and NASS's county yields from government data. Does weather explain the losses in our portfolio?
 screenshot: card.png
 published: true
 group: public-data

@@ -11,8 +11,7 @@
 # the demo.yaml files by scripts/gen-site-demos.mjs; a demo with published: false has no card.
 title: Web shop logs
 description: >-
-  A web shop's nginx access log and its database's statement log, read as tables and joined to
-  the shop's own data: the slowest pages and the SQL behind them, the requests that failed in the
+  A web shop's nginx access log and its database's statement log, read as tables and joined to the shop's own data. You see the slowest pages and the SQL behind them, the requests that failed in the
   database, the customers who were served an error, and the products viewed but never bought.
 screenshot: card.png
 published: true
