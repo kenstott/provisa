@@ -24,12 +24,12 @@ import { nodeLook } from "../nodeLook";
 import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
 
 const ref = (table: number, column: string, domain: string, product: string | null) => ({
-  column_key: `${table}:${column}`,
-  column_name: column,
-  table_id: table,
-  table_name: `t${table}`,
-  domain_id: domain,
-  table: { id: table, product: product ? { id: product, name: product, domain_id: domain } : null },
+  columnKey: `${table}:${column}`,
+  columnName: column,
+  tableId: table,
+  tableName: `t${table}`,
+  domainId: domain,
+  registeredTable: { id: table, product: product ? { id: product, name: product, domainId: domain } : null },
 });
 
 const term = (
@@ -41,12 +41,12 @@ const term = (
   id,
   name,
   definition: `${name}.`,
-  ref_count: 0,
+  refCount: 0,
   deprecated: false,
   retired: false,
   status: "approved",
   grounding: "grounded",
-  domains: [{ domain_id: domain }],
+  domains: [{ domainId: domain }],
   refs,
 });
 
@@ -131,7 +131,7 @@ describe("a search focus with the tables", () => {
     // Account IS customers (10): a class term, grounded in the table.
     const account: TermRow = {
       ...term(4, "Account", []),
-      tables: [{ id: 10, domain_id: "sales", table_name: "t10" }],
+      tables: [{ id: 10, domainId: "sales", tableName: "t10" }],
     };
     const g = visibleGraph(
       glossaryGraph([...TERMS, account], EDGES),

@@ -26,9 +26,9 @@ from google.protobuf.descriptor import FieldDescriptor
 
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
-    GraphQLString,
     Interval,
     IntervalFilter,
+    Time,
     column_type_to_graphql,
 )
 from provisa.core.ir_types import bytea_hex, iso8601_duration, to_ir, to_physical
@@ -62,7 +62,7 @@ def test_an_interval_renders_as_its_iso_8601_duration(value, text):
 
 def test_interval_and_timetz_resolve_in_the_ir():
     assert to_ir("interval") == "interval"
-    assert to_ir("timetz") == "time"
+    assert to_ir("timetz") == "text"  # REQ-2171: held as its text, which keeps its offset
     assert to_physical("interval", "postgresql") == "INTERVAL"
 
 
@@ -70,7 +70,7 @@ def test_interval_is_its_own_graphql_scalar_with_an_ordered_filter():
     assert column_type_to_graphql("interval") is Interval
     assert FILTER_TYPE_MAP[Interval] is IntervalFilter
     assert set(IntervalFilter.fields) >= {"eq", "gt", "gte", "lt", "lte", "in", "is_null"}
-    assert column_type_to_graphql("timetz") is GraphQLString
+    assert column_type_to_graphql("timetz") is Time
 
 
 def test_the_interval_scalar_serializes_a_timedelta_and_keeps_engine_text():

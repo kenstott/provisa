@@ -22,7 +22,7 @@ import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { relationName, tableSqlRef } from "../../naming";
 import type { ProductConsumer, ProductDqEntry, ProductInput } from "../../api/lineage";
-import { modelName, type CoreTable } from "./productCore";
+import { modelName, restModelName, type CoreTable } from "./productCore";
 import { COLOR, dqStatus } from "./dataProductClaims";
 
 /** The DQ icon of a dataset: its checks' latest result. Nothing when it has no checks. */
@@ -56,7 +56,7 @@ export function DqIcon({
   );
 }
 
-const datasetOf = (c: ProductDqEntry) => modelName(c.checked_table);
+const datasetOf = (c: ProductDqEntry) => restModelName(c.checked_table);
 
 function ClaimRows({ checks, testId }: { checks: ProductDqEntry[]; testId: string }) {
   const { t, i18n } = useTranslation();
@@ -91,10 +91,10 @@ function ClaimRows({ checks, testId }: { checks: ProductDqEntry[]; testId: strin
             >
               <Table.Td>
                 <Text size="sm" fw={500}>
-                  {c.description || modelName(c)}
+                  {c.description || restModelName(c)}
                 </Text>
                 <Text size="xs" c="var(--text-muted)" ff="monospace">
-                  {modelName(c)}
+                  {restModelName(c)}
                 </Text>
               </Table.Td>
               <Table.Td ff="monospace">{datasetOf(c)}</Table.Td>
@@ -174,7 +174,7 @@ export function OutcomeBadge({ outcome }: { outcome: ProductDqEntry["latest_outc
 /** An input as the panel names it: a registered table by its model name; the source a member is
  *  read from by its source and where in it (source/schema/table). */
 function inputName(input: ProductInput): string {
-  if (input.kind !== "source") return modelName(input);
+  if (input.kind !== "source") return restModelName(input);
   return [input.source_id, input.source_schema, input.source_table].filter(Boolean).join("/");
 }
 
@@ -245,7 +245,7 @@ export function ConsumersList({
     <List size="sm" data-testid={testId}>
       {consumers.map((c) => (
         <List.Item key={c.relation} ff="monospace">
-          {modelName(c)}
+          {restModelName(c)}
           <Text component="span" c="var(--text-muted)" ff="text" size="xs">
             {" "}
             ({t(`dataProductCore.consumerKind_${c.kind}`)}
@@ -261,9 +261,7 @@ export function ConsumersList({
               {t("dataProductCore.consumerReads", {
                 ports: ports
                   .filter((p) =>
-                    c.reads.includes(
-                      relationName({ domainId: p.domain_id, tableName: p.table_name }),
-                    ),
+                    c.reads.includes(relationName({ domainId: p.domainId, tableName: p.tableName })),
                   )
                   .map(modelName)
                   .join(", "),

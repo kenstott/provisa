@@ -70,10 +70,10 @@ def client():
         yield _ResilientClient(c)
 
 
-# REQ-750: Cypher CALL db.labels() / db.relationshipTypes() / db.propertyKeys() procedure calls
-def test_req750_db_labels_procedure(client):
+# REQ-572: Cypher CALL db.labels() / db.relationshipTypes() / db.propertyKeys() procedure calls
+def test_req572_db_labels_procedure(client):
     """
-    # REQ-750
+    # REQ-572
     Verify db.labels() procedure call returns available labels from schema.
     """
     resp = client.post(
@@ -87,9 +87,9 @@ def test_req750_db_labels_procedure(client):
         assert "rows" in data
 
 
-def test_req750_db_relationshipTypes_procedure(client):
+def test_req572_db_relationshipTypes_procedure(client):
     """
-    # REQ-750
+    # REQ-572
     Verify db.relationshipTypes() procedure call returns available relationship types.
     """
     resp = client.post(
@@ -98,19 +98,47 @@ def test_req750_db_relationshipTypes_procedure(client):
             "query": "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType"
         },
     )
-    assert resp.status_code != 404
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["columns"] == ["relationshipType"]
+    assert "rows" in data
 
 
-def test_req750_db_propertyKeys_procedure(client):
+def test_req572_db_propertyKeys_procedure(client):
     """
-    # REQ-750
+    # REQ-572
     Verify db.propertyKeys() procedure call returns available property keys.
     """
     resp = client.post(
         "/data/cypher",
         json={"query": "CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey"},
     )
-    assert resp.status_code != 404
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["columns"] == ["propertyKey"]
+    assert "rows" in data
+
+
+@pytest.mark.parametrize(
+    "query,column",
+    [
+        ("CALL db.labels() YIELD label", "label"),
+        ("CALL db.relationshipTypes() YIELD relationshipType", "relationshipType"),
+        ("CALL db.propertyKeys() YIELD propertyKey", "propertyKey"),
+    ],
+)
+def test_req572_a_procedure_standing_alone_answers_with_no_return(client, query, column):
+    """
+    # REQ-572
+    Verify a YIELD with no RETURN answers as the same call with one does.
+    """
+    resp = client.post("/data/cypher", json={"query": query})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["columns"] == [column]
+    returned = client.post("/data/cypher", json={"query": f"{query} RETURN {column}"})
+    assert returned.status_code == 200, returned.text
+    assert data["rows"] == returned.json()["rows"]
 
 
 # REQ-751: Cypher LIMIT / SKIP clauses translate correctly to SQL LIMIT/OFFSET
@@ -835,10 +863,10 @@ def test_req773_map_projection_custom_key(client):
     assert resp.status_code != 404
 
 
-# REQ-775: Cypher MERGE on existing node returns existing properties
-def test_req775_merge_returns_existing_node(client):
+# REQ-2176: Cypher MERGE on existing node returns existing properties
+def test_req2176_merge_returns_existing_node(client):
     """
-    # REQ-775
+    # REQ-2176
     Verify MERGE on existing node returns existing node with properties.
     """
     statement = {"query": "MERGE (n:TestNode {id: 999}) RETURN n"}

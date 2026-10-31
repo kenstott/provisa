@@ -16,7 +16,7 @@ before query compilation. Extracted from sql_gen.py; leaf module.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence  # noqa: F401
+from collections.abc import Callable, Mapping, Sequence  # noqa: F401
 
 from provisa.compiler.naming import (
     bare_field_name,
@@ -29,6 +29,7 @@ from provisa.compiler.native_nested import NestedColumn, NestedColumns
 from provisa.compiler.native_subtype import SubtypeColumns
 from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
 from provisa.compiler.sql_where import META_QUERY_NAME
+from provisa.core.ir_types import Subtype
 from provisa.compiler.sql_types import (
     CompilationContext,
     JoinMeta,
@@ -597,11 +598,12 @@ def _nested_columns(
     return out
 
 
-def _subtype_columns(
+def _columns_of_subtypes(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
     physical_map: dict[str, str],
+    kept: Callable[[Subtype], bool],
 ) -> SubtypeColumns:
-    """REQ-2171: every registered column whose subtype has semantics of its own, keyed like
+    """REQ-2171: every registered column whose subtype is ``kept``, keyed like
     ``_nested_columns``. All registered tables: a column's subtype is a fact of the table."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.compiler.schema_gen import SchemaInput
@@ -612,7 +614,7 @@ def _subtype_columns(
     for td in si.tables:
         for col in td.get("columns") or []:
             subtype = col.get("subtype")
-            if not subtype or SUBTYPES[subtype].semantics is None:
+            if not subtype or not kept(SUBTYPES[subtype]):
                 continue
             key = (
                 td["schema_name"].lower(),
@@ -659,7 +661,8 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
 
     ctx.epoch_columns = _epoch_columns(si, physical_map)
     ctx.nested_columns = _nested_columns(si, physical_map)
-    ctx.subtype_columns = _subtype_columns(si, physical_map)
+    ctx.subtype_columns = _columns_of_subtypes(si, physical_map, lambda s: s.semantics is not None)
+    ctx.read_columns = _columns_of_subtypes(si, physical_map, lambda s: s.base == "text")
 
     _register_relationship_joins(si, ctx, table_lookup, physical_map)
 

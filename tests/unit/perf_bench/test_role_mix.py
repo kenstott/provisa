@@ -252,7 +252,7 @@ def wire(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
         def _resolve_message_class(self, name: str) -> Any:
             return Msg
 
-    monkeypatch.setattr(ol, "_grpc_shared", Grpc())
+    monkeypatch.setattr(ol, "_grpc_transport", lambda ep: Grpc())
     return log
 
 

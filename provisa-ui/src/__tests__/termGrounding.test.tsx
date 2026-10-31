@@ -88,7 +88,7 @@ vi.mock("../api/metaGraph", async (importOriginal) => ({
     const names: Record<number, string> = { 1: "Customer", 2: "Order" };
     return {
       registered_tables: [
-        { id: tableId, class_term: term === undefined ? null : { id: term, name: names[term] } },
+        { id: tableId, classTerm: term === undefined ? null : { id: term, name: names[term] } },
       ],
     };
   },

@@ -24,6 +24,10 @@ Extension functions (`pg_trgm`, `pg_vector`, PostGIS, etc.) are not available un
 
 A `geometry` or `geography` column is reported with its PostGIS type name and is sent in text format only, as WKT. PostGIS's binary format (EWKB) is not sent; a client that asks for the column in binary format gets an error naming it.
 
+### Types whose text does not give their binary form
+
+A column of `aclitem`, `gtsvector`, `tsquery`, `regprocedure`, `regoper`, `regoperator`, `regrole`, `regconfig`, `regdictionary`, `regcollation`, `pg_ndistinct`, `pg_dependencies`, `pg_mcv_list`, `pg_brin_bloom_summary` or `pg_brin_minmax_multi_summary` is held as PostgreSQL's canonical text and sent in text format only: its binary form holds what only PostgreSQL can derive. A client that asks for one in binary gets an error naming the type.
+
 ### Catalog functions
 
 Provisa intercepts the scalar catalog functions tools call to introspect schemas and format type names. Each one is answered from the role's governed model view:
@@ -39,6 +43,8 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 | `obj_description(oid, catalog)` | Returns the description of the named catalog object (table or schema) from the model, or `NULL`. |
 
 Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
+
+Every overload of every `pg_catalog` function is a conformance case, and each case is passed, skipped by design or failed. No `pg_catalog` function is skipped by design: one not served counts as failed until it is served, whatever its family. The suite calls each overload the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. An overload no call can reach, such as one taking an `internal` argument or a trigger function, is listed as failed by name. The failed cases are listed by family under the pass rate.
 
 ### Advisory locks
 

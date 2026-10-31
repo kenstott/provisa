@@ -179,22 +179,22 @@ class Model:
         sql = apply_graph_rewrites(sql, graph_vars, self.graph)
         return make_semantic_sql(sql.sql(dialect="postgres"), self.ctx), graph_vars
 
+    def violations(self, sql: str) -> list[ValidationViolation]:
+        return validate_sql(
+            sql,
+            self.ctx,
+            self.gov,
+            self.role,
+            self.tables,
+            # As access_violations decides it, by the one bypass rule.
+            bypass_relationship_guard=relationship_guard_bypassed(
+                self.role, SimpleNamespace(security_high=False), statement_opts_out=False
+            ),
+            bypass_uncovered_relationships=True,
+        )
+
     def refusals(self, sql: str) -> list[str]:
-        return [
-            v.message
-            for v in validate_sql(
-                sql,
-                self.ctx,
-                self.gov,
-                self.role,
-                self.tables,
-                # As access_violations decides it, by the one bypass rule.
-                bypass_relationship_guard=relationship_guard_bypassed(
-                    self.role, SimpleNamespace(security_high=False), statement_opts_out=False
-                ),
-                bypass_uncovered_relationships=True,
-            )
-        ]
+        return [v.message for v in self.violations(sql)]
 
     def answer(self, query: str) -> list[dict]:
         sql, graph_vars = self.semantic_sql(query)
@@ -284,8 +284,8 @@ def test_a_whole_compound_key_addresses_each_row():
 
 
 def test_a_count_over_a_compound_key_reads_each_rows_own_triples():
-    """The aggregate keeps the join of a variable predicate, on the whole key: a join on its first
-    column alone would give each line the other's triples too."""
+    """Each line's own triples: a join of a table to itself on the first column of its key alone
+    would give each line the other's too."""
     query = f"SELECT (COUNT(*) AS ?n) WHERE {{ ?s a <{_class('lines')}> ; ?p ?o }}"
     (row,) = Model(set()).answer(query)
     assert row["n"]["literal"] == 8  # four predicates (type, three columns) of two lines

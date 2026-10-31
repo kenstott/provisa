@@ -8920,5 +8920,6 @@
   "zh/findTerms.json::findTerms.variantAbbreviation": "abbreviation",
   "zh/findTerms.json::findTerms.variantAlternativeName": "another name",
   "zh/findTerms.json::findTerms.variantForm": "form",
-  "zh/findTerms.json::findTerms.variantReference": "reference"
+  "zh/findTerms.json::findTerms.variantReference": "reference",
+  "zh/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
 }

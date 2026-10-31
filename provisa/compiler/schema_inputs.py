@@ -36,9 +36,9 @@ from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column
 from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, apply_gql_name, to_type_name
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
-    column_type_to_graphql,
     array_graphql_type,
     nested_column_graphql_type,
+    registered_graphql_type,
 )
 from provisa.compiler.schema_types import _TableInfo
 from provisa.core.modeling_tags import column_comment
@@ -143,7 +143,7 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             if enum_gql is not None:
                 gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
             else:
-                scalar_type = column_type_to_graphql(meta.data_type)
+                scalar_type = registered_graphql_type(meta.data_type, meta.subtype)
                 if not meta.is_nullable and not isinstance(scalar_type, GraphQLList):
                     gql_type = GraphQLNonNull(scalar_type)
                 else:
@@ -210,7 +210,7 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
         if enum_filter:
             input_fields[gql_name] = GraphQLInputField(enum_filter)
         else:
-            gql_type = column_type_to_graphql(meta.data_type)
+            gql_type = registered_graphql_type(meta.data_type, meta.subtype)
             scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
             filter_type = FILTER_TYPE_MAP.get(scalar)
             if filter_type:

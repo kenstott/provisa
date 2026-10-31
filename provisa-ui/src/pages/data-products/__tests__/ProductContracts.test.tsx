@@ -81,14 +81,14 @@ const saved = (
 
 const port = (id: number, name: string, contract: unknown, cacheTtl: number | null = null) => ({
   id,
-  source_id: "pg",
-  domain_id: "pet-store",
-  schema_name: "public",
-  table_name: name,
+  sourceId: "pg",
+  domainId: "pet-store",
+  schemaName: "public",
+  tableName: name,
   alias: null,
   description: null,
-  dq_contract: null,
-  cache_ttl: cacheTtl,
+  dqContract: null,
+  cacheTtl: cacheTtl,
   contract,
 });
 
@@ -111,11 +111,11 @@ function core(count: 0 | 1 | 3, versions: ContractVersion[] = []): ProductCore {
       ...ports,
       {
         ...port(9, "pets_quality", null),
-        dq_contract: "checks: []",
-        checks: { id: 1, domain_id: "pet-store", table_name: "pets", alias: null },
+        dqContract: "checks: []",
+        checks: { id: 1, domainId: "pet-store", tableName: "pets", alias: null },
       },
     ],
-    commands: [{ name: "add_pet", description: "Add a pet", domain_id: "pet-store" }] as never,
+    commands: [{ name: "add_pet", description: "Add a pet", domainId: "pet-store" }] as never,
   } as unknown as ProductCore;
 }
 

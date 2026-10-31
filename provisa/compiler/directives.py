@@ -182,8 +182,9 @@ def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-
         ``auto``/``true`` → ``AUTOMATIC``
       - ``broadcast_size``: ``<size>`` → ``join_max_broadcast_table_size``
 
-    Unrecognized keys pass through unchanged (the engine validates them) so configs still using
-    raw the engine session-prop names keep working during the transition.
+    Only this vocabulary reaches a session. Any other key is a setting for the source's driver or
+    connector (``http_path``, ``direct_connection``), read from the source; it may be a credential,
+    so it is neither returned nor logged here.
     """
     out: dict[str, str] = {}
     for key, value in hints.items():
@@ -201,8 +202,6 @@ def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-
                 out["join_reordering_strategy"] = "AUTOMATIC"
         elif k == "broadcast_size":
             out["join_max_broadcast_table_size"] = v
-        else:
-            out[key] = value  # passthrough (raw the engine prop) — transitional
     return out
 
 

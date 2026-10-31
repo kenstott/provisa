@@ -60,8 +60,8 @@ export function DqRulesModal({ opened, onClose, rules, scans, tableName }: DqRul
           <Table.Tbody>
             {rules.map((c) => (
               <Table.Tr key={c.position}>
-                <Table.Td>{c.column_name || t("dataQualityPanel.datasetScope")}</Table.Td>
-                <Table.Td>{c.check_type}</Table.Td>
+                <Table.Td>{c.columnName || t("dataQualityPanel.datasetScope")}</Table.Td>
+                <Table.Td>{c.checkType}</Table.Td>
                 <Table.Td>
                   <Text
                     component="pre"

@@ -79,7 +79,7 @@ function RowTitle({
   const lastRun = runs && runs.length > 0 ? runs[runs.length - 1] : null;
   // The SLA headline: the port's freshness first, as the contract lists it (REQ-2118), else the
   // first service level it declares.
-  const ttl = port.cache_ttl;
+  const ttl = port.cacheTtl;
   const declared = contract.sla[0];
   const sla =
     ttl !== null && ttl !== undefined

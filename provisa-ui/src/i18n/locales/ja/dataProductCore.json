@@ -56,6 +56,7 @@
     "consumers": "コンシューマー",
     "consumersHint": "このプロダクトを 1 ホップ下流で読むもの: メンバーの上に直接構築されたテーブル、ビュー、マテリアライズドビュー。",
     "consumersEmpty": "なし",
+    "consumerReads": "{{ports}} を読む",
     "ownerOnlyList": "このリストはデータプロダクトのオーナーに表示されます。",
     "consumerKind_table": "テーブル",
     "consumerKind_view": "ビュー",
