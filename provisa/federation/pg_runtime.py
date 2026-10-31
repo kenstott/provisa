@@ -35,6 +35,7 @@ from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
 
 _log = logging.getLogger(__name__)
 
@@ -317,6 +318,10 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # functions importing provisa. Where it cannot (no plpython3u, no superuser, a managed
         # Postgres), a statement reading a faked column is refused by the column's name.
         self.computes_fakes = _install_fake_functions(self._con)
+        with self._con.cursor() as cur:
+            cur.execute(
+                RAISE_FUNCTION_SQL
+            )  # REQ-2190: a catalog form, in a statement with no table
 
     # -- source exposure -------------------------------------------------------
 

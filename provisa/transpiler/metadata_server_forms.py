@@ -50,6 +50,13 @@ _ALWAYS_PRIVILEGED = (
 _ITS_TYPE = "@TYPE@"
 
 SERVER_FORM_RAISE = "provisa_raise"
+#: The function a form raises with, on a PostgreSQL that runs forms: the control plane, and a
+#: PostgreSQL engine, which reads a statement with no table.
+RAISE_FUNCTION_SQL = (
+    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}(sqlstate TEXT, message TEXT) RETURNS TEXT "
+    "LANGUAGE plpgsql AS $$ BEGIN "
+    "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
+)
 
 
 def raising(sqlstate: str, message_sql: str) -> str:

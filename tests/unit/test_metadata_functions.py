@@ -52,6 +52,7 @@ from provisa.transpiler.metadata_facts import (
 from provisa.transpiler.metadata_functions import (
     FORMS,
     READS_THE_SERVER,
+    RELATION_FORMS,
     VALUE_FORMS,
     MetadataFunctionRefused,
     expand,
@@ -678,6 +679,8 @@ def test_no_catalog_view_is_in_the_proto_or_a_cypher_label():
         "SELECT pg_catalog.current_query(), id FROM meta.tables",
         'SELECT "pg_sleep"(1) FROM meta.tables',
         "SELECT nextval('s') FROM meta.tables",
+        "SELECT pg_read_file('postgresql.conf') FROM meta.tables",
+        "SELECT pg_ls_dir('.') FROM meta.tables",
     ],
 )
 def test_the_admin_terminal_refuses_a_function_that_reads_the_server(sql):
@@ -695,6 +698,11 @@ def test_the_admin_terminal_refuses_a_function_that_reads_the_server(sql):
 )
 def test_a_statement_that_only_holds_the_word_is_not_refused(sql):
     refuse_server_reads(sql)
+
+
+def test_no_form_calls_a_function_the_admin_terminal_refuses():
+    for form in (*FORMS.values(), *RELATION_FORMS.values()):
+        refuse_server_reads(form.sql)
 
 
 def test_every_function_with_a_form_reads_no_server():

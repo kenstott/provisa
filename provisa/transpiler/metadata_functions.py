@@ -658,8 +658,13 @@ class MetadataFunctionRefused(ValueError):
         super().__init__(f"{function}() has no form over the meta domain")
 
 
+#: What the admin terminal refuses, once forms are written: a form calls none of these, so a statement
+#: still naming one came from a surface that writes no forms (HTTP SQL over meta) and would run it.
+_REFUSED_ON_THE_PLANE = frozenset(
+    {*READS_THE_SERVER, *(name for name, _ in (*SCALAR_FORMS, *TABLE_FORMS))}
+)
 _NAMES_A_SERVER_READ = re.compile(
-    r"\b(" + "|".join(sorted(READS_THE_SERVER)) + r")\b", re.IGNORECASE
+    r"\b(" + "|".join(sorted(_REFUSED_ON_THE_PLANE)) + r")\b", re.IGNORECASE
 )
 
 
@@ -671,7 +676,7 @@ def refuse_server_reads(sql: str) -> None:
         return
     tree = sqlglot.parse_one(sql, read="postgres")
     for call in tree.find_all(exp.Anonymous):
-        if call.name.lower() in READS_THE_SERVER:
+        if call.name.lower() in _REFUSED_ON_THE_PLANE:
             raise MetadataFunctionRefused(call.name.lower())
 
 
