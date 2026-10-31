@@ -24,10 +24,7 @@ network. Where it is not staged the call is refused by name."""
 
 from __future__ import annotations
 
-import os
 from typing import Any
-
-import duckdb
 
 from provisa.transpiler.function_macros import FunctionRefused
 
@@ -35,18 +32,6 @@ from provisa.transpiler.function_macros import FunctionRefused
 def _refuse_digest(algorithm: str, value: bytes) -> bytes:
     """crypto_hash where the extension is not staged: the function the statement called, refused."""
     raise FunctionRefused(algorithm.replace("sha2-", "sha"), "duckdb (no crypto extension)")
-
-
-def _load_crypto(con: Any) -> None:
-    directory = os.environ.get("PROVISA_DUCKDB_EXT_DIR")
-    if directory:
-        con.execute(f"SET extension_directory = '{directory}'")
-    try:
-        con.execute("LOAD crypto")
-    except duckdb.IOException:  # not staged: refused by name at the call (REQ-2171)
-        con.create_function(
-            "crypto_hash", _refuse_digest, ["VARCHAR", "BLOB"], "BLOB", side_effects=False
-        )
 
 
 #: pg_size_pretty's units, as src/backend/utils/adt/dbsize.c lists them: (name, the size below
@@ -81,6 +66,7 @@ def size_pretty(size: int) -> str:
 
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
+    from provisa.federation.duckdb_extensions import load_staged
     from provisa.federation.duckdb_pg_scalars import register as register_scalars
     from provisa.federation.duckdb_pg_xml import register as register_xml
 
@@ -89,4 +75,7 @@ def register(con: Any) -> None:
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )
-    _load_crypto(con)
+    if not load_staged(con, "crypto"):  # refused by name at the call (REQ-2171)
+        con.create_function(
+            "crypto_hash", _refuse_digest, ["VARCHAR", "BLOB"], "BLOB", side_effects=False
+        )
