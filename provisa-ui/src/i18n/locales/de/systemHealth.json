@@ -26,6 +26,7 @@
     "running": "Läuft",
     "unreachable": "Nicht erreichbar",
     "port": "Port {{port}}",
+    "cypherOverHttp": "Cypher über HTTP",
     "mvRefreshLoop": "MV-Aktualisierungsschleife",
     "stopped": "Gestoppt"
   }

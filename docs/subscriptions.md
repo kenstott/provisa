@@ -14,7 +14,7 @@ Subscriptions target a **registered table**:
 
 ### PostgreSQL trigger auto-installation
 
-Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that raw DML (not just Provisa mutations) is picked up by subscriptions.
+Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that subscriptions pick up raw DML as well as Provisa mutations.
 
 If trigger installation fails (e.g. insufficient privilege, because the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. A warning is logged.
 
@@ -67,11 +67,11 @@ Delivery is selected by `live.strategy` on the table config:
 
 ### LISTEN/NOTIFY
 
-Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutations fire `NOTIFY` automatically. External writers must call `NOTIFY <channel>, '<payload>'` after writes. No additional infrastructure required.
+Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutations fire `NOTIFY` automatically. External writers must call `NOTIFY <channel>, '<payload>'` after writes. This needs no additional infrastructure.
 
 ### Polling
 
-Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes: a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
+Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes, because a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
 
 Table poll config (in `provisa.yaml`):
 
@@ -89,7 +89,7 @@ tables:
 
 ### Debezium CDC
 
-Requires a running Debezium connector writing to Kafka. Provisa consumes the Kafka topic and forwards change events to connected SSE clients.
+This needs a running Debezium connector writing to Kafka. Provisa consumes the Kafka topic and forwards change events to connected SSE clients.
 
 CDC transport is configured once per source in a `cdc` block; topics are derived as `{topic_prefix}.{schema}.{table}` and never repeated per table. Each table then selects `strategy: debezium`:
 
@@ -140,7 +140,7 @@ A registry that is down or rejects the credentials is refused when the subscript
 | `bearer` | `schema_registry_token` | `Authorization: Bearer <token>` (a static token) |
 | `mtls` | `schema_registry_client_cert`, `schema_registry_client_key` | The client certificate, in the TLS handshake |
 
-`schema_registry_ca` is optional with every method: a CA bundle to trust when the registry's certificate is not signed by a public authority.
+`schema_registry_ca` is optional with every method. It is a CA bundle to trust when the registry's certificate is not signed by a public authority.
 
 The password and the token follow the secrets contract. A value typed in the source form is stored in the org vault and the source keeps a `${secret:NAME}` reference; a reference written in a config file (`${env:...}`, `${secret:...}`) is kept as written. The certificate, key and CA bundle are files the Provisa server process opens, named by absolute path.
 

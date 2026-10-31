@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "File folder encryption",
     "loading": "Loading…",
-    "intro": "Files Provisa keeps for your organization on each server — caches, conversions, replicas and large results — are kept in your organization's own folder. Turn on encryption to keep them encrypted under a key your organization holds.",
+    "intro": "On each server, Provisa keeps your organization's caches, conversions, replicas and large results in your organization's own folder. Turn on encryption to keep them encrypted under a key your organization holds.",
     "encrypt": "Encrypt the organization's file folder",
     "referenceLabel": "Key reference",
     "referenceHelp": "The key's name in your organization's secrets vault, written ${secret:NAME}. Provisa stores only this reference, never the key.",

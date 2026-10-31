@@ -198,3 +198,53 @@ def test_an_empty_instance_names_no_vm(monkeypatch):
     finally:
         monkeypatch.delenv("PROVISA_SANDBOX_INSTANCE")
         importlib.reload(sandbox_wake)
+
+
+def test_a_tier_that_never_comes_up_is_named_failed_not_starting(monkeypatch, compute, tmp_path):
+    """REQ-2006: the VM up and the tier refusing every connection is a tier that cannot start (the
+    regions tier's crash loop). Past what a cold start takes, the visitor is told it failed; a
+    request it answers starts the count again."""
+    state, _calls = compute
+    state["status"] = "RUNNING"
+    sandbox_wake._refused.clear()
+    now = {"t": 1000.0}
+    monkeypatch.setattr(sandbox_wake.time, "monotonic", lambda: now["t"])
+    client = _ui(monkeypatch, INSTANCE, tmp_path)
+
+    assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"
+    now["t"] += sandbox_wake.FAILED_AFTER_S - 1
+    assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"
+    now["t"] += 2
+    failed = client.post("/public/demos/retail")
+    assert failed.status_code == 503
+    assert failed.json()["code"] == "sandbox.failed_to_start"
+
+    sandbox_wake.answered("http://127.0.0.1:9")
+    assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"
+
+
+def test_the_count_starts_when_the_vm_was_last_found_down(monkeypatch, compute, tmp_path):
+    state, _calls = compute
+    sandbox_wake._refused.clear()
+    now = {"t": 1000.0}
+    monkeypatch.setattr(sandbox_wake.time, "monotonic", lambda: now["t"])
+    client = _ui(monkeypatch, INSTANCE, tmp_path)
+    client.post("/public/demos/retail")  # TERMINATED: started
+    now["t"] += sandbox_wake.FAILED_AFTER_S + 1
+    state["status"] = "STAGING"
+    assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"
+    state["status"] = "RUNNING"
+    now["t"] += 1
+    assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"
+
+
+def test_a_refusal_long_after_the_last_starts_a_new_count(monkeypatch, compute, tmp_path):
+    state, _calls = compute
+    state["status"] = "RUNNING"
+    sandbox_wake._refused.clear()
+    now = {"t": 1000.0}
+    monkeypatch.setattr(sandbox_wake.time, "monotonic", lambda: now["t"])
+    client = _ui(monkeypatch, INSTANCE, tmp_path)
+    client.post("/public/demos/retail")
+    now["t"] += sandbox_wake.REFUSAL_GAP_S + 1
+    assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"

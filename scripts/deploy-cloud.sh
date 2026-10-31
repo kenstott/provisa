@@ -406,6 +406,11 @@ HF_CACHE_DIR="/root/.provisa/hf-cache"
 # through, fetched once rather than at every recreate (provisa/runtime_deps/pgwire_bundles.py).
 RUNTIME_DEPS_DIR="/root/.provisa/runtime-deps"
 
+# The rest of the overlay of a node running the regions tier's other nodes: only the sandbox VM,
+# whose compose push_compose has brought up to them. An overlay naming a service a node's compose
+# does not have stops that node's stack.
+REGIONS_NODES_OVERLAY=""
+
 push_overlay() {
   cat > "$STAGE/docker-compose.overlay.yml" <<YAML
 # Installed by scripts/deploy-cloud.sh — the deployed app tree, on the host disk, so that a
@@ -462,6 +467,7 @@ services:
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
+${REGIONS_NODES_OVERLAY}
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
@@ -956,6 +962,39 @@ SANDBOX_NODE="${SANDBOX_NODE:-provisa-saas-sandbox}"
 # server reaches it by service name (first-launch.sh's default); deploy_sandbox_vm sets the VM's.
 SANDBOX_PUBLISH="127.0.0.1:18000"
 
+# The sandbox VM's base compose. first-launch.sh writes it, and runs only when a release changes,
+# while every deploy pushes the configs that name what it sets: a config naming a variable the
+# node's compose did not (PROVISA_DEMO_LEDGER_ADDRESS) crash-looped the regions tier at startup.
+# Rendered by first-launch.sh's own function, as push_demo extracts its overlay, so the two cannot
+# drift. Recreates the stack when it changes, so it runs BEFORE the pushes, like the overlays. The
+# coordinator's is not touched: this deploy has no need of it, and nothing has read what it holds.
+CONTROL_PLANE_YML="/root/.provisa/compose-control-plane.yml"
+
+push_compose() {
+  (
+    ROLE=control-plane PROVISA_HOME=/root/.provisa CERT_DIR=/root/.provisa/certs
+    ok() { :; }
+    eval "$(awk '/^write_control_plane_compose\(\) \{$/,/^}$/' "$REPO/packaging/linux/first-launch.sh")"
+    write_control_plane_compose "$STAGE/compose-control-plane.yml"
+  )
+  # An empty rendering means the function was restructured and this awk no longer matches;
+  # installing nothing would take the stack off the node.
+  grep -q 'provisa-sandbox-regions:' "$STAGE/compose-control-plane.yml" \
+    || { echo "cannot render the control-plane compose from first-launch.sh" >&2; exit 1; }
+  local want have
+  want="$(shasum -a 256 "$STAGE/compose-control-plane.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $CONTROL_PLANE_YML" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  if [ "$want" = "$have" ]; then
+    echo "== compose: up to date"
+    return
+  fi
+  echo "== compose: updating"
+  scp_node "$STAGE/compose-control-plane.yml" /tmp/compose-control-plane.yml
+  ssh_node "sudo cp $CONTROL_PLANE_YML $CONTROL_PLANE_YML.bak-\$(date +%s) && sudo cp /tmp/compose-control-plane.yml $CONTROL_PLANE_YML"
+  echo "== compose: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+}
+
 # The sandbox tier's containers on its VM: the tier and, where they run, the regions tier's nodes.
 sandbox_containers() {
   ssh_node "sudo docker ps -a --format '{{.Names}}'" | tr -d '\r' \
@@ -1103,7 +1142,17 @@ deploy_sandbox_vm() {
   done
   echo "== sandbox VM: $SANDBOX_NODE"
   preflight_sandbox_ai
-  push_demo_stores; push_demo_stores_env; push_overlay
+  # A VM set up by a release from before the regions tier's warehouse node has no such variable.
+  grep -qx PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH <<<"$(ssh_node "sudo cut -d= -f1 $ENV_FILE" | tr -d '\r')" \
+    || set_node_env PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH "${SANDBOX_PUBLISH%:*}:8101"
+  REGIONS_NODES_OVERLAY="  provisa-sandbox-regions-warehouse:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/config:/app/config
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"
+  push_demo_stores; push_demo_stores_env; push_compose; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg

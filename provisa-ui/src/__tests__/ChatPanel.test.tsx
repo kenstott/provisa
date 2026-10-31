@@ -818,7 +818,7 @@ describe("ChatPanel — a change Polly makes through the admin API (REQ-2114)", 
     expect(sent).toBe(1);
     expect(refetchSpy).toHaveBeenCalledWith(expect.objectContaining({ include: "active" }));
     // The exchange stays in the conversation.
-    expect(screen.getByText("Confirmed — go ahead.")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed. Go ahead.")).toBeInTheDocument();
     refetchSpy.mockRestore();
   });
 

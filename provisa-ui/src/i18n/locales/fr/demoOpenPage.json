@@ -3,6 +3,13 @@
     "title": "Ouverture de votre bac à sable de démo",
     "opening": "Nous préparons une copie de la démo pour vous. Cela prend quelques secondes.",
     "starting": "Démarrage de cette démo…",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "coordinatorWaking": "Le serveur sort de veille…",
+    "coordinatorUpdating": "Le serveur est en cours de mise à jour. Il sera bientôt de retour…",
+    "serverStarting": "Le serveur de démonstration démarre…",
+    "connecting": "Connexion au serveur…",
+    "elapsed": "{{time}} écoulées",
+    "coldStart": "Une démo inactive met environ cinq minutes à démarrer.",
+    "gaveUp": "La démo ne s'est pas ouverte en {{minutes}} minutes. Réessayez plus tard."
   }
 }

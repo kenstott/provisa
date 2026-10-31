@@ -1,6 +1,6 @@
 # Building test environments
 
-A test environment is a non-production [environment](environments.md) whose tables hold data you can use freely: shaped like production, carrying no personal data.
+A test environment is a non-production [environment](environments.md) whose tables hold data you can use freely, shaped like production and carrying no personal data.
 
 The main idea: **fake only the columns that identify a person, and keep everything else real.** Amounts, categories, dates and quantities stay as they are, so every real relationship, edge case and distribution survives. Nothing is copied, and the data is always as fresh as the source. Reach for synthetic data only when real rows must not exist in the environment, or when you need a different scale.
 
@@ -23,7 +23,7 @@ Choose faked on read when production's rows may be read but its people must not 
 
 ## How an environment gets its data
 
-Every environment other than `prod` has one **data mode**, chosen when you create it and changeable afterwards. `prod` has no data mode: it is always real.
+Every environment other than `prod` has one **data mode**, chosen when you create it and changeable afterwards. `prod` has no data mode; it is always real.
 
 | Data mode | What its tables show |
 | --- | --- |
@@ -38,11 +38,11 @@ When an environment is created as anything but Unbound, each source's connection
 
 Each source says where its connection came from: **copied** from the parent, **own** (given in this environment), or **unbound** (none). Editing a copied source's connection makes it own. A password typed in an environment is stored under a name of that environment's own, so it never replaces the parent's. **Re-copy from parent** copies the parent's connections again, for one source or for all of them. Choosing Inherit re-copies every source; choosing Unbound clears every one; the Test modes leave each source as it is.
 
-A model merged or deployed into an environment brings no connections: a source new to the environment arrives unbound until you re-copy it or give it a connection.
+A model merged or deployed into an environment brings no connections, so a source new to the environment arrives unbound until you re-copy it or give it a connection.
 
 A fake applies only in a Test (fake) environment. `prod` never fakes, and neither do Inherit and Unbound. The engine computes the fakes as it serves the read, so ordering, filtering, grouping and joining work on the fakes the reader sees.
 
-A synthetic table and a table reading real data are never read together. A statement joining them is refused, with both tables named: their keys share nothing, and the result would look plausible and mean nothing.
+A synthetic table and a table reading real data are never read together. A statement joining them is refused, with both tables named, because their keys share nothing and the result would look plausible and mean nothing.
 
 ### Who may change an environment's data
 
@@ -52,7 +52,7 @@ Creating an environment as Inherit, or switching one to Inherit, also needs the 
 
 ### Sensitive columns
 
-A tag definition has a **Sensitive data** option. A column carrying any tag with it set is a sensitive column. The built-in `pii` tag has the option set, and it cannot be cleared. You can set it on tags of your own, such as `mnpi`. Sensitivity is never passed on: a view's column or a calculated column derived from a sensitive column is sensitive only if you tag it.
+A tag definition has a **Sensitive data** option. A column carrying any tag with it set is a sensitive column. The built-in `pii` tag has the option set, and it cannot be cleared. You can set it on tags of your own, such as `mnpi`. Sensitivity is never passed on. A view's column or a calculated column derived from a sensitive column is sensitive only if you tag it.
 
 The `sensitive_data` right governs every way a sensitive column's values are revealed or hidden, in every environment, `prod` included:
 
@@ -108,7 +108,7 @@ A synthetic environment calls no source API:
 
 Generating changes each source in the environment: its type becomes the synthetic store's and its connection becomes the store. The parent's sources are untouched. An environment created from a generated one copies those connections like any other and reads the same generated data. Dropping the generated model, or leaving Test (synthetic), binds each source again to the type and connection it had before. A source you edit on the Sources page after generating is yours from then on and is left as you made it. A restored source takes the type the model gives it now, so a type a merge changed in the meantime is kept.
 
-Some rules measure the real table when the profile records nothing of a column: a `categories()` with no recorded frequencies is one. Generating again measures those from the parent environment, where the rows are still real, never from the rows the previous generation wrote. If a source was bound to a database of the environment's own before generating, generating again is refused, naming the source: drop the generated model, which binds the source as it was, and generate.
+Some rules measure the real table when the profile records nothing of a column: a `categories()` with no recorded frequencies is one. Generating again measures those from the parent environment, where the rows are still real, never from the rows the previous generation wrote. If a source was bound to a database of the environment's own before generating, generating again is refused, naming the source. Drop the generated model, which binds the source as it was, and generate.
 
 A developer can restore them by hand, for example by standing up their own instance of the API that reads the synthetic tables and editing the source on the Sources page to point at it.
 
@@ -259,7 +259,7 @@ A column the profile leaves out takes its fake or its synthetic rule. A key, or 
 
 To start from a run, read it with `GET /admin/tables/{id}/profile-runs/{run}/declared`, change what you need, and declare the result. The copy holds only what the run shows you: a column you see by its shape only is left out, so it generates by its fake or rule.
 
-A category's `values` are generated as written. A measured run generates stand-ins for a category's real values, but a copy of that run lists the real values, and declaring it generates them: remove or replace any you do not want in the environment. A sensitive column is never generated from profile facts. It takes its fake or its synthetic rule.
+A category's `values` are generated as written. A measured run generates stand-ins for a category's real values, but a copy of that run lists the real values, and declaring it generates them. Remove or replace any you do not want in the environment. A sensitive column is never generated from profile facts. It takes its fake or its synthetic rule.
 
 ### External expectations
 
@@ -317,7 +317,7 @@ A synthetic dataset draws a faked column's generated values from the same declar
 
 For the other columns it may propose synthetic rules (see below), not fakes. `categories`, listing the recorded values, is proposed only where the profile shows real repetition: few distinct values, each held by many rows. In a small table, where the evidence is thin, it proposes nothing and you decide. A `pii` column with no confident match is left undeclared and marked.
 
-Columns already declared are left as they are. Nothing is saved by the action: the filled fields are the form's, which you tune and save as any edit.
+Columns already declared are left as they are. Nothing is saved by the action, because the filled fields are the form's, which you tune and save as any edit.
 
 ## Generate a synthetic dataset
 
@@ -439,7 +439,7 @@ When you create an environment, the form offers **Start on synthetic data**. Nam
 
 ## Walkthrough: a test environment for orders
 
-The goal: a `dev` environment where developers see production's real order data, with no customer identified. A second pass then adds a ten-times synthetic dataset for load tests.
+The goal is a `dev` environment where developers see production's real order data, with no customer identified. A second pass then adds a ten-times synthetic dataset for load tests.
 
 1. **Create the environment.** On **Environments**, create `dev` with the data mode **Test (fake)** and mutation handling **Reversible**, so tests can write without changing the parent's data.
 2. **Fake the identifying columns.** Edit `customers`, switch the column list to **Test data** mode, and choose **Fill from profile** (profile `customers` first if it has no run). Review the proposals: `name()` on `name`, `email()` on `email`, `phone_number()` on `phone`. Tick **Stable** on each if results must match across engines and regions. Save.

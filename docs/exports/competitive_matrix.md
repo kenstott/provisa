@@ -81,7 +81,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 ### Governance Architecture
 
-**Compile-time enforcement, not runtime checks.** Provisa's two-stage compiler (Stage 1: GraphQL→SQL; Stage 2: AST rewrite) applies RLS, column masking, and sampling before any query reaches a data source. Stage 2 operates independently on any SQL string — including JDBC, DB-API, and pgwire traffic — so there is no ungoverned access path regardless of protocol. [tool-verified: REQ-001, REQ-002, REQ-038, REQ-262–266]
+**Compile-time enforcement, not runtime checks.** Provisa's two-stage compiler (Stage 1: GraphQL→SQL; Stage 2: AST rewrite) applies RLS, column masking, and sampling before any query reaches a data source. Stage 2 operates independently on any SQL string (including JDBC, DB-API, and pgwire traffic) so there is no ungoverned access path regardless of protocol. [tool-verified: REQ-001, REQ-002, REQ-038, REQ-262–266]
 
 **Pluggable approval hook with three transports.** The ABAC approval hook supports HTTP callback, persistent gRPC channel with circuit breaker, and inline function, chosen per source. gRPC channels are kept warm; there is no reconnect overhead per query. [tool-verified: REQ-246, REQ-555, REQ-556]
 
@@ -89,9 +89,9 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 ### Protocol Breadth
 
-**pgwire (PostgreSQL wire protocol) with governance.** Provisa embeds a native pgwire listener. Any tool that speaks PostgreSQL — DBeaver, Tableau, psql, JDBC — connects without a special driver. The pg_catalog and information_schema queries are intercepted and answered from an in-memory DuckDB built from the role's compilation context, so schema browsers see only the tables and columns the authenticated role may access. Trino/Presto, Hasura, and Dremio have no pgwire endpoint. [tool-verified: REQ-527, REQ-532]
+**pgwire (PostgreSQL wire protocol) with governance.** Provisa embeds a native pgwire listener. Any tool that speaks PostgreSQL (DBeaver, Tableau, psql, JDBC) connects without a special driver. The pg_catalog and information_schema queries are intercepted and answered from an in-memory DuckDB built from the role's compilation context, so schema browsers see only the tables and columns the authenticated role may access. Trino/Presto, Hasura, and Dremio have no pgwire endpoint. [tool-verified: REQ-527, REQ-532]
 
-**Arrow Flight across heterogeneous sources.** Provisa's Arrow Flight server (port 8815) applies the full security pipeline at the Flight layer — RLS, masking, tenant isolation — before streaming record batches. Dremio supports Flight but only for its own lakehouse engine. Hasura, Denodo, and Snowflake do not expose Arrow Flight at all. Results stream batch-by-batch via GeneratorStream; the full result never materializes in Provisa memory. [tool-verified: REQ-051, REQ-143, REQ-145]
+**Arrow Flight across heterogeneous sources.** Provisa's Arrow Flight server (port 8815) applies the full security pipeline at the Flight layer (RLS, masking, tenant isolation) before streaming record batches. Dremio supports Flight but only for its own lakehouse engine. Hasura, Denodo, and Snowflake do not expose Arrow Flight at all. Results stream batch-by-batch via GeneratorStream; the full result never materializes in Provisa memory. [tool-verified: REQ-051, REQ-143, REQ-145]
 
 **ADBC client over Arrow Flight.** `provisa_client.adbc_connect()` returns an ADBC connection backed by Arrow Flight, streaming RecordBatches natively. No competitor's client library offers ADBC over Arrow Flight. The ADBC Flight port is currently hardcoded at 8815, which is a known gap. [tool-verified: REQ-271, REQ-608]
 
@@ -139,25 +139,25 @@ These requirements have `competitive_position.status: gap` in `docs/arch/require
 
 The JSON:API source connector is in-progress (target 2026-Q3). No competitor natively federates JSON:API-compliant sources with governance. This is not a gap versus competitors but a differentiated planned capability:
 
-- **REQ-656** — JSON:API connector foundation
-- **REQ-657** — Include-based relationship expansion (`?include=`)
-- **REQ-658** — Sparse fieldsets (`?fields[type]=field1,field2`)
-- **REQ-659** — Pagination following (`links.next`)
-- **REQ-660** — Filter pushdown to remote JSON:API endpoint
+- **REQ-656.** JSON:API connector foundation.
+- **REQ-657.** Include-based relationship expansion (`?include=`)
+- **REQ-658.** Sparse fieldsets (`?fields[type]=field1,field2`)
+- **REQ-659.** Pagination following (`links.next`)
+- **REQ-660.** Filter pushdown to remote JSON:API endpoint.
 
 ### Cypher Write Mutations (REQ-661 through REQ-668, REQ-670) [tool-verified]
 
 Cypher read queries against Neo4j sources work. Write mutations do not. The following are unimplemented:
 
-- **REQ-661** — Write label resolution
-- **REQ-662** — Writes restricted to pre-registered tables only
-- **REQ-663** — write-grant enforcement on Cypher writes
-- **REQ-664** — DML-capability checking before Cypher writes
-- **REQ-665** — Relationship immutability enforcement
-- **REQ-666** — Cypher `CREATE` → SQL `INSERT` translation
-- **REQ-667** — Cypher `DELETE` translation
-- **REQ-668** — Cypher `SET` → SQL `UPDATE` translation
-- **REQ-670** — `affected_rows` response from Cypher mutations
+- **REQ-661.** Write label resolution.
+- **REQ-662.** Writes restricted to pre-registered tables only.
+- **REQ-663.** Write-grant enforcement on Cypher writes.
+- **REQ-664.** DML-capability checking before Cypher writes.
+- **REQ-665.** Relationship immutability enforcement.
+- **REQ-666.** Cypher `CREATE` → SQL `INSERT` translation.
+- **REQ-667.** Cypher `DELETE` translation.
+- **REQ-668.** Cypher `SET` → SQL `UPDATE` translation.
+- **REQ-670.** `affected_rows` response from Cypher mutations.
 
 Applications using Provisa for Neo4j must treat data as read-only today. Native Neo4j clients still needed for write workflows.
 

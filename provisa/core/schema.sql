@@ -1878,6 +1878,13 @@ CREATE TABLE IF NOT EXISTS glossary_term_scans (
     started_by      TEXT,
     started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     finished_at     TIMESTAMPTZ,
+    model           TEXT,
+    step            TEXT,
+    batch           INTEGER,
+    batches         INTEGER,
+    budget_limit    INTEGER,
+    launch          TEXT,
+    progress_at     TIMESTAMPTZ,
     tenant_id       UUID
 );
 

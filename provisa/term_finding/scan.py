@@ -76,8 +76,18 @@ DUPLICATE = "duplicate"
 SYNONYM = "synonym"
 
 
+#: The steps a running scan reports (:func:`run`).
+READING = "reading"
+MERGING = "merging"
+
+
 class ScanFailed(RuntimeError):
     """The scan cannot go on, said naming why (an answer that is not JSON, a refused budget)."""
+
+
+class ScanStopped(Exception):
+    """The scan's row is no longer running: someone cancelled it, or it was given up on. The row
+    already says why."""
 
 
 @dataclass(frozen=True)
@@ -576,20 +586,26 @@ async def run(
     title: str,
     passages: Sequence[Passage],
     call: Callable[[str, int], Awaitable[str]],
+    report: Callable[[str, int, int], Awaitable[None]],
 ) -> Result:
-    """Scan ``passages`` with ``call`` (a prompt and an output limit to the model's answer)."""
+    """Scan ``passages`` with ``call`` (a prompt and an output limit to the model's answer).
+    ``report`` hears each step before it starts: :data:`READING` a batch of how many, then
+    :data:`MERGING` (0 of 0); it raises :class:`ScanStopped` to stop the scan there."""
     if not passages:
         raise ScanFailed(f"the document {title!r} holds no passages to scan")
     left_out = LeftOut()
     mentions: list[Mention] = []
     calls = 0
-    for batch in batches(passages):
+    read = batches(passages)
+    for n, batch in enumerate(read, start=1):
+        await report(READING, n, len(read))
         raw = await call(extraction_prompt(title, batch), EXTRACT_MAX_TOKENS)
         calls += 1
         mentions.extend(read_mentions(raw, batch, len(mentions), left_out))
     by_ordinal = {p.ordinal: p for p in passages}
     if not mentions:
         return Result([], len(passages), 0, left_out, calls)
+    await report(MERGING, 0, 0)
     raw = await call(resolution_prompt(title, mentions, by_ordinal), RESOLVE_MAX_TOKENS)
     calls += 1
     groups = read_groups(raw, mentions, left_out)

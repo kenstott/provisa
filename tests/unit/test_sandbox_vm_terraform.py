@@ -53,7 +53,8 @@ def test_the_coordinator_hands_the_tier_over_only_when_asked():
         "export COMPOSE_PROFILES=control",
         'export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"',
         # REQ-2068: the regions sandbox tier's nodes, on the same VM.
-        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100"',
+        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,'
+        'warehouse=https://${var.sandbox_internal_ip}:8101"',
     ):
         assert line in sandbox, line
     variables = (_TF / "variables.tf").read_text()
@@ -171,7 +172,7 @@ def test_a_patch_rewrites_the_vm_sync_settings_when_they_differ_and_runs_the_syn
     deploy = _DEPLOY.read_text()
     body = deploy[deploy.index("deploy_sandbox_vm() {") :]
     body = body[: body.index("\n}\n")]
-    assert "push_demo_stores; push_demo_stores_env; push_overlay" in body
+    assert "push_demo_stores; push_demo_stores_env; push_compose; push_overlay" in body
     push = _function("push_demo_stores_env")
     assert 'demo_stores_env > "$STAGE/demo-stores.env"' in push
     assert '[ "$want" = "$have" ]' in push  # rewritten only when it differs
