@@ -19,6 +19,7 @@ in-memory DuckDB catalog tables. Extracted from catalog.py; leaf module.
 from __future__ import annotations
 
 import itertools
+import re
 
 from typing import cast
 
@@ -72,6 +73,8 @@ _DUCKDB_TYPES = {
     # Provisa has nothing to report, so its answer is a NULL record.
     "record": "VARCHAR",
 }
+#: A call of a function of the tid type (function_macros).
+_TID_FUNCTION = re.compile(r"\btid\w*\"?\s*\(")
 _COUNTS = frozenset({"BIGINT", "INTEGER", "SMALLINT", "UINTEGER", "DOUBLE", "FLOAT"})
 
 
@@ -513,8 +516,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         lambda m: "[" + ", ".join(m[1].split()) + "]::oidvector",
         sql,
     )
-    # REQ-2167: the catalog holds a tid as an integer: its literal is that integer.
-    sql = _pre_re.sub(r"'\(\d+,\d+\)'::tid\b", "0::tid", sql)
+    # REQ-2167: the catalog holds a tid as an integer: its literal is that integer. A function of
+    # the tid type reads the literal's text (pg_forms_types).
+    if _TID_FUNCTION.search(sql) is None:
+        sql = _pre_re.sub(r"'\(\d+,\d+\)'::tid\b", "0::tid", sql)
     # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
     sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 

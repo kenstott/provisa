@@ -31,6 +31,7 @@ from typing import Any, Callable
 from buenavista.core import BVType
 
 from provisa.core.pg_range import RANGE_TYPES
+from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.transpiler.xml_syntax import XmlSerialize
 
@@ -191,6 +192,15 @@ _RETURNED: dict[str, CastType] = {
     "regtype": CastType(2206, -1, BVType.REGTYPE, _TEXT_FORMS | {BVType.REGTYPE}),
 }
 
+#: A type the engine has no type for: a function returning it answers its text form, which is what
+#: pg_catalog.pg_type's type says it is (REQ-2167).
+_RETURNED.update(
+    {
+        entry[-1]: CastType(oid, -1, BVType.TEXT, _TEXT_FORMS)
+        for oid, entry in TYPES.items()
+        if entry[-1] not in _RETURNED and entry[-1] != "text"
+    }
+)
 
 _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 
