@@ -91492,7 +91492,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     new role creates two requests from the one form: a role request to a holder of user_management (a data
     steward and a security admin cannot create roles), whose approval creates the role, assigns it to the
     requester and grants nothing; and a column request to the domain''s data steward, which waits on the
-    role request and ends if it is declined.'
+    role request and ends if it is declined. (Amended 2026-10-29, APPROVING THE ROLE RELEASES THE COLUMN
+    REQUEST:) Maintainer 2026-10-31: the column request is held pending and names no role until the role
+    request is approved. That approval adds the new role to the column request and releases it to the data
+    steward.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
