@@ -91561,7 +91561,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the request. glossary_term_finding has no default model: a scan is refused at start, saying where to
     set one, until an org names it. Each model call has 300 seconds; a scan with no progress for 660 seconds,
     or from an earlier launch, fails with the reason. The scan shows its model and step, a person can cancel
-    it, and a cancelled scan is stored failed with who cancelled it.'
+    it, and a cancelled scan is stored failed with who cancelled it. (Amended 2026-10-29, A CUT-OFF ANSWER
+    SPLITS:) A reading the model cut off at its limit splits its batch in half, down to one passage, then
+    names that passage. A resolve cut off fails by name. An answer that is not JSON is asked once more,
+    then named.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document
