@@ -12323,8 +12323,12 @@
     at query time. Raw Trino session-prop keys still pass through (deprecated) for backward compatibility.
     (Amended 2026-09-30, source hints are the operator''s floor:) A request''s engine session hints (@join/@reorder/@broadcastSize,
     the -- @provisa comment forms, and /*+ ... */ hints) may set a property the operator''s source federation_hints
-    left open, but never override one the operator set: compiler.directives.merge_session_props raises
-    SessionPropFloorViolation naming the property (REQ-030). Repeating the operator''s value is accepted.'
+    left open, but never override one the operator set: compiler.directives.merge_session_props raises SessionPropFloorViolation
+    naming the property (REQ-030). Repeating the operator''s value is accepted. (Amended 2026-10-29, ONLY
+    THE VOCABULARY REACHES THE SESSION:) Maintainer 2026-10-30: only the @provisa vocabulary reaches an
+    engine''s session. A raw session key in a source''s federation_hints is no longer passed through; the
+    bag''s other keys are connector settings, read by that source''s driver or connector. This supersedes
+    the earlier text that unknown keys pass through.'
   use_case: Source-level federation hints vocabulary is translated to Trino session props, keeping query
     authors decoupled from engine-specific property names.
   code:
