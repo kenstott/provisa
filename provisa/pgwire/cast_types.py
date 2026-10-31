@@ -30,6 +30,7 @@ from typing import Any, Callable
 
 from buenavista.core import BVType
 
+from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.transpiler.xml_syntax import XmlSerialize
 
@@ -71,6 +72,20 @@ def _padded(length: int) -> Callable[[Any], Any]:
     return pad
 
 
+#: A range or multirange, computed as its text in PostgreSQL's form, by its name and sqlglot's.
+_RANGE_TYPES: dict[str, CastType] = {
+    **{
+        r.name: CastType(r.oid, -1, BVType[r.name.upper()], _TEXT_FORMS)
+        for r in RANGE_TYPES.values()
+    },
+    **{
+        r.multirange: CastType(r.multirange_oid, -1, BVType[r.multirange.upper()], _TEXT_FORMS)
+        for r in RANGE_TYPES.values()
+    },
+}
+RANGE_CASTS = {name.upper(): cast for name, cast in _RANGE_TYPES.items()}
+
+
 def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one return per cast type
     import sqlglot.expressions as exp
 
@@ -102,6 +117,9 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
         return CastType(142, -1, BVType.XML, _XML_FORMS, xml_out)
     if kind == t.ARRAY and data_type.expressions and data_type.expressions[0].this == t.XML:
         return _RETURNED["xml[]"]
+    ranged = RANGE_CASTS.get(kind.name) if isinstance(kind, exp.DataType.Type) else None
+    if ranged is not None:
+        return ranged
     if isinstance(data_type, exp.ObjectIdentifier) and data_type.name.lower() == "oid":
         integers = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID})
         return CastType(26, -1, BVType.OID, integers)
@@ -118,12 +136,19 @@ def _to_int(value: Any) -> Any:
     return None if value is None else int(value)
 
 
+def _to_bool(value: Any) -> Any:
+    return None if value is None else bool(value)
+
+
 def _to_float(value: Any) -> Any:
     return None if value is None else float(value)
 
 
 _INTEGERS = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT})
 _NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
+
+#: A predicate: a boolean, whose value an engine with no boolean computes as 1 or 0.
+_BOOLEAN = CastType(16, -1, BVType.BOOL, _INTEGERS | {BVType.BOOL}, _to_bool)
 
 #: How a call of a pg_catalog function is described, by the type PostgreSQL says it returns
 #: (function_types): the engine computes the value, in a type of its own where its function's
@@ -133,6 +158,7 @@ _RETURNED: dict[str, CastType] = {
     "smallint": CastType(21, -1, BVType.SMALLINT, _INTEGERS, _to_int),
     "integer": CastType(23, -1, BVType.INTEGER, _INTEGERS, _to_int),
     "bigint": CastType(20, -1, BVType.BIGINT, _INTEGERS, _to_int),
+    "boolean": _BOOLEAN,
     # An exact numeric of no fixed scale is served as its text (duckdb_pg_scalars).
     "numeric": CastType(1700, -1, BVType.DECIMAL, _NUMBERS | {BVType.TEXT}, _to_decimal),
     "double precision": CastType(701, -1, BVType.FLOAT, _NUMBERS, _to_float),
@@ -144,7 +170,7 @@ _RETURNED: dict[str, CastType] = {
     "character varying": CastType(1043, -1, BVType.TEXT, _TEXT_FORMS),
     "bit": CastType(1560, -1, BVType.BIT, frozenset({BVType.BIT, BVType.TEXT})),
     "bit varying": CastType(1562, -1, BVType.VARBIT, frozenset({BVType.BIT, BVType.TEXT})),
-    "numrange": CastType(3906, -1, BVType.NUMRANGE, _TEXT_FORMS),
+    **_RANGE_TYPES,
     "tsvector": CastType(3614, -1, BVType.TSVECTOR, _TEXT_FORMS),
     "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB})),
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
@@ -164,6 +190,41 @@ _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 def bit_varying_read(sql: str) -> str:
     """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
     return _BIT_VARYING.sub("::varbit", sql)
+
+
+def _predicate_nodes() -> tuple[type, ...]:
+    import sqlglot.expressions as exp
+
+    return (
+        exp.EQ,
+        exp.NEQ,
+        exp.GT,
+        exp.GTE,
+        exp.LT,
+        exp.LTE,
+        exp.ArrayOverlaps,
+        exp.ArrayContainsAll,
+        exp.ArrayContainedBy,
+        exp.Adjacent,
+        exp.ExtendsLeft,
+        exp.ExtendsRight,
+    )
+
+
+_PREDICATES = _predicate_nodes()
+
+
+def _operand_type(operand: Any) -> CastType | None:
+    """A range operator's result (a + b, a * b, a - b) is its operand's range or multirange."""
+    import sqlglot.expressions as exp
+
+    while isinstance(operand, exp.Paren):
+        operand = operand.this
+    if isinstance(operand, exp.Cast) and isinstance(operand.to.this, exp.DataType.Type):
+        return RANGE_CASTS.get(operand.to.this.name)
+    if isinstance(operand, (exp.Add, exp.Sub, exp.Mul)):
+        return _operand_type(operand.this) or _operand_type(operand.expression)
+    return None
 
 
 def _result_type(expression: Any, columns: Any) -> CastType | None:
@@ -195,6 +256,14 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         # An element of an array function's result, as (xpath(...))[1] reads one.
         array = call_result_type(expression.this.unnest())
         return _RETURNED.get(array[:-2]) if array and array.endswith("[]") else None
+    if isinstance(expression, (exp.Add, exp.Sub, exp.Mul)):
+        return _operand_type(expression.this) or _operand_type(expression.expression)
+    if isinstance(expression, _PREDICATES):
+        return _BOOLEAN
+    if isinstance(expression, (exp.BitwiseLeftShift, exp.BitwiseRightShift)) and (
+        _operand_type(expression.this) or _operand_type(expression.expression)
+    ):
+        return _BOOLEAN  # << and >> of a range: on anything else, a shift
     returned = call_result_type(expression)
     return None if returned is None else _RETURNED.get(returned)
 
