@@ -197,10 +197,9 @@ def _model(work: Path) -> None:
     (work / "model.sql").write_text(";\n".join(ddl))
 
 
-def _conformance(*args: str) -> None:
-    subprocess.check_call(
-        [_PYTHON, str(_REPO / "scripts/conformance/pgwire_catalog_types.py"), *args], cwd=_REPO
-    )
+def _conformance(*args: str, check: bool = True) -> None:
+    command = [_PYTHON, str(_REPO / "scripts/conformance/pgwire_catalog_types.py"), *args]
+    subprocess.run(command, cwd=_REPO, check=check)
 
 
 def _wait(url: str, attempts: int, *, pause: float = 2.0) -> None:
@@ -225,7 +224,7 @@ def _admin(method: str, path: str, body: bytes, content_type: str) -> None:
     )
     for attempt in range(6):
         try:
-            with urllib.request.urlopen(request, timeout=600):
+            with urllib.request.urlopen(request, timeout=1800):
                 return
         except urllib.error.HTTPError:
             raise
@@ -260,7 +259,9 @@ def _seed(work: Path, home: Path, plane: dict[str, str]) -> str:
     with psycopg.connect(dbname="provisa", autocommit=True, **server) as conn:
         conn.execute("CREATE DATABASE conformance")
     dsn = f"host={host} port={port} dbname=conformance user=provisa password={password}"
-    _conformance("seed", "--pg", dsn)
+    # The fixture's table is what is timed against; its one row holds an xml value, which the
+    # embedded server, built without libxml, refuses after the table exists.
+    _conformance("seed", "--pg", dsn, check=False)
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute("CREATE SCHEMA IF NOT EXISTS conformance")
         for statement in (work / "model.sql").read_text().split(";\n"):
@@ -338,7 +339,7 @@ def _start(work: Path) -> None:
             start_new_session=True,
         )
     (home / "server.pid").write_text(str(server.pid))
-    _wait(f"http://127.0.0.1:{_API_PORT}/health", 90)
+    _wait(f"http://127.0.0.1:{_API_PORT}/health", 600)
     _admin(
         "PUT",
         "/admin/config",

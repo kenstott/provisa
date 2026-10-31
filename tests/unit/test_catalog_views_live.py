@@ -74,6 +74,7 @@ def _model(conn) -> None:
             schema_name="public",
             table_name=name,
             alias=alias,
+            description="What was ordered" if table_id == 1 else None,
         )
     _insert(
         conn,
@@ -87,7 +88,7 @@ def _model(conn) -> None:
     )
     for table_id, name, data_type, extras in (
         (1, "orderId", "integer", {"is_primary_key": True, "not_null": True}),
-        (1, "total", "numeric(10,2)", {}),
+        (1, "total", "numeric(10,2)", {"description": "What it came to"}),
         (1, "code", "text", {"native_type": "varchar(20)", "not_null": True}),
         (1, "ip", "text", {"subtype": "inet", "alias": "address"}),
         (2, "id", "integer", {"is_primary_key": True}),
