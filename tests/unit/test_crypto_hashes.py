@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 6a343cbd-8eac-4516-b6e7-74fbafc2900b
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -104,6 +105,8 @@ def crypto_extension(tmp_path_factory):
     directory = str(tmp_path_factory.mktemp("duckdb-extensions"))
     con = duckdb.connect(config={"extension_directory": directory})
     con.execute("INSTALL crypto FROM community")
+    for extension in ("icu", "inet"):  # what a connection on this directory autoloads no more
+        con.execute(f"INSTALL {extension}")
     con.close()
     patch = pytest.MonkeyPatch()
     patch.setenv("PROVISA_DUCKDB_EXT_DIR", directory)
@@ -137,8 +140,9 @@ def test_a_digest_is_bytes_on_duckdb_as_it_is_on_postgresql(con, bits, value, di
 
 
 def test_sha512_is_never_sha256_on_duckdb():
-    assert "SHA256" not in transpile_to_duckdb("SELECT sha512(a) FROM t").upper()
-    assert "SHA256" not in transpile_to_duckdb("SELECT sha384(a) FROM t").upper()
+    for form in (transpile_to_duckdb, lambda sql: transpile(sql, "duckdb")):
+        assert "SHA256" not in form("SELECT sha512(a) FROM t").upper()
+        assert "SHA256" not in form("SELECT sha384(a) FROM t").upper()
 
 
 def test_an_unstaged_extension_refuses_the_call_by_name(monkeypatch, tmp_path):
@@ -173,9 +177,7 @@ def _algorithms(sql: str) -> set[str]:
 def test_no_dialect_is_written_another_algorithm(dialect, function):
     statement = f"SELECT {function}(a) AS v FROM t"
     try:
-        written = (
-            transpile_to_duckdb(statement) if dialect == "duckdb" else transpile(statement, dialect)
-        )
+        written = transpile(statement, dialect)
     except FunctionRefused as refused:
         assert f"{function}()" in str(refused)
     else:

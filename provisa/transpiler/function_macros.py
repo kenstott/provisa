@@ -819,9 +819,8 @@ _MD5_FORMS: Forms = {
 _SHA2_HEX = _SPARK | {"mysql"}
 
 
-def _sha(bits: int) -> tuple[Macro, ...]:
-    """sha<bits>: one bytea overload, and text, which PostgreSQL has no overload of."""
-    name = f"sha{bits}"
+def _sha(bits: int) -> Macro:
+    """sha<bits>, of a bytea: PostgreSQL has no overload of text."""
     extension = f"crypto_hash('sha2-{bits}', CAST(value AS BLOB))"
     forms: dict[frozenset[str], str] = {
         _DUCKDB: "unhex(sha256(CAST(value AS BLOB)))" if bits == 256 else extension,
@@ -831,7 +830,7 @@ def _sha(bits: int) -> tuple[Macro, ...]:
     if bits in (256, 512):  # the digests Trino and SQL Server have
         forms[_TRINOS] = f"sha{bits}(value)"
         forms[frozenset({"tsql"})] = Pg(f"sha{bits}(value)")
-    return Macro(name, ("value",), forms), Macro(f"{name}_text", ("value",))
+    return Macro(f"sha{bits}", ("value",), forms)
 
 
 _DIGESTS: tuple[Macro, ...] = (
@@ -844,22 +843,25 @@ _DIGESTS: tuple[Macro, ...] = (
             frozenset({"tsql"}): "LOWER(CONVERT(VARCHAR(32), HASHBYTES('MD5', value), 2))",
         },
     ),
-    *(row for bits in (224, 256, 384, 512) for row in _sha(bits)),
+    *(_sha(bits) for bits in (224, 256, 384, 512)),
     # encode's formats: sqlglot reads the format as a charset, which it writes as TO_UTF8 on Trino.
     Macro(
         "encode_hex",
         ("value",),
         {
+            _DUCKDB: "lower(hex(value))",
             _TRINOS: "lower(to_hex(value))",
             _SPARK | {"mysql", "clickhouse"}: "lower(hex(value))",
             frozenset({"tsql"}): "LOWER(CONVERT(VARCHAR(MAX), value, 2))",
         },
     ),
-    Macro("encode_base64", ("value",)),
-    Macro("encode_escape", ("value",)),
+    Macro("encode_base64", ("value",), {_DUCKDB: "to_base64(value)"}),
+    Macro("encode_escape", ("value",), {_DUCKDB: "provisa_encode_escape(value)"}),
 )
 #: The rows whose argument is a bytea: a literal there is bytea's input, not text.
 _BYTEA_INPUT = frozenset({"md5_bytea", "sha224", "sha256", "sha384", "sha512"})
+#: What a statement says of a value PostgreSQL has no bytea overload for.
+_TEXT_TYPES = frozenset({"text", "varchar", "character varying", "bpchar", "char", "character"})
 
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
@@ -1163,11 +1165,6 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         for of, of_row in (("decimal", "numeric"), ("jsonb", "jsonb"))
     },
     ("md5", 1, "bytea"): "md5_bytea",
-    **{
-        (f"sha{bits}", 1, of): f"sha{bits}_text"
-        for bits in (224, 256, 384, 512)
-        for of in ("text", "varchar", "character varying", "bpchar", "char")
-    },
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
     ("int4", 1, '"char"'): "chartoi4",
@@ -1338,7 +1335,10 @@ def _bytea_digits(text: str) -> str | None:
 def _bytea_input(value: exp.Expr, called: str, dialect: str) -> exp.Expr:
     """A literal that is a bytea as those bytes, on any dialect: PostgreSQL reads the literal of
     sha256('\\x6162') as byteain does, where a dialect would hash its text."""
-    literal = value.this if said_type(value) == "bytea" else value
+    said = said_type(value)
+    if said is not None and said.split("(")[0] in _TEXT_TYPES:
+        raise FunctionRefused(called, dialect)  # function sha256(text) does not exist
+    literal = value.this if said == "bytea" else value
     if isinstance(literal, exp.Null) and dialect == "mysql":  # it has no CAST AS VARBINARY
         return literal
     if not isinstance(literal, exp.Literal) or not literal.is_string:
