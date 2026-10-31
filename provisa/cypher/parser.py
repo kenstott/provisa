@@ -657,6 +657,22 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         # flush any remaining match clauses (e.g. no RETURN yet flushed them)
         _flush_match_step()
 
+        # A call standing alone returns what it yields (openCypher's StandaloneCall, REQ-572).
+        if (
+            return_clause is None
+            and len(pipeline) == 1
+            and isinstance(pipeline[0], ProcedureCall)
+            and pipeline[0].yields
+            and not (call_subqueries or union_parts or order_by or skip is not None)
+            and limit is None
+        ):
+            return_clause = ReturnClause(
+                items=[
+                    ReturnItem(expression=Variable(name=variable), name=variable)
+                    for _, variable in pipeline[0].yields
+                ]
+            )
+
         if return_clause is None and not call_subqueries and not self._has_write(pipeline):
             raise CypherParseError("Missing RETURN clause")
 

@@ -10,14 +10,16 @@
 
 """the engine type → GraphQL scalar mapping (REQ-010).
 
-Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, Date, Interval, JSON,
-BigInt.
+Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, Date, Time, Interval,
+JSON, BigInt, and one per subtype a native GraphQL type does not fit (REQ-2171).
 """
 
 # Requirements: REQ-010, REQ-306
 
 from collections.abc import Mapping
 from typing import cast
+
+from provisa.core.ir_types import SUBTYPES, element_subtype
 
 from graphql import (
     GraphQLBoolean as _GraphQLBoolean,
@@ -75,6 +77,32 @@ Date: GraphQLScalarType = cast(
     ),
 )
 
+
+def _serialize_time(value: object) -> str:  # object-ok: an engine's time value, typed below
+    """A time of day in PostgreSQL's text form (REQ-2171): engine text already is; a driver's
+    ``time`` drops its fraction's trailing zeros and an offset's zero minutes, and keeps the
+    offset. Anything else is a wrong type for this column and raises (a GraphQL field error)."""
+    from datetime import time
+
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, time):
+        raise TypeError(f"Time cannot represent {type(value).__name__} value {value!r}")
+    clock = value.replace(tzinfo=None).isoformat()
+    offset = value.isoformat()[len(clock) :]
+    return (clock.rstrip("0") if "." in clock else clock) + offset.removesuffix(":00")
+
+
+Time: GraphQLScalarType = cast(
+    GraphQLScalarType,
+    GraphQLScalarType(
+        "Time",
+        description="Time of day in PostgreSQL's text form, with its offset if it has one",
+        serialize=_serialize_time,
+        parse_value=str,
+    ),
+)
+
 JSONScalar: GraphQLScalarType = cast(
     GraphQLScalarType,
     GraphQLScalarType(
@@ -122,6 +150,59 @@ BigInt: GraphQLScalarType = cast(
         parse_value=int,
     ),
 )
+
+
+def _serialize_canonical(kind: str, value: object) -> str:  # object-ok: an engine's value
+    """A subtype's value is its PostgreSQL canonical text when it leaves its source (REQ-2171);
+    anything else is a wrong type for this column and raises (a GraphQL field error)."""
+    if isinstance(value, str):
+        return value
+    raise TypeError(f"{kind} cannot represent {type(value).__name__} value {value!r}")
+
+
+def _subtype_scalar(name: str) -> GraphQLScalarType:
+    return cast(
+        GraphQLScalarType,
+        GraphQLScalarType(
+            name,
+            description=f"{name} in PostgreSQL's canonical text form",
+            serialize=lambda v: _serialize_canonical(name, v),
+            parse_value=str,
+        ),
+    )
+
+
+# The subtypes native GraphQL fits, read as their base type's scalar: a number, a string, JSON. The
+# time of day is Time.
+_NATIVE_SUBTYPES = frozenset({"oid", "money", "jsonb", "name", '"char"', "refcursor", "timetz"})
+
+# The scalar a subtype is named by where it is not its name in the type's usual spelling.
+_SCALAR_NAMES: dict[str, str] = {
+    "inet": "IPAddress",
+    "cidr": "CIDR",
+    "macaddr": "MACAddress",
+    "macaddr8": "MACAddress8",
+    "xml": "XML",
+    "lseg": "LineSegment",
+    "varbit": "VarBit",
+    "tsvector": "TsVector",
+    "tsquery": "TsQuery",
+    "gtsvector": "GtsVector",
+    "jsonpath": "JsonPath",
+}
+
+
+def _scalar_name(subtype: str) -> str:
+    if subtype in _SCALAR_NAMES:
+        return _SCALAR_NAMES[subtype]
+    words = subtype.replace("multirange", "_multi_range").replace("range", "_range").split("_")
+    return "".join(word[:1].upper() + word[1:] for word in words)
+
+
+#: One named scalar per subtype native GraphQL does not fit (REQ-2171).
+SUBTYPE_SCALARS: dict[str, GraphQLScalarType] = {
+    name: _subtype_scalar(_scalar_name(name)) for name in SUBTYPES if name not in _NATIVE_SUBTYPES
+}
 
 # --- Type mapping ---
 
@@ -185,9 +266,9 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "bool": GraphQLBoolean,  # postgres boolean alias
         # Date/time
         "date": Date,
-        "time": GraphQLString,
-        "time with time zone": GraphQLString,
-        "timetz": GraphQLString,  # postgres time with time zone alias
+        "time": Time,
+        "time with time zone": Time,
+        "timetz": Time,  # postgres time with time zone alias
         "interval": Interval,
         "timestamp": DateTime,
         "timestamp with time zone": DateTime,
@@ -198,6 +279,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "jsonb": JSONScalar,
         # REQ-424: an embedding (pgvector's vector, and the IR type of a replica's embedding)
         "vector": GraphQLList(GraphQLNonNull(GraphQLFloat)),
+        **SUBTYPE_SCALARS,  # REQ-2171
     },
 )
 
@@ -220,12 +302,20 @@ def nested_column_graphql_type(column: Mapping) -> GraphQLScalarType | GraphQLLi
     # A decimal element with a declared precision travels as a JSON string, exact on every
     # engine, and is declared as what is served.
     sized_decimal = element.startswith("numeric(")
+    # REQ-2171: an array of a subtype is a list of its scalar; its element type is the base.
+    subtype = element_subtype(column["native_type"], column.get("native_platform"))
     declared: GraphQLScalarType | GraphQLList = (
-        GraphQLString if sized_decimal else column_type_to_graphql(element)
+        GraphQLString if sized_decimal else column_type_to_graphql(subtype or element)
     )
     for _ in range(depth):
         declared = GraphQLList(declared)
     return declared
+
+
+def registered_graphql_type(data_type: str, subtype: str | None) -> GraphQLScalarType | GraphQLList:
+    """The GraphQL type of a registered column of ``data_type``, a subtype's where it has one
+    (REQ-2171)."""
+    return column_type_to_graphql(subtype or data_type)
 
 
 def array_graphql_type(data_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-1986, REQ-424
@@ -306,15 +396,17 @@ def _ordered_filter_fields(scalar: GraphQLScalarType) -> dict[str, GraphQLInputF
     return fields
 
 
-StringFilter = GraphQLInputObjectType(
-    "StringFilter",
-    lambda: {
-        **_ordered_filter_fields(GraphQLString),
+def _string_filter_fields(scalar: GraphQLScalarType) -> dict[str, GraphQLInputField]:
+    """Comparison fields for a value read as a string (adds like/ilike)."""
+    return {
+        **_ordered_filter_fields(scalar),
         "like": GraphQLInputField(GraphQLString),
         # REQ-2136: LIKE with case ignored, the rule the UI's search matches by.
         "ilike": GraphQLInputField(GraphQLString),
-    },
-)
+    }
+
+
+StringFilter = GraphQLInputObjectType("StringFilter", lambda: _string_filter_fields(GraphQLString))
 
 IntFilter = GraphQLInputObjectType("IntFilter", lambda: _ordered_filter_fields(GraphQLInt))
 
@@ -334,6 +426,8 @@ DateFilter = GraphQLInputObjectType("DateFilter", lambda: _ordered_filter_fields
 
 DateTimeFilter = GraphQLInputObjectType("DateTimeFilter", lambda: _ordered_filter_fields(DateTime))
 
+TimeFilter = GraphQLInputObjectType("TimeFilter", lambda: _string_filter_fields(Time))
+
 IntervalFilter = GraphQLInputObjectType("IntervalFilter", lambda: _ordered_filter_fields(Interval))
 
 JSONFilter = GraphQLInputObjectType(
@@ -342,6 +436,15 @@ JSONFilter = GraphQLInputObjectType(
         "is_null": GraphQLInputField(GraphQLBoolean),
     },
 )
+
+
+def _subtype_filter(scalar: GraphQLScalarType) -> GraphQLInputObjectType:
+    """A subtype's comparators are a string's until J315 gives a type its own (REQ-2171)."""
+    return cast(
+        GraphQLInputObjectType,
+        GraphQLInputObjectType(f"{scalar.name}Filter", lambda: _string_filter_fields(scalar)),
+    )
+
 
 # Map GraphQL scalar → filter input type
 FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = cast(
@@ -354,8 +457,10 @@ FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = cast(
         GraphQLBoolean: BooleanFilter,
         Date: DateFilter,
         DateTime: DateTimeFilter,
+        Time: TimeFilter,
         Interval: IntervalFilter,
         JSONScalar: JSONFilter,
+        **{scalar: _subtype_filter(scalar) for scalar in SUBTYPE_SCALARS.values()},
     },
 )
 

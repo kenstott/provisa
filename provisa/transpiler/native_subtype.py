@@ -23,19 +23,25 @@ written the first of these ways that applies:
 What a subtype's native form and emulations are is declared once, on ``ir_types.SUBTYPES``. A
 range's or multirange's emulation is provisa.transpiler.pg_ranges, which writes them before this
 runs on any dialect but PostgreSQL: what it leaves refused it has refused itself, by name.
+
+A subtyped column read as a value is marked too, so that it leaves the source as PostgreSQL's
+canonical text (``ir_types.read_form``), the form it lands in.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import TypeGuard
 
+import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.ir_types import SUBTYPES
+from provisa.core.ir_types import SUBTYPES, read_form
 from provisa.transpiler.semantic_dialect import ContainedByOrEqual, ContainsOrEqual
 
 MARKER = "provisa_subtype"
+READ_MARKER = "provisa_subtype_read"
 
 COMPARISONS = (
     exp.EQ,
@@ -102,6 +108,50 @@ def marked(node: exp.Expr | None) -> tuple[exp.Expr, str] | None:
         return None
     column, subtype = node.expressions
     return column, subtype.name
+
+
+def read_marker(column: exp.Expr, subtype: str) -> exp.Anonymous:
+    """The marker the compiler emits for a read of a subtyped column as a value."""
+    return exp.Anonymous(this=READ_MARKER, expressions=[column, exp.Literal.string(subtype)])
+
+
+def marked_read(node: exp.Expr | None) -> tuple[exp.Expr, str] | None:
+    """The column and subtype a read marker carries; None when ``node`` is not one."""
+    if not isinstance(node, exp.Anonymous) or str(node.this).lower() != READ_MARKER:
+        return None
+    column, subtype = node.expressions
+    return column, subtype.name
+
+
+def resolve_reads(sql: str, dialect: str) -> str:
+    """``sql`` (already in ``dialect``) with every read marker replaced by the subtype's read form
+    there: the value as PostgreSQL's canonical text (REQ-2171). A statement with no marker is
+    returned as given, unparsed."""
+    if READ_MARKER not in sql.lower():
+        return sql
+    tree = sqlglot.parse_one(sql, read=dialect)
+    for node in list(tree.find_all(exp.Anonymous)):
+        found = marked_read(node)
+        if found is None:
+            continue
+        column, subtype = found
+        form = read_form(subtype, dialect)
+        if form is None:
+            node.replace(column)
+        else:
+            node.replace(
+                sqlglot.parse_one(form.format(col=column.sql(dialect=dialect)), read=dialect)
+            )
+    return tree.sql(dialect=dialect)
+
+
+def strip_reads(tree: exp.Expr, held_as_text: Callable[[exp.Expr], bool]) -> None:
+    """Replace, in place, each read marker whose column ``held_as_text`` accepts with the bare
+    column: the address it is read from already holds the text (a replica)."""
+    for node in list(tree.find_all(exp.Anonymous)):
+        found = marked_read(node)
+        if found is not None and held_as_text(found[0]):
+            node.replace(found[0])
 
 
 def is_spatial_call(node: exp.Expr | None) -> TypeGuard[exp.Func]:
@@ -323,10 +373,15 @@ def resolve_subtypes(tree: exp.Expr, dialect: str) -> exp.Expr:
 
 __all__ = [
     "MARKER",
+    "READ_MARKER",
     "SubtypeOperationRefused",
     "is_spatial_call",
     "marked",
+    "marked_read",
     "native_form",
+    "read_marker",
+    "resolve_reads",
     "resolve_subtypes",
+    "strip_reads",
     "subtype_marker",
 ]
