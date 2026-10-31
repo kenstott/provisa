@@ -32,6 +32,11 @@ config:
     - { name: "warmup",       duration: 10,  arrivalRate: 1 }
     - { name: "ramp-to-2000", duration: 300, arrivalRate: 1, rampTo: 2000 }
     - { name: "sustain-2000", duration: 60,  arrivalRate: 2000 }
+  plugins:
+    # Without this plugin Artillery ignores every `expect` below: all-400 runs report no failures.
+    expect:
+      outputFormat: silent
+      reportFailuresAsErrors: true
   defaults:
     headers:
       Content-Type: "application/json"
