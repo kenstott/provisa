@@ -134,7 +134,7 @@ test.describe("Polly changes things through the admin API, as the user", () => {
       // The open page refetches: the new relationship appears without a reload.
       await expect(row).toBeVisible({ timeout: 30000 });
       const chat = page.getByTestId("chat-panel");
-      await expect(chat.getByText("Confirmed — go ahead.")).toBeVisible();
+      await expect(chat.getByText("Confirmed. Go ahead.")).toBeVisible();
       await expect(chat.getByText("All done.")).toBeVisible({ timeout: 30000 });
       expect(await relationshipExists(request, id)).toBe(true);
     } finally {

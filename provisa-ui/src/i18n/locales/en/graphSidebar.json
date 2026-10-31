@@ -21,7 +21,7 @@
     "history": "History",
     "noHistory": "No history yet",
     "favorites": "Favorites",
-    "noFavorites": "No favorites yet — click ★ in a result frame",
+    "noFavorites": "No favorites yet. Click ★ in a result frame.",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "First page",

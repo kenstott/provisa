@@ -25,7 +25,7 @@
     "leaveOrg": "Leave",
     "leaveHelp": "Leaving removes your access to that organization. If you are its only org admin, promote someone else first.",
     "patHeading": "Personal access tokens",
-    "patHelp": "A personal access token signs you in from tools that cannot open a browser — psql, a Neo4j client, an Arrow Flight or gRPC client, an MCP client, or a script. It acts as you, in this organization.",
+    "patHelp": "A personal access token signs you in from tools that cannot open a browser, such as psql, a Neo4j client, an Arrow Flight or gRPC client, an MCP client, or a script. It acts as you, in this organization.",
     "patName": "Name",
     "patExpiresInDays": "Expires in (days)",
     "patIssue": "Create token",
