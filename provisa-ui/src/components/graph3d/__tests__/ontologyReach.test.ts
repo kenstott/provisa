@@ -110,10 +110,10 @@ const TABLES: Record<number, { name: string; columns: string[]; product: string 
   91: { name: "vets_quality_dq_soda_dq", columns: ["outcome"], product: "vet_clinic" },
 };
 // Relationships declared between the tables: the ERD's, never the Ontology View's.
-const RELATIONSHIPS: Record<number, { id: string; cypher_type: string; target_table_id: number }[]> =
+const RELATIONSHIPS: Record<number, { id: string; cypherType: string; targetTableId: number }[]> =
   {
-    11: [{ id: "order_pet", cypher_type: "PLACED_FOR", target_table_id: 10 }],
-    90: [{ id: "dq_pets", cypher_type: "CHECKS", target_table_id: 10 }],
+    11: [{ id: "order_pet", cypherType: "PLACED_FOR", targetTableId: 10 }],
+    90: [{ id: "dq_pets", cypherType: "CHECKS", targetTableId: 10 }],
   };
 // Pet IS pets.id and store_order.pet_id; Status IS both status columns; Category IS the categories
 // table (a class term); Companion grounds nothing, RELATED_TO Pet.
@@ -123,56 +123,57 @@ const TERMS = [
   { id: 3, name: "Category", columns: [], tables: [12] },
   { id: 4, name: "Companion", columns: [], tables: [] },
 ];
-const EDGES = [{ id: 1, from_term_id: 4, to_term_id: 1, rel_type: "RELATED_TO" }];
+const EDGES = [{ id: 1, fromTermId: 4, toTermId: 1, relType: "RELATED_TO" }];
 
 const product = (id: string, named: boolean) =>
-  named ? { id, name: id, domain_id: "sales" } : { id };
+  named ? { id, name: id, domainId: "sales" } : { id };
 
 /** The server: answers ``query`` with what it selects and nothing else. */
 function answer(query: string): OntologyRows & { data_products?: unknown[] } {
   const q = query.replace(/\s+/g, " ");
-  const named = q.includes("product: product { id: id name: name domain_id: domainId");
+  const selected = (field: string) => new RegExp(`\\b${field}[ (]`).test(q);
+  const named = q.includes("product { id name domainId");
   const rels = q.includes("sourceRelationships");
   const table = (id: number) => ({
     id,
     product: product(TABLES[id].product, named),
-    ...(rels ? { source_relationships: RELATIONSHIPS[id] ?? [] } : {}),
+    ...(rels ? { sourceRelationships: RELATIONSHIPS[id] ?? [] } : {}),
   });
   const out: OntologyRows & { data_products?: unknown[] } = {
     _terms: TERMS.map((t) => ({
       id: t.id,
       name: t.name,
       definition: null,
-      ref_count: t.columns.length,
+      refCount: t.columns.length,
       deprecated: false,
       retired: false,
       status: "approved" as const,
       grounding: "grounded" as const,
-      domains: q.includes("domains: domains") ? [{ domain_id: "sales" }] : undefined,
-      edges_out: q.includes("edges_out:")
-        ? EDGES.filter((e) => e.from_term_id === t.id).map((e) => ({
+      domains: selected("domains") ? [{ domainId: "sales" }] : undefined,
+      edgesOut: selected("edgesOut")
+        ? EDGES.filter((e) => e.fromTermId === t.id).map((e) => ({
             ...e,
-            target_term: { id: e.to_term_id },
+            targetTerm: { id: e.toTermId },
           }))
         : undefined,
-      tables: q.includes("tables: tables")
+      tables: selected("tables")
         ? t.tables.map((id) => ({
             ...table(id),
-            table_name: TABLES[id].name,
-            domain_id: "sales",
+            tableName: TABLES[id].name,
+            domainId: "sales",
           }))
         : undefined,
-      refs: q.includes("refs: refs")
+      refs: selected("refs")
         ? t.columns.map((key) => {
             const [tid, column] = key.split(":");
             const id = Number(tid);
             return {
-              column_key: key,
-              column_name: column,
-              table_id: id,
-              table_name: TABLES[id].name,
-              domain_id: "sales",
-              table: table(id),
+              columnKey: key,
+              columnName: column,
+              tableId: id,
+              tableName: TABLES[id].name,
+              domainId: "sales",
+              registeredTable: table(id),
             };
           })
         : undefined,
@@ -182,21 +183,21 @@ function answer(query: string): OntologyRows & { data_products?: unknown[] } {
     out.data_products = [...new Set(Object.values(TABLES).map((t) => t.product))].map((p) => ({
       id: p,
       name: p,
-      domain_id: "sales",
-      member_tables: Object.entries(TABLES)
+      domainId: "sales",
+      memberTables: Object.entries(TABLES)
         .filter(([, t]) => t.product === p)
         .map(([id, t]) => ({
           id: Number(id),
-          domain_id: "sales",
-          table_name: t.name,
-          table_columns: t.columns.map((c) => ({
-            column_name: c,
-            column_key: `${id}:${c}`,
-            glossary_ref: TERMS.filter((x) => x.columns.includes(`${id}:${c}`)).map((x) => ({
-              term_id: x.id,
+          domainId: "sales",
+          tableName: t.name,
+          tableColumns: t.columns.map((c) => ({
+            columnName: c,
+            columnKey: `${id}:${c}`,
+            glossaryRef: TERMS.filter((x) => x.columns.includes(`${id}:${c}`)).map((x) => ({
+              termId: x.id,
             })),
           })),
-          ...(rels ? { source_relationships: RELATIONSHIPS[Number(id)] ?? [] } : {}),
+          ...(rels ? { sourceRelationships: RELATIONSHIPS[Number(id)] ?? [] } : {}),
         })),
     }));
   return out;

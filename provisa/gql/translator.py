@@ -1189,6 +1189,20 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         )
         return [*joins[:first], beside, *joins[first:]]
 
+    def _read_parts(self, parts: CypherAST) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """REQ-2135: the rows of ``parts`` as this statement's FROM, each of its columns a variable
+        of the statement."""
+        sql, params, _ = cypher_to_sql(parts, self._lm, self._params)
+        for p in params:
+            if p not in self._param_seen:
+                self._param_order.append(p)
+                self._param_seen.add(p)
+        assert parts.return_clause is not None
+        for item in parts.return_clause.items:
+            assert item.alias is not None
+            self._term_vars[item.alias] = exp.column(item.alias, table="_parts")
+        return cast(exp.Expression, exp.alias_(exp.Subquery(this=sql), alias="_parts"))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
     def _build_final_from(
         self,
         final_match_steps: list,
@@ -1199,6 +1213,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         Returns (from_clause, joins, all_matches, its WHEREs as _steps_where gives them).
         """
+        if self._ast.parts is not None:
+            return self._read_parts(self._ast.parts), [], [], _steps_where(final_match_steps)
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
         ]

@@ -19,10 +19,11 @@ An RDF term of the answer is one JSON value:
 - a glossary term, ``{"term": name}`` -- the writer builds its vocabulary IRI (REQ-2163);
 - a literal, ``{"literal": v}``, with ``"datatype"`` or ``"lang"`` when known.
 
-A variable predicate the front end leaves as one (:meth:`provisa.sparql_query.compiler._Lowering.
-predicate_reads` makes most a UNION ALL part per predicate) is a union, made at compile time, of
-one branch per mapped predicate of the subject's label, each a row ``(s_id0..., p, o)`` joined on
-the subject's whole key; more branches than graph.union_limit are refused, naming it. A CONSTRUCT is one SELECT of ``(s, p, o)`` per template triple over the
+A variable predicate as a pattern of its own (the SPARQL front end instead reads each as a UNION
+ALL part per predicate, :meth:`provisa.sparql_query.compiler._Lowering.predicate_reads`) is a
+union, made at compile time, of one branch per mapped predicate of the subject's label, each a row
+``(s_id0..., p, o)`` joined on the subject's whole key; more branches than graph.union_limit are
+refused, naming it. A CONSTRUCT is one SELECT of ``(s, p, o)`` per template triple over the
 statement's matches, the selects put together with UNION ALL: an RDF graph is a set, and its writer
 keeps each triple once.
 """

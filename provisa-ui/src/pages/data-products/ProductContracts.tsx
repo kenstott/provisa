@@ -72,7 +72,7 @@ function RowTitle({
 }) {
   const { t, i18n } = useTranslation();
   const id = contract.tableId;
-  const relation = relationName({ domainId: port.domain_id, tableName: port.table_name });
+  const relation = relationName({ domainId: port.domainId, tableName: port.tableName });
   // REQ-2160: who reads the port, as the owner is shown who reads the product.
   const consumers =
     owner && lineage ? lineage.consumers.filter((c) => c.reads.includes(relation)) : null;
@@ -86,7 +86,7 @@ function RowTitle({
   const lastRun = runs && runs.length > 0 ? runs[runs.length - 1] : null;
   // The SLA headline: the port's freshness first, as the contract lists it (REQ-2118), else the
   // first service level it declares.
-  const ttl = port.cache_ttl;
+  const ttl = port.cacheTtl;
   const declared = contract.sla[0];
   const sla =
     ttl !== null && ttl !== undefined
@@ -211,7 +211,7 @@ function OpenContract({
       </Alert>
     );
   }
-  const relation = relationName({ domainId: port.domain_id, tableName: port.table_name });
+  const relation = relationName({ domainId: port.domainId, tableName: port.tableName });
   return (
     <ContractView
       contract={read.doc as OdcsContract}

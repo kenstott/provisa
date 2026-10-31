@@ -38,13 +38,13 @@ const P = {
 
 const table = (id: number, name: string, over: Partial<CoreTable> = {}): CoreTable => ({
   id,
-  source_id: "pg",
-  domain_id: "sales",
-  schema_name: "public",
-  table_name: name,
+  sourceId: "pg",
+  domainId: "sales",
+  schemaName: "public",
+  tableName: name,
   alias: null,
   description: null,
-  dq_contract: null,
+  dqContract: null,
   ...over,
 });
 
@@ -135,7 +135,7 @@ const CORE: ProductCore = {
     table(1, "customers"),
     table(2, "orders"),
     table(11, "check_11", {
-      dq_contract: "dataset: x",
+      dqContract: "dataset: x",
       description: "Customers are unique so counts reconcile",
     }),
   ],
@@ -370,15 +370,15 @@ describe("a set of checks' summary status", () => {
 describe("Related Tables (REQ-2126)", () => {
   it("lists the directly related tables only; the indirect joins are the graph's", () => {
     const edge = (over: Partial<CoreEdge>): CoreEdge => ({
-      id: `c360:related:${over.target_table_id}`,
+      id: `c360:related:${over.targetTableId}`,
       kind: "related",
-      target_product_id: null,
-      target_table_id: null,
+      targetProductId: null,
+      targetTableId: null,
       direct: true,
       hops: 1,
-      path_count: 1,
+      pathCount: 1,
       aliases: null,
-      supporting_tables: null,
+      supportingTables: null,
       ...over,
     });
     render(
@@ -388,29 +388,29 @@ describe("Related Tables (REQ-2126)", () => {
           ...CORE,
           edges: [
             edge({
-              target_table_id: 61,
-              target_product_id: "billing",
-              path_count: 2,
+              targetTableId: 61,
+              targetProductId: "billing",
+              pathCount: 2,
               aliases: "BILLED_TO, PAID_BY",
-              target_table: {
+              targetTable: {
                 id: 61,
-                domain_id: "finance",
-                table_name: "invoices",
+                domainId: "finance",
+                tableName: "invoices",
                 alias: null,
                 description: null,
               },
-              target_product: { id: "billing", name: "Billing", domain_id: "finance" },
+              targetProduct: { id: "billing", name: "Billing", domainId: "finance" },
             }),
             edge({
               kind: "relationship",
               direct: false,
               hops: 2,
-              target_table_id: 51,
-              supporting_tables: "finance.currencies",
-              target_table: {
+              targetTableId: 51,
+              supportingTables: "finance.currencies",
+              targetTable: {
                 id: 51,
-                domain_id: "finance",
-                table_name: "fx_rates",
+                domainId: "finance",
+                tableName: "fx_rates",
                 alias: null,
                 description: null,
               },

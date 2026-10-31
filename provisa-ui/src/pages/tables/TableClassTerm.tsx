@@ -42,18 +42,18 @@ async function readClassTerm(role: string, tableId: number): Promise<ClassTerm |
     "registered_tables",
     {
       fields: ["id"],
-      rels: { class_term: { alias: "classTerm", sel: { fields: ["id", "name"] } } },
+      rels: { classTerm: { sel: { fields: ["id", "name"] } } },
     },
     { id: { eq: tableId } },
   );
   if (query === null) throw new Error("registered_tables");
   const { registered_tables: rows } = await dataGraphql<{
-    registered_tables: { id: number; class_term?: ClassTerm | null }[];
+    registered_tables: { id: number; classTerm?: ClassTerm | null }[];
   }>(query, {}, role);
   if (rows.length !== 1) throw new Error(`registered_tables ${tableId}`);
   // undefined: the role's schema has no classTerm to read, which is not "none".
-  if (rows[0].class_term === undefined) throw new Error("classTerm");
-  return rows[0].class_term;
+  if (rows[0].classTerm === undefined) throw new Error("classTerm");
+  return rows[0].classTerm;
 }
 
 export function TableClassTerm({ tableId }: { tableId: number }) {
