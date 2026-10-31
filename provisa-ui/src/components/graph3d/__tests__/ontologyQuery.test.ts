@@ -283,15 +283,15 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     const q = searched(["cust"]);
     // A match and the terms a hop from it (by an edge leaving it or one reaching it) are read with
     // what they touch; the terms two hops off with their edges' ends alone.
-    expect(q.match(/refs: refs/g)).toHaveLength(3);
-    expect(q.match(/domains: domains/g)).toHaveLength(3);
+    expect(q.match(/refs \{/g)).toHaveLength(3);
+    expect(q.match(/domains \{/g)).toHaveLength(3);
     expect(q).toContain("edgesIn");
     expect(q).toContain("sourceTerm");
     // The deepest level: an edge's end by its id.
     expect(q).toContain("targetTerm { id }");
     // Without a search: one level, the edges' ends by id, and no edges read the other way.
     const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
-    expect(flat.match(/refs: refs/g)).toHaveLength(1);
+    expect(flat.match(/refs \{/g)).toHaveLength(1);
     expect(flat).not.toContain("edgesIn");
   });
 
