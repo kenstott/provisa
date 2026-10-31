@@ -61,7 +61,7 @@ async def _seed() -> None:
         )
         await conn.execute(
             f"CREATE TABLE {_SCHEMA}.assignments_by_breed "
-            "(id int PRIMARY KEY, pet_id int, user_id int, breed_name text)"
+            "(id int PRIMARY KEY, pet_id int, user_id int, _nf_breed_name text)"
         )
         await conn.execute(f"INSERT INTO {_SCHEMA}.pets VALUES (1, 'Rex'), (2, 'Tom'), (3, 'Ivy')")
         await conn.execute(f"INSERT INTO {_SCHEMA}.users VALUES (1, 'Ann'), (2, 'Bo')")

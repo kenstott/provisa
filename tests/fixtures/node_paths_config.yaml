@@ -56,7 +56,7 @@ tables:
       - {name: id, data_type: integer, visible_to: [org_admin]}
       - {name: pet_id, data_type: integer, visible_to: [org_admin]}
       - {name: user_id, data_type: integer, visible_to: [org_admin]}
-      - name: breed_name
+      - name: _nf_breed_name
         data_type: varchar
         visible_to: [org_admin]
         native_filter_type: query_arg
