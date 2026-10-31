@@ -8929,5 +8929,14 @@
   "zh/writeGrants.json::writeGrants.source_now": "The time of the write",
   "zh/writeGrants.json::writeGrants.source_session": "A session variable",
   "glossaryTab.json::glossaryTab.filterStatusHint": "Show only these statuses",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "zh/demoOpenPage.json::demoOpenPage.coordinatorWaking": "The server is waking up…",
+  "zh/demoOpenPage.json::demoOpenPage.coordinatorUpdating": "The server is being updated. It will be back shortly…",
+  "zh/demoOpenPage.json::demoOpenPage.serverStarting": "The demo server is starting…",
+  "zh/demoOpenPage.json::demoOpenPage.connecting": "Reaching the server…",
+  "zh/demoOpenPage.json::demoOpenPage.elapsed": "{{time}} so far",
+  "zh/demoOpenPage.json::demoOpenPage.coldStart": "A demo that has been idle takes about five minutes to start.",
+  "zh/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
+  "zh/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
+  "zh/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later."
 }

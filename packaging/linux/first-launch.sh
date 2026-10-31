@@ -771,8 +771,10 @@ YAML
 # unions depends_on rather than removing it, so app.yml's `trino: service_healthy`
 # would survive any overlay and hold the app down forever on a node that has no
 # trino service at all.
+# Rendered where $1 says by scripts/deploy-cloud.sh (push_compose): the configs a deploy pushes name
+# what this file sets, and this script runs only when a release changes.
 write_control_plane_compose() {
-  local file="${PROVISA_HOME}/compose-control-plane.yml"
+  local file="${1:-${PROVISA_HOME}/compose-control-plane.yml}"
   if [ "$ROLE" != "control-plane" ]; then
     rm -f "$file" 2>/dev/null || true
     return
@@ -1269,8 +1271,8 @@ write_env_file() {
              PROVISA_PG_PASSWORD PROVISA_REDIS_PASSWORD PROVISA_MINIO_ROOT_PASSWORD \
              PROVISA_GRAFANA_ADMIN_PASSWORD PROVISA_TRINO_SHARED_SECRET PROVISA_STORE_BIND_IP \
              COMPOSE_PROFILES PROVISA_REDIS_HOST PROVISA_MINIO_HOST PROVISA_SANDBOX_API_URL PROVISA_SANDBOX_PUBLISH \
-             PROVISA_SANDBOX_REGIONS_API_URL PROVISA_SANDBOX_REGIONS_PUBLISH \
-             PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH \
+             PROVISA_SANDBOX_REGIONS_API_URL PROVISA_SANDBOX_REGIONS_NODES \
+             PROVISA_SANDBOX_REGIONS_PUBLISH PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH \
              PROVISA_SANDBOX_INSTANCE PROVISA_SANDBOX_IDLE_STOP_SECONDS \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do

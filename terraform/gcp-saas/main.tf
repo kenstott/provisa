@@ -682,6 +682,9 @@ locals {
     project  = var.project
     zone     = var.zone
     instance = google_compute_instance.coordinator.name
+    # REQ-2006: started beside the coordinator when a request for a demo wakes it; empty with no
+    # sandbox VM. Its permissions are this role's, on every instance of the project.
+    sandbox_instance = var.sandbox_vm ? local.sandbox_instance_name : ""
     # The control plane's internal address, not a name: the private zone that used to
     # publish one existed only so worker VMs could find the coordinator, and it went
     # with them. The front door is on this same VPC, so the VM's primary internal IP
@@ -713,8 +716,9 @@ locals {
     cert_secret = local.tls_cert_secret
     key_secret  = local.tls_key_secret
     targets     = "/etc/provisa/tls/node.crt:/etc/provisa/tls/node.key /root/.provisa/certs/provisa.crt:/root/.provisa/certs/provisa.key"
-    restart     = "docker ps --format '{{.Names}}' | grep -E '^compose-provisa(-ui|-sandbox|-sandbox-regions)?-1$' | xargs -r docker restart"
-    before      = "docker.service provisa.service"
+    # In double quotes: sync.env holds this in single quotes, and a single quote here ended them.
+    restart = "docker ps --format \"{{.Names}}\" | grep -E \"^compose-provisa(-ui|-sandbox|-sandbox-regions|-sandbox-regions-warehouse)?-1$\" | xargs -r docker restart"
+    before  = "docker.service provisa.service"
   })
   # The front door renews it (the one VM always on).
   front_door_tls_renew = templatefile("${path.module}/tls/install-renew.sh.tftpl", {

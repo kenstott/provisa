@@ -8929,5 +8929,14 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
   "glossaryTab.json::glossaryTab.filterStatusHint": "Show only these statuses",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "ja/demoOpenPage.json::demoOpenPage.coordinatorWaking": "The server is waking up…",
+  "ja/demoOpenPage.json::demoOpenPage.coordinatorUpdating": "The server is being updated. It will be back shortly…",
+  "ja/demoOpenPage.json::demoOpenPage.serverStarting": "The demo server is starting…",
+  "ja/demoOpenPage.json::demoOpenPage.connecting": "Reaching the server…",
+  "ja/demoOpenPage.json::demoOpenPage.elapsed": "{{time}} so far",
+  "ja/demoOpenPage.json::demoOpenPage.coldStart": "A demo that has been idle takes about five minutes to start.",
+  "ja/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
+  "ja/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
+  "ja/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later."
 }

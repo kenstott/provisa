@@ -156,7 +156,7 @@
       "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
     },
     "front_door": {
-      "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer twee minuten gereed.",
+      "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer vijf minuten gereed.",
       "coordinator_updating": "De omgeving wordt bijgewerkt. Deze is binnenkort weer beschikbaar."
     },
     "functions": {
@@ -664,6 +664,8 @@
       "unknown_demo": "Er is geen gepubliceerde demo met de naam {{demo}}.",
       "demo_not_ready": "Deze demo wordt nog voorbereid. Probeer het zo meteen opnieuw.",
       "demo_stores_failed": "Deze demo kon niet worden gestart. Probeer het over een paar minuten opnieuw.",
+      "demo_failed": "Deze demo kon niet worden voorbereid. Probeer het over een paar minuten opnieuw.",
+      "failed_to_start": "De demoserver kon niet worden gestart. Probeer het later opnieuw.",
       "at_capacity": "Alle demo-sandboxes zijn in gebruik. Probeer het zo meteen opnieuw.",
       "starting": "De demoserver wordt gestart. Probeer het over een minuut of twee opnieuw.",
       "disk_full": "Deze sandbox heeft zijn schijflimiet van {{limit}} bytes bereikt; er kan niets meer in worden geschreven.",
