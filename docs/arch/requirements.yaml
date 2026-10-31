@@ -90665,7 +90665,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     as text. A value of a type the dialect does not support MUST be in PostgreSQL''s canonical text form,
     the form pgwire sends, when it leaves the source, on a landing and on a direct read alike: the compiler''s
     read form gives it, and nothing after that corrects it. An operation on such a value is chosen by its
-    type, not by the engine''s.'
+    type, not by the engine''s. (Amended 2026-10-29, EXTENSIONS AND TOTAL LANDING:) Maintainer 2026-10-31:
+    a function DuckDB SQL cannot express (xpath, xmltable, xml parsing, sha224/384/512, normalize, convert)
+    is served by a DuckDB extension where one answers as PostgreSQL does, as the first step of the rule;
+    no UDF is kept for it. Landing is total: a reader with no form reads the value as text, so no column
+    is left out of a replica and the not-landed refusal is removed. A replica built without a column is
+    rebuilt on deploy.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
