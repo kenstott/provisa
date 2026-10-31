@@ -22,13 +22,13 @@ const PRODUCT = { id: "c360", domainId: "sales", name: "customer_360" } as unkno
 const table = (id: number, name: string, over: Record<string, unknown> = {}) => ({
   id,
   source_id: "crm",
-  domain_id: "sales",
-  schema_name: "crm",
-  table_name: name,
+  domainId: "sales",
+  schemaName: "crm",
+  tableName: name,
   description: null,
-  dq_contract: null,
-  table_columns: [],
-  profile_results: [],
+  dqContract: null,
+  tableColumns: [],
+  profileResults: [],
   ...over,
 });
 
@@ -36,21 +36,21 @@ const CORE: ProductCore = {
   product: PRODUCT,
   tables: [
     table(1, "customers", {
-      table_columns: [
+      tableColumns: [
         {
-          column_name: "email",
-          column_key: "1:email",
-          glossary_ref: [{ term_id: 7, term: { id: 7, name: "Customer" } }],
+          columnName: "email",
+          columnKey: "1:email",
+          glossaryRef: [{ termId: 7, term: { id: 7, name: "Customer" } }],
         },
       ],
     }),
     table(2, "orders"),
     table(3, "orders_dq", {
-      dq_contract: "name: orders_dq",
-      checks: { id: 2, domain_id: "sales", table_name: "orders" },
+      dqContract: "name: orders_dq",
+      checks: { id: 2, domainId: "sales", tableName: "orders" },
     }),
   ] as never,
-  commands: [{ name: "refresh_c360", description: null, domain_id: "sales" }] as never,
+  commands: [{ name: "refresh_c360", description: null, domainId: "sales" }] as never,
   tags: [],
   terms: [],
   edges: [],

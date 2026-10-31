@@ -27,14 +27,14 @@ import { NO_FILTERS } from "../graphModel";
 const NO_FILTERS_ONTOLOGY: GraphFilters = { ...NO_FILTERS };
 
 const ref = (table: number, column: string, product?: string) => ({
-  column_key: `${table}:${column}`,
-  column_name: column,
-  table_id: table,
-  table_name: `t${table}`,
-  domain_id: "sales",
-  table: {
+  columnKey: `${table}:${column}`,
+  columnName: column,
+  tableId: table,
+  tableName: `t${table}`,
+  domainId: "sales",
+  registeredTable: {
     id: table,
-    product: product ? { id: product, name: product, domain_id: "sales" } : null,
+    product: product ? { id: product, name: product, domainId: "sales" } : null,
   },
 });
 
@@ -42,33 +42,33 @@ const term = (id: number, name: string, over: Partial<TermRow>): TermRow => ({
   id,
   name,
   definition: `${name}, as the business uses it.`,
-  ref_count: 0,
+  refCount: 0,
   deprecated: false,
   retired: false,
   status: "approved",
   grounding: "grounded",
-  domains: [{ domain_id: "sales" }],
+  domains: [{ domainId: "sales" }],
   refs: [],
   ...over,
 });
 
 const TERMS: TermRow[] = [
-  term(1, "Customer", { ref_count: 1, refs: [ref(10, "email", "c360")] }),
-  term(2, "Party", { ref_count: 0, domains: [{ domain_id: "*" }] }),
+  term(1, "Customer", { refCount: 1, refs: [ref(10, "email", "c360")] }),
+  term(2, "Party", { refCount: 0, domains: [{ domainId: "*" }] }),
   term(3, "Loyalty tier", {
     definition: null,
     status: "draft",
-    ref_count: 1,
+    refCount: 1,
     refs: [ref(10, "tier")],
   }),
-  term(4, "Concept", { ref_count: 0, status: "draft", grounding: "not_grounded" }),
-  term(5, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded", domains: [{ domain_id: "finance" }] }),
+  term(4, "Concept", { refCount: 0, status: "draft", grounding: "not_grounded" }),
+  term(5, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded", domains: [{ domainId: "finance" }] }),
   term(6, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
 ];
 const EDGES: TermEdgeRow[] = [
-  { id: 1, from_term_id: 1, to_term_id: 2, rel_type: "KIND_OF" },
-  { id: 2, from_term_id: 5, to_term_id: 1, rel_type: "REPLACES" },
-  { id: 3, from_term_id: 3, to_term_id: 1, rel_type: "PART_OF" },
+  { id: 1, fromTermId: 1, toTermId: 2, relType: "KIND_OF" },
+  { id: 2, fromTermId: 5, toTermId: 1, relType: "REPLACES" },
+  { id: 3, fromTermId: 3, toTermId: 1, relType: "PART_OF" },
 ];
 
 const G: GraphData = glossaryGraph(TERMS, EDGES);
@@ -93,13 +93,13 @@ const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
 describe("the Ontology View's terms", () => {
   it("marks a class whose tables are not all declared one entity, naming its tables", () => {
     const tables = [
-      { id: 10, table_name: "customers", domain_id: "sales" },
-      { id: 11, table_name: "contacts", domain_id: "crm" },
+      { id: 10, tableName: "customers", domainId: "sales" },
+      { id: 11, tableName: "contacts", domainId: "crm" },
     ];
     const g = glossaryGraph(
       [
-        term(1, "Customer", { tables, identity_gap: true }),
-        term(2, "Order", { tables: tables.slice(0, 1), identity_gap: false }),
+        term(1, "Customer", { tables, identityGap: true }),
+        term(2, "Order", { tables: tables.slice(0, 1), identityGap: false }),
       ],
       [],
     );
@@ -132,7 +132,7 @@ describe("the Ontology View's terms", () => {
     expect(node(G, "term:2")?.role).toBe("concept");
     expect(node(G, "term:1")?.role).toBe("property");
     const grounded = glossaryGraph(
-      [term(9, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [term(9, "Order", { tables: [{ id: 20, tableName: "orders", domainId: "sales" }] })],
       [],
     );
     expect(node(grounded, "term:9")?.role).toBe("class");
@@ -214,7 +214,7 @@ describe("the Ontology View's presets", () => {
 
   it("draws a class term's tables with the ontology: the term IS the table, a cylinder", () => {
     const grounded = glossaryGraph(
-      [term(7, "Order", { tables: [{ id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [term(7, "Order", { tables: [{ id: 20, tableName: "orders", domainId: "sales" }] })],
       [],
     );
     const on = (layers: LayerId[]) =>
@@ -240,9 +240,9 @@ describe("a draft named for a column, with Domains alone drawn", () => {
     const draft = term(7, "shift end", {
       definition: null,
       status: "draft",
-      ref_count: 1,
+      refCount: 1,
       refs: undefined,
-      domains: [{ domain_id: "shelter" }],
+      domains: [{ domainId: "shelter" }],
     });
     const g = visibleGraph(
       glossaryGraph([draft], []),

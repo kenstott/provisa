@@ -35909,7 +35909,13 @@
     scope). DEFAULT tier (every role): sees CORE meta for directly-accessible tables plus 1-hop relationship
     neighbors (user-defined/semantic relationships only, excluding synthetic catalog edges), bidirectional.
     Meta DOMAIN GRANT: sees CORE meta for all tables and relationships. Per-relationship opt-out suppresses
-    target metadata from DEFAULT discovery.'
+    target metadata from DEFAULT discovery. (Amended 2026-10-29, SYSTEM DOMAINS ARE CAPABILITIES:) Maintainer
+    2026-10-31: access to the system domains meta, ontology and ops is held as capabilities, not as domain
+    access, and is inherited as any capability is. domain_access lists data domains only, is the role''s
+    own and is never inherited, and * means every data domain. viewer holds meta and ontology, so every
+    role built on viewer has them; a role with no viewer ancestor does not. Column grants, view_governance
+    and row rules apply within a system domain as they do anywhere. System domains are not offered in domain
+    pickers.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
@@ -42770,8 +42776,11 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding
-    user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed.
+  description: 'An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding
+    user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed. (Amended
+    2026-10-29, A DEMO VISITOR IS EXEMPT:) Lead 2026-10-31: a demo visitor holds no account, so an unclaimed
+    platform-admin slot does not end a visit. The demo route is served ahead of the onboarding gate for
+    every browser, signed in or not, and the first-run tour is not offered in the platform org.'
   use_case: A valid credential from before the admin-plane was wiped would otherwise skip sign-in entirely
     (where the first-login disclosure renders) and land on "create an organization" on a deployment with
     no administrator. This prevents accidental onboarding without understanding the implication of claiming
@@ -62103,7 +62112,11 @@
     in the same org, may not be the role itself, and may not close a cycle; each is refused at save with
     the reason. `parent_role_id` is exposed on the admin GraphQL role type and input, on the roles REST
     router, and on the Security page''s role form as "Inherits from". Deleting a role that other roles inherit
-    from is refused naming them.'
+    from is refused naming them. (Amended 2026-10-29, A CHILD''S RULE ONLY NARROWS:) Maintainer 2026-10-31:
+    row rules follow REQ-2155: a role reads no row its parents could not. A role''s rows are its own rule
+    AND the rules of its parents ORed; a parent with no rule stands for every row, and a role with no rule
+    of its own reads under its parents'' rules. This replaces a child''s rule replacing its parent''s and
+    the two never being ANDed. It stays one plain predicate per right, role and target.'
   code:
   - provisa/security/inheritance.py
   - provisa/core/models.py
@@ -62359,7 +62372,16 @@
   feature: hasura-migration-permissions
   priority: MUST
   type: behavioral
-  description: 'Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa''s own vocabulary. A role with any select permission (or an action permission, or membership in an inherited role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update or delete permission also holds `write` (REQ-868). The former `read` pseudo-capability, which no gate reads, is not emitted. Hasura''s admin holds every permission implicitly and is Provisa''s `org_admin`, whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported column: a tracked table''s, a landed remote schema''s, and a column-less table''s columns typed at preview (REQ-1691), which are visible to org_admin alone.'
+  description: 'Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa''s own
+    vocabulary. A role with any select permission (or an action permission, or membership in an inherited
+    role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update
+    or delete permission also holds `write` (REQ-868). The former `read` pseudo-capability, which no gate
+    reads, is not emitted. Hasura''s admin holds every permission implicitly and is Provisa''s `org_admin`,
+    whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported
+    column: a tracked table''s, a landed remote schema''s, and a column-less table''s columns typed at preview
+    (REQ-1691), which are visible to org_admin alone. (Amended 2026-10-29, QUERY_DEVELOPMENT GATES NO READ:)
+    Lead 2026-10-31, following REQ-2155: query_development gates development features, not reads. An imported
+    role keeps the right so its development features carry over; no data surface reads it.'
   code:
   - provisa/hasura_v2/mapper.py
   - provisa/hasura_v2/remote_schema.py
@@ -85324,7 +85346,18 @@ And acting as analyst,region__eu it is'
   feature: row-security-and-masking-masking
   priority: SHOULD
   type: behavioral
-  description: 'Per-reader masks: a column''s masking is one ordered list of entries, each {to: a grant list (composites allowed), a mask or unmasked}; the first entry matching the request''s roles applies, and an entry for everyone last is the default. The enumeration is the precedence, shown and checked in the column editor''s Access tab. It replaces today''s single mask plus unmasked_to (no back-compat): the column model, table_columns, the masking rules loader, the admin column types and mutations, config export and the UI.'
+  description: 'Per-reader masks: a column''s masking is one ordered list of entries, each {to: a grant
+    list (composites allowed), a mask or unmasked}; the first entry matching the request''s roles applies,
+    and an entry for everyone last is the default. The enumeration is the precedence, shown and checked
+    in the column editor''s Access tab. It replaces today''s single mask plus unmasked_to (no back-compat):
+    the column model, table_columns, the masking rules loader, the admin column types and mutations, config
+    export and the UI. (Amended 2026-10-29, AN UNREACHABLE MASK IS REFUSED:) Maintainer 2026-10-31: a mask
+    list holding an entry no reader can reach is not saved. The save is refused with: You have defined a
+    mask that is not reachable: followed by the list of unreachable entries. This replaces the editor''s
+    warning, and applies to every path that saves a mask list. (Amended 2026-10-29, A LISTED COLUMN IS MASKED
+    BY DEFAULT:) Maintainer 2026-10-31: once a column has any mask, a reader no entry matches reads it completely
+    masked, never unmasked. Unmasked is only ever given by an entry. An entry for everyone may still say
+    unmasked, and that is written out. This replaces a reader no entry lists reading the column unmasked.'
   use_case: 'A sender column is unmasked for EU reviewers, pseudonymised for other reviewers and fully masked for everyone else.'
   scenario: 'Given a column with entries [to region__eu: unmasked; to reviewer: pseudonymised; everyone: masked]
 
@@ -89638,7 +89671,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     The data products page, data_products_meta and every other surface that lists products show them only
     to a role holding that capability. Inheriting Viewer gives Data buyer no data: a standard role carries
     capabilities, never grants, so over any connection a user acting as Data buyer reads only what Data
-    buyer is granted, masked and row-ruled as on the page (REQ-1959).'
+    buyer is granted, masked and row-ruled as on the page (REQ-1959). (Amended 2026-10-29, READING NEEDS
+    NO QUERY_DEVELOPMENT:) Maintainer 2026-10-31: no protocol requires query_development to read data. What
+    a role reads is decided by its grants, row rules, masks and the relationship guard, on every protocol
+    alike, so a viewer reads over GraphQL as it does over pgwire. query_development gates development features
+    only. A query a person writes is no wider than a generated API while the relationship guard applies,
+    so it is not an access boundary. (Amended 2026-10-29, VIEWER IS THE FLOOR:) Maintainer 2026-10-31: viewer
+    holds reading the catalog, the glossary and data products (catalog_read, glossary_read, data_product_read),
+    and that is the floor of every role built on it, since a child only adds to what it inherits. This replaces
+    the part of the DATA BUYER amendment under which viewer does not read data products. What a role is
+    shown of a product stays cut to its own rights (REQ-2152). A Data buyer role, if built, adds requesting
+    a product. (Amended 2026-10-29, A ROLE NARROWS ITS PARENTS:) Maintainer 2026-10-31: a role with parents
+    is always a subset of the union of its parents, for capabilities and domains alike. A role stores what
+    it is given; what it holds is that intersected with the union of its parents'' rights. A role with no
+    parents holds what it is given. This replaces inheriting capabilities by union, and domain reach being
+    the role''s own: a parent''s narrowing reaches every descendant, and a capability Provisa adds to a
+    standard role reaches a child only when it is given. Saving a right no parent holds is refused by name.
+    Standard roles stay locked and are the palette. The role form lists what the parents hold, all selected,
+    and a person unselects; domains keep * for every data domain, and capabilities have no such form. Column
+    grants are unchanged. (Amended 2026-10-29, NO FLOOR:) Maintainer 2026-10-31: there is no floor. viewer
+    holds catalog_read, glossary_read and data_product_read, and a child may unselect any of them; such
+    a role has no catalog, glossary or data products. This replaces the floor in the VIEWER IS THE FLOOR
+    amendment; what viewer holds stands.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -90359,7 +90413,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is a gap, not a deliberate difference. No pg_catalog function is listed as skipped by design, whatever
     its family and whether or not a client calls it: each one not served counts as failed until it is served,
     and a probe that cannot call a function is a gap in the probe. The conformance page reports them as
-    failed.'
+    failed. (Amended 2026-10-29, THE GOAL IS 571:) Maintainer 2026-10-31: 571 pg_catalog functions cannot
+    be called on PostgreSQL itself (517 take an internal argument, 54 are refused in every form). They stay
+    reported as failed. The lowest reachable failed count for catalog functions is therefore 571, and that
+    is the goal.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -91458,7 +91515,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to the domain''s data product owners and data stewards, with an email notification. A steward builds
     a product from it, adds the table to an existing product, or declines with a reason; the suggester sees
     the outcome. Suggestions are counted per table, so a domain sees which listed tables are most wanted.
-    Listed means "it exists, ask us"; a product means "we commit to this".'
+    Listed means "it exists, ask us"; a product means "we commit to this". (Amended 2026-10-29, A REQUEST
+    NAMES ROLES AND COLUMNS:) Maintainer 2026-10-31: a person who sees a listed column asks for it directly:
+    an access request names a list of roles and a set of columns, for example from the listed metadata,
+    and needs no data product. Approval writes ordinary grants for those roles on those columns (REQ-2154),
+    so what was granted is visible as any grant is. A product request is the same request with the product''s
+    member columns. (Amended 2026-10-29, THE DATA STEWARD APPROVES A COLUMN REQUEST:) Maintainer 2026-10-31:
+    an access request for columns goes to the data steward of their domain, who approves or declines it.
+    A product request still goes to the product''s owner role. (Amended 2026-10-29, ONE FORM, TWO REQUESTS:)
+    Maintainer 2026-10-31: a request form offers the requester''s existing roles or a new role. Naming a
+    new role creates two requests from the one form: a role request to a holder of user_management (a data
+    steward and a security admin cannot create roles), whose approval creates the role, assigns it to the
+    requester and grants nothing; and a column request to the domain''s data steward, which waits on the
+    role request and ends if it is declined. (Amended 2026-10-29, APPROVING THE ROLE RELEASES THE COLUMN
+    REQUEST:) Maintainer 2026-10-31: the column request is held pending and names no role until the role
+    request is approved. That approval adds the new role to the column request and releases it to the data
+    steward.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them

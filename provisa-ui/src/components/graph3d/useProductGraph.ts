@@ -65,7 +65,7 @@ export async function loadProductGraph(
   ]);
   // The rank edges are absent when the role cannot read them: no hierarchy is drawn.
   const data = productGraph(products, rowsOf(ranks) ?? []);
-  const tables = products.flatMap((p) => p.member_tables ?? []);
+  const tables = products.flatMap((p) => p.memberTables ?? []);
   return {
     data: lineage && product ? withProductLineage(data, product, lineage, tables) : data,
     query,
