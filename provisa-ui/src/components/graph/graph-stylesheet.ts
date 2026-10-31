@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { labelColor, darkenColor } from "./graph-model";
+import { labelColor, darkenColor, propertyValue } from "./graph-model";
 import type { GNode, RelLineOverride } from "./graph-model";
 import type { CyElement } from "./cytoscape-types";
 import { resolveNodeLabel } from "./canvas/canvas-helpers";
@@ -38,8 +38,11 @@ export function nodeCaption(
 ): string {
   if (!n) return String(label ?? "");
   const prop = labelProperty[n.label];
-  if (prop) return String(n.properties[prop] ?? n.id);
-  return resolveNodeLabel(n);
+  if (!prop) return resolveNodeLabel(n);
+  const value = propertyValue(n, prop);
+  if (value !== null && value !== undefined) return String(value);
+  // A SPARQL node's id is a hash of its IRI: it keeps its name until its value is read, if it has one.
+  return n.propertyIris ? resolveNodeLabel(n) : String(n.id);
 }
 
 /** Average glyph width as a share of the font size, for the labels' sans-serif face. */

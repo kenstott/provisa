@@ -56,6 +56,7 @@ import { frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
 import { useSparqlExpansion } from "./frame/use-sparql-expansion";
 import { useSparqlNodeProperties } from "./frame/use-sparql-node-properties";
+import { useSparqlStyledProperties } from "./frame/use-sparql-styled-properties";
 import { groupableAttributes } from "./frame/frame-meta";
 import {
   GraphViewIcon,
@@ -125,6 +126,8 @@ interface GraphFrameProps {
   onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
   /** Ask the model, once, for the properties of a SPARQL node that was selected and holds none. */
   onDescribeResource?: (frameId: string, iri: string) => void;
+  /** Ask the model, once each, for the properties of SPARQL nodes a caption or a size reads. */
+  onDescribeResources?: (frameId: string, iris: string[]) => void;
 }
 
 export function GraphFrame({
@@ -159,6 +162,7 @@ export function GraphFrame({
   sparqlPrefixes,
   onExpandResource,
   onDescribeResource,
+  onDescribeResources,
 }: GraphFrameProps) {
   const { t } = useTranslation();
   const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
@@ -338,6 +342,14 @@ export function GraphFrame({
     frame,
     selected,
     onDescribeResource,
+  );
+  useSparqlStyledProperties(
+    frame.id,
+    frame.sparqlDescribed,
+    augmentedNodes,
+    labelProperty,
+    sizeByProperty,
+    onDescribeResources,
   );
   const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
 

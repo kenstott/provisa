@@ -145,10 +145,16 @@ export function Inspector({
       // its columns by name -- never the drawing's internal id, never a value made up for a column
       // the row did not carry.
       const keyRow: [string, unknown][] = "_id" in props ? [["_id", props._id]] : [];
+      // A SPARQL node's own column named as its caption is, saying the same: one row, the column's.
+      const { label: nodeClass, propertyIris } = selected.data as GNode;
+      const restated = (k: string) => {
+        const column = `${nodeClass}#${k}`;
+        return propertyIris?.[column] !== undefined && props[column] === props[k];
+      };
       return [
         ...keyRow,
         ...Object.entries(props)
-          .filter(([k]) => k !== "_id" && !INJECTED_PROPS.has(k))
+          .filter(([k]) => k !== "_id" && !INJECTED_PROPS.has(k) && !restated(k))
           .sort(([a], [b]) => a.localeCompare(b)),
       ];
     }
@@ -253,6 +259,16 @@ export function Inspector({
       </div>
     );
   }
+
+  // A column of the node's own class reads by its name (pet-store:pets#breedName is breedName);
+  // a term, a standard predicate or another class's column as written, and one whose name another
+  // row of the panel already goes by.
+  const propName = (k: string): string => {
+    const own = `${nodeLabel}#`;
+    if (!isN || !k.startsWith(own) || !(selected.data as GNode).propertyIris?.[k]) return k;
+    const name = k.slice(own.length);
+    return propRows.some(([r]) => r === name) ? k : name;
+  };
 
   const headerLabel = isN
     ? t("graphInspector.nodeProperties")
@@ -536,7 +552,7 @@ export function Inspector({
                       className="gf-prop-key"
                       title={isN ? (selected.data as GNode).propertyIris?.[k] : undefined}
                     >
-                      {k}
+                      {propName(k)}
                     </Table.Td>
                     <Table.Td className="gf-prop-val">{vs}</Table.Td>
                     <Table.Td className="gf-prop-copy-cell">

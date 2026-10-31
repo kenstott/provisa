@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { GNode } from "../graph-model";
+import { propertyValue, type GNode } from "../graph-model";
 import type { CyInstance, CyElement } from "../cytoscape-types";
 
 export function resolveNodeLabel(n: GNode): string {
@@ -31,7 +31,7 @@ export function computeLabelSizeRanges(
     if (!sby) return;
     const gn = nd.data("_node") as GNode | undefined;
     if (!gn) return;
-    const v = Number(gn.properties[sby]);
+    const v = Number(propertyValue(gn, sby));
     if (isNaN(v)) return;
     const cur = ranges.get(sby);
     if (!cur) {
@@ -59,7 +59,7 @@ export function applyNodeSize(
   let sz: number;
   if (sby && gn) {
     const range = ranges.get(sby);
-    const v = Number(gn.properties[sby]);
+    const v = Number(propertyValue(gn, sby));
     if (range && !isNaN(v) && range.max > range.min) {
       const t = (v - range.min) / (range.max - range.min);
       sz = base * (1 + t * (multiplier - 1)) * (inCluster ? 0.5 : 1);

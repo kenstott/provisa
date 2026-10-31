@@ -13,7 +13,7 @@
 // under the tab's own settings. The panel opens wider than Cypher's, its sections closed.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { MemoryRouter } from "react-router-dom";
 import "../i18n";
@@ -61,6 +61,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
 
 import { GraphPage } from "../pages/GraphPage";
 import { DEFAULT_QUERY, graphStateOf } from "../components/graph/graph-persistence";
+import { getStored, setStored } from "../lib/browserStorage";
 
 const BASE = "https://provisa.example";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
@@ -104,7 +105,7 @@ function page(language: "sparql" | "cypher" = "sparql") {
     </MantineProvider>,
   );
 }
-const stored = (name: string) => JSON.parse(localStorage.getItem(name) ?? "null");
+const stored = (name: string) => JSON.parse(getStored(name) ?? "null");
 const openMenu = async () => {
   fireEvent.contextMenu(await screen.findByTestId(`sparql-class-${LABEL}`), {
     clientX: 40,
@@ -114,9 +115,15 @@ const openMenu = async () => {
     ".node-ctx-menu",
   ) as HTMLElement;
 };
+/** A Select's own options: each of the menu's two lists is in the page while it is closed. */
+const optionsOf = async (name: string) => {
+  const input = screen.getByRole("textbox", { name });
+  fireEvent.click(input);
+  await waitFor(() => expect(input).toHaveAttribute("aria-controls"));
+  return within(document.getElementById(input.getAttribute("aria-controls") as string) as HTMLElement);
+};
 const choose = async (name: string, option: string) => {
-  fireEvent.click(screen.getByRole("textbox", { name }));
-  fireEvent.click(await screen.findByRole("option", { name: option }));
+  fireEvent.click((await optionsOf(name)).getByRole("option", { name: option, hidden: true }));
 };
 
 describe("the SPARQL class menu", () => {
@@ -159,7 +166,7 @@ describe("the SPARQL class menu", () => {
     const color = stored("provisa.sparql.colorOverrides")?.[LABEL];
     expect(color).toBeTruthy();
     await waitFor(() => expect(seen.colors[LABEL]).toBe(color));
-    expect(localStorage.getItem("provisa.graph.colorOverrides")).toBeNull();
+    expect(getStored("provisa.graph.colorOverrides")).toBeNull();
     // The pill shows the colour its nodes now have.
     expect(screen.getByTestId(`sparql-class-${LABEL}`).style.background).not.toBe("");
   });
@@ -172,7 +179,7 @@ describe("the SPARQL class menu", () => {
     fireEvent.keyDown(slider, { key: "ArrowRight" });
     await waitFor(() => expect(seen.sizes[LABEL]).toBe(45));
     expect(stored("provisa.sparql.sizeOverrides")).toEqual({ [LABEL]: 45 });
-    expect(localStorage.getItem("provisa.graph.sizeOverrides")).toBeNull();
+    expect(getStored("provisa.graph.sizeOverrides")).toBeNull();
   });
 
   it("captions a class by a property, named plainly and kept as the node holds it", async () => {
@@ -181,7 +188,7 @@ describe("the SPARQL class menu", () => {
     await choose("Label by", "breedName");
     await waitFor(() => expect(seen.captions[LABEL]).toBe(`${LABEL}#breedName`));
     expect(stored("provisa.sparql.labelProperty")).toEqual({ [LABEL]: `${LABEL}#breedName` });
-    expect(localStorage.getItem("provisa.graph.labelProperty")).toBeNull();
+    expect(getStored("provisa.graph.labelProperty")).toBeNull();
   });
 
   it("sizes a class by a numeric property, with its multiplier", async () => {
@@ -190,7 +197,7 @@ describe("the SPARQL class menu", () => {
     await choose("Size by", "price");
     await waitFor(() => expect(seen.sizedBy[LABEL]).toBe(`${LABEL}#price`));
     expect(stored("provisa.sparql.sizeByProperty")).toEqual({ [LABEL]: `${LABEL}#price` });
-    expect(localStorage.getItem("provisa.graph.sizeByProperty")).toBeNull();
+    expect(getStored("provisa.graph.sizeByProperty")).toBeNull();
     await openMenu();
     fireEvent.change(screen.getByRole("textbox", { name: "Size multiplier" }), {
       target: { value: "4" },
@@ -201,9 +208,9 @@ describe("the SPARQL class menu", () => {
   it("offers a node's degrees to size by, and a string property no size", async () => {
     page();
     await openMenu();
-    fireEvent.click(screen.getByRole("textbox", { name: "Size by" }));
-    expect(await screen.findByRole("option", { name: "degTotal" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "breedName" })).toBeNull();
+    const sizes = await optionsOf("Size by");
+    expect(sizes.getByRole("option", { name: "degTotal", hidden: true })).toBeInTheDocument();
+    expect(sizes.queryByRole("option", { name: "breedName", hidden: true })).toBeNull();
   });
 
   it("remembers the choices on the tab, and Cypher's stay its own", async () => {
@@ -217,7 +224,7 @@ describe("the SPARQL class menu", () => {
     await screen.findByTestId(`sparql-class-${LABEL}`);
     expect(seen.captions[LABEL]).toBe(`${LABEL}#breedName`);
     second.unmount();
-    localStorage.setItem("provisa.graph.labelProperty", JSON.stringify({ Pets: "breed" }));
+    setStored("provisa.graph.labelProperty", JSON.stringify({ Pets: "breed" }));
     seen.captions = {};
     page();
     await screen.findByTestId(`sparql-class-${LABEL}`);
@@ -256,7 +263,7 @@ describe("the SPARQL panel's first look", () => {
   });
 
   it("keeps a saved width", async () => {
-    localStorage.setItem("provisa.sparql.sidebarWidth", "200");
+    setStored("provisa.sparql.sidebarWidth", "200");
     const { container } = page();
     await screen.findByTestId("sparql-vocabulary");
     expect(sidebarWidth(container)).toBe("200px");
@@ -277,7 +284,7 @@ describe("the SPARQL panel's first look", () => {
   });
 
   it("keeps a section the viewer left open", async () => {
-    localStorage.setItem(
+    setStored(
       "provisa.collapsibles",
       JSON.stringify({ "sparql.vocabulary": { classes: true } }),
     );

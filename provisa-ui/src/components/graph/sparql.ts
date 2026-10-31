@@ -58,6 +58,40 @@ export function termName(iri: string, prefixes: Record<string, string>): string 
   return ns !== undefined && iri.startsWith(ns) ? decodeURIComponent(iri.slice(ns.length)) : null;
 }
 
+/** The datatypes of a numeric column (provisa.sparql_query.vocabulary.xsd_of). */
+const NUMERIC_DATATYPES = new Set(
+  ["integer", "decimal", "double", "float"].map(
+    (d) => `http://www.w3.org/2001/XMLSchema#${d}`,
+  ),
+);
+
+/** What a class's menu offers: the predicates of its columns and the Property terms they bind, each
+ * by the key a drawn node holds it under, named as the panel names it; and those that are numeric. */
+export function classMenuProperties(
+  cls: SparqlVocabulary["classes"][number],
+  vocabulary: SparqlVocabulary,
+  prefixes: Record<string, string>,
+): { properties: string[]; propertyNames: Record<string, string>; numericProperties: string[] } {
+  const propertyNames: Record<string, string> = {};
+  const numeric = new Set<string>();
+  for (const x of vocabulary.predicates) {
+    const column = x.kind === "column" && cls.labels.includes(x.label ?? "");
+    const bound = x.classes?.find((k) => k.class === cls.iri || cls.labels.includes(k.label));
+    if (!column && !bound) continue;
+    const key = shownIri(x.iri, prefixes);
+    propertyNames[key] = column ? (x.property ?? key) : (termName(x.iri, prefixes) ?? key);
+    if (NUMERIC_DATATYPES.has((bound ?? x).datatype ?? "")) numeric.add(key);
+  }
+  const properties = Object.keys(propertyNames).sort((a, b) =>
+    propertyNames[a].localeCompare(propertyNames[b]),
+  );
+  return {
+    properties,
+    propertyNames,
+    numericProperties: properties.filter((p) => numeric.has(p)),
+  };
+}
+
 /** The prefixes every vocabulary has; any other is a domain's. */
 export const STANDARD_PREFIXES = ["rdf", "rdfs", "owl", "skos", "xsd", "rel", "term", "id"];
 
@@ -412,6 +446,10 @@ const iriLocal = (iri: string): string =>
 const resourceName = (c: RdfCell): string =>
   c.rdfTerm === "iri" && !isPrefixedName(c) ? iriTail(c.value) : c.shown;
 
+/** The label a class's nodes are drawn with, which what is kept per class goes by. */
+export const classLabel = (iri: string, prefixes: Record<string, string>): string =>
+  resourceName({ rdfTerm: "iri", value: iri, shown: shownIri(iri, prefixes) });
+
 /** Whether an IRI's shown form is a prefix and a plain local name: not the whole IRI, and not a
  * shortened path such as ``id:sales/orders/1``, which says nothing a label could. */
 const isPrefixedName = (c: RdfCell): boolean => !c.shown.startsWith("<") && !/[/#%]/.test(c.shown);
@@ -511,6 +549,10 @@ function ontologyTriples(triples: Triple[]): { triples: Triple[]; classes: Map<s
   return { triples: out, classes };
 }
 
+/** ``value`` beside what a predicate holds: one value alone, several a list. */
+const listed = (held: unknown, value: string): unknown =>
+  held === undefined ? value : Array.isArray(held) ? [...held, value] : [held, value];
+
 /**
  * The triples as the canvas draws them: each resource a node, labelled by its class where a triple
  * types it (else its namespace's prefix), and each triple whose object is a resource an edge named
@@ -564,6 +606,7 @@ export function triplesGraph(
         label,
         tableLabel: label,
         propertyIris: {},
+        propertyValues: {},
         properties: classValues.has(c.value)
           ? { name: iriLocal(c.value), class: resourceName(c), ...identity }
           : { name: captionOf(c, literals), ...identity },
@@ -576,10 +619,9 @@ export function triplesGraph(
     const { s, p, o } = t;
     const a = resource(s);
     if (o.rdfTerm === "literal" && !literalNodes) {
-      const held = a.properties[p.shown];
-      a.properties[p.shown] =
-        held === undefined ? o.shown : Array.isArray(held) ? [...held, o.shown] : [held, o.shown];
+      a.properties[p.shown] = listed(a.properties[p.shown], o.shown);
       if (a.propertyIris) a.propertyIris[p.shown] = p.value;
+      if (a.propertyValues) a.propertyValues[p.shown] = listed(a.propertyValues[p.shown], o.value);
       return;
     }
     // A literal node is the triple's own: the same value under two subjects is two nodes.
@@ -610,12 +652,15 @@ export function triplesGraph(
   return { nodes, edges };
 }
 
-/** The class each variable of ``query`` is typed as (``?s a pet-store:pets``), as the query names
- * it; the tail of its IRI where the query writes it in full. */
-function queryClasses(query: string): Map<string, string> {
+/** The class each variable of ``query`` is typed as (``?s a pet-store:pets``): by the label its
+ * nodes are drawn with where ``prefixes`` read it, else as the query names it, the tail of its IRI
+ * where the query writes it in full. */
+function queryClasses(query: string, prefixes?: Record<string, string>): Map<string, string> {
   return new Map(
     [...typedVariables(query)].map(([variable, classes]) => {
       const [first] = classes;
+      const iri = prefixes ? writtenPredicate(first, prefixes) : null;
+      if (prefixes && iri) return [variable, classLabel(iri, prefixes)];
       return [variable, first.startsWith("<") ? iriTail(first.slice(1, -1)) : first];
     }),
   );
@@ -746,15 +791,45 @@ export function frameTriples(frame: FrameData): Triple[] {
 export function describedProperties(literals: Triple[]): {
   properties: Record<string, unknown>;
   propertyIris: Record<string, string>;
+  propertyValues: Record<string, unknown>;
 } {
   const own = new Set(["name", "iri", "class"]);
   const properties: Record<string, unknown> = {};
   const propertyIris: Record<string, string> = {};
+  const propertyValues: Record<string, unknown> = {};
   for (const node of triplesGraph(literals).nodes.values()) {
     for (const [k, v] of Object.entries(node.properties)) if (!own.has(k)) properties[k] = v;
     Object.assign(propertyIris, node.propertyIris);
+    Object.assign(propertyValues, node.propertyValues);
   }
-  return { properties, propertyIris };
+  return { properties, propertyIris, propertyValues };
+}
+
+const shownTriple = (t: Triple, prefixes: Record<string, string>): Triple => ({
+  s: shownBy(t.s, prefixes),
+  p: shownBy(t.p, prefixes),
+  o: shownBy(t.o, prefixes),
+});
+
+/** ``drawn`` with what a DESCRIBE said of each of its nodes on the node, by the prefixes in use. */
+function withDescribed(drawn: FrameData, prefixes?: Record<string, string>): FrameData {
+  const { sparqlDescribed: described } = drawn;
+  if (!described || drawn.nodes.size === 0) return drawn;
+  const nodes = new Map(drawn.nodes);
+  for (const [key, n] of nodes) {
+    const entry = typeof n.properties.iri === "string" ? described[n.properties.iri] : undefined;
+    if (!entry || !("literals" in entry)) continue;
+    const said = describedProperties(
+      prefixes ? entry.literals.map((t) => shownTriple(t, prefixes)) : entry.literals,
+    );
+    nodes.set(key, {
+      ...n,
+      properties: { ...said.properties, ...n.properties },
+      propertyIris: { ...said.propertyIris, ...n.propertyIris },
+      propertyValues: { ...said.propertyValues, ...n.propertyValues },
+    });
+  }
+  return { ...drawn, nodes };
 }
 
 /** ``frame`` as it is drawn: a CONSTRUCT's triples with their literals as properties or, with
@@ -768,10 +843,16 @@ export function sparqlDrawn(
   prefixes?: Record<string, string>,
 ): FrameData {
   const shown = prefixes && { ...prefixes, ...queryPrefixes(frame.query) };
-  const cells = (ts: Triple[]): Triple[] =>
-    shown
-      ? ts.map((t) => ({ s: shownBy(t.s, shown), p: shownBy(t.p, shown), o: shownBy(t.o, shown) }))
-      : ts;
+  return withDescribed(drawnAnswer(frame, literalNodes, drawSelect, shown), shown);
+}
+
+function drawnAnswer(
+  frame: FrameData,
+  literalNodes: boolean,
+  drawSelect: boolean,
+  shown: Record<string, string> | undefined,
+): FrameData {
+  const cells = (ts: Triple[]): Triple[] => (shown ? ts.map((t) => shownTriple(t, shown)) : ts);
   const rows = shown
     ? frame.rows.map((r) =>
         Object.fromEntries(
@@ -791,7 +872,7 @@ export function sparqlDrawn(
   if (drawSelect && frame.sparqlPairing) {
     const pairing = frame.sparqlPairing;
     // The class the query types each end as (``?s a pet-store:pets``), for the nodes' labels.
-    const classes = queryClasses(frame.query);
+    const classes = queryClasses(frame.query, shown);
     const typed = new Map<string, string>();
     for (const [column, variable] of [
       [pairing.subject, pairing.subject],

@@ -33,6 +33,8 @@ export interface ContextMenuState {
   compoundLabel: string;
   tableLabel: string;
   properties: string[];
+  /** How a property is named where its key is not its name (a SPARQL predicate). */
+  propertyNames?: Record<string, string>;
   numericProperties: string[];
 }
 
@@ -150,7 +152,10 @@ export function NodeContextMenu({
               aria-label={t("graphContextMenus.labelBy")}
               data={[
                 { value: "", label: t("graphContextMenus.labelByDefault") },
-                ...menu.properties.map((p) => ({ value: p, label: p })),
+                ...menu.properties.map((p) => ({
+                  value: p,
+                  label: menu.propertyNames?.[p] ?? p,
+                })),
               ]}
               value={currentProp}
               onChange={(v) => {
@@ -190,7 +195,10 @@ export function NodeContextMenu({
               aria-label={t("graphContextMenus.sizeBy")}
               data={[
                 { value: "", label: t("graphContextMenus.sizeByFixed") },
-                ...menu.numericProperties.map((p) => ({ value: p, label: p })),
+                ...menu.numericProperties.map((p) => ({
+                  value: p,
+                  label: menu.propertyNames?.[p] ?? p,
+                })),
               ]}
               value={currentSizeByProp}
               onChange={(v) => {

@@ -142,7 +142,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   const [countsError, setCountsError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     settingKey(language, "sidebarWidth"),
-    240,
+    // SPARQL's vocabulary carries more than Cypher's labels: nested sections, and prefixed names.
+    sparql ? 340 : 240,
   );
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   // How many statements said they changed the graph session (REQ-2176).
@@ -270,6 +271,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     setPrefixEdits,
     expandResource,
     describeResource,
+    describeResources,
     dropClass,
   } = useSparqlExplorer({ active: sparql, roleHeader: roleHeaderValue, framesRef, changeFrame });
 
@@ -1003,16 +1005,19 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           )
         }
         vocabulary={
-          sparql ? (
-            <SparqlVocabularyPanel
-              vocabulary={vocabulary}
-              prefixes={prefixes}
-              error={vocabularyError}
-              onPick={handleVocabularyPick}
-              colorOverrides={colorOverrides}
-              checkedDomains={checkedDomains}
-            />
-          ) : undefined
+          sparql
+            ? (openClassMenu) => (
+                <SparqlVocabularyPanel
+                  vocabulary={vocabulary}
+                  prefixes={prefixes}
+                  error={vocabularyError}
+                  onPick={handleVocabularyPick}
+                  colorOverrides={colorOverrides}
+                  checkedDomains={checkedDomains}
+                  onClassMenu={openClassMenu}
+                />
+              )
+            : undefined
         }
       />
 
@@ -1087,6 +1092,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 sparqlPrefixes={sparql ? prefixes : undefined}
                 onExpandResource={sparql ? expandResource : undefined}
                 onDescribeResource={sparql ? describeResource : undefined}
+                onDescribeResources={sparql ? describeResources : undefined}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
                 onEffectiveDataChange={onEffectiveDataChange}

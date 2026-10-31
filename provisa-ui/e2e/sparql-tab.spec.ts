@@ -12,8 +12,15 @@
 // vocabulary in its sidebar. A class pill runs its own query against /data/sparql as a result card,
 // and a query typed in the bar runs there too: a SELECT answered as rows, a CONSTRUCT drawn.
 
-import type { Request } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 import { test, expect } from "./coverage";
+
+/** The vocabulary's sections start closed: the meta domain's classes, opened. */
+async function openMetaClasses(page: Page) {
+  const vocabulary = page.getByTestId("sparql-vocabulary");
+  await vocabulary.getByTestId("sparql-vocab-classes-toggle").click();
+  await vocabulary.getByTestId("sparql-class-prefix-meta").click();
+}
 
 test.describe("the SPARQL tab", () => {
   test("shows the role's vocabulary, and a class pill's query runs", async ({ page }) => {
@@ -23,6 +30,7 @@ test.describe("the SPARQL tab", () => {
     await expect(vocabulary).toBeVisible({ timeout: 60_000 });
     // The meta domain's Domains table: always readable, and needing no parameter (the first class
     // listed may be a parameterized table, which a read gives no value for and which is refused).
+    await openMetaClasses(page);
     const pill = vocabulary.getByTestId("sparql-class-meta:domains");
     await expect(pill, "the role reads the meta domain's class").toBeVisible({ timeout: 30_000 });
     const shown = (await pill.textContent())?.split("⊂")[0].trim() ?? "";
@@ -51,6 +59,7 @@ test.describe("the SPARQL tab", () => {
     // class: untyped, ?s ranges over every class, past the graph union limit, and is refused.
     // The meta domain's Domains table: a table's class that needs no parameter. Its pill runs its
     // own query, whose PREFIX lines the typed CONSTRUCT then reuses.
+    await openMetaClasses(page);
     const tableClass = page
       .getByTestId("sparql-vocabulary")
       .getByTestId("sparql-class-meta:domains");

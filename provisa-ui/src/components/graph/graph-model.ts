@@ -139,7 +139,15 @@ export interface GNode {
   properties: Record<string, unknown>;
   /** A SPARQL node's property names (compacted predicates) with the full IRI each stands for. */
   propertyIris?: Record<string, string>;
+  /** A SPARQL node's literals under the same names, as their values: ``properties`` holds each as
+   * a result cell shows it, and a caption or a size reads the value. */
+  propertyValues?: Record<string, unknown>;
 }
+
+/** What a caption or a size reads of a node's property. */
+export const propertyValue = (n: GNode, prop: string): unknown =>
+  n.propertyValues && prop in n.propertyValues ? n.propertyValues[prop] : n.properties[prop];
+
 export interface GEdge {
   identity: string;
   start: number;
@@ -403,8 +411,9 @@ export interface FrameData {
   /** What expanding, dragging or dropping onto the frame merged into it, by the resource or class
    *  each was asked of. Kept apart from the answer, so an expansion can be taken back. */
   sparqlExpansions?: Record<string, Triple[]>;
-  /** What selecting a node asked of its resource (a DESCRIBE), by the resource: its literal triples
-   *  for the Properties panel, or the error the request was refused with. Never drawn. */
+  /** What was asked of a resource by selecting its node, or by captioning or sizing its class by a
+   *  property (a DESCRIBE), by the resource: its literal triples, which the drawn node holds as
+   *  properties, or the error the request was refused with. Never a node or an edge of its own. */
   sparqlDescribed?: Record<string, SparqlDescribed>;
   /** What the last merge said: why it was refused, or the resource it found nothing more of. */
   sparqlMerge?: { error?: string; nothingMore?: string };

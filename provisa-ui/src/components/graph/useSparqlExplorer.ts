@@ -25,6 +25,10 @@ import {
   type Triple,
 } from "./sparql";
 
+/** The DESCRIBEs a class's nodes are read by at once. One resource each: several in one query
+ * count against graph.union_limit together. */
+const DESCRIBE_AT_ONCE = 4;
+
 export function useSparqlExplorer({
   active,
   roleHeader,
@@ -111,29 +115,49 @@ export function useSparqlExplorer({
 
   // The resources a DESCRIBE is in flight for, so a node picked again meanwhile asks nothing.
   const describing = useRef(new Set<string>());
-  /** A selected node's properties: the same DESCRIBE an expansion asks, once per resource, kept
-   * apart from the drawing as literals (or the error), for the Properties panel only. */
-  const describeResource = useCallback(
-    (id: string, iri: string) => {
+  /** The same DESCRIBE an expansion asks, once per resource, kept apart from the drawing's triples
+   * as literals (or the error), the frame changed once when all have answered. ``report`` says a
+   * refusal on the frame too, where no selected node's panel would. */
+  const describeAll = useCallback(
+    async (id: string, iris: string[], report: boolean) => {
       const held = framesRef.current.find((fr) => fr.id === id)?.sparqlDescribed ?? {};
-      const flight = `${id}\u0000${iri}`;
-      if (iri in held || describing.current.has(flight)) return;
-      describing.current.add(flight);
-      askTriples(describeQuery(iri))
-        .then(
-          (triples): SparqlDescribed => ({
-            literals: triples.filter((t) => t.o.rdfTerm === "literal"),
-          }),
-          (err: unknown): SparqlDescribed => ({
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        )
-        .then((described) => {
-          describing.current.delete(flight);
-          changeFrame(id, (fr) => ({ sparqlDescribed: { ...fr.sparqlDescribed, [iri]: described } }));
-        });
+      const flight = (iri: string) => `${id}\u0000${iri}`;
+      const asked = iris.filter((iri) => !(iri in held) && !describing.current.has(flight(iri)));
+      if (asked.length === 0) return;
+      asked.forEach((iri) => describing.current.add(flight(iri)));
+      const answers: Record<string, SparqlDescribed> = {};
+      const waiting = [...asked];
+      const reader = async () => {
+        for (let iri = waiting.shift(); iri !== undefined; iri = waiting.shift()) {
+          answers[iri] = await askTriples(describeQuery(iri)).then(
+            (triples): SparqlDescribed => ({
+              literals: triples.filter((t) => t.o.rdfTerm === "literal"),
+            }),
+            (err: unknown): SparqlDescribed => ({
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+      };
+      await Promise.all(Array.from({ length: DESCRIBE_AT_ONCE }, reader));
+      asked.forEach((iri) => describing.current.delete(flight(iri)));
+      const refused = Object.values(answers).find((a) => "error" in a);
+      changeFrame(id, (fr) => ({
+        sparqlDescribed: { ...fr.sparqlDescribed, ...answers },
+        ...(report && refused && "error" in refused ? { sparqlMerge: { error: refused.error } } : {}),
+      }));
     },
     [framesRef, askTriples, changeFrame],
+  );
+  /** A selected node's properties, for its Properties panel. */
+  const describeResource = useCallback(
+    (id: string, iri: string) => void describeAll(id, [iri], false),
+    [describeAll],
+  );
+  /** The nodes a class is captioned or sized by a property of. */
+  const describeResources = useCallback(
+    (id: string, iris: string[]) => void describeAll(id, iris, true),
+    [describeAll],
   );
 
   /** A node's expansion: a DESCRIBE of its resource merged in, or, with ``toggle``, taken back. */
@@ -166,6 +190,7 @@ export function useSparqlExplorer({
     setPrefixEdits,
     expandResource,
     describeResource,
+    describeResources,
     dropClass,
   };
 }
