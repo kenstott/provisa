@@ -209,6 +209,11 @@ def _server_env(ports: dict[str, int]) -> dict[str, str]:
     return {**_source_env(ports), "PROVISA_PUBLIC_URL": BENCH_PUBLIC_URL}
 
 
+def _mcp_env(ports: dict[str, int]) -> dict[str, str]:
+    """The MCP listener the contract's mcp transport dials. A server starts none without a port."""
+    return {"PROVISA_MCP_PORT": str(ports["mcp"]), "PROVISA_MCP_HOST": "127.0.0.1"}
+
+
 def control_plane_on_stack(ports: dict[str, int]) -> None:
     """Each server's control plane is a database of its own on the stack's Postgres: the test
     helpers clone one on the PostgreSQL PG_* names (tests/pg_control_plane.py). The container is
@@ -231,7 +236,7 @@ def start_server(ports: dict[str, int], tmp: Path) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(PERF / "config.yaml"),
-        env=_server_env(ports),
+        env={**_server_env(ports), **_mcp_env(ports)},
     )
     server.start(timeout=600)
     return server
@@ -243,6 +248,44 @@ def start_server(ports: dict[str, int], tmp: Path) -> Any:
 
 AUTH_USER, AUTH_PASSWORD_ENV = "benchuser", "BENCH_PROOF_PASSWORD"
 AUTH_PASSWORD = "benchproof-password-1"  # the user's password on the proof server; the contract reads it from the env var
+JWT_SECRET = "benchproof-jwt-secret-benchproof-jwt-secret"
+
+
+def auth_config(cfg: dict[str, Any], password_hash: str) -> dict[str, Any]:
+    """The perf demo's whole config with its auth section replaced. pgwire and an identity with no
+    role need ``default_role``."""
+    return {
+        **cfg,
+        "auth": {
+            **cfg.get("auth", {}),
+            "provider": "simple",
+            "allow_simple_auth": True,
+            "default_role": "org_admin",
+            "jwt_secret": JWT_SECRET,
+            "simple": {
+                "users": [
+                    {
+                        "username": AUTH_USER,
+                        "password_hash": password_hash,
+                        "roles": ["org_admin"],
+                    }
+                ]
+            },
+        },
+    }
+
+
+def proof_token(now: float) -> str:
+    """A JWT as the simple provider mints one: it reads ``username``, not ``sub``."""
+    import jwt
+
+    claims = {
+        "sub": AUTH_USER,
+        "username": AUTH_USER,
+        "roles": ["org_admin"],
+        "exp": int(now) + 3600,
+    }
+    return jwt.encode(claims, JWT_SECRET, algorithm="HS256")
 
 
 def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
@@ -251,24 +294,8 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
     replaced."""
     import bcrypt
 
-    password = AUTH_PASSWORD
-    # the perf demo's whole config with its auth section replaced
-    cfg: dict[str, Any] = yaml.safe_load((PERF / "config.yaml").read_text())
-    cfg["auth"] = {
-        **cfg.get("auth", {}),
-        "provider": "simple",
-        "allow_simple_auth": True,
-        "jwt_secret": "benchproof-jwt-secret-benchproof-jwt-secret",
-        "simple": {
-            "users": [
-                {
-                    "username": AUTH_USER,
-                    "password_hash": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
-                    "roles": ["org_admin"],
-                }
-            ]
-        },
-    }
+    hashed = bcrypt.hashpw(AUTH_PASSWORD.encode(), bcrypt.gensalt()).decode()
+    cfg = auth_config(yaml.safe_load((PERF / "config.yaml").read_text()), hashed)
     path = tmp / "provisa-auth.yaml"
     path.write_text(yaml.safe_dump(cfg))
 
@@ -281,20 +308,29 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(path),
-        env=_server_env(ports),
+        env={**_server_env(ports), **_mcp_env(ports)},
     )
     server.start(timeout=600)
     return server
 
 
-def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
-    """A server whose configuration makes ClickHouse a replica source (replicate 0, TTL 60):
-    the only way to set it, since the admin API refuses to change a source the config declares."""
-    cfg = yaml.safe_load((PERF / "config.yaml").read_text())
+def replica_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    """ClickHouse a replica source (replicate 0, TTL 60). A table's own ``cache_ttl`` outranks its
+    source's, so its tables carry the TTL too."""
     for src in cfg["sources"]:
         if src["id"] == "bench-clickhouse":
             src["replicate"] = 0
             src["cache_ttl"] = 60
+    for table in cfg["tables"]:
+        if table["source_id"] == "bench-clickhouse":
+            table["cache_ttl"] = 60
+    return cfg
+
+
+def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
+    """A server whose configuration makes ClickHouse a replica source: the only way to set it, since
+    the admin API refuses to change a source the config declares."""
+    cfg = replica_config(yaml.safe_load((PERF / "config.yaml").read_text()))
     config_path = tmp / "perf-replica.yaml"
     config_path.write_text(yaml.safe_dump(cfg))
     server = _proof_server_class()(
@@ -306,7 +342,7 @@ def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(config_path),
-        env=_server_env(ports),
+        env={**_server_env(ports), **_mcp_env(ports)},
     )
     server.start(timeout=600)
     return server
@@ -329,6 +365,7 @@ def replica_phase(
         ep_raw["pgwire"]["port"], ep_raw["bolt"]["port"] = server.pgwire_port, server.bolt_port
         ep_raw["flight"]["port"], ep_raw["grpc"]["port"] = server.flight_port, server.grpc_port
         ep_raw["http"]["base_url"] = server.base_url
+        ep_raw["mcp"]["url"] = f"http://127.0.0.1:{ports['mcp']}/mcp"
         path = out / "proof-contract-replica.yaml"
         path.write_text(yaml.safe_dump(contract, sort_keys=False))
         os.environ["PROVISA_HTTP_BASE_URL"] = server.base_url
@@ -381,7 +418,12 @@ def replica_phase(
     return result
 
 
-JWT_SECRET = "benchproof-jwt-secret-benchproof-jwt-secret"
+PGWIRE_TOKEN_DETAIL = "pgwire carries a user and password, not a bearer token"
+
+
+def credential_reaches(kind: str, transport: str) -> bool:
+    """Whether a credential of ``kind`` has a path over ``transport`` (credential.py)."""
+    return not (kind == "token" and transport == "pgwire")
 
 
 def credentials_phase(
@@ -398,14 +440,13 @@ def credentials_phase(
     the password; HTTP/gRPC/Flight log in first through /auth/login). Also the no-credential
     request, and the login route's own answer."""
     import httpx
-    import jwt
 
     result: dict[str, Any] = {}
     proof["credentials"] = result  # kept even if a step below raises
     password = AUTH_PASSWORD
     server = start_auth_server(ports, tmp)
     try:
-        base = proof_contract(server, project)
+        base = proof_contract(server, project, mcp_port=ports["mcp"])
         os.environ["PROVISA_HTTP_BASE_URL"] = server.base_url
         unauth = httpx.post(
             server.base_url + "/data/graphql",
@@ -420,11 +461,7 @@ def credentials_phase(
             timeout=30,
         )
         result["login_route"] = {"status": probe.status_code, "body": probe.text[:200]}
-        token = jwt.encode(
-            {"sub": AUTH_USER, "roles": ["org_admin"], "exp": int(time.time()) + 3600},
-            JWT_SECRET,
-            algorithm="HS256",
-        )
+        token = proof_token(time.time())
         for kind, secret in (("token", token), ("password", password)):
             os.environ[AUTH_PASSWORD_ENV] = secret
             contract = copy.deepcopy(base)
@@ -464,6 +501,10 @@ def credentials_phase(
             ep = ol.endpoints_from_setup(bound)
             for transport in ol.TRANSPORTS:
                 row: dict[str, Any] = {"transport": transport}
+                if not credential_reaches(kind, transport):
+                    row.update(status="no such cell", detail=PGWIRE_TOKEN_DETAIL)
+                    rows.append(row)
+                    continue
                 try:
                     setup = variant(contract, resolved, "bench-postgresql", transport)
                     ep_t = ol.Endpoints(**{**ep.__dict__, "setup": setup})
@@ -486,12 +527,16 @@ def credentials_phase(
 # --------------------------------------------------------------------------------------------
 
 
-def proof_contract(server: Any, project: str, contract: str = "perf-stack.yaml") -> dict[str, Any]:
+def proof_contract(
+    server: Any, project: str, contract: str = "perf-stack.yaml", mcp_port: int | None = None
+) -> dict[str, Any]:
     raw = yaml.safe_load((HERE / "setups" / contract).read_text())
     ep = raw["deployment"]["endpoints"]
     ep["pgwire"]["port"], ep["bolt"]["port"] = server.pgwire_port, server.bolt_port
     ep["flight"]["port"], ep["grpc"]["port"] = server.flight_port, server.grpc_port
     ep["http"]["base_url"] = server.base_url
+    if mcp_port is not None:
+        ep["mcp"]["url"] = f"http://127.0.0.1:{mcp_port}/mcp"
     domains = {
         "bench-postgresql": {"order_id": ORDERS, "customer_id": ORDERS // 8},
         "bench-clickhouse": {"order_id": ORDERS, "customer_id": ORDERS // 8},
@@ -536,7 +581,29 @@ def one_request(ep: ol.Endpoints, transport: str, query: Any, role: str) -> dict
         resp = getattr(exc, "response", None)
         if resp is not None:
             out["response_body"] = resp.text[:600]  # what the server said
+        else:
+            out["detail"] = " ".join(str(exc).split())[:600]  # a gRPC error's text runs long
         return out
+
+
+#: How the server refuses a read of a table replicated row by row with no filter (REQ-1915): HTTP
+#: answers the code, and every transport the text.
+ROW_LEVEL_REFUSAL = ("data.row_level_filter_required", "is replicated row by row")
+
+
+def refused_by_design(row: dict[str, Any], table_is_row_level: bool) -> bool:
+    """Whether a failed unfiltered request of a row-level table is REQ-1915's refusal, which is the
+    product doing what it says, and not a failed route."""
+    said = f"{row.get('error', '')} {row.get('detail', '')} {row.get('response_body', '')}"
+    return table_is_row_level and any(mark in said for mark in ROW_LEVEL_REFUSAL)
+
+
+def row_level(setup: contract_model.Setup, resolved: lookup.Resolved, source: str) -> bool:
+    """Whether the deployment replicates a table of ``source`` row by row."""
+    return any(
+        resolved.tables[sc.table_identity(setup, source, t).key].row_materialize
+        for t in setup.sources[source].tables
+    )
 
 
 def text_of(query: Any, transport: str) -> Any:
@@ -592,6 +659,12 @@ def evidence_rows(
                 query = request_render.Renderer(setup).render(spec)
                 row["request"] = text_of(query, transport)
                 row.update(one_request(ep, transport, query, role))
+                if (
+                    row["status"] == "error"
+                    and not knobs
+                    and refused_by_design(row, row_level(setup, resolved, source))
+                ):
+                    row["status"] = "refused by design"
                 rows.append(row)
     return rows
 
@@ -752,6 +825,7 @@ def main() -> int:
         "bench-mongodb": leased[2],
         "neo4j-http": leased[3],
         "neo4j-bolt": leased[4],
+        "mcp": leased[5],
     }
     project = f"provisa-benchproof-{os.getpid()}"
     tmp = Path(tempfile.mkdtemp(prefix="benchproof-"))
@@ -766,7 +840,7 @@ def main() -> int:
         control_plane_on_stack(ports)
         phases = set(args.phases.split(","))
         server = start_server(ports, tmp)
-        raw = proof_contract(server, project)
+        raw = proof_contract(server, project, mcp_port=ports["mcp"])
         if "main" in phases:
             main_phase(server, raw, out, proof)
         server.stop_process()
@@ -863,10 +937,12 @@ def replication_apply(
 
     result: dict[str, Any] = {}
     declared = copy.deepcopy(raw)
-    declared["sources"]["bench-clickhouse"]["replication"] = {
-        "setting": "replica",
-        "ttl_seconds": 60,
-    }
+    replica = {"setting": "replica", "ttl_seconds": 60}
+    clickhouse = declared["sources"]["bench-clickhouse"]
+    clickhouse["replication"] = replica
+    # a table's own TTL outranks its source's, and the perf config gives these tables one
+    for table in clickhouse["tables"]:
+        table["replication"] = dict(replica)
     setup = sc.setup_from_dict(
         declared,
         environ=os.environ,
@@ -923,6 +999,10 @@ def verify_routes(
         for source in SOURCES:
             try:
                 s = variant(raw, resolved, source, "pgwire")
+                if row_level(setup, resolved, source):
+                    # an unfiltered read of a row-level table can be refused by design (REQ-1915),
+                    # which says nothing of its route
+                    s = variant(raw, resolved, source, "pgwire", filters=1)
             except contract_model.SetupError as exc:
                 result[source] = {"status": "not exposed", "detail": str(exc)[:200]}
                 continue

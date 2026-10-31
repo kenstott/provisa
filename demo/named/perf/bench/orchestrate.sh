@@ -135,9 +135,11 @@ ulimit -n "$(ulimit -Hn)"
 engine_env() {
   case "$1" in
     pg)
+      # Row-level replicas land where the engine reads them, not in the control plane's database.
       export PROVISA_ENGINE_URL="postgresql://provisa:provisa@localhost:${PROVISA_BENCH_POSTGRESQL_PORT:-25632}/provisa_bench"
+      export PROVISA_MATERIALIZE_URL="$PROVISA_ENGINE_URL"
       ;;
-    *) unset PROVISA_ENGINE_URL ;;
+    *) unset PROVISA_ENGINE_URL PROVISA_MATERIALIZE_URL ;;
   esac
 }
 
