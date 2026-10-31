@@ -13,8 +13,7 @@
 title: Exploited vulnerabilities in our code
 description: >-
   A software company's repositories and the Dependabot alerts on their packages, in its own
-  database, joined by CVE to the NVD and CISA's catalog of Known Exploited Vulnerabilities from
-  government data: which vulnerabilities attackers exploit sit in our code, and how far past CISA's
+  database, joined by CVE to the NVD and CISA's catalog of Known Exploited Vulnerabilities from government data. Which vulnerabilities attackers exploit sit in our code, and how far past CISA's
   due date are they?
 screenshot: card.png
 published: true

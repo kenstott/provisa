@@ -16,13 +16,39 @@ did not give; ERROR is the engine's own refusal of what PostgreSQL answered, or 
 
 from __future__ import annotations
 
+import re
+import sys
 from collections import Counter
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "conformance"))
+
+from function_support import JSON_OIDS, json_parts  # noqa: E402
 
 SERVED, REFUSED, DIFFERS, ERROR = "served", "refused", "differs", "error"
 
 
-def outcome(recorded: tuple, rows: list[tuple] | None, refused: bool) -> str:
+#: A read of json that answers text.
+_TEXT_READ = re.compile(r"->>|#>>|_text\(")
+
+
+def _compared(sql: str, cell: str | None, oid: int) -> Any:
+    """``cell`` as it compares: the numbers of a json answer, and of the text a read of json gives
+    for a number or a value holding one, by value (REQ-2171, JSON NUMBERS COMPARE BY VALUE)."""
+    if cell is None:
+        return None
+    parts = json_parts(cell)
+    number = len(parts) == 3 and parts[0] == parts[2] == ""
+    read = _TEXT_READ.search(sql) and f'"{cell}"' not in sql and (number or cell[:1] in ("{", "["))
+    return tuple(parts) if oid in JSON_OIDS or read else cell
+
+
+def _answer(sql: str, rows: list[tuple], oids: list[int]) -> Counter:
+    return Counter(tuple(map(_compared, [sql] * len(oids), row, oids)) for row in rows)
+
+
+def outcome(sql: str, recorded: tuple, rows: list[tuple] | None, refused: bool) -> str:
     """One statement's outcome: ``rows`` its answer as text, None for an engine error. Rows compare
     as a multiset: no statement has an ORDER BY of its own to hold them to."""
     if refused:
@@ -31,7 +57,10 @@ def outcome(recorded: tuple, rows: list[tuple] | None, refused: bool) -> str:
         return ERROR if rows is None else DIFFERS
     if rows is None:
         return ERROR
-    return SERVED if Counter(map(repr, rows)) == Counter(map(repr, recorded[1])) else DIFFERS
+    oids = recorded[0]
+    if any(len(row) != len(oids) for row in rows):
+        return DIFFERS
+    return SERVED if _answer(sql, rows, oids) == _answer(sql, recorded[1], oids) else DIFFERS
 
 
 def text_of(value: Any) -> str | None:

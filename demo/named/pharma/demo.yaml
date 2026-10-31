@@ -13,8 +13,7 @@
 title: Drug shortage and recall risk
 description: >-
   A hospital pharmacy's formulary and stock, in its own database, joined by NDC and manufacturer to
-  FDA's drug shortages and recalls and to Medicaid's prescriptions from government data: which of
-  our products face shortage or recall risk?
+  FDA's drug shortages and recalls and to Medicaid's prescriptions from government data. Which of our products face shortage or recall risk?
 screenshot: card.png
 published: true
 group: public-data

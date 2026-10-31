@@ -47,11 +47,11 @@ def _replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) ->
     found: dict[str, str] = {}
     for sql, recorded in RECORDED.items():
         try:
-            found[sql] = outcome(recorded, _served(sql, run(written(sql))), False)
+            found[sql] = outcome(sql, recorded, _served(sql, run(written(sql))), False)
         except FunctionRefused:
-            found[sql] = outcome(recorded, None, True)
+            found[sql] = outcome(sql, recorded, None, True)
         except Exception:  # noqa: BLE001 -- any error of the engine's is this statement's outcome
-            found[sql] = outcome(recorded, None, False)
+            found[sql] = outcome(sql, recorded, None, False)
     return {sql: said for sql, said in found.items() if said != SERVED}
 
 

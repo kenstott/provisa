@@ -19,7 +19,7 @@ and the guaranteed list.
 Each overload gets one outcome per engine:
 
   pass          every call PostgreSQL answered, Provisa answered the same
-  wrong_answer  a call compares unequal: its result type, its rows or their values
+  wrong_answer  a call compares unequal: its result type, its rows, their values or their form
   error         PostgreSQL answered a call and Provisa did not (the engine's message is kept)
   not_callable  PostgreSQL itself answers no call of it
   not_reached   the leg ended, or its server went away, before this overload
@@ -42,9 +42,14 @@ can write them, up to three calls with real values. How far values go, exactly:
     checked, nor is Provisa answering what PostgreSQL refuses.
 
 ``answers_checked`` is an overload with at least one value call PostgreSQL answered, its value
-compared; the rest are ``only called`` and each says why (``unchecked``). A NULL call of a strict
-function proves the call was served and its type, not its answer. Three literals, not a domain: a
-function that differs only on values no sample reaches passes here.
+compared. ``form_checked`` is one whose value cannot be compared, called with no NULL argument, whose
+answer has the form PostgreSQL's has (REQ-2167, WHAT GUARANTEED MEANS): ``value_form`` gives the form
+of PostgreSQL's own answer, a named function's, then its type's, then a record's number of fields,
+and otherwise the sample's shape. Each row Provisa answers must fit. PostgreSQL's NULL or void, or a
+set Provisa leaves empty, is no form to check. The rest are ``only called`` and each says why
+(``unchecked``, which a form checked overload keeps: its value is still not compared). A NULL call of
+a strict function proves the call was served and its type, not its answer. Three literals, not a
+domain: a function that differs only on values no sample reaches passes here.
 
 The result is text format under one set of session settings. Rows compare as a multiset (no call
 has an ORDER BY of its own to hold them to); values exactly, except float4 and float8, and their
@@ -53,7 +58,8 @@ compares its type alone.
 
 The session is UTC, and so are a runner and its PostgreSQL service: an engine that ignores the
 session's TimeZone answers the same here and is not told apart. Run off UTC, the pg engine's
-timestamptz answers come back in the server's zone.
+timestamptz answers come back in the server's zone. ``ZONED_FUNCTIONS`` alone are also called off
+UTC, under ``ZONE``, where the zone is in the text they write.
 """
 
 # Requirements: REQ-2167, REQ-2171
@@ -63,6 +69,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import select
 import sys
 import time
@@ -99,6 +106,11 @@ VALUE_ROWS = 3
 #: Floats compare within one part in this (REQ-2171).
 FLOAT_TOLERANCE = 1e-14
 
+#: json and jsonb: their numbers compare by value (REQ-2171, JSON NUMBERS COMPARE BY VALUE).
+JSON_OIDS = frozenset({114, 3802})
+#: A json string, which is passed over, or a json number, its group.
+_JSON_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)')
+
 #: The families whose stable functions depend on the session settings alone. Stable functions
 #: elsewhere (System above all) read the catalog or the session.
 STABLE_FAMILIES = frozenset(
@@ -120,8 +132,68 @@ STABLE_FAMILIES = frozenset(
 #: Stable by pg_proc, but answers from the clock.
 CLOCK_FUNCTIONS = frozenset({"age", "now", "transaction_timestamp", "statement_timestamp"})
 
+#: Written into their text as the session's zone abbreviation, which UTC cannot tell from its name.
+ZONED_FUNCTIONS = frozenset({"timeofday"})
+ZONE = "Asia/Tokyo"
+
 _FLOAT_OIDS = frozenset({700, 701})
 _FLOAT_ARRAY_OIDS = frozenset({1021, 1022})
+_VOID_OID = 2278
+_RECORD_OID = 2249
+
+_DATE = r"\d{4,}-\d{2}-\d{2}"
+_TIME = r"\d{2}:\d{2}:\d{2}(\.\d{1,6})?"
+_ZONE_OFFSET = r"[+-]\d{2}(:\d{2}){0,2}"
+_INTEGER = r"-?\d+"
+_FLOAT = r"-?\d+(\.\d+)?(e[+-]?\d+)?|NaN|-?Infinity"
+_SNAPSHOT = r"\d+:\d+:(\d+(,\d+)*)?"
+_XID = r"\d+"
+
+#: The text form of the types that have one, by oid: under ``SETTINGS``, an interval in the
+#: ``postgres`` style. uuid is version 4's, the only one a PostgreSQL 17 function generates.
+TYPE_FORMS = {
+    16: "[tf]",
+    20: _INTEGER,
+    21: _INTEGER,
+    23: _INTEGER,
+    26: _XID,
+    28: _XID,
+    700: _FLOAT,
+    701: _FLOAT,
+    869: r"(\d{1,3}(\.\d{1,3}){3}|[0-9a-f]*:[0-9a-f:.]*)(/\d{1,3})?",
+    1082: _DATE,
+    1083: _TIME,
+    1114: f"{_DATE} {_TIME}",
+    1184: f"{_DATE} {_TIME}{_ZONE_OFFSET}",
+    1186: r"(?=.)(-?\d+ (year|mon|day)s? ?)*(-?\d+:\d{2}:\d{2}(\.\d{1,6})?)?",
+    1266: f"{_TIME}{_ZONE_OFFSET}",
+    2950: "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+    2970: _SNAPSHOT,
+    3220: "[0-9A-F]+/[0-9A-F]+",
+    5038: _SNAPSHOT,
+    5069: _XID,
+}
+
+_POSITIVE = r"[1-9]\d*"
+
+#: The form of a function's answer where it says more than its type's: random is in [0, 1); a
+#: backend, a port and a transaction are never numbered 0; version's words after its number are the
+#: build's.
+FUNCTION_FORMS = {
+    "inet_client_port": _POSITIVE,
+    "inet_server_port": _POSITIVE,
+    "pg_backend_pid": _POSITIVE,
+    "pg_current_xact_id": _POSITIVE,
+    "random": r"0(\.\d+)?|\d(\.\d+)?e-\d+",
+    "txid_current": _POSITIVE,
+    "version": r"PostgreSQL \d+\.\d+ .+",
+}
+
+#: timeofday's text, but for its last word: the zone's abbreviation, which is PostgreSQL's to say.
+_TIMEOFDAY = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}:\d{2}\.\d{6} \d{4} "
+
+#: One field of a record's text: record_out quotes anything but a plain word, doubling the quotes.
+_FIELD = r'(?:"(?:[^"]|"")*"|[^,"()]*)'
 
 _INTEGERS = ("3", "(-7)", "42")
 _DECIMALS = ("0.5", "(-2.25)", "100")
@@ -314,11 +386,18 @@ ARG_VALUES: dict[str, dict[int, tuple[str, str, str]]] = {
 @dataclass(frozen=True)
 class Call:
     """One statement of an overload. ``answers``: a real answer, compared by value; ``values``:
-    whether the rows compare at all (the NULL call of a stable or volatile function: no)."""
+    whether the rows compare at all (the NULL call of a stable or volatile function: no);
+    ``zone``: the session's TimeZone for this call, if not ``SETTINGS``' UTC."""
 
     sql: str
     answers: bool = False
     values: bool = True
+    zone: str | None = None
+
+    @property
+    def form(self) -> bool:
+        """Whether the answer's form is checked: its value cannot be, and no NULL made it."""
+        return not self.values and "NULL::" not in self.sql
 
 
 def _cast(literal: str, argtype: str) -> str:
@@ -433,7 +512,8 @@ def calls(fn: Function, family: str) -> list[Call]:
     null = function_probe.call(fn)
     if null is None or any(c.sql == null for c in valued):
         return valued
-    return [Call(null, values=fn.volatility == "i"), *valued]
+    zoned = [Call(null, values=False, zone=ZONE)] if fn.name in ZONED_FUNCTIONS else []
+    return [Call(null, values=fn.volatility == "i"), *zoned, *valued]
 
 
 # --- one call on one server -------------------------------------------------------------------
@@ -515,6 +595,19 @@ def _floats_equal(a: str, b: str) -> bool:
     return abs(x - y) <= FLOAT_TOLERANCE * max(abs(x), abs(y))
 
 
+def json_parts(text: str) -> list[str | int | float]:
+    """``text`` as the text between its json numbers and those numbers, each an int or a float:
+    spacing and key order stay in the text, so they still differ."""
+    parts: list[str | int | float] = []
+    start = 0
+    for token in _JSON_TOKEN.finditer(text):
+        if number := token[1]:
+            parts.append(text[start : token.start()])
+            parts.append(int(number) if number.lstrip("-").isdigit() else float(number))
+            start = token.end()
+    return [*parts, text[start:]]
+
+
 def _value_equal(want: str | None, got: str | None, oid: int) -> bool:
     if want == got:
         return True
@@ -526,6 +619,12 @@ def _value_equal(want: str | None, got: str | None, oid: int) -> bool:
         a, b = want.strip("{}").split(","), got.strip("{}").split(",")
         return len(a) == len(b) and all(
             x == y or _floats_equal(x, y) for x, y in zip(a, b, strict=True)
+        )
+    if oid in JSON_OIDS:
+        c, d = json_parts(want), json_parts(got)
+        return len(c) == len(d) and all(
+            x == y or (float in (type(x), type(y)) and _floats_equal(str(x), str(y)))
+            for x, y in zip(c, d, strict=True)
         )
     return False
 
@@ -565,7 +664,56 @@ def difference(want: dict[str, Any], got: dict[str, Any], *, values: bool) -> st
     return None
 
 
+def _shape(sample: str) -> str:
+    """The form of a string with none of its own: its words any word, the rest as written."""
+    parts = re.split(r"(\w+)", sample)
+    return "".join(r"\w+" if i % 2 else re.escape(part) for i, part in enumerate(parts))
+
+
+def value_form(name: str, oid: int, sample: str) -> str:
+    """The regular expression an answer of function ``name``, of type ``oid``, must match, from
+    ``sample``, PostgreSQL's answer."""
+    if name == "timeofday":
+        return _TIMEOFDAY + re.escape(sample.rsplit(" ", 1)[1])
+    if name in FUNCTION_FORMS:
+        return FUNCTION_FORMS[name]
+    if oid in TYPE_FORMS:
+        return TYPE_FORMS[oid]
+    if oid == _RECORD_OID:
+        fields = len(re.findall(rf"{_FIELD}(?:,|\)$)", sample[1:]))
+        return rf"\({_FIELD}(?:,{_FIELD}){{{fields - 1}}}\)"
+    return _shape(sample)
+
+
+def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bool, str | None]:
+    """Whether a form was checked, and how Provisa's answer differs from PostgreSQL's in it. A set's
+    rows are its server's own, so one Provisa leaves empty differs in nothing and checks nothing."""
+    oid = want["fields"][0]
+    sample = next((row[0] for row in want["rows"] if row[0] is not None), None)
+    if sample is None or oid == _VOID_OID:
+        return False, None
+    values = [row[0] for row in got["rows"] if row[0] is not None]
+    if not values:
+        if oid == _RECORD_OID or len(want["rows"]) > 1:
+            return False, None
+        return True, f"None, PostgreSQL {sample!r}"
+    form = re.compile(value_form(name, oid, sample), re.DOTALL)
+    for value in values:
+        if form.fullmatch(value) is None:
+            return True, f"{value!r} is not the form of PostgreSQL's {sample!r}"
+    return True, None
+
+
 # --- one overload on one engine ---------------------------------------------------------------
+
+
+def _answer(server: Session, call_: Call) -> dict[str, Any]:
+    if call_.zone is None:
+        return server.answer(call_.sql)
+    server.answer(f"SET TimeZone TO '{call_.zone}'")
+    answer = server.answer(call_.sql)
+    server.answer(SETTINGS[0])
+    return answer
 
 
 def measure_overload(
@@ -580,31 +728,35 @@ def measure_overload(
         "kind": fn.kind,
         "volatility": fn.volatility,
     }
-    accepted = answered = 0
+    accepted = answered = formed = 0
     wrong: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     refused: list[str] = []
     routes: set[str] = set()
     lost = False
     for call_ in planned:
-        want = pg.answer(call_.sql)
+        want = _answer(pg, call_)
         if not want["ok"] or not want["fields"]:
             refused.append(want.get("error") or "no result column")
             continue
         accepted += 1
         answered += call_.answers
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
-        got = provisa.answer(call_.sql)
+        got = _answer(provisa, call_)
         if not got["ok"]:
             errors.append({"statement": call_.sql, "error": got["error"]})
             lost = lost or got.get("lost", False)
             continue
         differs = difference(want, got, values=call_.values)
+        if differs is None and call_.form:
+            checked, differs = form_check(fn.name, want, got)
+            formed += checked
         if differs is not None:
             wrong.append({"statement": call_.sql, "difference": differs})
     entry["calls"] = accepted
     entry["answers_compared"] = answered
     entry["answers_checked"] = answered > 0
+    entry["form_checked"] = formed > 0 and not answered
     entry["served_by"] = "+".join(sorted(routes)) or None
     if not answered:
         why = unchecked(fn, family)
@@ -694,14 +846,17 @@ OUTCOMES = ("pass", "wrong_answer", "error", "not_callable", "not_reached")
 
 
 def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
-    """The outcomes, with a pass split by whether an answer was checked or it was only called."""
+    """The outcomes, with a pass split by what was checked: an answer, a form, or neither."""
     tally = Counter(o["outcome"] for o in overloads)
     out = {name: tally.get(name, 0) for name in OUTCOMES}
     out["total"] = len(overloads)
     out["pass_answers_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("answers_checked")
     )
-    out["pass_only_called"] = out["pass"] - out["pass_answers_checked"]
+    out["pass_form_checked"] = sum(
+        1 for o in overloads if o["outcome"] == "pass" and o.get("form_checked")
+    )
+    out["pass_only_called"] = out["pass"] - out["pass_answers_checked"] - out["pass_form_checked"]
     # Passed without reaching the engine: the catalog DB answers it on every engine alike.
     out["pass_catalog_answered"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("served_by") == "catalog"
@@ -711,15 +866,16 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
 
 def _row(label: str, c: dict[str, int]) -> str:
     return (
-        f"| {label} | {c['total']} | {c['pass_answers_checked']} | {c['pass_only_called']} "
+        f"| {label} | {c['total']} | {c['pass_answers_checked']} | {c['pass_form_checked']} "
+        f"| {c['pass_only_called']} "
         f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
     )
 
 
 _HEADER = (
-    "| | overloads | pass, answers checked | pass, only called | wrong answer | error "
-    "| not callable | not reached |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|",
+    "| | overloads | pass, answers checked | pass, form checked | pass, only called "
+    "| wrong answer | error | not callable | not reached |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
 )
 
 
@@ -760,9 +916,10 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     """The legs as one document. ``reports`` holds every engine the workflow runs, None for a leg
     that left no result: it counts as not reached, so nothing is guaranteed by its absence.
 
-    An overload is on the guaranteed list when it passes on every engine, listed under
-    ``answers_checked`` if an answer was compared and ``only_called`` if not. A function is
-    guaranteed when each of its overloads PostgreSQL can call is."""
+    An overload passing on every engine is listed by what every engine checked of it (``proof``):
+    ``answers_checked``, ``form_checked`` where a form stood in on any of them, and ``only_called``
+    if any engine checked neither. The guaranteed list is the first two (REQ-2167, WHAT GUARANTEED
+    MEANS). A function is guaranteed when each of its overloads PostgreSQL can call is."""
     by_engine = {
         engine: {
             (o["function"], o["overload"]): o for o in (report or {"overloads": []})["overloads"]
@@ -786,6 +943,10 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
                 "answers_checked": any(
                     e is not None and e.get("answers_checked") for e in entries.values()
                 ),
+                "form_checked": any(
+                    e is not None and e.get("form_checked") for e in entries.values()
+                ),
+                "proof": _proof(entries),
                 "unchecked": next(
                     (e["unchecked"] for e in entries.values() if e and "unchecked" in e), None
                 ),
@@ -795,7 +956,7 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     guaranteed: list[dict[str, Any]] = [
         f for f in functions if all(o["outcome"] == "pass" for o in f["outcomes"].values())
     ]
-    held = {(f["function"], f["overload"]) for f in guaranteed}
+    held = {(f["function"], f["overload"]) for f in guaranteed if f["proof"] != "only_called"}
     callable_by_name: dict[str, list[dict[str, Any]]] = {}
     for f in functions:
         if not all(o["outcome"] == "not_callable" for o in f["outcomes"].values()):
@@ -819,12 +980,12 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         ),
         "counts": per_engine,
         "guaranteed": {
-            "answers_checked": sorted(
-                f"{f['function']}({f['overload']})" for f in guaranteed if f["answers_checked"]
-            ),
-            "only_called": sorted(
-                f"{f['function']}({f['overload']})" for f in guaranteed if not f["answers_checked"]
-            ),
+            **{
+                proof: sorted(
+                    f"{f['function']}({f['overload']})" for f in guaranteed if f["proof"] == proof
+                )
+                for proof in ("answers_checked", "form_checked", "only_called")
+            },
             "functions": sorted(
                 name
                 for name, overloads in callable_by_name.items()
@@ -833,6 +994,16 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         },
         "functions": functions,
     }
+
+
+def _proof(entries: dict[str, dict[str, Any] | None]) -> str:
+    """What every engine checked of an overload."""
+    present = [e or {} for e in entries.values()]
+    if all(e.get("answers_checked") for e in present):
+        return "answers_checked"
+    if all(e.get("answers_checked") or e.get("form_checked") for e in present):
+        return "form_checked"
+    return "only_called"
 
 
 def _absent() -> dict[str, Any]:
@@ -849,13 +1020,15 @@ def merged_markdown(doc: dict[str, Any]) -> str:
         *_HEADER,
         *(_row(engine, doc["counts"][engine]) for engine in engines),
         "",
-        f"**Guaranteed list:** {len(guaranteed['answers_checked'])} overloads pass on all "
-        f"{len(engines)} engines with an answer checked, {len(guaranteed['only_called'])} more "
-        f"pass only called; {len(guaranteed['functions'])} functions have every callable "
-        "overload on the list.",
+        f"**Guaranteed list:** {len(guaranteed['answers_checked'])} overloads with answers "
+        f"compared and {len(guaranteed['form_checked'])} form checked, passing on all "
+        f"{len(engines)} engines; {len(guaranteed['only_called'])} more only called, which are "
+        f"not on it. {len(guaranteed['functions'])} functions have every callable overload on "
+        "the list.",
         "",
         "Comparison: " + doc["comparison"] + ". A pass counts as answers checked when a call with "
-        "real values was compared, and as only called when it was not: such a pass proves the "
+        "real values was compared, as form checked when a value that cannot be compared has the "
+        "type and the form of PostgreSQL's, and as only called otherwise: such a pass proves the "
         "call is served and its type, not its answer.",
         "",
     ]
@@ -869,7 +1042,7 @@ def merged_markdown(doc: dict[str, Any]) -> str:
     if doc["engines_incomplete"]:
         lines += [f"**Incomplete legs:** {', '.join(doc['engines_incomplete'])}.", ""]
     lines += [
-        "### Per family: pass (answers checked + only called) of callable overloads",
+        "### Per family: pass (answers checked + form checked + only called) of callable overloads",
         "",
         "| family | overloads | " + " | ".join(engines) + " | on all |",
         "|---|---:|" + "---:|" * (len(engines) + 1),
@@ -891,12 +1064,11 @@ def merged_markdown(doc: dict[str, Any]) -> str:
 
 
 def _family_cell(outcomes: list[str], members: list[dict[str, Any]]) -> str:
-    checked = sum(
-        1 for o, f in zip(outcomes, members, strict=True) if o == "pass" and f["answers_checked"]
-    )
-    passed = sum(1 for o in outcomes if o == "pass")
+    passes = [f for o, f in zip(outcomes, members, strict=True) if o == "pass"]
+    checked = sum(1 for f in passes if f["answers_checked"])
+    formed = sum(1 for f in passes if f["form_checked"])
     callable_ = sum(1 for o in outcomes if o != "not_callable")
-    return f"{checked} + {passed - checked} of {callable_}"
+    return f"{checked} + {formed} + {len(passes) - checked - formed} of {callable_}"
 
 
 def merge(engines: list[str], indir: Path, out: Path, out_md: Path) -> int:

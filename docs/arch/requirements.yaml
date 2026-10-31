@@ -35915,7 +35915,21 @@
     own and is never inherited, and * means every data domain. viewer holds meta and ontology, so every
     role built on viewer has them; a role with no viewer ancestor does not. Column grants, view_governance
     and row rules apply within a system domain as they do anywhere. System domains are not offered in domain
-    pickers.'
+    pickers. (Amended 2026-10-29, READ, WRITE OR LIST:) Maintainer 2026-10-31: every role sees core metadata
+    for the tables of non-system domains it can read, write or list, with no meta grant. List means a role
+    can see only the metadata, never the data. Metadata about a table reached this way is held to the role''s
+    column grants. The pgwire catalog passes metadata along and is neither the meta domain nor gated by
+    it. (Amended 2026-10-29, CORRECTION TO READ, WRITE OR LIST:) The sentence holding this metadata to the
+    role''s column grants is withdrawn: the maintainer did not state it, and a role that can only list holds
+    no column grants. (Amended 2026-10-29, THE SAME ON EVERY CATALOG SURFACE:) Maintainer 2026-10-31: read,
+    write or list holds on every surface that describes the catalog: the gRPC proto, JSON:API, GraphQL,
+    Cypher, SPARQL and OpenAPI, as on the pgwire catalog and meta. (Amended 2026-10-29, SCOPED TO DOMAIN
+    GRANTS:) Maintainer 2026-10-31: all catalog functions are scoped to a role''s non-system domain grants,
+    unless the role holds a specific grant to a system domain. (Amended 2026-10-29, LIST IS FOR SQL:) Maintainer
+    2026-10-31: list applies to SQL, that is the pgwire catalog and meta. The gRPC proto, JSON:API, GraphQL,
+    Cypher, SPARQL and OpenAPI describe what a role can read or write, so a list-only table does not appear
+    on them. This narrows THE SAME ON EVERY CATALOG SURFACE, and scoping to domain grants still holds on
+    all of them.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
@@ -82696,57 +82710,73 @@
   feature: product-tour-and-demos-sandbox
   priority: SHOULD
   type: behavioral
-  description: 'provisa.dev has a live demos page with one card for each published named demo: its title, description and
-    screenshot, and an "Open live demo" button. The button opens a cloud.provisa.dev sandbox of that demo that needs no signup,
-    with the demo''s example queries and the product tour. A named demo says whether it is published, and what its card shows,
-    in demo/named/<name>/demo.yaml (title, description, screenshot, published: true or false); the site build generates the
-    page from those files, as it generates the source picker, and CI fails when the page is out of step with them. Every published
-    demo is lightweight, and its data is seeded ahead of time: never at a visitor''s request, and never by a live traffic
-    generator. Opening the page warms the cloud coordinator in the background through the front door''s wake-on-hit, so that
-    a visitor''s click rarely meets the waking page. The cloud side: each published demo has a template organization on the
-    sandbox tier, built from the demo''s published bundle, whose own sources it reads live from the stores the tier''s node
-    runs (REQ-2049); only a SaaS-account source is landed, when the bundle is built. Opening the demo (cloud.provisa.dev/demos/<name>,
-    no account) opens a sandbox: an organization of its own (id sbx<hex>) whose model is copied from the template, reading
-    the demo''s own sources live and any replica the template holds copied into its own file, so nothing is seeded at the
-    visitor''s request. The visitor is a user minted for the sandbox with the sandbox role and a personal access token the
-    browser keeps (REQ-1035: no identity-provider sign-in). A signed-in person''s "Try it Out" sandbox (POST /sandboxes/<name>)
-    is the same organization model under their own identity, the same one from every device they use. Every sandbox runs on
-    an in-process DuckDB engine of its own, pinned to the file in its folder (REQ-1992); real organizations stay on their
-    own engine. Exactly one process ever opens a sandbox''s file: the sandbox tier, a single-worker API of its own (PROVISA_SANDBOX_TIER),
-    which serves only sandbox and template organizations; the UI server sends a sandbox''s requests there by its address,
-    and every other process refuses a sandbox by name (421 sandbox.wrong_tier). Inside it, concurrent requests share the one
-    engine; a write-write conflict DuckDB raises is refused by name (engine.write_conflict), never retried, and two creates
-    of one source id leave one created and the other refused (schema.source_id_taken). Model edits go through the model store''s
-    guards as any organization''s do. Nobody else can join a sandbox of either kind: the sandbox role holds no user_management
-    (REQ-1597), so no one can be invited into it. Limits, each an operator setting with a settings UI: sandbox.max_concurrent
-    (past it, a visitor is asked to try again shortly, sandbox.at_capacity), sandbox.memory_limit (the sandbox engine''s DuckDB
-    memory_limit), sandbox.disk_limit (the sandbox''s folder, its DuckDB file and uploads together; a write past it is refused,
-    sandbox.disk_full), and sandbox.idle_ttl (a sandbox no request has reached for that long is deleted whole: its organization,
-    engine, folder and token). A sandbox''s sources may reach only the destinations its demo declares and public addresses,
-    checked at registration and again at each connection, each connection made to the checked address (sources.private_destination,
-    sources.unpinnable_destination). A named sandbox''s person is told plainly that this is a lightweight version with limits,
-    each named with its value read from the settings, in the sandbox''s welcome notice and on the hosted-sandbox docs page:
-    it runs on a single-process DuckDB engine, not the engine production organizations use; the memory cap and the disk cap
-    (DuckDB file plus uploads); concurrent writes from several devices can be refused with a conflict, to retry; it expires
-    after the inactivity period; its person can''t invite people, or switch or manage environments; the sample sources are
-    read-only and writes stay inside the sandbox. All of it is translated in every locale, with no requirement ids in the
-    UI. A sandbox''s AI -- Polly and every AI-model role (column and table descriptions, relationship inference, natural-language
-    SQL, table selection) -- uses one OpenAI-wire endpoint and model the sandbox tier''s operator names (sandbox.ai_base_url,
-    sandbox.ai_model, default anthropic/claude-haiku-5.5 through OpenRouter), off until the endpoint and its key are set;
-    the key is a ${secret:...} in the deployment organization''s vault, resolved there for that endpoint only, while every
-    credential a visitor writes resolves in the sandbox''s own vault. A sandbox has no embedding model.
-    (Amended 2026-10-17, A DEMO SEEDED INTO AN ORDINARY ORG:) On a deployment of many organizations, an
-    ordinary org created with the deployment''s demo holds the demo''s sources, which the operator wrote as a
-    template''s are: those sources reach the destinations the demo declares, private ones included, as a
-    sandbox''s demo sources do. Every other source of that org -- one its members add, at the demo''s own host
-    or anywhere else -- is held to public destinations, when it is saved and at each connection. (Amended 2026-10-18, TEMPLATE BUILDS A FEW AT A TIME:) The tier builds its demos'' templates through a queue, sandbox.template_builds_at_once of them together (an operator setting, default 2, read when the tier starts): built all at once after a restart, a 2-vCPU tier was too busy to serve visitors. A visitor who opens a demo whose template is still waiting is told it is still being prepared (sandbox.demo_not_ready) and the demo is built next. A template that cannot be built is logged with its cause and leaves the others to build.
-    (Amended 2026-10-24, A DEPLOYMENT CAPS EVERY ENGINE:) An operator setting, engine.duckdb_memory_limit
-    (bytes, on the settings page''s engine card, env PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT), caps the
-    memory of every DuckDB engine the deployment builds, not only a sandbox''s; past it a query spills
-    to disk or is refused by name. Unset, an engine keeps DuckDB''s own limit (most of the host''s
-    memory), for a host the engine has to itself. A sandbox''s engine keeps its own cap
-    (sandbox.memory_limit). The UI e2e lanes set it for each backend, which shares a 16 GB runner
-    with the demo sources and the browser.'
+  description: 'provisa.dev has a live demos page with one card for each published named demo: its title,
+    description and screenshot, and an "Open live demo" button. The button opens a cloud.provisa.dev sandbox
+    of that demo that needs no signup, with the demo''s example queries and the product tour. A named demo
+    says whether it is published, and what its card shows, in demo/named/<name>/demo.yaml (title, description,
+    screenshot, published: true or false); the site build generates the page from those files, as it generates
+    the source picker, and CI fails when the page is out of step with them. Every published demo is lightweight,
+    and its data is seeded ahead of time: never at a visitor''s request, and never by a live traffic generator.
+    Opening the page warms the cloud coordinator in the background through the front door''s wake-on-hit,
+    so that a visitor''s click rarely meets the waking page. The cloud side: each published demo has a template
+    organization on the sandbox tier, built from the demo''s published bundle, whose own sources it reads
+    live from the stores the tier''s node runs (REQ-2049); only a SaaS-account source is landed, when the
+    bundle is built. Opening the demo (cloud.provisa.dev/demos/<name>, no account) opens a sandbox: an organization
+    of its own (id sbx<hex>) whose model is copied from the template, reading the demo''s own sources live
+    and any replica the template holds copied into its own file, so nothing is seeded at the visitor''s
+    request. The visitor is a user minted for the sandbox with the sandbox role and a personal access token
+    the browser keeps (REQ-1035: no identity-provider sign-in). A signed-in person''s "Try it Out" sandbox
+    (POST /sandboxes/<name>) is the same organization model under their own identity, the same one from
+    every device they use. Every sandbox runs on an in-process DuckDB engine of its own, pinned to the file
+    in its folder (REQ-1992); real organizations stay on their own engine. Exactly one process ever opens
+    a sandbox''s file: the sandbox tier, a single-worker API of its own (PROVISA_SANDBOX_TIER), which serves
+    only sandbox and template organizations; the UI server sends a sandbox''s requests there by its address,
+    and every other process refuses a sandbox by name (421 sandbox.wrong_tier). Inside it, concurrent requests
+    share the one engine; a write-write conflict DuckDB raises is refused by name (engine.write_conflict),
+    never retried, and two creates of one source id leave one created and the other refused (schema.source_id_taken).
+    Model edits go through the model store''s guards as any organization''s do. Nobody else can join a sandbox
+    of either kind: the sandbox role holds no user_management (REQ-1597), so no one can be invited into
+    it. Limits, each an operator setting with a settings UI: sandbox.max_concurrent (past it, a visitor
+    is asked to try again shortly, sandbox.at_capacity), sandbox.memory_limit (the sandbox engine''s DuckDB
+    memory_limit), sandbox.disk_limit (the sandbox''s folder, its DuckDB file and uploads together; a write
+    past it is refused, sandbox.disk_full), and sandbox.idle_ttl (a sandbox no request has reached for that
+    long is deleted whole: its organization, engine, folder and token). A sandbox''s sources may reach only
+    the destinations its demo declares and public addresses, checked at registration and again at each connection,
+    each connection made to the checked address (sources.private_destination, sources.unpinnable_destination).
+    A named sandbox''s person is told plainly that this is a lightweight version with limits, each named
+    with its value read from the settings, in the sandbox''s welcome notice and on the hosted-sandbox docs
+    page: it runs on a single-process DuckDB engine, not the engine production organizations use; the memory
+    cap and the disk cap (DuckDB file plus uploads); concurrent writes from several devices can be refused
+    with a conflict, to retry; it expires after the inactivity period; its person can''t invite people,
+    or switch or manage environments; the sample sources are read-only and writes stay inside the sandbox.
+    All of it is translated in every locale, with no requirement ids in the UI. A sandbox''s AI -- Polly
+    and every AI-model role (column and table descriptions, relationship inference, natural-language SQL,
+    table selection) -- uses one OpenAI-wire endpoint and model the sandbox tier''s operator names (sandbox.ai_base_url,
+    sandbox.ai_model, default anthropic/claude-haiku-5.5 through OpenRouter), off until the endpoint and
+    its key are set; the key is a ${secret:...} in the deployment organization''s vault, resolved there
+    for that endpoint only, while every credential a visitor writes resolves in the sandbox''s own vault.
+    A sandbox has no embedding model. (Amended 2026-10-17, A DEMO SEEDED INTO AN ORDINARY ORG:) On a deployment
+    of many organizations, an ordinary org created with the deployment''s demo holds the demo''s sources,
+    which the operator wrote as a template''s are: those sources reach the destinations the demo declares,
+    private ones included, as a sandbox''s demo sources do. Every other source of that org -- one its members
+    add, at the demo''s own host or anywhere else -- is held to public destinations, when it is saved and
+    at each connection. (Amended 2026-10-18, TEMPLATE BUILDS A FEW AT A TIME:) The tier builds its demos''
+    templates through a queue, sandbox.template_builds_at_once of them together (an operator setting, default
+    2, read when the tier starts): built all at once after a restart, a 2-vCPU tier was too busy to serve
+    visitors. A visitor who opens a demo whose template is still waiting is told it is still being prepared
+    (sandbox.demo_not_ready) and the demo is built next. A template that cannot be built is logged with
+    its cause and leaves the others to build. (Amended 2026-10-24, A DEPLOYMENT CAPS EVERY ENGINE:) An operator
+    setting, engine.duckdb_memory_limit (bytes, on the settings page''s engine card, env PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT),
+    caps the memory of every DuckDB engine the deployment builds, not only a sandbox''s; past it a query
+    spills to disk or is refused by name. Unset, an engine keeps DuckDB''s own limit (most of the host''s
+    memory), for a host the engine has to itself. A sandbox''s engine keeps its own cap (sandbox.memory_limit).
+    The UI e2e lanes set it for each backend, which shares a 16 GB runner with the demo sources and the
+    browser. (Amended 2026-10-29, A VISITOR WAITS, NEVER REFUSED ON THE WAY:) J393: the tier builds every
+    published template ahead, one at a time, for versions it has pulled, and the first open no longer pays
+    for it. An open waits up to 120 seconds for its template and stores rather than refusing. The front
+    door wakes the sandbox VM with the coordinator on demo paths only. The demo page waits across every
+    starting state and states the stage; a tier or template that cannot start is named as failed, never
+    left starting.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
@@ -90796,7 +90826,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     separate rewriter. An engine tweak is added only after a replay fails. (Amended 2026-10-29, ALWAYS POSTGRESQL
     TO THE TARGET:) Maintainer 2026-10-31: sqlglot always reads PostgreSQL and writes the target. Every
     form and expansion is written in PostgreSQL syntax and rendered for any engine, not listed per dialect;
-    only an engine tweak added after a replay fails is written for one engine.'
+    only an engine tweak added after a replay fails is written for one engine. (Amended 2026-10-29, WHAT
+    A DIALECT CANNOT CHECK IS REFUSED:) J371b: a form whose answer needs an overflow error is refused by
+    name on a dialect whose failing cast does not raise, or whose arithmetic checks no range (MySQL, SQLite,
+    Spark, and Databricks with it, since the dialect name cannot show ANSI mode), until a replay shows otherwise.
+    A function whose answer depends on an argument type the transpiler cannot see (set_masklen of a column)
+    is refused unless the statement says the type. (Amended 2026-10-29, JSON NUMBERS COMPARE BY VALUE:)
+    Maintainer 2026-10-31: JSON returns untyped numbers, so an answer holding JSON numbers is compared as
+    int or float, with decimals as float, not as text: 1.50 and 1.5 are the same answer.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -91509,7 +91546,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     FROM THE LIBRARY OR A NEW DOCUMENT:) Find terms in a document offers two ways to choose the document:
     pick one already in the reference library (REQ-2185), or give a new one as a file or an http(s) URL,
     which joins the library as a proposed document. Either way the scan is the same and its proposals cite
-    the library''s copy.'
+    the library''s copy. (Amended 2026-10-29, A SCAN ALWAYS ENDS:) A scan runs in background work that outlives
+    the request. glossary_term_finding has no default model: a scan is refused at start, saying where to
+    set one, until an org names it. Each model call has 300 seconds; a scan with no progress for 660 seconds,
+    or from an earlier launch, fails with the reason. The scan shows its model and step, a person can cancel
+    it, and a cancelled scan is stored failed with who cancelled it.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document

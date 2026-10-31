@@ -11,8 +11,7 @@
 title: Data you can trust
 description: >-
   A chain of shops' daily sales feed, landed into bronze and refined into silver and gold by
-  materialized views that check every batch: landing a batch is all it takes, a clean batch
-  reaches gold, and a bad one is shown failed and never reaches silver.
+  materialized views that check every batch. Landing a batch is all it takes: a clean batch reaches gold, and a bad one is shown failed and never reaches silver.
 screenshot: card.png
 published: true
 group: provision

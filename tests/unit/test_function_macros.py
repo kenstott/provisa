@@ -82,7 +82,9 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         if outcome(name, arity, dialect) != "emulated":
             continue
         args = [f"p{i}" for i in range(arity)]
-        out = transpile(f"SELECT {name}({', '.join(args)}) AS v", dialect)
+        # A column of no said type is refused by name: only the statement tells inet from cidr.
+        said = ["p0::inet", *args[1:]] if name == "set_masklen" else args
+        out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
         columns = {
             c.name for c in sqlglot.parse_one(out, read=dialect).find_all(sqlglot.exp.Column)
         }

@@ -44,7 +44,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import raising
-from provisa.transpiler import pg_forms, pg_forms_json
+from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
 from provisa.transpiler.metadata_functions import VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
@@ -65,6 +65,12 @@ _BOOL_ANDS = _LIKES | {"bigquery"}
 _SPLIT_PARTS = _LIKES
 #: A regexp_substr(value, pattern, start, occurrence) of the dialect's own, sqlglot's to write.
 _REGEXP_SUBSTRS = frozenset({"snowflake", "oracle", "mysql", "bigquery", "redshift"})
+#: A cast of a text that is no number is an error here, so a form can raise PostgreSQL's refusal.
+#: MySQL and SQLite read such a text as 0, and Spark and Databricks outside ANSI mode as NULL: a row
+#: that raises is refused on them by name until a replay shows otherwise.
+_CASTS_CHECKED = _DUCKDB | _TRINO | {
+    "snowflake", "bigquery", "clickhouse", "tsql", "redshift", "oracle",
+}  # fmt: skip
 
 
 class Pg(str):
@@ -799,6 +805,20 @@ _DATES: tuple[Macro, ...] = (
     _macro("timetz", "value", "CAST(value AS TIMETZ)"),
 )
 
+
+def _operator(form: pg_forms_types.Form) -> Macro:
+    """A row of the generated rule: a form that raises on the dialects that can raise it (REQ-2171,
+    AN ANSWER THAT DIFFERS IS REFUSED)."""
+    tweak = pg_forms_types.DUCKDB_TWEAKS.get(form.name)
+    checked = form.raises or form.name in pg_forms_types.OVERFLOW_UNCHECKED
+    forms = {_CASTS_CHECKED if checked else _EVERY: Pg(form.sql)}
+    return Macro(
+        form.name,
+        tuple(form.params.split(", ")),
+        operators={_DUCKDB: tweak, **forms} if tweak else forms,
+    )
+
+
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
     _operators("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
@@ -1054,6 +1074,11 @@ _ROWS: tuple[Macro, ...] = (
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
     *(Macro(name, params, forms) for name, params, forms in pg_forms_json.ROWS),
+    *map(_operator, pg_forms_types.OPERATORS),
+    *(
+        Macro(form.name, tuple(form.params.split(", ")), operators={_DUCKDB: Pg(form.sql)})
+        for form in pg_forms_types.ARRAY_OPERATORS
+    ),
 )
 
 #: A call's name and argument count -> its overload: the one table.
@@ -1073,6 +1098,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("strip", 1, "tsvector"): "tsvector_strip",
     ("abbrev", 1, "inet"): "inet_abbrev",
     ("abbrev", 1, "cidr"): "cidr_abbrev",
+    ("set_masklen", 2, "cidr"): "cidr_set_masklen",
     **{
         (name, 1, of): f"{of_row}_{name}"
         for name in ("int2", "int4", "int8", "float4", "float8")
@@ -1112,6 +1138,20 @@ _MENTIONED = re.compile(
 )
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
+
+
+#: Functions whose overloads differ by a type every dialect here holds as the same text: only the
+#: statement can tell them apart. An unknown-typed literal is the first, as PostgreSQL resolves it.
+_TOLD_ONLY_BY_THE_STATEMENT = {"set_masklen": frozenset({"inet", "cidr"})}
+
+
+def _is_told(name: str, args: list[exp.Expr]) -> bool:
+    """Whether a call says which overload it means; a column of cidr does not, and the inet row
+    would keep what its mask clears (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED)."""
+    types = _TOLD_ONLY_BY_THE_STATEMENT.get(name)
+    if types is None:
+        return True
+    return said_type(args[0]) in types or isinstance(args[0].unnest(), (exp.Literal, exp.Null))
 
 
 def said_type(node: exp.Expr) -> str | None:
@@ -1160,14 +1200,28 @@ _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp
 #: The types a row of an overload reads as their text, which is how a dialect without them holds
 #: them: once the type has chosen the row, a cast to it says nothing more.
 _HELD_AS_TEXT = frozenset(
-    {"point", "line", "lseg", "box", "path", "polygon", "circle", "tsvector", "inet", "cidr"}
-)
+    {
+        "point", "line", "lseg", "box", "path", "polygon", "circle", "tsvector", "inet", "cidr",
+        "macaddr", "macaddr8", "pg_lsn", "cid", "record",
+    }
+)  # fmt: skip
 
 
-def _argument(value: exp.Expr) -> exp.Expr:
-    if said_type(value) in _HELD_AS_TEXT:
+def _argument(value: exp.Expr, held: bool = False) -> exp.Expr:
+    size = _padded_to(value) if held else None
+    if said_type(value) in _HELD_AS_TEXT or (held and isinstance(value.unnest(), exp.Cast)):
         value = value.unnest().this
+    if size is not None:  # bpchar's input pads to its length, which the text does not hold
+        value = exp.Anonymous(this="rpad", expressions=[value, size, exp.Literal.string(" ")])
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
+
+
+def _padded_to(value: exp.Expr) -> exp.Expr | None:
+    """The length a cast to character(n) says."""
+    node = value.unnest()
+    if isinstance(node, exp.Cast) and node.to.is_type("char") and node.to.expressions:
+        return node.to.expressions[0].this
+    return None
 
 
 def _in_a_subquery(form: exp.Expr, params: tuple[str, ...], args: list[exp.Expr]) -> exp.Expr:
@@ -1177,17 +1231,49 @@ def _in_a_subquery(form: exp.Expr, params: tuple[str, ...], args: list[exp.Expr]
     return exp.select(form).from_(row.subquery("_args")).subquery()
 
 
-def _written(macro: Macro, args: list[exp.Expr], dialect: str) -> exp.Expr:
-    """The call's form with each parameter its argument. As a DuckDB macro does, an argument is
-    written wherever the form names it; it is evaluated each time."""
+#: What answers differently each time it is evaluated (PostgreSQL's pg_proc.provolatile).
+_VOLATILE = frozenset(
+    {
+        "array_sample", "array_shuffle", "clock_timestamp", "currval", "gen_random_uuid", "lastval",
+        "nextval", "random", "random_normal", "setval", "timeofday",
+    }
+)  # fmt: skip
+
+
+def _is_volatile(value: exp.Expr) -> bool:
+    return any(
+        isinstance(node, (exp.Rand, exp.Uuid))
+        or (isinstance(node, exp.Anonymous) and node.name.lower() in _VOLATILE)
+        for node in value.walk()
+    )
+
+
+def _repeats_volatile(form: exp.Expr, params: tuple[str, ...], args: list[exp.Expr]) -> bool:
+    """Whether the form names twice a parameter whose argument differs each time it is evaluated."""
+    named = [c.name for c in form.find_all(exp.Column) if not c.table]
+    return any(named.count(p) > 1 and _is_volatile(a) for p, a in zip(params, args))
+
+
+def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -> exp.Expr:
+    """The call's form with each parameter its argument. An argument is written wherever the form
+    names it, and evaluated each time; one that differs each time is held once (REQ-2171, REWRITE
+    AFTER ROUTING). A row of arguments naming no column is the same row for every row of a FROM,
+    so that call is refused by name rather than answered with one value for all of them."""
     form = _parsed(macro.name, len(args), dialect).copy()
+    held = macro.name in pg_forms_types.HELD
+    if _repeats_volatile(form, macro.params, args):
+        select = node.find_ancestor(exp.Select)
+        reads_rows = select is not None and select.args.get("from_") is not None
+        if reads_rows and not any(a.find(exp.Column) is not None for a in args):
+            raise FunctionRefused(macro.name, dialect)
+        return _in_a_subquery(form, macro.params, [_argument(a, held) for a in args])
     if form.find(exp.Lambda) is not None and any(a.find(exp.Select) is not None for a in args):
         return _in_a_subquery(form, macro.params, [_argument(a) for a in args])
     values = dict(zip(macro.params, args))
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name]).copy()
+            return _argument(values[node.name], held).copy()
         return node
 
     return form.transform(bound)
@@ -1245,12 +1331,12 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if macro is None:
             return node
         step, form = macro.resolved(dialect)
-        if step is Step.REFUSED:
+        if step is Step.REFUSED or not _is_told(called, args):
             raise FunctionRefused(called, dialect)
         if form is MAPPED:
             return target
         # transform does not revisit what a replaced node holds: a call in an argument.
-        written = _written(macro, [a.transform(rewrite) for a in args], dialect)
+        written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
             return exp.alias_(written, _CALLED.get(name, called))  # named for the function
         return written

@@ -29,7 +29,14 @@ from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_json import REFUSED, jsonb_text
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.unit.pgwire.pg17_json_answers import RECORDED
-from tests.unit.pgwire.pg17_json_matrix import ERROR, MATRIX, REFUSED as NAMED, SERVED, outcome
+from tests.unit.pgwire.pg17_json_matrix import (
+    DIFFERS,
+    ERROR,
+    MATRIX,
+    REFUSED as NAMED,
+    SERVED,
+    outcome,
+)
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 _ENGINES = ("duckdb", "trino", "clickhouse")
@@ -59,9 +66,9 @@ def _outcome(conn: Any, sql: str) -> str:
     if res.status == pq.ExecStatus.TUPLES_OK:
         if recorded[0] != "ERROR" and recorded[0] != [res.ftype(j) for j in range(res.nfields)]:
             return "type"
-        return outcome(recorded, _rows(res), False)
+        return outcome(sql, recorded, _rows(res), False)
     message = res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY).decode()
-    return outcome(recorded, None, " has no form on " in message)
+    return outcome(sql, recorded, None, " has no form on " in message)
 
 
 def test_every_statement_answers_as_the_matrix_says_on_the_default_engine(conn: Any):
@@ -80,7 +87,8 @@ def test_the_engines_json_agg_stays_the_engines_and_differs_only_as_pinned(conn:
         for sql in JSON_AGG
     }
     assert answers == {sql: [(want,)] for sql, want in JSON_AGG.items()}
-    assert all(RECORDED[sql][1] != [(want,)] for sql, want in JSON_AGG.items())
+    said = {sql: outcome(sql, RECORDED[sql], [(want,)], False) for sql, want in JSON_AGG.items()}
+    assert said == {sql: MATRIX["duckdb"].get(sql, SERVED) for sql in JSON_AGG}
 
 
 @pytest.mark.parametrize("dialect", _ENGINES)
@@ -172,6 +180,35 @@ def test_jsonpath_stays_refused():
 )
 def test_a_jsonb_is_written_as_jsonb_out_writes_it(text: str, want: str):
     assert jsonb_text(text) == want
+
+
+_READ = "SELECT '[1.50]'::json ->> 0"
+
+
+@pytest.mark.parametrize(
+    ("sql", "oid", "pg", "answered", "said"),
+    [
+        (_READ, 25, "1.50", "1.5", SERVED),
+        (_READ, 25, "1.50", "1.51", DIFFERS),
+        ("""SELECT '{"a":[1.50]}'::json ->> 'a'""", 25, "[1.50]", "[1.5]", SERVED),
+        ("""SELECT '{"a":[1.50]}'::json ->> 'a'""", 25, "[1.50]", "[ 1.5 ]", DIFFERS),
+        ("""SELECT '["1.50"]'::json ->> 0""", 25, "1.50", "1.5", DIFFERS),  # a json string
+        ("SELECT '1.50'::text", 25, "1.50", "1.5", DIFFERS),  # no json in it
+        ("SELECT '[1.50]'::json", 114, "[1.50]", "[1.5]", SERVED),
+        ("SELECT '[1.50]'::jsonb", 3802, "[1.50]", "[1.5]", SERVED),
+        ("""SELECT '{"a":1}'::json""", 114, '{"a":1}', '{"a": 1}', DIFFERS),
+        ("""SELECT '{"b":1,"a":2}'::jsonb""", 3802, '{"b":1,"a":2}', '{"a":2,"b":1}', DIFFERS),
+    ],
+)
+def test_a_json_number_compares_by_value_and_nothing_else_does(
+    sql: str, oid: int, pg: str, answered: str, said: str
+):
+    assert outcome(sql, ([oid], [(pg,)]), [(answered,)], False) == said
+
+
+def test_rows_of_json_numbers_compare_as_a_multiset():
+    recorded = ([114], [("1.50",), ("2",)])
+    assert outcome("SELECT 1", recorded, [("2.0",), ("1.5",)], False) == SERVED
 
 
 def test_the_matrix_lists_only_recorded_statements():

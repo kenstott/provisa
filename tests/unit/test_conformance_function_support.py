@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """The per-engine function conformance run (REQ-2167, REQ-2171): which overload is called how, how an
-answer compares, one outcome per engine, and the guaranteed list the merge writes."""
+answer compares, how the form of one that cannot compare is checked, one outcome per engine, and the
+guaranteed list the merge writes."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -235,6 +236,29 @@ def test_infinity_and_nan_compare_as_written():
     assert support.difference(_floats("NaN"), _floats("1"), values=True) is not None
 
 
+@pytest.mark.parametrize("oid", [114, 3802])
+@pytest.mark.parametrize(
+    ("want", "got", "differs"),
+    [
+        ('{"a": 1.50}', '{"a": 1.5}', False),
+        ("[1e2, 1.0, -0]", "[100, 1, 0]", False),
+        ("1.50", "1.5", False),
+        ("0.1", "0.10000000000000001", False),
+        ("1.50", "1.51", True),
+        ("[12345678901234567890]", "[12345678901234567891]", True),
+        ('{"a": 1.50}', '{"a":1.5}', True),  # spacing is not a number
+        ('{"b": 1, "a": 2}', '{"a": 2, "b": 1}', True),  # nor is key order
+        ('["1.50"]', '["1.5"]', True),  # a string is its text
+    ],
+)
+def test_json_numbers_compare_by_value_and_nothing_else_does(
+    oid: int, want: str, got: str, differs: bool
+):
+    a = {"ok": True, "fields": [oid], "rows": [(want,)]}
+    b = {"ok": True, "fields": [oid], "rows": [(got,)]}
+    assert (support.difference(a, b, values=True) is not None) is differs
+
+
 def test_a_different_type_differs_whatever_the_text():
     differs = support.difference(_ok("3", oid=23), _ok("3", oid=20), values=True)
     assert differs == "result type oids [20], PostgreSQL [23]"
@@ -343,10 +367,190 @@ def test_a_hung_statement_costs_its_overload_not_the_leg(monkeypatch):
     assert entry["outcome"] == "error" and entry["detail"]["error"] == "no answer in 30s"
 
 
+# --- the form of an answer that cannot be compared -----------------------------------------------
+
+
+NOW = Function("now", "", volatility="s", rettype="timestamp with time zone")
+UUID = Function("gen_random_uuid", "", volatility="v", rettype="uuid")
+RANDOM = Function("random", "", volatility="v", rettype="double precision")
+PID = Function("pg_backend_pid", "", volatility="s", rettype="integer")
+USER = Function("current_user", "", volatility="s", rettype="name")
+VERSION = Function("version", "", volatility="s", rettype="text")
+TIMEOFDAY = Function("timeofday", "", volatility="v", rettype="text")
+CURSORS = Function(
+    "pg_cursor", "OUT name text, OUT statement text", volatility="s", rettype="record"
+)
+_V4 = "dfe9efb2-a1e6-472d-835e-a79e9f1d8463"
+_THEN = "2026-10-31 17:20:18.01903+00"
+
+
+@pytest.mark.parametrize(
+    ("fn", "oid", "pg", "provisa"),
+    [
+        (NOW, 1184, _THEN, "2024-01-02 03:04:05+00"),
+        (UUID, 2950, _V4, "00000000-0000-4000-8000-000000000000"),
+        (RANDOM, 701, "0.8675929329186349", "1.2345e-05"),
+        (RANDOM, 701, "0.5", "0"),
+        (PID, 23, "96517", "1"),
+        (USER, 19, "postgres", "conformance"),
+        (VERSION, 25, "PostgreSQL 17.11 (Debian) on x86_64, 64-bit", "PostgreSQL 17.11 on Provisa"),
+    ],
+)
+def test_an_answer_of_the_form_postgresql_answers_in_is_a_pass_form_checked(fn, oid, pg, provisa):
+    entry = _both(fn, "System", _ok(pg, oid=oid), _ok(provisa, oid=oid))
+    assert entry["outcome"] == "pass"
+    assert entry["form_checked"] and not entry["answers_checked"]
+    assert entry["unchecked"]  # the value itself was still not compared
+
+
+@pytest.mark.parametrize(
+    ("fn", "oid", "pg", "provisa"),
+    [
+        (NOW, 1184, _THEN, "2026-10-31T17:20:18Z"),
+        (UUID, 2950, _V4, "dfe9efb2-a1e6-172d-835e-a79e9f1d8463"),  # version 1
+        (RANDOM, 701, "0.5", "1.5"),
+        (RANDOM, 701, "0.5", "-0.5"),
+        (PID, 23, "96517", "0"),
+        (USER, 19, "postgres", "two words"),
+        (VERSION, 25, "PostgreSQL 17.11 on x86_64, 64-bit", "Provisa 1.0"),
+    ],
+)
+def test_an_answer_of_another_form_is_a_wrong_answer_saying_so(fn, oid, pg, provisa):
+    entry = _both(fn, "System", _ok(pg, oid=oid), _ok(provisa, oid=oid))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"] == (f"{provisa!r} is not the form of PostgreSQL's {pg!r}")
+
+
+@pytest.mark.parametrize(
+    ("oid", "good", "bad"),
+    [
+        (1082, "2024-06-15", "06/15/2024"),
+        (1083, "12:30:45.5", "12:30"),
+        (1186, "1 year 2 mons 3 days 04:05:06.5", "P1Y"),
+        (1186, "-1 days", ""),
+        (1186, "00:00:00", "soon"),
+        (869, "192.168.0.1/24", "localhost"),
+        (869, "::1", "1"),
+        (869, "2001:db8::1/64", "2001"),
+        (20, "-7", "7.5"),
+        (16, "t", "true"),
+        (3220, "0/14A2520", "14A2520"),
+        (5038, "730:730:", "730"),
+        (5038, "730:735:731,733", "730:735"),
+    ],
+)
+def test_a_type_with_a_form_of_its_own_is_held_to_it(oid, good, bad):
+    form = support.value_form("any", oid, good)
+    assert support.re.fullmatch(form, good)
+    assert support.re.fullmatch(form, bad) is None
+
+
+def test_a_string_with_no_form_of_its_own_takes_the_shape_of_postgresqls_answer():
+    query = 'SELECT pg_catalog."current_query"() AS v'
+    form = support.value_form("current_query", 25, query)
+    assert support.re.fullmatch(form, query)
+    assert support.re.fullmatch(form, 'SELECT "current_query"() AS v') is None
+    hex_or_not = support.value_form("pg_export_snapshot", 25, "00000003-00000040-1")
+    assert support.re.fullmatch(hex_or_not, "00000003-0000003A-1")
+
+
+def test_a_record_is_held_to_its_number_of_fields():
+    sample = '("","SELECT 1, ""x""",f,"2026-10-31 17:20:18+00")'
+    form = support.value_form("pg_cursor", 2249, sample)
+    assert support.re.fullmatch(form, sample)
+    assert support.re.fullmatch(form, "(a,b,,)")
+    assert support.re.fullmatch(form, "(a,b,c)") is None
+    assert support.re.fullmatch(form, "(a,b,c,d,e)") is None
+
+
+def test_a_function_only_called_with_null_arguments_stays_called_only():
+    fn = Function("pg_sleep", "double precision", argtypes=("double precision",), volatility="v")
+    entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
+    assert entry["outcome"] == "pass"
+    assert not entry["form_checked"] and not entry["answers_checked"]
+
+
+def test_a_null_from_postgresql_leaves_no_form_to_check():
+    entry = _both(NOW, "Date", _ok(None, oid=1184), _ok("not a time", oid=1184))
+    assert entry["outcome"] == "pass" and not entry["form_checked"]
+
+
+def test_a_void_answer_has_no_form():
+    fn = Function("pg_stat_clear_snapshot", "", volatility="v", rettype="void")
+    entry = _both(fn, "System", _ok("", oid=2278), _ok("", oid=2278))
+    assert entry["outcome"] == "pass" and not entry["form_checked"]
+
+
+def test_null_where_postgresql_answers_a_value_is_a_wrong_answer():
+    entry = _both(NOW, "Date", _ok(_THEN, oid=1184), _ok(None, oid=1184))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"] == f"None, PostgreSQL {_THEN!r}"
+
+
+def test_the_rows_of_a_set_are_the_servers_own():
+    want = {"ok": True, "fields": [2249], "rows": [("(a,b)",), ("(c,d)",)]}
+    none = {"ok": True, "fields": [2249], "rows": []}
+    entry = _both(CURSORS, "System", want, none)
+    assert entry["outcome"] == "pass" and not entry["form_checked"]
+    other = {"ok": True, "fields": [2249], "rows": [("(x,y)",), ("(z,w)",), ("(p,q)",)]}
+    assert _both(CURSORS, "System", want, other)["form_checked"]
+    short = {"ok": True, "fields": [2249], "rows": [("(x,y)",), ("(z)",)]}
+    assert _both(CURSORS, "System", want, short)["outcome"] == "wrong_answer"
+
+
+def test_a_different_type_is_a_wrong_answer_before_any_form():
+    entry = _both(NOW, "Date", _ok(_THEN, oid=1184), _ok(_THEN, oid=1114))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"] == "result type oids [1114], PostgreSQL [1184]"
+
+
+class Zoned:
+    """A server writing timeofday under the session's TimeZone: ``writes`` names the zone."""
+
+    def __init__(self, writes: Any) -> None:
+        self.zone = "UTC"
+        self.writes = writes
+
+    def answer(self, sql: str) -> dict[str, Any]:
+        if sql.startswith("SET TimeZone"):
+            self.zone = sql.split("'")[1]
+            return {"ok": True, "fields": [], "rows": []}
+        return _ok(f"Sat Oct 31 17:20:18.213779 2026 {self.writes(self.zone)}", oid=25)
+
+
+_ABBREVIATION = {"UTC": "UTC", support.ZONE: "JST"}
+
+
+def test_timeofday_is_exact_on_a_session_off_utc():
+    pg = Zoned(_ABBREVIATION.__getitem__)
+    entry = support.measure_overload(
+        TIMEOFDAY, "Date", pg, Zoned(_ABBREVIATION.__getitem__), _route
+    )
+    assert entry["outcome"] == "pass" and entry["form_checked"]
+    assert pg.zone == "UTC"
+
+
+def test_timeofday_writing_the_zone_name_is_a_wrong_answer():
+    entry = support.measure_overload(
+        TIMEOFDAY, "Date", Zoned(_ABBREVIATION.__getitem__), Zoned(lambda zone: zone), _route
+    )
+    assert entry["outcome"] == "wrong_answer"
+    assert support.ZONE in entry["detail"]["difference"]
+
+
+def test_timeofday_ignoring_the_sessions_zone_is_a_wrong_answer():
+    entry = support.measure_overload(
+        TIMEOFDAY, "Date", Zoned(_ABBREVIATION.__getitem__), Zoned(lambda _zone: "UTC"), _route
+    )
+    assert entry["outcome"] == "wrong_answer"
+
+
 # --- the merged data file ------------------------------------------------------------------------
 
 
-def _entry(name: str, outcome: str, *, checked: bool = True, family: str = "Numeric") -> dict:
+def _entry(
+    name: str, outcome: str, *, checked: bool = True, form: bool = False, family: str = "Numeric"
+) -> dict:
     return {
         "function": name,
         "overload": "integer",
@@ -355,6 +559,7 @@ def _entry(name: str, outcome: str, *, checked: bool = True, family: str = "Nume
         "volatility": "i",
         "outcome": outcome,
         "answers_checked": checked,
+        "form_checked": form,
         "calls": 4,
         "served_by": "engine",
     }
@@ -388,11 +593,50 @@ def test_the_guaranteed_list_is_what_passes_on_every_engine():
         }
     )
     assert doc["guaranteed"]["answers_checked"] == ["abs(integer)"]
+    assert doc["guaranteed"]["form_checked"] == []
     assert doc["guaranteed"]["only_called"] == ["exp(integer)"]
-    assert doc["guaranteed"]["functions"] == ["abs", "exp"]
+    assert doc["guaranteed"]["functions"] == ["abs"]
     by = {f["function"]: f for f in doc["functions"]}
     assert by["sqrt"]["outcomes"]["b"]["outcome"] == "wrong_answer"
     assert by["abs"]["family"] == "Numeric"
+
+
+def test_the_guaranteed_list_is_answers_checked_and_form_checked_on_every_engine():
+    now = _entry("now", "pass", checked=False, form=True)
+    doc = support.merged(
+        {
+            "a": _report("a", _entry("abs", "pass"), now, _entry("exp", "pass", checked=False)),
+            "b": _report("b", _entry("abs", "pass"), now, _entry("exp", "pass", checked=False)),
+        }
+    )
+    assert doc["guaranteed"]["answers_checked"] == ["abs(integer)"]
+    assert doc["guaranteed"]["form_checked"] == ["now(integer)"]
+    assert doc["guaranteed"]["only_called"] == ["exp(integer)"]
+    assert doc["guaranteed"]["functions"] == ["abs", "now"]
+    assert doc["counts"]["a"]["pass_form_checked"] == 1
+    text = support.merged_markdown(doc)
+    assert "| a | 3 | 1 | 1 | 1 | 0 | 0 | 0 | 0 |" in text
+    assert "| Numeric | 3 | 1 + 1 + 1 of 3 | 1 + 1 + 1 of 3 | 3 |" in text
+    assert "**Guaranteed list:** 1 overloads with answers compared and 1 form checked" in text
+    assert "1 more only called" in text
+
+
+def test_an_overload_form_checked_on_one_engine_and_only_called_on_another_is_only_called():
+    doc = support.merged(
+        {
+            "a": _report("a", _entry("now", "pass", checked=False, form=True)),
+            "b": _report("b", _entry("now", "pass", checked=False)),
+        }
+    )
+    assert doc["guaranteed"]["form_checked"] == []
+    assert doc["guaranteed"]["only_called"] == ["now(integer)"]
+    assert doc["guaranteed"]["functions"] == []
+
+
+def test_one_only_called_overload_keeps_its_function_off_the_list():
+    other = {**_entry("abs", "pass", checked=False), "overload": "bigint"}
+    doc = support.merged({"e": _report("e", _entry("abs", "pass"), other)})
+    assert doc["guaranteed"]["functions"] == []
 
 
 def test_an_engine_with_no_result_guarantees_nothing():
@@ -421,6 +665,7 @@ def test_counts_split_a_pass_by_what_was_checked():
         [_entry("a", "pass"), _entry("b", "pass", checked=False), _entry("c", "error")]
     )
     assert (c["pass"], c["pass_answers_checked"], c["pass_only_called"]) == (2, 1, 1)
+    assert c["pass_form_checked"] == 0
     assert (c["error"], c["total"]) == (1, 3)
 
 
@@ -432,11 +677,11 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 |" in text
-    assert "| Numeric | 1 | 1 + 0 of 1 | 1 + 0 of 1 | 1 |" in text
-    assert "| String | 1 | 0 + 0 of 1 | 1 + 0 of 1 | 0 |" in text
-    assert "1 overloads pass on all 2 engines" in text
+    assert "| a | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| Numeric | 1 | 1 + 0 + 0 of 1 | 1 + 0 + 0 of 1 | 1 |" in text
+    assert "| String | 1 | 0 + 0 + 0 of 1 | 1 + 0 + 0 of 1 | 0 |" in text
+    assert "1 overloads with answers compared" in text
 
 
 def test_merge_reads_a_leg_from_wherever_its_artifact_landed_and_fails_on_a_missing_one(tmp_path):
