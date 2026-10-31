@@ -13,7 +13,8 @@
 The page's **Suite:** and **Pass rate:** lines and its failing cases come from the JSON a
 conformance-<surface> workflow uploads, never typed: download the artifact of a run and point this
 at its JSON. Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28), and
-the page gives the three counts and the pass rate, passed over passed plus failed.
+the page gives the three counts and the pass rate, passed over passed plus failed. On pgwire they
+are the whole run's: a pg_catalog function not served is failed, grouped by family.
 
     .venv/bin/python3 scripts/conformance/fill_docs.py conformance-cypher.json [more.json ...]
 
@@ -36,6 +37,9 @@ import by_design
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "conformance"
 BEGIN = "<!-- conformance-results:begin -->"
 END = "<!-- conformance-results:end -->"
+
+#: The parts of a pgwire run beside pgspec, each with its own three counts.
+COMPARED = ("catalog_relations", "catalog_functions", "type_conversions")
 
 
 def _rate(doc: dict) -> str:
@@ -63,7 +67,7 @@ def _cases(groups: dict[str, list[tuple[str, str]]]) -> str:
         out.append(f"<details><summary>{group} ({len(cases)})</summary>\n")
         out.append("| Case | Reason |")
         out.append("| --- | --- |")
-        out.extend(f"| {c} | {r.replace('|', '/')} |" for c, r in cases)
+        out.extend(f"| {c} | {' '.join(r.split()).replace('|', '/')} |" for c, r in cases)
         out.append("\n</details>\n")
     return "\n".join(out)
 
@@ -76,9 +80,15 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
             section: [(c["test"], c["reason"]) for c in cases]
             for section, cases in spec["failed_by_section"].items()
         }
+        parts = [spec, *(artifact[p] for p in COMPARED if artifact.get(p) is not None)]
+        for part in parts[1:]:
+            for f in part["failures"]:
+                # REQ-2167 (PG_CATALOG FUNCTIONS ARE GAPS): functions fail by family.
+                group = f"Catalog function: {f['family']}" if "family" in f else f["feature"]
+                groups.setdefault(group, []).append((f["scenario"], f["reason"]))
         suite = f"pgspec {spec['version']}, against PostgreSQL {artifact.get('postgres_version')}"
-        sections = [_designed(spec["by_design_groups"]), _cases(groups)]
-        return "pgwire", suite, _rate(spec), "\n\n".join(sections)
+        sections = [_designed([g for p in parts for g in p["by_design_groups"]]), _cases(groups)]
+        return "pgwire", suite, _rate(artifact), "\n\n".join(sections)
     groups: dict[str, list[tuple[str, str]]] = {}
     for f in artifact["failures"]:
         groups.setdefault(f["feature"], []).append((f["scenario"], f["reason"]))

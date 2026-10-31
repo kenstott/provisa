@@ -15,9 +15,9 @@ both servers. Three parts, each written as data -- a difference is a finding, ne
 
 1. Catalog shape. For every pg_catalog and information_schema relation real PostgreSQL has that
    Provisa serves, the columns Provisa's RowDescription gives for ``SELECT * FROM <rel> LIMIT 0``
-   against pg_attribute (name, order, type OID, typmod). For every pg_catalog function (each
-   overload whose arguments are not pseudo-types), the call ``fn(NULL::arg, ...)`` through Provisa:
-   whether it is served, and its result type against pg_proc.prorettype.
+   against pg_attribute (name, order, type OID, typmod). For every overload of every pg_catalog
+   function, the call PostgreSQL requires (pgwire_function_probe.py) through Provisa: whether it
+   is served, and its result type against what PostgreSQL returns for the same call.
 2. Coverage. The relations and functions real PostgreSQL has that Provisa does not serve, and the
    catalog relations Provisa serves that PostgreSQL does not have.
 3. Type conversions. For each column of the fixture table (one value of each type, read through
@@ -54,6 +54,7 @@ import psycopg
 from psycopg import pq
 
 import by_design
+import pgwire_function_probe as function_probe
 
 FIXTURE_SCHEMA = "conformance"
 FIXTURE_TABLE = "types_fixture"
@@ -229,6 +230,11 @@ def seed(pg_dsn: str) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {FIXTURE_SCHEMA}.{FIXTURE_TABLE}")
         conn.execute(f"CREATE TABLE {FIXTURE_SCHEMA}.{FIXTURE_TABLE} ({cols})")
         conn.execute(f"INSERT INTO {FIXTURE_SCHEMA}.{FIXTURE_TABLE} VALUES ({vals})")
+        # What the function probe's calls need that PostgreSQL ships none of.
+        conn.execute(f"DROP TYPE IF EXISTS {function_probe.PROBE_ENUM}")
+        conn.execute(f"CREATE TYPE {function_probe.PROBE_ENUM} AS ENUM ('a', 'b')")
+        conn.execute(f"DROP SEQUENCE IF EXISTS {function_probe.PROBE_SEQUENCE}")
+        conn.execute(f"CREATE SEQUENCE {function_probe.PROBE_SEQUENCE}")
     print(f"seeded {FIXTURE_SCHEMA}.{FIXTURE_TABLE}: {len(FIXTURE)} columns, one row")
 
 
@@ -529,86 +535,102 @@ def catalog_relations(pg: Server, provisa: Server, names: dict[int, str]) -> dic
     }
 
 
-def _pg_functions(pg: Server) -> list[dict]:
+def _pg_functions(pg: Server) -> list[function_probe.Function]:
+    """Every overload pg_proc lists in pg_catalog (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS)."""
     rows = pg.rows(
         "SELECT p.proname::text, pg_get_function_identity_arguments(p.oid)::text, "
-        "p.prokind::text, p.proretset, p.prorettype::int8, "
+        "p.prokind::text, p.provariadic NOT IN (0, '\"any\"'::regtype), "
+        "COALESCE(a.aggkind::text, 'n'), COALESCE(a.aggnumdirectargs::int, 0), "
+        "format_type(p.prorettype, NULL), "
         "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY u(t, i) "
         "      ORDER BY i)::text[] "
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
-        "WHERE n.nspname = 'pg_catalog' AND p.prokind IN ('f', 'a') "
-        "AND NOT EXISTS (SELECT 1 FROM unnest(p.proargtypes::oid[]) t JOIN pg_type ty ON ty.oid = t "
-        "                WHERE ty.typtype = 'p') "
-        "AND p.prorettype NOT IN ('internal'::regtype, 'cstring'::regtype) "
+        "LEFT JOIN pg_aggregate a ON a.aggfnoid = p.oid "
+        "WHERE n.nspname = 'pg_catalog' "
         "ORDER BY 1, 2"
     )
     return [
-        {
-            "name": name,
-            "signature": f"{name}({args})",
-            "kind": kind,
-            "returns_set": retset,
-            "rettype": rettype,
-            "argtypes": list(argtypes),
-        }
-        for name, args, kind, retset, rettype, argtypes in rows
+        function_probe.Function(
+            name=name,
+            overload=overload,
+            kind=kind,
+            variadic=variadic,
+            aggkind=aggkind,
+            direct=direct,
+            rettype=rettype,
+            argtypes=tuple(argtypes),
+        )
+        for name, overload, kind, variadic, aggkind, direct, rettype, argtypes in rows
     ]
 
 
 def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dict[str, Any]:
+    """Each overload is a case, passed or failed (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS): passed
+    when it is served with PostgreSQL's result type; failed when its result type differs, it is
+    not served, or no call PostgreSQL accepts can reach it. None is skipped by design: a failure
+    is classified by family, never by by_design/pgwire.yaml."""
+    declared = function_probe.families()
     fns = _pg_functions(pg)
     matching: list[str] = []
     differing: dict[str, str] = {}
     not_served: dict[str, str] = {}
-    # A call PostgreSQL itself refuses in this form (an ordered-set aggregate needs WITHIN GROUP,
-    # a few refuse a NULL of their argument type) says nothing about Provisa: not probed.
-    not_probed: dict[str, str] = {}
+    not_callable: dict[str, str] = {}
     for fn in fns:
-        args = ", ".join(f"NULL::{t}" for t in fn["argtypes"])
-        sql = f'SELECT pg_catalog."{fn["name"]}"({args}) AS v'
+        sql = function_probe.call(fn)
+        if sql is None:
+            not_callable[fn.signature] = function_probe.NO_CALL
+            continue
         want = pg.run(sql)
         if not want["ok"] or not want["fields"]:
-            not_probed[fn["signature"]] = want.get("error") or "no result column"
+            not_callable[fn.signature] = (
+                f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
+            )
             continue
         got = provisa.run(sql)
         if not got["ok"]:
-            not_served[fn["signature"]] = got["error"]
+            not_served[fn.signature] = got["error"]
             continue
         expected = want["fields"][0]["type_oid"]
         oid = got["fields"][0]["type_oid"] if got["fields"] else None
         if oid != expected:
-            differing[fn["signature"]] = (
+            differing[fn.signature] = (
                 f"returns {names.get(oid, oid)} (oid {oid}), PostgreSQL "
                 f"{names.get(expected, expected)} (oid {expected})"
             )
         else:
-            matching.append(fn["signature"])
-    # REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): a function of a family no client calls is not served
-    # by design (by_design/pgwire.yaml), skipped by design in its group rather than not served.
-    # Each function probed is a case (amended 2026-10-28): passed (served, its result type
-    # PostgreSQL's), skipped by design, or failed (its result type differs, or it is not served).
-    unserved = [
-        {"feature": "catalog function", "scenario": signature, "reason": error}
-        for signature, error in not_served.items()
-    ]
-    remaining, excluded = by_design.classify(unserved, by_design.groups("pgwire"))
-    left = {f["scenario"]: f["reason"] for f in remaining}
+            matching.append(fn.signature)
+    reasons = {
+        **differing,
+        **{signature: f"not served: {error}" for signature, error in not_served.items()},
+        **{signature: f"no call reaches it: {why}" for signature, why in not_callable.items()},
+    }
     failures = [
-        {"feature": "catalog function", "scenario": signature, "reason": why}
-        for signature, why in sorted(differing.items())
-    ] + [{**f, "reason": f"not served: {f['reason']}"} for f in remaining]
+        {
+            "feature": "catalog function",
+            "scenario": fn.signature,
+            "reason": reasons[fn.signature],
+            "name": fn.name,
+            "overload": fn.overload,
+            "family": function_probe.family(fn, declared),
+        }
+        for fn in fns
+        if fn.signature in reasons
+    ]
+    by_family: dict[str, list[str]] = {}
+    for failure in failures:
+        by_family.setdefault(failure["family"], []).append(failure["scenario"])
     return {
-        **by_design.outcomes(len(matching), excluded, failures),
-        "postgres_functions": len(fns) - len(not_probed),
-        "excluded": (
-            "overloads taking a pseudo-type argument, type I/O (internal, cstring), and calls "
-            "PostgreSQL itself refuses as fn(NULL::arg, ...)"
-        ),
-        "not_probed": dict(sorted(not_probed.items())),
+        **by_design.outcomes(len(matching), [], failures),
+        "postgres_functions": len(fns),
         "served": len(matching) + len(differing),
         "matching": len(matching),
         "differing": dict(sorted(differing.items())),
-        "not_served": dict(sorted(left.items())),
+        "not_served": dict(sorted(not_served.items())),
+        "not_callable": dict(sorted(not_callable.items())),
+        "failures_by_family": {
+            family: {"count": len(functions), "functions": functions}
+            for family, functions in sorted(by_family.items())
+        },
     }
 
 
@@ -762,8 +784,8 @@ def markdown(report: dict[str, Any]) -> str:
         f"| functions | {fn['postgres_functions']} | {fn['served']} | {fn['matching']} "
         f"| {len(fn['differing'])} |",
         "",
-        f"Functions compared: every pg_catalog overload except {fn['excluded']} "
-        f"({len(fn.get('not_probed', {}))} of those, listed in conformance-pgwire.json).",
+        "Functions compared: every pg_catalog overload. One no call can reach is failed by name "
+        f"({len(fn['not_callable'])} of those).",
         "",
     ]
     out += _details(f"Relations that differ ({len(rel['differing'])})", _md_list(rel["differing"]))
@@ -780,8 +802,16 @@ def markdown(report: dict[str, Any]) -> str:
         _md_list(list(fn["not_served"]), limit=3000),
     )
     out += _details(
-        f"Functions skipped by design ({fn['by_design']})",
-        by_design.table(fn["by_design_groups"], requirement=True),
+        f"Functions no call can reach ({len(fn['not_callable'])})",
+        _md_list(list(fn["not_callable"]), limit=3000),
+    )
+    out += _details(
+        f"Functions failed, by family ({fn['failed']})",
+        [
+            "| Family | Failed |",
+            "| --- | ---: |",
+            *(f"| {k} | {v['count']} |" for k, v in fn["failures_by_family"].items()),
+        ],
     )
     out += _details(
         "Catalog relations Provisa serves that PostgreSQL does not have "

@@ -44,6 +44,8 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 
 Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
 
+Every overload of every `pg_catalog` function is a conformance case, and each case is passed, skipped by design or failed. No `pg_catalog` function is skipped by design: one not served counts as failed until it is served, whatever its family. The suite calls each overload the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. An overload no call can reach, such as one taking an `internal` argument or a trigger function, is listed as failed by name. The failed cases are listed by family under the pass rate.
+
 ### Advisory locks
 
 `pg_advisory_lock` and its shared, transaction-level and `try` variants work as they do in PostgreSQL among the sessions of one Provisa process. The lock table lives in that process's memory. Two Provisa processes, such as two replicas behind a load balancer, do not see each other's locks, so a lock taken on one does not make a session on the other wait. Clients that use advisory locks to serialize work across processes must connect to one Provisa process.
