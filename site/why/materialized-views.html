@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Materialized views — analytics you declare — Provisa</title>
-  <meta name="description" content="Layered materialized views with recorded transforms, freshness-driven refresh, and transparent query rewrite — a declarative dependency graph instead of an orchestration DAG." />
+  <title>Materialized views: analytics you declare — Provisa</title>
+  <meta name="description" content="Layered materialized views with recorded transforms, freshness-driven refresh, and transparent query rewrite, in a declarative dependency graph instead of an orchestration DAG." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -48,13 +48,9 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Materialized views</span></p>
-        <h1>Analytics datasets you declare, not pipelines you orchestrate.</h1>
+        <h1>Declare your analytics datasets instead of orchestrating pipelines.</h1>
         <p class="lead">
-          A pipeline is not a data product. It is a program, and it inherits everything
-          that comes with code. Declare the dataset instead: a materialized view over a
-          view, a source, or another MV, stacking into a graph of derived datasets from raw
-          source to final analytics table. There is no orchestration DAG to write or
-          babysit.
+          A pipeline is a program, with everything that comes with code, and that doesn't make it a data product. Declare the dataset instead, as a materialized view over a view, a source or another MV. These stack into a graph of derived datasets from raw source to final analytics table, with no orchestration DAG to write or babysit.
         </p>
       </div>
 
@@ -75,28 +71,23 @@
           columns: the path to the collection in a response and the fields to lift out of
           it, the sampled document schema for a collection with the steward's explicit
           types overriding what was inferred, the crawl of a location that registers each
-          CSV, Parquet, or SQLite file it finds. That is a declaration per source type, not
-          a program per dataset.
+          CSV, Parquet, or SQLite file it finds. You write a declaration per source type instead of a program per dataset.
         </p>
         <p>
-          Once everything is two-dimensional, the rest is SQL. Which is the whole point:
-          SQL is a language a machine can read back, so lineage, governance, rewriting, and
-          audit become properties of the definition. Determinism is still on you. SQL gives you enough rope, and Provisa refuses
-          the parts of that rope it can detect. After SQL, the only remaining problem is timing.
+          Once everything is two-dimensional, the rest is SQL. A machine can read SQL back, so lineage, governance, rewriting and audit become properties of the definition. Determinism is still on you: SQL gives you enough rope, and Provisa refuses the parts of that rope it can detect. After SQL, the only remaining problem is timing.
         </p>
 
         <h2>The other reason: getting data from A to B</h2>
         <p>
           The rest of the pipelines exist because something in one system was needed in
-          another. That sounds like plumbing, and it isn't. Writing it forces a developer
-          to settle questions that were never theirs to settle: which copy is now
+          another. That sounds like plumbing, but writing it forces a developer to settle questions that were never theirs to settle: which copy is now
           authoritative, how stale is acceptable, what happens when the pull fails, where a
           write is supposed to land. Those are policy decisions, and they get made in a
           script, one at a time, by whoever drew the ticket. Then they harden, because the answer is now a
           program somebody depends on.
         </p>
         <p>
-          Here data movement is a property of the system, not something you do.
+          Here the system handles data movement.
           Registering a source resolves how it joins the query surface: reached live
           through a connector, read in place as a file, or landed into a store because it
           has no live representation at all. Nobody chooses that; it follows from what the
@@ -110,13 +101,10 @@
           source system, and the copy is invalidated.
         </p>
         <p>
-          Which is why re-pointing is uneventful. Move the source from Oracle to Postgres,
-          move the target to a different store, switch the engine underneath: the strategy re-resolves and the movement
-          follows. There is no pipeline to rewrite, because
-          there was never a pipeline; there was a registration, and you changed it.
+          So re-pointing is uneventful. Move the source from Oracle to Postgres, move the target to a different store or switch the engine underneath, and the strategy re-resolves and the movement follows. You changed a registration, so there is no pipeline to rewrite.
         </p>
 
-        <h2>An imperative pipeline is already a hole</h2>
+        <h2>An imperative pipeline leaves a table and a log line</h2>
         <p>
           Most derived data is produced by a program: a script, a notebook, a job in an
           orchestrator. It runs, it writes a table, and the only durable record of what
@@ -131,26 +119,20 @@
           <li><strong>What does the result mean?</strong> The name someone typed on the output table, and a wiki page written at a different time by a different person.</li>
         </ul>
         <p>
-          None of that is fixable with better discipline, because the artifact is a
-          procedure. A procedure can only be understood by simulating it. Declared datasets
-          invert that: the definition is the artifact, and every one of those four
-          questions is answered by reading the model instead of the code. A pipeline tells
-          you how a number was computed. A definition tells you what the number is.
+          Better discipline can't fix that, because the artifact is a procedure, and a procedure can only be understood by simulating it. With a declared dataset the definition is the artifact, and you answer those four questions by reading the model instead of the code. A pipeline tells you how a number was computed, and a definition tells you what the number is.
         </p>
 
         <h2>The four questions, answered from the definition</h2>
         <ul>
-          <li><strong>What it did</strong> — column-level lineage is resolved statically from the definition: every output column back to the leaf source columns it derives from, with the intermediate CTEs and joins preserved as a graph. Each edge carries a <em>named</em> transform, matched against SQL operators, engine built-ins, and registered commands, so a derivation reads as <code>concat → geocode</code> rather than as a blob of SQL you have to parse yourself.</li>
-          <li><strong>When it did it</strong> — every refresh stamps two versions. A <em>definition</em> version, which is a content hash of the MV's logic, so you can tell whether two runs used the same rules. And an <em>input</em> version, captured at the strongest fidelity the source offers: an Iceberg snapshot id, else a relational watermark, else a freshness token, else the refresh clock. The fidelity kind is recorded alongside the value, so a lineage query knows whether it is looking at a precise data version or a wall-clock guess.</li>
-          <li><strong>How you audit it</strong> — those stamps land in the refresh ledger and the trace, which are queryable tables. Point-in-time lineage is a query you write, joined against the business data it describes, rather than a report a separate tool renders.</li>
-          <li><strong>What it means</strong> — a dataset is declared as an entity or a fact, with a key, a grain, and history, and that declaration lowers to the underlying view machinery. Meaning lives in the model that produced the table rather than in the name on it.</li>
+          <li><strong>What it did.</strong> Column-level lineage is resolved statically from the definition: every output column back to the leaf source columns it derives from, with the intermediate CTEs and joins preserved as a graph. Each edge carries a <em>named</em> transform, matched against SQL operators, engine built-ins, and registered commands, so a derivation reads as <code>concat → geocode</code> rather than as a blob of SQL you have to parse yourself.</li>
+          <li><strong>When it did it.</strong> Every refresh stamps two versions. The <em>definition</em> version is a content hash of the MV's logic, so you can tell whether two runs used the same rules. The <em>input</em> version is captured at the strongest fidelity the source offers: an Iceberg snapshot id, else a relational watermark, else a freshness token, else the refresh clock. The fidelity kind is recorded alongside the value, so a lineage query knows whether it is looking at a precise data version or a wall-clock guess.</li>
+          <li><strong>How you audit it.</strong> Those stamps land in the refresh ledger and the trace, which are queryable tables. Point-in-time lineage is a query you write, joined against the business data it describes, rather than a report a separate tool renders.</li>
+          <li><strong>What it means.</strong> A dataset is declared as an entity or a fact, with a key, a grain, and history, and that declaration lowers to the underlying view machinery. Meaning lives in the model that produced the table rather than in the name on it.</li>
         </ul>
         <p>
           The declarative form also lets the system refuse definitions that could not be
           audited. A distributed MV whose SQL calls <code>now()</code> or
-          <code>random()</code>, or takes a <code>LIMIT</code> with no total ordering, is
-          rejected outright: two copies computing from the same sources would never agree,
-          and a number nobody can reproduce is not a metric.
+          <code>random()</code>, or takes a <code>LIMIT</code> with no total ordering, is rejected outright. Two copies computing from the same sources would never agree, and nobody could reproduce the number.
         </p>
 
         <h2>What happens when the source changes</h2>
@@ -164,12 +146,12 @@
           of quietly producing a NULL column three hops downstream. If too few of the
           expected columns arrive in the incoming data, the land is refused and no
           mangled table is written. A schema check on the contract catches it independently of any refresh.</li>
-          <li><strong>A column changes type.</strong> The schema check is a direct hit: the declared type no longer matches the observed one, which is that check's whole job.</li>
+          <li><strong>A column changes type.</strong> The schema check catches it directly, because the declared type no longer matches the observed one.</li>
           <li><strong>A column changes meaning.</strong> This is the hard one, and no system reads intent. But anything consequential enough to change your numbers moves a distribution, and the checks on that distribution (invalid, missing, duplicate, aggregate)
           fire when it does.</li>
         </ul>
         <p>
-          Where detection genuinely ends, the graph takes over. Ask what derives from a
+          Where detection ends, the graph takes over. Ask what derives from a
           column and you get the answer at column granularity, across every view and MV
           that consumes it. The question stops being "did something break," which is
           unanswerable, and becomes "here are the eleven things affected." That is also the
@@ -187,8 +169,7 @@
           an API that shifted under you, nobody can prevent it. What a
           system can do is give you the hygiene: checks that fire on the first bad batch,
           a refresh that fails instead of landing garbage, and a list of exactly what is
-          downstream. You still get woken up. You just get woken up early, with the answer
-          attached.
+          downstream. You still get woken up, but early, and with the answer attached.
         </p>
 
         <h2>Layered by design</h2>
@@ -291,11 +272,7 @@
           rare case, and it enters the same way everything else does.
         </p>
         <p>
-          Which means the result is always a DAG of models. Lineage isn't something a
-          command interrupts; the call is a node with real edges, so the trace closes
-          across it. That's the difference from a graveyard of stored procedures nobody
-          can inventory. This is a live graph, and every exception in it is a labeled
-          node you can go and look at.
+          So the result is always a DAG of models. A command doesn't interrupt lineage, because the call is a node with real edges and the trace closes across it. A graveyard of stored procedures nobody can inventory gives you none of that. This is a live graph, and every exception in it is a labeled node you can go and look at.
         </p>
         <p>
           The comparison flatters the procedure, anyway. A stored procedure declares a <em>signature</em>, scalar arguments and maybe
@@ -311,8 +288,7 @@
 
         <h2>What you end up with</h2>
         <p>
-          None of this is a productivity feature. Writing the transform was never the
-          expensive part; living with it was. A procedure has to be re-read every time
+          This won't make transforms quicker to write, because writing them was never the expensive part. Living with them was. A procedure has to be re-read every time
           someone asks what a number means, re-audited every time it changes, and worked
           around every time it turns out to hold data that policy says a person shouldn't
           see. That cost compounds per dataset, and it is why derived layers end as a pile
@@ -321,9 +297,7 @@
         <p>
           Declared datasets pay it once. The lineage is in the definition, the data version
           is stamped on the refresh, the policy is the same policy that governs the source,
-          and the decision about whether to move data at all belongs to the system. What
-          you have at the end is not a set of output tables and the scripts that made them.
-          It is a model, and a model is a thing you can ask questions of.
+          and the decision about whether to move data at all belongs to the system. Instead of output tables and the scripts that made them, you end up with a model you can ask questions of.
         </p>
       </div>
 
@@ -348,7 +322,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>

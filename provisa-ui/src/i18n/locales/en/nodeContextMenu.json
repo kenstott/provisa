@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Exclude this node from the query",
-    "excludeDisabledTooltip": "No primary key configured — cannot exclude",
+    "excludeDisabledTooltip": "Cannot exclude: no primary key configured",
     "excludeFromQuery": "Exclude from query",
     "excludeCount": "Exclude {{count}} nodes",
     "unfixPosition": "Unfix position",

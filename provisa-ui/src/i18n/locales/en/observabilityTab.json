@@ -1,6 +1,6 @@
 {
   "observabilityTab": {
-    "noSpansYet": "No spans yet — make a request to see traces.",
+    "noSpansYet": "No spans yet. Make a request to see traces.",
     "noSpansMatch": "No spans match filter.",
     "traces": "Traces",
     "filterPlaceholder": "Filter…",
@@ -14,7 +14,7 @@
     "otelTitle": "OpenTelemetry Tracing",
     "statusLabel": "Status:",
     "statusExporting": "Exporting → {{endpoint}}",
-    "statusActiveNoCollector": "Active (spans dropped — no collector configured)",
+    "statusActiveNoCollector": "Active (spans dropped: no collector configured)",
     "endpointLabel": "OTLP Collector Endpoint",
     "endpointHelp": "Leave empty to generate traces without exporting. Override with OTEL_EXPORTER_OTLP_ENDPOINT env var.",
     "serviceNameLabel": "Service Name",

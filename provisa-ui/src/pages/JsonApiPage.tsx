@@ -57,7 +57,7 @@ import "./JsonApiPage.css";
 import { Tip } from "../components/Tip";
 import { ParamsSection } from "./jsonapi/ParamsSection";
 import { dataColumnsOf, useJsonApiParams } from "./jsonapi/useJsonApiParams";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStoredJson, setStored } from "../lib/browserStorage";
 
 const JSONAPI_SETTINGS_KEY = "provisa.jsonapi.settings";
 const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"];
@@ -130,13 +130,10 @@ export function JsonApiPage() {
 
   // Persisted explorer settings (survive across sessions). Table selection is restored after the
   // table list loads (below); page size is stable so it initializes directly.
-  const savedSettings = useMemo<{ selectedTable?: string; pageSize?: string }>(() => {
-    try {
-      return JSON.parse(getStored(JSONAPI_SETTINGS_KEY) || "{}");
-    } catch {
-      return {};
-    }
-  }, []);
+  const savedSettings = useMemo<{ selectedTable?: string; pageSize?: string }>(
+    () => getStoredJson(JSONAPI_SETTINGS_KEY) ?? {},
+    [],
+  );
 
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [checkedFields, setCheckedFields] = useState<Set<string>>(new Set());

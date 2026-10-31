@@ -38,7 +38,7 @@
     "directoryHint": "A directory under those the operator allows. It is read where it is, so an edit is read by the next query.",
     "chooseFolder": "Choose folder",
     "folderKept": "Save zips this folder and sends it again.",
-    "folderAgain": "This browser cannot keep the folder: choose it again to send a newer copy.",
+    "folderAgain": "This browser cannot keep the folder, so choose it again to send a newer copy.",
     "editor": "Editor",
     "openInVscode": "Open in VS Code",
     "secrets": "Secrets",

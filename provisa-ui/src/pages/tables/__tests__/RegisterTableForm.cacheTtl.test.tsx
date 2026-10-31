@@ -94,7 +94,7 @@ describe("RegisterTableForm Cache TTL", () => {
     expect(field).toBeRequired();
     await user.click(screen.getByTestId("register-table-submit"));
     expect(setError).toHaveBeenLastCalledWith(
-      "Set a Cache TTL: this table will be a replica, and its source states none.",
+      "Set a Cache TTL, because this table will be a replica and its source states none.",
     );
     expect(onContinue).not.toHaveBeenCalled();
     await user.type(field, "300");
