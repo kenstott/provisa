@@ -47,6 +47,7 @@ from provisa.compiler.sql_where import (
     _field_args,
     _below_takes_lateral_args,
     _has_lateral_force_args,
+    _joins_row_level_to_one,
     RelationshipConditions,
     where_names_relationship,
 )
@@ -424,7 +425,12 @@ def _collect_nested_columns(
                 )
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
             _below = _below_takes_lateral_args(nested_sel, ctx, nested_join_meta.target.type_name)
-            _use_agg = not flat and not _has_lateral_force_args(nested_sel) and not _below
+            _use_agg = (
+                not flat
+                and not _has_lateral_force_args(nested_sel)
+                and not _below
+                and not _joins_row_level_to_one(nested_sel, nested_join_meta, ctx)
+            )
             if (
                 nested_join_meta.default_limit is not None
                 or _has_lateral_force_args(nested_sel)

@@ -164,6 +164,9 @@ class CompilationContext:
     subtype_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-2171: the registered columns of a subtype held as text, read through its read form.
     read_columns: "SubtypeColumns" = field(default_factory=dict)
+    # REQ-1915: the tables replicated row by row on the bound engine (flagged, and the engine
+    # cannot attach their source). A to-one relationship into one compiles to a JOIN.
+    row_level_tables: frozenset[int] = frozenset()
     # table_id → [(col_name, column_type)] for aggregate column metadata
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # table_id → user-designated PK column names (informational; empty = heuristic only)

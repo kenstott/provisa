@@ -33,7 +33,8 @@ import { Tip } from "../components/Tip";
 import { useAuth } from "../context/AuthContext";
 import { fetchNlMode, submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
 import { getStored, setStored } from "../lib/browserStorage";
-import { kept, restored } from "../lib/resultWithQuery";
+import { kept, restored, type KeptResult } from "../lib/resultWithQuery";
+import { readBulk, writeBulk } from "../lib/bulkStorage";
 
 const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
   sql: { path: "/sql", stateKey: "sql" },
@@ -147,40 +148,36 @@ export function NlPage() {
   const strictLocked = !(nlMode?.role === actingRoleId && nlMode.nonStrict);
   const effectiveStrict = strict || strictLocked;
   // The answers are kept with the question that produced them, and shown only beside it.
-  const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
-    try {
-      const saved = getStored(NL_BRANCHES_KEY);
-      const parsed =
-        restored<Partial<Record<Target, BranchState>>>(
-          saved ? JSON.parse(saved) : null,
-          getStored(NL_QUESTION_KEY) ?? "",
-        ) ?? {};
-      return {
-        sql: parsed.sql ?? EMPTY_BRANCH,
-        graphql: parsed.graphql ?? EMPTY_BRANCH,
-        cypher: parsed.cypher ?? EMPTY_BRANCH,
-        grpc: parsed.grpc ?? EMPTY_BRANCH,
-        jsonapi: parsed.jsonapi ?? EMPTY_BRANCH,
-        openapi: parsed.openapi ?? EMPTY_BRANCH,
-      };
-    } catch {
-      return {
-        sql: EMPTY_BRANCH,
-        graphql: EMPTY_BRANCH,
-        cypher: EMPTY_BRANCH,
-        grpc: EMPTY_BRANCH,
-        jsonapi: EMPTY_BRANCH,
-        openapi: EMPTY_BRANCH,
-      };
-    }
+  const [branches, setBranches] = useState<Record<Target, BranchState>>({
+    sql: EMPTY_BRANCH,
+    graphql: EMPTY_BRANCH,
+    cypher: EMPTY_BRANCH,
+    grpc: EMPTY_BRANCH,
+    jsonapi: EMPTY_BRANCH,
+    openapi: EMPTY_BRANCH,
   });
-  const [hasResults, setHasResults] = useState(() =>
-    TARGETS.some((t) => branches[t] !== EMPTY_BRANCH),
-  );
+  const [hasResults, setHasResults] = useState(false);
+  // The answers live in IndexedDB: the page renders at once and they arrive just after, unless a
+  // question has been asked meanwhile.
+  useEffect(() => {
+    let live = true;
+    const asked = getStored(NL_QUESTION_KEY) ?? "";
+    void readBulk<KeptResult<Partial<Record<Target, BranchState>>>>(NL_BRANCHES_KEY).then((k) => {
+      const saved = restored(k, asked);
+      if (!live || saved === null) return;
+      setBranches((now) =>
+        TARGETS.some((t) => now[t] !== EMPTY_BRANCH) ? now : { ...now, ...saved },
+      );
+      setHasResults(TARGETS.some((t) => saved[t] && saved[t] !== EMPTY_BRANCH));
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const cancelRef = useRef<(() => void) | null>(null);
 
   const saveBranches = useCallback((asked: string, next: Record<Target, BranchState>) => {
-    setStored(NL_BRANCHES_KEY, JSON.stringify(kept(asked, next)));
+    void writeBulk(NL_BRANCHES_KEY, kept(asked, next));
     setBranches(next);
   }, []);
 
@@ -235,7 +232,7 @@ export function NlPage() {
             ...prev,
             [t]: { query: event.query, result: event.result, error: event.error, loading: false },
           };
-          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
+          void writeBulk(NL_BRANCHES_KEY, kept(q, next));
           return next;
         });
       },
@@ -246,7 +243,7 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH };
           }
-          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
+          void writeBulk(NL_BRANCHES_KEY, kept(q, next));
           return next;
         });
       },
@@ -258,7 +255,7 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH, error: msg };
           }
-          setStored(NL_BRANCHES_KEY, JSON.stringify(kept(q, next)));
+          void writeBulk(NL_BRANCHES_KEY, kept(q, next));
           return next;
         });
       },
