@@ -92063,7 +92063,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     NOT NULL is registered on the column, as its type is. The acting role, database and session reach a
     view through set_config in the statement''s transaction, and a client''s own set_config never reaches
     that path. Meta''s row scope passes PostgreSQL''s system rows, which have no table id; who sees what
-    does not change. pg_attrdef reads the role''s own insert presets this way.'
+    does not change. pg_attrdef reads the role''s own insert presets this way. (Amended 2026-10-29, ALL
+    METADATA IS SUPPORTED:) Maintainer 2026-10-31: every PostgreSQL metadata table, view and function is
+    supported on every engine. They answer from meta, not from the engine, so no engine can lack them; they
+    are in the guaranteed list by construction and are never refused for an engine. The expansion judgement
+    of REQ-2167 does not apply to them.'
   scenario: 'Given a role connected over pgwire
 
     When a client reads pg_class and pg_attribute
