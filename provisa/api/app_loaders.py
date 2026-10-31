@@ -1689,6 +1689,7 @@ def schema_input_for(
 ) -> SchemaInput:
     """The schema input for ``role`` from this generation's build inputs (state.role_build_inputs)."""
     from provisa.api.region_ops_views import table_catalogs as region_table_catalogs
+    from provisa.federation.strategy import row_level_tables
     from provisa.mv.time_travel import relation_kinds
 
     inputs = state.role_build_inputs
@@ -1700,6 +1701,9 @@ def schema_input_for(
         role=role,
         domains=inputs["domains"],
         source_types=state.source_types,
+        row_level_tables=frozenset(
+            t["id"] for t in row_level_tables(tables, state.federation_engine, state.source_types)
+        ),  # REQ-1915
         time_travel=relation_kinds(state, tables),  # REQ-1163
         source_catalogs=state.source_catalogs,
         table_catalogs=region_table_catalogs(),  # REQ-1922
