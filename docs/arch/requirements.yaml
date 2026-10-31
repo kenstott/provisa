@@ -91487,7 +91487,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     so what was granted is visible as any grant is. A product request is the same request with the product''s
     member columns. (Amended 2026-10-29, THE DATA STEWARD APPROVES A COLUMN REQUEST:) Maintainer 2026-10-31:
     an access request for columns goes to the data steward of their domain, who approves or declines it.
-    A product request still goes to the product''s owner role.'
+    A product request still goes to the product''s owner role. (Amended 2026-10-29, ONE FORM, TWO REQUESTS:)
+    Maintainer 2026-10-31: a request form offers the requester''s existing roles or a new role. Naming a
+    new role creates two requests from the one form: a role request to a holder of user_management (a data
+    steward and a security admin cannot create roles), whose approval creates the role, assigns it to the
+    requester and grants nothing; and a column request to the domain''s data steward, which waits on the
+    role request and ends if it is declined.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
