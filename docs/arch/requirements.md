@@ -24180,7 +24180,7 @@ The external MCP server reaches the graph surface as the UI does. run_cypher run
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
 
-A release is made only by the Release: cut workflow, run by hand on main with the version. It generates the release's notes from the previous release's tag (the UI's bundled notes, docs/releases/<version>.md, the docs navigation and CHANGELOG.md) and commits them to main before it makes the release's tag on that commit; a generation failure leaves no commit and no tag. A hand-written release page is never overwritten. The release's body is its notes page, and a tag pushed by hand gets no release.
+A release is made only by the Release: cut workflow, run by hand on main with the version. It generates the release's notes from the previous release's tag (the UI's bundled notes, docs/releases/<version>.md, the docs navigation and CHANGELOG.md) and commits them to main before it makes the release's tag on that commit; a generation failure leaves no commit and no tag. A hand-written release page is never overwritten. The release's body is its notes page, and a tag pushed by hand gets no release. (Amended 2026-10-29, BETA VERSIONING:) Maintainer 2026-10-31: beta is the product's stage and SemVer states it: major 0 with an enumerated minor (v0.2.0, v0.2.1, v0.3.0) is a release partners use. A pre-release of the next version is v0.3.0-rc.1, a release candidate, which sorts below v0.3.0 and reaches only a partner who pins it. Alpha numbering ends at the first beta release.
 
 **Code:** `.github/workflows/release-cut.yml`, `scripts/gen_release_notes.py`
 

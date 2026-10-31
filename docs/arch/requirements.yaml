@@ -82138,7 +82138,15 @@
   feature: installation-packaging
   priority: SHOULD
   type: infrastructure
-  description: 'A release is made only by the Release: cut workflow, run by hand on main with the version. It generates the release''s notes from the previous release''s tag (the UI''s bundled notes, docs/releases/<version>.md, the docs navigation and CHANGELOG.md) and commits them to main before it makes the release''s tag on that commit; a generation failure leaves no commit and no tag. A hand-written release page is never overwritten. The release''s body is its notes page, and a tag pushed by hand gets no release.'
+  description: 'A release is made only by the Release: cut workflow, run by hand on main with the version.
+    It generates the release''s notes from the previous release''s tag (the UI''s bundled notes, docs/releases/<version>.md,
+    the docs navigation and CHANGELOG.md) and commits them to main before it makes the release''s tag on
+    that commit; a generation failure leaves no commit and no tag. A hand-written release page is never
+    overwritten. The release''s body is its notes page, and a tag pushed by hand gets no release. (Amended
+    2026-10-29, BETA VERSIONING:) Maintainer 2026-10-31: beta is the product''s stage and SemVer states
+    it: major 0 with an enumerated minor (v0.2.0, v0.2.1, v0.3.0) is a release partners use. A pre-release
+    of the next version is v0.3.0-rc.1, a release candidate, which sorts below v0.3.0 and reaches only a
+    partner who pins it. Alpha numbering ends at the first beta release.'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
