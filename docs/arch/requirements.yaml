@@ -90441,7 +90441,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     function PostgreSQL itself cannot call from SQL (an internal argument, a trigger or binary upgrade context)
     is an internal function. It needs no support and is not a gap: it is reported as skipped by design under
     Internal functions, the one function group allowed, and the probe proves each one against PostgreSQL.
-    This narrows PG_CATALOG FUNCTIONS ARE GAPS to functions SQL can call.'
+    This narrows PG_CATALOG FUNCTIONS ARE GAPS to functions SQL can call. (Amended 2026-10-29, INDEXES BELONG
+    TO THE DATABASE:) Maintainer 2026-10-31: Provisa does not handle indexes; they are the source database''s.
+    Index access method and index maintenance functions (btree, GiST, GIN, SP-GiST, BRIN support, brin_summarize_range
+    and kin) need no support and are reported as skipped by design under Index functions. Index metadata
+    is not affected: pg_index, pg_get_indexdef and the like stay supported by REQ-2190.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
