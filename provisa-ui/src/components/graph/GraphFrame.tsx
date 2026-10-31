@@ -57,7 +57,7 @@ import { useAutoImpute } from "./frame/use-auto-impute";
 import { useSparqlExpansion } from "./frame/use-sparql-expansion";
 import { useSparqlNodeProperties } from "./frame/use-sparql-node-properties";
 import { useSparqlStyledProperties } from "./frame/use-sparql-styled-properties";
-import { groupableAttributes } from "./frame/frame-meta";
+import { groupOptions, type ClassProperties } from "./frame/frame-meta";
 import {
   GraphViewIcon,
   TableViewIcon,
@@ -128,6 +128,8 @@ interface GraphFrameProps {
   onDescribeResource?: (frameId: string, iri: string) => void;
   /** Ask the model, once each, for the properties of SPARQL nodes a caption or a size reads. */
   onDescribeResources?: (frameId: string, iris: string[]) => void;
+  /** What each SPARQL class has, by its nodes' label: offered to group by before they are read. */
+  classProperties?: Record<string, ClassProperties>;
 }
 
 export function GraphFrame({
@@ -163,6 +165,7 @@ export function GraphFrame({
   onExpandResource,
   onDescribeResource,
   onDescribeResources,
+  classProperties,
 }: GraphFrameProps) {
   const { t } = useTranslation();
   const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
@@ -353,12 +356,18 @@ export function GraphFrame({
     labelProperty,
     sizeByProperty,
     onDescribeResources,
+    clusterLevel,
+    classProperties,
   );
   const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
-  const groupableAttrs = useMemo(() => groupableAttributes(augmentedNodes), [augmentedNodes]);
+  const groups = useMemo(
+    () => groupOptions(augmentedNodes, classProperties),
+    [augmentedNodes, classProperties],
+  );
+  const groupableAttrs = useMemo(() => groups.map((g) => g.value), [groups]);
   const activeView: "graph" | "table" | "json" | "graphstats" | "code" = hasGraph
     ? view
     : view === "json"
@@ -583,7 +592,7 @@ export function GraphFrame({
                 placeholder={t("graphFrame.groupPlaceholder")}
                 value={groupableAttrs.includes(clusterLevel) ? clusterLevel : null}
                 onChange={(val) => setClusterLevel((val ?? "none") as ClusterLevel)}
-                data={groupableAttrs.map((a) => ({ value: a, label: a }))}
+                data={groups}
                 clearable
                 comboboxProps={{ withinPortal: true }}
                 data-testid="graph-frame-group-select"

@@ -88,9 +88,11 @@ export function classMenuProperties(
   vocabulary: SparqlVocabulary,
   prefixes: Record<string, string>,
 ): { properties: string[]; propertyNames: Record<string, string>; numericProperties: string[] } {
-  const predicates = classPredicates(cls, { ...vocabulary, prefixes }).map((x) => ({
+  const named = { ...vocabulary, prefixes };
+  const all = allPrefixes(named);
+  const predicates = classPredicates(cls, named).map((x) => ({
     ...x,
-    key: shownIri(x.iri, prefixes),
+    key: shownIri(x.iri, all),
   }));
   return {
     properties: predicates.map((x) => x.key),
@@ -107,16 +109,56 @@ export const STANDARD_PREFIXES = ["rdf", "rdfs", "owl", "skos", "xsd", "rel", "t
 export const domainPrefixes = (v: SparqlVocabulary): [string, string][] =>
   Object.entries(v.prefixes).filter(([p]) => !STANDARD_PREFIXES.includes(p));
 
+/** A local name a query can write as it stands: percent escapes are legal in one. */
+const PLAIN_LOCAL = /^(?:[\w:]|%[0-9A-Fa-f]{2})(?:[\w.:-]|%[0-9A-Fa-f]{2})*$/;
+
 /** ``prefix:local`` where a prefix's namespace starts the IRI and the rest is a plain local name;
  * otherwise the IRI in angle brackets. */
 export function compactIri(iri: string, prefixes: Record<string, string>): string {
   const best = longestPrefix(iri, prefixes);
   if (best) {
     const local = iri.slice(best[1].length);
-    if (/^[A-Za-z_][\w.-]*$/.test(local) && !local.endsWith(".")) return `${best[0]}:${local}`;
+    if (PLAIN_LOCAL.test(local) && !local.endsWith(".")) return `${best[0]}:${local}`;
   }
   return `<${iri}>`;
 }
+
+/** A class's name made a prefix name. */
+const prefixName = (name: string): string => {
+  const safe = name.replace(/[^\w-]/g, "_");
+  return /^[A-Za-z]/.test(safe) ? safe : `c_${safe}`;
+};
+
+/**
+ * Each table class's own prefix, ending in its ``#``: a column's predicate holds a ``#``, which a
+ * query reads as a comment, so it is written ``pets:breedName``. By the class's name, qualified by
+ * its domain's prefix where two domains share the name or a prefix in use has it.
+ */
+export function classPrefixes(
+  vocabulary: Pick<SparqlVocabulary, "classes" | "prefixes">,
+): Record<string, string> {
+  const { prefixes } = vocabulary;
+  const tables = vocabulary.classes
+    .filter((c) => c.kind === "table")
+    .map((c) => ({ iri: c.iri, name: prefixName(c.iri.slice(c.iri.lastIndexOf("/") + 1)) }));
+  const named = new Map<string, number>();
+  for (const { name } of tables) named.set(name, (named.get(name) ?? 0) + 1);
+  const own: Record<string, string> = {};
+  for (const { iri, name } of tables) {
+    const domain = longestPrefix(iri, prefixes)?.[0] ?? "c";
+    const clear = named.get(name) === 1 && !(name in prefixes);
+    const base = clear ? name : `${domain}_${name}`;
+    let prefix = base;
+    for (let i = 2; prefix in prefixes || prefix in own; i++) prefix = `${base}${i}`;
+    own[prefix] = `${iri}#`;
+  }
+  return own;
+}
+
+/** The prefixes in use and each class's own: what terms are written and shown by. */
+export const allPrefixes = (
+  vocabulary: Pick<SparqlVocabulary, "classes" | "prefixes">,
+): Record<string, string> => ({ ...classPrefixes(vocabulary), ...vocabulary.prefixes });
 
 function longestPrefix(iri: string, prefixes: Record<string, string>): [string, string] | null {
   let best: [string, string] | null = null;
@@ -241,7 +283,7 @@ export function pickedQuery(
   pick: VocabularyPick,
   vocabulary: SparqlVocabulary,
 ): string {
-  const p = vocabulary.prefixes;
+  const p = allPrefixes(vocabulary);
   if (pick.kind === "prefix") return withPrefixes(query, [pick.prefix], p);
   if (pick.kind === "edge") {
     const rel = relationshipPattern(query, pick.iri, vocabulary);
@@ -282,9 +324,7 @@ function ownVariable(name: string, used: Set<string>): string {
 /**
  * A class as a table, as a Cypher label's nodes read: one row per instance, one column per property
  * the role reads of the class, each by its plain name and OPTIONAL so a row with no value stays.
- * A column's predicate holds a ``#``, which starts a comment in a query, so its class's namespace
- * gets a prefix of its own; a predicate no prefix can name is written whole. Null for a class with
- * no property.
+ * Null for a class with no property.
  */
 function classQuery(
   cls: SparqlVocabulary["classes"][number],
@@ -292,9 +332,7 @@ function classQuery(
 ): string | null {
   const predicates = classPredicates(cls, vocabulary);
   if (predicates.length === 0) return null;
-  let own = "p";
-  for (let i = 2; own in vocabulary.prefixes; i++) own = `p${i}`;
-  const namespaces = { ...vocabulary.prefixes, [own]: `${cls.iri}#` };
+  const namespaces = allPrefixes(vocabulary);
   const term = compactIri(cls.iri, namespaces);
   const used = new Set(["s"]);
   const columns = predicates.map((x) => ({
@@ -375,6 +413,28 @@ export function relationshipPattern(
     pattern: `${a} a ${domain} . ${a} ${rel} ${b} . ${b} a ${range} .`,
     terms: [domain, rel, range],
   };
+}
+
+/** One token of a query: a PREFIX declaration (1, its name), then what no prefix is read inside --
+ * a string, an IRI, a comment, a variable, a language tag -- then a prefixed name (2, its prefix),
+ * a word, or any other character. */
+const QUERY_TOKEN =
+  /PREFIX\s+([A-Za-z][\w.-]*)?:\s*<[^>]*>|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|<[^<>"{}|^`\\\s]*>|#[^\n]*|[?$]\w+|@[A-Za-z-]+|([A-Za-z][\w.-]*)?:(?:[\w%:.-]|\\.)*|\w+|[\s\S]/gi;
+
+/** ``query`` as it is sent: with a PREFIX line for each of ``namespaces`` it uses and does not
+ * declare. A query's own PREFIX wins, and a prefix neither has is left for the server to refuse. */
+export function withUsedPrefixes(query: string, namespaces: Record<string, string>): string {
+  const declared = new Set<string>();
+  const used = new Set<string>();
+  for (const m of query.matchAll(QUERY_TOKEN)) {
+    if (/^PREFIX\s/i.test(m[0])) declared.add(m[1] ?? "");
+    else if (/^[A-Za-z:]/.test(m[0]) && m[0].includes(":")) used.add(m[2] ?? "");
+  }
+  return withPrefixes(
+    query,
+    [...used].filter((p) => !declared.has(p)),
+    namespaces,
+  );
 }
 
 /** ``query`` with its PREFIX lines for ``prefixes`` (those it has not declared), first. */
@@ -656,6 +716,11 @@ function shownPrefixes(
   return { ...prefixes, ...Object.fromEntries(own) };
 }
 
+/** A relationship as it is shown: every relationship is under ``rel:`` (the server's edge_iri), so
+ * the prefix says nothing; any other predicate keeps its own. A query still writes it. */
+export const edgeName = (shown: string): string =>
+  shown.startsWith("rel:") ? shown.slice("rel:".length) : shown;
+
 /** ``value`` beside what a predicate holds: one value alone, several a list. */
 const listed = (held: unknown, value: string): unknown =>
   held === undefined ? value : Array.isArray(held) ? [...held, value] : [held, value];
@@ -752,7 +817,7 @@ export function triplesGraph(
       identity,
       start: a.id,
       end: b.id,
-      type: p.shown,
+      type: edgeName(p.shown),
       properties: p.value === "" ? {} : { iri: p.value },
       startNode: a,
       endNode: b,

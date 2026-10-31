@@ -28,7 +28,7 @@ import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react
 import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
-import { INJECTED_PROPS, PALETTE, labelColor } from "./graph-model";
+import { INJECTED_PROPS, PALETTE, labelColor, ownColumnName } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import type { CanvasHighlight } from "./canvas/canvas-types";
 import CodeMirror from "@uiw/react-codemirror";
@@ -146,11 +146,11 @@ export function Inspector({
       // the row did not carry.
       const keyRow: [string, unknown][] = "_id" in props ? [["_id", props._id]] : [];
       // A SPARQL node's own column named as its caption is, saying the same: one row, the column's.
-      const { label: nodeClass, propertyIris } = selected.data as GNode;
-      const restated = (k: string) => {
-        const column = `${nodeClass}#${k}`;
-        return propertyIris?.[column] !== undefined && props[column] === props[k];
-      };
+      const node = selected.data as GNode;
+      const restated = (k: string) =>
+        Object.keys(node.propertyIris ?? {}).some(
+          (column) => ownColumnName(node, column) === k && props[column] === props[k],
+        );
       return [
         ...keyRow,
         ...Object.entries(props)
@@ -260,14 +260,12 @@ export function Inspector({
     );
   }
 
-  // A column of the node's own class reads by its name (pet-store:pets#breedName is breedName);
+  // A column of the node's own class reads by its name (pets:breedName is breedName);
   // a term, a standard predicate or another class's column as written, and one whose name another
   // row of the panel already goes by.
   const propName = (k: string): string => {
-    const own = `${nodeLabel}#`;
-    if (!isN || !k.startsWith(own) || !(selected.data as GNode).propertyIris?.[k]) return k;
-    const name = k.slice(own.length);
-    return propRows.some(([r]) => r === name) ? k : name;
+    const name = isN ? ownColumnName(selected.data as GNode, k) : null;
+    return name === null || propRows.some(([r]) => r === name) ? k : name;
   };
 
   const headerLabel = isN

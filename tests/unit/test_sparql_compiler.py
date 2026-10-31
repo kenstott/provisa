@@ -198,16 +198,25 @@ def test_a_class_pills_wide_query_is_one_row_per_subject(con):
     rows = _answer(
         con,
         f"PREFIX hr: <{BASE}/vocab/hr/>\n"
-        f"PREFIX p: <{PERSON}#>\n"
+        f"PREFIX persons: <{PERSON}#>\n"
         "SELECT ?s ?age ?name WHERE {\n"
         "  ?s a hr:persons .\n"
-        "  OPTIONAL { ?s p:age ?age }\n"
-        "  OPTIONAL { ?s p:name ?name }\n"
+        "  OPTIONAL { ?s persons:age ?age }\n"
+        "  OPTIONAL { ?s persons:name ?name }\n"
         "}\n"
         "LIMIT 25",
     )
     assert len({r["s"] for r in rows}) == len(rows) == 4
     assert {r["name"]: r["age"] for r in rows} == {"Ann": 41, "Bo": 35, "Cy": 29, "Di": None}
+
+
+def test_a_property_pills_query_names_its_predicate_by_the_class_prefix(con):
+    # REQ-2135: as sparql.ts pickedQuery writes it, a prefix ending in the class's #.
+    rows = _answer(
+        con,
+        f"PREFIX persons: <{PERSON}#>\nSELECT * WHERE {{\n  ?s persons:age ?o .\n}}\nLIMIT 25",
+    )
+    assert sorted(r["o"] for r in rows) == [29, 35, 41]
 
 
 def test_an_edge_and_the_node_at_its_end(con):

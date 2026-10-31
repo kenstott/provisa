@@ -336,10 +336,8 @@ describe("a SPARQL answer drawn", () => {
       const drawn = canvas.nodes.at(-1);
       pick(BARE);
       expect(describe_).not.toHaveBeenCalled();
-      expect(screen.getByText("ex:species")).toBeInTheDocument();
-      expect(screen.getByText("cat")).toBeInTheDocument();
-      expect(screen.getByText("iri")).toBeInTheDocument();
-      expect(screen.getByText("name")).toBeInTheDocument();
+      const panel = document.querySelector(".gf-inspector")?.textContent;
+      for (const shown of ["ex:species", "cat", "iri", "name"]) expect(panel).toContain(shown);
       // A neighbour is expansion's, not selection's.
       expect(screen.queryByText("owner")).toBeNull();
       expect(canvas.nodes.at(-1)).toBe(drawn);

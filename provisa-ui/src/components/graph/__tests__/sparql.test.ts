@@ -374,7 +374,7 @@ describe("a SELECT of resources", () => {
     expect(st.sparqlPairing).toEqual({ subject: "s", predicate: "p", object: "o" });
     const drawn = sparqlDrawn({ id: "f", ...st } as FrameData, false, true);
     expect(drawn.nodes.size).toBe(2);
-    expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["rel:knows", "rel:likes"]);
+    expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["knows", "likes"]);
   });
 
   it("stays a table where a literal has no predicate, a term is unbound, or it is no pair", async () => {

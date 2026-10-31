@@ -15,7 +15,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { FrameData, SparqlDescribed } from "./graph-model";
 import { settingKey, useLocalStorage } from "./graph-persistence";
 import {
+  allPrefixes,
   classConstruct,
+  classLabel,
+  classMenuProperties,
   describeQuery,
   effectivePrefixes,
   parseNTriples,
@@ -75,6 +78,26 @@ export function useSparqlExplorer({
     [vocabulary, prefixEdits],
   );
 
+  /** What a frame's terms show by, and a query run is completed from. */
+  const framePrefixes = useMemo(
+    () => (vocabulary ? allPrefixes({ classes: vocabulary.classes, prefixes }) : {}),
+    [vocabulary, prefixes],
+  );
+
+  /** What each class has, by its nodes' label: its menu, and what a frame can be grouped by. */
+  const classProperties = useMemo(
+    () =>
+      vocabulary
+        ? Object.fromEntries(
+            vocabulary.classes.map((x) => [
+              classLabel(x.iri, framePrefixes),
+              classMenuProperties(x, vocabulary, prefixes),
+            ]),
+          )
+        : undefined,
+    [vocabulary, prefixes, framePrefixes],
+  );
+
   /** One query posted to /data/sparql under the viewer's role, its N-Triples read. Throws the
    * refusal's own words. */
   const askTriples = useCallback(
@@ -86,9 +109,9 @@ export function useSparqlExplorer({
       if (roleHeader) headers["X-Provisa-Role"] = roleHeader;
       const res = await fetch("/data/sparql", { method: "POST", headers, body: query });
       if (!res.ok) throw new Error(await refusalText(res));
-      return parseNTriples(await res.text(), prefixes);
+      return parseNTriples(await res.text(), framePrefixes);
     },
-    [roleHeader, prefixes],
+    [roleHeader, framePrefixes],
   );
 
   const mergeIntoFrame = useCallback(
@@ -186,6 +209,8 @@ export function useSparqlExplorer({
     vocabulary,
     vocabularyError,
     prefixes,
+    framePrefixes,
+    classProperties,
     prefixEdits,
     setPrefixEdits,
     expandResource,

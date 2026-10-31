@@ -17,13 +17,20 @@ import { nodeCaption } from "../graph-stylesheet";
 import type { CyInstance } from "../cytoscape-types";
 import type { FrameData, GNode } from "../graph-model";
 import {
+  allPrefixes,
   classLabel,
   classMenuProperties,
+  classPrefixes,
+  compactIri,
+  edgeName,
   parseNTriples,
+  pickedQuery,
   pillQuery,
+  shownIri,
   shownLiteral,
   sparqlDrawn,
   triplesGraph,
+  withUsedPrefixes,
   type SparqlVocabulary,
 } from "../sparql";
 
@@ -93,25 +100,22 @@ describe("a class's menu", () => {
 
   it("lists the class's predicates as a node holds them, by name", () => {
     expect(menu.properties).toEqual([
-      "pet-store:pets#age",
-      "pet-store:pets#breedName",
-      "pet-store:pets#price",
+      "pets:age",
+      "pets:breedName",
+      "pets:price",
       "term:weight",
     ]);
-    expect(menu.propertyNames["pet-store:pets#breedName"]).toBe("breedName");
+    expect(menu.propertyNames["pets:breedName"]).toBe("breedName");
     expect(menu.propertyNames["term:weight"]).toBe("weight");
   });
 
   it("offers the numeric ones to size by", () => {
-    expect(menu.numericProperties).toEqual([
-      "pet-store:pets#age",
-      "pet-store:pets#price",
-      "term:weight",
-    ]);
+    expect(menu.numericProperties).toEqual(["pets:age", "pets:price", "term:weight"]);
   });
 
   it("names each predicate by the key the drawn node holds it under", () => {
-    const node = nodeOf(`${typed(1)}\n${pet(1)} <${PETS}#breedName> "Husky" .`);
+    const nt = `${typed(1)}\n${pet(1)} <${PETS}#breedName> "Husky" .`;
+    const [node] = triplesGraph(parseNTriples(nt, allPrefixes(VOCABULARY))).nodes.values();
     expect(menu.properties).toContain(Object.keys(node.propertyIris ?? {})[0]);
   });
 });
@@ -236,11 +240,11 @@ describe("a class pill's query", () => {
     expect(wide).toBe(
       [
         `PREFIX pet-store: <${B}/vocab/pet-store/>`,
-        `PREFIX p: <${PETS}#>`,
+        `PREFIX pets: <${PETS}#>`,
         "SELECT ?s ?age ?breedName WHERE {",
         "  ?s a pet-store:pets .",
-        "  OPTIONAL { ?s p:age ?age }",
-        "  OPTIONAL { ?s p:breedName ?breedName }",
+        "  OPTIONAL { ?s pets:age ?age }",
+        "  OPTIONAL { ?s pets:breedName ?breedName }",
         "}",
         "LIMIT 25",
       ].join("\n"),
@@ -252,14 +256,7 @@ describe("a class pill's query", () => {
     expect(body.join("\n")).not.toContain("#");
   });
 
-  it("takes a prefix name the viewer has not used", () => {
-    const vocabulary = { ...twoColumns, prefixes: { ...PREFIXES, p: `${B}/other/` } };
-    const q = pillQuery({ kind: "class", iri: PETS }, vocabulary);
-    expect(q).toContain(`PREFIX p2: <${PETS}#>`);
-    expect(q).toContain("OPTIONAL { ?s p2:age ?age }");
-  });
-
-  it("writes a predicate no prefix can name in full, and keeps each variable safe and its own", () => {
+  it("writes a term by its prefix, percent escapes and all, and keeps each variable safe and its own", () => {
     const term = `${B}/vocab/term/hire%20date`;
     const vocabulary: SparqlVocabulary = {
       ...VOCABULARY,
@@ -273,8 +270,9 @@ describe("a class pill's query", () => {
       ],
     };
     const q = pillQuery({ kind: "class", iri: PETS }, vocabulary);
-    expect(q).toContain(`OPTIONAL { ?s <${term}> ?hire_date }`);
-    expect(q).toContain("OPTIONAL { ?s p:s ?s2 }");
+    expect(q).toContain("OPTIONAL { ?s term:hire%20date ?hire_date }");
+    expect(q).toContain(`PREFIX term: <${B}/vocab/term/>`);
+    expect(q).toContain("OPTIONAL { ?s pets:s ?s2 }");
     expect(q).toContain("SELECT ?s ?hire_date ?s2 WHERE {");
   });
 
@@ -289,7 +287,7 @@ describe("a class pill's query", () => {
     const nt = `${typed(1)}\n${pet(1)} <${PETS}#age> "4"^^<${XSD}integer> .`;
     const frame = {
       id: "f",
-      query: wide,
+      query: wide.replace("PREFIX pets:", "PREFIX px:").replaceAll("pets:age", "px:age"),
       status: "done",
       nodes: new Map(),
       edges: new Map(),
@@ -301,6 +299,10 @@ describe("a class pill's query", () => {
     const drawn = sparqlDrawn(frame, false, false, PREFIXES);
     const n = [...drawn.nodes.values()].find((x) => x.label === "pet-store:pets") as GNode;
     expect(Object.keys(n.propertyIris ?? {})).toEqual(["pet-store:pets#age"]);
+    const named = allPrefixes(VOCABULARY);
+    const shown = sparqlDrawn(frame, false, false, named);
+    const m = [...shown.nodes.values()].find((x) => x.label === "pet-store:pets") as GNode;
+    expect(Object.keys(m.propertyIris ?? {})).toEqual(["pets:age"]);
   });
 });
 
@@ -330,5 +332,125 @@ describe("a literal as it is shown", () => {
     const n = nodeOf(`${typed(1)}\n${pet(1)} <${PETS}#price> "3.25"^^<${XSD}decimal> .`);
     expect(n.properties["pet-store:pets#price"]).toBe("3.25");
     expect(n.propertyDatatypes?.["pet-store:pets#price"]).toBe(`${XSD}decimal`);
+  });
+});
+
+describe("a class's own prefix", () => {
+  const classOf = (domain: string, table: string) => ({
+    iri: `${B}/vocab/${domain}/${table}`,
+    kind: "table" as const,
+    labels: [`${domain}__${table}`],
+    superclasses: [],
+  });
+  const v = (classes: SparqlVocabulary["classes"], prefixes = PREFIXES): SparqlVocabulary => ({
+    ...VOCABULARY,
+    prefixes,
+    classes,
+  });
+
+  it("is the class's name, ending in its #", () => {
+    expect(classPrefixes(VOCABULARY)).toEqual({ pets: `${PETS}#` });
+  });
+
+  it("is qualified by its domain where two domains share the class's name", () => {
+    const prefixes = { ...PREFIXES, meta: `${B}/vocab/meta/` };
+    const classes = [classOf("meta", "products"), classOf("pet-store", "products")];
+    expect(classPrefixes(v(classes, prefixes))).toEqual({
+      meta_products: `${B}/vocab/meta/products#`,
+      "pet-store_products": `${B}/vocab/pet-store/products#`,
+    });
+  });
+
+  it("is qualified where a panel prefix has the name", () => {
+    expect(classPrefixes(v([classOf("pet-store", "term")]))).toEqual({
+      "pet-store_term": `${B}/vocab/pet-store/term#`,
+    });
+  });
+
+  it("names a predicate in a result, where a # could not", () => {
+    expect(shownIri(`${PETS}#breedName`, allPrefixes(VOCABULARY))).toBe("pets:breedName");
+    expect(compactIri(`${PETS}#breedName`, allPrefixes(VOCABULARY))).toBe("pets:breedName");
+  });
+
+  it("is what a property's click writes, declared", () => {
+    expect(pickedQuery("", { kind: "predicate", iri: `${PETS}#breedName` }, VOCABULARY)).toBe(
+      `PREFIX pets: <${PETS}#>\nSELECT * WHERE {\n  ?s pets:breedName ?o .\n}\nLIMIT 25`,
+    );
+  });
+});
+
+describe("a term's click", () => {
+  it("uses the prefix, percent escapes and all", () => {
+    const iri = `${B}/vocab/term/shift%20coverage`;
+    expect(compactIri(iri, PREFIXES)).toBe("term:shift%20coverage");
+    expect(pickedQuery("", { kind: "predicate", iri }, VOCABULARY)).toBe(
+      `PREFIX term: <${PREFIXES.term}>\nSELECT * WHERE {\n  ?s term:shift%20coverage ?o .\n}\nLIMIT 25`,
+    );
+  });
+
+  it("stays whole where the rest is no prefixed name", () => {
+    expect(compactIri(`${B}/vocab/term/a/b`, PREFIXES)).toBe(`<${B}/vocab/term/a/b>`);
+    expect(compactIri(`${B}/vocab/term/a%2`, PREFIXES)).toBe(`<${B}/vocab/term/a%2>`);
+    expect(compactIri(`${B}/vocab/term/a.`, PREFIXES)).toBe(`<${B}/vocab/term/a.>`);
+  });
+});
+
+describe("the prefixes a run adds", () => {
+  const named = { "pet-store": `${B}/vocab/pet-store/`, xsd: XSD, rel: `${B}/vocab/rel/` };
+
+  it("are those the query uses and does not declare", () => {
+    expect(withUsedPrefixes("SELECT * WHERE { ?s a pet-store:pets }", named)).toBe(
+      `PREFIX pet-store: <${named["pet-store"]}>\nSELECT * WHERE { ?s a pet-store:pets }`,
+    );
+  });
+
+  it("leave a query's own PREFIX, wherever it stands", () => {
+    const q =
+      "PREFIX a: <http://a/> PREFIX pet-store: <http://mine/>\nSELECT * WHERE { ?s a pet-store:pets }";
+    expect(withUsedPrefixes(q, named)).toBe(q);
+  });
+
+  it("do not read a string, an IRI or a comment", () => {
+    const q = [
+      "# rel:IN_A_COMMENT",
+      'SELECT * WHERE { ?s <http://x/xsd:y> ?o FILTER(?o = "pet-store:in-a-string") }',
+    ].join("\n");
+    expect(withUsedPrefixes(q, named)).toBe(q);
+    const long = `SELECT * WHERE { ?s ?p ${"'".repeat(3)}rel:x${"'".repeat(3)} }`;
+    expect(withUsedPrefixes(long, named)).toBe(long);
+  });
+
+  it("read a datatype and a path", () => {
+    expect(withUsedPrefixes('SELECT * WHERE { ?s ?p "1"^^xsd:integer }', named)).toContain(
+      `PREFIX xsd: <${XSD}>`,
+    );
+    const path = withUsedPrefixes("SELECT * WHERE { ?s rel:A/rel:B ?o }", named);
+    expect(path.match(/PREFIX rel:/g)).toHaveLength(1);
+  });
+
+  it("leave a prefix the panel does not have, for the server to refuse by name", () => {
+    const q = "SELECT * WHERE { ?s a nope:x }";
+    expect(withUsedPrefixes(q, named)).toBe(q);
+  });
+});
+
+describe("a relationship's name", () => {
+  it("drops rel:, every relationship being under it", () => {
+    expect(edgeName("rel:BREED_INFO")).toBe("BREED_INFO");
+  });
+
+  it("keeps any other prefix", () => {
+    expect(edgeName("sales:owner")).toBe("sales:owner");
+    expect(edgeName("<http://x/y>")).toBe("<http://x/y>");
+  });
+
+  it("is what the graph draws, while its triple keeps the predicate", () => {
+    const nt = `${pet(1)} <${B}/vocab/rel/BREED_INFO> ${pet(2)} .`;
+    const prefixes = { ...PREFIXES, rel: `${B}/vocab/rel/` };
+    const triples = parseNTriples(nt, prefixes);
+    const [edge] = triplesGraph(triples).edges.values();
+    expect(edge.type).toBe("BREED_INFO");
+    expect(edge.properties.iri).toBe(`${B}/vocab/rel/BREED_INFO`);
+    expect(triples[0].p.shown).toBe("rel:BREED_INFO");
   });
 });

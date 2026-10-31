@@ -10,8 +10,11 @@
 
 import { useEffect } from "react";
 import type { GNode, SparqlDescribed } from "../graph-model";
+import type { ClassProperties } from "./frame-meta";
 
-/** A class captioned or sized by a property: a Cypher node holds all its properties, a SPARQL node
+const NO_CLASSES: Record<string, ClassProperties> = {};
+
+/** A class captioned, sized or grouped by a property: a Cypher node holds all its properties, a SPARQL node
  * only what its query asked, so the resources that lack the property are read from the model, once
  * each (``described`` holds what was answered, a refusal or nothing included). */
 export function useSparqlStyledProperties(
@@ -21,6 +24,9 @@ export function useSparqlStyledProperties(
   labelProperty: Record<string, string>,
   sizeByProperty: Record<string, string>,
   onDescribe: ((frameId: string, iris: string[]) => void) | undefined,
+  /** What the frame is grouped by, read of the nodes whose class has it. */
+  groupBy = "none",
+  classProperties: Record<string, ClassProperties> = NO_CLASSES,
 ): void {
   useEffect(() => {
     if (!onDescribe) return;
@@ -28,9 +34,10 @@ export function useSparqlStyledProperties(
     nodes.forEach((n) => {
       const { iri } = n.properties;
       if (typeof iri !== "string" || (described && iri in described)) return;
-      const wanted = [labelProperty[n.label], sizeByProperty[n.label]];
+      const grouped = classProperties[n.label]?.properties.includes(groupBy);
+      const wanted = [labelProperty[n.label], sizeByProperty[n.label], grouped && groupBy];
       if (wanted.some((k) => k && !(k in n.properties))) missing.push(iri);
     });
     if (missing.length > 0) onDescribe(frameId, missing);
-  }, [frameId, described, nodes, labelProperty, sizeByProperty, onDescribe]);
+  }, [frameId, described, nodes, labelProperty, sizeByProperty, onDescribe, groupBy, classProperties]);
 }

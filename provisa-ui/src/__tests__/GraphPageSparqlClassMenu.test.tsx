@@ -186,8 +186,8 @@ describe("the SPARQL class menu", () => {
     page();
     await openMenu();
     await choose("Label by", "breedName");
-    await waitFor(() => expect(seen.captions[LABEL]).toBe(`${LABEL}#breedName`));
-    expect(stored("provisa.sparql.labelProperty")).toEqual({ [LABEL]: `${LABEL}#breedName` });
+    await waitFor(() => expect(seen.captions[LABEL]).toBe("pets:breedName"));
+    expect(stored("provisa.sparql.labelProperty")).toEqual({ [LABEL]: "pets:breedName" });
     expect(getStored("provisa.graph.labelProperty")).toBeNull();
   });
 
@@ -195,8 +195,8 @@ describe("the SPARQL class menu", () => {
     page();
     await openMenu();
     await choose("Size by", "price");
-    await waitFor(() => expect(seen.sizedBy[LABEL]).toBe(`${LABEL}#price`));
-    expect(stored("provisa.sparql.sizeByProperty")).toEqual({ [LABEL]: `${LABEL}#price` });
+    await waitFor(() => expect(seen.sizedBy[LABEL]).toBe("pets:price"));
+    expect(stored("provisa.sparql.sizeByProperty")).toEqual({ [LABEL]: "pets:price" });
     expect(getStored("provisa.graph.sizeByProperty")).toBeNull();
     await openMenu();
     fireEvent.change(screen.getByRole("textbox", { name: "Size multiplier" }), {
@@ -217,18 +217,18 @@ describe("the SPARQL class menu", () => {
     const first = page();
     await openMenu();
     await choose("Label by", "breedName");
-    await waitFor(() => expect(seen.captions[LABEL]).toBe(`${LABEL}#breedName`));
+    await waitFor(() => expect(seen.captions[LABEL]).toBe("pets:breedName"));
     first.unmount();
     seen.captions = {};
     const second = page();
     await screen.findByTestId(`sparql-class-${LABEL}`);
-    expect(seen.captions[LABEL]).toBe(`${LABEL}#breedName`);
+    expect(seen.captions[LABEL]).toBe("pets:breedName");
     second.unmount();
     setStored("provisa.graph.labelProperty", JSON.stringify({ Pets: "breed" }));
     seen.captions = {};
     page();
     await screen.findByTestId(`sparql-class-${LABEL}`);
-    expect(stored("provisa.sparql.labelProperty")).toEqual({ [LABEL]: `${LABEL}#breedName` });
+    expect(stored("provisa.sparql.labelProperty")).toEqual({ [LABEL]: "pets:breedName" });
   });
 });
 

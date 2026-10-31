@@ -32,6 +32,7 @@ import {
   classMenuProperties,
   compactIri,
   domainPrefixes,
+  edgeName,
   termName,
   type SparqlVocabulary,
 } from "./sparql";
@@ -425,7 +426,7 @@ export function SparqlVocabularyPanel({
             : shown.edges.map((e) => (
                 <Pill
                   key={e.iri}
-                  text={e.shown}
+                  text={edgeName(e.shown)}
                   badge
                   tip={`${e.iri} · ${e.source} → ${e.target}`}
                   onClick={() => onPick({ kind: "edge", iri: e.iri })}

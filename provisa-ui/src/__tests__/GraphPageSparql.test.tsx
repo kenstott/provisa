@@ -46,6 +46,7 @@ const frameProps = vi.hoisted(() => ({
   drop: undefined as undefined | ((frameId: string, iri: string) => void),
   describe: undefined as undefined | ((frameId: string, iri: string) => void),
   describeAll: undefined as undefined | ((frameId: string, iris: string[]) => void),
+  rerun: undefined as undefined | ((frameId: string, query: string) => void),
   prefixes: undefined as undefined | Record<string, string>,
 }));
 vi.mock("../components/graph/GraphFrame", () => ({
@@ -55,6 +56,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     onExpandResource,
     onDescribeResource,
     onDescribeResources,
+    onRerun,
     onTableDrop,
     sparqlPrefixes,
   }: {
@@ -63,6 +65,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
     onDescribeResource?: (frameId: string, iri: string) => void;
     onDescribeResources?: (frameId: string, iris: string[]) => void;
+    onRerun?: (frameId: string, query: string) => void;
     onTableDrop?: (frameId: string, iri: string) => void;
     sparqlPrefixes?: Record<string, string>;
   }) => {
@@ -72,6 +75,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     frameProps.drop = onTableDrop;
     frameProps.describe = onDescribeResource;
     frameProps.describeAll = onDescribeResources;
+    frameProps.rerun = onRerun;
     frameProps.prefixes = sparqlPrefixes;
     return null;
   },
@@ -243,11 +247,11 @@ describe("the SPARQL tab", () => {
     expect(posted()[0]).toBe(
       [
         `PREFIX sales: <${BASE}/vocab/sales/>`,
-        `PREFIX p: <${BASE}/vocab/sales/orders#>`,
+        `PREFIX orders: <${BASE}/vocab/sales/orders#>`,
         "SELECT ?s ?amount ?total WHERE {",
         "  ?s a sales:orders .",
         "  OPTIONAL { ?s sales:amount ?amount }",
-        "  OPTIONAL { ?s p:total ?total }",
+        "  OPTIONAL { ?s orders:total ?total }",
         "}",
         "LIMIT 25",
       ].join("\n"),
@@ -448,6 +452,35 @@ describe("the SPARQL tab", () => {
       expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" }),
     );
     expect(lastFrame().sparqlMerge).toBeUndefined();
+  });
+
+  it("adds the panel's prefixes a typed query uses, and the frame shows it as sent", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    const before = posted().length;
+    await act(async () => frameProps.rerun?.(id, "SELECT * WHERE { ?s a sales:orders }"));
+    await waitFor(() => expect(posted().length).toBe(before + 1));
+    const sent = `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE { ?s a sales:orders }`;
+    expect(posted().at(-1)).toBe(sent);
+    await waitFor(() => expect(framesSeen.filter((f) => f.id === id).at(-1)?.query).toBe(sent));
+  });
+
+  it("keys what a DESCRIBE said as the frame shows it, a column by its class's prefix", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(`<${ORDER}> <${BASE}/vocab/sales/orders#total> "1" .`, {
+            headers: { "content-type": "application/n-triples" },
+          }),
+      ),
+    );
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[ORDER]).toBeDefined());
+    const said = lastFrame().sparqlDescribed?.[ORDER];
+    expect(said && "literals" in said && said.literals[0].p.shown).toBe("orders:total");
   });
 
   it("reads a class's styled nodes in one update of the frame, each resource once", async () => {

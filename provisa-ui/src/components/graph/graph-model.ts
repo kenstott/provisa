@@ -150,6 +150,16 @@ export interface GNode {
 export const propertyValue = (n: GNode, prop: string): unknown =>
   n.propertyValues && prop in n.propertyValues ? n.propertyValues[prop] : n.properties[prop];
 
+/** A property's name where it is a column of the node's own class (``pets:breedName`` of a
+ * ``sales:pets`` node is ``breedName``, from the full predicate); null for any other property. */
+export function ownColumnName(n: GNode, key: string): string | null {
+  const iri = n.propertyIris?.[key];
+  const hash = iri?.lastIndexOf("#") ?? -1;
+  if (iri === undefined || hash < 0) return null;
+  const owner = n.label.slice(n.label.indexOf(":") + 1);
+  return iri.slice(0, hash).endsWith(`/${owner}`) ? iri.slice(hash + 1) : null;
+}
+
 export interface GEdge {
   identity: string;
   start: number;

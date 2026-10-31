@@ -77,4 +77,21 @@ describe("the properties a class is styled by", () => {
     renderHook(() => useSparqlStyledProperties("f", undefined, nodes(node(1, "p:pets")), {}, {}, ask));
     expect(ask).not.toHaveBeenCalled();
   });
+
+  it("asks for what the frame is grouped by, of the classes that have it", () => {
+    const ask = vi.fn();
+    renderHook(() =>
+      useSparqlStyledProperties(
+        "f",
+        undefined,
+        nodes(node(1, "p:pets"), node(2, "p:vets")),
+        {},
+        {},
+        ask,
+        "pets:age",
+        { "p:pets": { properties: ["pets:age"], propertyNames: {} } },
+      ),
+    );
+    expect(ask).toHaveBeenCalledWith("f", ["http://x/1"]);
+  });
 });

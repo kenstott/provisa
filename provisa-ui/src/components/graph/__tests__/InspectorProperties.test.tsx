@@ -193,4 +193,21 @@ describe("a node's properties in its panel", () => {
       "http://www.w3.org/2001/XMLSchema#decimal",
     );
   });
+
+  it("read a column by its name under the class's own prefix too", () => {
+    const pet: GNode = {
+      id: 4,
+      label: "pet-store:pets",
+      tableLabel: "pet-store:pets",
+      properties: { "pets:breedName": "Husky", "owners:email": "a@b" },
+      propertyIris: {
+        "pets:breedName": "https://x/pet-store/pets#breedName",
+        "owners:email": "https://x/pet-store/owners#email",
+      },
+    };
+    expect(rows(pet)).toEqual([
+      ["owners:email", "a@b"],
+      ["breedName", "Husky"],
+    ]);
+  });
 });

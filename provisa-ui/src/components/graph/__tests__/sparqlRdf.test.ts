@@ -132,7 +132,7 @@ describe("a data answer drawn", () => {
   });
 
   it("makes a resource-valued property an edge, named compactly", () => {
-    const edge = [...g.edges.values()].find((e) => e.type === "rel:PLACED_BY")!;
+    const edge = [...g.edges.values()].find((e) => e.type === "PLACED_BY")!;
     expect(edge.startNode.properties.iri).toBe(ORDER);
     expect(edge.endNode.properties.iri).toBe(CUSTOMER);
     expect(edge.properties.iri).toBe(`${P.rel}PLACED_BY`);
@@ -189,7 +189,7 @@ describe("an answer about the ontology drawn", () => {
   });
 
   it("makes a property with a domain and a range an edge between them", () => {
-    const edge = [...g.edges.values()].find((e) => e.type === "rel:PLACED_BY")!;
+    const edge = [...g.edges.values()].find((e) => e.type === "PLACED_BY")!;
     expect(edge.startNode.properties.iri).toBe(ORDERS);
     expect(edge.endNode.properties.iri).toBe(CUSTOMERS);
   });
