@@ -2460,7 +2460,6 @@
   "pt/graphFrame.json::graphFrame.collapse": "Collapse",
   "pt/graphFrame.json::graphFrame.copyErrorTitle": "Copy error",
   "pt/graphFrame.json::graphFrame.copyQuery": "Copy query",
-  "pt/graphFrame.json::graphFrame.cypherDropTooFar": "{{name}} is {{hops}} relationships from this result, past the {{most}} a drop walks: no short path.",
   "pt/graphFrame.json::graphFrame.cypherPathNoKey": "The paths between {{from}} and {{to}} need each node's key, and one of them has none.",
   "pt/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
   "pt/graphFrame.json::graphFrame.download": "Download",
@@ -8955,5 +8954,7 @@
   "pt/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
   "pt/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
   "pt/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later.",
-  "pt/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}"
+  "pt/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}",
+  "pt/graphFrame.json::graphFrame.sparqlDropParameterized": "A path can't go through {{name}}: it takes arguments to read. Nothing was added.",
+  "pt/graphFrame.json::graphFrame.sparqlDropEdgeParameterized": "{{name}} leads to a table that takes arguments to read, and a path can't go through one. Nothing was added."
 }

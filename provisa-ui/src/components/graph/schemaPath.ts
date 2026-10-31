@@ -9,7 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-2135: how a dropped class reaches a result. The role's relationships as a graph of labels: a
-// Cypher frame's schema relationships, a SPARQL frame's vocabulary edges, one walk for both.
+// Cypher frame's schema relationships, a SPARQL frame's vocabulary edges, one walk for both. A
+// parameterized table is a function of its arguments, with no rows for a path to walk: the walk
+// goes round one and never ends on one. Two relationships with one join are one edge declared
+// twice (SUBMITTED and SUBMITTED_BY), which the walk takes once: the two as tied paths double the
+// edges and square the rows.
 
 /** The furthest a drop walks; a class further off has no short path. */
 export const MAX_SCHEMA_HOPS = 4;
@@ -20,6 +24,8 @@ export const MAX_SCHEMA_PATHS = 5;
 export interface SchemaEdge {
   source: string;
   target: string;
+  /** What it joins, the same for a join declared from both ends. */
+  join: string;
 }
 
 /** One relationship of a path, walked ``from`` one of its ends ``to`` the other. */
@@ -39,17 +45,21 @@ export interface SchemaPaths<E extends SchemaEdge> {
 /**
  * Every shortest path from a label of ``from`` to a label of ``to``, either way along a relationship,
  * as a Cypher drop's undirected hop reads one. A path has at least one hop: a label in both reaches
- * itself through a relationship, not by standing still.
+ * itself through a relationship, not by standing still. ``parameterized`` are the labels no step may
+ * reach; a label of ``from`` is one the query already holds, with its arguments.
  */
 export function shortestSchemaPaths<E extends SchemaEdge>(
   edges: readonly E[],
   from: readonly string[],
   to: readonly string[],
+  parameterized: ReadonlySet<string>,
 ): SchemaPaths<E> {
   const ends = new Map<string, { edge: E; other: string }[]>();
   const add = (label: string, edge: E, other: string) =>
     ends.set(label, [...(ends.get(label) ?? []), { edge, other }]);
-  for (const edge of edges) {
+  const once = new Map<string, E>();
+  for (const edge of edges) if (!once.has(edge.join)) once.set(edge.join, edge);
+  for (const edge of once.values()) {
     add(edge.target, edge, edge.source);
     if (edge.source !== edge.target) add(edge.source, edge, edge.target);
   }
@@ -58,18 +68,20 @@ export function shortestSchemaPaths<E extends SchemaEdge>(
     const next: string[] = [];
     for (const label of frontier)
       for (const { other } of ends.get(label) ?? [])
-        if (!distance.has(other)) {
+        if (!distance.has(other) && !parameterized.has(other)) {
           distance.set(other, (distance.get(label) as number) + 1);
           next.push(other);
         }
     frontier = next;
   }
-  const arrivals = to.flatMap((label) =>
-    (ends.get(label) ?? []).flatMap(({ edge, other }) => {
-      const before = distance.get(other);
-      return before === undefined ? [] : [{ edge, from: other, to: label, before }];
-    }),
-  );
+  const arrivals = to
+    .filter((label) => !parameterized.has(label))
+    .flatMap((label) =>
+      (ends.get(label) ?? []).flatMap(({ edge, other }) => {
+        const before = distance.get(other);
+        return before === undefined ? [] : [{ edge, from: other, to: label, before }];
+      }),
+    );
   if (arrivals.length === 0) return { paths: [], hops: null };
   const nearest = Math.min(...arrivals.map((a) => a.before));
   const hops = nearest + 1;

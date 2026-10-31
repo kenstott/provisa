@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} non ha alcuna relazione con {{classes}}. Non è stato aggiunto nulla.",
     "sparqlDropTooFar": "{{name}} dista {{hops}} relazioni da {{classes}}, oltre le {{most}} percorse da un rilascio: nessun percorso breve. Non è stato aggiunto nulla.",
     "sparqlDropNoEnd": "Nessuna estremità di {{name}} è in questo risultato. Non è stato aggiunto nulla.",
+    "sparqlDropParameterized": "Un percorso non può passare per {{name}}: la sua lettura richiede argomenti. Non è stato aggiunto nulla.",
+    "sparqlDropEdgeParameterized": "{{name}} porta a una tabella la cui lettura richiede argomenti, e un percorso non può attraversarla. Non è stato aggiunto nulla.",
     "sparqlDropNoProperty": "Nessuna classe di questo risultato ha {{name}}. Non è stato aggiunto nulla.",
     "sparqlDropLeftOut": "Aggiunti {{shown}} percorsi su {{total}} ugualmente brevi; gli altri sono stati omessi.",
     "sparqlDropCut": "Il risultato ha raggiunto il suo LIMIT di {{limit}}: le righe successive sono omesse.",
-    "cypherDropTooFar": "{{name}} dista {{hops}} relazioni da questo risultato, oltre le {{most}} percorse da un rilascio: nessun percorso breve.",
     "cypherPathNoKey": "I percorsi tra {{from}} e {{to}} richiedono la chiave di ogni nodo, e uno dei due non ne ha."
   }
 }

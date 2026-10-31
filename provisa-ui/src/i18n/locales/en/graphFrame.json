@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} has no relationship to {{classes}}. Nothing was added.",
     "sparqlDropTooFar": "{{name}} is {{hops}} relationships from {{classes}}, past the {{most}} a drop walks: no short path. Nothing was added.",
     "sparqlDropNoEnd": "Neither end of {{name}} is in this result. Nothing was added.",
+    "sparqlDropParameterized": "A path can't go through {{name}}: it takes arguments to read. Nothing was added.",
+    "sparqlDropEdgeParameterized": "{{name}} leads to a table that takes arguments to read, and a path can't go through one. Nothing was added.",
     "sparqlDropNoProperty": "No class in this result has {{name}}. Nothing was added.",
     "sparqlDropLeftOut": "Added {{shown}} of {{total}} equally short paths; the others were left out.",
     "sparqlDropCut": "The result reached its LIMIT of {{limit}}: rows past it are left out.",
-    "cypherDropTooFar": "{{name}} is {{hops}} relationships from this result, past the {{most}} a drop walks: no short path.",
     "cypherPathNoKey": "The paths between {{from}} and {{to}} need each node's key, and one of them has none."
   }
 }
