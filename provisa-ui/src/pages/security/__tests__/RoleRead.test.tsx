@@ -119,7 +119,7 @@ describe("a role's read view", () => {
       ["Capabilities", "—"],
       ["Demonstrated capabilities", "—"],
       ["Region values covered", "—"],
-      ["Domain Access", "no domains — reaches no data"],
+      ["Domain Access", "no domains: reaches no data"],
       ["Inherits from", "—"],
       ["Session values", "—"],
     ]);

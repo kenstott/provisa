@@ -13,7 +13,7 @@
     "modeSupply": "Supply my own (base64, 32 bytes)",
     "keyLabel": "Key",
     "keyHelp": "Base64 of 32 random bytes, e.g. openssl rand -base64 32. It is written once and never read back.",
-    "rotationNote": "Rotating changes the key new data is wrapped under. The previous key is retired into the ring and still decrypts what it wrote, so existing data stays readable and a rotation does not revoke the old key.",
+    "rotationNote": "Rotating changes the key new data is wrapped under. The previous key is retired into the ring and still decrypts what it wrote, so existing data stays readable, and a rotation is not a revocation.",
     "set": "Set key",
     "rotate": "Rotate key",
     "applied": "Key {{keyId}} active, fingerprint {{fingerprint}}",
