@@ -81,7 +81,12 @@ async def server(request):
 
     await _seed()
     org = f"{_ORG}_{request.param}"
-    instance = IsolatedServer(org, engine=request.param, config=_CONFIG)
+    instance = IsolatedServer(
+        org,
+        engine=request.param,
+        config=_CONFIG,
+        env={"PROVISA_PUBLIC_URL": "https://paths.example"},  # a subject's IRI starts with it
+    )
     instance.start()
     try:
         yield instance
