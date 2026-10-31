@@ -29,7 +29,7 @@ import { Check, Copy, Trash2, Compass } from "lucide-react";
 import { HelpBubble } from "../components/HelpBubble";
 import { useAuth } from "../context/AuthContext";
 import { Tip } from "../components/Tip";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, setStored } from "../lib/browserStorage";
 import { explainSql, type ExplainResponse } from "../api/admin";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
@@ -278,25 +278,17 @@ export function McpExplorePage() {
   // the tab). Role-scoped so one role's chat never restores under another (governance isolation).
   const storageKey = `mcp.chat.${roleId || "default"}`;
   useEffect(() => {
-    try {
-      // The product tour seeds a canned conversation here (a live chat needs an LLM key).
-      const seed = getStored("provisa_mcp_tour_chat", { session: true });
-      const saved = seed ?? getStored(storageKey, { session: true });
-      /* eslint-disable-next-line react-hooks/set-state-in-effect --
-         restore persisted (or tour-seeded) conversation on mount / role change */
-      setMessages(saved ? (JSON.parse(saved) as ChatMsg[]) : []);
-    } catch {
-      /* corrupt/absent → start fresh */
-    }
+    // The product tour seeds a canned conversation here (a live chat needs an LLM key).
+    const seed = getStoredJson<ChatMsg[]>("provisa_mcp_tour_chat", { session: true });
+    const saved = seed ?? getStoredJson<ChatMsg[]>(storageKey, { session: true });
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       restore persisted (or tour-seeded) conversation on mount / role change */
+    setMessages(saved ?? []);
   }, [storageKey]);
   useEffect(() => {
-    try {
-      // Don't persist the tour's canned chat into the role's real history.
-      if (getStored("provisa_mcp_tour_chat", { session: true })) return;
-      setStored(storageKey, JSON.stringify(messages), { session: true });
-    } catch {
-      /* storage full / unavailable — persistence is best-effort */
-    }
+    // Don't persist the tour's canned chat into the role's real history.
+    if (getStored("provisa_mcp_tour_chat", { session: true })) return;
+    setStored(storageKey, JSON.stringify(messages), { session: true });
   }, [storageKey, messages]);
 
   // Sent-input history (shell-style): Up/Down cycle through past entries. Persisted per role,
@@ -306,13 +298,8 @@ export function McpExplorePage() {
   const histIndexRef = useRef(-1); // -1 = live draft; 0 = most recent entry
   const recalledRef = useRef<string | null>(null);
   useEffect(() => {
-    try {
-      const saved = getStored(histKey, { session: true });
-      /* eslint-disable-next-line react-hooks/set-state-in-effect -- restore input history */
-      setHistory(saved ? (JSON.parse(saved) as string[]) : []);
-    } catch {
-      /* absent → empty history */
-    }
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- restore input history */
+    setHistory(getStoredJson<string[]>(histKey, { session: true }) ?? []);
   }, [histKey]);
 
   const onDraftKey = (e: React.KeyboardEvent) => {
@@ -341,11 +328,7 @@ export function McpExplorePage() {
     // Record in input history (skip a consecutive duplicate), cap at 100, and reset the cursor.
     setHistory((h) => {
       const next = h[h.length - 1] === text ? h : [...h, text].slice(-100);
-      try {
-        setStored(histKey, JSON.stringify(next), { session: true });
-      } catch {
-        /* best-effort */
-      }
+      setStored(histKey, JSON.stringify(next), { session: true });
       return next;
     });
     histIndexRef.current = -1;

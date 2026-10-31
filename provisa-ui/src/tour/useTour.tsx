@@ -67,7 +67,8 @@ import {
   TOUR_OFFERED_KEY,
   TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
+import { readBulk, removeBulk, writeBulk } from "../lib/bulkStorage";
 import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
 import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
@@ -121,6 +122,7 @@ const NL_BRANCHES_KEY = "nl-branches";
 // Backup of the visitor's own NL state while the tour's canned data is shown;
 // restored verbatim on finish so the tour never clobbers real work.
 const NL_BACKUP_KEY = "provisa_tour_nl_backup";
+const NL_BRANCHES_BACKUP_KEY = "nl-branches-backup";
 
 /**
  * Canned "how many pets per species" result — the six compiled query forms the
@@ -244,16 +246,14 @@ const PREP_ACTIONS: Record<string, () => void> = {
   seedNl() {
     // Snapshot the visitor's NL state once (guard against re-entry via Back).
     if (getStored(NL_BACKUP_KEY) === null) {
-      setStored(
-        NL_BACKUP_KEY,
-        JSON.stringify({
-          question: getStored(NL_QUESTION_KEY),
-          branches: getStored(NL_BRANCHES_KEY),
-        }),
+      setStored(NL_BACKUP_KEY, JSON.stringify({ question: getStored(NL_QUESTION_KEY) }));
+      // Queued ahead of the seed below, so it reads what the visitor had.
+      void readBulk(NL_BRANCHES_KEY).then((branches) =>
+        branches === null ? undefined : writeBulk(NL_BRANCHES_BACKUP_KEY, branches),
       );
     }
     setStored(NL_QUESTION_KEY, NL_DEMO_QUESTION);
-    setStored(NL_BRANCHES_KEY, JSON.stringify(kept(NL_DEMO_QUESTION, NL_DEMO_BRANCHES)));
+    void writeBulk(NL_BRANCHES_KEY, kept(NL_DEMO_QUESTION, NL_DEMO_BRANCHES));
   },
 };
 
@@ -279,16 +279,14 @@ function cleanupPrep(): void {
   } catch {
     /* ignore */
   }
-  const raw = getStored(NL_BACKUP_KEY);
-  if (raw === null) return;
-  const restore = (key: string, value: string | null) =>
-    value === null ? removeStored(key) : setStored(key, value);
-  const { question, branches } = JSON.parse(raw) as {
-    question: string | null;
-    branches: string | null;
-  };
-  restore(NL_QUESTION_KEY, question);
-  restore(NL_BRANCHES_KEY, branches);
+  const backup = getStoredJson<{ question: string | null }>(NL_BACKUP_KEY);
+  if (backup === null) return;
+  if (backup.question === null) removeStored(NL_QUESTION_KEY);
+  else setStored(NL_QUESTION_KEY, backup.question);
+  void readBulk(NL_BRANCHES_BACKUP_KEY).then((branches) => {
+    void (branches === null ? removeBulk(NL_BRANCHES_KEY) : writeBulk(NL_BRANCHES_KEY, branches));
+    void removeBulk(NL_BRANCHES_BACKUP_KEY);
+  });
   removeStored(NL_BACKUP_KEY);
 }
 
