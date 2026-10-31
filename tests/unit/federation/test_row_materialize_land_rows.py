@@ -36,12 +36,16 @@ class _FakeConn:
         self.stmts.append(stmt)
         return _Result()
 
-    async def bulk_copy(self, _table, rows):
+    async def bulk_copy(self, table, rows):
+        del table
         self.landed.append([dict(row) for row in rows])
         return len(rows)
 
-    async def advisory_xact_lock(self, _key):
-        return None
+    async def upsert(self, table, values, *, index_elements):
+        raise AssertionError("row-level landing never upserts row by row")
+
+    async def advisory_xact_lock(self, key):
+        del key
 
     @contextlib.asynccontextmanager
     async def transaction(self):
