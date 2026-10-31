@@ -84,22 +84,15 @@ export function useGraphSettings<S extends Record<string, SettingValue>>(
   const set = useCallback(
     <K extends keyof S & string>(name: K, value: S[K]) => {
       const next = { ...readSaved(key), [name]: value };
-      try {
-        setStored(key, JSON.stringify(next));
-      } catch {
-        // Blocked storage: the setting holds while the graph is open and is not kept.
-      }
+      // A refused write is logged and noticed there; the setting holds while the graph is open.
+      setStored(key, JSON.stringify(next));
       setSettings((prev) => ({ ...prev, [name]: value }));
       publish(next);
     },
     [key, publish],
   );
   const reset = useCallback(() => {
-    try {
-      removeStored(key);
-    } catch {
-      // Blocked storage held nothing to clear.
-    }
+    removeStored(key);
     setSettings(initial.current);
     publish({});
   }, [key, publish]);
