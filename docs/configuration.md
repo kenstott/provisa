@@ -58,7 +58,7 @@ All sources share a common field set.
 | `pool_min` / `pool_max` | `1` / `5` | Connection pool bounds |
 | `cache_enabled` | `true` | Toggle caching for all tables in this source |
 | `cache_ttl` | `null` | Seconds; `null` inherits the global default; `-1` never expires |
-| `federation_hints` | `{}` | Per-connector extended parameters (dict[str,str]); see type reference below. |
+| `federation_hints` | `{}` | Per-connector extended parameters (dict[str,str]); see type reference below. Also holds the engine hints `join`, `reorder` and `broadcast_size`, the only keys sent to the engine's session. Every other key is a setting for the source's driver or connector, so a raw engine session property here has no effect. |
 | `mapping` | `{}` | Mapping DSL for redis, elasticsearch, prometheus. |
 | `allowed_domains` | `[]` | Restrict this source to specific domain IDs; empty = unrestricted |
 | `description` | `""` | |
