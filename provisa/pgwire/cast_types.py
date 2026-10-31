@@ -181,6 +181,14 @@ _RETURNED: dict[str, CastType] = {
     "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
     # The engine holds money as its base; its encoder sends the value as money.
     "money": CastType(790, -1, BVType.MONEY, _NUMBERS | {BVType.TEXT, BVType.MONEY}),
+    "money[]": CastType(
+        791,
+        -1,
+        BVType.MONEYARRAY,
+        frozenset({BVType.DECIMALARRAY, BVType.MONEYARRAY, BVType.STRINGARRAY}),
+    ),
+    # The engine answers a regtype as its name; its encoder sends it as a regtype.
+    "regtype": CastType(2206, -1, BVType.REGTYPE, _TEXT_FORMS | {BVType.REGTYPE}),
 }
 
 

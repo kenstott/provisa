@@ -148,11 +148,12 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
 
 
 def _fits(argument: str | None, parameter: str) -> bool:
-    """A string argument fits a character varying parameter as it fits a text one; a range or
-    multirange fits the pseudo-type of its kind."""
+    """A string argument fits a character varying parameter as it fits a text one, any argument a
+    parameter of pseudo-type "any", and a range or multirange the pseudo-type of its kind."""
     return (
         argument is None
         or argument == parameter
+        or parameter == '"any"'
         or (argument == "text" and parameter == "character varying")
         or (parameter == "anyarray" and argument.endswith("[]"))
         or (parameter == "anyrange" and argument in RANGE_TYPES)

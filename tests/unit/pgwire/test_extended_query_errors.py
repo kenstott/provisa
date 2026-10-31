@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import struct
 from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from buenavista.postgres import BVContext
 
 from provisa.pgwire.server import ProvisaHandler
 
@@ -112,3 +115,26 @@ def test_a_bind_with_the_right_parameter_count_binds():
     )
     handler.handle_bind(ctx, _bind_payload(1))
     assert _codes(written) == [b"2"]
+
+
+def _context():
+    return BVContext(MagicMock(), None, {})
+
+
+def test_closing_a_statement_or_portal_that_does_not_exist_is_no_error():
+    # PostgreSQL's Close: "It is not an error to issue Close against a nonexistent name."
+    handler, written = _handler()
+    ctx = _context()
+    handler.handle_close(ctx, b"Snever_prepared\x00")
+    handler.handle_close(ctx, b"Pnever_bound\x00")
+    assert [w[:1] for w in written] == [b"3", b"3"]
+    assert not ctx.has_error
+
+
+def test_executing_an_unknown_portal_answers_34000():
+    handler, written = _handler()
+    ctx = _context()
+    handler.handle_execute(ctx, b"never_bound\x00" + struct.pack("!i", 0))
+    blob = b"".join(written)
+    assert blob[:1] == b"E" and b"34000" in blob and b'portal "never_bound" does not exist' in blob
+    assert ctx.has_error

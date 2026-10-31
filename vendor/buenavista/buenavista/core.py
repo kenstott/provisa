@@ -97,6 +97,7 @@ class BVType(enum.Enum):
     TSMULTIRANGE = 69
     TSTZMULTIRANGE = 70
     DATEMULTIRANGE = 71
+    MONEYARRAY = 72
 
 
 class RawDataRowBytes(bytes):
