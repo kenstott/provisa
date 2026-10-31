@@ -883,6 +883,14 @@
   padding-inline-start: 1.1rem;
 }
 
+/* What a drop on the frame said, under its query, whatever view the frame shows. */
+.gf-drop-notices {
+  padding: 0.35rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-block-end: 1px solid var(--border);
+}
+
 /* REQ-1224: a result delivered to a file, said where the graph would be. */
 .gf-redirect {
   margin: 0.75rem 1rem;

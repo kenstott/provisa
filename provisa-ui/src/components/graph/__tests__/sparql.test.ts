@@ -22,6 +22,7 @@ import {
   triplesGraph,
   pickedQuery,
   relationshipPattern,
+  type RdfCell,
   type SparqlVocabulary,
   iriTail,
   sparqlDrawn,
@@ -484,5 +485,120 @@ describe("a drawn resource's caption", () => {
       ["pets/1", "sales:orders"],
       ["pets/2", "sales/items"],
     ]);
+  });
+});
+
+describe("a SELECT a dropped path widened", () => {
+  const NS = { rel: "https://x/rel/", ps: "https://x/ps/" };
+  const QUERY = `SELECT * WHERE {
+  ?s a ps:pets .
+  ?s rel:HAS_INQUIRY ?o .
+  ?o a ps:inquiries .
+  OPTIONAL { ?u rel:SUBMITTED ?o . ?u a ps:users . }
+}`;
+  const iri = (value: string): RdfCell => ({ rdfTerm: "iri", value, shown: value });
+  const rows = [
+    { s: iri("https://x/pets/1"), o: iri("https://x/inq/1"), u: iri("https://x/users/1") },
+    { s: iri("https://x/pets/2"), o: iri("https://x/inq/2"), u: null },
+  ];
+  const columns = ["s", "o", "u"];
+  const answer = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      headers: { "content-type": "application/sparql-results+json" },
+    });
+  const term = (value: string) => ({ type: "uri", value });
+
+  it("still pairs, each of its patterns joining two columns", async () => {
+    const statement = await sparqlStatement(
+      QUERY,
+      answer({
+        head: { vars: columns },
+        results: {
+          bindings: [
+            { s: term("https://x/pets/1"), o: term("https://x/inq/1"), u: term("https://x/users/1") },
+            { s: term("https://x/pets/2"), o: term("https://x/inq/2") },
+          ],
+        },
+      }),
+      NS,
+    );
+    expect(statement.sparqlPairing).toMatchObject({
+      subject: "s",
+      object: "o",
+      iri: "https://x/rel/HAS_INQUIRY",
+      more: [{ subject: "u", object: "o", iri: "https://x/rel/SUBMITTED" }],
+    });
+  });
+
+  const drawn = () =>
+    sparqlDrawn(
+      {
+        id: "f",
+        query: QUERY,
+        status: "done",
+        nodes: new Map(),
+        edges: new Map(),
+        rows,
+        columns,
+        sparqlForm: "rows",
+        sparqlPairing: {
+          subject: "s",
+          predicate: null,
+          object: "o",
+          iri: "https://x/rel/HAS_INQUIRY",
+          more: [{ subject: "u", predicate: null, object: "o", iri: "https://x/rel/SUBMITTED" }],
+        },
+      },
+      false,
+      true,
+      NS,
+    );
+
+  it("draws what the OPTIONAL reached as edges, the rows it missed staying", () => {
+    const { edges, nodes } = drawn();
+    expect([...edges.values()].map((e) => e.type).sort()).toEqual([
+      "HAS_INQUIRY",
+      "HAS_INQUIRY",
+      "SUBMITTED",
+    ]);
+    expect(nodes.size).toBe(5);
+    expect([...nodes.values()].map((n) => n.label).sort()).toEqual([
+      "ps:inquiries",
+      "ps:inquiries",
+      "ps:pets",
+      "ps:pets",
+      "ps:users",
+    ]);
+  });
+
+  it("keeps a node nothing joined, drawn alone", () => {
+    const alone = sparqlDrawn(
+      { ...drawn(), rows: [{ s: iri("https://x/pets/3"), o: null, u: null }] },
+      false,
+      true,
+      NS,
+    );
+    expect([...alone.nodes.values()].map((n) => n.label)).toEqual(["ps:pets"]);
+    expect(alone.edges.size).toBe(0);
+  });
+
+  it("leaves a wide SELECT of literals a table", async () => {
+    const statement = await sparqlStatement(
+      "SELECT ?s ?a ?b WHERE { ?s ps:a ?a OPTIONAL { ?s ps:b ?b } }",
+      answer({
+        head: { vars: ["s", "a", "b"] },
+        results: {
+          bindings: [
+            {
+              s: term("https://x/1"),
+              a: { type: "literal", value: "1" },
+              b: { type: "literal", value: "2" },
+            },
+          ],
+        },
+      }),
+      NS,
+    );
+    expect(statement.sparqlPairing).toBeUndefined();
   });
 });

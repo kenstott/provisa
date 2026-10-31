@@ -21,6 +21,7 @@ import {
   type RelLineOverride,
   type GNode,
   type GEdge,
+  type DropNotice,
 } from "../components/graph/graph-model";
 import {
   useRelationships,
@@ -67,6 +68,7 @@ import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
 import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-drop";
+import { useFramePaths } from "./use-frame-paths";
 import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
 import {
@@ -278,7 +280,6 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     expandResource,
     describeResource,
     describeResources,
-    dropClass,
   } = useSparqlExplorer({ active: sparql, roleHeader: roleHeaderValue, framesRef, changeFrame });
 
   // Fetch schema when role changes via dedicated graph-schema endpoint
@@ -608,7 +609,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   }, [schemaNodeLabels]);
 
   const rerunFrame = useCallback(
-    async (id: string, typed: string) => {
+    async (id: string, typed: string, drop?: { notices: DropNotice[]; limit?: number }) => {
       if (!typed) return;
       const query = asSent(typed);
       const start = Date.now();
@@ -617,6 +618,9 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           fr.id === id
             ? {
                 ...fr,
+                dropped: drop !== undefined,
+                dropNotices: drop?.notices,
+                dropLimit: drop?.limit,
                 query,
                 status: "loading" as const,
                 nodes: new Map(),
@@ -649,11 +653,11 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame) return;
 
-      const { query: newQueryBase, targetVars } = buildDropExpansion(
-        frame.query,
-        compoundLabel,
-        schemaRels,
-      );
+      const {
+        query: newQueryBase,
+        targetVars,
+        notices,
+      } = buildDropExpansion(frame.query, compoundLabel, schemaRels);
 
       const droppedNode = schemaNodeLabels.find((n) => {
         const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
@@ -673,15 +677,25 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
             const clauses = tvs.flatMap((tv) => nativeFilterClauses(tv, nfc, params));
             const whereStr = clauses.length > 0 ? `\nWHERE ${clauses.join(" AND ")}` : "";
             const finalQuery = newQueryBase.replace(/(\nRETURN )/, `${whereStr}$1`);
-            rerunFrame(frameId, finalQuery);
+            rerunFrame(frameId, finalQuery, { notices });
           },
         });
       } else {
-        rerunFrame(frameId, newQueryBase);
+        rerunFrame(frameId, newQueryBase, { notices });
       }
     },
     [rerunFrame, schemaRels, schemaNodeLabels],
   );
+
+  const { onSparqlDrop, onNodePath } = useFramePaths({
+    framesRef,
+    vocabulary,
+    prefixes,
+    pkMap,
+    changeFrame,
+    rerunFrame,
+    runQuery,
+  });
 
   const onDomainDrop = useCallback(
     (frameId: string, domainLabel: string) => {
@@ -977,7 +991,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         }
         vocabulary={
           sparql
-            ? (openClassMenu) => (
+            ? (openClassMenu, openRelMenu) => (
                 <SparqlVocabularyPanel
                   vocabulary={vocabulary}
                   prefixes={prefixes}
@@ -986,6 +1000,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                   colorOverrides={colorOverrides}
                   checkedDomains={checkedDomains}
                   onClassMenu={openClassMenu}
+                  onRelMenu={openRelMenu}
                 />
               )
             : undefined
@@ -1042,9 +1057,11 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 onClose={closeFrame}
                 onRerun={rerunFrame}
                 // A drop, an expansion and an exclusion write Cypher against the model's labels and
-                // relationships; a SPARQL frame merges a CONSTRUCT or DESCRIBE around the resource.
-                onTableDrop={sparql ? dropClass : onTableDrop}
+                // relationships; a SPARQL drop edits its query, its expansion merges a DESCRIBE.
+                onTableDrop={sparql ? undefined : onTableDrop}
                 onDomainDrop={sparql ? undefined : onDomainDrop}
+                onSparqlDrop={sparql ? onSparqlDrop : undefined}
+                onNodePath={sparql ? undefined : (a, b) => onNodePath(frame.id, a, b)}
                 colorOverrides={colorOverrides}
                 sizeOverrides={sizeOverrides}
                 labelProperty={labelProperty}

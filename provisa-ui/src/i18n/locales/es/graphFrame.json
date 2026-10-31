@@ -41,6 +41,21 @@
     "expandedDialogLabel": "Vista de grafo expandida",
     "firstNodesShown": "Se muestran los primeros {{count}} nodos; hay más. Aumente el límite en el menú lateral.",
     "deleteFrame": "Eliminar este resultado",
-    "sparqlNothingMore": "No se dice nada más de {{resource}}."
+    "sparqlNothingMore": "No se dice nada más de {{resource}}.",
+    "sparqlDropForm": "No se puede soltar una etiqueta en un resultado {{form}}: solo admite SELECT o CONSTRUCT. No se añadió nada.",
+    "sparqlDropUnion": "No se puede soltar una etiqueta en una consulta UNION: no se sabe qué lado unir. No se añadió nada.",
+    "sparqlDropGroupBy": "No se puede soltar una etiqueta en una consulta GROUP BY: sus filas son grupos, no recursos. No se añadió nada.",
+    "sparqlDropAggregate": "No se puede soltar una etiqueta en una consulta de agregación: sus filas son totales, no recursos. No se añadió nada.",
+    "sparqlDropSubquery": "No se puede soltar una etiqueta en una consulta con un sub-SELECT. No se añadió nada.",
+    "sparqlDropNoClass": "Este resultado no nombra ninguna clase a la que unirse: dé una clase a una variable y vuelva a soltar. No se añadió nada.",
+    "sparqlDropNode": "Ese nodo no es una variable de esta consulta, así que no hay nada a lo que unirlo. No se añadió nada.",
+    "sparqlDropNoPath": "{{name}} no tiene ninguna relación con {{classes}}. No se añadió nada.",
+    "sparqlDropTooFar": "{{name}} está a {{hops}} relaciones de {{classes}}, más de las {{most}} que recorre un arrastre: no hay ruta corta. No se añadió nada.",
+    "sparqlDropNoEnd": "Ningún extremo de {{name}} está en este resultado. No se añadió nada.",
+    "sparqlDropNoProperty": "Ninguna clase de este resultado tiene {{name}}. No se añadió nada.",
+    "sparqlDropLeftOut": "Se añadieron {{shown}} de {{total}} rutas igual de cortas; las demás se omitieron.",
+    "sparqlDropCut": "El resultado alcanzó su LIMIT de {{limit}}: las filas posteriores se omiten.",
+    "cypherDropTooFar": "{{name}} está a {{hops}} relaciones de este resultado, más de las {{most}} que recorre un arrastre: no hay ruta corta.",
+    "cypherPathNoKey": "Las rutas entre {{from}} y {{to}} necesitan la clave de cada nodo, y uno de ellos no tiene."
   }
 }
