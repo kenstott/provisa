@@ -90420,7 +90420,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     failed. (Amended 2026-10-29, THE GOAL IS 571:) Maintainer 2026-10-31: 571 pg_catalog functions cannot
     be called on PostgreSQL itself (517 take an internal argument, 54 are refused in every form). They stay
     reported as failed. The lowest reachable failed count for catalog functions is therefore 571, and that
-    is the goal.'
+    is the goal. (Amended 2026-10-29, THE GOAL IS THE GUARANTEED LIST:) Maintainer 2026-10-31: for pg_catalog
+    functions the goal is reversed. The replay runs on every engine with no expansions; the functions that
+    pass on all of them are the guaranteed list, which is what Provisa promises anywhere, and each engine
+    has its own list beneath it. Expansions are a judgement made function by function, not a target. A function
+    not served still counts as failed, and is refused by name where its answer would differ. This replaces
+    THE GOAL IS 571 as a target.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
