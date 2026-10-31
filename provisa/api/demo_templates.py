@@ -614,7 +614,7 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
 
     A bundled demo whose stores the node has not brought up is not built here: the node starts
     no demo's stores at boot, and a template is built from its stores. One served as built is
-    served so; any other is built at the demo's first open (follow_latest)."""
+    served so; any other is built ahead (:func:`build_ahead`), its stores asked of the node."""
     outcome = {}
     for demo in published_demos().values():
         if demo.stores_ready:
@@ -622,10 +622,92 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
         elif await _served_as_built(pool, demo):
             outcome[demo.name] = "ready (as built)"
         else:
-            outcome[demo.name] = "built at its first open"
+            outcome[demo.name] = "built ahead"
     _start_builds()
     _startup_queued.set()
+    start_building_ahead(pool)
     return outcome
+
+
+#: How long the node may take to bring a demo's stores up for a template built ahead: its pull,
+#: its images and its data.
+_STORES_LIMIT_S = 900.0
+#: Each demo version a template was built ahead of, once each: one that could not be is the log's,
+#: and an open asks again.
+_tried_ahead: set[tuple[str, str]] = set()
+_ahead_running = threading.Lock()
+
+
+def start_building_ahead(pool) -> bool:
+    """Start :func:`build_ahead`, unless it is running or this is a bundle build's seeding run,
+    which lands every template itself; whether it started."""
+    from provisa.core.connection_loop import spawn_background
+
+    if seeding_release() or not bundled_demos() or not _ahead_running.acquire(blocking=False):
+        return False
+
+    async def _run() -> None:
+        try:
+            await build_ahead(pool)
+        finally:
+            _ahead_running.release()
+
+    _build_tasks.add(spawn_background(_run(), name="demo-templates-ahead"))
+    return True
+
+
+async def build_ahead(pool) -> None:
+    """REQ-2006: build the template of every published demo that has none for the version served,
+    so no visitor waits on it: the node starts a demo's stores only when asked, and a template is
+    built from its stores, so left to a visitor's open each first open took a build. Its stores
+    are asked of the node one demo at a time and let go when its template is built: the node
+    cannot hold every demo's up at once (sandbox.demo_stores_linger). What it finds is the log's:
+    a demo that cannot be built is said by name, and does not keep the others."""
+    for demo in published_demos().values():
+        if (demo.name, demo.directory.name) in _tried_ahead:
+            continue
+        state = template_builds.state_of(demo.name)
+        if state == "ready" and await _templated(pool, demo.name) == demo.directory.name:
+            continue
+        if state in ("unknown", "ready"):
+            _tried_ahead.add((demo.name, demo.directory.name))
+            await _build_one_ahead(pool, demo.name)
+
+
+async def _build_one_ahead(pool, name: str) -> None:
+    import logging
+
+    from provisa.api.demo_sandbox import note_in_use
+    from provisa.core.demo_bundles import request, stores_failed
+
+    log = logging.getLogger(__name__)
+    await asyncio.to_thread(request, name)
+    deadline = time.monotonic() + _STORES_LIMIT_S
+    while True:
+        demo = published_demos().get(name)
+        if demo is not None and demo.stores_ready:
+            break
+        why = stores_failed(name)
+        if why is not None:
+            log.error("demo template %s cannot be built: its stores failed: %s", name, why)
+            return
+        if time.monotonic() >= deadline:
+            log.error("demo template %s cannot be built: its stores did not come up", name)
+            return
+        await asyncio.sleep(_LANDED_POLL_S)
+    async with _following.setdefault(name, CrossLoopLock()):
+        # A visitor's open may have got here first (follow_latest).
+        state = template_builds.state_of(name)
+        if state not in ("queued", "building") and (
+            state != "ready" or await _templated(pool, name) != demo.directory.name
+        ):
+            await _queue_template(pool, demo)
+            _start_builds()
+    while template_builds.state_of(name) in ("queued", "building"):
+        await asyncio.sleep(_LANDED_POLL_S)
+    if template_builds.state_of(name) != "ready":
+        log.error("demo template %s could not be built ahead", name)
+    await note_in_use(name)
 
 
 async def queue_late_templates(pool) -> list[str]:
@@ -652,6 +734,8 @@ async def queue_late_templates(pool) -> list[str]:
         queued.append(demo.name)
     if queued:
         _start_builds()
+    # A version pulled since the start: the startup's pass served the one before it.
+    start_building_ahead(pool)
     return queued
 
 
@@ -915,8 +999,9 @@ async def follow_latest(name: str) -> None:
 
     The node starts no demo's stores until the demo is asked for: the first open since it started
     asks for them, and is told the demo is being prepared until they are up. A template not built
-    from the version served is then queued to be built (template_builds), not built while the
-    visitor waits; the open is told the same until it is ready (demo_sandbox._template_ready)."""
+    from the version served is then queued to be built (template_builds); the open is told the same
+    until it is ready (demo_sandbox._template_ready). The open waits on both
+    (demo_sandbox._ready_demo)."""
     import logging
 
     import httpx
@@ -960,10 +1045,10 @@ async def follow_latest(name: str) -> None:
         # one build's rollback dropping the schema the other was creating its tables in.
         if template_builds.state_of(name) in ("queued", "building"):
             return
-        if (
-            await _templated(_admin_pool(), name) == ready
-            and template_builds.state_of(name) != "unknown"
-        ):
+        # One that failed is built again: an open is what asks for it again.
+        if await _templated(_admin_pool(), name) == ready and template_builds.state_of(
+            name
+        ) not in ("unknown", "failed"):
             return
 
         # _queue_template replaces a template built from another version.
