@@ -30,6 +30,9 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
+# The proxy binds the pipeline's functions when it is imported. Imported first under _run's
+# patches, it would keep their mocks for every later test in the process.
+import provisa.api.data.endpoint_grpc_proxy  # noqa: F401
 from tests.grpc_model import compiled_read, grpc_model, serving_state
 
 _COLUMNS = [
