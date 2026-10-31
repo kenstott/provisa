@@ -140,7 +140,7 @@ Each is a thin subclass; no new metadata model.
   Atlas-API-compatible; the difference is auth (Entra ID token) and base URL, so Purview is
   a config variant plus an auth strategy, not a fourth code path.
 - `datahub.py`: MCP/MCE emit over the DataHub REST sink.
-- `atlan.py`, `collibra.py` — REST asset upsert.
+- `atlan.py`, `collibra.py`: REST asset upsert.
 
 Tests
 - `tests/unit/test_metadata_export_vendors.py`: one file rather than one per vendor: all

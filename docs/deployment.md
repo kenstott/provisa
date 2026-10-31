@@ -338,10 +338,10 @@ Repeat these steps on each additional node after the primary is running and reac
 
 **Secondary nodes** run only:
 
-- Provisa API — stateless; reads all config from PostgreSQL on the primary at startup
-- Federation engine worker — self-registers with the coordinator on the primary
+- Provisa API, which is stateless and reads all config from PostgreSQL on the primary at startup
+- Federation engine worker, which registers itself with the coordinator on the primary
 
-All application state flows through the primary's PostgreSQL. No manual sync required.
+All application state flows through the primary's PostgreSQL, so no manual sync is required.
 
 ---
 
@@ -457,10 +457,10 @@ All nodes contribute workers to one coordinator on the primary. A 3-node `m7i.4x
 - VPC with two public subnets across two availability zones
 - Security groups: LB group (public ingress on 8000/8815), nodes group (LB → nodes, intra-cluster, optional SSH)
 - IAM role + instance profile with S3 GetObject on the AppImage bucket
-- Primary EC2 instance — runs first-launch in `--non-interactive --role primary` mode
-- Secondary EC2 instances (node_count − 1) — run first-launch in `--non-interactive --role secondary --primary-ip <primary private IP>` mode; depend on primary completing first
-- ALB on port 8000 — HTTP API, health-checks `/health`
-- NLB on port 8815 — Arrow Flight / gRPC
+- Primary EC2 instance, which runs first-launch in `--non-interactive --role primary` mode
+- Secondary EC2 instances (node_count − 1), which run first-launch in `--non-interactive --role secondary --primary-ip <primary private IP>` mode and depend on the primary completing first
+- ALB on port 8000 for the HTTP API, health-checking `/health`
+- NLB on port 8815 for Arrow Flight and gRPC
 - Both LBs attach to all nodes
 
 ### Prerequisites checklist
@@ -647,8 +647,8 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 Provisa applies a two-tier recovery model across all deployment modes:
 
-- **Tier 1 — transient errors.** Read operations retry for up to 30 seconds on transient errors using exponential backoff with full jitter. Tune the budget with `PROVISA_RETRY_BUDGET_SECS`. Write operations are never retried internally, and memory errors are never retryable.
-- **Tier 2 — component failure.** An internal engine watcher detects and restarts failed software components within 2–3 minutes.
+- **Tier 1: transient errors.** Read operations retry for up to 30 seconds on transient errors using exponential backoff with full jitter. Tune the budget with `PROVISA_RETRY_BUDGET_SECS`. Write operations are never retried internally, and memory errors are never retryable.
+- **Tier 2: component failure.** An internal engine watcher detects and restarts failed software components within 2–3 minutes.
 
 Machine and cluster failures stay the operator's responsibility. For tolerance to losing a node, provision redundant nodes and a load balancer (the Terraform and Helm paths above).
 

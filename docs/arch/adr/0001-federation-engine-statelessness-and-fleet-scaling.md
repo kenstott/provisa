@@ -69,10 +69,10 @@ transaction open; a crash leaves a stuck lock).
 
 Two tiers, chosen per deployment:
 
-- **Shared materialization store** (default, most correct) — single coordinated copy →
+- **Shared materialization store** (default, most correct): single coordinated copy →
   monotonic reads and snapshot-consistent joins → the same query at the same instant
   returns the same answer on any instance, with single-refresh economics.
-- **Distributed / per-instance materialization** (eventually correct) — each instance
+- **Distributed / per-instance materialization** (eventually correct): each instance
   materializes locally, at N× compute, and the same query may return different answers on
   different instances until they converge. Convergence requires **two** conditions, not one:
   1. **Deterministic `view_sql`.** Else instances compute different content from identical

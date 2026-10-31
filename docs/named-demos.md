@@ -4,7 +4,7 @@ A named demo is a self-contained, reusable demo environment you drop into `demo/
 Once the directory exists, `start-ui-install.sh --demo <name>` picks it up with no change to
 the launcher script and no developer involvement required. This is the mechanism for
 client-specific and vertical demo scenarios: a future `--demo banking` or `--demo healthcare`
-is just a new directory in this shape.
+is a new directory in this shape.
 
 Named demos are distinct from the `--source=<name>` mechanism. The `--source` flag adds a single
 toy source to the standard demo (backed by `demo/sources/<name>/`). A named demo is a
@@ -59,8 +59,8 @@ itself is not in any registry or allowlist.
 
 ## The one-start-point invariant
 
-`docker compose up -d` against `docker-compose.yml` is the complete setup-and-seed story. No
-manual commands. No host-side scripts to run before it works.
+`docker compose up -d` against `docker-compose.yml` is the complete setup-and-seed story, with no
+manual commands and no host-side scripts to run before it works.
 
 This does **not** mean the demo must be a single process or single container. The `perf` demo
 runs five containers (four engines plus a seeder). A demo may also reference
@@ -68,8 +68,8 @@ external managed resources it does not containerize: a live Databricks or Snowfl
 reached by connection string, registered in `config.yaml` with no corresponding compose
 service. Those are implementation details behind the single entry point.
 
-What the invariant prohibits: telling the solutions engineer to run scripts by hand, set up
-databases manually, or issue commands in a specific order. One command, fully automated.
+The invariant prohibits telling the solutions engineer to run scripts by hand, set up
+databases manually or issue commands in a specific order. One command does it all.
 
 ## The seeder pattern
 
@@ -108,7 +108,7 @@ depends_on:
     condition: service_healthy
 ```
 
-For lighter demos — a few hundred rows, fast to regenerate — skipping the marker and letting
+For lighter demos, with a few hundred rows that are fast to regenerate, skipping the marker and letting
 the seeder re-run every start is fine. The marker pattern is only necessary when generation
 takes minutes or writes gigabytes.
 
@@ -119,8 +119,8 @@ A database's storage is a named volume of the compose project (`weblogs_pg`, `so
 file under its own project starts from an empty database every run and leaves nothing in the
 checkout.
 
-What the demo's own tooling reads or writes as files -- the seeder's marker, log files a Logs
-source reads -- goes under `${PROVISA_NAMED_DEMO_DIR:-.}`: the demo's directory when
+What the demo's own tooling reads or writes as files, such as the seeder's marker and the log files a Logs
+source reads, goes under `${PROVISA_NAMED_DEMO_DIR:-.}`: the demo's directory when
 `start-ui-install.sh` runs it, a temporary directory when a test sets the variable
 :
 
@@ -159,15 +159,15 @@ needing the compose file open. `com.provisa.demo.role` identifies each service's
 
 The role value determines what the bundle build does with each store:
 
-- `rdb`: a Postgres service: each of its databases dumped to `dump/<service>/<database>.sql` at
+- `rdb`: a Postgres service, with each of its databases dumped to `dump/<service>/<database>.sql` at
   build, with `dump/load-postgres.sh`, which loads them into the demo's own container.
-- `vector`: a Qdrant service: each collection saved as `dump/<service>/<collection>.snapshot` at build.
-- `document`: a MongoDB service: every database dumped as one gzipped archive,
+- `vector`: a Qdrant service, with each collection saved as `dump/<service>/<collection>.snapshot` at build.
+- `document`: a MongoDB service, with every database dumped as one gzipped archive,
   `dump/<service>.archive.gz`, read as the administrator its `MONGO_INITDB_ROOT_USERNAME` and
   `MONGO_INITDB_ROOT_PASSWORD` name.
-- `search`: an Elasticsearch service: its indices snapshotted to the repository its `path.repo`
+- `search`: an Elasticsearch service, with its indices snapshotted to the repository its `path.repo`
   names, copied out to `dump/<service>/`.
-- `graph`: a Neo4j service: stopped, and its `neo4j` database dumped to
+- `graph`: a Neo4j service, stopped, with its `neo4j` database dumped to
   `dump/<service>/neo4j.dump`. It is dumped after every other store.
 - `seeder`: run once during the build (and during development starts); never in a bundle.
 - `client`: a client of the demo's own that reads the Provisa a start runs on (the provisioning
@@ -495,8 +495,8 @@ dump, the Qdrant store recovered from the snapshot, the log files shipped in the
 file sources in the bundle's directory. These are the sources in its `docker-compose.run.yml`,
 or files bundled with it.
 
-Only external SaaS-account sources — a Snowflake table, a Databricks dataset, anything the demo
-cannot ship in a container — are served from replicas: landed once at bundle build time (when
+Only external SaaS-account sources, such as a Snowflake table, a Databricks dataset or anything the demo
+cannot ship in a container, are served from replicas, landed once at bundle build time (when
 the stores run and the data is current) and read from those replicas in the bundle.
 
 The build detects which tables need replicas and writes the seed only when there are any. A demo
@@ -595,7 +595,7 @@ Nothing in the tour stamps a recording time.
 ### Track
 
 The tour follows a settled track: the scenario and the features it shows, then how sources and
-tables and relationships fit — each step on its real object — then the solution as predesigned
+tables and relationships fit, each step on its real object, then the solution as predesigned
 queries and views, then the `landing` page. The `weblogs` demo ends on `/sql`; the `sonnets`
 demo ends on `/graph`, the echo network.
 
@@ -609,7 +609,7 @@ A demo marked `published: true` in its `demo.yaml` is built into a bundle and pu
 
 The bundle holds: the demo's `config.yaml` and `demo.yaml`, its tour and example queries, what
 its setup wrote (available in the stores' dumps), the log files the build's traffic generator
-wrote, and — for a demo with replicated external sources — the seed the sandbox tier's template
+wrote, and, for a demo with replicated external sources, the seed the sandbox tier's template
 is built from (`seeded/`). A demo with bitemporal views also carries their history
 (`seeded/views.duckdb`) and the records of the setup's refreshes that built it
 (`seeded/refresh_lineage.parquet`). The template and each sandbox land those records as their own,
@@ -617,7 +617,7 @@ so `ops.mv_refresh_lineage` in a sandbox lists the refreshes its history came fr
 
 The Demo bundles workflow (`.github/workflows/demo-bundles.yml`) builds a demo on a push to
 `main` that touches `demo/named/<name>/`, or on a dispatch naming it. It publishes the bundle
-to `ghcr.io/kenstott/provisa-demos` — one repository, every demo — under two tags: `<name>-<version>`
+to `ghcr.io/kenstott/provisa-demos`, one repository for every demo, under two tags: `<name>-<version>`
 and `<name>-latest`. The version is the build's UTC minute and commit, for example
 `202610141530-1a2b3c4d5`. A version is never published twice.
 
@@ -646,8 +646,8 @@ registry; bundles come from `ghcr.io/kenstott` otherwise.
 
 ### Stopping other demos' stores
 
-When `start-ui-install.sh --demo <name>` starts, it stops every other named demo's stores first
-— containers removed, volumes kept — so the ports they hold are free. The current demo's own
+When `start-ui-install.sh --demo <name>` starts, it stops every other named demo's stores first,
+removing containers and keeping volumes, so the ports they hold are free. The current demo's own
 stores are not touched. A bundle build's compose projects (`provisa-demo-bundle-*`) are left
 alone.
 
@@ -672,7 +672,7 @@ Both refusals happen before the bundle's layer is fetched.
 ### Updating a published demo
 
 Edit `demo/named/<name>/` and merge to `main`. The workflow publishes a new version. The next
-`--demo <name>` pull and the next sandbox on the demos page get it. No release, no redeploy.
+`--demo <name>` pull and the next sandbox on the demos page get it, with no release or redeploy.
 
 ## Log files for Logs sources
 
@@ -986,42 +986,6 @@ testing, but unless you pass `--keep-data` the launcher removes it and seeds it 
 
 When the demo is ready, set `published: true` in `demo.yaml` and merge to `main`. The workflow
 builds and publishes the bundle automatically.
-
-## Log files for Logs sources
-
-A demo whose containers write log files can read them into tables with Logs sources.
-Give the demo a `logs/` directory, one subdirectory per container, each holding a `.gitignore`
-that ignores everything but itself, so the directories are checked in empty. The containers bind
-mount their subdirectory and write there; Provisa runs on the host and reads the files where they
-land.
-
-For every named demo the launcher exports `PROVISA_NAMED_DEMO_DIR`, the demo's directory. When the
-demo has a `logs/` directory, the launcher also adds it to `PROVISA_LOGS_ALLOWED_ROOTS`, the
-directories a Logs source may read. A pristine start deletes the files under `logs/` and keeps the
-`.gitignore` files; `--keep-data` keeps the logs with the data.
-
-A Logs source's glob is a full path. Name it under the demo's directory with the variable, which
-the source keeps as written and resolves each time it reads the files:
-
-```yaml
-# demo/named/weblogs/config.yaml (excerpt)
-- id: shop_access
-  type: logs
-  cache_ttl: 30
-  mapping:
-    glob: ${env:PROVISA_NAMED_DEMO_DIR}/logs/nginx/access.json*
-    format: jsonl
-```
-
-Give a Logs source a `cache_ttl`: its table is a replica, re-read on that interval. In
-`docker-compose.yml`, mount the same directories through the same variable, so a test can point
-them elsewhere:
-
-```yaml
-# demo/named/weblogs/docker-compose.yml (excerpt)
-    volumes:
-      - ${PROVISA_NAMED_DEMO_DIR:-.}/logs/nginx:/var/log/shop
-```
 
 ## The `--source` mechanism: what it is not
 

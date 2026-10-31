@@ -182,7 +182,7 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ## See also
 
-- [Deployment](deployment.md) — how to stand up the control plane environments connect to
-- [Commands](commands.md) — tracked functions and webhooks that appear in each environment's tree
-- [Building test environments](test-data.md) — profile production, declare fakes, generate synthetic data for a non-production environment
-- [Fake methods](fake-methods.md) — every kind of fake and every method a column can declare
+- [Deployment](deployment.md): how to stand up the control plane environments connect to
+- [Commands](commands.md): tracked functions and webhooks that appear in each environment's tree
+- [Building test environments](test-data.md): profile production, declare fakes, generate synthetic data for a non-production environment
+- [Fake methods](fake-methods.md): every kind of fake and every method a column can declare

@@ -371,7 +371,7 @@ of the same key must never interleave either.
 A **third mode that composes with `apply_cdc_events` rather than excluding
 it**, and stays parallel to (never subsumes) `materialize_pending`:
 
-- `materialize_pending` (pull, whole-table, staleness-triggered) — unchanged,
+- `materialize_pending` (pull, whole-table, staleness-triggered): unchanged,
   still what a row-materialized table falls back to for a non-PK-bounded query
   (section 3a). Still what every non-opted-in MATERIALIZED table uses exactly
   as today.

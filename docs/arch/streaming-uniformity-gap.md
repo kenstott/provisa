@@ -142,14 +142,14 @@ One terminal, `_execute_plan`, is the single decision point:
 
 ## Remediation sequence (highest leverage first)
 
-1. **DIRECT streaming** (Defect 1) — `execute_native` returns a lazy batch generator; DIRECT user
+1. **DIRECT streaming** (Defect 1): `execute_native` returns a lazy batch generator; DIRECT user
    scans stream. Amend REQ-1190; the biggest single OOM hole.
-2. **Warehouse honesty** (Defects 2–3) — make `run_arrow_stream`/`run_sync` genuinely lazy via the
+2. **Warehouse honesty** (Defects 2–3): make `run_arrow_stream`/`run_sync` genuinely lazy via the
    driver's server-side chunk API. Delete the three fake `run_arrow_stream`s. No capability-dropping
    fallback (it doesn't conform; see Defect 2).
-3. **Airport streams** (Defect 5) — route airport through the streaming terminal; move
+3. **Airport streams** (Defect 5): route airport through the streaming terminal; move
    schema/`is_rowid` off the result path. Supersede REQ-1218.
-4. **Buffered = CTAS** (Defect 4) — JSON:API / GraphQL / Bolt land a threshold-gated CTAS at the one
+4. **Buffered = CTAS** (Defect 4): JSON:API / GraphQL / Bolt land a threshold-gated CTAS at the one
    terminal instead of an in-Provisa buffer; wire the automatic threshold into `_execute_plan`.
 
 Each step is verifiable by extending `tests/integration/test_streaming_memory_bounded_e2e.py`

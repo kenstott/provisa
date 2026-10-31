@@ -79,7 +79,7 @@ No new table and no new column on `registered_tables`.
 
 **Required arguments.**
 - In `_materialize_api_to_engine_cache`, the new branch checks every `query_arg` with `native_filter_required = true`.
-- A missing one goes to `dropped_tables` with the existing reason text ("requires filter(s) [...] — add a WHERE clause with the required parameter(s)"). `apply_dropped_tables` raises it for a lone table, and a UNION sweep (a graph count) drops the branch, as for graphql_remote.
+- A missing one goes to `dropped_tables` with the existing reason text ("requires filter(s) [...]: add a WHERE clause with the required parameter(s)"). `apply_dropped_tables` raises it for a lone table, and a UNION sweep (a graph count) drops the branch, as for graphql_remote.
 - In GraphQL, `_build_native_filter_args` makes the argument NonNull when `native_filter_type == "path_param"`, or when it is `"query_arg"` and required. Other types keep today's rule.
 
 **Optional arguments.** An absent optional argument binds BSON `null`. A pipeline that must behave differently without it says so itself (`$ifNull`, `$cond`). There is no other default, no fallback and no stage pruning.

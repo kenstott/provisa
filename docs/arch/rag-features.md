@@ -213,7 +213,7 @@ names, identifiers and codes.
 
 ### Three modes
 
-- **`vector_first`** (default) — similarity seeds, expansions widen.
+- **`vector_first`** (default): similarity seeds, expansions widen.
 - **`graph_first`.** `RelationshipIndex` traversal drives, vector reranks. For
   questions about how things connect rather than what mentions a term.
 - **`global`.** Searches community-summary chunks only. With

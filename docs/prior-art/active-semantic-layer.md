@@ -161,7 +161,7 @@ Layers applied within the pass, in order:
 1. **Introspection filtering.** Catalog and schema-listing results are filtered to the entities the
    principal may see, so an unauthorized entity is absent from discovery rather than present and
    denied. This closes the inference channel where an error message confirms existence.
-2. **Access scoping.** Each referenced entity is checked against its declared visibility — public,
+2. **Access scoping.** Each referenced entity is checked against its declared visibility: public,
    domain-scoped, or role-scoped. A reference the principal cannot reach fails compilation, not
    execution.
 3. **Relationship legality.** A join between two entities is admitted only if a registered
@@ -231,7 +231,7 @@ made from the plan as optimized, and an optimization exists that changes the ans
 
 Let a plan reference relations resident in N distinct data sources, N > 1.
 
-1. **Bounding.** Identify a relation R in the plan whose full contents are provably small — bounded
+1. **Bounding.** Identify a relation R in the plan whose full contents are provably small: bounded
    in cardinality and in serialized size against configured ceilings.
 2. **Literalization.** Replace R's reference in the plan with an equivalent *inline constant
    relation*: a literal tuple list carried in the plan itself, semantically equal to R, referencing
@@ -325,13 +325,13 @@ surface the design does not need. Order of stages substitutes for per-role mater
 recomputed from the rewritten plan; a relation that has become a literal `VALUES` list contributes
 no source. Over the recomputed set, topology selection is a classification:
 
-- zero remaining sources, or a hit in the result cache keyed on the governed IR — serve without
+- zero remaining sources, or a hit in the result cache keyed on the governed IR: serve without
   execution;
-- one source with a direct driver and a dialect the plan can be emitted in — direct;
+- one source with a direct driver and a dialect the plan can be emitted in: direct;
 - one source with no direct driver (a document store, a file-backed source, a stream, a lakehouse
   catalog, an HTTP API) — engine, since only the engine's connector reaches it;
-- more than one source — engine;
-- any write — direct, never through the engine.
+- more than one source: engine;
+- any write: direct, never through the engine.
 
 The result-cache key is derived from the governed IR rather than the submitted text, so two
 differently-written queries that govern to the same plan share a cache entry, and two identical
@@ -509,15 +509,15 @@ dependencies on it.
 An engine is registered as a named object carrying a connector set and a set of **declared traits**.
 The traits are orthogonal dimensions, not an engine identity:
 
-- *reach* — the class of sources the engine can address at all;
-- *scale* — whether execution is massively parallel;
-- *storage* — whether the engine scans file and object sources in place, or requires them landed
+- *reach*: the class of sources the engine can address at all;
+- *scale*: whether execution is massively parallel;
+- *storage*: whether the engine scans file and object sources in place, or requires them landed
   first;
-- *pooling* and *transactionality* — whether connections are pooled, and whether the engine
+- *pooling* and *transactionality*: whether connections are pooled, and whether the engine
   supports transactional writes;
-- *native store* — the source type the engine materializes into natively, or none for a pure
+- *native store*: the source type the engine materializes into natively, or none for a pure
   federator;
-- *transports* — which result-delivery transports the engine advertises, such as a columnar stream.
+- *transports*: which result-delivery transports the engine advertises, such as a columnar stream.
 
 The planner reads traits. It never branches on an engine's name, and no per-engine table lives in
 the planning code. A trait that a decision depends on must be declared by the engine, so the

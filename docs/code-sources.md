@@ -299,7 +299,7 @@ A view that applies a column transform is landed, whether or not you declare it 
 
 #### Column transforms in CTEs {: #column-transforms-in-ctes }
 
-A column transform can also appear in a common table expression (CTE). The CTE becomes a staged step: Provisa runs it on its own — reading its input, sending the rows to the function in 1,000-row batches, and landing the enriched rows in a session temporary table — before the rest of the statement runs against that table.
+A column transform can also appear in a common table expression (CTE). The CTE becomes a staged step. Provisa runs it on its own first, reading its input, sending the rows to the function in 1,000-row batches and landing the enriched rows in a session temporary table. The rest of the statement then runs against that table.
 
 ```sql
 WITH enriched AS (

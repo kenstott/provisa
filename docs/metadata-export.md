@@ -1,7 +1,7 @@
 # Metadata Export
 
-Provisa publishes the metadata it governs — tables, columns, domains, stewards, approved
-relationships and column-level lineage — to an external data catalog.
+Provisa publishes the metadata it governs (tables, columns, domains, stewards, approved
+relationships and column-level lineage) to an external data catalog.
 
 Export writes to a catalog. A catalog's descriptions, owners, tags and glossary links can also
 be read back into Provisa, table by table, when a steward asks for it (see the Catalogs panel).
@@ -36,7 +36,7 @@ read fails is not written. Unit tests cover all of this; no end-to-end run again
 Until one does, the Admin tab and every page that names Atlan as a target show it as
 **Atlan (beta)**.
 
-Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
+Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** (see [Data Products](data-products.md#metadata-export)), not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
 publishes nothing to either.
 
@@ -134,8 +134,8 @@ dropped. With `delta_share` set, the product's views are also published as the D
 sharing needs the member in Delta, so a member stored in another format is reported and left out.
 Publishing as a listing in a Databricks private exchange is a later phase.
 
-Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
-same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
+Purview needs no adapter of its own: its ingestion API *is* the Atlas API, with the same routes, the
+same entity envelope and the same RDBMS type model, so it is the `atlas` provider pointed at a
 Purview endpoint with `auth_mode: entra`.
 
 Atlas publishes a source as an `rdbms_instance` with one `rdbms_db` beneath it, tables and columns
@@ -146,7 +146,7 @@ rather than refusing it. Governance signals become Atlas classifications, whose 
 overwrite what a catalog admin has since added to it.
 
 DataHub is aspect-oriented rather than entity-oriented: each asset is a URN, and Provisa proposes
-only the aspects it owns — `tagProperties` for each governance tag, then `datasetProperties`,
+only the aspects it owns: `tagProperties` for each governance tag, then `datasetProperties`,
 `schemaMetadata`, `globalTags`, `ownership` and `upstreamLineage`, the last carrying the
 column-level `fineGrainedLineages`. Aspects Provisa does
 not own are never touched.
@@ -398,5 +398,5 @@ Premium tier has both jobs removed rather than left firing.
 
 ## Related
 
-- [Security Model](security.md) — the masking, RLS and column-visibility rules these signals report on.
-- [Column-Level Lineage](lineage.md) — the lineage graph the published edges come from.
+- [Security Model](security.md): the masking, RLS and column-visibility rules these signals report on.
+- [Column-Level Lineage](lineage.md): the lineage graph the published edges come from.

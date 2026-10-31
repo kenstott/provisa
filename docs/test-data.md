@@ -439,7 +439,7 @@ When you create an environment, the form offers **Start on synthetic data**. Nam
 
 ## Walkthrough: a test environment for orders
 
-The goal: a `dev` environment where developers see production's real order data, with no customer identified. A second pass then adds a ten-times synthetic dataset for load tests.
+The goal is a `dev` environment where developers see production's real order data, with no customer identified. A second pass then adds a ten-times synthetic dataset for load tests.
 
 1. **Create the environment.** On **Environments**, create `dev` with the data mode **Test (fake)** and mutation handling **Reversible**, so tests can write without changing the parent's data.
 2. **Fake the identifying columns.** Edit `customers`, switch the column list to **Test data** mode, and choose **Fill from profile** (profile `customers` first if it has no run). Review the proposals: `name()` on `name`, `email()` on `email`, `phone_number()` on `phone`. Tick **Stable** on each if results must match across engines and regions. Save.

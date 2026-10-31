@@ -187,5 +187,5 @@ A platform admin operating the control plane can't read any org's secret values.
 
 ## See also
 
-- [Security Model](security.md) — layered access control, authentication, and audit logging
-- [Configuration Reference](configuration.md) — `${env:VAR}` syntax for process-level credentials
+- [Security Model](security.md): layered access control, authentication, and audit logging
+- [Configuration Reference](configuration.md): `${env:VAR}` syntax for process-level credentials
