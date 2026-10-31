@@ -85354,7 +85354,10 @@ And acting as analyst,region__eu it is'
     export and the UI. (Amended 2026-10-29, AN UNREACHABLE MASK IS REFUSED:) Maintainer 2026-10-31: a mask
     list holding an entry no reader can reach is not saved. The save is refused with: You have defined a
     mask that is not reachable: followed by the list of unreachable entries. This replaces the editor''s
-    warning, and applies to every path that saves a mask list.'
+    warning, and applies to every path that saves a mask list. (Amended 2026-10-29, A LISTED COLUMN IS MASKED
+    BY DEFAULT:) Maintainer 2026-10-31: once a column has any mask, a reader no entry matches reads it completely
+    masked, never unmasked. Unmasked is only ever given by an entry. An entry for everyone may still say
+    unmasked, and that is written out. This replaces a reader no entry lists reading the column unmasked.'
   use_case: 'A sender column is unmasked for EU reviewers, pseudonymised for other reviewers and fully masked for everyone else.'
   scenario: 'Given a column with entries [to region__eu: unmasked; to reviewer: pseudonymised; everyone: masked]
 
