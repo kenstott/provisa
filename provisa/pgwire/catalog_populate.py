@@ -37,7 +37,7 @@ from provisa.pgwire.catalog_pg17_tables import (
 from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_macros import populate_catalog_macros
-from provisa.security.rights import Capability, has_capability
+from provisa.security.rights import SQL_CATALOG_TABLES, Capability, has_capability
 from provisa.pgwire.catalog_privileges import populate_privilege_macros, populate_table_privileges
 from provisa.pgwire.catalog_data import (
     UNQUERIED_RELATIONS,
@@ -209,6 +209,8 @@ def _build_catalog_index(
         if tm.table_id in seen_table_ids:
             continue
         seen_table_ids.add(tm.table_id)
+        if (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES:
+            continue  # REQ-2190: the catalog's own views are no table of it
         cat = idx.database
         raw_schema = tm.domain_id or tm.schema_name or "public"
         sch = domain_to_sql_name(raw_schema)

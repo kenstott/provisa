@@ -224,6 +224,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     from provisa.security.rights import (
         GLOSSARY_SCOPED_VIEWS,
         GOVERNANCE_META_COLUMNS,
+        META_CATALOG_ROW_SCOPES,
         META_DOMAIN_ID,
         LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
@@ -398,14 +399,45 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
             scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            if scope_cols is None:
+            catalog_scope = META_CATALOG_ROW_SCOPES.get(getattr(tm, "table_name", ""))
+            if scope_cols is not None:
+                predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
+            elif catalog_scope is not None:
+                # REQ-2190: a row about no registered table is every role's.
+                predicate = " AND ".join(
+                    f"(({expr}) IS NULL OR ({expr}) IN ({id_list}))" for expr in catalog_scope
+                )
+            else:
                 continue
-            predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
+
+    # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
+    # either; which those are is decided in code, so no view can say.
+    from provisa.compiler.naming import apply_sql_name as _sql_name
+    from provisa.compiler.sql_literals import sql_literal
+
+    for view, columns in (
+        ("catalog_pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
+        ("is_columns", "CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)"),
+    ):
+        if not ctx.columns_outside_relation:
+            break
+        pairs = ", ".join(
+            f"({16384 + table_id}, "
+            + sql_literal(ctx.physical_to_sql.get((table_id, name)) or _sql_name(name), "postgres")
+            + ")"
+            for table_id, name in sorted(ctx.columns_outside_relation)
+        )
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name != view:
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            outside = f"({columns}) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {outside}" if existing else outside
 
     # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
     # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.
@@ -430,8 +462,6 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
     # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
     # is in registered_tables_meta / table_columns_meta -- by the same WHERE-injection.
-    from provisa.compiler.sql_literals import sql_literal
-
     for tm in ctx.tables.values():
         if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
             continue
