@@ -96,6 +96,6 @@
   },
   "pageError": {
     "title": "This page could not be shown",
-    "body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one."
+    "body": "It failed while rendering. The rest of the app still works, so go to another page or reload this one."
   }
 }

@@ -52,7 +52,7 @@
     "submitButton": "Save",
     "cancelButton": "Cancel",
     "errorRequiredFields": "Source, schema, and table name are required.",
-    "errorCacheTtlRequired": "Set a Cache TTL: this table will be a replica, and its source states none.",
+    "errorCacheTtlRequired": "Set a Cache TTL, because this table will be a replica and its source states none.",
     "cacheTtlLabel": "Cache TTL (seconds)",
     "cacheTtlHint": "This table will be a replica, refreshed on this clock. Its source states no Cache TTL, so the table states its own.",
     "errorNoColumnsSelected": "At least one column must be selected.",

@@ -21,6 +21,6 @@
     "demoSandboxConflicts": "Changes made at the same moment from several devices can be refused as a conflict. Try again.",
     "demoSandboxExpires": "It is deleted, with everything in it, after {{idle}} without use.",
     "demoSandboxHeldBack": "You can't invite people, or switch or manage environments.",
-    "demoSandboxSources": "The sample sources are read-only: what you write stays inside the sandbox."
+    "demoSandboxSources": "The sample sources are read-only, so what you write stays inside the sandbox."
   }
 }

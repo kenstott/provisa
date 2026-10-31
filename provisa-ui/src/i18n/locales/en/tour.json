@@ -15,7 +15,7 @@
     },
     "welcome": {
       "title": "Take the guided tour?",
-      "body": "A five-minute walkthrough: connect a source, then query it in the language or tool you already use. Leave at any point. The compass in the toolbar reopens the tour.",
+      "body": "In five minutes you connect a source, then query it in the language or tool you already use. Leave at any point. The compass in the toolbar reopens the tour.",
       "never": "Don't show this again",
       "later": "Maybe later",
       "start": "Start tour",
@@ -24,7 +24,7 @@
     },
     "menu": {
       "title": "Deep Dives",
-      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Pick a topic: each is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
+      "intro": "One model for your data, metadata and processing, kept in sync and reused everywhere. Each topic is a short tour of its own, and Done brings you back here. The compass in the toolbar reopens this menu anytime.",
       "completed": "Completed",
       "steps": "Steps: {{count}}",
       "coreTour": "Start at the Beginning",
@@ -45,7 +45,7 @@
       },
       "quality": {
         "title": "Data quality",
-        "summary": "Check your real data: quality checkers, contracts, profiler runs, drift, and the results that travel with a data product."
+        "summary": "Check your real data with quality checkers, contracts, profiler runs and drift, and carry the results with a data product."
       },
       "query": {
         "title": "Query it everywhere",
@@ -53,7 +53,7 @@
       },
       "testdata": {
         "title": "Test data and environments",
-        "summary": "How to get safe, realistic data to build and test against: environments, the profiler, fakes and synthetic data."
+        "summary": "Environments, the profiler, fakes and synthetic data give you safe, realistic data to build and test against."
       },
       "publish": {
         "title": "Publish it",
@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "A source, added live",
-        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+        "description": "The picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created the source. The new <strong>supplies</strong> source reads that file in place.",
         "acting": "Adding a source"
       },
       "step4": {
@@ -104,11 +104,11 @@
       },
       "step6": {
         "title": "SQL (1 of 9 surfaces)",
-        "description": "SQL lives in the SQL explorer. Standard SQL federated across every source: join Postgres to Mongo to a CSV in one statement. The model's own metadata and every activity trace are queryable tables here too, so you can join your audit log or lineage straight to live data.<p>🔌 The same governed SQL runs over several wire protocols besides this explorer; your tool picks the one it already speaks:</p><ul><li><strong>pgwire</strong>: every Postgres-compatible client (psql, DBeaver, Tableau, Power BI) connects out of the box.</li><li><strong>JDBC</strong>: drops into any Java/JVM app, ETL pipeline or JDBC-capable BI tool.</li><li><strong>Arrow Flight SQL</strong>: columnar streaming for ADBC clients, with no row re-encoding, built for large result sets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa from DuckDB and query the governed federation in place.</li></ul>"
+        "description": "SQL lives in the SQL explorer. Standard SQL federates across every source, so one statement can join Postgres to Mongo to a CSV. The model's own metadata and every activity trace are queryable tables here too, so you can join your audit log or lineage straight to live data.<p>🔌 The same governed SQL runs over several wire protocols besides this explorer; your tool picks the one it already speaks:</p><ul><li><strong>pgwire</strong>: every Postgres-compatible client (psql, DBeaver, Tableau, Power BI) connects out of the box.</li><li><strong>JDBC</strong>: drops into any Java/JVM app, ETL pipeline or JDBC-capable BI tool.</li><li><strong>Arrow Flight SQL</strong>: columnar streaming for ADBC clients, with no row re-encoding, built for large result sets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa from DuckDB and query the governed federation in place.</li></ul>"
       },
       "step7": {
         "title": "GraphQL (2 of 9 surfaces)",
-        "description": "◈ The same query, typed as GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Grouping and aggregates over your relationships: 🎯 one endpoint, 📖 a self-documenting schema.</p><p>🔌 Call it from <strong>any GraphQL client</strong>, such as Apollo, Relay or urql. With federation enabled, Provisa joins an <strong>Apollo supergraph as a subgraph</strong>, so your federated model composes alongside your existing graphs.</p>"
+        "description": "◈ The same query, typed as GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>It groups and aggregates over your relationships, with 🎯 one endpoint and 📖 a self-documenting schema.</p><p>🔌 Call it from <strong>any GraphQL client</strong>, such as Apollo, Relay or urql. With federation enabled, Provisa joins an <strong>Apollo supergraph as a subgraph</strong>, so your federated model composes alongside your existing graphs.</p>"
       },
       "step8": {
         "title": "Cypher (3 of 9 surfaces)",
@@ -116,7 +116,7 @@
       },
       "step9": {
         "title": "gRPC (4 of 9 surfaces)",
-        "description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Call it from any gRPC client: 📐 strongly typed, 🚀 high-throughput.</p>"
+        "description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Any gRPC client can call it, 📐 strongly typed and 🚀 high-throughput.</p>"
       },
       "step10": {
         "title": "JSON:API (5 of 9 surfaces)",
@@ -136,19 +136,19 @@
       },
       "stepNotebook": {
         "title": "Notebook (9 of 9 surfaces)",
-        "description": "📓 The Notebook tab is JupyterLite: a Jupyter notebook running in your browser. Its first cell signs in, and the next reads the same statement as a DataFrame to chart or join with other data.<p>⬇️ Download the notebook and it opens in any desktop Jupyter, where the same cells read from Provisa as they do here.</p><p>One surface left: the one that writes your queries for you. →</p>"
+        "description": "📓 The Notebook tab is JupyterLite, a Jupyter notebook running in your browser. Its first cell signs in, and the next reads the same statement as a DataFrame to chart or join with other data.<p>⬇️ Download the notebook and it opens in any desktop Jupyter, where the same cells read from Provisa as they do here.</p><p>The last surface writes your queries for you. →</p>"
       },
       "step13": {
-        "title": "Plain English: the surface that writes your queries",
-        "description": "💬 <em>\"how many pets per species\"</em><p><strong>Ask in plain English</strong> and Provisa compiles your question into all seven at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
+        "title": "The surface that writes your queries",
+        "description": "💬 <em>\"how many pets per species\"</em><p><strong>Ask in plain English</strong> and Provisa compiles your question into all seven at once. Each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "That's the five-minute core",
-        "description": "✅ You saw it end to end: <strong>one source, queried in the language or tool you already use, or asked in plain English.</strong> You could stop here.<p>Everything else is a <strong>Deep Dive</strong>: connecting data, relationships, modeling, governance, querying, test data, publishing and operating. Done opens the Deep Dives catalog.</p>"
+        "description": "✅ You saw it end to end, <strong>one source queried in the language or tool you already use, or asked in plain English.</strong> You could stop here.<p>Everything else is a <strong>Deep Dive</strong>: connecting data, relationships, modeling, governance, querying, test data, publishing and operating. Done opens the Deep Dives catalog.</p>"
       },
       "step15": {
         "title": "Connect the graph",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>A relationship does two jobs. It shapes your <strong>data model</strong>: how tables across sources and domains connect, which every query surface follows, whether GraphQL nesting, Cypher paths or SQL joins.</p><p>It is also a <strong>rule</strong>. Joins are governed: a role without the <code>ignore_relationships</code> right can join only along registered relationships, so which ones exist decides which queries are legal. Grant that right deliberately to a role you trust and it joins freely (never in high-security mode).</p><p>Relationships link tables across sources, even across different databases, turning flat tables into a traversable <strong>graph</strong>.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>A relationship does two jobs. It shapes your <strong>data model</strong>: how tables across sources and domains connect, which every query surface follows, whether GraphQL nesting, Cypher paths or SQL joins.</p><p>It is also a <strong>rule</strong>. Joins are governed. A role without the <code>ignore_relationships</code> right can join only along registered relationships, so which ones exist decides which queries are legal. Grant that right deliberately to a role you trust and it joins freely (never in high-security mode).</p><p>Relationships link tables across sources, even across different databases, turning flat tables into a traversable <strong>graph</strong>.</p>"
       },
       "step16": {
         "title": "Define a relationship",
@@ -156,7 +156,7 @@
       },
       "stepRelsSuggest": {
         "title": "Suggest relationships",
-        "description": "✨ The sparkle button looks for likely joins: it reads the foreign keys your sources declare and, when an AI model key is configured, asks the model to infer more. Nothing is declared until you accept a candidate, and a rejected one stays out until you clear the rejections."
+        "description": "✨ The sparkle button looks for likely joins. It reads the foreign keys your sources declare and, when an AI model key is configured, asks the model to infer more. Nothing is declared until you accept a candidate, and a rejected one stays out until you clear the rejections."
       },
       "stepRelsList": {
         "title": "Every relationship in one list",
@@ -164,7 +164,7 @@
       },
       "step17": {
         "title": "See the ERD",
-        "description": "The entity-relationship diagram renders your whole federated model: every registered table and the relationships between them."
+        "description": "The entity-relationship diagram renders every registered table in your federated model and the relationships between them."
       },
       "step18": {
         "title": "Access control (RBAC)",
@@ -172,7 +172,7 @@
       },
       "stepRoleInherit": {
         "title": "Roles inherit",
-        "description": "👪 A role can inherit from a parent: it receives the parent's grants, column visibility and row rules, and its own row rule for a table replaces the parent's. The role also carries its capabilities and its rate and complexity limits."
+        "description": "👪 A role can inherit from a parent. It receives the parent's grants, column visibility and row rules, and its own row rule for a table replaces the parent's. The role also carries its capabilities and its rate and complexity limits."
       },
       "step19": {
         "title": "Row-level security",
@@ -188,15 +188,15 @@
       },
       "stepRequests": {
         "title": "Relationship requests",
-        "description": "✋ Someone who can't create relationships is asking to relate their tables to yours. They are often from another domain, and this is usually their first step toward asking for your data. Because relationships are governed, approving one changes which queries are legal: a role that may only join along approved relationships can now join across this one. A relationship request needs two approvals before it can run, and one that spans two domains needs a yes from each side. Approve it, run it, or reject it with a reason from a fixed list. Resolved requests move to the Resolved tab."
+        "description": "✋ Someone who can't create relationships is asking to relate their tables to yours. They are often from another domain, and this is usually their first step toward asking for your data. Because relationships are governed, approving one changes which queries are legal. A role that may only join along approved relationships can now join across this one. A relationship request needs two approvals before it can run, and one that spans two domains needs a yes from each side. Approve it, run it, or reject it with a reason from a fixed list. Resolved requests move to the Resolved tab."
       },
       "stepQualityTable": {
         "title": "A quality checker is just a source",
-        "description": "🧪 A data-quality checker, Soda or Great Expectations, registers as a <strong>source</strong>. It scans back through Provisa's own postgres endpoint, so one contract dialect covers a Snowflake table, an Iceberg table and a Mongo collection alike. Its results land as an ordinary table: expand the row and open it like any other."
+        "description": "🧪 A data-quality checker, Soda or Great Expectations, registers as a <strong>source</strong>. It scans back through Provisa's own postgres endpoint, so one contract dialect covers a Snowflake table, an Iceberg table and a Mongo collection alike. Its results land as an ordinary table, so expand the row and open it like any other."
       },
       "stepQualityPanel": {
         "title": "Build a quality contract",
-        "description": "✅ Write the contract by hand or build checks column by column (null rates, row counts, ranges, freshness) and <strong>dry-run</strong> it before saving. Every scan appends, so this table <em>is</em> the quality history: chart it, alert on it, join it to anything."
+        "description": "✅ Write the contract by hand or build checks column by column (null rates, row counts, ranges, freshness) and <strong>dry-run</strong> it before saving. Every scan appends, so this table <em>is</em> the quality history, and you can chart it, alert on it or join it to anything."
       },
       "stepQualityProfile": {
         "title": "Profile a table",
@@ -256,7 +256,7 @@
       },
       "step22": {
         "title": "Lineage, end to end",
-        "description": "🧬 <strong>Lineage is the dependency trail your derivations leave:</strong> what each view, calculated column or metric is built from, and what depends on it. This is a real query, analyzed: follow <code>name_upper</code> back through its transforms to the exact <strong>source columns</strong> that feed it.<p>Nothing runs; the query is only analyzed.</p>"
+        "description": "🧬 <strong>Lineage is the dependency trail your derivations leave:</strong> what each view, calculated column or metric is built from, and what depends on it. This is a real query, analyzed. Follow <code>name_upper</code> back through its transforms to the exact <strong>source columns</strong> that feed it.<p>Nothing runs; the query is only analyzed.</p>"
       },
       "stepObservability": {
         "title": "Traces and debug tracing",
@@ -292,7 +292,7 @@
       },
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",
-        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard): owner, team, purpose, limitations, usage, SLA, support and custom properties. Provisa publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There is no separate export step: the spec is <strong>derived from the live model</strong> (tables, lineage, tags, ontology terms) every time, so what's published can't drift out of date.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>, the part of your ontology that bears on what is published: the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
+        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard): owner, team, purpose, limitations, usage, SLA, support and custom properties. Provisa publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There is no separate export step. The spec is <strong>derived from the live model</strong> (tables, lineage, tags, ontology terms) every time, so what's published can't drift out of date.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>, the part of your ontology that bears on what is published: the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Add a term",
@@ -300,11 +300,11 @@
       },
       "stepPublish": {
         "title": "Publish to the tools your org uses",
-        "description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>"
+        "description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only, and Provisa never reads a target back as a source of truth.</p>"
       },
       "stepRelsAgents": {
         "title": "Relationships and AI agents",
-        "description": "🤖 The model and its relationships are available to AI agents (Polly, and agents connecting over MCP), and they shape the queries those agents write.<p>An agent runs under a role, so the same rule applies to it as to a person: a query that joins outside the registered relationships <strong>fails</strong>.</p><p>To let an agent discover relationships, grant its role the <code>ignore_relationships</code> right; to keep it inside guardrails, leave the role without it. It is the same deliberate grant as for a trusted identity (never honored in high-security mode).</p>"
+        "description": "🤖 The model and its relationships are available to AI agents (Polly, and agents connecting over MCP), and they shape the queries those agents write.<p>An agent runs under a role, so the same rule applies to it as to a person. A query that joins outside the registered relationships <strong>fails</strong>.</p><p>To let an agent discover relationships, grant its role the <code>ignore_relationships</code> right; to keep it inside guardrails, leave the role without it. It is the same deliberate grant as for a trusted identity (never honored in high-security mode).</p>"
       },
       "weblogsSources": {
         "title": "What this demo is",
@@ -324,7 +324,7 @@
       },
       "weblogsRest": {
         "title": "The same question over REST",
-        "description": "The slowest pages again, as a REST call: each path with its request count and its average and longest time. Every surface Provisa serves reads the same governed model, so REST gives the answer SQL or GraphQL would, under the same rights."
+        "description": "This REST call returns the slowest pages again, each path with its request count and its average and longest time. Every surface Provisa serves reads the same governed model, so REST gives the answer SQL or GraphQL would, under the same rights."
       },
       "weblogsDone": {
         "title": "What you just saw",
@@ -344,7 +344,7 @@
       },
       "sonnetsSearch": {
         "title": "A search by meaning",
-        "description": "<strong>lines_like</strong> is a search table. Provisa runs the search live in Qdrant, using the arguments your statement passes: here, a phrase and how many lines to return. Each line comes back with a score that says how close it is to the phrase."
+        "description": "<strong>lines_like</strong> is a search table. Provisa runs the search live in Qdrant, using the arguments your statement passes, here a phrase and how many lines to return. Each line comes back with a score that says how close it is to the phrase."
       },
       "sonnetsThemeView": {
         "title": "A theme, stored",
@@ -356,11 +356,11 @@
       },
       "sonnetsGraph": {
         "title": "A graph of the sonnets",
-        "description": "Three relationships make the tables a graph: a line is IN its sonnet, EVOKES a theme and ECHOES a line of another sonnet, with its score. Cypher walks them like any graph."
+        "description": "Three relationships make the tables a graph. A line is IN its sonnet, EVOKES a theme and ECHOES a line of another sonnet, with its score. Cypher walks them like any graph."
       },
       "sonnetsEchoNetwork": {
         "title": "The echo network",
-        "description": "The echo network, drawn by Cypher: the lines that closely echo a line of another sonnet, and the sonnets they are in. Look for the sonnets joined by more than one echo."
+        "description": "Cypher draws the lines that closely echo a line of another sonnet, and the sonnets they are in. Look for the sonnets joined by more than one echo."
       },
       "sonnetsThemesBySequence": {
         "title": "Themes in the two sequences",
@@ -376,7 +376,7 @@
       },
       "filesIntro": {
         "title": "An instant data lake",
-        "description": "A city publishes its open data as files: 311 complaints in a CSV file a month, building permits in Parquet, the budget in Excel and inspections in JSON. <strong>drop</strong> is one files source over that folder: every file is a table, read where it lies, with no load step. The city wants to know which neighborhoods have the most complaints near active construction."
+        "description": "A city publishes its open data as files: 311 complaints in a CSV file a month, building permits in Parquet, the budget in Excel and inspections in JSON. <strong>drop</strong> is one files source over that folder. Every file is a table, read where it lies, with no load step. The city wants to know which neighborhoods have the most complaints near active construction."
       },
       "filesComplaints": {
         "title": "One table over many files",
@@ -384,7 +384,7 @@
       },
       "filesMonths": {
         "title": "Rows from every file",
-        "description": "The complaints counted by month: each month comes from its own file, read as one table. Look for one row for each monthly file."
+        "description": "The complaints counted by month. Each month comes from its own file, read as one table. Look for one row for each monthly file."
       },
       "filesFormats": {
         "title": "A file of each format",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "What an open complaint is",
-        "description": "The ontology says what an open complaint is: one the city has not yet closed. Terms like this say what the catalog's data means."
+        "description": "The ontology defines an open complaint as one the city has not yet closed. Terms like this say what the catalog's data means."
       },
       "filesAnswer": {
         "title": "The answer",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "A folder became a catalog",
-        "description": "A folder of files became a governed catalog: tables, relationships, an ontology term and a stored view, with nothing loaded. A new month's complaints file needs no new table: the glob already names it."
+        "description": "A folder of files became a governed catalog: tables, relationships, an ontology term and a stored view, with nothing loaded. A new month's complaints file needs no new table, because the glob already names it."
       },
       "reviewsCatalog": {
         "title": "What this demo is",
@@ -416,23 +416,23 @@
       },
       "reviewsSearchStore": {
         "title": "The reviews, in Elasticsearch",
-        "description": "<strong>reviews</strong> is Elasticsearch: the 5,000 reviews customers wrote, each with its product, its stars and its text."
+        "description": "<strong>reviews</strong> is Elasticsearch, holding the 5,000 reviews customers wrote, each with its product, its stars and its text."
       },
       "reviewsGraphStore": {
         "title": "Who bought what, in Neo4j",
-        "description": "<strong>purchases</strong> is Neo4j: 2,000 customers, each linked by a BOUGHT relationship to the products they bought. All three stores name a product by the same id."
+        "description": "<strong>purchases</strong> is Neo4j, holding 2,000 customers, each linked by a BOUGHT relationship to the products they bought. All three stores name a product by the same id."
       },
       "reviewsPipeline": {
         "title": "A MongoDB pipeline as a table",
-        "description": "<strong>ratings_by_product</strong> is a MongoDB aggregation pipeline, registered as a table: it groups the star ratings by product and gives each product's count, average and one-star ratings. A query reads it like any other table."
+        "description": "<strong>ratings_by_product</strong> is a MongoDB aggregation pipeline, registered as a table. It groups the star ratings by product and gives each product's count, average and one-star ratings. A query reads it like any other table."
       },
       "reviewsSearchTable": {
         "title": "An Elasticsearch search as a table",
-        "description": "<strong>reviews_matching</strong> is an Elasticsearch search, registered as a table. Its phrase is a parameter: a query sets it, and each row is a review whose text holds the phrase, with the phrase highlighted."
+        "description": "<strong>reviews_matching</strong> is an Elasticsearch search, registered as a table. A query sets its phrase parameter, and each row is a review whose text holds the phrase, with the phrase highlighted."
       },
       "reviewsCypherTable": {
         "title": "A Cypher query as a table",
-        "description": "<strong>bought_together</strong> is a Cypher query against Neo4j, registered as a table: for each product, every other product its buyers bought, and how many of them did."
+        "description": "<strong>bought_together</strong> is a Cypher query against Neo4j, registered as a table. For each product it lists every other product its buyers bought, and how many of them did."
       },
       "reviewsJoin": {
         "title": "Joined on the product",
@@ -444,7 +444,7 @@
       },
       "reviewsBoughtWith": {
         "title": "What their buyers bought",
-        "description": "The second question, in Cypher: the products rated under three stars, and what their buyers also bought. The graph runs across the MongoDB ratings and the Neo4j purchases, and power banks keep turning up."
+        "description": "The second question asks in Cypher for the products rated under three stars and what their buyers also bought. The graph runs across the MongoDB ratings and the Neo4j purchases, and power banks keep turning up."
       },
       "reviewsBoughtWithByDegree": {
         "title": "Grouped by degree",
@@ -456,7 +456,7 @@
       },
       "reviewsExample": {
         "title": "The search in GraphQL",
-        "description": "An example query: the battery complaints in GraphQL, each review's highlighted text with its product nested beneath it through the relationship."
+        "description": "This example query reads the battery complaints in GraphQL, with each review's highlighted text and its product nested beneath it through the relationship."
       },
       "reviewsDone": {
         "title": "What you just saw",
@@ -484,7 +484,7 @@
       },
       "insuranceBook": {
         "title": "The insurer's book",
-        "description": "Each policy in force: its county, line of business, total insured value, premium and deductible."
+        "description": "Each policy in force, with its county, line of business, total insured value, premium and deductible."
       },
       "insuranceRisk": {
         "title": "FEMA's National Risk Index",
@@ -496,7 +496,7 @@
       },
       "insuranceByRating": {
         "title": "By risk rating, in GraphQL",
-        "description": "The same view grouped by FEMA's risk rating: how much of the book's insured value sits in counties rated Relatively High or Very High."
+        "description": "Grouped by FEMA's risk rating, the same view shows how much of the book's insured value sits in counties rated Relatively High or Very High."
       },
       "insuranceRest": {
         "title": "The same answer over REST",
@@ -512,11 +512,11 @@
       },
       "qualityRaw": {
         "title": "Raw, as the feed spelled it",
-        "description": "The products of the first batch as they landed: one product in several spellings, such as COFFEE, Coffee and cofee. Silver makes them one."
+        "description": "The first batch's products as they landed, with one product in several spellings, such as COFFEE, Coffee and cofee. Silver makes them one."
       },
       "qualityChecks": {
         "title": "The checks, on every batch",
-        "description": "<strong>dq_results</strong> is a materialized view that computes the checks in SQL on every landed batch: how many rows fail each, and pass or fail. Batch 1 passes them all; batch 2 fails three."
+        "description": "<strong>dq_results</strong> is a materialized view that computes the checks in SQL on every landed batch, counting the rows that fail each and marking it pass or fail. Batch 1 passes them all; batch 2 fails three."
       },
       "qualityAdmitted": {
         "title": "From a row to the checks that admitted it",
@@ -524,7 +524,7 @@
       },
       "qualityWhichChecks": {
         "title": "Which checks admitted silver",
-        "description": "A silver sale and, along ADMITTED_BY, every check of the run that admitted it: each one passed, with no failing rows."
+        "description": "A silver sale and, along ADMITTED_BY, every check of the run that admitted it. Each one passed, with no failing rows."
       },
       "qualityRefused": {
         "title": "What the bad batch failed on",
@@ -536,7 +536,7 @@
       },
       "qualityGold": {
         "title": "Gold: the totals",
-        "description": "Gold is one GROUP BY over silver: sales, items, revenue and the price range by day and product, from checked data only."
+        "description": "Gold is one GROUP BY over silver that gives sales, items, revenue and the price range by day and product, from checked data only."
       },
       "qualityProduct": {
         "title": "A data product to hand on",
@@ -552,15 +552,15 @@
       },
       "insiderWatchList": {
         "title": "The watch list",
-        "description": "<strong>deal</strong> is the control room's watch list: each deal's company, the names it goes by, its ticker, its project code name and whether it is public yet. It is the most restricted table here: the control room reads it, a deal team only its own deal, and a first-level reviewer never."
+        "description": "<strong>deal</strong> is the control room's watch list, with each deal's company, the names it goes by, its ticker, its project code name and whether it is public yet. It is the most restricted table here. The control room reads it, a deal team only its own deal, and a first-level reviewer never."
       },
       "insiderMail": {
         "title": "The mail",
-        "description": "<strong>message</strong> holds the employees' outbound mail: who sent it, when, and how many recipients were outside the bank or at a personal address."
+        "description": "<strong>message</strong> holds the employees' outbound mail, with who sent it, when, and how many recipients were outside the bank or at a personal address."
       },
       "insiderMatch": {
         "title": "Every message against every deal",
-        "description": "<strong>deal_match</strong> is what the match_deals command found: for each message and deal, whether it names the company, an alias, the ticker or the code name, and how close it reads to the deal's description through a local embedding model. A paraphrase that avoids every name still scores."
+        "description": "<strong>deal_match</strong> is what the match_deals command found. For each message and deal, it records whether it names the company, an alias, the ticker or the code name, and how close it reads to the deal's description through a local embedding model. A paraphrase that avoids every name still scores."
       },
       "insiderQueue": {
         "title": "The review queue",
@@ -572,11 +572,11 @@
       },
       "insiderCustomerData": {
         "title": "Customer data",
-        "description": "The same mail is checked for customer data by SQL patterns: social security and account numbers. The customer table's columns are tagged pii, so this read is itself recorded."
+        "description": "SQL patterns check the same mail for customer data, meaning social security and account numbers. The customer table's columns are tagged pii, so this read is itself recorded."
       },
       "insiderPiiAccess": {
         "title": "Who read customer data",
-        "description": "<strong>ops.pii_access</strong> lists every read of a pii-tagged table: here, the read you just made. The queue does the same for the bank's staff from the bank's own access log: the operations employee who read customer records that week and then mailed customer data out ranks first."
+        "description": "<strong>ops.pii_access</strong> lists every read of a pii-tagged table, here the read you just made. The queue does the same for the bank's staff from the bank's own access log. The operations employee who read customer records that week and then mailed customer data out ranks first."
       },
       "insiderAsReviewer": {
         "title": "As a first-level reviewer",
@@ -584,7 +584,7 @@
       },
       "insiderReviewerQueue": {
         "title": "Only their own cases",
-        "description": "The same queue, read as the reviewer: only the cases of the desks they review, the flagged entity shown and the deal withheld. Row rules on the mail and its matches do this; nothing is copied. The watch list itself is refused to them."
+        "description": "Read as the reviewer, the same queue holds only the cases of the desks they review, with the flagged entity shown and the deal withheld. Row rules on the mail and its matches do this; nothing is copied. The watch list itself is refused to them."
       },
       "insiderAsControlRoom": {
         "title": "Back to the control room",
@@ -592,7 +592,7 @@
       },
       "insiderAudit": {
         "title": "Every read is recorded",
-        "description": "<strong>ops.queries</strong> records every statement: who ran it, as which role, over which table. The reviewer's reads of the queue and the watch list are here, as are yours."
+        "description": "<strong>ops.queries</strong> records who ran every statement, as which role, over which table. The reviewer's reads of the queue and the watch list are here, as are yours."
       },
       "insiderWhyFlagged": {
         "title": "Why was it flagged?",
@@ -616,7 +616,7 @@
       },
       "vulnerabilitiesAlerts": {
         "title": "The Dependabot alerts",
-        "description": "One alert for each pinned package version with a published advisory: the repository, the package, the CVE, the version that fixes it, and whether the alert is open, fixed or dismissed."
+        "description": "One alert for each pinned package version with a published advisory, naming the repository, the package, the CVE, the version that fixes it, and whether the alert is open, fixed or dismissed."
       },
       "vulnerabilitiesNvd": {
         "title": "The CVE records, landed through a filter",
@@ -640,11 +640,11 @@
       },
       "vulnerabilitiesByTeam": {
         "title": "The answer in GraphQL",
-        "description": "The same view, grouped by team on the server: how many exploited vulnerabilities each team has open, and how long the oldest has been overdue."
+        "description": "Grouped by team on the server, the same view shows how many exploited vulnerabilities each team has open, and how long the oldest has been overdue."
       },
       "vulnerabilitiesGraph": {
         "title": "The answer as a graph",
-        "description": "The same joins as a graph in Cypher: repositories, the open alerts raised in them, their CVEs and the catalog entries that mark them exploited."
+        "description": "Cypher shows the same joins as a graph of repositories, the open alerts raised in them, their CVEs and the catalog entries that mark them exploited."
       },
       "vulnerabilitiesRest": {
         "title": "The same answer over REST",
@@ -672,7 +672,7 @@
       },
       "streamingCatalog": {
         "title": "The catalog",
-        "description": "<strong>catalog</strong> is the shop's Postgres: what each product is and costs, and the regions the shop sells in."
+        "description": "<strong>catalog</strong> is the shop's Postgres, with what each product is and costs and the regions the shop sells in."
       },
       "streamingOrders": {
         "title": "A topic becomes a table",
@@ -684,11 +684,11 @@
       },
       "streamingCached": {
         "title": "The answer in GraphQL, cached",
-        "description": "The same view in GraphQL. <strong>@cached(ttl: 10)</strong> asks for the response cache: the same question within ten seconds is answered from the cache, and the X-Provisa-Cache header says HIT."
+        "description": "The same view in GraphQL. <strong>@cached(ttl: 10)</strong> asks for the response cache. The same question within ten seconds is answered from the cache, and the X-Provisa-Cache header says HIT."
       },
       "streamingLive": {
         "title": "Watch the orders arrive",
-        "description": "A GraphQL subscription on the orders: every batch that lands sends the latest orders again, as it lands. Leave it running and watch the list move."
+        "description": "A GraphQL subscription on the orders. Every batch that lands sends the latest orders again. Leave it running and watch the list move."
       },
       "streamingRest": {
         "title": "The answer over REST",
@@ -700,11 +700,11 @@
       },
       "profilingProfiler": {
         "title": "The Data Profiler",
-        "description": "A profiler holds a schedule and its run settings, nothing else: this one runs every night at 02:00. Its first run was made when the demo was built, so the results are already here."
+        "description": "A profiler holds only a schedule and its run settings. This one runs every night at 02:00. Its first run was made when the demo was built, so the results are already here."
       },
       "profilingMember": {
         "title": "A table joins the profiler",
-        "description": "The customers and orders tables are members of the profiler. From a member's editor you can run a profile at once or view its runs: each run, its rows and how long it took."
+        "description": "The customers and orders tables are members of the profiler. From a member's editor you can run a profile at once or view its runs, each with its rows and how long it took."
       },
       "profilingRuns": {
         "title": "Each run is kept",
@@ -713,7 +713,7 @@
       "profilingTerrain": {
         "title": "The run, as terrain",
         "acting": "Opening the customers table's profile runs on the terrain",
-        "description": "The latest run of customers, drawn as terrain: one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it."
+        "description": "The latest run of customers drawn as terrain, with one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it."
       },
       "profilingTerms": {
         "title": "The vocabulary",
@@ -729,7 +729,7 @@
       },
       "profilingPhones": {
         "title": "One column, four formats",
-        "description": "Each phone number reduced to its shape: a digit becomes 9. The CRM never checked the format, so one column holds four of them, which a join or a dialer would have to reconcile first."
+        "description": "Each phone number reduced to its shape, where a digit becomes 9. The CRM never checked the format, so one column holds four of them, which a join or a dialer would have to reconcile first."
       },
       "profilingCountries": {
         "title": "One country, several spellings",
@@ -737,16 +737,16 @@
       },
       "profilingDuplicates": {
         "title": "The rows written twice",
-        "description": "The model declares customer_id the key, but the export held no constraint: 150 customers are in it twice, every field the same. The profile counts the repeated rows and the key values held by more than one row."
+        "description": "The model declares customer_id the key, but the export held no constraint, and 150 customers are in it twice, every field the same. The profile counts the repeated rows and the key values held by more than one row."
       },
       "profilingDrift": {
         "title": "What changed since the last run",
-        "description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's: the measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not."
+        "description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's. The measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not."
       },
       "profilingStrata": {
         "title": "postal_code, run by run",
         "acting": "Opening the drift strata",
-        "description": "postal_code in each run, the oldest at the back: the share of rows each value holds. The newest run is flagged as drifting, as the drift table showed, and the run before it is not."
+        "description": "The share of rows each postal_code value holds in each run, the oldest at the back. The newest run is flagged as drifting, as the drift table showed, and the run before it is not."
       },
       "profilingOriginal": {
         "title": "The real customers",
@@ -758,7 +758,7 @@
       },
       "profilingSynthetic": {
         "title": "Generated from the profile",
-        "description": "The same statement in synthetic: every row generated from the customers' profile, with the same columns, value shapes and spread, and none of the real customers. The profile is enough to generate test data from."
+        "description": "In synthetic, every row the same statement returns was generated from the customers' profile, with the same columns, value shapes and spread, and none of the real customers. The profile is enough to generate test data from."
       },
       "profilingToProd": {
         "title": "Back to production",
@@ -794,7 +794,7 @@
       },
       "opioidsAllocations": {
         "title": "The fund's allocations",
-        "description": "Every allocation the fund made: the county, the fiscal year, the program area, the provider paid, what was awarded and what has been spent. Staff see every row; the public role sees none."
+        "description": "Every allocation the fund made, with the county, the fiscal year, the program area, the provider paid, what was awarded and what has been spent. Staff see every row; the public role sees none."
       },
       "opioidsDeaths": {
         "title": "CDC's overdose death rates",
@@ -810,11 +810,11 @@
       },
       "opioidsPublic": {
         "title": "As the public sees it",
-        "description": "The council's dashboard, run as the public role: the view overdose_burden_by_county. It shows each county's residents, deaths, death rate and federal money per resident, and reads none of the fund's allocations or the providers paid."
+        "description": "The council's dashboard is the view overdose_burden_by_county, run here as the public role. It shows each county's residents, deaths, death rate and federal money per resident, and reads none of the fund's allocations or the providers paid."
       },
       "opioidsByRegion": {
         "title": "By region, in GraphQL",
-        "description": "The dashboard grouped by the fund's five regions: how many residents each has, and how much treatment and recovery was spent there."
+        "description": "Grouped by the fund's five regions, the dashboard shows how many residents each has and how much treatment and recovery was spent there."
       },
       "opioidsRest": {
         "title": "The same answer over REST",
@@ -830,7 +830,7 @@
       },
       "datavaultInsertOnly": {
         "title": "Every row kept",
-        "description": "The customer table is insert-only, as a vault's staging receives it: a change arrives as a new row with its load date, and nothing is overwritten."
+        "description": "The customer table is insert-only, as a vault's staging receives it. A change arrives as a new row with its load date, and nothing is overwritten."
       },
       "datavaultArrived": {
         "title": "What arrived",
@@ -862,15 +862,15 @@
       },
       "datavaultWalk": {
         "title": "The vault walked in GraphQL",
-        "description": "Hub to link to hub: the customer, its orders, the products in them, and every version of each product's name and price."
+        "description": "The walk goes hub to link to hub, through the customer, its orders, the products in them, and every version of each product's name and price."
       },
       "datavaultRest": {
         "title": "The mart over REST",
-        "description": "The current-state customer dimension, built on the vault, is a REST endpoint: a downstream application reads it without knowing the vault is there."
+        "description": "The current-state customer dimension, built on the vault, is a REST endpoint, so a downstream application reads it without knowing the vault is there."
       },
       "datavaultLineage": {
         "title": "Where a mart column comes from",
-        "description": "The lineage of the mart's columns: each one traced back through the point-in-time view and the satellites to the source field it came from."
+        "description": "The lineage of the mart's columns traces each one back through the point-in-time view and the satellites to the source field it came from."
       },
       "datavaultAnalyst": {
         "title": "An analyst's view",
@@ -894,7 +894,7 @@
       },
       "agricultureClaims": {
         "title": "The insurer's claims",
-        "description": "Each indemnity the insurer paid: the farm, the crop year, the cause of loss, the month and the amount."
+        "description": "Each indemnity the insurer paid, with the farm, the crop year, the cause of loss, the month and the amount."
       },
       "agricultureMarket": {
         "title": "The whole market's losses",
@@ -902,7 +902,7 @@
       },
       "agricultureWeather": {
         "title": "Daily weather by county",
-        "description": "NOAA's daily maximum temperature and precipitation for each county, the mean of its reporting stations, over the growing season, May to August: when rain and heat decide the yield."
+        "description": "NOAA's daily maximum temperature and precipitation for each county, the mean of its reporting stations, over the growing season, May to August, when rain and heat decide the yield."
       },
       "agricultureJoin": {
         "title": "Joined by county",
@@ -914,7 +914,7 @@
       },
       "agricultureAnswer": {
         "title": "The answer in SQL",
-        "description": "The view losses_and_weather sets each county's season beside the portfolio's results, and is kept stored. By crop year: 2012, the driest and hottest season, is the year the portfolio lost money, mostly to drought and heat, as the whole market did; the wet years of 2010 and 2013 cost less."
+        "description": "The view losses_and_weather sets each county's season beside the portfolio's results, and is kept stored. Read by crop year, 2012, the driest and hottest season, is the year the portfolio lost money, mostly to drought and heat, as the whole market did; the wet years of 2010 and 2013 cost less."
       },
       "agricultureWorstSeasons": {
         "title": "The worst seasons",
@@ -922,11 +922,11 @@
       },
       "agricultureDrySeasons": {
         "title": "The driest seasons, in GraphQL",
-        "description": "The same view in GraphQL, the seasons with the least rain first: they are the ones with the highest loss ratios and the lowest yields."
+        "description": "The same view in GraphQL, the seasons with the least rain first. They are the ones with the highest loss ratios and the lowest yields."
       },
       "agricultureNotebook": {
         "title": "How much does the weather explain?",
-        "description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot."
+        "description": "The demo's notebook runs in your browser. It reads every county season into pandas as the analyst, correlates the loss ratio with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, fits a regression on them and plots it."
       },
       "agricultureRest": {
         "title": "By year over REST",
@@ -934,11 +934,11 @@
       },
       "agricultureRecap": {
         "title": "What you saw",
-        "description": "You saw the insurer's own data matched by county and crop year to public losses, weather and yields, all in one governed model. One view answers whether the weather explains the losses, in SQL, GraphQL and REST. The notebook measures it: the weather explains 54% of the variation in loss ratio, and across today's book a 2012-like season has an expected loss ratio of 1.75."
+        "description": "You saw the insurer's own data matched by county and crop year to public losses, weather and yields, all in one governed model. One view answers whether the weather explains the losses, in SQL, GraphQL and REST. The notebook measures it. The weather explains 54% of the variation in loss ratio, and across today's book a 2012-like season has an expected loss ratio of 1.75."
       },
       "retailScenario": {
         "title": "One group, two regions",
-        "description": "A retail group runs an EU and a US subsidiary as one business. The tour asks whether it can do that without breaking GDPR. Each subsidiary keeps its own database: this is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
+        "description": "A retail group runs an EU and a US subsidiary as one business. The tour asks whether it can do that without breaking GDPR. Each subsidiary keeps its own database. This is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
       },
       "retailRegions": {
         "title": "One definition of every region",
@@ -946,11 +946,11 @@
       },
       "retailEuCustomers": {
         "title": "An EU table, homed in the EU",
-        "description": "The EU customers. The table names the EU as its region: its rows are copied only into the EU's store and computed only there. Readers elsewhere get them through the EU's views or not at all."
+        "description": "The EU customers. The table names the EU as its region, so its rows are copied only into the EU's store and computed only there. Readers elsewhere get them through the EU's views or not at all."
       },
       "retailRequests": {
         "title": "Data subject requests",
-        "description": "The group's register of requests: who asked to see their data, who asked to have it erased, and when. It holds no customer data itself."
+        "description": "The group's register records who asked to see their data, who asked to have it erased, and when. It holds no customer data itself."
       },
       "retailJoin": {
         "title": "How a request finds a person",
@@ -990,7 +990,7 @@
       },
       "retailErasure": {
         "title": "An erasure, planned",
-        "description": "For each erasure request, every row the group deletes: its subsidiary, its table and its key. Each subsidiary deletes its own rows, in its own region."
+        "description": "For each erasure request, every row the group deletes, with its subsidiary, its table and its key. Each subsidiary deletes its own rows, in its own region."
       },
       "retailAsReviewer": {
         "title": "As an insider reviewer",
@@ -1002,7 +1002,7 @@
       },
       "retailAsEuReviewer": {
         "title": "As a reviewer in the EU",
-        "description": "Next, the SQL explorer runs as reviewer with region__eu: a reviewer whose region is the EU."
+        "description": "Next, the SQL explorer runs as reviewer with region__eu, a reviewer whose region is the EU."
       },
       "retailReveal": {
         "title": "The sender, revealed in the EU",
@@ -1030,7 +1030,7 @@
       },
       "provisioningJoin": {
         "title": "How the feeds join",
-        "description": "An order names its product, and the product knows its cost and category. The dataset joins each order to its product. The close is built on the dataset plus the stock and price feeds: a view over a view, refreshed in turn."
+        "description": "An order names its product, and the product knows its cost and category. The dataset joins each order to its product. The close is a view over that view, built on the dataset plus the stock and price feeds and refreshed in turn."
       },
       "provisioningRecap": {
         "title": "What you saw",
@@ -1054,7 +1054,7 @@
       },
       "provisioningPulls": {
         "title": "The pulls",
-        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as recorded at its version time: the orders that had landed by then, so neither a refresh landing mid-pull nor an order landed later can change what it reads. It records the rows, the seconds and the rows a second."
+        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as recorded at its version time, meaning the orders that had landed by then, so neither a refresh landing mid-pull nor an order landed later can change what it reads. It records the rows, the seconds and the rows a second."
       },
       "provisioningAsFinance": {
         "title": "Run as finance",
@@ -1062,7 +1062,7 @@
       },
       "provisioningFinanceView": {
         "title": "What finance pulls",
-        "description": "The latest orders as finance reads them: revenue, cost and margin, every category."
+        "description": "The latest orders as finance reads them, with revenue, cost and margin in every category."
       },
       "provisioningAsDataScience": {
         "title": "Run as data science",
@@ -1070,7 +1070,7 @@
       },
       "provisioningDataScienceView": {
         "title": "What data science pulls",
-        "description": "The same dataset, the same query: cost and margin read 0, and service orders are gone (a row rule)."
+        "description": "On the same dataset and the same query, cost and margin read 0, and service orders are gone (a row rule)."
       },
       "provisioningAsFinanceAgain": {
         "title": "Back to finance",
@@ -1082,7 +1082,7 @@
       },
       "provisioningRest": {
         "title": "The pulls over REST",
-        "description": "How each team's pulls went, grouped on the server: how many, and how fast on average."
+        "description": "How many pulls each team made and how fast they ran on average, grouped on the server."
       },
       "pharmaScenario": {
         "title": "What this demo is",
@@ -1094,11 +1094,11 @@
       },
       "pharmaFormulary": {
         "title": "The pharmacy's formulary",
-        "description": "Each product the pharmacy stocks: its NDC, generic name, manufacturer, therapeutic class and whether it is critical. Its stock at each site sits beside it."
+        "description": "Each product the pharmacy stocks, with its NDC, generic name, manufacturer, therapeutic class and whether it is critical. Its stock at each site sits beside it."
       },
       "pharmaShortages": {
         "title": "FDA's drug shortages",
-        "description": "Every shortage FDA has posted, one row per package: its status, the product's availability and its NDC product code. The recalls and Medicaid's prescriptions sit beside it."
+        "description": "Every shortage FDA has posted, one row per package, with its status, the product's availability and its NDC product code. The recalls and Medicaid's prescriptions sit beside it."
       },
       "pharmaJoin": {
         "title": "Joined by NDC and by firm",
@@ -1114,7 +1114,7 @@
       },
       "pharmaByRisk": {
         "title": "By risk, in GraphQL",
-        "description": "The same view grouped by risk: how many products face a shortage, a recall or both, the stock they hold and how often Medicaid prescribes them."
+        "description": "Grouped by risk, the same view shows how many products face a shortage, a recall or both, the stock they hold and how often Medicaid prescribes them."
       },
       "pharmaRest": {
         "title": "The same answer over REST",
@@ -1134,7 +1134,7 @@
       },
       "storefrontShipping": {
         "title": "Shipping, over REST",
-        "description": "Each order's shipment comes from the internal shipping service over <strong>REST</strong>, read through its OpenAPI document: the carrier, the tracking number, and when it was promised and delivered."
+        "description": "Each order's shipment comes from the internal shipping service over <strong>REST</strong>, read through its OpenAPI document, with the carrier, the tracking number, and when it was promised and delivered."
       },
       "storefrontRelations": {
         "title": "Relationships, declared once",
@@ -1146,7 +1146,7 @@
       },
       "storefrontScreen": {
         "title": "The app's one query",
-        "description": "The order-history screen sends this one nested GraphQL query: each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
+        "description": "The order-history screen sends this one nested GraphQL query for each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
       },
       "storefrontApp": {
         "title": "The screen it feeds",
@@ -1162,7 +1162,7 @@
       },
       "storefrontAnalystSql": {
         "title": "The analyst's SQL",
-        "description": "Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email as the analyst reads it: masked."
+        "description": "Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email masked, as the analyst reads it."
       },
       "storefrontBi": {
         "title": "The BI dashboard",
@@ -1174,7 +1174,7 @@
       },
       "storefrontPoint": {
         "title": "One model, two consumers",
-        "description": "<strong>SHIPPED_AS</strong> joins an order to its shipment. The app and the BI tool both read through it and every other relationship, under the same rules: the customer sees their own orders, the analyst sees no emails. Change a relationship or a rule here, and both consumers have it."
+        "description": "<strong>SHIPPED_AS</strong> joins an order to its shipment. The app and the BI tool both read through it and every other relationship, under the same rules, so the customer sees their own orders and the analyst sees no emails. Change a relationship or a rule here, and both consumers have it."
       },
       "hasuramigrationScenario": {
         "title": "An app moving off Hasura",
@@ -1194,14 +1194,14 @@
       },
       "hasuramigrationMyOrders": {
         "title": "The order history, reshaped",
-        "description": "The storefront's order-history query, reshaped once for Provisa: the root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
+        "description": "The storefront's order-history query, reshaped once for Provisa. The root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
       },
       "hasuramigrationProfile": {
         "title": "A read by key",
-        "description": "Hasura's <strong>customers_by_pk</strong> becomes a filter on the table. The <strong>full_name</strong> computed field is the two names the screen puts together, and the import listed it as one to redo by hand. The row rule still decides what Ana sees: only her own row."
+        "description": "Hasura's <strong>customers_by_pk</strong> becomes a filter on the table. The <strong>full_name</strong> computed field is the two names the screen puts together, and the import listed it as one to redo by hand. The row rule still limits Ana to her own row."
       },
       "hasuramigrationSalesforce": {
-        "title": "What Hasura couldn't do: Salesforce",
+        "title": "Joining Salesforce",
         "description": "The sales team keeps its accounts in Salesforce. Provisa registers the org as a source and its <strong>Account</strong> object as a table. Each business customer in the store names the account it buys for."
       },
       "hasuramigrationAccount": {
@@ -1214,7 +1214,7 @@
       },
       "hasuramigrationSupportScreen": {
         "title": "Orders with their accounts",
-        "description": "The support desk's order screen, reshaped, with something new: beside each order's customer, the account from Salesforce, its industry and city, in the same request. Customers without an account show none."
+        "description": "The support desk's order screen, reshaped, now shows the Salesforce account beside each order's customer, with its industry and city, in the same request. Customers without an account show none."
       },
       "hasuramigrationAnalyst": {
         "title": "The analyst",
@@ -1222,31 +1222,31 @@
       },
       "hasuramigrationByIndustry": {
         "title": "Revenue by industry",
-        "description": "One SQL statement over the store and Salesforce: revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
+        "description": "One SQL statement over the store and Salesforce gives revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
       },
       "hasuramigrationRecap": {
         "title": "What you saw",
-        "description": "A Hasura app imported in one step and working at once: tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once and the rules not at all. One relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync."
+        "description": "The Hasura app imported in one step and worked at once, with its tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once and the rules not at all. One relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync."
       },
       "reproduceScenario": {
         "title": "What this demo is",
-        "description": "A bank files an exposure report with its regulator for 30 September. The regulator asks where the rates desk's figure came from, and for the report exactly as it was filed: a rate has been corrected since. The bank's trading book is read live from its own database."
+        "description": "A bank files an exposure report with its regulator for 30 September. The regulator asks where the rates desk's figure came from, and for the report exactly as it was filed, because a rate has been corrected since. The bank's trading book is read live from its own database."
       },
       "reproduceBook": {
         "title": "The trading book",
-        "description": "Each position: its desk, its notional in its own currency and the rate it converts to USD at, valid from 30 September. One of these rates is corrected after the report is first filed."
+        "description": "Each position, with its desk, its notional in its own currency and the rate it converts to USD at, valid from 30 September. One of these rates is corrected after the report is first filed."
       },
       "reproduceLineage": {
         "title": "Where the figure comes from",
-        "description": "The report's exposure column, traced back: each desk's exposure is the sum of notional times fx_rate over its positions. Every column of the report leads to the source columns it is computed from."
+        "description": "The report's exposure column, traced back. Each desk's exposure is the sum of notional times fx_rate over its positions. Every column of the report leads to the source columns it is computed from."
       },
       "reproduceRefreshes": {
         "title": "The refreshes that built it",
-        "description": "Each build of the report records what it was built from: the version of the report's definition, and the version of its input with how that was established. Two builds: one as first filed, one after the correction."
+        "description": "Each build of the report records what it was built from: the version of the report's definition, and the version of its input with how that was established. There are two builds, one as first filed and one after the correction."
       },
       "reproduceImpact": {
         "title": "What a rename would break",
-        "description": "Rename fx_rate here, and Provisa lists what reads it before you save: the report among them."
+        "description": "Rename fx_rate here, and Provisa lists what reads it before you save, the report among them."
       },
       "reproduceNow": {
         "title": "The report now",
@@ -1254,11 +1254,11 @@
       },
       "reproduceAsOf": {
         "title": "As of 30 September",
-        "description": "The report as of its business date: what the figures were for 30 September."
+        "description": "The report as of its business date shows what the figures were for 30 September."
       },
       "reproduceAsOfNow": {
         "title": "As of 30 September, as recorded now",
-        "description": "Read as Provisa has it recorded today, 30 September shows the corrected figure: 1,550,000 for the rates desk. That is the figure in the books now, and it differs from what was filed."
+        "description": "Read as Provisa has it recorded today, 30 September shows the corrected figure, 1,550,000 for the rates desk. That is the figure in the books now, and it differs from what was filed."
       },
       "reproduceAsFiled": {
         "title": "As recorded when it was filed",
@@ -1266,11 +1266,11 @@
       },
       "reproduceFiled": {
         "title": "The report as filed",
-        "description": "As of 30 September and as recorded when it was filed: the rates desk reads 1,540,000, the figure the regulator received. The correction recorded since does not change what was filed."
+        "description": "As of 30 September and as recorded when it was filed, the rates desk reads 1,540,000, the figure the regulator received. The correction recorded since does not change what was filed."
       },
       "reproduceAudit": {
         "title": "Who read it, and as of when",
-        "description": "The audit log records every read: who ran it, as which role, and the time it read the report as of and as recorded at. The regulator's reproduction is itself on record."
+        "description": "The audit log records who ran every read, as which role, and the time it read the report as of and as recorded at. The regulator's reproduction is itself on record."
       },
       "reproduceRecap": {
         "title": "What you saw",
@@ -1282,7 +1282,7 @@
       },
       "churnCustomers": {
         "title": "The customers",
-        "description": "Each customer's plan, region, tenure and the day they cancelled, if they have. Their email address is masked for the analyst role: it arrives as *** and its domain."
+        "description": "Each customer's plan, region, tenure and the day they cancelled, if they have. Their email address is masked for the analyst role, arriving as *** and its domain."
       },
       "churnUsage": {
         "title": "Their usage",
@@ -1294,15 +1294,15 @@
       },
       "churnFeatures": {
         "title": "The features the model learns from",
-        "description": "One row a customer: plan, tenure, sign-ins a month, tickets in the year, and whether they cancelled. A materialized view, built through the governed pipeline. The email addresses are masked, as the analyst is served them."
+        "description": "One row a customer, with plan, tenure, sign-ins a month, tickets in the year, and whether they cancelled. A materialized view, built through the governed pipeline. The email addresses are masked, as the analyst is served them."
       },
       "churnGraphql": {
         "title": "The same features over GraphQL",
-        "description": "The demo's example query reads the same view as the analyst, with the same mask: every surface serves one governed answer."
+        "description": "The demo's example query reads the same view as the analyst, with the same mask."
       },
       "churnNotebook": {
         "title": "A model, trained in your browser",
-        "description": "The demo's notebook, run in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them, and the customers most at risk listed. Python runs in your browser, and the email addresses are still masked."
+        "description": "The demo's notebook, run in the Notebook tab, reads the features into pandas as the analyst, trains a scikit-learn model on them and lists the customers most at risk. Python runs in your browser, and the email addresses are still masked."
       },
       "churnEveryRole": {
         "title": "Back to every role",
@@ -1310,15 +1310,15 @@
       },
       "churnRecap": {
         "title": "What you saw",
-        "description": "Governed data straight into a data scientist's notebook: the analyst's mask applied on the way in, and a model trained without the data leaving the browser. In a desktop Jupyter the same code reads large pulls over Arrow Flight. The churnprod demo puts this model in production."
+        "description": "Governed data went straight into a data scientist's notebook, with the analyst's mask applied on the way in and a model trained without the data leaving the browser. In a desktop Jupyter the same code reads large pulls over Arrow Flight. The churnprod demo puts this model in production."
       },
       "dataroomIntro": {
         "title": "A data room with no exports",
-        "description": "Northfield Supply is selling itself, and each prospective buyer's clean team needs to see the business before it bids. Instead of exporting extracts into a data room, the seller connects Provisa to its own systems and gives each bidder governed access that ends on the deal date. Nothing is copied out, and no customer identity leaves the room. This is the order and finance system, a Postgres database read in place: 2,400 customers, their orders since 2023 and the invoice of each."
+        "description": "Northfield Supply is selling itself, and each prospective buyer's clean team needs to see the business before it bids. Instead of exporting extracts into a data room, the seller connects Provisa to its own systems and gives each bidder governed access that ends on the deal date. Nothing is copied out, and no customer identity leaves the room. This is the order and finance system, a Postgres database read in place, with 2,400 customers, their orders since 2023 and the invoice of each."
       },
       "dataroomCrm": {
         "title": "The CRM",
-        "description": "The sales team's Salesforce: each business customer's account and its deals. Its rows are landed once into the room and read from there, so the bidders' questions never reach Salesforce."
+        "description": "The sales team's Salesforce holds each business customer's account and its deals. Its rows are landed once into the room and read from there, so the bidders' questions never reach Salesforce."
       },
       "dataroomInvite": {
         "title": "Setting up the room: invite the analysts",
@@ -1326,7 +1326,7 @@
       },
       "dataroomGrant": {
         "title": "A grant that ends on the deal date",
-        "description": "Each analyst's grant of bidder_a carries an end date: the deal date. From that moment the role is no longer theirs, on every request however it arrives. An account has no end date of its own; the grant's end ends the access."
+        "description": "Each analyst's grant of bidder_a ends on the deal date. From that moment the role is no longer theirs, on every request however it arrives. An account has no end date of its own; the grant's end ends the access."
       },
       "dataroomSignedIn": {
         "title": "What an analyst sees",
@@ -1338,7 +1338,7 @@
       },
       "dataroomProfile": {
         "title": "The profile of the invoices",
-        "description": "Each column of the invoices table as the profiler found it: its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
+        "description": "Each column of the invoices table as the profiler found it, with its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
       },
       "dataroomCounts": {
         "title": "Customer counts",
@@ -1358,11 +1358,11 @@
       },
       "dataroomSample": {
         "title": "A masked sample",
-        "description": "One customer in fifty, as a bidder reads them: no name, the email's name part and the phone's digits masked."
+        "description": "One customer in fifty, as a bidder reads them, with no name and with the email's name part and the phone's digits masked."
       },
       "dataroomRefused": {
         "title": "Customer names are refused",
-        "description": "Bidder A asks for the customers' names. Provisa refuses: no customer name is granted to bidder_a, and neither are the CRM's business and deal names. Had the analyst named bidder B's role, which they do not hold, the request would be refused too, and recorded in the org's security trail as role probing."
+        "description": "Bidder A asks for the customers' names. Provisa refuses, because no customer name is granted to bidder_a, and neither are the CRM's business and deal names. Had the analyst named bidder B's role, which they do not hold, the request would be refused too, and recorded in the org's security trail as role probing."
       },
       "dataroomBidderB": {
         "title": "Now as bidder B",
@@ -1386,11 +1386,11 @@
       },
       "dataroomRevoke": {
         "title": "Ending a bidder's access at once",
-        "description": "A bidder that drops out loses access in one action: remove its grant, or the role itself. The next request is refused. The audit of everything it read stays."
+        "description": "A bidder that drops out loses access in one action, by removing its grant or the role itself. The next request is refused. The audit of everything it read stays."
       },
       "dataroomRecap": {
         "title": "What you saw",
-        "description": "A data room with no exports: the seller's own systems, read in place, shown to each bidder as aggregates, profiles, quality scores, masked samples and records without identities. No customer identity leaves the room. Each bidder holds a role of its own, granted until the deal date, and every statement is audited."
+        "description": "A data room with no exports. The seller's own systems are read in place and shown to each bidder as aggregates, profiles, quality scores, masked samples and records without identities. No customer identity leaves the room. Each bidder holds a role of its own, granted until the deal date, and every statement is audited."
       },
       "testdataScenario": {
         "title": "Three environments over one production database",
@@ -1406,7 +1406,7 @@
       },
       "testdataCoverageNow": {
         "title": "Every sensitive column is covered",
-        "description": "The same check, read now from the model: each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers."
+        "description": "The same check, read now from the model, lists each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers."
       },
       "testdataProd": {
         "title": "Production: the real rows",
@@ -1442,7 +1442,7 @@
       },
       "testdataDev": {
         "title": "Dev: generated, nothing real",
-        "description": "Every row in dev was generated from production's profile: the same columns, value shapes and spread, and none of the real rows. When even pre-prod's real rows can't leave production's boundary, give testers this synthetic copy."
+        "description": "Every row in dev was generated from production's profile, with the same columns, value shapes and spread, and none of the real rows. When even pre-prod's real rows can't leave production's boundary, give testers this synthetic copy."
       },
       "testdataDevAnswer": {
         "title": "Same shape, different numbers",
@@ -1522,7 +1522,7 @@
       },
       "worldcupKaggle": {
         "title": "Kaggle datasets arrive as tables",
-        "description": "This is a Kaggle source: the FIFA World Cup dataset, with every tournament, match and player appearance from 1930 to 2014. Each of its files arrives as a table. A second Kaggle source holds every international goal since 1916. Like the Wikipedia tables, they are public data, registered in minutes and governed like any internal database."
+        "description": "This is a Kaggle source, the FIFA World Cup dataset, with every tournament, match and player appearance from 1930 to 2014. Each of its files arrives as a table. A second Kaggle source holds every international goal since 1916. Like the Wikipedia tables, they are public data, registered in minutes and governed like any internal database."
       },
       "worldcupMatches": {
         "title": "Matches by the names of their day",
@@ -1538,7 +1538,7 @@
       },
       "worldcupAlias": {
         "title": "Every name, matched and reviewed",
-        "description": "These are the names that differ from their member's name. Germany FR and West Germany are Germany, Zaire is DR Congo and the Soviet Union is Russia. Each match was reviewed before this demo froze it, and 27 of the 237 were corrected. A team whose results passed to no member keeps its own name: East Germany stays East Germany, so its 1974 match against West Germany is not Germany against Germany."
+        "description": "These are the names that differ from their member's name. Germany FR and West Germany are Germany, Zaire is DR Congo and the Soviet Union is Russia. Each match was reviewed before this demo froze it, and 27 of the 237 were corrected. A team whose results passed to no member keeps its own name. East Germany stays East Germany, so its 1974 match against West Germany is not Germany against Germany."
       },
       "worldcupJunction": {
         "title": "A relationship through the function",
@@ -1694,7 +1694,7 @@
       },
       "bankingReported": {
         "title": "What was reported",
-        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close: the view's as_recorded argument reads it as it had been recorded then, and a BI tool on pgwire does the same with SET provisa.as_recorded. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
+        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close. The view's as_recorded argument reads it as it had been recorded then, and a BI tool on pgwire does the same with SET provisa.as_recorded. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
       },
       "bankingRestated": {
         "title": "What it says now",
@@ -1770,7 +1770,7 @@
       },
       "agentdataCustomers": {
         "title": "Who may see which customers",
-        "description": "The customers table carries the rules: a West support agent reads only the West's customers and their orders, with email addresses masked and no prices. The BI analyst reads every region and what the orders came to, but no email address at all."
+        "description": "The customers table carries the rules. A West support agent reads only the West's customers and their orders, with email addresses masked and no prices. The BI analyst reads every region and what the orders came to, but no email address at all."
       },
       "agentdataSupportRole": {
         "title": "Act as a West support agent",
@@ -1778,15 +1778,15 @@
       },
       "agentdataSupportAsks": {
         "title": "The support agent's question",
-        "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked: that is all the role is served."
+        "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked, which is all the role is served."
       },
       "agentdataExplain": {
         "title": "What ran",
-        "description": "The agent's run_sql call, opened: the statement it sent, then the statement that ran for its role. Provisa added the West row filter and the email mask. The agent wrote neither, and is never told about them."
+        "description": "Opening the agent's run_sql call shows the statement it sent, then the statement that ran for its role. Provisa added the West row filter and the email mask. The agent wrote neither, and is never told about them."
       },
       "agentdataOutOfReach": {
         "title": "A question out of reach",
-        "description": "Asked what each customer's orders came to, the agent finds no prices among the tables its role can read, and says so. It cannot reach around the role: the same rules hold on every tool call."
+        "description": "Asked what each customer's orders came to, the agent finds no prices among the tables its role can read, and says so. It cannot reach around the role, because the same rules hold on every tool call."
       },
       "agentdataAnalystRole": {
         "title": "Now as the BI analyst",
@@ -1794,7 +1794,7 @@
       },
       "agentdataAnalystAsks": {
         "title": "The same question, another role",
-        "description": "The same question as the analyst: every region comes back, there is no email column at all, and the revenue view is among its tables. Different tables, rows and columns, from the same agent and the same server."
+        "description": "Asked as the analyst, every region comes back, there is no email column at all, and the revenue view is among its tables. Different tables, rows and columns, from the same agent and the same server."
       },
       "agentdataConnect": {
         "title": "Your own agent, the same server",

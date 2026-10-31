@@ -150,6 +150,6 @@
     "pulledIn": "Also carried, because the selection requires them:",
     "rebuild": "Rebuild",
     "rebuilt": "Committed {{env}}'s model to the repository again.",
-    "rebuildFailed": "{{env}} is still drifted: the commit did not land."
+    "rebuildFailed": "{{env}} is still drifted, because the commit did not land."
   }
 }
