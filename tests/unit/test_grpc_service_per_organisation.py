@@ -384,12 +384,16 @@ def built(monkeypatch):
 
 
 def _table_fields(schema) -> list[str]:
-    """The root fields a role's Query type serves its tables through: every field but the
-    semantic-address resolver every schema carries (meta's resolve, REQ-1365), which reads no one
-    table."""
+    """The root fields a role's Query type serves its domains' tables through: every field but
+    the semantic-address resolver every schema carries (meta's resolve, REQ-1365), which reads no
+    one table, and the catalog, which every role with a list reads."""
     from provisa.compiler.schema_gen import resolve_field
 
-    return sorted(f for f in schema.query_type.fields if f != resolve_field(schema))
+    return sorted(
+        f
+        for f in schema.query_type.fields
+        if f != resolve_field(schema) and f != "registeredTablesMeta"
+    )
 
 
 def _service(file: descriptor_pb2.FileDescriptorProto) -> tuple[set[str], dict[str, list[str]]]:
@@ -573,20 +577,20 @@ def _rpcs(proto: str) -> set[str]:
     return set(re.findall(r"rpc (\w+)\(", proto))
 
 
-def test_a_table_only_traversed_to_has_no_rpc_as_it_has_no_root_field(meta_reach):
-    """Every role's surface holds the catalog tables, to be read through each type's ``_meta``.
-    A role that does not reach the catalog domain has no root field for them in its GraphQL
-    Query type -- and no RPC for them in its service, whose Query message already says so."""
+def test_a_role_with_a_list_has_an_rpc_for_the_catalog_as_it_has_a_root_field(meta_reach):
+    """A role reads the catalog as a "*" role does, listed or not, so it has a root field for its
+    tables in its GraphQL Query type and an RPC for them in its service, generated from the same
+    rule."""
     state = meta_reach
-    without, with_reach = state.proto_files["sales_reader"], state.proto_files["cataloguer"]
-    assert _table_fields(state.schemas["sales_reader"]) == ["orders"]
-    assert {r for r in _rpcs(without) if "Meta" in r} == set()
-    assert {"QueryOrders", "QueryOrdersBatch"} <= _rpcs(without)
-    assert "message RegisteredTablesMeta {" in without, "its message stays: it is traversed to"
-
-    roots = sorted(state.schemas["cataloguer"].query_type.fields)
-    assert "registeredTablesMeta" in roots and "orders" in roots
-    assert {"QueryRegisteredTablesMeta", "QueryRegisteredTablesMetaBatch"} <= _rpcs(with_reach)
+    for role in ("sales_reader", "cataloguer"):
+        roots = sorted(state.schemas[role].query_type.fields)
+        assert "registeredTablesMeta" in roots and "orders" in roots
+        assert {
+            "QueryOrders",
+            "QueryOrdersBatch",
+            "QueryRegisteredTablesMeta",
+            "QueryRegisteredTablesMetaBatch",
+        } <= _rpcs(state.proto_files[role])
     # The wire every role's bytes are encoded with has the method, for the role that has it.
     assert "QueryRegisteredTablesMeta" in _rpcs(state.wire_proto)
 
