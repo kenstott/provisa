@@ -12,9 +12,17 @@
 // them, a data answer and an answer about the ontology drawn as RDF, a SELECT whose rows hold
 // triples, what a merge adds to a frame, and a graph written as Turtle and N-Triples.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FrameData } from "../graph-model";
-import { loadGraphState, saveGraphState } from "../graph-persistence";
+import {
+  graphStateOf,
+  loadGraphState,
+  readGraphState,
+  saveGraphState,
+} from "../graph-persistence";
+import { bindStorageScope } from "../../../lib/browserStorage";
+import { writeBulk } from "../../../lib/bulkStorage";
+import { TEST_STORAGE_SCOPE } from "../../../test-setup";
 import {
   compactIri,
   describeQuery,
@@ -444,7 +452,7 @@ describe("a graph written out", () => {
 });
 
 describe("a SPARQL frame reloaded", () => {
-  it("keeps its form, triples, pairing and expansions", () => {
+  it("keeps its form, triples, pairing and expansions", async () => {
     const triples = parseNTriples(`<${ORDER}> <${ORDERS}#total> "1" .`, P);
     const pairing = { subject: "s", predicate: "p", object: "o" };
     saveGraphState({
@@ -467,10 +475,63 @@ describe("a SPARQL frame reloaded", () => {
         },
       ],
     });
-    const [loaded] = loadGraphState("sparql").frames;
+    const [loaded] = (await loadGraphState("sparql")).frames;
     expect(loaded.sparqlForm).toBe("graph");
     expect(loaded.sparqlTriples).toEqual(triples);
     expect(loaded.sparqlPairing).toEqual(pairing);
     expect(loaded.sparqlExpansions).toEqual({ [ORDER]: triples });
+  });
+});
+
+describe("the page's state, read back from IndexedDB", () => {
+  const frame = (id: string) => ({
+    id,
+    query: id,
+    status: "done" as const,
+    nodes: new Map(),
+    edges: new Map(),
+    rows: [],
+    columns: [],
+  });
+
+  afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
+
+  it("is there at once and empty, then filled, with what was run meanwhile first", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "read-back" });
+    saveGraphState({
+      language: "sparql",
+      history: ["saved"],
+      currentQuery: "saved query",
+      frames: [frame("saved")],
+    });
+    const state = graphStateOf("sparql");
+    expect(state.frames).toEqual([]);
+    state.frames = [frame("meanwhile")];
+    state.history = ["meanwhile"];
+    saveGraphState(state); // not over the saved copy, unread yet
+    await readGraphState(state);
+    expect(state.frames.map((f) => f.id)).toEqual(["meanwhile", "saved"]);
+    expect(state.history).toEqual(["meanwhile", "saved"]);
+    expect(state.currentQuery).toBe("saved query");
+    const held = await loadGraphState("sparql");
+    expect(held.frames.map((f) => f.id)).toEqual(["meanwhile", "saved"]);
+  });
+
+  it("starts empty, logged, from a saved copy that cannot be read", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "malformed" });
+    await writeBulk("provisa.graph.state", { frames: [{ nodes: 5 }] });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const state = graphStateOf("cypher");
+    await readGraphState(state);
+    expect(state.frames).toEqual([]);
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("keeps each scope's frames its own", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "one" });
+    const one = graphStateOf("cypher");
+    bindStorageScope({ controlPlaneId: "cp", orgId: "two" });
+    expect(graphStateOf("cypher")).not.toBe(one);
   });
 });

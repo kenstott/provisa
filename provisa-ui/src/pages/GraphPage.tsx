@@ -36,6 +36,7 @@ import {
   useLocalStorage,
   graphStateOf,
   saveGraphState,
+  useSavedGraphState,
   settingKey,
   type GraphLanguage,
 } from "../components/graph/graph-persistence";
@@ -65,7 +66,7 @@ import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
 import { buildDropExpansion, withExpansion } from "./graph-drop";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
 import {
   cypherError,
@@ -111,6 +112,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   const [frames, setFrames] = useState<FrameData[]>(graphState.frames);
   const [history, setHistory] = useState<string[]>(graphState.history);
   const [historyQuery, setHistoryQuery] = useState<string | null>(null);
+  // The saved frames live in IndexedDB: the page renders at once and they arrive just after.
+  useSavedGraphState(graphState, setFrames, setHistory, setHistoryQuery);
   // A view a navigation asks for, by frame: applied by the frame once per seq.
   const [frameViews, setFrameViews] = useState<Record<string, FrameView>>({});
   const viewSeqRef = useRef(0);
@@ -366,12 +369,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     const domainsKey = [...checkedDomains].sort().join(",");
     // v3: only counts are stored (a v2 entry could hold a refused request's error body).
     const countsKey = `provisa.graph.counts.v3.${roleHeaderValue ?? "default"}.${domainsKey}`;
-    try {
-      const cached = getStored(countsKey);
-      setCounts(cached ? (JSON.parse(cached) as GraphCounts) : null);
-    } catch {
-      setCounts(null);
-    }
+    setCounts(getStoredJson<GraphCounts>(countsKey));
     const domainsParam = checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
       .then(async (r) => {
@@ -382,11 +380,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       .then((data) => {
         setCounts(data);
         setCountsError(null);
-        try {
-          setStored(countsKey, JSON.stringify(data));
-        } catch {
-          /* quota */
-        }
+        setStored(countsKey, JSON.stringify(data));
       })
       .catch((e: unknown) => {
         setCounts(null);

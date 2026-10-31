@@ -78,6 +78,8 @@ vi.mock("../components/graph/Neo4jExportModal", () => ({
 
 import { GraphPage } from "../pages/GraphPage";
 import { DEFAULT_QUERY, graphStateOf } from "../components/graph/graph-persistence";
+import { readBulk, writeBulk } from "../lib/bulkStorage";
+import { bindStorageScope } from "../lib/browserStorage";
 
 const BASE = "https://provisa.example";
 const VOCABULARY = {
@@ -188,6 +190,29 @@ describe("the SPARQL tab", () => {
     );
   });
 
+  it("renders at once, and the saved frames and query arrive from IndexedDB", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "restored" });
+    await writeBulk("provisa.sparql.state", {
+      frames: [
+        {
+          id: "saved",
+          query: "SELECT saved",
+          status: "done",
+          nodes: [],
+          edges: [],
+          rows: [],
+          columns: [],
+        },
+      ],
+      history: ["SELECT saved"],
+      currentQuery: "SELECT kept",
+    });
+    page();
+    expect(framesSeen.filter((f) => f.id === "saved")).toEqual([]); // not in the first render
+    await waitFor(() => expect(framesSeen.some((f) => f.id === "saved")).toBe(true));
+    expect(graphStateOf("sparql").currentQuery).toBe("SELECT kept");
+  });
+
   it("shows the role's vocabulary where Cypher's labels are", async () => {
     page();
     expect(await screen.findByTestId("sparql-vocabulary")).toBeInTheDocument();
@@ -284,8 +309,10 @@ describe("the SPARQL tab", () => {
     // Each frame is drawn as a SPARQL query's frame.
     expect(new Set(languagesSeen)).toEqual(new Set(["sparql"]));
     // Kept apart from Cypher's: the SPARQL history holds the query, Cypher's does not.
-    expect(localStorage.getItem("test-cp:test-org:provisa.sparql.state")).toContain("CONSTRUCT");
-    expect(localStorage.getItem("test-cp:test-org:provisa.graph.state")).toBeNull();
+    await waitFor(async () =>
+      expect(JSON.stringify(await readBulk("provisa.sparql.state"))).toContain("CONSTRUCT"),
+    );
+    expect(await readBulk("provisa.graph.state")).toBeNull();
   });
 
   const lastFrame = () => framesSeen.at(-1)!;
@@ -312,10 +339,11 @@ describe("the SPARQL tab", () => {
     fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
     fireEvent.click(screen.getByTestId("sparql-class-sales:customers"));
     await waitFor(() => expect(posted()).toHaveLength(2));
-    const held = localStorage.getItem("test-cp:test-org:provisa.sparql.state")!;
-    const { frames, history } = JSON.parse(held);
-    expect(frames).toHaveLength(2);
-    expect(history).toHaveLength(2);
+    await waitFor(async () => {
+      const held = await readBulk<{ frames: unknown[]; history: string[] }>("provisa.sparql.state");
+      expect(held?.frames).toHaveLength(2);
+      expect(held?.history).toHaveLength(2);
+    });
   });
 
   it("shows the endpoint's URL for other tools", async () => {

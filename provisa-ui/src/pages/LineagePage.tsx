@@ -48,7 +48,7 @@ import { useAuth } from "../context/AuthContext";
 import { CapabilityGate } from "../components/CapabilityGate";
 import { fetchOrgRoles } from "../api/admin";
 import { Tip } from "../components/Tip";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 
 const DEFAULT_SQL =
   "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id";
@@ -60,21 +60,11 @@ const GRAPH_KEY = "provisa.lineage.graph";
 const COLLAPSED_KEY = "provisa.lineage.collapsed";
 
 function loadStoredGraph(): LineageGraphData | null {
-  try {
-    const raw = getStored(GRAPH_KEY, { session: true });
-    return raw ? (JSON.parse(raw) as LineageGraphData) : null;
-  } catch {
-    return null;
-  }
+  return getStoredJson<LineageGraphData>(GRAPH_KEY, { session: true });
 }
 
 function loadStoredCollapsed(): Set<string> {
-  try {
-    const raw = getStored(COLLAPSED_KEY, { session: true });
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set();
-  }
+  return new Set(getStoredJson<string[]>(COLLAPSED_KEY, { session: true }) ?? []);
 }
 
 export function LineagePage(): React.ReactElement {
