@@ -162,6 +162,7 @@ async def test_the_servicer_hands_the_pipeline_the_parameters():
     )
     request = SimpleNamespace(
         limit=0,
+        offset=0,
         read_mask=SimpleNamespace(paths=[]),
         params=params,
         HasField=lambda name: name == "params",
