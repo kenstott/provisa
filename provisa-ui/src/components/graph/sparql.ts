@@ -740,6 +740,23 @@ export function frameTriples(frame: FrameData): Triple[] {
   return distinctTriples([...answered, ...Object.values(frame.sparqlExpansions ?? {}).flat()]);
 }
 
+/** What a DESCRIBE's literal triples say of their resource as node properties, keyed and listed as
+ * the drawing lists a literal (a predicate with several values holds a list). Without a
+ * drawing's own identity rows (name, iri, class): the node already has those. */
+export function describedProperties(literals: Triple[]): {
+  properties: Record<string, unknown>;
+  propertyIris: Record<string, string>;
+} {
+  const own = new Set(["name", "iri", "class"]);
+  const properties: Record<string, unknown> = {};
+  const propertyIris: Record<string, string> = {};
+  for (const node of triplesGraph(literals).nodes.values()) {
+    for (const [k, v] of Object.entries(node.properties)) if (!own.has(k)) properties[k] = v;
+    Object.assign(propertyIris, node.propertyIris);
+  }
+  return { properties, propertyIris };
+}
+
 /** ``frame`` as it is drawn: a CONSTRUCT's triples with their literals as properties or, with
  * ``literalNodes``, as nodes; a pairable SELECT's rows, once ``drawSelect`` asks, as nodes and
  * edges; and whatever expanding its nodes merged in. Any other frame is as answered. With

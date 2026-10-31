@@ -11,8 +11,8 @@
 // REQ-2135: what the SPARQL tab holds beside the frames: the role's vocabulary, the prefixes in use
 // with the viewer's edits, and what expanding a node or dropping a class merges into a frame.
 
-import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
-import type { FrameData } from "./graph-model";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type { FrameData, SparqlDescribed } from "./graph-model";
 import { settingKey, useLocalStorage } from "./graph-persistence";
 import {
   classConstruct,
@@ -71,18 +71,27 @@ export function useSparqlExplorer({
     [vocabulary, prefixEdits],
   );
 
-  const mergeIntoFrame = useCallback(
-    async (id: string, key: string, query: string) => {
+  /** One query posted to /data/sparql under the viewer's role, its N-Triples read. Throws the
+   * refusal's own words. */
+  const askTriples = useCallback(
+    async (query: string): Promise<Triple[]> => {
       const headers: Record<string, string> = {
         "Content-Type": "application/sparql-query",
         Accept: "application/n-triples",
       };
       if (roleHeader) headers["X-Provisa-Role"] = roleHeader;
+      const res = await fetch("/data/sparql", { method: "POST", headers, body: query });
+      if (!res.ok) throw new Error(await refusalText(res));
+      return parseNTriples(await res.text(), prefixes);
+    },
+    [roleHeader, prefixes],
+  );
+
+  const mergeIntoFrame = useCallback(
+    async (id: string, key: string, query: string) => {
       let merged: Triple[];
       try {
-        const res = await fetch("/data/sparql", { method: "POST", headers, body: query });
-        if (!res.ok) throw new Error(await refusalText(res));
-        merged = parseNTriples(await res.text(), prefixes);
+        merged = await askTriples(query);
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
         changeFrame(id, () => ({ sparqlMerge: { error } }));
@@ -97,7 +106,34 @@ export function useSparqlExplorer({
             },
       );
     },
-    [roleHeader, prefixes, changeFrame],
+    [askTriples, changeFrame],
+  );
+
+  // The resources a DESCRIBE is in flight for, so a node picked again meanwhile asks nothing.
+  const describing = useRef(new Set<string>());
+  /** A selected node's properties: the same DESCRIBE an expansion asks, once per resource, kept
+   * apart from the drawing as literals (or the error), for the Properties panel only. */
+  const describeResource = useCallback(
+    (id: string, iri: string) => {
+      const held = framesRef.current.find((fr) => fr.id === id)?.sparqlDescribed ?? {};
+      const flight = `${id}\u0000${iri}`;
+      if (iri in held || describing.current.has(flight)) return;
+      describing.current.add(flight);
+      askTriples(describeQuery(iri))
+        .then(
+          (triples): SparqlDescribed => ({
+            literals: triples.filter((t) => t.o.rdfTerm === "literal"),
+          }),
+          (err: unknown): SparqlDescribed => ({
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+        .then((described) => {
+          describing.current.delete(flight);
+          changeFrame(id, (fr) => ({ sparqlDescribed: { ...fr.sparqlDescribed, [iri]: described } }));
+        });
+    },
+    [framesRef, askTriples, changeFrame],
   );
 
   /** A node's expansion: a DESCRIBE of its resource merged in, or, with ``toggle``, taken back. */
@@ -129,6 +165,7 @@ export function useSparqlExplorer({
     prefixEdits,
     setPrefixEdits,
     expandResource,
+    describeResource,
     dropClass,
   };
 }

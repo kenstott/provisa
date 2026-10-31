@@ -79,17 +79,20 @@ def _lateral_join(
             join_meta.target_column_type,
             join_meta.source_column_type,
         )
-    # A where naming a relationship correlates with the target's rows, so they are aliased.
+    # A where naming a relationship correlates with the target's rows.
     related = (
         relationships is not None
         and "where" in args
         and where_names_relationship(args["where"], relationships.ctx, relationships.type_name)
     )
-    # REQ-1163: a target read at its own time is read under the join's alias, which its time is
-    # kept by (provisa.mv.time_travel).
+    # REQ-1163: a target read at its own time keeps it under the join's alias. The rows are always
+    # read under it: the star is expanded by its table's alias, and a table with no alias of its
+    # own expands under a physical name the statement's FROM no longer holds once it is renamed.
     target = travel_ref(_table_ref(join_meta.target, use_catalog), field_node, variables)
-    rows = f" {_q(join_alias)}" if related or target.endswith(")") else ""
-    sql = f"LEFT JOIN LATERAL (SELECT * FROM {target}{rows} WHERE {_lat_tgt_expr} = {src_expr}"
+    sql = (
+        f"LEFT JOIN LATERAL (SELECT * FROM {target} {_q(join_alias)} "
+        f"WHERE {_lat_tgt_expr} = {src_expr}"
+    )
     if "where" in args:
         where_sql = _compile_where(
             args["where"],

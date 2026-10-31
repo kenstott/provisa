@@ -126,8 +126,21 @@ def _r818_then_row_filter(r818: dict) -> None:
     "it executes as a direct table write, returns affected_rows, and runs the one after-write step"
 )
 def _r818_then_direct_write(r818: dict) -> None:
-    # The route answers the pipeline's row count.
-    assert (r818["status"], r818["body"]) == (200, {"affected_rows": 1, "type": "cypher"})
+    # The route answers the pipeline's row count, and what the write did as Neo4j counts it
+    # (REQ-670, amended 2026-10-28).
+    assert (r818["status"], r818["body"]) == (
+        200,
+        {
+            "affected_rows": 1,
+            "type": "cypher",
+            "counters": {
+                "nodes-created": 1,
+                "properties-set": 2,
+                "labels-added": 1,
+                "contains-updates": True,
+            },
+        },
+    )
     # The one after-write step, at the pipeline's terminal, for the table written.
     calls = run_after_write(_USERS_TABLE_ID, "users", "pg-main")
     assert calls["invalidated"] == [_USERS_TABLE_ID]
@@ -180,10 +193,10 @@ def _r818_merge_through_route(r818: dict, monkeypatch) -> None:
 def _r818_then_merged(r818: dict) -> None:
     (first, again, other) = r818["answers"]
     # The first MERGE matches nothing and creates one node; the same MERGE again matches it.
-    assert first[0] == 200 and first[1]["counters"]["nodes"] == 1, first
-    assert again[0] == 200 and again[1]["counters"]["nodes"] == 0, again
+    assert first[0] == 200 and first[1]["counters"]["nodes-created"] == 1, first
+    assert again[0] == 200 and "nodes-created" not in again[1]["counters"], again
     # Other properties match no session node: one more is created.
-    assert other[0] == 200 and other[1]["counters"]["nodes"] == 1, other
+    assert other[0] == 200 and other[1]["counters"]["nodes-created"] == 1, other
     assert sorted(tuple(r.values()) for r in r818["session_nodes"]) == [(1,), (2,)]
     # The model's table is not written: Temp is the session's alone.
     assert r818["model_rows"] == [(1, "Ada")]
