@@ -89768,7 +89768,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     for row rules, an unusual use. A hand-coded config is held to the same rules as the form. (Amended 2026-10-29,
     A ROLE JUST TO RUN A COMMAND:) Maintainer 2026-10-31: a role may exist only to execute a command. The
     command''s own list of roles (visible_to) is that grant, so a role with no capabilities that a command
-    names can run that command and do nothing else.'
+    names can run that command and do nothing else. (Amended 2026-10-29, A ROLE AS A BUILDING BLOCK:) Maintainer
+    2026-10-31: a role with no capabilities may be a piece included in other roles, holding only grants.
+    Alone it can do nothing; a role that includes it gets its grants, and takes capabilities from its other
+    parents.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
