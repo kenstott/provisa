@@ -357,6 +357,7 @@
       "request_rejected": "בקשת היצירה מס' {{id}} נדחתה",
       "rls_rule_deleted": "כלל RLS נמחק",
       "rls_rule_not_found": "כלל RLS לא נמצא",
+      "rls_rule_right_taken": "ההרשאה {{right}} של התפקיד '{{role}}' כבר נמצאת בכלל {{rule}}. הרשאה יכולה להופיע בכלל אחד לכל היותר: הסירו אותה מהכלל הזה או ערכו אותו.",
       "rls_rule_saved_domain": "כלל RLS עבור הדומיין '{{domain}}' / התפקיד '{{role}}' נשמר",
       "rls_rule_saved_table": "כלל RLS עבור הטבלה {{table}} / התפקיד '{{role}}' נשמר",
       "rls_rule_saved_tag": "כלל RLS עבור התגית '{{tag}}' / התפקיד '{{role}}' נשמר",

@@ -524,9 +524,11 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     -- The reference to tags(id) is declared after that table, below.
     tag_id      TEXT,
     why         JSONB,  -- REQ-2094: why the rule is what it is
-    UNIQUE (table_id, role_id),
-    UNIQUE (action_name, role_id),
-    CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id)
+    -- REQ-2188: the rights the one predicate narrows: reading a row (R), updating it (U), deleting
+    -- it (D), in that order. A right is in at most one rule of a role on a target; no constraint
+    -- can say so across rows, so the save does (repositories.rls.upsert).
+    rights      TEXT NOT NULL DEFAULT 'R'
+                CHECK (rights IN ('R', 'U', 'D', 'RU', 'RD', 'UD', 'RUD'))
 );
 
 -- REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
@@ -552,11 +554,6 @@ ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tag_id TEXT;  -- REQ-1384
 DO $$ BEGIN
     ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS domain_id TEXT REFERENCES domains(id) ON DELETE CASCADE;
     ALTER TABLE rls_rules ALTER COLUMN table_id DROP NOT NULL;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-DO $$ BEGIN
-    ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key UNIQUE (domain_id, role_id);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

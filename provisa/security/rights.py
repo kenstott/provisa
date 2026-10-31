@@ -116,12 +116,10 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # REQ-1634: data products' two rights, on the same seam as the glossary pair above. Reading
     # which products exist is how an analyst/developer/modeler finds what a domain already
     # publishes, so it is a read right rather than ORG_SETTINGS. Creating and deleting a product
-    # is catalog curation, on the same footing as TABLE_REGISTRATION — org_admin only.
+    # is catalog curation, on the same footing as TABLE_REGISTRATION: org_admin's. REQ-2188: and the
+    # rw of a role named in a product's Owner field, held to that product by a generated row rule.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
-    # REQ-2155: edit a data product whose owner_role is a role the caller holds (an ancestor
-    # included) -- the data product owner's right; DATA_PRODUCT_RW edits any product.
-    DATA_PRODUCT_OWNED_RW = "data_product_owned_rw"
     # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
     # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
     # promises (REQ-2157).

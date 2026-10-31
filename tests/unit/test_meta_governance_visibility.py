@@ -22,6 +22,7 @@ from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID
 class _FakeRLSContext:
     def __init__(self, rules: dict[int, str]) -> None:
         self.rules = rules
+        self.write_rules: dict[str, dict[int, str]] = {}
 
 
 _CORE_COL = "table_name"

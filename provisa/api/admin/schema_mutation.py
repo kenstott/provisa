@@ -91,6 +91,7 @@ from provisa.api.admin._table_settings import (
     invalid_replicate as _invalid_replicate,
     naming_refusal,
     role_ttl_refusal,
+    right_taken,
     row_rule_refusal,
     save_carried_after_store,
     save_naming,
@@ -512,10 +513,9 @@ async def _save_data_product(
     """A data product saved: a create makes a new one, refusing an id that exists; an update
     changes one, refusing an id that does not. Either refusal names the id and writes nothing."""
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
-    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2155: a product's
-    # owner (data_product_owned_rw) edits the one it owns.
-    from provisa.api.admin.capabilities import _identity_from_info, data_product_edit_refusal
-    from provisa.api.app import state as app_state
+    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2188: the role's
+    # U rule, not this gate, says which products it edits (core.model_row_rules).
+    from provisa.api.admin.capabilities import require_right_in_domains
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
@@ -525,14 +525,11 @@ async def _save_data_product(
         conn = cast("Connection", conn)
         # REQ-1944: the product's domain, and the one it is moved out of when it exists.
         stored = await data_product_repo.get(conn, input.id)
-        refusal = data_product_edit_refusal(
-            _identity_from_info(info),
-            app_state,
-            stored,
+        require_right_in_domains(
+            info,
+            "data_product_rw",
             {input.domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
-        if refusal is not None:
-            raise PermissionError(refusal)
         if creating and stored is not None:
             return MutationResult(
                 success=False,
@@ -581,6 +578,8 @@ async def _save_data_product(
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
         )
         await data_product_repo.upsert(conn, model)
+    if (None if stored is None else stored["owner_role"]) != model.owner_role:
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     if creating:
         return MutationResult(
             success=True,
@@ -3290,6 +3289,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     },
                 )
         if deleted:
+            if stored is not None and stored["owner_role"]:
+                await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
             return MutationResult(
                 success=True,
                 message=f"Data product {id!r} deleted",
@@ -4659,7 +4660,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # is refused with the reason here rather than by the role_id foreign key at insert.
         async with pool.acquire() as _rconn:
             _rule_refusal = await row_rule_refusal(
-                cast("Connection", _rconn), input.role_id, input.description
+                cast("Connection", _rconn), input.role_id, input.description, input.rights
             )
         if _rule_refusal is not None:
             return _rule_refusal
@@ -4713,10 +4714,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             filter=input.filter_expr,
             description=input.description,
             why=input.why,  # REQ-2094
+            rights=input.rights,  # REQ-2188
+            id=input.id,
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model, creating=input.creating)
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -4746,6 +4751,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
         tag_id: Optional[str] = None,
+        id: Optional[int] = None,  # REQ-2188: this rule; none, every rule of the role here
     ) -> MutationResult:  # REQ-1531, REQ-1679, REQ-1384
         from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
@@ -4789,6 +4795,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 domain_id=domain_id,
                 action_name=action_name,
                 tag_id=tag_id,
+                rule_id=id,
             )
         if deleted:
             # See upsert_rls_rule's matching rebuild — a deleted rule must stop being enforced
@@ -6502,16 +6509,22 @@ async def _upsert_tag_rls_rule(
                 code="schema.rls_rule_invalid",
                 params={"reason": problem},
             )
-        await rls_repo.upsert(
-            cast("Connection", conn),
-            RLSRuleModel(
-                tag_id=tag_id,
-                role_id=input.role_id,
-                filter=input.filter_expr,
-                description=input.description,
-                why=input.why,  # REQ-2094
-            ),
-        )
+        try:
+            await rls_repo.upsert(
+                cast("Connection", conn),
+                RLSRuleModel(
+                    tag_id=tag_id,
+                    role_id=input.role_id,
+                    filter=input.filter_expr,
+                    description=input.description,
+                    why=input.why,  # REQ-2094
+                    rights=input.rights,  # REQ-2188
+                    id=input.id,
+                ),
+                creating=input.creating,
+            )
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
     await _rebuild_schemas()
     return MutationResult(
         success=True,
@@ -6544,6 +6557,13 @@ async def _upsert_action_rls_rule(
     from provisa.core.models import RLSRule as RLSRuleModel
 
     name = input.action_name or ""
+    if input.rights != ["R"]:  # REQ-2188
+        return MutationResult(
+            success=False,
+            message=f"Action {name!r} takes only an R row rule: its rows are read",
+            code="schema.rls_rule_invalid",
+            params={"reason": "an action's rows are only read"},
+        )
     action = state.tracked_functions.get(name) or (
         getattr(state, "tracked_webhooks", None) or {}
     ).get(name)
@@ -6591,6 +6611,7 @@ async def _upsert_action_rls_rule(
                 description=input.description,
                 why=input.why,  # REQ-2094
             ),
+            creating=input.creating,
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

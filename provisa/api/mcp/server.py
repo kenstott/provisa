@@ -268,13 +268,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
         )
         raise refused
     from provisa.auth.derived_roles import unsecured_principal
-    from provisa.core.request_context import set_session_vars
+    from provisa.core.request_context import current_acting_role, set_session_vars
 
     # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
     # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
     # Bound in this tool call's own context (its request thread, a copy of the call's).
     role, session_vars = unsecured_principal(state, named)
     set_session_vars(session_vars)
+    # REQ-2188: who a write of the model is held to, on the one transport no middleware binds it.
+    current_acting_role.set(role)
     return role
 
 

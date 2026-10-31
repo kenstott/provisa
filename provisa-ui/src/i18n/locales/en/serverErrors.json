@@ -357,6 +357,7 @@
       "request_rejected": "Rejected creation request #{{id}}",
       "rls_rule_deleted": "RLS rule deleted",
       "rls_rule_not_found": "RLS rule not found",
+      "rls_rule_right_taken": "Right {{right}} of role '{{role}}' is already in rule {{rule}}. A right is in at most one rule: take it out of that rule, or edit that rule.",
       "rls_rule_saved_domain": "RLS rule for domain '{{domain}}' / role '{{role}}' saved",
       "rls_rule_saved_table": "RLS rule for table {{table}} / role '{{role}}' saved",
       "rls_rule_saved_tag": "RLS rule for tag '{{tag}}' / role '{{role}}' saved",

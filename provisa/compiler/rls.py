@@ -71,6 +71,9 @@ class RLSContext:
     # REQ-1620: a meta-role's members, per table they read (MemberReads): each row is read as the
     # member(s) whose filter admitted it. Empty for a single role.
     member_reads: dict[int, MemberReads] = field(default_factory=dict)
+    # REQ-2188: the role's U and D rules, resolved to one predicate per table: "update" or "delete"
+    # -> table_id -> predicate. Reads never consult them. A write ANDs them in beside its grant.
+    write_rules: dict[str, dict[int, str]] = field(default_factory=dict)
 
     @staticmethod
     def empty() -> RLSContext:
@@ -104,21 +107,35 @@ def org_scoped_signals(rls: RLSContext, tables: list[dict]) -> RLSContext:  # RE
         domain_rules=dict(rls.domain_rules),
         action_rules=dict(rls.action_rules),
         member_reads=dict(rls.member_reads),
+        write_rules=dict(rls.write_rules),
     )
+
+
+#: REQ-2188: the write a U or D rule narrows.
+_OPERATION_OF_RIGHT = {"U": "update", "D": "delete"}
 
 
 def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ-041, REQ-402
     """Build an RLSContext from DB rows for a specific role.
 
     Args:
-        rls_rules: list of dicts with {table_id, domain_id, role_id, filter_expr}.
+        rls_rules: list of dicts with {table_id, domain_id, role_id, filter_expr, right}. A row
+            with no right is an R rule, as a stored rule defaults to.
         role_id: the role to filter for.
     """
     rules: dict[int, str] = {}
     domain_rules: dict[str, str] = {}
     action_rules: dict[str, str] = {}
+    write_rules: dict[str, dict[int, str]] = {}
     for rule in rls_rules:
         if rule["role_id"] != role_id:
+            continue
+        right = rule.get("right", "R")
+        if right != "R":  # REQ-2188: folded per table by resolve_table_rules; never a read's
+            if rule.get("table_id") is not None:
+                write_rules.setdefault(_OPERATION_OF_RIGHT[right], {})[rule["table_id"]] = rule[
+                    "filter_expr"
+                ]
             continue
         if rule.get("action_name"):  # REQ-1679
             action_rules[rule["action_name"]] = rule["filter_expr"]
@@ -126,7 +143,9 @@ def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ
             domain_rules[rule["domain_id"]] = rule["filter_expr"]
         elif rule.get("table_id") is not None:
             rules[rule["table_id"]] = rule["filter_expr"]
-    return RLSContext(rules=rules, domain_rules=domain_rules, action_rules=action_rules)
+    return RLSContext(
+        rules=rules, domain_rules=domain_rules, action_rules=action_rules, write_rules=write_rules
+    )
 
 
 def _qualified_predicate(filter_expr: str, alias: str | None) -> exp.Expression:

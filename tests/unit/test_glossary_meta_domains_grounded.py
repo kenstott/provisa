@@ -273,7 +273,7 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
     def rules(domain_access: list[str]) -> dict:
         role = {"id": "r", "capabilities": [], "domain_access": domain_access}
         return build_governance_context(
-            "r", SimpleNamespace(rules={}), {}, ctx, [], role, relationships=[]
+            "r", SimpleNamespace(rules={}, write_rules={}), {}, ctx, [], role, relationships=[]
         ).rls_rules
 
     ids = {view: i for i, view in enumerate(GLOSSARY_SCOPED_VIEWS, start=400)}

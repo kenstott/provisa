@@ -107,7 +107,13 @@ class TestSessionVariables:
             user_id="u1", raw_claims={"region": "us", "dept": "x"}, org_attributes={"region": "eu"}
         )
         out = request_session_vars(identity, "analyst", {}, honor_session_headers=False)
-        assert out == {"region": "eu", "dept": "x", "user_id": "u1", "role": "analyst"}
+        assert out == {
+            "region": "eu",
+            "dept": "x",
+            "user_id": "u1",
+            "role": "analyst",
+            "acting_roles": "analyst",  # REQ-2188
+        }
 
     def test_an_identity_nothing_bound_is_refused_by_name(self):
         identity = types.SimpleNamespace(user_id="u1", raw_claims={}, org_attributes=None)
