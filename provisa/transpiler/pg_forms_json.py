@@ -196,7 +196,7 @@ class NoForm(ValueError):
 
 #: What may be json in a statement, for function_macros.mentioned. ``->`` is not: a statement that
 #: holds only it costs nothing here.
-OPERATORS = r"#>|#-|@>|<@|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_"
+OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_"
 
 
 def _said_jsonb(node: exp.Expr) -> bool:
@@ -277,8 +277,10 @@ def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -
             this="json_array", expressions=[a.transform(inner) for a in node.expressions]
         )
     if name in ("jsonb_extract_path", "jsonb_extract_path_text"):
-        steps = [a.this for a in node.expressions[1:] if isinstance(a, exp.Literal)]
-        return _path(node.expressions[0], steps, name.endswith("_text"))
+        if not all(isinstance(a, exp.Literal) for a in node.expressions[1:]):
+            raise NoForm(name)
+        steps = [a.this for a in node.expressions[1:]]
+        return _path(node.expressions[0].transform(inner), steps, name.endswith("_text"))
     return node
 
 
@@ -297,6 +299,9 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
             raise NoForm(_ON_KEYS[kind])
         if kind in _ON_JSONB and (_said_jsonb(node.this) or _said_jsonb(node.expression)):
             raise NoForm(_ON_JSONB[kind])
+        if kind is exp.ArrayContainsAll and isinstance(node.expression, exp.Literal):
+            if ":" in node.expression.this:  # a text[] literal has none outside its quotes
+                raise NoForm(_ON_JSONB[kind])
         if kind in (exp.EQ, exp.NEQ) and _said_jsonb(node.this) and _said_jsonb(node.expression):
             if _literal_jsonb(node.this) and _literal_jsonb(node.expression):
                 raise NoForm("jsonb_eq" if kind is exp.EQ else "jsonb_ne")
