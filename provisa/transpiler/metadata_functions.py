@@ -200,7 +200,7 @@ _LISTED_TYPES: dict[str, tuple[str, int]] = {
     "timestamp with time zone": ("timestamp with time zone", 1184),
     "timestamptz": ("timestamp with time zone", 1184),  # REQ-2050
     "decimal": ("numeric", 1700),
-    "json": ("jsonb", 3802),
+    "json": ("json", 114),
     "row": ("jsonb", 3802),
     "array": ("ARRAY", 2277),
     "varbinary": ("bytea", 17),
