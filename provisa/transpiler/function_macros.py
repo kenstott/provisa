@@ -540,6 +540,264 @@ _MONEY: tuple[Macro, ...] = (
     _macro("money_input", "value", pg_forms.MONEY_INPUT),
 )
 
+#: Integers of two widths: each pair's result is the wider of the two.
+_INTEGER_PAIRS = (
+    ("int24", "SMALLINT", "INTEGER"),
+    ("int42", "INTEGER", "SMALLINT"),
+    ("int28", "SMALLINT", "BIGINT"),
+    ("int82", "BIGINT", "SMALLINT"),
+    ("int48", "INTEGER", "BIGINT"),
+    ("int84", "BIGINT", "INTEGER"),
+)
+_FLOAT_PAIRS = (("float48", "FLOAT", "DOUBLE"), ("float84", "DOUBLE", "FLOAT"))
+_ARITHMETIC = {"pl": "+", "mi": "-", "mul": "*", "div": "/"}
+_ORDER = {"eq": "=", "ne": "<>", "lt": "<", "le": "<=", "gt": ">", "ge": ">="}
+
+
+def _wider(left: str, right: str) -> str:
+    return "BIGINT" if "BIGINT" in (left, right) else "INTEGER"
+
+
+def _integer_pairs() -> tuple[Macro, ...]:
+    def compared(operator: str, left: str, right: str) -> str:
+        return f"CAST(a AS {left}) {operator} CAST(b AS {right})"
+
+    return (
+        *(
+            _operators(
+                f"{prefix}{suffix}",
+                "a, b",
+                strict(
+                    "a, b",
+                    _wider(left, right),
+                    pg_forms.integer_arithmetic(
+                        "//" if operator == "/" else operator, left, right, _wider(left, right)
+                    ),
+                ),
+            )
+            for prefix, left, right in _INTEGER_PAIRS
+            for suffix, operator in _ARITHMETIC.items()
+        ),
+        *(
+            _operators(
+                f"{prefix}{suffix}",
+                "a, b",
+                compared(operator, left, right),
+                {_EVERY: Pg(compared(operator, left, right))},
+            )
+            for prefix, left, right in _INTEGER_PAIRS
+            for suffix, operator in _ORDER.items()
+        ),
+    )
+
+
+def _float_pairs() -> tuple[Macro, ...]:
+    return (
+        *(
+            _operators(
+                f"{prefix}{suffix}", "a, b", pg_forms.float_arithmetic(operator, left, right)
+            )
+            for prefix, left, right in _FLOAT_PAIRS
+            for suffix, operator in _ARITHMETIC.items()
+        ),
+        *(
+            _operators(
+                f"{prefix}{suffix}", "a, b", pg_forms.float_comparison(operator, left, right)
+            )
+            for prefix, left, right in _FLOAT_PAIRS
+            for suffix, operator in _ORDER.items()
+        ),
+    )
+
+
+def _numeric_conversions() -> tuple[Macro, ...]:
+    """A function named for a number type: its own row reads what the engine holds; a numeric, a
+    jsonb, a bit and a "char" have rows of their own, as pg_proc's are, chosen by OVERLOADS."""
+    digits = pg_forms.JSONB_DIGITS
+
+    def as_integer(sql_type: str) -> str:
+        return pg_forms.jsonb_number(
+            pg_forms.numeric_as_integer(digits, sql_type), pg_forms.PG_INTEGERS[sql_type]
+        )
+
+    def as_float(sql_type: str) -> str:
+        return pg_forms.jsonb_number(
+            pg_forms.numeric_as_float(digits, sql_type), pg_forms.PG_FLOATS[sql_type]
+        )
+
+    integers = (("int2", "SMALLINT"), ("int4", "INTEGER"), ("int8", "BIGINT"))
+    floats = (("float4", "FLOAT"), ("float8", "DOUBLE"))
+    own_floats = {"FLOAT": pg_forms.AS_REAL, "DOUBLE": "CAST(value AS DOUBLE)"}
+    return (
+        *(
+            _macro(
+                name,
+                "value",
+                strict(
+                    "value",
+                    sql_type,
+                    pg_forms.of_any_number(
+                        "value", as_integer(sql_type), pg_forms.in_range("value", sql_type)
+                    ),
+                ),
+            )
+            for name, sql_type in integers
+        ),
+        *(
+            _macro(
+                name,
+                "value",
+                strict(
+                    "value",
+                    sql_type,
+                    pg_forms.of_any_number("value", as_float(sql_type), own_floats[sql_type]),
+                ),
+            )
+            for name, sql_type in floats
+        ),
+        *(
+            _macro(
+                f"numeric_{name}",
+                "value",
+                strict("value", sql_type, pg_forms.numeric_as_integer(digits, sql_type)),
+            )
+            for name, sql_type in integers
+        ),
+        *(
+            _macro(
+                f"numeric_{name}",
+                "value",
+                strict("value", sql_type, pg_forms.numeric_as_float(digits, sql_type)),
+            )
+            for name, sql_type in floats
+        ),
+        *(
+            _macro(f"jsonb_{name}", "value", strict("value", sql_type, as_integer(sql_type)))
+            for name, sql_type in integers
+        ),
+        *(
+            _macro(f"jsonb_{name}", "value", strict("value", sql_type, as_float(sql_type)))
+            for name, sql_type in floats
+        ),
+        _macro(
+            "bittoint4", "value", strict("value", "INTEGER", pg_forms.bit_as_integer("INTEGER", 32))
+        ),
+        _macro(
+            "bittoint8", "value", strict("value", "BIGINT", pg_forms.bit_as_integer("BIGINT", 64))
+        ),
+        _macro("chartoi4", "value", strict("value", "INTEGER", pg_forms.CHAR_AS_INTEGER)),
+    )
+
+
+_NUMBERS: tuple[Macro, ...] = (
+    *_integer_pairs(),
+    *_float_pairs(),
+    *_numeric_conversions(),
+    _macro("dexp", "x", strict("x", "DOUBLE", pg_forms.DEXP)),
+    _macro("dlog1", "x", strict("x", "DOUBLE", pg_forms.DLOG1)),
+    _macro("dlog10", "x", strict("x", "DOUBLE", pg_forms.DLOG10)),
+    _macro("dsqrt", "x", strict("x", "DOUBLE", pg_forms.DSQRT)),
+    _macro("dpow", "x, y", strict("x, y", "DOUBLE", pg_forms.DPOW)),
+    _macro("cosd", "x", strict("x", "DOUBLE", pg_forms.COSD)),
+    _macro("cotd", "x", strict("x", "DOUBLE", pg_forms.COTD)),
+    _macro("asind", "x", strict("x", "DOUBLE", pg_forms.ASIND)),
+    _macro("acosd", "x", strict("x", "DOUBLE", pg_forms.ACOSD)),
+    _macro("atand", "x", pg_forms.ATAND),
+    _macro("atan2d", "x, y", pg_forms.ATAN2D),
+    _macro(
+        "erf", "x", strict("x", "DOUBLE", pg_forms.ERF), own={frozenset({"clickhouse"}): "erf(x)"}
+    ),
+    _macro(
+        "erfc",
+        "x",
+        strict("x", "DOUBLE", pg_forms.ERFC),
+        own={frozenset({"clickhouse"}): "erfc(x)"},
+    ),
+    _macro("random_normal", "", pg_forms.RANDOM_NORMAL.format(mean="0.0", stddev="1.0")),
+    _macro(
+        "random_normal",
+        "mean",
+        strict("mean", "DOUBLE", pg_forms.RANDOM_NORMAL.format(mean="mean", stddev="1.0")),
+    ),
+    _macro(
+        "random_normal",
+        "mean, stddev",
+        strict(
+            "mean, stddev",
+            "DOUBLE",
+            pg_forms.RANDOM_NORMAL.format(mean="mean", stddev="stddev"),
+        ),
+    ),
+    _macro("trim_scale", "value", strict("value", "VARCHAR", pg_forms.TRIM_SCALE)),
+    _macro("min_scale", "value", strict("value", "INTEGER", pg_forms.MIN_SCALE)),
+    _macro(
+        "int8dec", "x", strict("x", "BIGINT", pg_forms.in_range("CAST(x AS HUGEINT) - 1", "BIGINT"))
+    ),
+    _macro("int2int4_sum", "v", strict("v", "BIGINT", pg_forms.INT2INT4_SUM)),
+    _macro("int2vectorsend", "v", strict("v", "BLOB", pg_forms.INT2VECTOR_SEND)),
+    _macro(
+        "integer_pl_date",
+        "n, d",
+        strict(
+            "n, d",
+            "DATE",
+            f"CASE WHEN isfinite(d) THEN {pg_forms.DATE_PLUS_DAYS} ELSE d END",
+        ),
+    ),
+)
+
+_BIGQUERY_HAS_IT: Forms = {frozenset({"bigquery"}): MAPPED}
+_MAKE_INTERVAL_PARAMS = "years, months, weeks, days, hours, mins, secs"
+_DATES: tuple[Macro, ...] = (
+    Macro("statement_timestamp", (), {_EVERY: Pg("CURRENT_TIMESTAMP")}),
+    _macro("clock_timestamp", "", pg_forms.CLOCK_TIMESTAMP),
+    _macro("timeofday", "", pg_forms.TIMEOFDAY),
+    *(
+        _macro("justify_" + of, "value", strict("value", "INTERVAL", form), own=_BIGQUERY_HAS_IT)
+        for of, form in (
+            ("hours", pg_forms.JUSTIFY_HOURS),
+            ("days", pg_forms.JUSTIFY_DAYS),
+            ("interval", pg_forms.JUSTIFY_INTERVAL),
+        )
+    ),
+    _macro(
+        "make_interval_fields",
+        _MAKE_INTERVAL_PARAMS,
+        strict(_MAKE_INTERVAL_PARAMS, "INTERVAL", pg_forms.MAKE_INTERVAL),
+    ),
+    _macro("overlaps_timestamp", "s1, e1, s2, e2", pg_forms.OVERLAPS),
+    _macro("datetime_pl", "d, t", strict("d, t", "TIMESTAMP", pg_forms.DATETIME_PL)),
+    _macro("timedate_pl", "t, d", strict("d, t", "TIMESTAMP", pg_forms.DATETIME_PL)),
+    _macro("datetimetz_pl", "d, t", strict("d, t", "TIMESTAMPTZ", pg_forms.DATETIMETZ_PL)),
+    _macro("timetzdate_pl", "t, d", strict("d, t", "TIMESTAMPTZ", pg_forms.DATETIMETZ_PL)),
+    _macro(
+        "timestamp_scale", "value, n", strict("value, n", "TIMESTAMP", pg_forms.TIMESTAMP_SCALE)
+    ),
+    _macro(
+        "timestamptz_scale",
+        "value, n",
+        strict("value, n", "TIMESTAMPTZ", pg_forms.TIMESTAMPTZ_SCALE),
+    ),
+    _macro("time_scale", "value, n", strict("value, n", "TIME", pg_forms.TIME_SCALE)),
+    _macro("timetz", "value, n", strict("value, n", "TIMETZ", pg_forms.TIMETZ_SCALE)),
+    _macro("interval_scale", "value, n", strict("value, n", "INTERVAL", pg_forms.INTERVAL_SCALE)),
+    _macro("interval_time", "value", strict("value", "TIME", pg_forms.INTERVAL_TIME)),
+    _macro("time_interval", "value", strict("value", "INTERVAL", pg_forms.TIME_INTERVAL)),
+    _macro("timestamp_time", "value", strict("value", "TIME", pg_forms.TIMESTAMP_TIME)),
+    _macro("timestamptz_time", "value", strict("value", "TIME", pg_forms.TIMESTAMPTZ_TIME)),
+    _macro("timetz_time", "value", "CAST(value AS TIME)"),
+    _macro("time", "value", "CAST(value AS TIME)"),
+    _macro("timestamptz", "value", strict("value", "TIMESTAMPTZ", pg_forms.TIMESTAMPTZ_OF)),
+    _macro(
+        "timestamptz",
+        "d, t",
+        strict("d, t", "TIMESTAMPTZ", pg_forms.TIMESTAMPTZ_OF_DATE_AND_TIME),
+    ),
+    _macro("timestamptz_timetz", "value", strict("value", "TIMETZ", pg_forms.TIMESTAMPTZ_TIMETZ)),
+    _macro("time_timetz", "value", strict("value", "TIMETZ", pg_forms.TIME_TIMETZ)),
+    _macro("timetz", "value", "CAST(value AS TIMETZ)"),
+)
+
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
     _operators("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
@@ -810,6 +1068,8 @@ _ROWS: tuple[Macro, ...] = (
         "error('function returning record called in context that cannot accept type record') "
         "ELSE CAST(NULL AS VARCHAR) END",
     ),
+    *_NUMBERS,
+    *_DATES,
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
@@ -832,6 +1092,26 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("strip", 1, "tsvector"): "tsvector_strip",
     ("abbrev", 1, "inet"): "inet_abbrev",
     ("abbrev", 1, "cidr"): "cidr_abbrev",
+    **{
+        (name, 1, of): f"{of_row}_{name}"
+        for name in ("int2", "int4", "int8", "float4", "float8")
+        for of, of_row in (("decimal", "numeric"), ("jsonb", "jsonb"))
+    },
+    ("int4", 1, "bit"): "bittoint4",
+    ("int8", 1, "bit"): "bittoint8",
+    ("int4", 1, '"char"'): "chartoi4",
+    ("time", 1, "interval"): "interval_time",
+    ("time", 1, "timestamp"): "timestamp_time",
+    ("time", 1, "timestamptz"): "timestamptz_time",
+    ("time", 1, "timetz"): "timetz_time",
+    ("time", 2, "time"): "time_scale",
+    ("timestamp", 2, "date"): "datetime_pl",
+    ("timestamp", 2, "timestamp"): "timestamp_scale",
+    ("timestamptz", 2, "timestamptz"): "timestamptz_scale",
+    ("timetz", 1, "timestamptz"): "timestamptz_timetz",
+    ("timetz", 1, "time"): "time_timetz",
+    ("interval", 1, "time"): "time_interval",
+    ("interval", 2, "interval"): "interval_scale",
     **{
         (name, arity, of): f"{of}_{suffix}"
         for of in ("lseg", "line")
@@ -862,7 +1142,9 @@ def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
     said = said_type(args[0]) if args else None
-    return name if said is None else OVERLOADS.get((name, len(args), said), name)
+    if said is None:
+        return name
+    return OVERLOADS.get((name, len(args), said.split("(")[0]), name)
 
 
 def outcome(name: str, arity: int, dialect: str) -> str:
@@ -905,9 +1187,19 @@ def _argument(value: exp.Expr) -> exp.Expr:
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
 
 
+def _in_a_subquery(form: exp.Expr, params: tuple[str, ...], args: list[exp.Expr]) -> exp.Expr:
+    """``form`` over its parameters as the columns of a row of its arguments: a lambda cannot read
+    a subquery, and a form may be one."""
+    row = exp.select(*(exp.alias_(a, p) for p, a in zip(params, args)))
+    return exp.select(form).from_(row.subquery("_args")).subquery()
+
+
 def _written(macro: Macro, args: list[exp.Expr], dialect: str) -> exp.Expr:
     """The call's form with each parameter its argument. As a DuckDB macro does, an argument is
     written wherever the form names it; it is evaluated each time."""
+    form = _parsed(macro.name, len(args), dialect).copy()
+    if form.find(exp.Lambda) is not None and any(a.find(exp.Select) is not None for a in args):
+        return _in_a_subquery(form, macro.params, [_argument(a) for a in args])
     values = dict(zip(macro.params, args))
 
     def bound(node: exp.Expr) -> exp.Expr:
@@ -915,13 +1207,23 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str) -> exp.Expr:
             return _argument(values[node.name]).copy()
         return node
 
-    return _parsed(macro.name, len(args), dialect).copy().transform(bound)
+    return form.transform(bound)
+
+
+#: A class sqlglot reads a call of a function of the table as.
+_READ_AS: dict[type[exp.Expr], str] = {
+    exp.JustifyDays: "justify_days",
+    exp.JustifyHours: "justify_hours",
+    exp.JustifyInterval: "justify_interval",
+}
 
 
 def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call the table may hold."""
     if isinstance(node, exp.Anonymous):
         return node.name.lower(), list(node.expressions)
+    if type(node) in _READ_AS:
+        return _READ_AS[type(node)], [node.this]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
     if isinstance(node, exp.RegexpSubstr):
