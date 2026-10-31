@@ -124,6 +124,15 @@ export function RelationshipsPage() {
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
+  // The link names the filter, also on a page already open: a tour step moving on within the page
+  // searches for its own relationship's alias.
+  const linkedSearch = searchParams.get("search") ?? "";
+  const [seededSearch, setSeededSearch] = useState(linkedSearch);
+  if (linkedSearch !== seededSearch) {
+    setSeededSearch(linkedSearch);
+    setRelSearch(linkedSearch);
+    setRelPage(0);
+  }
   const PAGE_SIZE = 50;
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
