@@ -40,6 +40,7 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.core.repositories.mask_lists import refuse_unreachable_masks
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -785,8 +786,19 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             )
             _entries.append({**_bare, "why": _entry_why})
         _whys[col.name] = (_fake_why, _entries)
-    # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
+    # What each column's list is stored as: a control-plane role is no reader of it.
+    _stored_masks = {
+        name: [
+            e
+            if e.get("to") is None  # every other reader: names no role (REQ-2153)
+            else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
+            for e in entries
+        ]
+        for name, (_, entries) in _whys.items()
+    }
+    await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
         object_fields_raw = getattr(col, "object_fields", [])
@@ -822,12 +834,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 domain_id=domain_id,
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
-                masks=[
-                    e
-                    if e.get("to") is None  # every other reader: names no role (REQ-2153)
-                    else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
-                    for e in _whys[col.name][1]
-                ],
+                masks=_stored_masks[col.name],
                 alias=getattr(col, "alias", None),
                 description=getattr(col, "description", None),
                 data_type=_data_type,

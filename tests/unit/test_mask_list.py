@@ -9,8 +9,8 @@
 # permission from the copyright holder.
 
 """A column's ordered mask list: a reader reads the column through the first entry it holds --
-by inheritance, composites included, ``*`` for everyone -- and unmasked when it holds none
-(REQ-2059). A meta-role is judged by its own set, like any role."""
+by inheritance, composites included, ``*`` for everyone -- and completely masked when it holds
+none (REQ-2059). A meta-role is judged by its own set, like any role."""
 
 # Requirements: REQ-2059
 
@@ -53,31 +53,32 @@ def chain_of(role: str) -> list[str]:
 
 def test_the_first_entry_a_reader_holds_decides():
     assert entry_for(MASKS, ["analyst", "developer"]) == 2
-    rule = resolve(MASKS, ["analyst", "developer"])
+    rule = resolve(MASKS, ["analyst", "developer"], "varchar")
     assert rule is not None and rule.mask_type == MaskType.regex
 
 
 def test_a_composite_entry_needs_every_role_of_it():
-    assert resolve(MASKS, ["analyst", "developer", "region__eu", "region"]) is None
+    assert resolve(MASKS, ["analyst", "developer", "region__eu", "region"], "varchar") is None
 
 
 def test_an_entry_before_it_applies_first_deny_by_order():
-    rule = resolve(MASKS, ["contractor", "analyst", "developer", "region__eu", "region"])
+    rule = resolve(MASKS, ["contractor", "analyst", "developer", "region__eu", "region"], "varchar")
     assert rule is not None and rule.value == "withheld"
 
 
 def test_everyone_is_the_reader_holding_nothing_else():
-    rule = resolve(MASKS, ["marketing"])
+    rule = resolve(MASKS, ["marketing"], "varchar")
     assert rule is not None and rule.value == "withheld"
 
 
-def test_a_reader_no_entry_names_reads_the_column_unmasked():
-    assert resolve([{"to": ["contractor"], "mask": CONSTANT}], ["analyst"]) is None
+def test_a_reader_no_entry_names_reads_the_column_completely_masked():
+    rule = resolve([{"to": ["contractor"], "mask": CONSTANT}], ["analyst"], "varchar")
+    assert rule is not None and rule.value == "****"
 
 
 def test_an_entry_reaches_the_children_of_the_role_it_names():
     masks = [{"to": ["developer"], "mask": None}, {"mask": CONSTANT}]
-    assert resolve(masks, ["analyst", "developer"]) is None
+    assert resolve(masks, ["analyst", "developer"], "varchar") is None
 
 
 def test_each_readers_masks_are_keyed_as_the_masking_rules_are():
@@ -137,7 +138,6 @@ def test_the_report_flags_an_entry_an_earlier_one_covers():
     ]
     report = masks_report(masks, chain_of)
     assert report["unreachable"] == [{"entry": 1, "covered_by": 0}]
-    assert report["unlisted_unmasked"] is False
 
 
 def test_the_report_flags_entries_after_everyone_and_an_entry_for_no_one():
@@ -156,9 +156,10 @@ def test_a_composite_after_its_parts_own_entry_is_unreachable_but_before_it_is_n
     assert masks_report(swapped, chain_of)["unreachable"] == [{"entry": 2, "covered_by": 1}]
 
 
-def test_the_report_warns_when_no_entry_is_for_everyone():
-    assert masks_report([{"to": ["contractor"], "mask": CONSTANT}], chain_of)["unlisted_unmasked"]
-    assert masks_report([], chain_of)["unlisted_unmasked"] is False
+def test_the_report_has_no_warning_for_a_list_with_no_entry_for_everyone():
+    assert "unlisted_unmasked" not in masks_report(
+        [{"to": ["contractor"], "mask": CONSTANT}], chain_of
+    )
 
 
 def test_the_report_names_the_entry_chosen_roles_read_through():
@@ -229,7 +230,11 @@ def test_the_check_route_answers_the_report_for_the_list_as_edited(monkeypatch):
     assert resp.status_code == 200, resp.text
     assert resp.json() == {
         "unreachable": [{"entry": 1, "covered_by": 0}],
-        "unlisted_unmasked": True,
+        "refusal": {
+            "code": "schema.mask_unreachable",
+            "message": "You have defined a mask that is not reachable: [analyst]",
+            "params": {"entries": "[analyst]"},
+        },
         "applies": 2,
         "patterns": [],
     }

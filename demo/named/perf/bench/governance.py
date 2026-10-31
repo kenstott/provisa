@@ -170,7 +170,7 @@ def column_input(c: Mapping[str, Any], masks: list[dict] | None = None) -> dict[
         "masks": [
             # The editor sends no why: the stored one stands (REQ-2094).
             {
-                "to": list(e["to"]),
+                "to": None if e["to"] is None else list(e["to"]),
                 "mask": None if e["mask"] is None else dict(e["mask"]),
                 "why": None,
             }

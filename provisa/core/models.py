@@ -1157,8 +1157,9 @@ class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
     """One entry of a column's ordered mask list: the readers it is for (grant entries, as
     ``visible_to`` takes them, composites included) and the mask they read the column through, or
     none (``mask`` None: unmasked). A reader reads the column through the first entry it holds; a
-    reader holding none reads it unmasked. An entry with no ``to`` (None) is for every other
-    reader: it is the list's last entry, at most one per list."""
+    reader holding none reads it completely masked, so unmasked is only ever given by an entry.
+    An entry with no ``to`` (None) is for every other reader: it is the list's last entry, at most
+    one per list."""
 
     to: list[str] | None = None
     mask: Mask | None = None
