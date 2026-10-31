@@ -8953,5 +8953,6 @@
   "fr/demoOpenPage.json::demoOpenPage.coldStart": "A demo that has been idle takes about five minutes to start.",
   "fr/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
   "fr/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
-  "fr/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later."
+  "fr/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later.",
+  "fr/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}"
 }

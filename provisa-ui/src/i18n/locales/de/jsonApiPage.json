@@ -18,6 +18,7 @@
     "optionalHint": "optional",
     "fieldPlaceholder": "— Feld —",
     "filterValuePlaceholder": "Wert",
+    "removeHandedParam": "{{param}} entfernen",
     "sortAsc": "aufst.",
     "sortDesc": "abst.",
     "paginationSectionTitle": "Paginierung",

@@ -38,6 +38,27 @@ function readSaved(key: string): Record<string, unknown> {
     : {};
 }
 
+/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
+export const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
+
+/** ``graph``'s remembered settings as they stand, read where the graph itself is not open. */
+export function savedGraphSettings(graph: GraphKey): Record<string, unknown> {
+  return readSaved(keyOf(graph));
+}
+
+/** Sets ``graph``'s settings from outside it (Polly's navigate): remembered, so a graph opened
+ * later has them, and followed by a graph already open. */
+export function writeGraphSettings(graph: GraphKey, change: Record<string, unknown>): void {
+  const key = keyOf(graph);
+  const next = { ...readSaved(key), ...change };
+  try {
+    setStored(key, JSON.stringify(next));
+  } catch {
+    // Blocked storage: the setting holds while the graph is open and is not kept.
+  }
+  window.dispatchEvent(new CustomEvent(CHANGED, { detail: { key, settings: next } }));
+}
+
 /** A saved value kept only where it has its default's shape (a selection may also be every
  * choice, null); anything else is the default. */
 function fits(value: unknown, fallback: SettingValue): boolean {

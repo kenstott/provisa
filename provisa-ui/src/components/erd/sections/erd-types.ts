@@ -19,6 +19,10 @@ export interface TooltipState {
 }
 
 export interface ErdPanelProps {
+  /** The domains a link asks to collapse, "all" for every one; null when it asks nothing. */
+  collapsed?: string | null;
+  /** Reports the collapsed domains, "all" when every visible one is. */
+  onCollapsed?: (collapsed: string[] | "all") => void;
   tables: ListedTable[];
   relationships: Relationship[];
   domains: Domain[];

@@ -18,6 +18,7 @@
     "optionalHint": "необязательно",
     "fieldPlaceholder": "— поле —",
     "filterValuePlaceholder": "значение",
+    "removeHandedParam": "Удалить {{param}}",
     "sortAsc": "по возр.",
     "sortDesc": "по убыв.",
     "paginationSectionTitle": "Пагинация",
