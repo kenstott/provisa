@@ -67,12 +67,17 @@ class Check:
     outcome: str
 
 
-def quality(dataset: str) -> list[Check]:
+@dataclass
+class QualityInputs:
+    dataset: str
+
+
+def quality(inputs: QualityInputs) -> list[Check]:
     """The checker tables on a dataset, as dq answers the role of the request.
 
     @table
     """
-    found = ps.dq.dataset(dataset)
+    found = ps.dq.dataset(inputs.dataset)
     return [
         Check(c["checker_table"], (c["latest_run"] or {}).get("outcome") or "never run")
         for c in found["checker_tables"]

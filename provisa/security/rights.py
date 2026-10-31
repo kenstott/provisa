@@ -508,7 +508,7 @@ def role_domain_problem(  # REQ-039, REQ-1530
     if listed & SYSTEM_DOMAINS:
         return (
             f"Role {role_id!r} lists {sorted(listed & SYSTEM_DOMAINS)}: a system domain is held as "
-            "a capability, not listed (REQ-1132)"
+            "a capability, not listed"
         )
     if listed:
         return None
