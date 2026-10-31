@@ -29,7 +29,7 @@ it.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -290,7 +290,7 @@ def _single_table_shape(
     return _plain_projection_shape(tree.expressions, table_columns(table_id, ctx, column_types))
 
 
-def _registered_money(
+def registered_money(
     registered: dict[tuple[str, str], dict[str, str]],
 ) -> Callable[[exp.Table, str], str | None]:
     """What a registered table's column is to money's operators (REQ-2171)."""
@@ -302,15 +302,15 @@ def _registered_money(
     return typed
 
 
-def _annotated_shape(
-    tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict, *, each: bool = False
-) -> list[tuple[str, str]]:
+def typed_statement(
+    tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict
+) -> tuple[exp.Query, dict[tuple[str, str], dict[str, str]]]:
+    """``tree`` qualified and its types annotated from the registry, and the registered columns of
+    each table it reads, by the synthetic schema each is given. ``tree`` is changed in place."""
     from sqlglot.optimizer.annotate_types import annotate_types
     from sqlglot.optimizer.qualify import qualify
-    from sqlglot.optimizer.scope import build_scope
     from sqlglot.schema import MappingSchema
 
-    tree = tree.copy()
     cte_names = {cte.alias for cte in tree.find_all(exp.CTE)}
     # Each registered table reference gets a synthetic schema of its own, so the SQLGlot schema has
     # one uniform depth whether the statement qualified the table or not.
@@ -340,7 +340,6 @@ def _annotated_shape(
             for col, raw in columns.items()
         }
     schema = MappingSchema(nested, dialect="postgres")
-    original = list(tree.selects)
     try:
         qualified = qualify(
             tree,
@@ -355,9 +354,19 @@ def _annotated_shape(
         raise UnderivableColumn(
             f"cannot describe the statement's result columns from registered metadata: {exc}"
         ) from exc
+    return cast(exp.Query, annotated), registered
 
+
+def _annotated_shape(
+    tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict, *, each: bool = False
+) -> list[tuple[str, str]]:
+    from sqlglot.optimizer.scope import build_scope
+
+    tree = tree.copy()
+    original = list(tree.selects)
+    annotated, registered = typed_statement(tree, table_map, ctx, column_types)
     root = build_scope(annotated)
-    money_of = statement_columns(annotated, _registered_money(registered))
+    money_of = statement_columns(annotated, registered_money(registered))
     selects = list(annotated.selects)
     # Positions line up with the statement's own projections unless a star was expanded.
     aligned = original if len(original) == len(selects) else None
