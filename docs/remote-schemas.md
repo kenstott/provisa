@@ -81,7 +81,7 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 
 **Mutations.** A mutation field is registered as a command of kind `source_operation`, one at a time. Its arguments are each typed `json` and passed to the remote as typed variables; the answer is the JSON the remote returns, with no `return_schema`. See [A remote source's write operation](commands.md#a-remote-sources-write-operation).
 
-**Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. This re-introspects the remote schema and brings the already-registered tables up to date with it. It adds no table and no column: a table or column the schema has gained stays on offer, and a column the schema has lost is dropped. Existing governance rules (RLS, masking) are preserved.
+**Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. This re-introspects the remote schema and brings the already-registered tables up to date with it. It adds no table and no column. A table or column the schema has gained stays on offer, and a column the schema has lost is dropped. Existing governance rules (RLS, masking) are preserved.
 
 **Limitations.**
 
@@ -211,7 +211,7 @@ Mutation methods are commands on offer, counted in `available_mutations`; adding
 | Nested message | `jsonb` |
 | Enum | `text` |
 
-**Relationships at registration time.** `relationships` works just as it does for the GQL adapter: it declares FK/PK join paths, stored as manually declared relationships (with no `remote_managed` flag). A refresh leaves them as they are.
+**Relationships at registration time.** `relationships` works just as it does for the GQL adapter. It declares FK/PK join paths, stored as manually declared relationships (with no `remote_managed` flag). A refresh leaves them as they are.
 
 **Query methods.** Output message fields become table columns. Input message fields both become GraphQL arguments passed to the remote call *and* are registered as `_nf_`-prefixed columns with `native_filter_type: "grpc_input"`, the same mechanism GQL and OpenAPI use for native filter injection.
 
@@ -253,7 +253,7 @@ Server-streaming methods collect all streamed messages into a list before return
 
 Classification priority: `operation_overrides` (payload) overrides `x-provisa-kind` (spec extension) overrides the GET heuristic. `operation_overrides` is the recommended override path; `x-provisa-kind` is for when the spec itself should carry the classification.
 
-**Relationships at registration time.** `relationships` works just as it does for the other adapters: stored as manually declared relationships and kept on refresh.
+**Relationships at registration time.** `relationships` works just as it does for the other adapters, stored as manually declared relationships and kept on refresh.
 
 **Table naming.** Tables use the operation's `operationId`. If no `operationId` is defined, Provisa slugifies `{method}_{path}`. An alias is derived by stripping the leading verb segment and singularizing the noun (`findPetsByStatus` → `pet_by_status`).
 
@@ -276,7 +276,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 
 **Response caching.** GET operation results are cached in PostgreSQL by `pg_cache.py`. Each combination of request parameters gets its own `_params_hash` group. Rows for a given hash are replaced when the TTL expires. Path-param endpoints (`/pets/{id}`) skip the initial bulk fetch. The cache table is created empty for schema introspection, then populated per-PK as requests arrive.
 
-**Refresh.** POST to `/admin/openapi/refresh/{source_id}`. This re-parses the spec through `_load_and_register`, which registers nothing: it adds no table and no column. Existing governance rules are preserved. A registered table keeps its columns; it is read through the refreshed spec's operation.
+**Refresh.** POST to `/admin/openapi/refresh/{source_id}`. This re-parses the spec through `_load_and_register`, which registers nothing and adds no table or column. Existing governance rules are preserved. A registered table keeps its columns; it is read through the refreshed spec's operation.
 
 **Limitations.**
 

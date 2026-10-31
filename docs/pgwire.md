@@ -33,7 +33,7 @@ The startup packet carries a username and one secret field, and no scheme to say
 
 The decision is made once. A credential the chosen validator refuses is not retried against another, so one rejection does not become a second guess.
 
-Trust mode (`provider: none`, or auth middleware inactive) is the exception: the username is used directly as the `role_id` and the secret is ignored. Do not use it over an unencrypted connection.
+Trust mode (`provider: none`, or auth middleware inactive) is the exception. The username is used directly as the `role_id` and the secret is ignored. Do not use it over an unencrypted connection.
 
 **SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet (verifiers cannot be derived from bcrypt hashes) is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
 
@@ -123,7 +123,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 ### Definitions (CREATE, ALTER, DROP)
 
-Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception (see [Temporary tables](#temporary-tables)). A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` defines nothing: it is a data write (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)).
+Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception (see [Temporary tables](#temporary-tables)). A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` is a data write (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)) and defines nothing.
 
 The refusal is made once, in the pipeline every SQL surface passes through, so SQL over HTTP, Flight and MCP refuse the same statements with the same message.
 
@@ -140,15 +140,15 @@ SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
 
-- **Create** with `CREATE TEMP TABLE name (column type, ...)` or `CREATE TEMP TABLE name AS SELECT ...`. The name takes no schema. A `SELECT` it is created from is a read like any other: the role's row rules, masks, fakes and row limit apply to the rows it takes.
-- **Column types** are `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` and `DECIMAL(precision, scale)`. A decimal keeps its precision and scale. Any other type is refused, naming the column and the type: a value is never stored as another type than its own. A column created from a `SELECT` takes the type of its values; one with no value to tell a type by is refused, so `CAST` it in the `SELECT`.
+- **Create** with `CREATE TEMP TABLE name (column type, ...)` or `CREATE TEMP TABLE name AS SELECT ...`. The name takes no schema. A `SELECT` it is created from is a read like any other, so the role's row rules, masks, fakes and row limit apply to the rows it takes.
+- **Column types** are `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` and `DECIMAL(precision, scale)`. A decimal keeps its precision and scale. Any other type is refused, naming the column and the type, because a value is never stored as another type than its own. A column created from a `SELECT` takes the type of its values; one with no value to tell a type by is refused, so `CAST` it in the `SELECT`.
 - **Row limit.** The rows a `CREATE ... AS SELECT` or an `INSERT ... SELECT` takes are read as the role reads anything, so the role's row limit applies. A temporary table filled from a read that the limit cut short carries the same statement warning any cut read does (`statement.rows_cut`), naming the limit.
-- **Write** with `INSERT ... VALUES`, `INSERT ... SELECT`, `UPDATE` and `DELETE`, without `RETURNING` and without `FROM`. A write into a temporary table is not a mutation: it reaches no source and none of the environment's data, so it works whatever the environment's mutation handling and needs no write right.
+- **Write** with `INSERT ... VALUES`, `INSERT ... SELECT`, `UPDATE` and `DELETE`, without `RETURNING` and without `FROM`. A write into a temporary table is not a mutation. It reaches no source and none of the environment's data, so it works whatever the environment's mutation handling and needs no write right.
 - **Read** it by its name, alone or joined to tables of the model. The engine computes the read.
 - **Lifetime.** A temporary table is not a model object, no other session sees it, and it ends with the session. On pgwire a session is the connection. On a surface with no connection of its own (SQL over HTTP, Flight, MCP) a session is one request, so a temporary table lives for the statements sent together in that request.
 - **Storage.** The rows are held in a schema of the session's own in the engine's store and dropped when the session ends. An `INSERT`, `UPDATE` or `DELETE` rewrites the whole table through the engine, so a temporary table suits scratch data, not large tables written row by row. A process that stops without ending its sessions leaves their schemas in the store; they are removed when the environment is retired.
 
-The same statements work on every SQL surface: they are handled in the pipeline all of them share.
+The same statements work on every SQL surface, because they are handled in the pipeline all of them share.
 
 ### Data writes (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN)
 
@@ -180,7 +180,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 
 Supported formats: `text` (tab-delimited, default), `csv` and `binary`, PostgreSQL's binary COPY format, which DuckDB's postgres extension reads with.
 
-**COPY FROM STDIN** is a data write into an existing registered table: it is admitted by the same write admission as an `INSERT` of the same rows, with the added condition that the `insert` grant has no presets (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). It reads `text` (default) and `csv`. Any other format is refused with SQLSTATE 0A000, naming it, before any data is sent.
+**COPY FROM STDIN** is a data write into an existing registered table. It is admitted by the same write admission as an `INSERT` of the same rows, with the added condition that the `insert` grant has no presets (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). It reads `text` (default) and `csv`. Any other format is refused with SQLSTATE 0A000, naming it, before any data is sent.
 
 ### Transactions and Session Commands
 
@@ -271,7 +271,7 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 **COPY input is text or csv.** `COPY ... TO STDOUT` writes `text`, `csv` and `binary`; `COPY ... FROM STDIN` reads `text` and `csv`.
 
-**Parameters stay bound.** `$1`, `$2`, ... values are never spliced into the statement text: they travel bound all the way to the engine or source, so every value shares one SQL text (server-side prepares and caches keyed on SQL text keep working) and a value can never change the governed shape. Only the catalog intercept, which answers `information_schema` and `pg_catalog` queries itself, reads the values inline.
+**Parameters stay bound.** `$1`, `$2`, ... values are never spliced into the statement text. They travel bound all the way to the engine or source, so every value shares one SQL text (server-side prepares and caches keyed on SQL text keep working) and a value can never change the governed shape. Only the catalog intercept, which answers `information_schema` and `pg_catalog` queries itself, reads the values inline.
 
 **DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming.
 

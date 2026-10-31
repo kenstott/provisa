@@ -28,7 +28,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 | Pattern | Status | Notes |
 | --------- | -------- | ------- |
-| `(n)` — unlabeled node | ✓ | UNION ALL over all known types |
+| `(n)` (unlabeled node) | ✓ | UNION ALL over all known types |
 | `(n:Label)` | ✓ | Maps to the registered table for that GraphQL type |
 | `(n:Label {prop: val})` | ✓ | Inline property filter becomes WHERE |
 | `(a)-[:TYPE]->(b)` | ✓ | Directed, single hop |
@@ -74,7 +74,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | Syntax | SQL mapping |
 | -------- | ------------ |
 | `n { .prop1, .prop2 }` | `MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])` |
-| `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])` — expanded from schema |
+| `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])`, expanded from schema |
 | `n { .*, extra: expr }` | All schema props plus named key; combined MAP |
 | `n { key: expr }` | `MAP(ARRAY['key'], ARRAY[expr])` |
 
@@ -182,9 +182,9 @@ Property names map to columns via domain-prefix stripping and alias resolution; 
 
 A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it, the name GraphQL and SQL read it by, in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
 
-A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way: null, with no sign that it exists. A write is never silent: `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
+A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way, as null with no sign that it exists. A write is never silent. `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
 
-Every node has one built-in property, `_id`: its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned model node carries it among its properties. A node a graph session created has no key a statement wrote: it is answered with the properties it was given (`CREATE (:X {prop: 42})` returns `(:X {prop: 42})`), and its `_id` is the session's own handle on it. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
+Every node has one built-in property, `_id`, which is its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned model node carries it among its properties. A node a graph session created has no key a statement wrote. It is answered with the properties it was given (`CREATE (:X {prop: 42})` returns `(:X {prop: 42})`), and its `_id` is the session's own handle on it. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
 
 Rules:
 
@@ -194,7 +194,7 @@ Rules:
 - A relationship backed by a foreign key or by columns on one of its end tables is read-only. Writing one is refused by name.
 - A relationship backed by a registered junction table is writable as an edge. `CREATE (a)-[:TYPE]->(b)` inserts the junction row when both ends are already matched in the statement; `DELETE` of such an edge deletes that row; `SET` of its properties updates it. The write is governed exactly like any other write on the junction table: write grants, row rules, masks and the role's admission all apply. A relationship type the model does not register, or one registered between other labels than the two nodes it joins, is refused by name. Both end nodes must be matched in the same statement; a relationship write never creates its end nodes.
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload).
-- `MERGE` rewrites to MATCH then CREATE under the same write rules above: a governed model write when the result label names exactly one model table, ephemeral otherwise.
+- `MERGE` rewrites to MATCH then CREATE under the same write rules above. It is a governed model write when the result label names exactly one model table, and ephemeral otherwise.
 - `DETACH DELETE` of a model node is governed when its label names exactly one model table and each relationship it detaches is a registered junction row. A foreign-key relationship cannot be detached and is refused by name.
 - `REMOVE n:Label` takes a session label off a node. `REMOVE` of a model node's properties is refused.
 
@@ -244,7 +244,7 @@ The `Customer` row is governed; the `Note` and `HAS_NOTE` are session-only.
 
 ### Reading session data beside governed data
 
-A `MATCH` on a label with session matches expands to include those matches alongside the model's rows, under the role's governance. Labels with no session matches compile exactly as before: nothing changes for a session that holds no ephemeral objects.
+A `MATCH` on a label with session matches expands to include those matches alongside the model's rows, under the role's governance. Labels with no session matches compile exactly as before, and nothing changes for a session that holds no ephemeral objects.
 
 ```cypher
 MATCH (c:Customer)-[:HAS_NOTE]->(n:Note) RETURN c.name, n.text
@@ -283,7 +283,7 @@ Clear the session from the Cypher page (`DELETE /data/cypher/session`) or throug
 
    Each executes as a governed table write. `MERGE` runs MATCH then CREATE under the same write rules. `DETACH DELETE` is governed when the node has an exact model target and each detached relationship is a registered junction. `REMOVE n:Label` removes a session label; `REMOVE` of a model node's properties is refused. APOC procedures are not supported.
 
-2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema: it's an edge here and a table everywhere else.
+2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema, because it's an edge here and a table everywhere else.
 
 3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward and backward UNION ALL of every matching directed relationship in the model. Every relationship in the model has a direction, and the bidirectional syntax is sugar that expands to both. The extra branches are emitted at the outermost query level. A later MATCH pattern in the same query isn't duplicated across the branches, which limits bidirectional patterns in a query with several MATCH clauses.
 

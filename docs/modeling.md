@@ -358,8 +358,7 @@ mutation {
 ```
 
 Provisa computes `group_cols = dedup([grain] + [dim FKs])`
-= `["order_id", "customer_id", "product_id", "order_date"]` and generates
-:
+= `["order_id", "customer_id", "product_id", "order_date"]` and generates:
 
 ```sql
 SELECT "order_id", "customer_id", "product_id", "order_date",
@@ -400,8 +399,7 @@ mutation {
 ```
 
 Both `Sales` and `Returns` point to the same `Customer` and `Product` entities. Provisa's join
-paths enforce that queries through either fact traverse the same dimension definition
-.
+paths enforce that queries through either fact traverse the same dimension definition.
 
 ---
 
@@ -411,8 +409,8 @@ The same primitives map directly onto Data Vault vocabulary:
 
 | DV artifact | Primitive | History |
 | --- | --- | --- |
-| Hub | `entity` | `none` — entity keys only |
-| Satellite | `entity` | `scd2` or `snapshot` — attribute history beside the hub key |
+| Hub | `entity` | `none` (entity keys only) |
+| Satellite | `entity` | `scd2` or `snapshot` (attribute history beside the hub key) |
 | Link | `fact` with no measures | — |
 | Bridge / aggregate link | `fact` with measures | — |
 
@@ -519,8 +517,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 ```
 
 Two relationships registered: `OrderCustomerLink.customer_id → CustomerHub` and
-`OrderCustomerLink.order_id → OrderHub`, both many-to-one
-.
+`OrderCustomerLink.order_id → OrderHub`, both many-to-one.
 
 #### Bridge / aggregate link
 
@@ -544,8 +541,7 @@ mutation {
 ```
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
-(the duplicate `order_id` from the dimension list is dropped by `_dedup`). Generates
-:
+(the duplicate `order_id` from the dimension list is dropped by `_dedup`). Generates:
 
 ```sql
 SELECT "order_id", "customer_id", SUM("amount") AS "amount"
@@ -568,7 +564,7 @@ A **metric** is a named, governed aggregate definition with no grain of its own.
 | `expression` | yes | Aggregate ANSI-SQL; must include at least one aggregate function |
 | `datatype` | no | Result type hint, e.g. `number`, `integer` |
 | `description` | no | Human-readable business definition |
-| `ai_context` | no | Text for AI consumers — projects to MCP tools, pg_description, GraphQL docs, and Ossie export |
+| `ai_context` | no | Text for AI consumers; projects to MCP tools, pg_description, GraphQL docs, and Ossie export |
 | `visible_to` | no | Role list; defaults to `["*"]` (all roles) |
 | `from_fact` | — | Set automatically when the metric was generated from a fact measure |
 
@@ -671,6 +667,6 @@ fact table (filtered to `modelingRole=fact`), a measure column, and an aggregate
 `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type`.
 The expression textarea remains the escape hatch for arbitrary expressions.
 
-## The IR payoff
+## Moving between engines
 
 Every registration call goes through the same path as a hand-written MV. The entity and fact spec is an intermediate representation; it isn't a template or a macro. The warehouse it targets is a property of the deployment, and the model doesn't name it. Change the target engine, and the same `entity` / `fact` declarations materialize there, because the generated SQL and the bitemporal history are engine-neutral by design.

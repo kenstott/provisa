@@ -19,7 +19,7 @@ Six `impl_kind` values are supported:
 | `grpc` | gRPC unary; proto-less JSON bridge |
 | `python` | In-process Python callable (`module:attr`) |
 
-`script` and `python` are host code: they run on the server's own host, and a deployment allows
+`script` and `python` are host code. They run on the server's own host, and a deployment allows
 them only when its operator turns host code on (see [Host code](#host-code)).
 
 Addressing (the catalog `name` and `function_name`) is decoupled from `binding` (transport and
@@ -349,7 +349,7 @@ provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOK
 Exit 0 = full publish. Exit 1 = partial publish or connection failure.
 
 For the full flag reference, auth options, multitenancy host naming, and a cron example, see
-[Metadata Export — From the command line](metadata-export.md#from-the-command-line).
+[Metadata Export: From the command line](metadata-export.md#from-the-command-line).
 
 Commands appear in each environment's git projection. See [Environments](environments.md) for how a command and its tag assignments survive merge and pull.
 
@@ -376,7 +376,7 @@ That depends on where the library runs.
 | A pure SQL scalar expression | SQL expression template | Minutes |
 | A Python library | `python` command | Small |
 | Anything callable from the command line | `script` command | Small |
-| An existing service in another language | `http` or `grpc` command | Moderate — you run the service |
+| An existing service in another language | `http` or `grpc` command | Moderate; you run the service |
 | A plugin tied to another runtime (e.g., a Neo4j extension in Java) | Register that system as a Provisa source and query it in place | Depends |
 
 One worked example per row.
@@ -517,7 +517,7 @@ WITH label AS nodeLabel, collect({property: property, type: type}) AS properties
 RETURN {label: nodeLabel, properties: properties} AS output
 ```
 
-The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it. Counts in the answer are null: a schema read never scans the data.
+The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it. Counts in the answer are null, because a schema read never scans the data.
 
 The path procedures take a start node the statement has matched with a label, a label the walk ends at and a bounded depth. A relationship type is walked out (`TYPE>`), in (`<TYPE`), or either way when the walk ends at the start's own label:
 

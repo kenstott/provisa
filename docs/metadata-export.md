@@ -21,7 +21,7 @@ matches each one's ingestion API.
 | `atlan` | Atlan (beta) | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
-| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
+| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native, with no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
 | `purview` | Microsoft Purview: the Data Map, then Unified Catalog data products | The Atlas API at `{endpoint}`, then `https://{entra_tenant_id}-api.purview-service.microsoft.com/datagovernance/catalog` |
 | `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
 | `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
@@ -40,7 +40,7 @@ Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Product
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
 publishes nothing to either.
 
-`snowflake_horizon` is engine-native, unlike every other adapter: Horizon Catalog is not a remote
+`snowflake_horizon` is engine-native, unlike every other adapter. Horizon Catalog is not a remote
 catalog reached over `endpoint`/`api_key`; it lives inside the same Snowflake account the engine
 already runs governed SQL against, so the adapter opens its own connection off the engine's
 configured DSN instead. `endpoint` and `api_key` are not settings this provider has, and the config
@@ -74,8 +74,8 @@ as keys and join paths. The same reconcile writes each landed table's descriptio
 the stewards' tag assignments as `PROVISA_GOVERNANCE` tags onto the replica, its backing view and
 an MV's store table when it is converged. Databricks and BigQuery hold the
 same facts on the landed table itself, which is the compiler's physical name there (no view layer):
-Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks
-; `NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
+Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks;
+`NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
 BigQuery, where a column tag has no counterpart and is reported withheld. `snowflake_horizon` therefore
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
@@ -220,7 +220,7 @@ Catalog settings:
 | `id` | The catalog's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two catalogs of one provider never share it. |
 | `provider` | Which adapter backs the catalog. An unrecognized name is refused when the adapter is constructed. |
 | `endpoint` | Base URL of the catalog. A catalog with no endpoint is refused when it is saved. Not required for `snowflake_horizon` or `unity_catalog`, which work through the engine's own connection, or for `datazone`, which signs requests to its region's own address. |
-| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
+| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field. `bearer` sends the `token` field. `basic` pairs `username` with the `token` field as HTTP basic, which is stock Apache Atlas's own authentication; Atlas answers a bearer token with 401. `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`. `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
 | `gcp_project`, `gcp_location` | Where a `dataplex` catalog keeps the org's data products. A `dataplex` catalog without both is refused when it is saved. |
 | `aws_region`, `datazone_domain_id` | The DataZone domain a `datazone` catalog is. A `datazone` catalog without both is refused when it is saved. |
@@ -238,7 +238,7 @@ Export settings:
 | `role` | The role a target publishes as. The catalog is sent exactly what that role reads: the columns it is served, the tables holding one, the data products with such a table, and the relationships, lineage, tags and glossary links among them. A target naming no role is sent nothing, and its publish reports the missing role. |
 | `datazone_project_id` | The project that owns the data products published to a `datazone` catalog. The export to a `datazone` catalog without it is refused when it is saved. |
 | `delta_share` | Whether a `unity_catalog` catalog also gets each product as a Delta Share. |
-| `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
+| `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart. See [How the target stays current](#how-the-target-stays-current). |
 
 Credentials are **write-only through the UI**. The Catalogs panel reports each catalog's
 credentials as set or not set and never returns a stored value, so leaving a credential field blank
@@ -273,7 +273,7 @@ provisa metadata export \
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--api` | `$PROVISA_API_URL`, then `http://127.0.0.1:8000` | Under multitenancy, the host names the org (`acme.provisa.org`). |
-| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. |
+| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments; no `Authorization` header is sent when the token is empty. |
 | `--timeout` | `300` | Seconds before the HTTP call is abandoned. |
 
 Exit code 0 means every asset published to every target. Exit code 1 means a partial publish to any

@@ -14,7 +14,7 @@
 
 ---
 
-## pgwire — Native PostgreSQL Driver
+## pgwire: Native PostgreSQL Driver
 
 Provisa implements the PostgreSQL wire protocol (protocol version 3.0). Any client that speaks PostgreSQL connects without a custom driver.
 
@@ -75,7 +75,7 @@ The Provisa JDBC driver uses Arrow Flight as its underlying transport. It is the
 
 Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server, such as a refused credential, a role the user does not hold or a failed statement, is raised to the caller with the server's message; it is not retried over HTTP.
 
-Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential: the driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`): the server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered.
+Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential. The driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`). The server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered.
 
 ### Connection
 
@@ -222,7 +222,7 @@ Use `grpc_server_reflection` to discover the schema programmatically. Reflection
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-Every RPC must carry a credential in the `authorization` metadata key, either a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential and never was. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
+Every RPC must carry a credential in the `authorization` metadata key, either a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
 
 Streaming queries emit one message per row; mutations are unary.
 
@@ -251,7 +251,7 @@ When a command declares a `return_schema` (JSON Schema with `type: array, items:
 | GraphQL | `kind=query` → Query field; `kind=mutation` → Mutation field; domain-prefixed when `domain_prefix: true` | `{ ps__random_grpc_set { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` or `SELECT fn(args)` | `SELECT * FROM random_grpc_set()` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_grpc_set() YIELD id, region, amount` |
-| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — positional args map to declared argument names | `CALL random_grpc_set()` |
+| Bolt (Neo4j Browser / driver) | `CALL fn(args)`; positional args map to declared argument names | `CALL random_grpc_set()` |
 | Provisa gRPC (port 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_grpc_set","args_json":"{}"}' ... ProvisaService/CallCommand` |
 
 The `kind` field controls GraphQL placement only. The SQL, Cypher, Bolt and gRPC surfaces accept both `query` and `mutation` commands identically.
@@ -378,7 +378,7 @@ The adapter maps Provisa objects to Ossie objects as follows:
 | `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Round-trip only; other tools may ignore |
 
 A relationship over several columns lists each column in `from_columns` and `to_columns`. A
-model with no table is refused with a `422`: an Ossie document has at least one dataset.
+model with no table is refused with a `422`, because an Ossie document has at least one dataset.
 
 Governance, RLS, lineage, and graph semantics are not exported. They may travel in the optional
 `provisa` custom_extensions slot for round-trip fidelity, but interchange never depends on other

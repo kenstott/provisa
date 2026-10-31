@@ -54,7 +54,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 
 | Flag | Default | Notes |
 | --- | --- | --- |
-| `--demo` | off | Load the bundled demo — pet-store and shelter sample domains over embedded SQLite |
+| `--demo` | off | Load the bundled demo, with pet-store and shelter sample domains over embedded SQLite |
 | `--host` | `127.0.0.1` | Bind address for both servers |
 | `--api-port` | `8000` | API server port |
 | `--ui-port` | `3000` | UI static/proxy server port |
@@ -328,7 +328,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | no | Report what the deploy would do; apply nothing |
 | `--message` | no | Note carried onto an approval request when the target is protected |
 
-A load into an existing environment never applies roles. There is no `--seed`: the API refuses a seed
+A load into an existing environment never applies roles. There is no `--seed`; the API refuses a seed
 with `environments.seed_only_at_creation`.
 
 ```bash
