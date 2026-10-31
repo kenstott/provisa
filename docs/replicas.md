@@ -66,7 +66,7 @@ When the engine runs its joins inside a relational database, keep the replicas t
 - **A relational engine** (`mysql`, `oracle`, `mssql`, the `sqlalchemy` catch-all and the rest). Every source lands into that database and is queried there.
 - **Trino with its PostgreSQL store.** PostgreSQL is the only store Trino supports; Trino reads replicas through its PostgreSQL connector. A filter or join Trino pushes down to PostgreSQL uses the indexes; work Trino does itself does not.
 
-Point an engine at a store with `PROVISA_MATERIALIZE_URL` or `materialize_store_url`; an org's own registered store takes precedence over both.
+Point an engine at a store with `PROVISA_MATERIALIZE_URL` or `materialize_store_url`; an org's own registered store takes precedence over both. The `pg` engine is the exception: its store is its own database, and any other is refused.
 
 ```bash
 PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/replicas"

@@ -14,7 +14,7 @@
 # (`join=broadcast|partitioned`, `reorder=none|auto`, `broadcast_size=<size>`),
 # translated to Trino session props by
 # `provisa/compiler/directives.py:translate_federation_hints` at query time.
-# Raw Trino session-prop keys still pass through (deprecated) for backward compat.
+# Only that vocabulary reaches the session: a raw Trino session-prop key is not passed through.
 # ---------------------------------------------------------------------------
 
 
@@ -56,15 +56,13 @@ class TestTranslateFederationHints:  # REQ-281
         result = self.translate({"broadcast_size": "1GB"})
         assert result["join_max_broadcast_table_size"] == "1GB"
 
-    def test_unknown_key_passes_through_unchanged(self):
-        # REQ-281: raw Trino session-prop keys pass through for backward compat
-        result = self.translate({"join_distribution_type": "BROADCAST"})
-        assert result["join_distribution_type"] == "BROADCAST"
+    def test_raw_session_prop_key_is_not_passed_through(self):
+        # REQ-281: only the vocabulary reaches the session
+        assert self.translate({"join_distribution_type": "BROADCAST"}) == {}
 
-    def test_unrecognized_provisa_key_passes_through(self):
-        # REQ-281: unrecognized keys pass through so raw Trino props still work
-        result = self.translate({"some_trino_prop": "value"})
-        assert result["some_trino_prop"] == "value"
+    def test_unrecognized_provisa_key_is_not_passed_through(self):
+        # REQ-281: any other key is a setting for the source's connector
+        assert self.translate({"some_trino_prop": "value"}) == {}
 
     def test_empty_hints_returns_empty_dict(self):
         # REQ-281

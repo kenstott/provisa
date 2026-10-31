@@ -89973,7 +89973,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a product''s Input Ports and Consumers cards always appear. The owner or team sees the list, or None
     when there is nothing. Any other reader sees that the list is visible to the product''s owner, never
     None, because the product may have entries that reader cannot see. What a non-owner may read does not
-    change.'
+    change. (Amended 2026-10-29, CONSUMERS ARE NOT IN THE CONTRACT:) Maintainer 2026-10-31: a contract is
+    what a product''s user reads, so it shows neither a Consumers card nor a consumer count. Consumers are
+    the owner''s, on the product''s own Consumers card, which names the port each one reads. In the contract,
+    Columns is a full-width panel, as Promises is.'
   scenario: 'Given product revenue owned by role revenue_team
 
     When a member of revenue_team opens revenue
@@ -90351,7 +90354,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     only. (Amended 2026-10-29, A FUNCTION WITH NO FORM ON A SOURCE:) Maintainer 2026-10-30: functions are
     one macro table in the transpiler. On a direct route to a source with no form for a function, the statement
     goes to the federation engine, and it is refused by name only when no engine can run it. A source''s
-    own function sharing a name in the table stays refused until a source can declare its functions.'
+    own function sharing a name in the table stays refused until a source can declare its functions. (Amended
+    2026-10-29, PG_CATALOG FUNCTIONS ARE GAPS:) Maintainer 2026-10-31: a pg_catalog function not served
+    is a gap, not a deliberate difference. No pg_catalog function is listed as skipped by design, whatever
+    its family and whether or not a client calls it: each one not served counts as failed until it is served,
+    and a probe that cannot call a function is a gap in the probe. The conformance page reports them as
+    failed.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails

@@ -108,7 +108,8 @@ def test_a_session_only_type_lands_as_the_stores_own(kind, postgres):
     assert str(to_sqlalchemy(kind).compile(dialect=postgresql.dialect())) == postgres
 
 
-def test_a_sources_time_with_a_zone_is_still_a_time():
-    from provisa.core.ir_types import to_ir
+def test_a_sources_time_with_a_zone_is_a_timetz_held_as_its_text():
+    from provisa.core.ir_types import SUBTYPES, subtype_of, to_ir
 
-    assert to_ir("timetz") == "time"
+    assert subtype_of("time with time zone") == "timetz"
+    assert to_ir("timetz") == SUBTYPES["timetz"].base == "text"

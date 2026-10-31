@@ -342,7 +342,8 @@ def test_a_double_is_sent_in_postgresqls_text(value: float, text: str):
 
 def test_a_bound_parameter_is_read_as_moneys_input():
     written = lowered("SELECT $1::money AS v", "duckdb")
-    assert "PROVISA_CASH_IN(CAST($1 AS VARCHAR))" in written.upper()
+    assert "MONEY_INPUT($1)" in written.upper()
+    assert "PROVISA_CASH_IN" not in written.upper()
 
 
 @pytest.mark.parametrize(

@@ -34,7 +34,7 @@ from provisa.api.admin.introspect import _pg_column_typing
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.result_shape import derive_result_shape
 from provisa.core import secrets_store
-from provisa.core.ir_types import SUBTYPES, column_typing, to_ir, to_physical
+from provisa.core.ir_types import HELD_AS_TEXT, SUBTYPES, column_typing, to_ir, to_physical
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, sources, table_columns
@@ -75,6 +75,9 @@ _FIRST_SET = {
     "bit": ("text", 1560),
     "varbit": ("text", 1562),
     "tsvector": ("text", 3614),
+    "timetz": ("text", 1266),
+    "jsonb": ("json", 3802),
+    **{name: ("text", oid) for name, oid in HELD_AS_TEXT.items()},
 }
 
 
@@ -285,9 +288,9 @@ def test_the_catalog_reports_a_subtype_as_its_postgresql_type(name):
     oid = _FIRST_SET[name][1]
     assert _physical_to_pg_oid(name) == oid
     assert _physical_to_pg_name(name) == name
-    assert {row[0]: row[1] for row in pg_type_rows()}[oid] == name
+    assert {row[0]: row[1] for row in pg_type_rows()}[oid] == name.strip('"')
     assert oid in _PG_OID_ATTR_META
-    assert _TYPEINFO[oid][1] == name
+    assert _TYPEINFO[oid][1] == name.strip('"')
 
 
 def _catalog_ctx():

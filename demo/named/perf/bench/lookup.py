@@ -42,13 +42,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from server_answer import checked
+
 LANGS = ("sql", "cypher", "graphql", "grpc", "rest", "jsonapi")
 
 ADMIN_QUERY = """
 query BenchLookup {
   sources { id type replicate cacheEnabled cacheTtl }
   tables {
-    id sourceId domainId schemaName tableName alias cacheTtl replicate
+    id sourceId domainId schemaName tableName alias cacheTtl replicate rowMaterialize
     graphqlFieldName dqDataset
     columns { columnName computedSqlAlias computedGqlAlias }
   }
@@ -126,6 +128,9 @@ class TableNames:
     cache_ttl: int | None = None
     table_id: int | None = None  # the registry id the admin API addresses the table by
     domain_id: str | None = None  # the registered domain (what the audit log's domain_id holds)
+    # replicated row by row (REQ-1915): where the engine cannot attach the source, a read with no
+    # filter on it is refused
+    row_materialize: bool = False
 
 
 @dataclass(frozen=True)
@@ -188,11 +193,11 @@ def fetch(client: Any, role: str) -> RawLookup:
 
     def get(path: str, **params: str) -> Any:
         resp = client.get(path, headers=headers, params=params or None)
-        resp.raise_for_status()
+        checked(resp)
         return resp
 
     admin = client.post("/admin/graphql", json={"query": ADMIN_QUERY}, headers=headers)
-    admin.raise_for_status()
+    checked(admin)
     body = admin.json()
     if body.get("errors"):
         raise LookupError_(f"/admin/graphql: {str(body['errors'])[:300]}")
@@ -358,6 +363,7 @@ def resolve(
                     return prefix + path, tname, item["get"]
         return None
 
+    vocab_labels: dict[str, str] = {}
     out_tables: dict[str, TableNames] = {}
     graphql_item: dict[str, str | None] = {}
     for ident in tables:
@@ -397,14 +403,19 @@ def resolve(
         # SPARQL: the table's own class, typing the node label, and its columns' predicates
         sparql_class = None
         if node:
-            classes = [
-                c["iri"]
+            # The vocabulary and the graph schema spell a table's label differently (PB__Orders
+            # against PerfBench:Orders), so the class is found by its IRI, /<domain>/<table>, and
+            # the vocabulary's own label names its predicates and edges.
+            found = [
+                c
                 for c in vocab["classes"]
-                if c["kind"] == "table" and node["label"] in c["labels"]
+                if c["kind"] == "table" and c["iri"].endswith(f"/{row['domainId']}/{ident.table}")
             ]
-            if len(classes) > 1:
-                raise LookupError_(f"SPARQL classes {classes} all type {node['label']!r}")
-            sparql_class = classes[0] if classes else None
+            if len(found) > 1:
+                raise LookupError_(f"SPARQL classes {found} all name table {ident.table!r}")
+            sparql_class = found[0]["iri"] if found else None
+            if found:
+                vocab_labels[node["label"]] = found[0]["labels"][0]
         if sparql_class:
             for c in ident.columns:
                 if "cypher" not in spelled[c]:
@@ -413,7 +424,7 @@ def resolve(
                     p["iri"]
                     for p in vocab["predicates"]
                     if p["kind"] == "column"
-                    and p["label"] == node["label"]
+                    and p["label"] == vocab_labels[node["label"]]
                     and p["property"] == spelled[c]["cypher"]
                 ]
                 if iris:
@@ -476,6 +487,7 @@ def resolve(
             cache_ttl=row.get("cacheTtl"),
             table_id=row["id"],
             domain_id=row["domainId"],
+            row_materialize=row["rowMaterialize"],
         )
 
     # joins: each must be a registered relationship (either orientation)
@@ -547,8 +559,8 @@ def resolve(
                 e["iri"]
                 for e in vocab["edges"]
                 if e["type"] == cypher_rel
-                and e["source"] == s_node["label"]
-                and e["target"] == t_node["label"]
+                and e["source"] == vocab_labels[s_node["label"]]
+                and e["target"] == vocab_labels[t_node["label"]]
             ]
             sparql_rel = edges[0] if edges else None
         out_joins[j.key] = JoinNames(forward, graphql_field, cypher_rel, sparql_rel)

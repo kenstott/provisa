@@ -358,7 +358,11 @@ class TrinoMongoConnector(_TrinoConnector):
         from provisa.mongodb.fetch import MongoConnection
 
         # REQ-1985: a host and port, or the source's connection string, credentials encoded.
-        url = MongoConnection.from_source(source).url()
+        connection = MongoConnection.from_source(source)
+        url = connection.url()
+        # A connection string carries its own topology options (an SRV string forbids this one).
+        if connection.uri is None and source.federation_hints.get("direct_connection") == "true":
+            url += "?directConnection=true"
         return {"mongodb.connection-url": url, "mongodb.schema-collection": "_schema"}
 
 

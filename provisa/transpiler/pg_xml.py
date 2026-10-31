@@ -26,6 +26,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import MARK, raising
+from provisa.transpiler import function_macros
 from provisa.transpiler.xml_syntax import (
     RETURNS_XML,
     XML_VALUES,
@@ -79,17 +80,26 @@ def _xml_function(node: exp.Expr) -> str | None:
     return None
 
 
+def _has_form(node: exp.Expr, dialect: str) -> bool:
+    """Whether the rule writes this XML call for ``dialect``."""
+    if not isinstance(node, exp.Anonymous):
+        return False  # syntax of XML's own, which only PostgreSQL's and DuckDB's forms read
+    key = (node.name.lower(), len(node.expressions))
+    return key in function_macros.MACROS and function_macros.outcome(*key, dialect) != "refused"
+
+
 def for_dialect(pg_sql: str, dialect: str) -> str:
     """``pg_sql`` for a dialect other than DuckDB's: PostgreSQL runs XML as written, and any other
-    has no SQL for it, so an XML function is refused by name. A document already answered is a
-    value there, as xml on PostgreSQL and its text elsewhere."""
+    runs the forms the rule has for it (function_macros), so an XML function with none is refused
+    by name. A document already answered is a value there, as xml on PostgreSQL and its text
+    elsewhere."""
     if MENTIONED.search(pg_sql) is None:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
     if dialect not in NATIVE_DIALECTS:
         for node in tree.walk():
             name = _xml_function(node)
-            if name is not None:
+            if name is not None and not _has_form(node, dialect):
                 raise XmlFunctionRefused(name, dialect)
 
     def value(node: exp.Expr) -> exp.Expr:
