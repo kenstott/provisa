@@ -90744,7 +90744,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     its rewrite, on every dialect, and sqlglot then renders the statement to the engine''s native SQL. A
     function is refused by name only where no rewrite can express it. A rewrite states its casts, so an
     engine''s division, rounding or NULL handling cannot change the answer, and does not repeat a volatile
-    argument.'
+    argument. (Amended 2026-10-29, AN ANSWER THAT DIFFERS IS REFUSED:) Maintainer 2026-10-31: a function
+    answers as PostgreSQL does or is refused by name; a wrong answer is worse than a refusal. An engine''s
+    own function counts only where its answers match PostgreSQL''s under the same session settings; otherwise
+    the rewrite applies, and if that does not match the function is refused on that engine. Replaying the
+    recorded PostgreSQL answers on the engine decides it. Floats compare within one part in 10^14, since
+    math libraries differ in the last digits. A function that answers differently only for some values or
+    settings is refused for those.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
