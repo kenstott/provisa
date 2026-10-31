@@ -25070,7 +25070,7 @@ Composite grant entries: an entry in a grant list (visible_to, writable_by, a ma
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Per-reader masks: a column's masking is one ordered list of entries, each {to: a grant list (composites allowed), a mask or unmasked}; the first entry matching the request's roles applies, and an entry for everyone last is the default. The enumeration is the precedence, shown and checked in the column editor's Access tab. It replaces today's single mask plus unmasked_to (no back-compat): the column model, table_columns, the masking rules loader, the admin column types and mutations, config export and the UI.
+Per-reader masks: a column's masking is one ordered list of entries, each {to: a grant list (composites allowed), a mask or unmasked}; the first entry matching the request's roles applies, and an entry for everyone last is the default. The enumeration is the precedence, shown and checked in the column editor's Access tab. It replaces today's single mask plus unmasked_to (no back-compat): the column model, table_columns, the masking rules loader, the admin column types and mutations, config export and the UI. (Amended 2026-10-29, AN UNREACHABLE MASK IS REFUSED:) Maintainer 2026-10-31: a mask list holding an entry no reader can reach is not saved. The save is refused with: You have defined a mask that is not reachable: followed by the list of unreachable entries. This replaces the editor's warning, and applies to every path that saves a mask list.
 
 **Use case:** A sender column is unmasked for EU reviewers, pseudonymised for other reviewers and fully masked for everyone else.
 
