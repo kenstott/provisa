@@ -85357,7 +85357,11 @@ And acting as analyst,region__eu it is'
     warning, and applies to every path that saves a mask list. (Amended 2026-10-29, A LISTED COLUMN IS MASKED
     BY DEFAULT:) Maintainer 2026-10-31: once a column has any mask, a reader no entry matches reads it completely
     masked, never unmasked. Unmasked is only ever given by an entry. An entry for everyone may still say
-    unmasked, and that is written out. This replaces a reader no entry lists reading the column unmasked.'
+    unmasked, and that is written out. This replaces a reader no entry lists reading the column unmasked.
+    (Amended 2026-10-29, A REVOKE IS NOT REFUSED:) Lead 2026-10-31: revoking a role (REQ-1918) is not refused
+    for the mask it leaves behind, so a role can always be deleted. An entry a revoke or a parent change
+    leaves unreachable stays stored, has no effect on a read, and is refused by name at the next save of
+    that column. A complete mask reads **** for text and NULL for every other type.'
   use_case: 'A sender column is unmasked for EU reviewers, pseudonymised for other reviewers and fully masked for everyone else.'
   scenario: 'Given a column with entries [to region__eu: unmasked; to reviewer: pseudonymised; everyone: masked]
 
