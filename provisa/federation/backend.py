@@ -223,6 +223,13 @@ class EngineBackend:
 
     # -- replica builds (REQ-1915): this engine and its store as parties to a build ----------
 
+    def require_readable_store(self, store_dsn: str) -> None:
+        """Refuse a materialization store this engine could not read back, by name. Called by
+        ``FederationEngine.materialize_store``, the door every write and read address comes
+        through, which the boot passes. The base engine reads whatever store it is given through
+        its own attach or connector; an engine confined to its own database overrides this."""
+        del store_dsn
+
     def replica_engine(
         self, state: Any, source: Any, table: Any, *, address: ReplicaAddress, args: Any
     ) -> Any:
