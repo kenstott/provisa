@@ -6,6 +6,7 @@ import { Button, Menu, Text } from "@mantine/core";
 import { Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
+import { isPlatformOrg } from "../lib/platformOrg";
 
 export function OrgSwitcher() {
   const { t } = useTranslation();
@@ -18,7 +19,7 @@ export function OrgSwitcher() {
   // REQ-1602: the default org displays as "Platform" in multi-tenant mode (control plane label)
   const orgs: Array<{ id: string; name: string }> = orgMemberships.map((m) => ({
     id: m.org_id,
-    name: multitenancy && m.org_id === "default" ? "Platform" : m.org_name,
+    name: isPlatformOrg(m.org_id, multitenancy) ? "Platform" : m.org_name,
   }));
 
   // A single-tenant deployment has exactly one org, so naming it in the navbar tells the reader
