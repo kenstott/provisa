@@ -90445,7 +90445,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     TO THE DATABASE:) Maintainer 2026-10-31: Provisa does not handle indexes; they are the source database''s.
     Index access method and index maintenance functions (btree, GiST, GIN, SP-GiST, BRIN support, brin_summarize_range
     and kin) need no support and are reported as skipped by design under Index functions. Index metadata
-    is not affected: pg_index, pg_get_indexdef and the like stay supported by REQ-2190.'
+    is not affected: pg_index, pg_get_indexdef and the like stay supported by REQ-2190. (Amended 2026-10-29,
+    WHAT THE TWO FUNCTION GROUPS HOLD:) Lead 2026-10-31: Internal functions and Index functions are the
+    two function groups allowed. Internal holds a function with an internal argument, or one PostgreSQL
+    refuses for its context, each proved against PostgreSQL; a function refused only for this server''s
+    state or configuration (standby, wal_level) stays failed, about 558 in all. Index functions holds index
+    support and maintenance functions that are not general: a hash function a client calls directly stays
+    failed. This corrects the 571 of THE GOAL IS 571.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
