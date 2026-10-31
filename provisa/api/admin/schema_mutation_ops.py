@@ -38,6 +38,7 @@ from provisa.api.admin.schema_helpers import (
     _rebuild_schemas,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
+from provisa.security.masking import MaskUnreachable
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
@@ -650,6 +651,16 @@ async def register_table(
                             message=str(_loop),
                             code="schema.view_reads_itself",
                             params={"view": _loop.loop[0], "loop": _loop.loop},
+                        )
+                    )
+                except MaskUnreachable as _mask:
+                    # REQ-2059: a mask list holding an entry no reader can reach is not saved.
+                    raise TableSaveRefused(
+                        MutationResult(
+                            success=False,
+                            message=str(_mask),
+                            code="schema.mask_unreachable",
+                            params={"table": model.table_name, "column": _mask.column},
                         )
                     )
                 except table_repo.SubtypeRefused as _sub:

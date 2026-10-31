@@ -107,7 +107,7 @@ function Editor({ initial, seen }: { initial: MaskEntry[]; seen?: (m: MaskEntry[
 
 const report = (over: object = {}) => ({
   unreachable: [],
-  unlisted_unmasked: false,
+  refusal: null,
   applies: null,
   patterns: [],
   ...over,
@@ -186,11 +186,22 @@ describe("MaskListEditor", () => {
     expect(screen.queryByTestId("mask-list-unreachable-0")).toBeNull();
   });
 
-  it("warns when readers it does not name read the column unmasked", async () => {
-    checkMasks.mockResolvedValue(report({ unlisted_unmasked: true }));
+  it("shows the refusal the server answers for the list", async () => {
+    const refusal = "You have defined a mask that is not reachable: [contractor]";
+    checkMasks.mockResolvedValue(report({ refusal }));
     render(<Editor initial={[{ to: ["contractor"], mask: { type: "constant", value: null } }]} />);
-    expect(await screen.findByTestId("mask-list-unlisted")).toHaveTextContent(
-      "Readers this list does not name see the column unmasked.",
+    expect(await screen.findByTestId("mask-list-refusal")).toHaveTextContent(refusal);
+  });
+
+  it("says a reader no entry applies to reads the column completely masked", async () => {
+    render(<Editor initial={[{ to: ["contractor"], mask: null }]} />);
+    await waitFor(() => expect(checkMasks).toHaveBeenCalled());
+    checkMasks.mockResolvedValue(report({ applies: null }));
+    const input = screen.getByRole("textbox", { name: "Check access" });
+    fireEvent.change(input, { target: { value: "analyst" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByTestId("mask-list-applies")).toHaveTextContent(
+      "No entry applies: completely masked",
     );
   });
 

@@ -2841,7 +2841,8 @@ export interface MaskPatternVerdict {
 
 export interface MasksReport {
   unreachable: { entry: number; covered_by: number | null }[];
-  unlisted_unmasked: boolean;
+  /** What a save of this list is refused with; null when every entry is reached. */
+  refusal: string | null;
   applies: number | null;
   /** Each construct of a regex entry outside the universal dialect; empty when all pass. */
   patterns: MaskPatternVerdict[];

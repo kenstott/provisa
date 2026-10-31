@@ -109,6 +109,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
+from provisa.security.masking import MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -4139,6 +4140,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 message=str(_loop),
                                 code="schema.view_reads_itself",
                                 params={"view": _loop.loop[0], "loop": _loop.loop},
+                            )
+                        )
+                    except MaskUnreachable as _mask:
+                        # REQ-2059: a mask list holding an entry no reader can reach is not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_mask),
+                                code="schema.mask_unreachable",
+                                params={"table": model.table_name, "column": _mask.column},
                             )
                         )
                     except table_repo.SubtypeRefused as _sub:

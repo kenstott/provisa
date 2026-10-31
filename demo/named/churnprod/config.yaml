@@ -88,7 +88,7 @@ tables:
   description: Every customer, their plan and region, and the date they cancelled if they have
   columns:
   - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, churn_analyst, analyst_eu]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: 'Where the customer is billed: NA, EU or APAC', visible_to: [data_steward, churn_analyst, analyst_eu]}
   - {name: plan, data_type: varchar, description: 'The plan they are on: basic, pro or team', visible_to: [data_steward, churn_analyst, analyst_eu]}
   - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst, analyst_eu]}
@@ -100,7 +100,7 @@ tables:
   description: One row a current customer -- the features the churn model scores
   columns:
   - {name: customer_id, data_type: varchar, is_primary_key: true, description: The customer's id, visible_to: [data_steward, churn_analyst, analyst_eu]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [data_steward, churn_analyst, analyst_eu]}
   - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [data_steward, churn_analyst, analyst_eu]}
   - {name: tenure_months, data_type: integer, description: How many months they have been a customer, visible_to: [data_steward, churn_analyst, analyst_eu]}
@@ -154,7 +154,7 @@ views:
     JOIN "churn"."churn_risk" AS r ON r.customer_id = f.customer_id
   columns:
   - {name: customer_id, data_type: varchar, description: The customer's id, visible_to: [data_steward, churn_analyst, analyst_eu]}
-  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address; masked for the analysts, visible_to: [data_steward, churn_analyst, analyst_eu], masks: [{to: [churn_analyst, analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: Where the customer is billed, visible_to: [data_steward, churn_analyst, analyst_eu]}
   - {name: plan, data_type: varchar, description: The plan they are on, visible_to: [data_steward, churn_analyst, analyst_eu]}
   - {name: score, data_type: double, description: 'How likely they are to cancel, 0 to 1', visible_to: [data_steward, churn_analyst, analyst_eu]}

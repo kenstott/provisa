@@ -10,10 +10,10 @@
 
 // A column's ordered mask list, edited: numbered entries, each for the readers it names and the
 // mask they read the column through (or none). A reader reads the column through the first entry
-// it holds. As the list changes the server checks it: an entry no reader reaches is flagged with
-// the entry before it that covers it, a list with no entry for everyone is flagged (readers it
-// does not name read the column unmasked), and "Check access" shows the entry a reader acting as
-// the chosen roles reads it through.
+// it holds, and a reader holding none reads it completely masked. As the list changes the server
+// checks it: an entry no reader reaches is flagged with the entry before it that covers it, the
+// refusal the save will answer is shown, and "Check access" shows the entry a reader acting as the
+// chosen roles reads it through.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -274,9 +274,9 @@ export function MaskListEditor({
           {t("maskList.add")}
         </Button>
       </Group>
-      {report?.unlisted_unmasked && (
-        <Text size="xs" c="orange" data-testid={`${testId}-unlisted`}>
-          {t("maskList.unlistedUnmasked")}
+      {report?.refusal && (
+        <Text size="xs" c="red" data-testid={`${testId}-refusal`}>
+          {report.refusal}
         </Text>
       )}
       <Group gap="xs" align="flex-end" wrap="nowrap">

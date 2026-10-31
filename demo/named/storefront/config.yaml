@@ -92,7 +92,7 @@ tables:
   columns:
   - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, customer, shop_analyst]}
   - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, customer, shop_analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [data_steward, customer, shop_analyst], masks: [{to: [shop_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [data_steward, customer, shop_analyst], masks: [{to: [shop_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: 'The customer''s sales region: North, South, East, West or Central', visible_to: [data_steward, customer, shop_analyst]}
 - source_id: orders-db
   domain_id: shop
