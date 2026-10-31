@@ -191,16 +191,19 @@ _READ = "SELECT '[1.50]'::json ->> 0"
         (_READ, 25, "1.50", "1.5", SERVED),
         (_READ, 25, "1.50", "1.51", DIFFERS),
         ("""SELECT '{"a":[1.50]}'::json ->> 'a'""", 25, "[1.50]", "[1.5]", SERVED),
-        ("""SELECT '{"a":[1.50]}'::json ->> 'a'""", 25, "[1.50]", "[ 1.5 ]", DIFFERS),
+        ("""SELECT '{"a":[1.50]}'::json ->> 'a'""", 25, "[1.50]", "[ 1.5 ]", SERVED),
         ("""SELECT '["1.50"]'::json ->> 0""", 25, "1.50", "1.5", DIFFERS),  # a json string
         ("SELECT '1.50'::text", 25, "1.50", "1.5", DIFFERS),  # no json in it
         ("SELECT '[1.50]'::json", 114, "[1.50]", "[1.5]", SERVED),
         ("SELECT '[1.50]'::jsonb", 3802, "[1.50]", "[1.5]", SERVED),
-        ("""SELECT '{"a":1}'::json""", 114, '{"a":1}', '{"a": 1}', DIFFERS),
-        ("""SELECT '{"b":1,"a":2}'::jsonb""", 3802, '{"b":1,"a":2}', '{"a":2,"b":1}', DIFFERS),
+        ("""SELECT '{"a":1}'::json""", 114, '{"a":1}', '{"a": 1}', SERVED),
+        ("""SELECT '{"b":1,"a":2}'::jsonb""", 3802, '{"b":1,"a":2}', '{"a":2,"b":1}', SERVED),
+        ("SELECT json_agg(x) FROM t", 114, "[1, 2]", "[2, 1]", SERVED),
+        ("SELECT json_agg(x ORDER BY x) FROM t", 114, "[1, 2]", "[2, 1]", DIFFERS),
+        ("SELECT '[1, 2]'::json", 114, "[1, 2]", "[2, 1]", DIFFERS),
     ],
 )
-def test_a_json_number_compares_by_value_and_nothing_else_does(
+def test_a_json_answer_compares_as_parsed_json(
     sql: str, oid: int, pg: str, answered: str, said: str
 ):
     assert outcome(sql, ([oid], [(pg,)]), [(answered,)], False) == said

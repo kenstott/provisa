@@ -53,8 +53,8 @@ domain: a function that differs only on values no sample reaches passes here.
 
 The result is text format under one set of session settings. Rows compare as a multiset (no call
 has an ORDER BY of its own to hold them to); values exactly, except float4 and float8, and their
-arrays, within one part in 10^14 (REQ-2171). The NULL call of a stable or volatile function
-compares its type alone.
+arrays, within one part in 10^14, and JSON, by ``json_equal`` (REQ-2171). The NULL call of a stable
+or volatile function compares its type alone.
 
 The session is UTC, and so are a runner and its PostgreSQL service: an engine that ignores the
 session's TimeZone answers the same here and is not told apart. Run off UTC, the pg engine's
@@ -74,7 +74,7 @@ import select
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -106,10 +106,14 @@ VALUE_ROWS = 3
 #: Floats compare within one part in this (REQ-2171).
 FLOAT_TOLERANCE = 1e-14
 
-#: json and jsonb: their numbers compare by value (REQ-2171, JSON NUMBERS COMPARE BY VALUE).
+#: json and jsonb: they compare as parsed JSON (REQ-2171).
 JSON_OIDS = frozenset({114, 3802})
-#: A json string, which is passed over, or a json number, its group.
-_JSON_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)')
+#: A read of json that answers text, which for a number or a container is JSON still.
+_JSON_TEXT_READ = re.compile(r'->>|#>>|jsonb?_\w*_text"?\(')
+_JSON_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+#: What leaves an array's order open, and what closes it (REQ-2171, ARRAY ORDER NEEDS AN ORDER BY).
+_ARRAY_AGGREGATE = re.compile(r"\b(?:jsonb?_agg|array_agg|json_arrayagg)", re.IGNORECASE)
+_ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 
 #: The families whose stable functions depend on the session settings alone. Stable functions
 #: elsewhere (System above all) read the catalog or the session.
@@ -138,6 +142,7 @@ ZONE = "Asia/Tokyo"
 
 _FLOAT_OIDS = frozenset({700, 701})
 _FLOAT_ARRAY_OIDS = frozenset({1021, 1022})
+_TEXT_OID = 25
 _VOID_OID = 2278
 _RECORD_OID = 2249
 
@@ -595,20 +600,53 @@ def _floats_equal(a: str, b: str) -> bool:
     return abs(x - y) <= FLOAT_TOLERANCE * max(abs(x), abs(y))
 
 
-def json_parts(text: str) -> list[str | int | float]:
-    """``text`` as the text between its json numbers and those numbers, each an int or a float:
-    spacing and key order stay in the text, so they still differ."""
-    parts: list[str | int | float] = []
-    start = 0
-    for token in _JSON_TOKEN.finditer(text):
-        if number := token[1]:
-            parts.append(text[start : token.start()])
-            parts.append(int(number) if number.lstrip("-").isdigit() else float(number))
-            start = token.end()
-    return [*parts, text[start:]]
+def _unmatched(want: Iterable, got: Iterable, same: Callable) -> tuple[list, list]:
+    """What is left of each multiset once every item of ``want`` has taken its ``same`` in ``got``."""
+    missing, left = [], list(got)
+    for item in want:
+        match = next((i for i, other in enumerate(left) if same(item, other)), None)
+        if match is None:
+            missing.append(item)
+        else:
+            del left[match]
+    return missing, left
 
 
-def _value_equal(want: str | None, got: str | None, oid: int) -> bool:
+def json_equal(want: str, got: str, sql: str) -> bool:
+    """Whether two answers of ``sql`` are the same JSON (REQ-2171): objects by key, spacing never,
+    numbers by value, arrays in order. The array an aggregate answers with, in a statement with no
+    ORDER BY, has no order to hold it to: its elements compare as a multiset. A side that does not
+    parse compares as text."""
+
+    def same(a: Any, b: Any) -> bool:
+        if float in (type(a), type(b)) and {type(a), type(b)} <= {int, float}:
+            return _floats_equal(str(a), str(b))
+        if type(a) is not type(b):
+            return False
+        if isinstance(a, dict):
+            return a.keys() == b.keys() and all(same(a[key], b[key]) for key in a)
+        if isinstance(a, list):
+            return len(a) == len(b) and all(map(same, a, b))
+        return a == b
+
+    try:
+        a, b = json.loads(want), json.loads(got)
+    except ValueError:
+        return want == got
+    if type(a) is type(b) is list and _ARRAY_AGGREGATE.search(sql) and not _ORDER_BY.search(sql):
+        return not any(_unmatched(a, b, same))
+    return same(a, b)
+
+
+def _json_read(sql: str, oid: int, want: str) -> bool:
+    """Whether ``want`` is the text a read of json gives for a number or a container. A json string
+    stays a string: the statement's literal has it in quotes."""
+    if oid != _TEXT_OID or _JSON_TEXT_READ.search(sql) is None or f'"{want}"' in sql:
+        return False
+    return want[:1] in ("{", "[") or _JSON_NUMBER.fullmatch(want) is not None
+
+
+def _value_equal(want: str | None, got: str | None, oid: int, sql: str) -> bool:
     if want == got:
         return True
     if want is None or got is None:
@@ -620,48 +658,38 @@ def _value_equal(want: str | None, got: str | None, oid: int) -> bool:
         return len(a) == len(b) and all(
             x == y or _floats_equal(x, y) for x, y in zip(a, b, strict=True)
         )
-    if oid in JSON_OIDS:
-        c, d = json_parts(want), json_parts(got)
-        return len(c) == len(d) and all(
-            x == y or (float in (type(x), type(y)) and _floats_equal(str(x), str(y)))
-            for x, y in zip(c, d, strict=True)
-        )
+    if oid in JSON_OIDS or _json_read(sql, oid, want):
+        return json_equal(want, got, sql)
     return False
 
 
-def _order(row: tuple, fields: list[int]) -> tuple:
-    """A float sorts by its value, so a last-digit difference does not misalign two multisets."""
-    key: list[tuple[int, float, str]] = []
-    for value, oid in zip(row, fields, strict=True):
-        if value is None:
-            key.append((1, 0.0, ""))
-        elif oid in _FLOAT_OIDS:
-            try:
-                key.append((0, float(value), ""))
-            except ValueError:
-                key.append((0, 0.0, value))
-        else:
-            key.append((0, 0.0, value))
-    return tuple(key)
-
-
-def difference(want: dict[str, Any], got: dict[str, Any], *, values: bool) -> str | None:
-    """How Provisa's answer differs from PostgreSQL's; None if it does not. ``values`` False
-    compares the result types alone."""
+def difference(want: dict[str, Any], got: dict[str, Any], *, values: bool, sql: str) -> str | None:
+    """How Provisa's answer to ``sql`` differs from PostgreSQL's; None if it does not. ``values``
+    False compares the result types alone."""
     if want["fields"] != got["fields"]:
         return f"result type oids {got['fields']}, PostgreSQL {want['fields']}"
     if not values:
         return None
     fields = want["fields"]
-    a = sorted(want["rows"], key=lambda r: _order(r, fields))
-    b = sorted(got["rows"], key=lambda r: _order(r, fields))
+    a, b = want["rows"], got["rows"]
     if len(a) != len(b):
         return f"{len(b)} rows, PostgreSQL {len(a)}"
-    for x, y in zip(a, b, strict=True):
-        for wv, gv, oid in zip(x, y, fields, strict=True):
-            if not _value_equal(wv, gv, oid):
-                return f"{gv!r}, PostgreSQL {wv!r}"
-    return None
+
+    def row_equal(x: tuple, y: tuple) -> bool:
+        return all(_value_equal(wv, gv, oid, sql) for wv, gv, oid in zip(x, y, fields, strict=True))
+
+    def order(row: tuple) -> list[tuple[bool, str]]:
+        return [(value is None, value or "") for value in row]
+
+    missing, left = _unmatched(sorted(a, key=order), sorted(b, key=order), row_equal)
+    if not missing:
+        return None
+    wv, gv = next(
+        (wv, gv)
+        for wv, gv, oid in zip(missing[0], left[0], fields, strict=True)
+        if not _value_equal(wv, gv, oid, sql)
+    )
+    return f"{gv!r}, PostgreSQL {wv!r}"
 
 
 def _shape(sample: str) -> str:
@@ -747,7 +775,7 @@ def measure_overload(
             errors.append({"statement": call_.sql, "error": got["error"]})
             lost = lost or got.get("lost", False)
             continue
-        differs = difference(want, got, values=call_.values)
+        differs = difference(want, got, values=call_.values, sql=call_.sql)
         if differs is None and call_.form:
             checked, differs = form_check(fn.name, want, got)
             formed += checked
@@ -976,7 +1004,7 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         "engines_incomplete": incomplete,
         "comparison": (
             "text format under one TimeZone, DateStyle and IntervalStyle; rows as a multiset; "
-            f"floats within one part in {1 / FLOAT_TOLERANCE:.0e}"
+            f"floats within one part in {1 / FLOAT_TOLERANCE:.0e}; json and jsonb as parsed JSON"
         ),
         "counts": per_engine,
         "guaranteed": {

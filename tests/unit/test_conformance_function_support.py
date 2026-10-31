@@ -212,28 +212,35 @@ def _floats(*values: str | None, oid: int = 701) -> dict[str, Any]:
 
 def test_floats_compare_within_one_part_in_ten_to_the_fourteen():
     near = _floats("1.0000000000000005")
-    assert support.difference(_floats("1"), near, values=True) is None
+    assert support.difference(_floats("1"), near, values=True, sql="SELECT 1") is None
     far = _floats("1.00000000000002")
     assert (
-        support.difference(_floats("1"), far, values=True) == "'1.00000000000002', PostgreSQL '1'"
+        support.difference(_floats("1"), far, values=True, sql="SELECT 1")
+        == "'1.00000000000002', PostgreSQL '1'"
     )
 
 
 def test_a_numeric_compares_exactly():
     want, got = _ok("1.0000000000000001", oid=1700), _ok("1", oid=1700)
-    assert support.difference(want, got, values=True) == "'1', PostgreSQL '1.0000000000000001'"
+    assert (
+        support.difference(want, got, values=True, sql="SELECT 1")
+        == "'1', PostgreSQL '1.0000000000000001'"
+    )
 
 
 def test_float_arrays_compare_element_by_element():
     a, b = _ok("{1,2}", oid=1022), _ok("{1.0000000000000002,2}", oid=1022)
-    assert support.difference(a, b, values=True) is None
-    assert support.difference(a, _ok("{1,3}", oid=1022), values=True) is not None
-    assert support.difference(a, _ok("{1}", oid=1022), values=True) is not None
+    assert support.difference(a, b, values=True, sql="SELECT 1") is None
+    assert support.difference(a, _ok("{1,3}", oid=1022), values=True, sql="SELECT 1") is not None
+    assert support.difference(a, _ok("{1}", oid=1022), values=True, sql="SELECT 1") is not None
 
 
 def test_infinity_and_nan_compare_as_written():
-    assert support.difference(_floats("Infinity"), _floats("Infinity"), values=True) is None
-    assert support.difference(_floats("NaN"), _floats("1"), values=True) is not None
+    assert (
+        support.difference(_floats("Infinity"), _floats("Infinity"), values=True, sql="SELECT 1")
+        is None
+    )
+    assert support.difference(_floats("NaN"), _floats("1"), values=True, sql="SELECT 1") is not None
 
 
 @pytest.mark.parametrize("oid", [114, 3802])
@@ -246,36 +253,115 @@ def test_infinity_and_nan_compare_as_written():
         ("0.1", "0.10000000000000001", False),
         ("1.50", "1.51", True),
         ("[12345678901234567890]", "[12345678901234567891]", True),
-        ('{"a": 1.50}', '{"a":1.5}', True),  # spacing is not a number
-        ('{"b": 1, "a": 2}', '{"a": 2, "b": 1}', True),  # nor is key order
+        ('{"a": 1.50}', '{"a":1.5}', False),  # spacing is no difference
+        ('{"b": 1, "a": 2}', '{"a": 2, "b": 1}', False),  # nor is key order
+        ('{"a": {"y": 1, "b": [1]}}', '{"a":{"b":[1.0],"y":1}}', False),
+        ('{"a": 1}', '{"a": 1, "b": 2}', True),
+        ('{"a": 1}', '{"b": 1}', True),
         ('["1.50"]', '["1.5"]', True),  # a string is its text
+        ("[1, 2]", "[2, 1]", True),  # an array stated as a value keeps its order
+        ("[1, [2, 3]]", "[1, [3, 2]]", True),
+        ("[true]", "[1]", True),  # a boolean is no number
+        ("[null]", "[0]", True),
+        ('["1"]', "[1]", True),
+        ("[1]", "[1", True),  # one side is not JSON: text, and so different
+        ("not json", "not  json", True),
     ],
 )
-def test_json_numbers_compare_by_value_and_nothing_else_does(
-    oid: int, want: str, got: str, differs: bool
-):
+def test_json_compares_as_parsed_json(oid: int, want: str, got: str, differs: bool):
     a = {"ok": True, "fields": [oid], "rows": [(want,)]}
     b = {"ok": True, "fields": [oid], "rows": [(got,)]}
-    assert (support.difference(a, b, values=True) is not None) is differs
+    assert (support.difference(a, b, values=True, sql="SELECT 1") is not None) is differs
+
+
+_AGGREGATE = "SELECT json_agg(x) FROM t"
+
+
+@pytest.mark.parametrize(
+    ("sql", "want", "got", "differs"),
+    [
+        (_AGGREGATE, "[1, 2, 2]", "[2, 1.0, 2]", False),
+        (_AGGREGATE, "[1, 2, 2]", "[1, 1, 2]", True),
+        (_AGGREGATE, "[1, 2]", "[1, 2, 2]", True),
+        (_AGGREGATE, "[1, 2]", "[2, 1, 3]", True),
+        (_AGGREGATE, "[[1, 2], [3]]", "[[3], [2, 1]]", True),  # each element is a stated value
+        ('SELECT pg_catalog."jsonb_agg_strict"(x) FROM t', "[1, 2]", "[2, 1]", False),
+        ("SELECT to_json(array_agg(x)) FROM t", "[1, 2]", "[2, 1]", False),
+        ("SELECT json_agg(x ORDER BY x) FROM t", "[1, 2]", "[2, 1]", True),
+        ("SELECT json_agg(x) FROM (SELECT x FROM t order  by x) s", "[1, 2]", "[2, 1]", True),
+        ("SELECT json_object_agg(k, x) FROM t", "[1, 2]", "[2, 1]", True),
+        ("SELECT '[1, 2]'::json", "[1, 2]", "[2, 1]", True),
+    ],
+)
+def test_only_an_aggregate_with_no_order_by_leaves_its_array_open(
+    sql: str, want: str, got: str, differs: bool
+):
+    a, b = _ok(want, oid=114), _ok(got, oid=114)
+    assert (support.difference(a, b, values=True, sql=sql) is not None) is differs
+
+
+@pytest.mark.parametrize(
+    ("sql", "want", "got", "differs"),
+    [
+        ("SELECT d ->> 0", "1.50", "1.5", False),
+        ("SELECT d #>> '{a}'", '{"b": 1, "a": [1.50]}', '{"a":[1.5],"b":1}', False),
+        ('SELECT pg_catalog."json_array_element_text"(d, 0)', "1.50", "1.5", False),
+        ("SELECT jsonb_extract_path_text(d, 'a')", "[1]", "[ 1.0 ]", False),
+        ("SELECT d ->> 0", "1.50", "1.51", True),
+        ("SELECT d ->> 0", "[1, 2]", "[2, 1]", True),
+        ("SELECT d ->> 0", "true", "TRUE", True),
+        ("""SELECT '["1.50"]'::json ->> 0""", "1.50", "1.5", True),  # a json string
+        ("SELECT 'x'::text", "1.50", "1.5", True),  # no read of json
+        ("SELECT array_to_text(d)", "1.50", "1.5", True),  # nor is this one
+    ],
+)
+def test_a_read_of_json_as_text_compares_as_json_but_for_a_string(
+    sql: str, want: str, got: str, differs: bool
+):
+    a, b = _ok(want, oid=25), _ok(got, oid=25)
+    assert (support.difference(a, b, values=True, sql=sql) is not None) is differs
+
+
+def test_a_read_cast_to_another_type_is_that_type():
+    a, b = _ok("1.50", oid=1700), _ok("1.5", oid=1700)
+    assert support.difference(a, b, values=True, sql="SELECT (d ->> 0)::numeric") is not None
+
+
+@pytest.mark.parametrize("oid", [114, 3802])
+def test_json_rows_are_a_multiset_of_parsed_json_not_of_text(oid: int):
+    want = _ok('{"b": 1, "a": 2}', '{"a": 9}', "1.50", oid=oid)
+    got = _ok("1.5", '{"a":2,"b":1.0}', '{ "a": 9 }', oid=oid)
+    assert support.difference(want, got, values=True, sql="SELECT 1") is None
+
+
+def test_rows_of_floats_are_a_multiset_of_values():
+    want, got = _floats("1", "1.0000000000000002", "3"), _floats("1.0000000000000001", "3", "1")
+    assert support.difference(want, got, values=True, sql="SELECT 1") is None
 
 
 def test_a_different_type_differs_whatever_the_text():
-    differs = support.difference(_ok("3", oid=23), _ok("3", oid=20), values=True)
+    differs = support.difference(_ok("3", oid=23), _ok("3", oid=20), values=True, sql="SELECT 1")
     assert differs == "result type oids [20], PostgreSQL [23]"
 
 
 def test_rows_compare_as_a_multiset():
-    assert support.difference(_ok("1", "2"), _ok("2", "1"), values=True) is None
-    assert support.difference(_ok("1", "1"), _ok("1", "2"), values=True) is not None
-    assert support.difference(_ok("1", "2"), _ok("1"), values=True) == "1 rows, PostgreSQL 2"
+    assert support.difference(_ok("1", "2"), _ok("2", "1"), values=True, sql="SELECT 1") is None
+    assert support.difference(_ok("1", "1"), _ok("1", "2"), values=True, sql="SELECT 1") is not None
+    assert (
+        support.difference(_ok("1", "2"), _ok("1"), values=True, sql="SELECT 1")
+        == "1 rows, PostgreSQL 2"
+    )
 
 
 def test_a_null_is_no_value():
-    assert support.difference(_ok(None), _ok("1"), values=True) == "'1', PostgreSQL None"
+    assert (
+        support.difference(_ok(None), _ok("1"), values=True, sql="SELECT 1")
+        == "'1', PostgreSQL None"
+    )
 
 
 def test_a_type_only_comparison_ignores_the_rows():
-    assert support.difference(_ok("1"), _ok("2"), values=False) is None
+    assert support.difference(_ok("1"), _ok("2"), values=False, sql="SELECT 1") is None
 
 
 # --- one outcome per overload -------------------------------------------------------------------

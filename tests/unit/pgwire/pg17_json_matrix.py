@@ -16,41 +16,20 @@ did not give; ERROR is the engine's own refusal of what PostgreSQL answered, or 
 
 from __future__ import annotations
 
-import re
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "conformance"))
 
-from function_support import JSON_OIDS, json_parts  # noqa: E402
+from function_support import difference  # noqa: E402
 
 SERVED, REFUSED, DIFFERS, ERROR = "served", "refused", "differs", "error"
 
 
-#: A read of json that answers text.
-_TEXT_READ = re.compile(r"->>|#>>|_text\(")
-
-
-def _compared(sql: str, cell: str | None, oid: int) -> Any:
-    """``cell`` as it compares: the numbers of a json answer, and of the text a read of json gives
-    for a number or a value holding one, by value (REQ-2171, JSON NUMBERS COMPARE BY VALUE)."""
-    if cell is None:
-        return None
-    parts = json_parts(cell)
-    number = len(parts) == 3 and parts[0] == parts[2] == ""
-    read = _TEXT_READ.search(sql) and f'"{cell}"' not in sql and (number or cell[:1] in ("{", "["))
-    return tuple(parts) if oid in JSON_OIDS or read else cell
-
-
-def _answer(sql: str, rows: list[tuple], oids: list[int]) -> Counter:
-    return Counter(tuple(map(_compared, [sql] * len(oids), row, oids)) for row in rows)
-
-
 def outcome(sql: str, recorded: tuple, rows: list[tuple] | None, refused: bool) -> str:
-    """One statement's outcome: ``rows`` its answer as text, None for an engine error. Rows compare
-    as a multiset: no statement has an ORDER BY of its own to hold them to."""
+    """One statement's outcome: ``rows`` its answer as text, None for an engine error, compared as
+    function_support compares an answer."""
     if refused:
         return REFUSED
     if recorded[0] == "ERROR":
@@ -60,7 +39,8 @@ def outcome(sql: str, recorded: tuple, rows: list[tuple] | None, refused: bool) 
     oids = recorded[0]
     if any(len(row) != len(oids) for row in rows):
         return DIFFERS
-    return SERVED if _answer(sql, rows, oids) == _answer(sql, recorded[1], oids) else DIFFERS
+    want, got = {"fields": oids, "rows": recorded[1]}, {"fields": oids, "rows": rows}
+    return DIFFERS if difference(want, got, values=True, sql=sql) else SERVED
 
 
 def text_of(value: Any) -> str | None:
@@ -366,9 +346,6 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             "SELECT '[1,2]'::jsonb < '[1,3]'::jsonb": 'refused',
             "SELECT '[1,2]'::jsonb @> '1'::jsonb": 'refused',
             "SELECT '[1.0]'::jsonb @> '[1]'::jsonb": 'refused',
-            'SELECT \'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\'::json -> 3': 'differs',
-            'SELECT \'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\'::json ->> 3': 'differs',
-            'SELECT \'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\'::jsonb ->> 3': 'differs',
             "SELECT '[1]'::jsonb <@ '[1,2]'::jsonb": 'refused',
             "SELECT '[1]'::jsonb ? '1'": 'refused',
             "SELECT '[1]'::jsonb || '[2]'::jsonb": 'refused',
@@ -376,8 +353,6 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             "SELECT '[[1,2]]'::jsonb @> '[1]'::jsonb": 'refused',
             "SELECT '[]'::jsonb @> '[]'::jsonb": 'refused',
             'SELECT \'[{"a":1,"b":2}]\'::jsonb @> \'[{"a":1},{"b":2}]\'::jsonb': 'refused',
-            'SELECT \'{"a":  {"b":   1}}\'::json -> \'a\'': 'differs',
-            'SELECT \'{"a": {"b": [1, 2]}, "c": 3}\'::json -> \'a\'': 'differs',
             'SELECT \'{"a":1,"b":2}\'::jsonb - \'a\'': 'refused',
             'SELECT \'{"a":1,"b":2}\'::jsonb = \'{"b":2,"a":1}\'::jsonb': 'refused',
             'SELECT \'{"a":1,"b":2}\'::jsonb ?& ARRAY[\'a\',\'b\']': 'refused',
@@ -395,34 +370,21 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             'SELECT \'{"a":1}\'::jsonb || \'{"a":2,"b":3}\'::jsonb': 'refused',
             'SELECT \'{"a":{"b":1,"c":2}}\'::jsonb #- \'{a,b}\'': 'refused',
             'SELECT \'{"a":{"b":1}}\'::jsonb @> \'{"a":{}}\'::jsonb': 'refused',
-            'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::json #> \'{a,z,2}\'': 'differs',
             'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::json #> \'{}\'': 'refused',
-            'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::json #>> \'{a,z,2}\'': 'differs',
             'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::json #>> \'{}\'': 'refused',
-            'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::json -> \'a\'': 'differs',
-            'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::json ->> \'a\'': 'differs',
             'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::jsonb #> \'{}\'': 'refused',
-            'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::jsonb #>> \'{a,z,2}\'': 'differs',
             'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::jsonb #>> \'{}\'': 'refused',
-            'SELECT \'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\'::jsonb ->> \'a\'': 'differs',
-            'SELECT \'{"z": {"y": 1, "b": 2}}\'::jsonb ->> \'z\'': 'differs',
             "SELECT '{}'::jsonb @> '{}'::jsonb": 'refused',
             "SELECT * FROM json_array_elements('1')": 'error',
-            'SELECT * FROM json_array_elements(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'differs',
             'SELECT * FROM json_array_elements(\'{"a":1}\')': 'error',
-            'SELECT * FROM json_array_elements_text(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'differs',
             "SELECT * FROM json_each('[1]')": 'error',
-            'SELECT * FROM json_each(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\')': 'differs',
-            'SELECT * FROM json_each_text(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\')': 'differs',
             "SELECT * FROM json_object_keys('[1]')": 'error',
             'SELECT * FROM json_to_record(\'{"a":1,"b":"x","c":[1,2],"d":{"e": 1}}\') AS t(a int, b text, c int[], d json, z text)': 'error',
             "SELECT * FROM json_to_recordset('[]') AS t(v integer)": 'refused',
             'SELECT * FROM json_to_recordset(\'[{"a":1},{"a":2,"b":"y"}]\') AS t(a int, b text)': 'refused',
             "SELECT * FROM jsonb_array_elements('1')": 'error',
             'SELECT * FROM jsonb_array_elements(\'{"a":1}\')': 'error',
-            'SELECT * FROM jsonb_array_elements_text(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'differs',
             "SELECT * FROM jsonb_each('[1]')": 'error',
-            'SELECT * FROM jsonb_each_text(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\')': 'differs',
             "SELECT * FROM jsonb_object_keys('[1]')": 'error',
             'SELECT * FROM jsonb_to_record(\'{"a":1,"b":"x","c":[1,2],"d":{"e": 1}}\') AS t(a int, b text, c int[], d json, z text)': 'refused',
             "SELECT * FROM jsonb_to_recordset('[]') AS t(v integer)": 'refused',
@@ -438,12 +400,8 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             'SELECT d ? \'a\' FROM (VALUES (\'{"a":1}\'::jsonb), (\'["a"]\'::jsonb), (\'1\'::jsonb)) t(d)': 'refused',
             'SELECT d @> \'{"a":1}\' FROM (VALUES (\'{"a":1,"b":2}\'::jsonb), (\'{"a":2}\'::jsonb)) t(d)': 'refused',
             'SELECT json_agg(x ORDER BY x DESC) FROM (VALUES (1), (2)) t(x)': 'error',
-            'SELECT json_agg(x) FROM (VALUES (\'a\'), (\'b"c\')) t(x)': 'differs',
-            'SELECT json_agg(x) FROM (VALUES (1), (NULL), (2)) t(x)': 'differs',
             'SELECT json_agg_strict(x) FROM (VALUES (1), (NULL), (2)) t(x)': 'refused',
             'SELECT json_agg_strict(x) FROM (VALUES (NULL::int)) t(x)': 'refused',
-            'SELECT json_array_element(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\', 3)': 'differs',
-            'SELECT json_array_element_text(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\', 3)': 'differs',
             'SELECT json_array_elements(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'refused',
             'SELECT json_array_elements_text(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'refused',
             "SELECT json_array_length('1')": 'error',
@@ -454,28 +412,20 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             'SELECT json_build_array(VARIADIC ARRAY[1, 2])': 'refused',
             'SELECT json_build_array(VARIADIC NULL::int[])': 'refused',
             "SELECT json_build_object('a')": 'error',
-            "SELECT json_build_object('b', 1, 'a', 'x', 'c', NULL)": 'differs',
-            "SELECT json_build_object('b', 1.50, 'a', json_build_object('z', 1, 'y', 2))": 'differs',
             'SELECT json_build_object(1, 2, true, 3)': 'error',
             'SELECT json_build_object(NULL, 1)': 'error',
             'SELECT json_build_object(VARIADIC NULL::text[])': 'refused',
-            'SELECT json_extract_path(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\', \'z\', \'2\')': 'differs',
             'SELECT json_extract_path(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', VARIADIC ARRAY[\'a\', \'k\'])': 'refused',
             'SELECT json_extract_path(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', VARIADIC NULL::text[])': 'refused',
-            'SELECT json_extract_path_text(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\', \'z\')': 'differs',
             "SELECT json_object('{a,1,b,2}')": 'error',
             "SELECT json_object('{a,NULL}')": 'error',
             "SELECT json_object('{a,b}', '{1,2}')": 'error',
             "SELECT json_object('{a}')": 'error',
-            "SELECT json_object_agg(k, x) FROM (VALUES ('b', 1), ('a', NULL)) t(k, x)": 'differs',
-            "SELECT json_object_agg(k, x) FROM (VALUES ('b', 1), ('b', 3)) t(k, x)": 'differs',
             'SELECT json_object_agg(k, x) FROM (VALUES (NULL::text, 1)) t(k, x)': 'error',
             "SELECT json_object_agg_strict(k, x) FROM (VALUES ('b', 1), ('a', NULL)) t(k, x)": 'refused',
             "SELECT json_object_agg_unique(k, x) FROM (VALUES ('b', 1), ('a', 3)) t(k, x)": 'refused',
             "SELECT json_object_agg_unique(k, x) FROM (VALUES ('b', 1), ('b', 3)) t(k, x)": 'refused',
             "SELECT json_object_agg_unique_strict(k, x) FROM (VALUES ('b', 1), ('a', NULL)) t(k, x)": 'refused',
-            'SELECT json_object_field(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\')': 'differs',
-            'SELECT json_object_field_text(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\')': 'differs',
             "SELECT json_object_keys('1')": 'refused',
             'SELECT json_object_keys(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\')': 'refused',
             'SELECT json_strip_nulls(\'{"a":null,"b":{"c":null,"d":1},"e":[null,{"f":null}]}\')': 'refused',
@@ -485,7 +435,6 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             'SELECT jsonb_agg(x ORDER BY x DESC) FROM (VALUES (1), (2)) t(x)': 'error',
             'SELECT jsonb_agg_strict(x) FROM (VALUES (1), (NULL), (2)) t(x)': 'refused',
             'SELECT jsonb_agg_strict(x) FROM (VALUES (NULL::int)) t(x)': 'refused',
-            'SELECT jsonb_array_element_text(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\', 3)': 'differs',
             'SELECT jsonb_array_elements(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'refused',
             'SELECT jsonb_array_elements_text(\'[1.50, "x", null, {"b": 2, "a": [1]}, [3, 4], 1e2, true]\')': 'refused',
             "SELECT jsonb_array_length('1')": 'error',
@@ -531,7 +480,6 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             'SELECT jsonb_extract_path(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\', \'z\', \'2\')': 'error',
             'SELECT jsonb_extract_path(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', VARIADIC ARRAY[\'a\', \'k\'])': 'refused',
             'SELECT jsonb_extract_path(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', VARIADIC NULL::text[])': 'refused',
-            'SELECT jsonb_extract_path_text(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\', \'z\')': 'differs',
             'SELECT jsonb_insert(\'{"a":1}\', \'{a}\', \'9\')': 'refused',
             'SELECT jsonb_insert(\'{"a":1}\', \'{b}\', \'9\')': 'refused',
             'SELECT jsonb_insert(\'{"a":[1,2]}\', \'{a,1}\', \'9\')': 'refused',
@@ -549,7 +497,6 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             "SELECT jsonb_object_agg_unique(k, x) FROM (VALUES ('b', 1), ('a', 3)) t(k, x)": 'refused',
             "SELECT jsonb_object_agg_unique(k, x) FROM (VALUES ('b', 1), ('b', 3)) t(k, x)": 'refused',
             "SELECT jsonb_object_agg_unique_strict(k, x) FROM (VALUES ('b', 1), ('a', NULL)) t(k, x)": 'refused',
-            'SELECT jsonb_object_field_text(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\', \'a\')': 'differs',
             "SELECT jsonb_object_keys('1')": 'refused',
             'SELECT jsonb_object_keys(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\')': 'refused',
             'SELECT jsonb_path_exists(\'{"a":[1,2,3]}\', \'$.a[*] ? (@ > 2)\')': 'refused',
@@ -573,9 +520,7 @@ MATRIX: dict[str, dict[str, str]] = {'clickhouse': {'SELECT \'"a"\'::jsonb ? \'a
             'SELECT jsonb_strip_nulls(NULL::jsonb)': 'refused',
             'SELECT jsonb_to_record(\'{"a":1}\')': 'refused',
             'SELECT jsonb_to_record(NULL::jsonb)': 'refused',
-            'SELECT k, w FROM json_each(\'{"b": 1.50, "a": {"z": [1, 2, {"y": null}], "k": "é\\n"}, "n": null, "t": true}\') AS t(k, w)': 'differs',
             "SELECT row_to_json(t, true) FROM (VALUES (1, 'a')) t(x, y)": 'refused',
-            'SELECT s.i, e.key, e.value FROM (VALUES (1, \'{"a": 1.50}\'::json), (2, \'{"b": [1, 2]}\'::json)) s(i, d), json_each(s.d) e ORDER BY 1': 'differs',
             "SELECT to_json(TIMESTAMP '2024-01-02 03:04:05')": 'differs',
             "SELECT to_jsonb(TIMESTAMP '2024-01-02 03:04:05')": 'differs'},
  'trino': {'SELECT \'"a"\'::jsonb ? \'a\'': 'refused',
