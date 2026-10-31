@@ -35909,7 +35909,13 @@
     scope). DEFAULT tier (every role): sees CORE meta for directly-accessible tables plus 1-hop relationship
     neighbors (user-defined/semantic relationships only, excluding synthetic catalog edges), bidirectional.
     Meta DOMAIN GRANT: sees CORE meta for all tables and relationships. Per-relationship opt-out suppresses
-    target metadata from DEFAULT discovery.'
+    target metadata from DEFAULT discovery. (Amended 2026-10-29, SYSTEM DOMAINS ARE CAPABILITIES:) Maintainer
+    2026-10-31: access to the system domains meta, ontology and ops is held as capabilities, not as domain
+    access, and is inherited as any capability is. domain_access lists data domains only, is the role''s
+    own and is never inherited, and * means every data domain. viewer holds meta and ontology, so every
+    role built on viewer has them; a role with no viewer ancestor does not. Column grants, view_governance
+    and row rules apply within a system domain as they do anywhere. System domains are not offered in domain
+    pickers.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
@@ -42770,8 +42776,11 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding
-    user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed.
+  description: 'An unclaimed platform-admin slot outranks org onboarding in the routing gate. A token-holding
+    user is dropped back to sign-in instead of org creation when the admin slot is still unclaimed. (Amended
+    2026-10-29, A DEMO VISITOR IS EXEMPT:) Lead 2026-10-31: a demo visitor holds no account, so an unclaimed
+    platform-admin slot does not end a visit. The demo route is served ahead of the onboarding gate for
+    every browser, signed in or not, and the first-run tour is not offered in the platform org.'
   use_case: A valid credential from before the admin-plane was wiped would otherwise skip sign-in entirely
     (where the first-login disclosure renders) and land on "create an organization" on a deployment with
     no administrator. This prevents accidental onboarding without understanding the implication of claiming
@@ -89638,7 +89647,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     The data products page, data_products_meta and every other surface that lists products show them only
     to a role holding that capability. Inheriting Viewer gives Data buyer no data: a standard role carries
     capabilities, never grants, so over any connection a user acting as Data buyer reads only what Data
-    buyer is granted, masked and row-ruled as on the page (REQ-1959).'
+    buyer is granted, masked and row-ruled as on the page (REQ-1959). (Amended 2026-10-29, READING NEEDS
+    NO QUERY_DEVELOPMENT:) Maintainer 2026-10-31: no protocol requires query_development to read data. What
+    a role reads is decided by its grants, row rules, masks and the relationship guard, on every protocol
+    alike, so a viewer reads over GraphQL as it does over pgwire. query_development gates development features
+    only. A query a person writes is no wider than a generated API while the relationship guard applies,
+    so it is not an access boundary.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -90359,7 +90373,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is a gap, not a deliberate difference. No pg_catalog function is listed as skipped by design, whatever
     its family and whether or not a client calls it: each one not served counts as failed until it is served,
     and a probe that cannot call a function is a gap in the probe. The conformance page reports them as
-    failed.'
+    failed. (Amended 2026-10-29, THE GOAL IS 571:) Maintainer 2026-10-31: 571 pg_catalog functions cannot
+    be called on PostgreSQL itself (517 take an internal argument, 54 are refused in every form). They stay
+    reported as failed. The lowest reachable failed count for catalog functions is therefore 571, and that
+    is the goal.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
