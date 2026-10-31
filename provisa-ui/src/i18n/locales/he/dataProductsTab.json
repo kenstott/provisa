@@ -187,6 +187,10 @@
       "slaRemove": "הסרת רמת שירות",
       "slaAdd": "הוספת רמת שירות",
       "notDeclared": "לא הוצהר",
+      "notDeclaredList": "לא הוצהר: {{names}}",
+      "versionSaved": "נשמר",
+      "versionChanges": "שינויים",
+      "constraints": "אילוצים",
       "breakingWarning": "שינוי שובר תאימות ב-v{{version}}, עדיין לא בתוקף",
       "breaking": "שובר תאימות",
       "savedBy": "נשמר {{when}} על ידי {{who}}",
@@ -252,7 +256,9 @@
         "sla": "SLA ועדכניות",
         "quality": "הבטחות",
         "consumers": "צרכנים",
-        "versions": "גרסאות ושינויים"
+        "versions": "גרסאות ושינויים",
+        "roles": "תפקידים",
+        "history": "היסטוריית גרסאות"
       }
     }
   }
