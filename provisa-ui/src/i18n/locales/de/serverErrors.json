@@ -156,7 +156,7 @@
       "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
     },
     "front_door": {
-      "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa zwei Minuten bereit.",
+      "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa fünf Minuten bereit.",
       "coordinator_updating": "Die Umgebung wird aktualisiert. Sie ist in Kürze wieder verfügbar."
     },
     "functions": {
@@ -664,6 +664,8 @@
       "unknown_demo": "Es gibt keine veröffentlichte Demo namens {{demo}}.",
       "demo_not_ready": "Diese Demo wird noch vorbereitet. Versuchen Sie es gleich noch einmal.",
       "demo_stores_failed": "Diese Demo konnte nicht gestartet werden. Versuchen Sie es in ein paar Minuten erneut.",
+      "demo_failed": "Diese Demo konnte nicht vorbereitet werden. Versuchen Sie es in ein paar Minuten erneut.",
+      "failed_to_start": "Der Demo-Server konnte nicht gestartet werden. Versuchen Sie es später erneut.",
       "at_capacity": "Alle Demo-Sandboxes sind belegt. Versuchen Sie es gleich noch einmal.",
       "starting": "Der Demo-Server wird gestartet. Versuchen Sie es in ein bis zwei Minuten erneut.",
       "disk_full": "Diese Sandbox hat ihre Speichergrenze von {{limit}} Bytes erreicht; es kann nichts mehr hineingeschrieben werden.",

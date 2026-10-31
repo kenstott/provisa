@@ -5335,7 +5335,7 @@
   "zh-HK/serverErrors.json::serverErrors.files.not_a_file_source": "A {{type}} source is not given a file by upload.",
   "zh-HK/serverErrors.json::serverErrors.files.too_large": "The file is larger than the {{limit}} bytes an upload may be.",
   "zh-HK/serverErrors.json::serverErrors.front_door.coordinator_updating": "The environment is being updated. It will be back shortly.",
-  "zh-HK/serverErrors.json::serverErrors.front_door.coordinator_waking": "The environment is starting. It will be ready in about two minutes.",
+  "zh-HK/serverErrors.json::serverErrors.front_door.coordinator_waking": "The environment is starting. It will be ready in about five minutes.",
   "zh-HK/serverErrors.json::serverErrors.functions.approval_denied": "Approval denied for '{{name}}': {{reason}}",
   "zh-HK/serverErrors.json::serverErrors.functions.approval_unavailable": "command '{{name}}' needs approval and no approval hook is configured",
   "zh-HK/serverErrors.json::serverErrors.functions.argument_count": "{{signature}} takes {{count}} argument(s); {{given}} given",
@@ -8923,5 +8923,14 @@
   "zh-HK/findTerms.json::findTerms.variantAlternativeName": "another name",
   "zh-HK/findTerms.json::findTerms.variantForm": "form",
   "zh-HK/findTerms.json::findTerms.variantReference": "reference",
-  "zh-HK/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
+  "zh-HK/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}",
+  "zh-HK/demoOpenPage.json::demoOpenPage.coordinatorWaking": "The server is waking up…",
+  "zh-HK/demoOpenPage.json::demoOpenPage.coordinatorUpdating": "The server is being updated. It will be back shortly…",
+  "zh-HK/demoOpenPage.json::demoOpenPage.serverStarting": "The demo server is starting…",
+  "zh-HK/demoOpenPage.json::demoOpenPage.connecting": "Reaching the server…",
+  "zh-HK/demoOpenPage.json::demoOpenPage.elapsed": "{{time}} so far",
+  "zh-HK/demoOpenPage.json::demoOpenPage.coldStart": "A demo that has been idle takes about five minutes to start.",
+  "zh-HK/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
+  "zh-HK/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
+  "zh-HK/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later."
 }

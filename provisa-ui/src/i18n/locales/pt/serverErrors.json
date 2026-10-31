@@ -156,7 +156,7 @@
       "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
     },
     "front_door": {
-      "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de dois minutos.",
+      "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",
       "coordinator_updating": "O ambiente está a ser atualizado. Estará disponível novamente em breve."
     },
     "functions": {
@@ -664,6 +664,8 @@
       "unknown_demo": "Não há nenhuma demonstração publicada chamada {{demo}}.",
       "demo_not_ready": "Esta demonstração ainda está sendo preparada. Tente novamente em instantes.",
       "demo_stores_failed": "Não foi possível iniciar esta demonstração. Tente novamente em alguns minutos.",
+      "demo_failed": "Não foi possível preparar esta demonstração. Tente novamente em alguns minutos.",
+      "failed_to_start": "Não foi possível iniciar o servidor de demonstração. Tente novamente mais tarde.",
       "at_capacity": "Todos os sandboxes de demonstração estão em uso. Tente novamente em instantes.",
       "starting": "O servidor de demonstração está iniciando. Tente novamente em um ou dois minutos.",
       "disk_full": "Este sandbox atingiu seu limite de disco de {{limit}} bytes; nada mais pode ser gravado nele.",

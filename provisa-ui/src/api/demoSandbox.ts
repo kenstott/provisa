@@ -24,10 +24,13 @@ export interface OpenedSandbox {
 /** A refusal the page shows as it is (unknown demo, a full house, a demo still being prepared). */
 export class SandboxRefused extends Error {
   readonly code: string | null;
+  /** The response's status: a 502 with no code is a gateway's, not the server's refusal. */
+  readonly status: number | null;
 
-  constructor(message: string, code: string | null) {
+  constructor(message: string, code: string | null, status: number | null = null) {
     super(message);
     this.code = code;
+    this.status = status;
   }
 }
 
@@ -42,6 +45,7 @@ export async function openDemoSandbox(name: string): Promise<OpenedSandbox> {
   throw new SandboxRefused(
     serverMessage(body, requestFailed("openDemoSandbox", res.status)),
     body?.code ?? null,
+    res.status,
   );
 }
 
@@ -60,6 +64,7 @@ export async function fetchDemoStatus(name: string): Promise<DemoStatus> {
   throw new SandboxRefused(
     serverMessage(body, requestFailed("fetchDemoStatus", res.status)),
     body?.code ?? null,
+    res.status,
   );
 }
 

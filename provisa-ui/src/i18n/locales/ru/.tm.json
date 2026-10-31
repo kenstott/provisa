@@ -5334,7 +5334,7 @@
   "ru/serverErrors.json::serverErrors.files.not_a_file_source": "A {{type}} source is not given a file by upload.",
   "ru/serverErrors.json::serverErrors.files.too_large": "The file is larger than the {{limit}} bytes an upload may be.",
   "ru/serverErrors.json::serverErrors.front_door.coordinator_updating": "The environment is being updated. It will be back shortly.",
-  "ru/serverErrors.json::serverErrors.front_door.coordinator_waking": "The environment is starting. It will be ready in about two minutes.",
+  "ru/serverErrors.json::serverErrors.front_door.coordinator_waking": "The environment is starting. It will be ready in about five minutes.",
   "ru/serverErrors.json::serverErrors.functions.approval_denied": "Approval denied for '{{name}}': {{reason}}",
   "ru/serverErrors.json::serverErrors.functions.approval_unavailable": "command '{{name}}' needs approval and no approval hook is configured",
   "ru/serverErrors.json::serverErrors.functions.argument_count": "{{signature}} takes {{count}} argument(s); {{given}} given",
@@ -8922,5 +8922,14 @@
   "ru/findTerms.json::findTerms.variantAlternativeName": "another name",
   "ru/findTerms.json::findTerms.variantForm": "form",
   "ru/findTerms.json::findTerms.variantReference": "reference",
-  "ru/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
+  "ru/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}",
+  "ru/demoOpenPage.json::demoOpenPage.coordinatorWaking": "The server is waking up…",
+  "ru/demoOpenPage.json::demoOpenPage.coordinatorUpdating": "The server is being updated. It will be back shortly…",
+  "ru/demoOpenPage.json::demoOpenPage.serverStarting": "The demo server is starting…",
+  "ru/demoOpenPage.json::demoOpenPage.connecting": "Reaching the server…",
+  "ru/demoOpenPage.json::demoOpenPage.elapsed": "{{time}} so far",
+  "ru/demoOpenPage.json::demoOpenPage.coldStart": "A demo that has been idle takes about five minutes to start.",
+  "ru/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
+  "ru/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
+  "ru/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later."
 }

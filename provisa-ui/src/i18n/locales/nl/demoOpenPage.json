@@ -3,6 +3,13 @@
     "title": "Uw demo-sandbox wordt geopend",
     "opening": "We maken een kopie van de demo voor u klaar. Dat duurt een paar seconden.",
     "starting": "Deze demo wordt gestart…",
-    "retry": "Opnieuw proberen"
+    "retry": "Opnieuw proberen",
+    "coordinatorWaking": "De server wordt geactiveerd…",
+    "coordinatorUpdating": "De server wordt bijgewerkt. Hij is zo terug…",
+    "serverStarting": "De demoserver wordt gestart…",
+    "connecting": "Verbinding maken met de server…",
+    "elapsed": "{{time}} tot nu toe",
+    "coldStart": "Een inactieve demo heeft ongeveer vijf minuten nodig om te starten.",
+    "gaveUp": "De demo is niet binnen {{minutes}} minuten geopend. Probeer het later opnieuw."
   }
 }
