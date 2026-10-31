@@ -80,6 +80,7 @@ PORTS = {
     "neo4j_http": 27974,
 }
 API_PORT = 8001
+PUBLIC_URL = "https://bench.provisa.example"  # orchestrate.sh's, and local_proof.py's
 # Every listener the contract reaches on device 1 (setups/three-device.yaml). Bolt does not
 # start unless its port is set (server.bolt_port defaults to 0); on one host a .env sets it.
 BOLT_PORT = 17687
@@ -125,6 +126,8 @@ def server_env(
         "PROVISA_CONFIG": config_path,
         "PROVISA_CONFIG_REPLACE": "true",
         "PROVISA_DEMO": "true",
+        # The SPARQL vocabulary's subjects start with it, and the run's lookup reads that vocabulary.
+        "PROVISA_PUBLIC_URL": PUBLIC_URL,
         "PROVISA_WORKERS": str(workers),
         "PROVISA_LAUNCH_ID": str(uuid.uuid4()),
         "PROVISA_PGWIRE_PORT": "5439",

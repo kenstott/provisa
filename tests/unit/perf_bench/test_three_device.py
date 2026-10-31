@@ -442,6 +442,10 @@ def test_one_transport_can_run_alone_uncached() -> None:
     assert c["load"]["steps"] == [1, 16]
 
 
+def test_the_server_names_a_public_url_for_the_sparql_vocabulary() -> None:
+    assert _env(engine="pg")["PROVISA_PUBLIC_URL"] == "https://bench.provisa.example"
+
+
 def test_the_engine_may_sit_beside_provisa_on_device_1() -> None:
     env = _env(engine="pg", engine_host="10.0.0.2")
     assert env["PROVISA_ENGINE_URL"] == "postgresql://provisa:provisa@10.0.0.2:25633/provisa_engine"
