@@ -130,6 +130,7 @@
       "address_not_found": "Nichts aufzulösen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kann in einer Operation nicht mit anderen Wurzelfeldern kombiniert werden",
       "source_starting": "Die Quelle {{source}} wird noch gestartet. Versuchen Sie es gleich noch einmal.",
+      "source_unavailable": "Die Quelle {{source}} konnte nicht antworten. Versuchen Sie es in Kürze erneut.",
       "view_outside_load_window": "Die View {{view}} kann nur innerhalb ihres Lesefensters gelesen werden. Es öffnet sich wieder um {{opens_at}}.",
       "graphql_body_missing": "Die Anfrage hat keinen Body: Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
       "graphql_body_not_json": "Der Body der Anfrage ist kein JSON: {{error}}",

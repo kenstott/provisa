@@ -130,6 +130,7 @@
       "address_not_found": "Nada que resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve no se puede combinar con otros campos raíz en una misma operación",
       "source_starting": "El origen {{source}} todavía se está iniciando. Vuelva a intentarlo en un momento.",
+      "source_unavailable": "El origen {{source}} no pudo responder. Inténtelo de nuevo en breve.",
       "view_outside_load_window": "La vista {{view}} solo se puede leer dentro de su ventana de lectura. Vuelve a abrirse a las {{opens_at}}.",
       "graphql_body_missing": "La solicitud no tiene cuerpo: una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_body_not_json": "El cuerpo de la solicitud no es JSON: {{error}}",

@@ -130,6 +130,7 @@
       "address_not_found": "Niets op te lossen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kan in één bewerking niet met andere rootvelden worden gecombineerd",
       "source_starting": "De bron {{source}} wordt nog gestart. Probeer het zo opnieuw.",
+      "source_unavailable": "De bron {{source}} kon niet antwoorden. Probeer het straks opnieuw.",
       "view_outside_load_window": "De view {{view}} kan alleen binnen het leesvenster worden gelezen. Het opent weer om {{opens_at}}.",
       "graphql_body_missing": "Het verzoek heeft geen body: een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_body_not_json": "De body van het verzoek is geen JSON: {{error}}",

@@ -5384,6 +5384,7 @@
   "de/serverErrors.json::serverErrors.data.signal_source_not_found": "Source '{{source}}' not found.",
   "de/serverErrors.json::serverErrors.data.signal_table_not_found": "Source '{{source}}' has no registered table '{{table}}'.",
   "de/serverErrors.json::serverErrors.data.source_starting": "The source {{source}} is still starting. Try again in a moment.",
+  "de/serverErrors.json::serverErrors.data.source_unavailable": "The source {{source}} could not answer. Try again shortly.",
   "de/serverErrors.json::serverErrors.data.source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
   "de/serverErrors.json::serverErrors.data.sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
   "de/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}",

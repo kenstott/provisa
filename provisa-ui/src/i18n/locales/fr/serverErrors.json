@@ -130,6 +130,7 @@
       "address_not_found": "Rien à résoudre : {{reason}}",
       "mixed_resolve_and_other_fields": "resolve ne peut pas être combiné avec d'autres champs racine dans une même opération",
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
+      "source_unavailable": "La source {{source}} n'a pas pu répondre. Réessayez sous peu.",
       "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
       "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
