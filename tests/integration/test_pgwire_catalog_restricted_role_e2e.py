@@ -238,6 +238,14 @@ def test_a_statement_with_no_table_runs_on_the_engine(server):
     assert "POINT" not in answered.upper(), answered
 
 
+def test_a_function_only_the_plane_has_is_not_answered_for_a_statement_with_no_table(server):
+    """The plane answered box(point, point) as '(1,1),(0,0)'; the engine has no such function."""
+    sql = "SELECT pg_database_size(1::oid), box('(0,0)'::point, '(1,1)'::point)"
+    with pytest.raises(psycopg2.Error) as refused:
+        _read(server, _RESTRICTED, sql)
+    assert "box" in str(refused.value)
+
+
 def test_a_server_function_beside_a_view_is_refused_by_name(server):
     with pytest.raises(psycopg2.Error) as refused:
         _read(server, _RESTRICTED, "SELECT inet_server_port(), relname::text FROM pg_class")
