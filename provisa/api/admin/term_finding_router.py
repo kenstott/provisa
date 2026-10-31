@@ -301,16 +301,19 @@ async def keep(state: Any) -> None:
     )
 
     while True:
-        try:
-            for runtime in state.org_registry.runtimes():
-                org, env = set_current_org(runtime.org_id), set_current_env(runtime.env)
-                try:
-                    await give_up_on_left_behind(state.model_db, this_launch())
-                finally:
-                    reset_current_env(env)
-                    reset_current_org(org)
-        except Exception:  # noqa: BLE001 -- the watch outlives a pass that failed; it says so
-            log.exception("term-finding scan watch failed; it runs again")
+        for runtime in state.org_registry.runtimes():
+            org, env = set_current_org(runtime.org_id), set_current_env(runtime.env)
+            try:
+                await give_up_on_left_behind(state.model_db, this_launch())
+            except Exception:  # noqa: BLE001 -- the watch outlives a failed pass; it says so
+                log.exception(
+                    "term-finding scan watch failed in %s/%s; it runs again",
+                    runtime.org_id,
+                    runtime.env,
+                )
+            finally:
+                reset_current_env(env)
+                reset_current_org(org)
         await asyncio.sleep(KEEP_EVERY_S)
 
 
