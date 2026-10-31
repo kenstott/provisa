@@ -370,7 +370,11 @@ def read_verdict(out: Path, engine: str, optimistic: bool, before: set[Path]) ->
     """The verdict from what this run wrote; a run that wrote nothing has no cells."""
     if optimistic:
         files = (out / engine / "optimistic").glob("*.json")
-        reports = {p.stem: json.loads(p.read_text()) for p in files if p not in before}
+        reports = {
+            p.stem: json.loads(p.read_text())
+            for p in files
+            if p not in before and p.stem in lp.ol.TRANSPORTS
+        }
         return optimistic_verdict(reports)
     written = sorted(set((out / engine).glob("*.json")) - before)
     if not written:

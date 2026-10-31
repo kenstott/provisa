@@ -261,3 +261,20 @@ def test_each_deployment_has_its_own_grpc_transport(monkeypatch: pytest.MonkeyPa
     first = ol._grpc_transport(ep(1))  # noqa: SLF001
     assert ol._grpc_transport(ep(1)) is first  # noqa: SLF001
     assert ol._grpc_transport(ep(2)).port == 2  # noqa: SLF001
+
+
+def test_a_grpc_refusal_past_the_brief_is_still_recognised(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Client:
+        def __init__(self, _ep: Any) -> None:
+            pass
+
+        def call(self, _query: Any, _role: str) -> Any:
+            raise RuntimeError("<RPC terminated with status " + "x" * 120 + f" details = {TEXT}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setitem(ol.CLIENTS, "grpc", Client)
+    row = lp.one_request(None, "grpc", None, "r")  # type: ignore[arg-type]
+    assert "replicated row by row" not in row["error"]
+    assert lp.refused_by_design(row, True)

@@ -131,6 +131,14 @@ def test_an_optimistic_step_with_errors_fails_the_engine() -> None:
     assert ht.engine_failed(verdict)
 
 
+def test_only_transport_reports_are_optimistic_cells(tmp_path: Path) -> None:
+    folder = tmp_path / "pg" / "optimistic"
+    folder.mkdir(parents=True)
+    for name in ("summary", *ht.lp.ol.TRANSPORTS):
+        (folder / f"{name}.json").write_text(json.dumps({"steps": []}))
+    assert ht.read_verdict(tmp_path, "pg", True, set())["cells"] == len(ht.lp.ol.TRANSPORTS)
+
+
 def test_a_missing_optimistic_transport_fails_the_engine() -> None:
     reports = {t: {"steps": []} for t in ht.lp.ol.TRANSPORTS if t != "sparql"}
     assert ht.optimistic_verdict(reports)["unavailable_transports"] == ["sparql"]

@@ -581,6 +581,8 @@ def one_request(ep: ol.Endpoints, transport: str, query: Any, role: str) -> dict
         resp = getattr(exc, "response", None)
         if resp is not None:
             out["response_body"] = resp.text[:600]  # what the server said
+        else:
+            out["detail"] = " ".join(str(exc).split())[:600]  # a gRPC error's text runs long
         return out
 
 
@@ -592,7 +594,7 @@ ROW_LEVEL_REFUSAL = ("data.row_level_filter_required", "is replicated row by row
 def refused_by_design(row: dict[str, Any], table_is_row_level: bool) -> bool:
     """Whether a failed unfiltered request of a row-level table is REQ-1915's refusal, which is the
     product doing what it says, and not a failed route."""
-    said = f"{row.get('error', '')} {row.get('response_body', '')}"
+    said = f"{row.get('error', '')} {row.get('detail', '')} {row.get('response_body', '')}"
     return table_is_row_level and any(mark in said for mark in ROW_LEVEL_REFUSAL)
 
 
@@ -935,10 +937,12 @@ def replication_apply(
 
     result: dict[str, Any] = {}
     declared = copy.deepcopy(raw)
-    declared["sources"]["bench-clickhouse"]["replication"] = {
-        "setting": "replica",
-        "ttl_seconds": 60,
-    }
+    replica = {"setting": "replica", "ttl_seconds": 60}
+    clickhouse = declared["sources"]["bench-clickhouse"]
+    clickhouse["replication"] = replica
+    # a table's own TTL outranks its source's, and the perf config gives these tables one
+    for table in clickhouse["tables"]:
+        table["replication"] = dict(replica)
     setup = sc.setup_from_dict(
         declared,
         environ=os.environ,
