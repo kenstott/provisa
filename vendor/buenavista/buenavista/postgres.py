@@ -423,6 +423,34 @@ def _range_binary(bound):
     return encode
 
 
+def _multirange_ranges(text):
+    """Each range's text of a multirange's text form."""
+    inner, ranges, start, quoted = text.strip()[1:-1], [], None, False
+    for at, ch in enumerate(inner):
+        if ch == '"':
+            quoted = not quoted
+        elif quoted:
+            continue
+        elif ch in "[(" and start is None:
+            start = at
+        elif ch in "])":
+            ranges.append(inner[start : at + 1])
+            start = None
+    return ranges
+
+
+def _multirange_binary(range_binary):
+    """multirange_send: the range count, then each range length-prefixed in its binary form."""
+
+    def encode(r):
+        encoded = [range_binary(item) for item in _multirange_ranges(str(r))]
+        return struct.pack("!i", len(encoded)) + b"".join(
+            struct.pack("!i", len(e)) + e for e in encoded
+        )
+
+    return encode
+
+
 _TSVECTOR_WEIGHTS = {"A": 3, "B": 2, "C": 1, "D": 0}
 
 
@@ -726,6 +754,20 @@ BVTYPE_TO_PGTYPE = {
     BVType.VARBIT: (1562, str, _bit_binary),
     BVType.TSVECTOR: (3614, str, _tsvector_binary),
 }
+
+for _range_type, _multirange_type, _multirange_oid in (
+    (BVType.INT4RANGE, BVType.INT4MULTIRANGE, 4451),
+    (BVType.INT8RANGE, BVType.INT8MULTIRANGE, 4536),
+    (BVType.NUMRANGE, BVType.NUMMULTIRANGE, 4532),
+    (BVType.TSRANGE, BVType.TSMULTIRANGE, 4533),
+    (BVType.TSTZRANGE, BVType.TSTZMULTIRANGE, 4534),
+    (BVType.DATERANGE, BVType.DATEMULTIRANGE, 4535),
+):
+    BVTYPE_TO_PGTYPE[_multirange_type] = (
+        _multirange_oid,
+        str,
+        _multirange_binary(BVTYPE_TO_PGTYPE[_range_type][2]),
+    )
 
 
 _ARRAY_TEXT_SPECIAL = re.compile(r'[{}",\\\s]')

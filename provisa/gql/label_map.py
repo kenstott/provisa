@@ -355,6 +355,26 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         two labels, each found by its exact name."""
         return label
 
+    def schema_procedure(self, name: str) -> tuple[str, list[str]] | None:  # REQ-572
+        """The column ``CALL <name>()`` yields and its values, this map's own, when ``name`` is a
+        procedure answered from the map; else None. Names the system keeps to itself (``__``)
+        are no label or type of the graph."""
+        procedure = name.lower()
+        values: set[str]
+        if procedure == "db.labels":
+            column = "label"
+            values = {nm.table_label for nm in self.nodes.values()}
+            values |= {nm.domain_label for nm in self.nodes.values() if nm.domain_label}
+        elif procedure == "db.relationshiptypes":
+            column = "relationshipType"
+            values = {r.rel_type for r in self.relationships.values()}
+        elif procedure == "db.propertykeys":
+            column = "propertyKey"
+            values = {key for nm in self.nodes.values() for key in nm.properties}
+        else:
+            return None
+        return column, sorted(v for v in values if not v.startswith("__"))
+
     def node(self, label: str) -> NodeMapping:  # REQ-572
         try:
             return self.nodes[label]

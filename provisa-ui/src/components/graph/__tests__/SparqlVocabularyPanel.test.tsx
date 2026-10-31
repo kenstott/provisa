@@ -243,6 +243,29 @@ describe("the Properties list", () => {
   });
 });
 
+describe("the classes, by prefix", () => {
+  it("lists each prefix's classes under a header with their count, pills by local name", () => {
+    const onPickClass = vi.fn();
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={two}
+        error={null}
+        onPick={onPickClass}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    expect(screen.getByTestId("sparql-class-prefix-hr")).toHaveTextContent("hr (1)");
+    expect(screen.getByTestId("sparql-class-prefix-ops")).toHaveTextContent("ops (1)");
+    const pill = screen.getByTestId("sparql-class-hr:employees");
+    expect(pill).toHaveTextContent(/^employees$/);
+    // The full name is the tooltip's and the pick's, the colour the full label's.
+    expect(pill).toHaveStyle({ background: labelColor("hr:employees") });
+    fireEvent.click(pill);
+    expect(onPickClass).toHaveBeenCalledWith({ kind: "class", iri: `${BASE}/hr/employees` });
+  });
+});
+
 // REQ-1723 (EVERY EXPLORER FOLLOWS THE CHECKED DOMAINS), REQ-2163's readable-term rule: a term or
 // concept is shown when one of its domains is checked, and one with no domain is always shown.
 const termed: SparqlVocabulary = {

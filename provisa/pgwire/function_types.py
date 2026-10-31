@@ -25,6 +25,7 @@ from typing import Any
 
 import sqlglot.expressions as exp
 
+from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
 
 #: sqlglot's type of an argument -> PostgreSQL's format_type name of it. A varchar is text to
@@ -57,7 +58,24 @@ _PG_NAMES: dict[Any, str] = {
     exp.DataType.Type.MONEY: "money",
     exp.DataType.Type.XML: "xml",
     exp.DataType.Type.POINT: "point",
+    exp.DataType.Type.INT4RANGE: "int4range",
+    exp.DataType.Type.INT8RANGE: "int8range",
     exp.DataType.Type.NUMRANGE: "numrange",
+    exp.DataType.Type.TSRANGE: "tsrange",
+    exp.DataType.Type.TSTZRANGE: "tstzrange",
+    exp.DataType.Type.DATERANGE: "daterange",
+    exp.DataType.Type.INT4MULTIRANGE: "int4multirange",
+    exp.DataType.Type.INT8MULTIRANGE: "int8multirange",
+    exp.DataType.Type.NUMMULTIRANGE: "nummultirange",
+    exp.DataType.Type.TSMULTIRANGE: "tsmultirange",
+    exp.DataType.Type.TSTZMULTIRANGE: "tstzmultirange",
+    exp.DataType.Type.DATEMULTIRANGE: "datemultirange",
+}
+
+#: PostgreSQL's format_type name of a range's element.
+_ELEMENT_NAMES = {
+    "timestamp": "timestamp without time zone",
+    "timestamptz": "timestamp with time zone",
 }
 
 
@@ -129,12 +147,29 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
 
 
 def _fits(argument: str | None, parameter: str) -> bool:
-    """A string argument fits a character varying parameter as it fits a text one."""
+    """A string argument fits a character varying parameter as it fits a text one; a range or
+    multirange fits the pseudo-type of its kind."""
     return (
         argument is None
         or argument == parameter
         or (argument == "text" and parameter == "character varying")
+        or (parameter == "anyrange" and argument in RANGE_TYPES)
+        or (parameter == "anymultirange" and argument in MULTIRANGE_TYPES)
     )
+
+
+def _resolved(returns: str, arg_types: list[str | None]) -> str:
+    """A polymorphic result as the range or multirange among the arguments makes it."""
+    if returns not in ("anyelement", "anyrange", "anymultirange"):
+        return returns
+    for argument in arg_types:
+        rtype = RANGE_TYPES.get(argument or "") or MULTIRANGE_TYPES.get(argument or "")
+        if rtype is None:
+            continue
+        if returns == "anyelement":
+            return _ELEMENT_NAMES.get(rtype.element, rtype.element)
+        return rtype.name if returns == "anyrange" else rtype.multirange
+    return returns
 
 
 def call_result_type(expression: exp.Expr) -> str | None:
@@ -144,13 +179,15 @@ def call_result_type(expression: exp.Expr) -> str | None:
     if call is None:
         return None
     names, args = call
+    if names[0] in MULTIRANGE_TYPES:
+        return names[0]  # a multirange's constructor is variadic: any number of ranges
     # An unknown-type literal fits any overload; where that leaves the call ambiguous, it is text,
     # as PostgreSQL prefers a string category type for one. A number's own type is tried first.
     for literal, numbers in ((None, True), ("text", True), (None, False), ("text", False)):
         arg_types = [_arg_type(a, literal, numbers) for a in args]
         for name in names:
             candidates = {
-                returns
+                _resolved(returns, arg_types)
                 for params, returns in FUNCTION_OVERLOADS.get(name, ())
                 if len(params) == len(arg_types)
                 and all(_fits(t, p) for t, p in zip(arg_types, params))

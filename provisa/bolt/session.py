@@ -815,9 +815,7 @@ class BoltSession:
             # A database the principal created names its home database (provisa.bolt.databases).
             resolved = self.roles[0], False
 
-        import logging as _logging
-
-        _logging.getLogger("uvicorn.error").warning(
+        log.debug(
             "[BOLT] RUN cypher=%r db=%r resolved=%r state=%s",
             cypher,
             db,
@@ -1061,8 +1059,7 @@ class BoltSession:
             return
         n = meta.get("n", -1)
 
-        _dbg = logging.getLogger("uvicorn.error")
-        _dbg.warning(
+        log.debug(
             "[BOLT] PULL n=%d offset=%d total_rows=%d", n, self._pull_offset, len(self._result_rows)
         )
         # REQ-1885: send_record's per-row report() call is batched into one call per PULL below —
@@ -1087,8 +1084,8 @@ class BoltSession:
                     timed_out = True
                     break
                 row = self._result_rows[self._pull_offset]
-                if _dbg.isEnabledFor(logging.DEBUG):
-                    _dbg.debug("[BOLT] PULL sending record row=%r", row)
+                if log.isEnabledFor(logging.DEBUG):
+                    log.debug("[BOLT] PULL sending record row=%r", row)
                 batch_bytes += self.send_record(row, meter=False)
                 self._pull_offset += 1
                 rows_sent += 1

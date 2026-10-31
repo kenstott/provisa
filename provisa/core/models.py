@@ -461,6 +461,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
             return f"jdbc:avatica:remote:url=http://{h}:{po}/druid/v2/sql/avatica/"
+        # ClickHouse: Trino's connector speaks the JDBC driver over the HTTP interface, which is the
+        # port a clickhouse source declares (8123 when it names none).
+        if st == "clickhouse":
+            return f"jdbc:clickhouse://{h}:{po or 8123}/{self.database}"
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
