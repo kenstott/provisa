@@ -593,7 +593,7 @@ def test_the_pgwire_page_says_a_function_not_served_is_failed():
     }
     surface, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
     assert surface == "pgwire"
-    assert rate == "98.3%: 60 passed, 1 skipped by design, 1 failed, of 62 cases"
+    assert rate == "98.4%: 60 passed, 1 skipped by design, 1 failed, of 62 cases"
     assert "<details><summary>Catalog function: Geometric (1)</summary>" in cases
     assert "| box(point) | not served: no function Did you mean? |" in cases
     assert "no client queries" not in cases

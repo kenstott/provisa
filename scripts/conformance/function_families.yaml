@@ -43,7 +43,7 @@
   pattern: '(_accum|_accum_inv|_transfn|_finalfn|_final|_combine|_serialize|_deserialize|_statefunc|_transition|_transition_multi|_inc_any|_dec_any)$'
 
 - family: Type operators
-  pattern: '(recv|send|typmodin|typmodout|_subscript_handler)$'
+  pattern: '(recv|send|typmodin|typmodout|_subscript_handler)$|^(record_|oidvector|xid8)'
   argument: '^cstring$'
   returns: '^cstring$'
   names: [
@@ -208,6 +208,8 @@
   ]
 
 - family: Numeric
+  argument: '^(numeric|real|double precision|money)$'
+  pattern: '^cash|_mul_cash$|^numeric_'
   names: [
     acosd, asind, atan2d, atand, cosd, cotd, dexp, dlog1, dlog10, dpow, dsqrt, erf, erfc,
     float4, float48div, float48eq, float48ge, float48gt, float48le, float48lt, float48mi,
@@ -248,6 +250,9 @@
 - family: System
   # session, privilege, statistics and administration functions
   pattern: '^pg_|^has_\w+_privilege$|^current_|^acl|^txid_|^inet_(client|server)_|^obj_description$|^col_description$|^shobj_description$|^format_type$|^version$|^to_reg'
+
+- family: String
+  argument: '^(text|character|character varying|name|bytea|bit|bit varying)$'
 
 - family: Other
   # every function no family above names
