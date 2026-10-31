@@ -582,7 +582,7 @@ _TABLE_MAP.update(
     }
 )
 
-# Every other PostgreSQL 17 relation, which no client queries (catalog_pg17_tables, tier 4).
+# Every other PostgreSQL 17 relation (catalog_pg17_tables, tier 4).
 UNQUERIED_RELATIONS: tuple[tuple[str, str], ...] = tuple(
     key for key in RELATIONS if key not in _TABLE_MAP
 )

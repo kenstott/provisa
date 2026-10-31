@@ -20,8 +20,13 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))  # the scripts' sibling imports
+
+
+import pgwire_function_probe as function_probe  # noqa: E402
 
 
 def _load(name: str):
@@ -217,16 +222,6 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
     import by_design
 
     m = _load("pgwire_catalog_types")
-    geometric = {
-        "group": "Geometric functions",
-        "requirement": "REQ-2167",
-        "decision": "d",
-        "count": 2,
-        "cases": [
-            {"case": "catalog function::point_above()", "reason": "no such function"},
-            {"case": "catalog function::box()", "reason": "no such function"},
-        ],
-    }
     report = {
         "postgres_version": "16.4",
         "catalog_relations": {
@@ -239,13 +234,17 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             "served_not_in_postgres": [],
         },
         "catalog_functions": {
-            **by_design.outcomes(1, [geometric], [{}]),
-            "postgres_functions": 2,
-            "excluded": "pseudo-types",
+            **by_design.outcomes(1, [], [{}, {}]),
+            "postgres_functions": 3,
             "served": 1,
             "matching": 1,
             "differing": {},
             "not_served": {"pg_catalog.foo(integer)": "function foo does not exist"},
+            "not_callable": {"bar(internal)": "takes an internal argument"},
+            "failures_by_family": {
+                "Geometric": {"count": 1, "functions": ["pg_catalog.foo(integer)"]},
+                "Index support": {"count": 1, "functions": ["bar(internal)"]},
+            },
         },
         "type_conversions": {
             **by_design.outcomes(0, [], [{}]),
@@ -267,7 +266,7 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
     md = m.markdown(report)
     # REQ-2167 (amended 2026-10-28): each part's three counts, side by side.
     assert "| catalog relations | 3 | 1 | 0 | 2 | 33.3% |" in md
-    assert "| catalog functions | 4 | 1 | 2 | 1 | 50.0% |" in md
+    assert "| catalog functions | 3 | 1 | 0 | 2 | 33.3% |" in md
     assert "| type conversions | 1 | 0 | 0 | 1 | 0.0% |" in md
     for heading in (
         "## pgwire catalog shape (PostgreSQL 16.4)",
@@ -277,8 +276,13 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         assert heading in md
     assert "`pg_catalog.pg_stat_database`" in md
     assert "`pg_catalog.foo(integer)`" in md
-    assert "Functions skipped by design (2)" in md
-    assert "| Geometric functions | 2 | REQ-2167 |" in md
+    # REQ-2167 (PG_CATALOG FUNCTIONS ARE GAPS): no function is skipped by design; each is failed,
+    # one no call can reach by name, and the failures are counted by family.
+    assert "Functions skipped by design" not in md
+    assert "Functions no call can reach (1)" in md
+    assert "`bar(internal)`" in md
+    assert "Functions failed, by family (2)" in md
+    assert "| Index support | 1 |" in md
     assert "| `SELECT 'x'::name AS v` | name | text |" in md
 
 
@@ -367,7 +371,10 @@ class _Probe:
         self._refused = refused
 
     def rows(self, sql: str) -> list[tuple]:
-        return [(name, args, "f", False, "integer", []) for name, args in self._functions]
+        return [
+            (name, args, "f", False, "n", 0, "integer", list(argtypes))
+            for name, args, argtypes in self._functions
+        ]
 
     def run(self, sql: str, result_format: int = 0) -> dict:
         name = sql.split('pg_catalog."', 1)[1].split('"', 1)[0]
@@ -376,52 +383,220 @@ class _Probe:
         return {"ok": True, "fields": [{"type_oid": 23}]}
 
 
-def test_a_catalog_function_of_a_by_design_family_is_left_out_of_not_served():
-    # PGWIRE'S CATALOG FUNCTIONS (REQ-2167): a function of a family no client calls is not
-    # served by design; one a client calls stays not served, to be answered.
+def _report(monkeypatch, functions, pg_refused=(), refused=()):
     m = _load("pgwire_catalog_types")
-    functions = [("point_above", ""), ("pg_cancel_backend", ""), ("abs", "")]
-    pg = _Probe(functions, refused=set())
-    provisa = _Probe(functions, refused={"point_above", "pg_cancel_backend"})
-    report = m.catalog_functions(pg, provisa, {23: "int4"})
-    assert list(report["not_served"]) == ["pg_cancel_backend()"]
-    assert [(g["group"], g["count"]) for g in report["by_design_groups"]] == [
-        ("Geometric functions", 1)
+    return m, m.catalog_functions(
+        _Probe(functions, refused=set(pg_refused)),
+        _Probe(functions, refused=set(refused)),
+        {23: "int4"},
+    )
+
+
+def test_every_catalog_function_not_served_is_failed_with_its_name_overload_and_family(monkeypatch):
+    # PG_CATALOG FUNCTIONS ARE GAPS (REQ-2167): whatever its family, and whether or not a client
+    # calls it, a function not served is failed. Nothing is skipped by design.
+    functions = [
+        ("point_above", "point, point", ("point", "point")),
+        ("pg_cancel_backend", "integer", ("integer",)),
+        ("abs", "", ()),
     ]
-    assert report["matching"] == 1
-    # Each function probed is a case: passed, skipped by design, or failed (not served).
+    _, report = _report(monkeypatch, functions, refused={"point_above", "pg_cancel_backend"})
     assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
         3,
         1,
-        1,
-        1,
+        0,
+        2,
     )
-    assert report["failures"][0]["reason"].startswith("not served: ")
+    assert report["by_design_groups"] == []
+    assert list(report["not_served"]) == ["pg_cancel_backend(integer)", "point_above(point, point)"]
+    failure = next(f for f in report["failures"] if f["name"] == "point_above")
+    assert failure["overload"] == "point, point"
+    assert failure["family"] == "Geometric"
+    assert failure["reason"].startswith("not served: ")
+    assert report["failures_by_family"] == {
+        "Geometric": {"count": 1, "functions": ["point_above(point, point)"]},
+        "System": {"count": 1, "functions": ["pg_cancel_backend(integer)"]},
+    }
 
 
-def test_no_by_design_function_group_names_a_function_a_client_calls():
+def test_a_function_no_call_reaches_is_failed_by_name_and_none_is_dropped(monkeypatch):
+    # PostgreSQL has no expression of type internal; a trigger function runs only in a trigger.
+    # Each stays a case: the total is every overload pg_proc lists.
+    functions = [
+        ("boolrecv", "internal", ("internal",)),
+        ("unique_key_recheck", "", ()),
+        ("abs", "", ()),
+    ]
+    _, report = _report(monkeypatch, functions, pg_refused={"unique_key_recheck"})
+    assert (report["total"], report["postgres_functions"]) == (3, 3)
+    assert (report["passed"], report["by_design"], report["failed"]) == (1, 0, 2)
+    assert report["not_callable"]["boolrecv(internal)"] == function_probe.NO_CALL
+    assert "refuses the call" in report["not_callable"]["unique_key_recheck()"]
+    assert report["not_served"] == {}
+    assert [f["reason"].split(":")[0] for f in report["failures"]] == ["no call reaches it"] * 2
+
+
+def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
+    # Not by the case the group names, and not by a reason a function's failure happens to match.
     import by_design
 
-    called = [
-        "pg_cancel_backend",
-        "pg_terminate_backend",
-        "pg_get_indexdef",
-        "pg_get_functiondef",
-        "aclexplode",
-        "quote_ident",
-        "quote_literal",
-        "pg_database_size",
-        "pg_relation_size",
-        "pg_options_to_table",
-        "unnest",
-        "btrim",
-        "json_to_record",
-        "pg_encoding_to_char",
-    ]
-    groups = [g for g in by_design.groups("pgwire") if g.kind == "design"]
-    for name in called:
-        failure = {"feature": "catalog function", "scenario": f"{name}()", "reason": ""}
-        assert not [g.group for g in groups if g.matches(failure)], name
+    rules = tmp_path / "by_design"
+    rules.mkdir()
+    monkeypatch.setattr(by_design, "RULES", rules)
+    (rules / "pgwire.yaml").write_text(
+        "- group: Geometric functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: not emulated\n"
+        '  case: "^catalog function::(point_above)\\\\("\n'
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        '- group: Any error\n  requirement: REQ-2167\n  decision: d\n  reason: "."\n'
+    )
+    _, report = _report(monkeypatch, [("point_above", "", ())], refused={"point_above"})
+    assert (report["by_design"], report["failed"]) == (0, 1)
+
+
+def test_no_shipped_group_names_a_catalog_function():
+    import by_design
+
+    groups = by_design.groups("pgwire")
+    assert groups
+    assert not [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
+
+
+@pytest.mark.parametrize(
+    ("fn", "statement"),
+    [
+        (
+            function_probe.Function("abs", "integer", argtypes=("integer",)),
+            'SELECT pg_catalog."abs"(NULL::integer) AS v',
+        ),
+        (  # a pseudo-type becomes a concrete type, one element type across the call
+            function_probe.Function(
+                "array_position", "anyarray, anyelement", argtypes=("anyarray", "anyelement")
+            ),
+            'SELECT pg_catalog."array_position"(NULL::integer[], NULL::integer) AS v',
+        ),
+        (
+            function_probe.Function("enum_first", "anyenum", argtypes=("anyenum",)),
+            'SELECT pg_catalog."enum_first"(NULL::conformance.probe_enum) AS v',
+        ),
+        (  # VARIADIC of an array is the VARIADIC form
+            function_probe.Function(
+                "json_extract_path",
+                "from_json json, VARIADIC path_elems text[]",
+                argtypes=("json", "text[]"),
+                variadic=True,
+            ),
+            'SELECT pg_catalog."json_extract_path"(NULL::json, VARIADIC NULL::text[]) AS v',
+        ),
+        (  # an ordered-set aggregate needs WITHIN GROUP
+            function_probe.Function(
+                "percentile_cont",
+                "double precision ORDER BY interval",
+                kind="a",
+                argtypes=("double precision", "interval"),
+                aggkind="o",
+                direct=1,
+            ),
+            'SELECT pg_catalog."percentile_cont"(NULL::double precision) '
+            "WITHIN GROUP (ORDER BY NULL::interval) AS v",
+        ),
+        (
+            function_probe.Function(
+                "rank",
+                'VARIADIC "any" ORDER BY VARIADIC "any"',
+                kind="a",
+                argtypes=('"any"',),
+                aggkind="h",
+            ),
+            'SELECT pg_catalog."rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        ),
+        (function_probe.Function("count", "", kind="a"), 'SELECT pg_catalog."count"(*) AS v'),
+        (
+            function_probe.Function("row_number", "", kind="w"),
+            'SELECT pg_catalog."row_number"() OVER () AS v',
+        ),
+        (  # PostgreSQL refuses a NULL here: a real argument, by signature
+            function_probe.Function(
+                "int4range", "integer, integer, text", argtypes=("integer", "integer", "text")
+            ),
+            "SELECT pg_catalog.\"int4range\"(NULL::integer, NULL::integer, '[]'::text) AS v",
+        ),
+        (
+            function_probe.Function("json_to_recordset", "json", argtypes=("json",)),
+            "SELECT * FROM pg_catalog.\"json_to_recordset\"('[]') AS t(v integer)",
+        ),
+        (function_probe.Function("boolrecv", "internal", argtypes=("internal",)), None),
+    ],
+)
+def test_a_function_is_called_the_way_postgresql_requires(fn, statement):
+    assert function_probe.call(fn) == statement
+
+
+def test_a_real_argument_is_given_to_no_function_but_those_named():
+    # A real argument runs the function for real: pg_terminate_backend stays a NULL.
+    assert all("(" in signature for signature in function_probe.ARGUMENTS)
+    fn = function_probe.Function(
+        "pg_terminate_backend", "integer, bigint", argtypes=("integer", "bigint")
+    )
+    assert "NULL::integer, NULL::bigint" in function_probe.call(fn)
+
+
+def test_every_postgresql_17_function_has_a_family_and_the_old_groups_kept_theirs():
+    from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+
+    declared = function_probe.families()
+    assert declared[-1].family == "Other"
+    found = {}
+    for name, overloads in FUNCTION_OVERLOADS.items():
+        for argtypes, rettype in overloads:
+            fn = function_probe.Function(name, "", argtypes=argtypes, rettype=rettype)
+            found.setdefault(function_probe.family(fn, declared), set()).add(name)
+    assert {"Type operators", "Geometric", "Numeric", "Text search", "Index support"} <= set(found)
+    assert {"JSON", "Date", "Network", "Range", "Trigger"} <= set(found)
+    assert "RI_FKey_check_ins" in found["Trigger"]
+    assert "ginhandler" in found["Index support"]
+    # "Other" is for what no family says, not a place a family's functions end up.
+    assert len(found["Other"]) < 100
+
+
+def test_the_pgwire_page_says_a_function_not_served_is_failed():
+    # fill_docs gives the whole run's counts on the page, in the words every report uses, and the
+    # failed functions by family.
+    import by_design
+
+    fill_docs = _load("fill_docs")
+    function = {
+        "feature": "catalog function",
+        "scenario": "box(point)",
+        "reason": "not served: no function\nDid you mean?",
+        "name": "box",
+        "overload": "point",
+        "family": "Geometric",
+    }
+    pgspec = {
+        "suite": "pgspec",
+        "version": "v1",
+        **by_design.outcomes(51, [], []),
+        "failed_by_section": {},
+    }
+    group = {"group": "g", "requirement": "REQ-1", "decision": "d", "count": 1, "cases": []}
+    m = _load("pgwire_catalog_types")
+    catalog = {
+        "postgres_version": "17.11",
+        "catalog_relations": by_design.outcomes(2, [], []),
+        "catalog_functions": by_design.outcomes(3, [], [function]),
+        "type_conversions": by_design.outcomes(4, [group], []),
+    }
+    surface, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
+    assert surface == "pgwire"
+    assert rate == "98.3%: 60 passed, 1 skipped by design, 1 failed, of 62 cases"
+    assert "<details><summary>Catalog function: Geometric (1)</summary>" in cases
+    assert "| box(point) | not served: no function Did you mean? |" in cases
+    assert "no client queries" not in cases
 
 
 def _conversion(statement: str, *differences: str) -> dict:
@@ -495,11 +670,12 @@ def test_a_conversion_is_passed_by_design_or_failed():
             "catalog_functions": {
                 **by_design.outcomes(0, [], []),
                 "postgres_functions": 0,
-                "excluded": "pseudo-types",
                 "served": 0,
                 "matching": 0,
                 "differing": {},
                 "not_served": {},
+                "not_callable": {},
+                "failures_by_family": {},
             },
             "type_conversions": out,
         }
