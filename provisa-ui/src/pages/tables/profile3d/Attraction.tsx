@@ -10,8 +10,8 @@
 
 // How close a force-laid-out 3D graph draws its nodes: one slider, loose to tight, in each such
 // graph's toolbar, read "Loose ——— Tight" and named Attraction. 1 is the usual spacing. The value
-// lasts for the browser session per graph (this tab, never the model); a graph with a fixed layout
-// (the terrain, the strata) has none.
+// is one of the graph's remembered settings (graphSettings.ts), never the model; a graph with a
+// fixed layout (the terrain, the strata) has none.
 
 import { useTranslation } from "react-i18next";
 import { Group, Slider, Text } from "@mantine/core";

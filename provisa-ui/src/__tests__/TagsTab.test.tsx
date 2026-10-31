@@ -388,4 +388,25 @@ describe("TagsTab", () => {
     expect(deleteSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
+
+  it("keeps the scope and the search it was left on, after a reload", () => {
+    const first = render(<TagsTab />);
+    fireEvent.click(screen.getByRole("radio", { name: t("tagsTab.scope_table") }));
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii" } });
+    first.unmount();
+    render(<TagsTab />);
+    expect(screen.getByRole("radio", { name: t("tagsTab.scope_table") })).toBeChecked();
+    expect(screen.getByTestId("filter-input")).toHaveValue("pii");
+  });
+
+  it("does not save a linked tag's scope over the reader's", () => {
+    const first = render(<TagsTab />);
+    fireEvent.click(screen.getByRole("radio", { name: t("tagsTab.scope_column") }));
+    first.unmount();
+    const linked = render(<TagsTab />, { initialEntries: ["/admin/tags?tag=finance"] });
+    expect(screen.getByTestId("tags-row-finance")).toBeInTheDocument();
+    linked.unmount();
+    render(<TagsTab />);
+    expect(screen.getByRole("radio", { name: t("tagsTab.scope_column") })).toBeChecked();
+  });
 });

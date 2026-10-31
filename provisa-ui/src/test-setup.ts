@@ -41,13 +41,15 @@ afterEach(async () => {
 export const TEST_STORAGE_SCOPE = { controlPlaneId: "test-cp", orgId: "test-org" } as const;
 bindStorageScope(TEST_STORAGE_SCOPE);
 afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
-// A 3D graph remembers its view settings in the browser (graphSettings.ts); a test that changes one
-// leaves it saved, and the next test's graph would open with it. Each test starts from defaults.
+// A 3D graph remembers its view settings in the browser (graphSettings.ts), and a list its filters
+// (FilterInput, useRememberedChoice) and the Glossary its main panel; a test that changes one leaves
+// it saved, and the next test's page would open with it. Each test starts from defaults.
 // A file run in the node environment (`@vitest-environment node`) has no browser storage to clear.
 afterEach(() => {
   if (typeof window === "undefined") return;
   bindStorageScope(TEST_STORAGE_SCOPE);
-  for (const key of storedKeys()) if (key.startsWith("graph3d.")) removeStored(key);
+  for (const key of storedKeys())
+    if (/^(graph3d|filter|glossary)\./.test(key)) removeStored(key);
 });
 
 // Mantine components (ScrollArea, Select, transitions) depend on browser APIs

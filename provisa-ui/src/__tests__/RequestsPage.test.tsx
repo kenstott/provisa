@@ -261,3 +261,24 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     expect(alert).not.toHaveTextContent("server English");
   });
 });
+
+describe("RequestsPage's remembered filters", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    serve(() => new Response("{}"));
+  });
+
+  it("reopens on the tab and the search it was left on", async () => {
+    const first = page();
+    fireEvent.click(await screen.findByTestId("requests-tab-resolved"));
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "orders" } });
+    first.unmount();
+    page();
+    expect(await screen.findByTestId("requests-tab-resolved")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByTestId("filter-input")).toHaveValue("orders");
+  });
+});

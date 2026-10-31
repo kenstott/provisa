@@ -72,6 +72,7 @@ import {
   createGlossaryTerm,
   deleteGlossaryTerm,
   fetchGlossaryTerm,
+  GlossaryTermGone,
   generateAllGlossaryDefinitions,
   generateGlossaryRelationships,
   fetchGlossaryFindings,
@@ -99,38 +100,14 @@ import type {
 } from "../../api/glossary";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
-import { getStored, setStored } from "../../lib/browserStorage";
+import {
+  readStoredBool,
+  readStoredString,
+  useGlossaryPanel,
+  writeStored,
+  writeStoredBool,
+} from "./useGlossaryPanel";
 import { assignableDomainIds } from "../../lib/internalDomains";
-
-// Per-viewer list-filter preferences; never reachable from other viewers or the server.
-function readStoredBool(key: string, fallback: boolean): boolean {
-  try {
-    const raw = getStored(key);
-    return raw === null ? fallback : raw === "true";
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStoredBool(key: string, value: boolean): void {
-  writeStored(key, String(value));
-}
-
-function readStoredString(key: string): string | null {
-  try {
-    return getStored(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(key: string, value: string): void {
-  try {
-    setStored(key, value);
-  } catch {
-    // Private mode / storage disabled: the preference just doesn't persist this session.
-  }
-}
 
 export function GlossaryTab() {
   const { t } = useTranslation();
@@ -139,21 +116,12 @@ export function GlossaryTab() {
   // look a term up — but every control that writes is withheld rather than disabled, because the
   // endpoints behind them answer 403 and a greyed-out button says nothing about why.
   const canEdit = useCapability("glossary_rw");
-  // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
-  // a shared URL, or the back/forward buttons all resolve to the same term this state does.
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
-  // REQ-2130: the Ontology View, in place of the term list while it is open. A ?term= link opens
-  // the term, so it opens the list.
-  const [ontology, setOntologyState] = useState(
-    () => !searchParams.has("term") && readStoredString("glossary.view") === "ontology",
-  );
-  const setOntology = (open: boolean) => {
-    setOntologyState(open);
-    writeStored("glossary.view", open ? "ontology" : "list");
-  };
+  const { ontology, setOntology, selectedId, setSelectedId, editing, setEditing } =
+    useGlossaryPanel(canEdit);
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -220,11 +188,6 @@ export function GlossaryTab() {
   }, [showDeprecated]);
 
   const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState<number | null>(() => {
-    const raw = searchParams.get("term");
-    const parsed = raw ? Number(raw) : NaN;
-    return Number.isFinite(parsed) ? parsed : null;
-  });
   const [detail, setDetail] = useState<GlossaryTermDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -235,9 +198,6 @@ export function GlossaryTab() {
   const [findTermsOpen, setFindTermsOpen] = useState(false);
 
   const [actionError, setActionError] = useState("");
-
-  // The term open as one form (TermEditForm), or read.
-  const [editing, setEditing] = useState(false);
 
   // REQ-1592: an expert is PICKED from the org's members, not typed. Naming an author decides who
   // may change the term from then on, so a typo would hand it to nobody.
@@ -316,35 +276,21 @@ export function GlossaryTab() {
   useEffect(() => {
     if (selectedId === null) return;
     // Deferred for the same set-state-in-effect rule as the list refresh above.
-    const timer = window.setTimeout(() => void loadDetail(selectedId), 0);
-    return () => window.clearTimeout(timer);
-  }, [selectedId, loadDetail]);
-
-  // Each term opens read, not in the form the previous term was left in. Deferred for the same
-  // set-state-in-effect rule as the list refresh above.
-  useEffect(() => {
-    const timer = window.setTimeout(() => setEditing(false), 0);
-    return () => window.clearTimeout(timer);
-  }, [selectedId]);
-
-  useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (selectedId === null) next.delete("term");
-        else next.set("term", String(selectedId));
-        return next;
-      },
-      { replace: true },
+    const timer = window.setTimeout(
+      () =>
+        void loadDetail(selectedId).catch((e: unknown) => {
+          // A remembered term since deleted is dropped: the panel falls back to the summary.
+          if (!(e instanceof GlossaryTermGone)) throw e;
+          setSelectedId(null);
+        }),
+      0,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams identity is stable per render, not per selection.
-  }, [selectedId]);
+    return () => window.clearTimeout(timer);
+  }, [selectedId, loadDetail, setSelectedId]);
 
   // A relationship's target term is a deep link, not just a value: click it and the detail panel
   // and the URL both switch to that term, the same as picking it from the list would.
-  const navigateToTerm = useCallback((termId: number) => {
-    setSelectedId(termId);
-  }, []);
+  const navigateToTerm = useCallback((termId: number) => setSelectedId(termId), [setSelectedId]);
 
   // REQ-1592: the org's members are the people a term can be attributed to. Loaded once for the
   // whole surface rather than per term — the roster does not change while the page is open — and
@@ -559,6 +505,7 @@ export function GlossaryTab() {
           onChange={setQuery}
           placeholder={t("glossaryTab.searchPlaceholder")}
           testId="glossary-search"
+          remember={false}
         />
         <Group gap="xs" data-toolbar>
           {canEdit && (

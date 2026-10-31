@@ -14,8 +14,11 @@ import { notifications } from "@mantine/notifications";
 import { useTranslation } from "react-i18next";
 import { decideMergeRequest, fetchMergeRequests } from "../../api/environments";
 import type { MergeRequest } from "../../api/environments";
+import { useRememberedChoice } from "../../hooks/useRememberedChoice";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
+
+const SHOWN = ["open", "all"] as const;
 
 // The states the server sends (provisa/core/env_approvals.py): stored, and `stale` derived at
 // read time.
@@ -53,7 +56,8 @@ function sourceOf(r: MergeRequest): string {
 export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDecide: boolean }) {
   const { t } = useTranslation();
   const [requests, setRequests] = useState<MergeRequest[]>([]);
-  const [openOnly, setOpenOnly] = useState(true);
+  const [shown, setShown] = useRememberedChoice("filter.merge-requests.shown", SHOWN, "open");
+  const openOnly = shown === "open";
   const [busy, setBusy] = useState<number | null>(null);
   const [notes, setNotes] = useState<Record<number, string>>({});
 
@@ -88,7 +92,7 @@ export function MergeRequestsPanel({ orgId, canDecide }: { orgId: string; canDec
         <Checkbox
           label={t("environmentsTab.openOnly")}
           checked={openOnly}
-          onChange={(e) => setOpenOnly(e.currentTarget.checked)}
+          onChange={(e) => setShown(e.currentTarget.checked ? "open" : "all")}
           data-testid="merge-requests-open-only"
         />
       </Group>

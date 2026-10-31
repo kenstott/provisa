@@ -194,6 +194,8 @@ export interface Preset {
   layers: LayerId[];
   /** The term edge types it draws; every type when absent. */
   edgeTypes?: string[];
+  /** The layout it opens in; force when absent. */
+  layout?: LayoutKind;
 }
 
 export const PRESETS = {
@@ -266,7 +268,7 @@ export const GLOSSARY_SCOPE: GraphScope = {
     // Every edge type, in a force layout, with the columns each term is.
     ontology: { layers: ["ontology", "domains", "columns"] },
     // The is-a and part-of hierarchy alone, as a tree from the top down.
-    taxonomy: { layers: ["ontology"], edgeTypes: ["KIND_OF", "PART_OF"] },
+    taxonomy: { layers: ["ontology"], edgeTypes: ["KIND_OF", "PART_OF"], layout: "layered" },
   },
   presetOrder: ["ontology", "taxonomy"],
   hiddenStatuses: ["retired"],
@@ -599,22 +601,23 @@ export function panelGraph(data: GraphData, product: string): GraphData {
   };
 }
 
-/** REQ-2174: the layout a view opens in, and whether the reader may pick Layered. */
+/** REQ-2174: the layout a view opens in, force whatever its edges fit, and whether the reader may
+ * pick Layered. */
 export function openingLayout(g: GraphData): { layout: LayoutKind; layeredPossible: boolean } {
-  const fit = layeredFit(g);
-  return { layout: fit.layered ? "layered" : "force", layeredPossible: fit.possible };
+  return { layout: "force", layeredPossible: layeredFit(g).possible };
 }
 
-/** The layout drawn: the reader's choice where there is one, else the opening layout. Layered is
- * impossible where a cycle closes (the control disables it), so it is never drawn there. */
-export function chosenLayout(g: GraphData, saved: LayoutKind | null): LayoutKind {
+/** The layout drawn: the one asked for (the reader's choice, or a preset's own) where there is
+ * one, else the opening layout. Layered is impossible where a cycle closes (the control disables
+ * it), so it is never drawn there. */
+export function chosenLayout(g: GraphData, asked: LayoutKind | null): LayoutKind {
   const open = openingLayout(g);
-  if (saved === null) return open.layout;
-  return saved === "layered" && !open.layeredPossible ? "force" : saved;
+  if (asked === null) return open.layout;
+  return asked === "layered" && !open.layeredPossible ? "force" : asked;
 }
 
 /** A remembered layout setting: "force" or "layered" is the reader's choice, "auto" (the default)
- * is none. */
+ * is none: a preset's own layout, else force. */
 export function savedLayout(v: string): LayoutKind | null {
   return v === "force" || v === "layered" ? v : null;
 }
