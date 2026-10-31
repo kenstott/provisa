@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { claimTourOffer, resetTourStateForDemoSession, resolveTourOffer, useTour } from "./useTour";
 import { useAuth } from "../context/AuthContext";
+import { isPlatformOrg } from "../lib/platformOrg";
 import { TourWelcomeModal } from "./TourWelcomeModal";
 
 /**
@@ -19,11 +20,13 @@ import { TourWelcomeModal } from "./TourWelcomeModal";
  *
  * `?tour=1` starts it outright and strips the param so a refresh doesn't relaunch — that URL is an
  * explicit request. Otherwise the tour is offered, not launched: a welcome modal once per browser
- * session, until it is taken or the modal's checkbox turns the offer off for good.
+ * session, until it is taken or the modal's checkbox turns the offer off for good. The Platform org
+ * holds no data to tour, so the offer waits there for an org that does: entering one mounts this
+ * again (StorageScopeGate).
  */
 export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
   const { startTour, available } = useTour();
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, activeOrgId, multitenancy } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { pathname } = useLocation();
   const tourParam = searchParams.get("tour");
@@ -35,7 +38,9 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
   // Decided on the first render rather than in the effect: claimTourOffer marks the session
   // offered, so it must run exactly once per mount.
   const [offering, setOffering] = useState(() => {
-    if (tourParam !== null || identityRoute) return false;
+    if (tourParam !== null || identityRoute || isPlatformOrg(activeOrgId, multitenancy)) {
+      return false;
+    }
     // Each visit to a demo server is a new visitor: drop the previous one's seen-flag, declined
     // flag and half-finished progress before deciding whether to offer, so the tour is offered
     // afresh rather than suppressed by someone else's session.

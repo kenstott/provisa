@@ -10,7 +10,7 @@
 
 import { Suspense, useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, matchPath, useLocation } from "react-router-dom";
 import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -163,6 +163,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 // inside the app shell put the whole navigation — Sources, Tables, Org, Env, Role — above a form
 // that has not established who they are yet. These two paths render the standalone landing card,
 // centered, whether or not a token is present.
+//
+// REQ-2006: a live demo's link is the same: it opens the visitor's sandbox whatever login the browser
+// holds, and leaves. Inside the shell, the shell's gates and tour offer got there first.
+const DEMO_ROUTE = "/demos/:name";
+
 export function IdentityRoutes({
   onLoginSuccess,
   authDisabled,
@@ -177,6 +182,15 @@ export function IdentityRoutes({
     return (
       <Suspense fallback={<PageLoading />}>
         <LandingPage onLoginSuccess={onLoginSuccess} authDisabled={authDisabled} />
+      </Suspense>
+    );
+  }
+  if (matchPath(DEMO_ROUTE, pathname) !== null) {
+    return (
+      <Suspense fallback={<PageLoading />}>
+        <Routes>
+          <Route path={DEMO_ROUTE} element={<DemoOpenPage />} />
+        </Routes>
       </Suspense>
     );
   }
@@ -271,7 +285,7 @@ function App() {
             ) : authEnabled && !token ? (
               <Suspense fallback={<PageLoading />}>
                 <Routes>
-                  <Route path="/demos/:name" element={<DemoOpenPage />} />
+                  <Route path={DEMO_ROUTE} element={<DemoOpenPage />} />
                   <Route
                     path="*"
                     element={
@@ -318,7 +332,6 @@ function App() {
                                           path="/"
                                           element={<Navigate to="/query" replace />}
                                         />
-                                        <Route path="/demos/:name" element={<DemoOpenPage />} />
                                         <Route
                                           path="/setup"
                                           element={<Navigate to="/" replace />}
