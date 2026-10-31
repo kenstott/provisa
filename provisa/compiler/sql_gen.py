@@ -68,6 +68,7 @@ from provisa.compiler.sql_where import (
     _has_joins,
     _below_takes_lateral_args,
     _has_lateral_force_args,
+    _joins_row_level_to_one,
 )
 from provisa.compiler.sql_selection import (
     _build_gql_selection,
@@ -162,7 +163,12 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
 
             src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
             _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
-            _use_agg = not flat and not _has_lateral_force_args(sel) and not _below
+            _use_agg = (
+                not flat
+                and not _has_lateral_force_args(sel)
+                and not _below
+                and not _joins_row_level_to_one(sel, join_meta, ctx)
+            )
             if (
                 join_meta.default_limit is not None
                 or _has_lateral_force_args(sel)

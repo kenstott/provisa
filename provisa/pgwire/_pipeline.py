@@ -3140,20 +3140,16 @@ def _row_materialize_tables_in_memory(state: Any) -> dict[str, Any]:
     already in memory, and a rebuild republishes them. Same selection and keying as
     ``query_residency.row_materialized_tables_by_name`` — the flag is set AND the bound engine
     cannot direct-attach the table's source type; keyed by both the bare table name and the alias."""
-    flagged = [t for t in state.tables if t.get("row_materialize")]
-    if not flagged:
+    if not any(t.get("row_materialize") for t in state.tables):
         return {}
     from types import SimpleNamespace
 
     from provisa.compiler.naming import apply_sql_name
-    from provisa.federation.strategy import engine_attaches
+    from provisa.federation.strategy import row_level_tables
 
-    engine = state.federation_engine
     out: dict[str, Any] = {}
-    for t in flagged:
-        # tables.source_id is a NOT NULL foreign key to sources.id, so the type is always known.
-        if engine_attaches(engine, state.source_types[t["source_id"]]):
-            continue
+    # tables.source_id is a NOT NULL foreign key to sources.id, so the type is always known.
+    for t in row_level_tables(state.tables, state.federation_engine, state.source_types):
         table = SimpleNamespace(
             id=t["id"],
             source_id=t["source_id"],

@@ -659,6 +659,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     for t in tables:
         _register_table_in_ctx(t, ctx, si, physical_map)
 
+    ctx.row_level_tables = si.row_level_tables
     ctx.epoch_columns = _epoch_columns(si, physical_map)
     ctx.nested_columns = _nested_columns(si, physical_map)
     ctx.subtype_columns = _columns_of_subtypes(si, physical_map, lambda s: s.semantics is not None)

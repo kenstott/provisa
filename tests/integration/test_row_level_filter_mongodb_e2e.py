@@ -37,6 +37,7 @@ pytestmark = [pytest.mark.integration]
 _ROLE = "org_admin"
 _TABLE = "rl_order_docs"
 _DOCS = [{"order_id": i, "status": "open" if i % 2 else "closed"} for i in range(1, 41)]
+_PARENT = "rl_orders"
 
 
 class _Stores:
@@ -82,6 +83,10 @@ class _Stores:
         with self.mongo() as client:
             client.admin.command("ping")
             client["rl"][_TABLE].insert_many([dict(d) for d in _DOCS])
+        with psycopg.connect(self.pg_url(), autocommit=True) as conn:
+            conn.execute(f"CREATE TABLE {_PARENT} (order_id integer PRIMARY KEY, amount integer)")
+            # 500 has no document: its nested field is null and its row stands.
+            conn.execute(f"INSERT INTO {_PARENT} VALUES (5, 50), (6, 60), (7, 70), (500, 1)")
 
     def mongo(self):
         import pymongo
@@ -138,9 +143,44 @@ def server(stores, tmp_path_factory):
                 "port": stores.mongo_port,
                 "database": "rl",
                 "federation_hints": {"direct_connection": "true"},
+            },
+            {
+                "id": "rl-pg",
+                "type": "postgresql",
+                "host": "127.0.0.1",
+                "port": stores.pg_port,
+                "database": "provisa",
+                "username": "provisa",
+                "password": "provisa",
+            },
+        ],
+        "relationships": [
+            {
+                "id": "rl-orders-docs",
+                "alias": "HAS_DOC",
+                "cardinality": "one-to-one",
+                "source_table_id": _PARENT,
+                "source_column": "order_id",
+                "target_table_id": _TABLE,
+                "target_column": "order_id",
             }
         ],
         "tables": [
+            {
+                "source_id": "rl-pg",
+                "domain_id": "docs",
+                "schema": "public",
+                "table": _PARENT,
+                "columns": [
+                    {
+                        "name": "order_id",
+                        "data_type": "integer",
+                        "is_primary_key": True,
+                        "visible_to": [_ROLE],
+                    },
+                    {"name": "amount", "data_type": "integer", "visible_to": [_ROLE]},
+                ],
+            },
             {
                 "source_id": "rl-mongo",
                 "domain_id": "docs",
@@ -157,7 +197,7 @@ def server(stores, tmp_path_factory):
                     },
                     {"name": "status", "data_type": "varchar", "visible_to": [_ROLE]},
                 ],
-            }
+            },
         ],
     }
     path = tmp_path_factory.mktemp("row_level_mongo") / "config.yaml"
@@ -226,3 +266,35 @@ def test_a_keyed_read_fetches_exactly_its_documents(stores, server):
     assert held == [(3,), (4,)]  # the replica holds the keys asked for, not the collection
     again = _sql(server, f"SELECT count(*) AS n FROM {_TABLE}")
     assert again.status_code == 400 and again.json()["code"] == "data.row_level_filter_required"
+
+
+def test_a_nested_graphql_field_fetches_exactly_its_documents(stores, server):
+    """The bench's federated_join shape: the join supplies the key, so GraphQL answers what SQL
+    does, and the replica holds the keys the parent rows asked for, not the collection."""
+    resp = httpx.post(
+        f"{server.base_url}/data/graphql",
+        json={
+            "query": "{ rlOrders(where: {orderId: {gte: 5, lte: 500}}, order_by: [{orderId: asc}])"
+            " { orderId rlOrderDoc { status } } }"
+        },
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 30,
+    )
+    assert resp.status_code == 200, resp.text
+    assert "errors" not in resp.json(), resp.text
+    assert resp.json()["data"]["rlOrders"] == [
+        {"orderId": 5, "rlOrderDoc": {"status": "open"}},
+        {"orderId": 6, "rlOrderDoc": {"status": "closed"}},
+        {"orderId": 7, "rlOrderDoc": {"status": "open"}},
+        {"orderId": 500, "rlOrderDoc": None},
+    ]
+    import psycopg
+
+    with psycopg.connect(stores.pg_url(), autocommit=True) as conn:
+        ((schema, name),) = conn.execute(
+            "SELECT table_schema, table_name FROM information_schema.columns "
+            "WHERE column_name = 'order_id' AND table_name LIKE %s",
+            (f"%{_TABLE}%",),
+        ).fetchall()
+        held = {k for (k,) in conn.execute(f'SELECT order_id FROM "{schema}"."{name}"')}
+    assert {5, 6, 7} <= held and len(held) < len(_DOCS)

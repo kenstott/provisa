@@ -32,6 +32,8 @@ class SchemaInput:
     role: dict  # from role_repo.get()
     domains: list[dict]  # from domain_repo.list_all()
     source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
+    # REQ-1915: the ids of the tables replicated row by row on the bound engine.
+    row_level_tables: frozenset[int] = frozenset()
     # REQ-1163: table_id → how the relation travels in time ("bitemporal" or "snapshot",
     # provisa.mv.time_travel): its fields take as_of and as_recorded, or as_recorded alone.
     time_travel: dict[int, str] = field(default_factory=dict)

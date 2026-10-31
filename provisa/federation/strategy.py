@@ -67,6 +67,16 @@ def engine_attaches(engine: Any, source_type: str) -> bool:
     )  # ATTACH_* or SCAN — read live in place, never landed (REQ-951)
 
 
+def row_level_tables(tables: list[dict], engine: Any, source_types: dict[str, str]) -> list[dict]:
+    """The tables replicated ROW BY ROW on ``engine`` (REQ-1865): the flag is set AND the engine
+    cannot attach the table's source. Elsewhere the engine reads the table in place."""
+    return [
+        t
+        for t in tables
+        if t.get("row_materialize") and not engine_attaches(engine, source_types[t["source_id"]])
+    ]
+
+
 def read_through_its_server(engine: Any, source_type: str) -> bool:
     """Whether a source of ``source_type`` is read through its bundled connector server on
     ``engine``: a pgwire-replica type the engine lands through that server, or attaches through
