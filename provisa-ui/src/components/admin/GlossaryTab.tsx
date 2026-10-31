@@ -609,7 +609,8 @@ export function GlossaryTab() {
               />
               <RelatedToFilter checked={relatedToOnly} onChange={setRelatedToOnly} />
             </Group>
-            <Group gap={6} px="xs" pb={6} wrap="nowrap" grow>
+            {/* Status on a line of its own: its picked statuses need the column's width. */}
+            <Stack gap={6} px="xs" pb={6}>
               <Tip text={t("glossaryTab.filterStatusHint")}>
                 <div>
                   <MultiSelect
@@ -636,7 +637,7 @@ export function GlossaryTab() {
                 comboboxProps={{ withinPortal: true, width: "max-content" }}
                 data-testid="glossary-grounding-filter"
               />
-            </Group>
+            </Stack>
             <div style={{ flex: 1, overflow: "auto" }}>
               {listLoading && terms.length === 0 ? (
                 <Group justify="center" py="md">
