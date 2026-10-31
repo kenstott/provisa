@@ -62,20 +62,20 @@ def _write_tables(conn, ctx: Any, state: Any, domains: set[str]) -> None:
     col_types = state.schema_build_cache.get("column_types", {})
     pk_columns = _dict(getattr(ctx, "pk_columns", None))
     for tm in {m.table_id: m for m in ctx.tables.values()}.values():
-        domain = tm.domain_id or tm.schema_name or "public"
+        domain = _text(tm.domain_id) or _text(tm.schema_name) or "public"
         if domain not in domains:
             _insert(conn, t.domains, id=domain, description=f"The {domain} domain")
             domains.add(domain)
-        alias = tm.table_name if tm.original_table_name else None
+        alias = tm.table_name if _text(tm.original_table_name) else None
         _insert(
             conn,
             t.registered_tables,
             id=tm.table_id,
             source_id=_SOURCE,
             domain_id=domain,
-            schema_name=tm.schema_name or "public",
-            table_name=tm.original_table_name or tm.table_name,
-            alias=alias,
+            schema_name=_text(tm.schema_name) or "public",
+            table_name=_text(tm.original_table_name) or tm.table_name,
+            alias=_text(alias),
         )
         keys = pk_columns.get(tm.table_id, ())
         for column in col_types.get(tm.table_id, ()):
@@ -85,17 +85,22 @@ def _write_tables(conn, ctx: Any, state: Any, domains: set[str]) -> None:
                 table_id=tm.table_id,
                 column_name=column.column_name,
                 data_type=column.data_type,
-                native_type=column.native_type,
-                subtype=column.subtype,
+                native_type=_text(column.native_type),
+                subtype=_text(column.subtype),
                 not_null=not column.is_nullable,
                 is_primary_key=column.column_name in keys,
             )
 
 
-def _write_grants(conn, state: Any) -> None:
+def _write_grants(conn, state: Any, roles: set[str], tables: set[int]) -> None:
     t = schema_org
     for table in state.schema_build_cache.get("tables") or ():
+        if table["id"] not in tables:
+            continue
         for grant in table.get("write_grants") or ():
+            if grant["role"] not in roles:
+                _insert(conn, t.roles, id=grant["role"], description=grant["role"])
+                roles.add(grant["role"])
             _insert(
                 conn,
                 t.table_write_grants,
@@ -132,12 +137,15 @@ def write_model(engine: Engine, role_id: str, state: Any) -> None:
     with engine.begin() as conn:
         conn.exec_driver_sql(f"TRUNCATE {', '.join(_MODEL_TABLES)} CASCADE")
         _insert(conn, t.sources, id=_SOURCE, type="postgresql")
-        for role in {role_id, *_dict(getattr(state, "roles", None))}:
+        roles = {role_id, *_dict(getattr(state, "roles", None))}
+        for role in roles:
             _insert(conn, t.roles, id=role, description=role)
+        tables: set[int] = set()
         if ctx is not None and isinstance(ctx.tables, dict):
             _write_tables(conn, ctx, state, set())
             _write_joins(conn, ctx)
-        _write_grants(conn, state)
+            tables = {m.table_id for m in ctx.tables.values()}
+        _write_grants(conn, state, roles, tables)
         config = getattr(state, "config", None)
         for metric in _list(getattr(config, "metrics", None)):
             _insert(
@@ -213,3 +221,8 @@ def _named(setting: str) -> str:
 
 def _plain(row: tuple) -> tuple:
     return tuple(json.loads(v) if isinstance(v, str) and v[:2] == '{"' else v for v in row)
+
+
+def _text(value: Any) -> str | None:
+    """A test's stated text; a stand-in's unset attribute is none."""
+    return value if isinstance(value, str) else None

@@ -45,12 +45,8 @@ def _catalog_engine(embedded_postgres, control_plane_template):
 
 @pytest.fixture(autouse=True)
 def _catalog_reads_the_plane(request, monkeypatch):
-    """Every test here calling ``catalog.answer`` reads a real control plane. Started only when a
-    test module asks for it by importing ``answer``, so a test of routing alone needs no server."""
-    module = request.module
-    if not hasattr(module, "answer"):
-        yield
-        return
+    """Every test here reaching ``catalog.answer``, directly or through a server, reads a real
+    control plane."""
     from provisa.pgwire import catalog
     from tests.unit.pgwire.catalog_plane import Plane
 
