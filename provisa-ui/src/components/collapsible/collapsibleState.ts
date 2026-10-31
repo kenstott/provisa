@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { getStored, setStored } from "../../lib/browserStorage";
+import { getStoredJson, setStored } from "../../lib/browserStorage";
 /**
  * Which collapsible panels a viewer left open or closed, kept in this browser so a panel opens as
  * it was left: one key, ``{panel id: {item: open}}``. It is this viewer's convenience only. Where
@@ -21,14 +21,8 @@ const KEY = "provisa.collapsibles";
 export type CollapsibleStates = Record<string, Record<string, boolean>>;
 
 export function readCollapsibleStates(): CollapsibleStates {
-  try {
-    const raw = getStored(KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed === "object" ? (parsed as CollapsibleStates) : {};
-  } catch {
-    // Storage unavailable or unreadable: no remembered state, every panel its default.
-    return {};
-  }
+  const parsed = getStoredJson<unknown>(KEY);
+  return parsed && typeof parsed === "object" ? (parsed as CollapsibleStates) : {};
 }
 
 export function writeCollapsibleState(id: string, items: Record<string, boolean>): void {

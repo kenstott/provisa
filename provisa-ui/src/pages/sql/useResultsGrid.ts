@@ -28,7 +28,7 @@ import {
   type ColumnKind,
   type FilterSpec,
 } from "./columnFilter";
-import { getStored, setStored } from "../../lib/browserStorage";
+import { getStoredJson, setStored } from "../../lib/browserStorage";
 
 /** A group header row (collapsible) or a data row, in render order. */
 export type GridItem =
@@ -100,11 +100,7 @@ interface PersistedGridChoices {
 
 function loadChoices(storageKey: string | undefined): PersistedGridChoices {
   if (!storageKey) return {};
-  try {
-    return JSON.parse(getStored(`provisa.grid.${storageKey}`) ?? "{}");
-  } catch {
-    return {};
-  }
+  return getStoredJson<PersistedGridChoices>(`provisa.grid.${storageKey}`) ?? {};
 }
 
 export function useResultsGrid(

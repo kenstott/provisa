@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { reportStorageFailure } from "../lib/browserStorage";
 import { StorageAPI } from "@graphiql/toolkit";
 
 /** What GraphiQL starts its editors on: one saved tab's query, variables and headers. */
@@ -36,7 +37,13 @@ export function savedActiveTab(
 ): SavedTab | null {
   const raw = new StorageAPI(storage as Storage).get("tabState");
   if (raw === null) return null;
-  const saved = JSON.parse(raw) as SavedTabs;
+  let saved: SavedTabs;
+  try {
+    saved = JSON.parse(raw) as SavedTabs;
+  } catch (e) {
+    reportStorageFailure("parse", "tabState", e);
+    return null;
+  }
   const tab = saved.tabs[saved.activeTabIndex];
   if (tab === undefined) return null; // no tab saved: GraphiQL opens its default tabs
   return { query: tab.query ?? "", variables: tab.variables ?? "", headers: tab.headers ?? "" };
