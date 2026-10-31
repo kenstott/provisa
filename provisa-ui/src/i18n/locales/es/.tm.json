@@ -8923,5 +8923,6 @@
   "es/findTerms.json::findTerms.variantAlternativeName": "another name",
   "es/findTerms.json::findTerms.variantForm": "form",
   "es/findTerms.json::findTerms.variantReference": "reference",
-  "es/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
+  "es/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}",
+  "es/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}"
 }

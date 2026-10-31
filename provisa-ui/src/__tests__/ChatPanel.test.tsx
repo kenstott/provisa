@@ -25,6 +25,11 @@ vi.mock("../context/AuthContext", () => ({
 }));
 
 const fetchMcpChatStatus = vi.fn();
+// The read-back has its own tests; here the Graph page, which is not mounted, took its statement.
+vi.mock("../mcp/readBack", () => ({
+  readBack: async () => ({ shown: true, screen: null }),
+}));
+
 vi.mock("../api/mcpChat", () => ({
   fetchMcpChatStatus: () => fetchMcpChatStatus(),
 }));

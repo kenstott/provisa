@@ -117,9 +117,9 @@ _TOOLS: list[Any] = [
     {
         "name": "generate_explore_queries",
         "description": (
-            "Generate ready-to-run queries for ALL NINE Explore surfaces (sql, graphql, cypher, "
-            "grpc, jsonapi, openapi, nl, python, notebook) from one natural-language question -- "
-            "the "
+            "Generate ready-to-run queries for NINE Explore surfaces (sql, graphql, cypher, "
+            "grpc, jsonapi, openapi, nl, python, notebook; never sparql) from one natural-language "
+            "question -- the "
             "SAME pipeline the NL Explore page runs, with its own LLM call resolving table "
             "selection, joins, and aggregation shape. Use this instead of graphql_field_names/"
             "cypher_field_names plus hand-built SQL for anything beyond a flat single-table "
@@ -130,7 +130,9 @@ _TOOLS: list[Any] = [
             "set could not answer this question there; say so plainly rather than guessing a "
             "query for it. Every other target's `query` is the exact, complete value to "
             "navigate with verbatim (for jsonapi/openapi it IS the full deep-link path/method, "
-            "for grpc it IS the exact rpc call signature) — never rewrite, simplify, or "
+            "for grpc it IS the exact rpc call signature: a row read's signature is the method "
+            "alone, so it reads every field and row limit the page sets; carry fields, a filter "
+            "or a limit in state.grpcBody) — never rewrite, simplify, or "
             "re-derive it. nl's query is the question for /nl, python's is the script for "
             "/python (state.code), and notebook has `cells` for /notebook (state.cells)."
         ),
@@ -736,10 +738,11 @@ _CLIENT_TOOLS: list[Any] = [
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
             "/tables, /relationships, /admin/ontology, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
-            "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sql, "
-            "/grpc, /jsonapi, /openapi, /nl (Natural Language). When you have already prepared a "
+            "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
+            "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
+            "already prepared a "
             "query for one of these, pass it via `state` instead of telling the user the text and "
-            "asking them to paste it — each of these six reads its own state key (see the "
+            "asking them to paste it — each of these seven reads its own state key (see the "
             "`state` field below) the SAME way an in-app hyperlink to it already does, and runs "
             "it immediately when state.autoRun is true, landing it in the editor with no "
             "copy-paste needed. See the system prompt's section on the query surfaces for which "
@@ -760,7 +763,10 @@ _CLIENT_TOOLS: list[Any] = [
             "provisa_client` run first. A "
             "navigate to either with autoRun waits for the run and its result says what the "
             "code printed, its last value (a DataFrame as its columns, first rows and row count) "
-            "and any error, so read the result before you answer."
+            "and any error, so read the result before you answer. A navigate with state reads "
+            "the screen back before it answers: the result is what the screen shows, a failure "
+            "says what the page did not take, and with autoRun on /grpc, /jsonapi or /openapi it "
+            "waits for the answer. Say a page was opened with something only from that result."
         ),
         "input_schema": {
             "type": "object",
@@ -776,15 +782,24 @@ _CLIENT_TOOLS: list[Any] = [
                         '"collapseGroups": true|false, "layout": "force"|"hierarchy", '
                         '"maxNodes": <n>} -- the Graph page\'s own view controls; a /graph '
                         "navigate with a view and NO query sets them on the graph already on "
-                        'screen, keeping its query. /sql -> {"sql": "SELECT ..."}, '
+                        'screen, keeping its query. /sparql -> {"query": "SELECT ..."} (SPARQL), '
+                        '/sql -> {"sql": "SELECT ..."}, '
                         '/grpc -> {"grpcMethod": "QuerySIrisIris()"} (the exact rpc name from '
                         "graphql_field_names' grpc_query_method, plus a literal trailing '()' — "
-                        "required by the gRPC page's parser), "
-                        '/jsonapi -> {"jsonapiUrl": "..."} — use the jsonapi_path returned by '
-                        "graphql_field_names verbatim, never `/{schema}/{table}` yourself (that "
-                        "is the sql-safe name, not the raw domain id these routes key on), "
-                        '/openapi -> {"openApiUrl": "..."} — same, use the openapi_path returned '
-                        "by graphql_field_names verbatim. "
+                        'required by the gRPC page\'s parser) and optionally "grpcBody": the '
+                        "request as a JSON object, e.g. "
+                        '{"read_mask": {"paths": ["id", "name"]}, "filter": {"species": "cat"}, '
+                        '"limit": 20}, '
+                        '/jsonapi -> {"jsonapiUrl": "..."} — start from the jsonapi_path returned '
+                        "by graphql_field_names, never `/{schema}/{table}` yourself (that "
+                        "is the sql-safe name, not the raw domain id these routes key on); add "
+                        "fields[<table>]=a,b, filter[col]=v, filter[col][gt]=v and sort=-col to "
+                        "its query string, "
+                        '/openapi -> {"openApiUrl": "..."} — same, start from the openapi_path '
+                        "returned by graphql_field_names; add fields=a,b, offset=n, "
+                        'filter=[{"field":"col","comparator":"eq","value":"x"}] and '
+                        'orderBy=[{"field":"col","direction":"asc"}], percent-encoded, to its '
+                        'query string, and "openApiBody": the JSON request body of a POST. '
                         '/python -> {"code": "<Python script>"} (the Python tab; add "newTab": true and '
                         'optionally "title" to write it into a new script tab), '
                         '/notebook -> {"cells": ["<cell>", ...]} (the Notebook tab); the run\'s '
@@ -933,7 +948,10 @@ _CLIENT_TOOLS: list[Any] = [
         "description": (
             "Read the screen the user is looking at, from their own browser session: the current "
             "route; the open query editor's text (SQL, GraphQL, Cypher, SPARQL or Python) with "
-            "its language and the query tab open; the visible labelled form fields with their values "
+            "its language and the query tab open; the main inputs of a page with no editor, under "
+            "`inputs` (gRPC: method, body; JSON:API: url, table, fields, include, filter, sort; "
+            "OpenAPI: operation, parameters, body, requestUrl; each with status and error); the "
+            "visible labelled form fields with their values "
             "(a password shows as dots, as on screen); and each result grid's columns and row "
             "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
             "anything on the screen, before you answer or act on it."
@@ -1134,11 +1152,12 @@ _SYSTEM = (
     "confirm with the user (present_choice, mode='yes_no') before delete_data_product/delete_"
     "metric specifically, since they're irreversible. Per the page-first rule: navigate to /data-products or "
     "/metrics before calling any of these.\n\n" + model_tool_specs.SYSTEM_SECTION + "\n\n"
-    "THE QUERY SURFACES: Provisa has NINE query surfaces under Explore, each its "
+    "THE QUERY SURFACES: Provisa has TEN query surfaces under Explore, each its "
     "own route and each with its own exact deep-link format — never assume one surface's names or "
     "state shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
-    "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
-    "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
+    "(state.query), Cypher /graph (state.query), SPARQL /sparql (state.query), SQL /sql "
+    "(state.sql), gRPC /grpc (state.grpcMethod, state.grpcBody), JSON:API /jsonapi "
+    "(state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl, state.openApiBody), "
     "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
     "itself), the Python tab /python (state.code into the active script tab; state.newTab=true "
     "and state.title for a new one when the user asks) and the Notebook tab /notebook (state.cells) "
@@ -1147,6 +1166,11 @@ _SYSTEM = (
     "`provisa_client.sign_in()`; the run's output, value and error come back in the navigate "
     "result. Always pass state.autoRun=true alongside so the query runs immediately instead of "
     "sitting unrun in the editor.\n"
+    "A navigate with state reads the screen back before it answers, and its result is what the "
+    "page shows. Say a page was opened with a query, a body or a selection only when that result "
+    "succeeded and shows it; a failed result says what the page did not take, so tell the user "
+    "that, never 'Done', and correct the state or say what stands in the way. On the pages with "
+    "a read-back the state must be exact: what you hand them is compared with what they show.\n"
     "For anything beyond browsing one table's plain columns — aggregation, GROUP BY, a "
     "business-term filter, or a question spanning more than one table — call "
     "generate_explore_queries with the user's question FIRST; it runs the same pipeline the NL "
@@ -1176,13 +1200,32 @@ _SYSTEM = (
     "- gRPC: call graphql_field_names for the table — it also returns grpc_query_method/"
     "grpc_aggregate_method, the real rpc name. state.grpcMethod is that name plus `()`, e.g. "
     '`"QuerySIrisIris()"` — this is deterministic, not a guess; never omit the trailing `()`, '
-    "the gRPC page's own parser requires it.\n"
-    "- JSON:API: call graphql_field_names for the table and use its jsonapi_path verbatim as "
-    "state.jsonapiUrl. These routes key on the table's RAW domain id, not the sql-safe schema "
+    "the gRPC page's own parser requires it. The request itself goes in state.grpcBody, a JSON "
+    'object: read_mask {"paths": [...]} the fields to return (graphql_field_names\' columns[].name, '
+    "or a dot-path into a JSON column; empty returns every field, a relationship is refused), "
+    'filter {"column": value} equality on columns only, every entry ANDed, and limit the row '
+    "count (100 when absent). offset is in the proto but a row read does not apply it: only "
+    "QueryXGroupBy does, so never offer gRPC paging on a row read. A GraphQL query shown in gRPC "
+    "carries its fields: asked to show this GraphQL in gRPC, call read_screen, then "
+    "graphql_field_names, and navigate with read_mask.paths set to the query's fields, its "
+    "equality filter in filter and its limit in limit. Then tell the user anything gRPC cannot "
+    "carry -- a relationship's fields, an operator other than equality, an order -- rather than "
+    "dropping it silently.\n"
+    "- SPARQL: there is no field-name tool: read the role's vocabulary with admin_request GET "
+    "/data/sparql/vocabulary, use its class, property and edge IRIs exactly, and navigate to "
+    "/sparql with state.query. generate_explore_queries builds no SPARQL.\n"
+    "- JSON:API: call graphql_field_names for the table and start state.jsonapiUrl from its "
+    "jsonapi_path; add fields[<table>]=a,b (the table's columns[].name), filter[col]=v, "
+    "filter[col][op]=v (eq, neq, gt, gte, lt, lte, like), sort=col or sort=-col, page[size]=n. "
+    "These routes key on the table's RAW domain id, not the sql-safe schema "
     "name describe_table/list_tables give you — reassembling `/{schema}/{table}` yourself 404s "
     "for any domain id containing a hyphen or space (reproduced live).\n"
-    "- OpenAPI: same as JSON:API — call graphql_field_names and use its openapi_path verbatim as "
-    "state.openApiUrl, never reassembled from the plain schema/table names.\n"
+    "- OpenAPI: same as JSON:API — call graphql_field_names and start state.openApiUrl from its "
+    "openapi_path, never reassembled from the plain schema/table names; its parameters are limit, "
+    'offset, fields=a,b, filter=[{"field":"col","comparator":"eq","value":"x"}] and '
+    'orderBy=[{"field":"col","direction":"asc"}], percent-encoded. Without autoRun the '
+    "page fills the call in and leaves it for the user to execute; a command's POST body goes in "
+    "state.openApiBody.\n"
     "PICTURES AND FILES: asked to show, draw or visualise a graph or network, call render_graph: "
     "the picture appears in the chat with a Download button and an Open on Graph page button "
     "that runs the same statement there, so never ask whether the user meant the chat or the "

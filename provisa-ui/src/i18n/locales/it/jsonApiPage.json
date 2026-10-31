@@ -18,6 +18,7 @@
     "optionalHint": "facoltativo",
     "fieldPlaceholder": "— campo —",
     "filterValuePlaceholder": "valore",
+    "removeHandedParam": "Rimuovi {{param}}",
     "sortAsc": "asc",
     "sortDesc": "disc",
     "paginationSectionTitle": "Paginazione",

@@ -18,6 +18,7 @@
     "optionalHint": "任意",
     "fieldPlaceholder": "— フィールド —",
     "filterValuePlaceholder": "値",
+    "removeHandedParam": "{{param}} を削除",
     "sortAsc": "昇順",
     "sortDesc": "降順",
     "paginationSectionTitle": "ページネーション",
