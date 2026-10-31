@@ -300,11 +300,32 @@ rls_rules:
 
 The filter is ANDed into the query's `WHERE` clause, for reads and for `UPDATE` and `DELETE` alike.
 
-A filter reads the request through `current_setting('provisa.<name>')`. The request binds `user_id` from the signed-in identity, `role` from the acting role, and every scalar claim in the token, lower-cased with dashes turned into underscores. `provisa.user_id` is always the signed-in identity, and no claim can replace it.
+### A rule's rights
+
+Every rule holds one predicate and a set of `rights`, any of `R`, `U` and `D`, the three things that can be done to an existing row. A rule that states none is an `R` rule. A right is in at most one rule of a role on a table, a domain, a tag or an action, and a save that puts it in a second is refused by name, whatever route it came by. Two rules may share a predicate.
+
+```yaml
+rls_rules:
+  - table_id: orders
+    role_id: analyst
+    rights: [U, D]
+    filter: "owner_role IN (current_setting('provisa.acting_roles'))"
+    description: Analysts update only the orders their own role owns.
+```
+
+A rule only narrows. The role's R or RW on the model is the ceiling, and RW includes create, which has no row to narrow. Each right resolves to one plain predicate, so a read is still a pushed-down filter. Reads compile `R` rules alone. A role's `U` rule is ANDed into its `UPDATE`, and its `D` rule into its `DELETE`, beside its write grant. A `U` or `D` rule on a role with only R does nothing. A role with no rule for a right does that to every row its grant allows, so a `U` rule doesn't narrow a delete. A domain rule and a tag rule reach their tables as an `R` rule does, and a child role takes its parents' rules of the same right. An action's rows are only read, so an action's rule holds only `R`. A `TRUNCATE`, a `MERGE` and an `INSERT ... ON CONFLICT DO UPDATE` can't carry a `U` or `D` rule, so a role that has one is refused them by name.
+
+Semantic objects are models too. The model tables of the meta domain and the ontology domain's `_terms` take `U` and `D` rules, and the model store applies them to every write of one, whatever route it came by: GraphQL, REST or MCP. The write is refused by name when a row it touches is outside the rule, and it writes nothing. A contract belongs to its product, so saving one is held to the rule on `data_products`. A rule's columns are the model's, and a column only its `*_meta` or `*_ontology` view holds is read from the view. Only a person is narrowed: a config load, a rebuild, a deployment and the scheduler have no acting person, and no rule holds them.
+
+A data product is edited by an org admin, who holds `data_product_rw` with no `U` or `D` rule, or by its owner. Nobody writes a rule to own a product. Naming a role in a product's Owner field gives that role `data_product_rw` with `U` and `D` rules reading `owner_role IN (current_setting('provisa.acting_roles'))`, and a child of the role takes the same. These are worked out from the Owner fields, not stored, so Security doesn't show or edit them and the Owner field is how they change. A role that owns no product any more holds no grant. That's the default, not a limit: an org admin can give a role of its own `data_product_rw` with no rules, or with a rule on `domain_id`. A role holding `data_product_rw` that way keeps its grant and its own rules when it's named as an owner.
+
+A filter reads the request through `current_setting('provisa.<name>')`. The request binds `user_id` from the signed-in identity, `role` from the acting role, `acting_roles` with the roles it acts as, and every scalar claim in the token, lower-cased with dashes turned into underscores. `provisa.user_id` is always the signed-in identity, and no claim can replace it.
+
+A request can act as several roles, so `acting_roles` holds several values. Read it as one member of an `IN` list, `owner_role IN (current_setting('provisa.acting_roles'))`, and it expands to one value per role. Anywhere else it's the role ids joined by commas. It holds the roles acted as and their ancestors, so a rule naming an owner role admits a child of it.
 
 Hasura's session variables keep their names. `X-Hasura-User-Id` is `hasura_user_id`, read from the token's `x-hasura-user-id` claim (at the top level or inside the Hasura claims object, such as `https://hasura.io/jwt/claims`) or from the member's recorded `hasura_user_id` attribute. So an imported Hasura filter on `X-Hasura-User-Id` reads `provisa.hasura_user_id`.
 
-Underneath the request's values sit the role's configured `session_vars`, which the request overrides. A role that inherits takes its ancestors' constants under its own, the nearest role winning for each name. `user_id`, `role`, `region` and `org` come from the request or the node and can't be configured as constants. In unsecured mode an `x-provisa-session-<name>` header binds `<name>`. A variable bound nowhere is NULL, and a filter on it matches no rows.
+Underneath the request's values sit the role's configured `session_vars`, which the request overrides. A role that inherits takes its ancestors' constants under its own, the nearest role winning for each name. `user_id`, `role`, `acting_roles`, `region` and `org` come from the request or the node and can't be configured as constants. In unsecured mode an `x-provisa-session-<name>` header binds `<name>`. A variable bound nowhere is NULL, and a filter on it matches no rows.
 
 A role constant works the other way round from a derived role. A derived role turns a value a member holds into a role. A role constant hands every request made as the role a value, which a row rule reads just as it reads a claim. The constant can be a `${env:NAME}` or `${secret:NAME}` reference, resolved by the same resolver as every other reference when a query uses it. The model keeps the reference, never the value, and a reference that resolves to nothing fails the query and names the constant. Once resolved, the value is part of the query: Provisa's own records of it are covered by central redaction, but a federated source's own logs are beyond Provisa's reach.
 

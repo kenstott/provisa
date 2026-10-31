@@ -65,6 +65,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     role_id: str = ""
     can_write: bool = False
     write_grants: dict[int, dict[str, dict]] = field(default_factory=dict)
+    # REQ-2188: the role's U and D rules: "update" or "delete" -> table_id -> predicate. ANDed into
+    # the write beside its grant; they admit nothing the grant does not.
+    write_rules: dict[str, dict[int, str]] = field(default_factory=dict)
     # The data writes each table's source can take (executor/write_capability.py), from the
     # table's record. A table with no entry offers none.
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
@@ -193,6 +196,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
     # RLS rules
     gov.rls_rules = dict(rls_context.rules) if rls_context else {}
+    gov.write_rules = dict(rls_context.write_rules) if rls_context else {}  # REQ-2188
 
     # Row cap (REQ-005): role-level ceiling. Explicit role `max_rows` wins; otherwise a
     # role without the FULL_RESULTS capability (or an unknown role) gets the default cap.
@@ -1487,6 +1491,7 @@ def apply_governance(
     Returns governed SQL string.
     """
     from provisa.compiler.write_admission import admit_write, is_write
+    from provisa.core.session_terms import expand_list_settings
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
@@ -1497,6 +1502,9 @@ def apply_governance(
         _govern_returning(tree, gov_ctx)
 
     tree = _govern_selects(tree, gov_ctx, answers=not writes)
+    # REQ-2188: a variable of several values reads as a list in an IN; the rest are resolved by the
+    # pipeline after this stage.
+    expand_list_settings(tree, session_vars or {})  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
 
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
     # any per-table ceiling on a table referenced by the query.

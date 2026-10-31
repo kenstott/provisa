@@ -553,11 +553,12 @@ rls_rules = Table(
     Column(
         "why", JSON(none_as_null=True)
     ),  # REQ-2094: why the rule is what it is (provisa.judgments.why)
+    # REQ-2188: the rights the one predicate narrows: R reading a row, U updating it, D deleting
+    # it, in that order. A right is in at most one rule of a role on a target; no constraint can
+    # say so across rows, so the save does (repositories.rls.upsert).
+    Column("rights", Text, nullable=False, server_default="R"),
     Column("tenant_id", Uuid),
-    UniqueConstraint("table_id", "role_id"),
-    UniqueConstraint("tag_id", "role_id", name="rls_rules_tag_role_key"),
-    UniqueConstraint("domain_id", "role_id", name="rls_rules_domain_role_key"),
-    UniqueConstraint("action_name", "role_id", name="rls_rules_action_role_key"),
+    CheckConstraint("rights IN ('R', 'U', 'D', 'RU', 'RD', 'UD', 'RUD')", name="rls_rules_rights"),
 )
 
 # REQ-1373/REQ-1375: org-level tag registry — one registry, per-tag applies_to scopes;

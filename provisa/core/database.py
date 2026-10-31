@@ -1102,9 +1102,63 @@ class Connection:
     def _execute_core(self, stmt: Any) -> Any:
         from provisa.core.env_secrets import guard_statement
         from provisa.core.meta_rls import apply_meta_tenant_guard
+        from provisa.core.model_row_rules import narrowing_of
 
-        result = self._exec(apply_meta_tenant_guard(guard_statement(stmt)))
+        guarded = apply_meta_tenant_guard(guard_statement(stmt))
+        narrowing = narrowing_of(guarded, self.capabilities.dialect)  # REQ-2188
+        result = (
+            self._exec(guarded) if narrowing is None else self._exec_narrowed(guarded, narrowing)
+        )
         self._commit_if_autocommit()
+        return result
+
+    def _count_rows(self, table: Any, *where: Any) -> int:
+        from sqlalchemy import func, select as _select
+
+        return self._exec(
+            _select(func.count()).select_from(table).where(*[w for w in where if w is not None])
+        ).scalar_one()
+
+    async def require_admitted(self, stmt: Any) -> None:
+        """REQ-2188: hold ``stmt``, an UPDATE or DELETE this write does not itself run, to the acting
+        role's rule: a write stored on another row that belongs to the row ``stmt`` names (a
+        contract, kept on its table, belongs to its product). Refused by name, writing nothing."""
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+        from provisa.core.model_row_rules import narrowing_of
+
+        guarded = apply_meta_tenant_guard(stmt)
+        narrowing = narrowing_of(guarded, self.capabilities.dialect)
+        if narrowing is not None:
+            self._admit(guarded, narrowing)
+
+    def _admit(self, stmt: Any, narrowing: Any) -> int:
+        """Refuse ``stmt`` when a row it matches is outside the rule; how many rows it matches."""
+        from provisa.core.model_row_rules import refused
+
+        where = stmt.whereclause
+        matched = self._count_rows(stmt.table, where)
+        if self._count_rows(stmt.table, where, narrowing.predicate) < matched:
+            raise refused(narrowing)
+        return matched
+
+    def _exec_narrowed(self, stmt: Any, narrowing: Any) -> Any:
+        """REQ-2188: ``stmt`` held to the acting role's rule, in effect UPDATE ... WHERE id = ? AND
+        (rule). All of it or none: every row it matches is admitted, or it is refused by name
+        having written nothing. The count and the write are one transaction: the caller's, or, on
+        an autocommit connection, one that ends with this statement. Zero rows written after the
+        rows were admitted means they moved out of the rule meanwhile, which is the same refusal;
+        a row that matched nothing at all is not one."""
+        from provisa.core.model_row_rules import refused
+
+        try:
+            matched = self._admit(stmt, narrowing)
+            result = self._exec(stmt.where(narrowing.predicate))
+            if matched and result.rowcount == 0:
+                raise refused(narrowing)
+        except BaseException:
+            if self._tx_depth == 0:
+                self._sc.rollback()
+            raise
         return result
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.

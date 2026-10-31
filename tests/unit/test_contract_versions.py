@@ -472,6 +472,56 @@ async def test_a_refused_save_records_no_version(plane):
     assert [v.contract.version for v in stored.versions] == ["0.1.0"]
 
 
+def _held_to(monkeypatch, predicate: str) -> None:
+    """The acting role's U rule on data_products is ``predicate``."""
+    from provisa.core import model_row_rules
+
+    monkeypatch.setattr(
+        model_row_rules,
+        "_provider",
+        lambda role, table, right: (
+            model_row_rules.ModelRule(predicate=predicate)
+            if (table, right) == ("data_products", "U")
+            else None
+        ),
+    )
+
+
+async def test_a_contract_is_held_by_its_products_u_rule(plane, monkeypatch):  # REQ-2188
+    from provisa.core.model_row_rules import ModelRowRefused
+    from provisa.core.request_context import current_acting_role
+
+    _held_to(monkeypatch, "id = 'someone_elses'")
+    token = current_acting_role.set("pets_team")
+    try:
+        async with plane.acquire() as conn:
+            table_id = await _orders_id(conn)
+            with pytest.raises(ModelRowRefused, match="data_products"):
+                await data_product_repo.save_contract(
+                    conn, table_id, _contract("1.0.0", _col("id"))
+                )
+    finally:
+        current_acting_role.reset(token)
+    async with plane.acquire() as conn:
+        stored = await _stored(conn)
+    assert [v.contract.version for v in stored.versions] == ["0.1.0"]
+
+
+async def test_a_contract_of_a_product_the_rule_admits_saves(plane, monkeypatch):  # REQ-2188
+    from provisa.core.request_context import current_acting_role
+
+    _held_to(monkeypatch, "id = 'p'")
+    token = current_acting_role.set("pets_team")
+    try:
+        async with plane.acquire() as conn:
+            table_id = await _orders_id(conn)
+            await data_product_repo.save_contract(conn, table_id, _contract("1.0.0", _col("id")))
+            stored = await _stored(conn)
+    finally:
+        current_acting_role.reset(token)
+    assert [v.contract.version for v in stored.versions] == ["0.1.0", "1.0.0"]
+
+
 async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
     await conn.execute_core(insert(sources).values(id="soda", type="soda"))
     checker = (

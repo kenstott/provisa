@@ -357,6 +357,7 @@
       "request_rejected": "作成リクエスト #{{id}} を却下しました",
       "rls_rule_deleted": "RLS ルールを削除しました",
       "rls_rule_not_found": "RLS ルールが見つかりません",
+      "rls_rule_right_taken": "ロール「{{role}}」の権限 {{right}} はすでにルール {{rule}} に含まれています。権限は 1 つのルールにしか含められません。そのルールから外すか、そのルールを編集してください。",
       "rls_rule_saved_domain": "ドメイン「{{domain}}」／ロール「{{role}}」の RLS ルールを保存しました",
       "rls_rule_saved_table": "テーブル {{table}}／ロール「{{role}}」の RLS ルールを保存しました",
       "rls_rule_saved_tag": "タグ「{{tag}}」／ロール「{{role}}」の RLS ルールを保存しました",

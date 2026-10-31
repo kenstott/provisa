@@ -2182,19 +2182,24 @@ async def _apply(
 
     # Resolve domain policy before any registration so repos/compilers read one source of truth.
     domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
+    from provisa.core.model_row_rules import unnarrowed
+
     # REQ-1524: an apply is one model change, committed once its transaction has committed.
+    # REQ-2188: a config load has no acting person, even when an admin's request starts it: what
+    # it writes is the configuration's, and no role's U or D row rule holds it.
     async with model_change.scope(label):
         model_change.label(label)
-        async with conn.transaction():
-            # Serialize concurrent applies (parallel workers, test app lifespans) so they do not
-            # deadlock on the same rows. A no-op on single-writer backends (SQLite).
-            await conn.advisory_xact_lock(7261748190)
-            if reset:
-                await reset_model(conn)
-            failed = await _apply_in_txn(
-                config, conn, engine, defer_unregistered=defer_unregistered
-            )
-            await _mark_seeded(conn)
+        with unnarrowed():
+            async with conn.transaction():
+                # Serialize concurrent applies (parallel workers, test app lifespans) so they do
+                # not deadlock on the same rows. A no-op on single-writer backends (SQLite).
+                await conn.advisory_xact_lock(7261748190)
+                if reset:
+                    await reset_model(conn)
+                failed = await _apply_in_txn(
+                    config, conn, engine, defer_unregistered=defer_unregistered
+                )
+                await _mark_seeded(conn)
     return failed
 
 

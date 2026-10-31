@@ -12,6 +12,8 @@
 read as "a related row matches it" and compiled to EXISTS over the relationship's target, governed
 as the rest of the statement is; and ``ilike`` matches with case ignored."""
 
+from pathlib import Path
+
 import pytest
 from graphql import parse, validate
 
@@ -149,11 +151,11 @@ def test_a_nested_where_s_exists_body_is_governed_with_the_target_s_row_rules(sc
     assert '"w1"."name" = \'ann\'' in exists
 
 
-def test_a_nested_where_without_a_relationship_reads_its_rows_unaliased(schema_and_ctx):
+def test_a_nested_where_without_a_relationship_reads_its_rows_under_the_alias(schema_and_ctx):
     q = _compiled(
         schema_and_ctx, '{ customers { id orders(where: { status: { eq: "open" } }) { id } } }'
     )
-    assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders" WHERE' in q.sql
+    assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders" "t1" WHERE' in q.sql
 
 
 def test_an_empty_or_holds_for_no_row_and_an_empty_and_for_every_row(schema_and_ctx):
@@ -178,3 +180,10 @@ def test_the_glossary_s_terms_and_edges_reach_each_other_both_ways():
     assert by_alias["edgesIn"][4] == "to_term_id"
     assert by_alias["sourceTerm"][3] == "from_term_id"
     assert by_alias["targetTerm"][3] == "to_term_id"
+
+
+def test_a_relationship_target_is_always_read_under_the_joins_alias():
+    """A star under a lateral is expanded by its table's alias: with none, a table the statement
+    renames expanded under a physical name the FROM no longer held (Binder Error)."""
+    source = Path("provisa/compiler/sql_selection.py").read_text()
+    assert 'f"LEFT JOIN LATERAL (SELECT * FROM {target} {_q(join_alias)} "' in source

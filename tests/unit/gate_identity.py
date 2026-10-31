@@ -49,6 +49,9 @@ def grant(monkeypatch, *capabilities: str, state=None):
 def serve_every_column(monkeypatch) -> None:
     """Answer every caller the whole catalog (admin/catalog_scope.py), for a test of a table save
     whose subject is not which columns its caller is served (REQ-2152 has its own tests)."""
+    # Imported before the patch: a first import after it would bind the patched name, and the undo
+    # would then restore that one, leaving every later test in the process reading it.
+    import provisa.api.admin.schema_query  # noqa: F401
     from provisa.api.admin.catalog_scope import CatalogScope
 
     def whole(info):

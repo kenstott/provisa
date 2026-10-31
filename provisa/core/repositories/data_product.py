@@ -103,6 +103,14 @@ async def list_by_domain(conn: "Connection", domain_id: str) -> list[dict]:  # R
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def owner_roles(conn: "Connection") -> set[str]:  # REQ-2188
+    """The roles named in an Owner field: what the runtime build gives RW on data products."""
+    result = await conn.execute_core(
+        select(data_products.c.owner_role).where(data_products.c.owner_role.is_not(None)).distinct()
+    )
+    return {r[0] for r in result.fetchall()}
+
+
 class DataProductDeleteRefused(Exception):
     """A data product that may not be deleted because it has members; ``dependents`` lists
     them."""
@@ -207,6 +215,10 @@ async def save_contract(  # REQ-2158
             raise data_contracts.ContractRefused(
                 f"table {table_id} is no data product's output port: it has no contract"
             )
+        # REQ-2188: a contract belongs to its product: the product's U rule holds its save.
+        await conn.require_admitted(
+            update(data_products).where(data_products.c.id == row.product_id)
+        )
         cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
         contract = data_contracts.as_stored(cid, contract)
@@ -350,6 +362,16 @@ async def retire(
         raise StatusRefused(
             "not_found", f"data product {product_id!r} not found", data_product=product_id
         )
+    # REQ-2188: one transaction: a retirement refused by a row rule moves no member.
+    async with conn.transaction():
+        await _retire(conn, product, text, successor, by)
+    model_change.name("retire", "data product", product_id)
+
+
+async def _retire(
+    conn: "Connection", product: dict, text: str, successor: "str | None", by: "str | None"
+) -> None:
+    product_id = product["id"]
     if product["status"] not in ("live", "deprecated"):
         raise StatusRefused(
             "not_live",
@@ -380,7 +402,6 @@ async def retire(
         retire_on=None,
         successor_id=successor,
     )
-    model_change.name("retire", "data product", product_id)
 
 
 async def _check_successor(conn: "Connection", product: dict, successor: str) -> None:
