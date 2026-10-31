@@ -299,6 +299,10 @@ class EngineRuntime:  # REQ-825, REQ-840
             extra_table_attrs=extra_table_attrs,
         )
 
+    async def session_properties(self) -> frozenset[str] | None:  # REQ-281
+        """The session properties the bound engine defines; ``None`` if it has none."""
+        return await self._backend.session_properties(self._state)
+
     def execute_engine_sync(
         self,
         sql: str,

@@ -5270,6 +5270,30 @@ async def _govern_compiled(
     return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql, travel=_travel)
 
 
+def _operator_session_hints(state: Any, sources: Any) -> dict[str, str]:  # REQ-281
+    """Each source's federation hints, translated from the ``@provisa`` vocabulary."""
+    from provisa.compiler.directives import translate_federation_hints
+
+    hints: dict[str, str] = {}
+    for sid in sources or ():
+        hints.update(
+            translate_federation_hints(getattr(state, "source_federation_hints", {}).get(sid, {}))
+        )
+    return hints
+
+
+async def _defined_session_props(state: Any, sources: Any) -> frozenset[str] | None:  # REQ-281
+    """The session properties the engine defines, asked only when the sources' hints need it: a
+    key outside the ``@provisa`` vocabulary is a raw session property or a connector's setting,
+    and only the engine knows which. ``None`` when every key is the vocabulary's own, or the engine
+    has no session properties and ignores the hints."""
+    from provisa.compiler.directives import TRANSLATED_SESSION_PROPS
+
+    if set(_operator_session_hints(state, sources)) <= TRANSLATED_SESSION_PROPS:
+        return None
+    return await state.federation_engine.session_properties()
+
+
 def _engine_session_hints(
     state: Any,
     sources: Any,
@@ -5277,20 +5301,24 @@ def _engine_session_hints(
     exec_sql: str,
     *,
     writes: bool,
+    defined: frozenset[str] | None = None,
 ) -> dict[str, str] | None:  # REQ-281, REQ-910
     """The engine session properties one compiled statement runs with: each source's federation
-    hints (translated from the ``@provisa`` vocabulary), then the request's own properties and the
+    hints (translated from the ``@provisa`` vocabulary, less any key outside ``defined``: that one
+    is its connector's setting, read from the source), then the request's own properties and the
     statement's comment hints filling only what the operator left open — and no fault-tolerant
     retry for a write or a read of a non-replayable connector (:func:`_no_retry`)."""
-    from provisa.compiler.directives import merge_session_props, translate_federation_hints
+    from provisa.compiler.directives import merge_session_props
     from provisa.compiler.hints import extract_hints
 
     _, comment_hints = extract_hints(exec_sql)
-    operator_hints: dict[str, str] = {}
-    for sid in sources or ():
-        operator_hints.update(
-            translate_federation_hints(getattr(state, "source_federation_hints", {}).get(sid, {}))
-        )
+    operator_hints = _operator_session_hints(state, sources)
+    if defined is not None:
+        settings = [key for key in operator_hints if key.lower() not in defined]
+        if settings:
+            # Names only: a connector's settings include its credentials.
+            log.info("[ROUTE] source hints left to their connectors: %s", sorted(settings))
+        operator_hints = {k: v for k, v in operator_hints.items() if k not in settings}
     hints = merge_session_props(operator_hints, session_props or {}, comment_hints)
     if _no_retry(state, sources, writes=writes):
         hints = {**hints, "retry_policy": "NONE"}
@@ -5600,7 +5628,14 @@ async def _route_compiled(
         # REQ-2100: a code source's own statement the engine runs after all is landed for it.
         _exec_sql, exec_params = await land_direct_reads(_exec_sql, exec_params, state, _table_ids)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
-        _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
+        _hints = _engine_session_hints(
+            state,
+            sources,
+            session_props,
+            _exec_sql,
+            writes=_is_write,
+            defined=await _defined_session_props(state, sources),
+        )
         return _Plan(
             route=Route.ENGINE,
             sql=governed_sql,

@@ -358,7 +358,8 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
     # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
-    # through for backward compatibility but are deprecated.
+    # through for backward compatibility but are deprecated. Every other key is a setting its
+    # connector or driver reads from here; the engine never sees it as a session property.
     federation_hints: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
 
 from provisa.compiler.hints import extract_hints
 
@@ -170,3 +171,115 @@ class TestTranslateFederationHints:
     def test_unknown_join_value_dropped(self):
         # an invalid friendly value does not emit a bogus session prop
         assert translate_federation_hints({"join": "nonsense"}) == {}
+
+
+# ---------------------------------------------------------------------------
+# REQ-281: a federation hint is sent to Trino as a session property only if it is one
+# ---------------------------------------------------------------------------
+
+
+class _TrinoCursor:
+    """Answers as Trino does: SET SESSION of a name it does not define fails the statement."""
+
+    def __init__(self, defined: frozenset[str], issued: list[str]) -> None:
+        self._defined = defined
+        self._issued = issued
+        self._rows: list = []
+        self.description = [("name", "varchar")]
+
+    def cancel(self) -> None:
+        pass
+
+    def execute(self, sql: str, params=None) -> None:
+        self._issued.append(sql)
+        self._rows = [[1]]
+        if sql == "SHOW SESSION":
+            self._rows = [[name, "", "", "varchar", ""] for name in sorted(self._defined)]
+        elif sql.startswith("SET SESSION"):
+            name = sql.split()[2]
+            if name not in self._defined:
+                raise RuntimeError(
+                    "FederationError(type=USER_ERROR, name=INVALID_SESSION_PROPERTY, "
+                    f"message=\"Session property '{name}' does not exist\")"
+                )
+
+    def fetchall(self) -> list:
+        return self._rows
+
+
+class _Trino:
+    """The state a Trino engine's plan is built on, over a coordinator defining ``defined``."""
+
+    DEFINED = frozenset({"join_distribution_type", "query_max_execution_time", "query_max_memory"})
+
+    def __init__(self, source_federation_hints: dict[str, dict[str, str]]) -> None:
+        from provisa.federation.backend import TrinoBackend
+
+        self.issued: list[str] = []
+        self.source_federation_hints = source_federation_hints
+        self.source_types = {sid: "mongodb" for sid in source_federation_hints}
+        self.engine_conn = self
+        self.engine_conn_kwargs: dict = {}
+        self.engine_session_hints: dict = {}
+        self._backend = TrinoBackend(MagicMock())
+
+    def cursor(self) -> _TrinoCursor:
+        return _TrinoCursor(self.DEFINED, self.issued)
+
+    @property
+    def federation_engine(self) -> "_Trino":
+        return self
+
+    async def session_properties(self) -> frozenset[str] | None:
+        return await self._backend.session_properties(self)
+
+    async def run(self, *sources: str) -> list[str]:
+        """Build the plan's hints for a statement over ``sources``, then execute it."""
+        from provisa.executor.trino import execute_trino
+        from provisa.pgwire._pipeline import _defined_session_props, _engine_session_hints
+
+        with patch("provisa.executor.trino._alive", return_value=True):
+            hints = _engine_session_hints(
+                self,
+                sources,
+                None,
+                "SELECT 1",
+                writes=False,
+                defined=await _defined_session_props(self, sources),
+            )
+            self.issued.clear()
+            execute_trino(self, "SELECT 1", session_hints=hints)
+        return [sql for sql in self.issued if sql.startswith("SET SESSION")]
+
+
+class TestSessionPropertiesOnly:
+    async def test_a_connector_setting_does_not_fail_the_statement(self):
+        # Bench P2: bench-mongodb's direct_connection, HTTP 500 INVALID_SESSION_PROPERTY.
+        sent = await _Trino({"bench-mongodb": {"direct_connection": "true"}}).run("bench-mongodb")
+        assert not [sql for sql in sent if "direct_connection" in sql]
+
+    async def test_a_raw_session_property_on_a_source_is_still_sent(self):
+        engine = _Trino({"s": {"query_max_memory": "8GB", "direct_connection": "true"}})
+        assert "SET SESSION query_max_memory = '8GB'" in await engine.run("s")
+
+    async def test_the_provisa_vocabulary_is_still_sent(self):
+        sent = await _Trino({"s": {"join": "broadcast"}}).run("s")
+        assert "SET SESSION join_distribution_type = 'BROADCAST'" in sent
+
+    async def test_a_setting_holding_a_secret_never_reaches_a_statement(self):
+        engine = _Trino({"s": {"client_secret": "hunter2"}})
+        await engine.run("s")
+        assert not [sql for sql in engine.issued if "hunter2" in sql]
+
+    async def test_the_vocabulary_alone_costs_no_round_trip(self):
+        from provisa.pgwire._pipeline import _defined_session_props
+
+        engine = _Trino({"s": {"join": "broadcast", "broadcast_size": "1GB"}})
+        assert await _defined_session_props(engine, ("s",)) is None
+        assert engine.issued == []
+
+
+async def test_an_engine_with_no_session_properties_is_not_asked_to_list_them():
+    from provisa.federation.backend import EngineBackend
+
+    assert await EngineBackend(MagicMock()).session_properties(MagicMock()) is None
