@@ -10,8 +10,8 @@
 
 """A catalog statement on a real control plane, for the tests of what a client reads (REQ-2190): the
 model a test states is written to the store, and ``answer`` reads the real views through the real
-routing. Governance is left out, as these tests are about the catalog's answers: a role's rows are
-tested through the pipeline (tests/unit/pgwire/test_catalog_on_meta.py)."""
+routing. Governance is left out, as these tests are about the catalog's answers: row scope and
+column rules are not exercised here."""
 
 # Requirements: REQ-2190
 
