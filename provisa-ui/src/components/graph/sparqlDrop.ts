@@ -115,11 +115,32 @@ function shapeRefusal(tokens: Token[]): DropNotice | null {
 const parameterizedLabels = (vocabulary: SparqlVocabulary): Set<string> =>
   new Set(vocabulary.classes.flatMap((c) => c.parameterized_labels));
 
-/** The labels each variable of ``query`` can be: those its triples allow, intersected, as the
+/** ``query``'s WHERE without its OPTIONALs: what holds of every row. */
+function requiredPart(query: string): string {
+  const tokens = tokensOf(query);
+  const where = tokens.findIndex((t) => isWord(t, "WHERE"));
+  let at = where === -1 ? 0 : tokens[where].at;
+  let out = "";
+  for (let i = Math.max(where, 0); i < tokens.length; i++) {
+    if (!isWord(tokens[i], "OPTIONAL")) continue;
+    let depth = 0;
+    let close = i + 1;
+    for (; close < tokens.length; close++) {
+      if (tokens[close].text === "{") depth++;
+      if (tokens[close].text === "}" && --depth === 0) break;
+    }
+    out += query.slice(at, tokens[i].at);
+    at = tokens[close].at + 1;
+    i = close;
+  }
+  return out + query.slice(at);
+}
+
+/** The labels each variable of ``text`` can be: those its triples allow, intersected, as the
  * compiler reads them; and the variables only a variable predicate places, which can be of any
  * class a query can read without arguments. */
-function variableLabels(
-  query: string,
+function labelsOfPatterns(
+  text: string,
   vocabulary: SparqlVocabulary,
   namespaces: Record<string, string>,
 ): { held: Map<string, string[]>; open: Set<string> } {
@@ -139,7 +160,7 @@ function variableLabels(
     placed.add(token.slice(1));
     intersect(token.slice(1), labels);
   };
-  for (const { s, p, o } of writtenPatterns(query)) {
+  for (const { s, p, o } of writtenPatterns(text)) {
     if (/^[?$]\w/.test(p)) {
       if (/^[?$]\w/.test(s)) intersect(s.slice(1), everyClass);
       continue;
@@ -174,6 +195,19 @@ function variableLabels(
     );
   }
   return { held, open: new Set([...held.keys()].filter((name) => !placed.has(name))) };
+}
+
+/** What ``query``'s variables can be (labelsOfPatterns). A subject open where every row holds it
+ * stays open whatever an OPTIONAL, or a CONSTRUCT's template, says of it: that holds only there. */
+function variableLabels(
+  query: string,
+  vocabulary: SparqlVocabulary,
+  namespaces: Record<string, string>,
+): { held: Map<string, string[]>; open: Set<string> } {
+  const { held } = labelsOfPatterns(query, vocabulary, namespaces);
+  const required = labelsOfPatterns(requiredPart(query), vocabulary, namespaces);
+  for (const name of required.open) held.set(name, required.held.get(name) as string[]);
+  return { held, open: required.open };
 }
 
 /** ``name`` as a variable's base: letters, digits and underscores, not starting with a digit. */

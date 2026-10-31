@@ -435,6 +435,20 @@ LIMIT 25`;
     expect(q).toContain("FILTER(?s = <https://x.example/id/ps/pets/1>)");
   });
 
+  it("stays open after a drop: what an OPTIONAL says of ?s types it only there", () => {
+    const once = queryOf(drop(OPEN, { kind: "edge", iri: `${B}/rel/HAS_INQUIRY` }));
+    const twice = queryOf(drop(once, { kind: "edge", iri: `${B}/rel/EMPLOYS` }));
+    expect(twice).toContain("rel:EMPLOYS ?staff");
+  });
+
+  it("stays open in a CONSTRUCT, whose template a drop has added to", () => {
+    const construct = `PREFIX rel: <${B}/rel/>
+CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }`;
+    const once = queryOf(drop(construct, { kind: "edge", iri: `${B}/rel/HAS_INQUIRY` }));
+    const twice = queryOf(drop(once, { kind: "edge", iri: `${B}/rel/EMPLOYS` }));
+    expect(twice).toContain("rel:EMPLOYS ?staff");
+  });
+
   it("leaves a typed subject typed", () => {
     const typed = OPEN.replace("?s ?p ?o", "?s ?p ?o . ?s a ps:pets");
     const q = queryOf(drop(typed, { kind: "class", iri: iri("inquiries") }));
