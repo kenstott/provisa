@@ -228,13 +228,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
         ONTOLOGY_DOMAIN_ID,
-        IMPLICIT_DOMAINS,
+        SYSTEM_DOMAINS,
         Capability,
+        acts_in_domain,
         column_served,
         compute_meta_row_scope,
         has_capability,
         reaches_domain,
-        reads_domain,
         served_across_domains,
     )
 
@@ -270,10 +270,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         }
         if embeddings:
             gov.embedding_columns[table_id] = embeddings
-        # A system domain a role reads without listing it is read only: its write grants, if any
-        # are stored, are not the role's here (admit_write reads this and no domain).
+        # A capability opening a system domain brings no write: its write grants, if any are
+        # stored, are not the role's here (admit_write reads this and no domain).
         _home = tbl.get("domain_id") or ""
-        _writes = _home not in IMPLICIT_DOMAINS or reaches_domain(role["domain_access"], _home)
+        _writes = _home not in SYSTEM_DOMAINS or acts_in_domain(role["domain_access"], _home)
         gov.write_grants[table_id] = {
             g["operation"]: g
             for g in (tbl.get("write_grants") or [] if _writes else [])
@@ -302,9 +302,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # published column (REQ-1959).
             _tbl_domain = tbl.get("domain_id")
             # A table registered with no domain is gated by none, as the direct-read check
-            # (V001) treats it. A role reads the ontology schema as it does meta (REQ-2163): its
-            # rows are scoped by the glossary's own rule below.
-            _reaches = not _tbl_domain or reads_domain(role["domain_access"], _tbl_domain)
+            # (V001) treats it. The ontology schema's rows are scoped by the glossary's own rule
+            # below (REQ-2163).
+            _reaches = not _tbl_domain or reaches_domain(role["domain_access"], _tbl_domain)
             _subject = {"id": role_id}
             visible = {
                 c["column_name"]

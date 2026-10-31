@@ -94,22 +94,19 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   // but this effect read one arbitrary role, so a user holding analyst (pet-store, shelter) plus
   // org_admin (*) got analyst's two domains and lost meta and ops entirely. Which role won was an
   // accident of list order, so the same account showed different domains as its role set changed.
-  // Any active role with `*` means the whole catalog; otherwise the union of what each role reads,
-  // which the server answers: a role's list and the system domains (rights.read_domains), so meta
-  // and ontology are named once, there.
-  // That one wildcard role is asked deliberately: it answers every domain, the most any set of
-  // roles holding it can reach, so the set adds nothing to the answer.
+  // The union of what each active role reaches, which the server answers from its flattened
+  // domain_access: its data domains and the system domains its capabilities hold (REQ-1132). Every
+  // role is asked, a wildcard one too: `*` is every data domain, so it answers no system domain
+  // another role in the set may hold.
   const roleIds = selectedRoles.map((r) => r.id).join(",");
-  const wildcardRoleId = selectedRoles.find((r) => r.domain_access.includes("*"))?.id ?? null;
   const namedDomains = [
     ...new Set(selectedRoles.flatMap((r) => r.domain_access).filter((d) => d !== "*")),
   ].join(",");
   useEffect(() => {
     if (selectedRoles.length === 0) return;
     let stale = false;
-    const askedAs = wildcardRoleId !== null ? [wildcardRoleId] : selectedRoles.map((r) => r.id);
     Promise.all(
-      askedAs.map((id) =>
+      selectedRoles.map(({ id }) =>
         fetch("/data/domains", { headers: { "X-Provisa-Role": id } }).then(
           (r) => r.json() as Promise<string[]>,
         ),
@@ -127,7 +124,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
       stale = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the role SET (the joined ids), not the array identity, so the fetch does not re-run on every render
-  }, [roleIds, wildcardRoleId, namedDomains]);
+  }, [roleIds, namedDomains]);
 
   function toggleDomain(id: string) {
     setCheckedDomains((prev) => {

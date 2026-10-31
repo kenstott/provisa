@@ -43,7 +43,7 @@ def _role(rid, parent=None, caps=(), domains=(), rate_limit=None, parents=None):
 
 ROLES = [
     _role("reader", caps=["query_development"], domains=["sales"], rate_limit={"rps": 5}),
-    _role("analyst", parent="reader", caps=["full_results"], domains=["ops"]),
+    _role("analyst", parent="reader", caps=["full_results"], domains=["support"]),
     _role("junior", parent="analyst"),
     _role("auditor"),
 ]
@@ -95,7 +95,7 @@ class TestFlattenDicts:
 
     def test_reach_is_the_roles_own_and_never_inherited(self):  # REQ-2155
         by_id = {r["id"]: r for r in flatten_role_dicts(ROLES)}
-        assert by_id["analyst"]["domain_access"] == ["ops"]
+        assert by_id["analyst"]["domain_access"] == ["support"]
         assert by_id["junior"]["domain_access"] == []
 
     def test_a_domain_child_of_an_every_domain_parent_reaches_its_domain_only(self):  # REQ-2155
@@ -207,7 +207,7 @@ class TestGrants:
 
 ORDERS = {"id": 10, "domain_id": "sales"}
 CUSTOMERS = {"id": 11, "domain_id": "sales"}
-TICKETS = {"id": 12, "domain_id": "ops"}
+TICKETS = {"id": 12, "domain_id": "support"}
 TABLES = [ORDERS, CUSTOMERS, TICKETS]
 
 
@@ -293,7 +293,8 @@ class TestSeveralParents:
     def test_capabilities_are_the_union_of_every_ancestor(self):
         lead = {r["id"]: r for r in flatten_role_dicts(MULTI)}["lead"]
         assert lead["capabilities"] == ["data_product_rw", "glossary_read", "glossary_rw"]
-        assert lead["domain_access"] == []  # reach is its own (REQ-2155)
+        # Reach is its own (REQ-2155); the glossary_read it inherits holds ontology (REQ-1132).
+        assert lead["domain_access"] == ["ontology"]
 
     def test_a_property_comes_from_the_first_ancestor_that_sets_one(self):
         lead = {r["id"]: r for r in flatten_role_dicts(MULTI)}["lead"]

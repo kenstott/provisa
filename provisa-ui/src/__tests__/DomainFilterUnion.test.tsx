@@ -56,14 +56,24 @@ const OPS: Role = {
   demonstrated: [],
   domain_access: ["ops"],
 };
+const LOADER: Role = {
+  id: "loader",
+  description: "What loader is for.",
+  capabilities: ["usage"] as Capability[],
+  effectiveCapabilities: ["usage"] as Capability[],
+  demonstrated: [],
+  domain_access: ["*"],
+};
 
 // Every domain the server knows about — what a wildcard role is entitled to.
 const ALL_DOMAINS = ["meta", "ontology", "ops", "shelter", "pet-store"];
-// What /data/domains answers each role: its list plus the system domains, which the server names.
+// What /data/domains answers each role: its flattened domain_access (REQ-1132).
 const SERVED: Record<string, string[]> = {
   org_admin: ALL_DOMAINS,
   analyst: ["meta", "ontology", "pet-store", "shelter"],
-  ops: ["meta", "ontology", "ops"],
+  ops: ["ops", "shelter"],
+  // `*` is every data domain: this wildcard role holds no system capability.
+  loader: ["pet-store", "shelter"],
 };
 
 function Probe() {
@@ -150,6 +160,11 @@ describe("DomainFilterContext domain resolution", () => {
     localStorage.clear();
     renderWith([ORG_ADMIN, ANALYST]);
     expect(await domainsShown()).toEqual(analystFirst);
+  });
+
+  it("keeps a system domain another role holds beside a wildcard role", async () => {
+    renderWith([LOADER, OPS]);
+    expect(await domainsShown()).toEqual(["ops", "pet-store", "shelter"]);
   });
 
   it("unions the named domains of several non-wildcard roles", async () => {

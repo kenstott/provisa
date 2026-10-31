@@ -1456,10 +1456,10 @@ def _role_domains(state: Any, role: str) -> set[str]:
     config = getattr(state, "config", None)
     for r in getattr(config, "roles", None) or []:
         if getattr(r, "id", None) == role:
-            from provisa.security.rights import reaches_all_domains, read_domains
+            from provisa.security.rights import reaches_all_domains
 
             access = list(r.domain_access)
-            return {"*"} if reaches_all_domains(access) else read_domains(access)
+            return {"*"} if reaches_all_domains(access) else set(access)
     return set()
 
 

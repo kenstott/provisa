@@ -141,7 +141,10 @@ def domains_within(role_domain_access: list[str] | None) -> frozenset[str] | Non
         )
     if ALL_DOMAINS in role_domain_access:
         return None
-    return frozenset(role_domain_access)
+    from provisa.security.rights import SYSTEM_DOMAINS
+
+    # A system domain in a flattened list is read by a capability (REQ-1132): nothing is changed in it.
+    return frozenset(role_domain_access) - SYSTEM_DOMAINS
 
 
 def may_change_domain(role_domain_access: list[str] | None, domain_id: str) -> bool:

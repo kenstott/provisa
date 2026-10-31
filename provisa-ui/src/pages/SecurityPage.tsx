@@ -37,6 +37,7 @@ import { RoleGrantAction } from "../components/RoleGrantAction";
 import { removeUserAssignment } from "../api/admin";
 import type { Role, Capability, SessionVar } from "../types/auth";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { assignableDomainIds } from "../lib/internalDomains";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
@@ -242,7 +243,8 @@ export function SecurityRolesPage() {
 
   const domainOptions = [
     { id: "*", label: t("securityPage.allDomains") },
-    ...domains.map((d) => ({ id: d.id, label: d.id })),
+    // REQ-1132: a system domain is held as a capability, never listed on a role.
+    ...assignableDomainIds(domains.map((d) => d.id)).map((id) => ({ id, label: id })),
   ];
 
   // REQ-1940: sort and group are the shared list mechanism.

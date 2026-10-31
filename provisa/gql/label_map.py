@@ -490,7 +490,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         system domains may be a MATCH root, and there is no list to read off a missing role, so
         ``None`` raises rather than leaving the catalog open.
         """
-        from provisa.security.rights import IMPLICIT_DOMAINS, reaches_all_domains, reads_domain
+        from provisa.security.rights import SYSTEM_DOMAINS, reaches_all_domains, reaches_domain
 
         if domain_access is None:
             raise ValueError(
@@ -517,7 +517,13 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             and all_column_types is not None
         ):
             _add_cross_domain_nodes(
-                all_tables,
+                # A system domain the role holds no capability for is no node of its graph.
+                [
+                    t
+                    for t in all_tables
+                    if t["domain_id"] not in SYSTEM_DOMAINS
+                    or reaches_domain(domain_access, t["domain_id"])
+                ],
                 all_relationships,
                 all_column_types,
                 source_catalogs,
@@ -540,17 +546,17 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             for nm in nodes.values():
                 nm.modeling_role = _roles_by_id.get(nm.table_id) or nm.modeling_role
 
-        # REQ-1132, REQ-2163: a role reads the system domains (meta, ontology) as SQL does, so a
-        # MATCH may root in them, by the one rule (rights.reads_domain). Only a role reading none,
-        # one with an empty list, is left with traversal: a direct FROM would be V001-blocked --
-        # but a Class table, which no relationship reaches, is read as a root, as SQL reads it,
-        # under the read rights of the tables it is the union of.
+        # REQ-1132, REQ-2163: a system domain is a MATCH root for a role holding its capability, by
+        # the rule SQL enforces (rights.reaches_domain); any other role is left with traversal,
+        # as a direct FROM would be V001-blocked -- but a Class table, which no relationship
+        # reaches, is read as a root, as SQL reads it, under the read rights of the tables it is
+        # the union of.
         from provisa.compiler.ontology_classes import is_class_table_id
 
         for nm in nodes.values():
             if (
-                nm.domain_id in IMPLICIT_DOMAINS
-                and not reads_domain(domain_access, nm.domain_id)
+                nm.domain_id in SYSTEM_DOMAINS
+                and not reaches_domain(domain_access, nm.domain_id)
                 and not is_class_table_id(nm.table_id)
             ):
                 nm.traversal_only = True

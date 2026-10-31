@@ -30,6 +30,7 @@ const ALL_CAPABILITIES: Capability[] = [
   "user_management",
   "masking_config",
   // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
+  "catalog_read",
   "glossary_read",
   "glossary_rw",
   // REQ-2155: data quality's own rights.

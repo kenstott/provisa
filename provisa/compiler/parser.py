@@ -114,6 +114,7 @@ def parse_query(  # REQ-007, REQ-011, REQ-039
     errors = validate(schema, document)
     if errors:
         _refuse_draft_fields(document, ctx)
+        _refuse_missing_capability(document, ctx)
         _refuse_unoffered_writes(document, schema, ctx)
         raise GraphQLValidationError(errors)
     return document
@@ -144,6 +145,30 @@ def _refuse_draft_fields(document: DocumentNode, ctx: "CompilationContext") -> N
             for candidate in _table_field_candidates(name):
                 if candidate in ctx.draft_names:
                     raise TableIsDraft(ctx.draft_names[candidate])
+
+
+def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext") -> None:
+    """A field naming a system domain's table, or ``_meta``, the role holds no capability for is
+    refused naming the capability (REQ-1132); the schema offers it no such field, so validation
+    alone would answer an unnamed "Cannot query field"."""
+    from graphql import FieldNode, OperationDefinitionNode, visit
+    from graphql.language import Visitor
+
+    from provisa.security.rights import MissingDomainCapability
+
+    if not ctx.missing_capability:
+        return
+
+    class _Names(Visitor):
+        def enter_field(self, node: FieldNode, *_args: object) -> None:
+            for candidate in _table_field_candidates(node.name.value):
+                domain = ctx.missing_capability.get(candidate)
+                if domain is not None:
+                    raise MissingDomainCapability(ctx.role_id or "", domain)
+
+    for definition in document.definitions:
+        if isinstance(definition, OperationDefinitionNode):
+            visit(definition, _Names())
 
 
 def _table_field_candidates(name: str) -> list[str]:

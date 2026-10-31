@@ -112,10 +112,11 @@ def descendants(domain_id: str, parents: dict[str, str | None]) -> set[str]:
 
 def expand(domain_ids: Iterable[str], parents: dict[str, str | None]) -> list[str]:
     """``domain_ids`` with every descendant of each added, sorted. ``"*"`` already means every
-    domain and is returned alone, as a role's flattened inheritance writes it."""
+    data domain, so it is returned as a role's flattened inheritance writes it, with the system
+    domains it holds and nothing to expand."""
     listed = set(domain_ids)
     if ALL_DOMAINS in listed:
-        return [ALL_DOMAINS]
+        return sorted(listed)
     for domain_id in list(listed):
         listed |= descendants(domain_id, parents)
     return sorted(listed)

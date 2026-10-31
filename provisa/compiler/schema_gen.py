@@ -68,9 +68,9 @@ from provisa.security.rights import (
     Capability,
     column_served,
     has_capability,
-    IMPLICIT_DOMAINS,
-    reaches_all_domains,
-    reads_domain,
+    SYSTEM_DOMAINS,
+    acts_in_domain,
+    reaches_domain,
     served_across_domains,
 )
 from provisa.compiler.actions_schema import (
@@ -101,7 +101,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
     """Filter tables by role's domain access. Build per-table metadata."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
-    # empty list is no domains, and a role with a list reads the system domains (rights.reads_domain).
+    # empty list is no domains, and a system domain is reached by its capability
+    # (rights.reaches_domain).
     # A COLUMN's visible_to below reads the same way: an empty list is no role (REQ-2154).
 
     # REQ-1319: role-visible metrics keyed by the single semantic table their expression
@@ -118,8 +119,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             metrics_by_table.setdefault(refs[0], []).append(m)
 
     def _reaches(table: dict) -> bool:
-        # The role reaches the table's domain: one it lists, "*", or a system domain.
-        return reads_domain(role["domain_access"], table["domain_id"])
+        # The role reaches the table's domain: one it lists, "*", or a system domain it holds.
+        return reaches_domain(role["domain_access"], table["domain_id"])
 
     tables_by_id = {t["id"]: t for t in si.tables}
 
@@ -251,10 +252,15 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 write_returns_rows=table["write_returns_rows"],
                 write_refused_forms=frozenset(table["write_refused_forms"]),
                 # REQ-2074: the role's write grants on the table, by operation.
+                # A capability opening a system domain brings no write (rights.acts_in_domain).
                 write_grants={
                     g["operation"]: g
                     for g in table.get("write_grants") or []
                     if g["role"] == role["id"]
+                    and (
+                        table["domain_id"] not in SYSTEM_DOMAINS
+                        or acts_in_domain(role["domain_access"], table["domain_id"])
+                    )
                 },
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
@@ -1161,9 +1167,6 @@ def generate_schema(
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
     _root_ids = si.root_table_ids
-    _accessible_domains = set(si.role["domain_access"])
-    _all_access = reaches_all_domains(si.role["domain_access"])
-
     for t in tables:
         if _root_ids is not None and t.table_id not in _root_ids:
             continue
@@ -1230,17 +1233,8 @@ def generate_schema(
     mutation_fields: dict[str, GraphQLField] = {}
 
     for t in tables:
-        # Mirror the query-root visibility gate: only seed/root tables get mutation fields, and
-        # the system domains (rights.IMPLICIT_DOMAINS) are read-only unless the role lists them.
-        # Without this, a domain-filtered schema exposed mutations for reachable tables in other
-        # domains and for always-visible system tables.
+        # Mirror the query-root visibility gate: only seed/root tables get mutation fields.
         if _root_ids is not None and t.table_id not in _root_ids:
-            continue
-        if (
-            not _all_access
-            and t.domain_id in IMPLICIT_DOMAINS
-            and t.domain_id not in _accessible_domains
-        ):
             continue
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:

@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from graphql import graphql_sync, print_schema
 
 from provisa.api.errors import ApiError
-from provisa.security.rights import IMPLICIT_DOMAINS
+from provisa.security.rights import SYSTEM_DOMAINS
 
 router = APIRouter()
 
@@ -58,7 +58,7 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
     return reachable
 
 
-_ALWAYS_VISIBLE_DOMAINS = IMPLICIT_DOMAINS | {"ops"}
+_ALWAYS_VISIBLE_DOMAINS = SYSTEM_DOMAINS
 
 
 def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039
@@ -67,10 +67,10 @@ def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> 
     A requested domain NARROWS what a role is shown; it never adds to it. Refused by name rather
     than answered with an empty schema, which would read as "that domain has nothing in it".
     """
-    from provisa.security.rights import reads_domain
+    from provisa.security.rights import reaches_domain
 
     for domain_id in domain_ids:
-        if not reads_domain(role["domain_access"], domain_id):
+        if not reaches_domain(role["domain_access"], domain_id):
             raise ApiError(
                 403,
                 "data.domain_not_accessible",
@@ -150,7 +150,8 @@ async def get_domains(  # REQ-471
     x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     x_role: str = Header(None, alias="X-Role"),
 ):
-    """Return domain IDs the requesting role reads: its list and the system domains."""
+    """Return domain IDs the requesting role reaches: its data domains and, by capability, the
+    system domains (its flattened domain_access)."""
     from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
@@ -163,13 +164,10 @@ async def get_domains(  # REQ-471
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
-    from provisa.security.rights import reaches_all_domains, read_domains
+    from provisa.security.rights import reaches_domain
 
     access = role["domain_access"]
-    if reaches_all_domains(access):
-        return JSONResponse(all_domains)
-    readable = read_domains(access)
-    return JSONResponse([d for d in all_domains if d in readable])
+    return JSONResponse([d for d in all_domains if reaches_domain(access, d)])
 
 
 @router.get("/data/sdl", response_class=PlainTextResponse)

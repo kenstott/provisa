@@ -4378,6 +4378,20 @@ def create_app() -> FastAPI:
             },
         )
 
+    from provisa.security.rights import MissingDomainCapability as _MissingDomainCapability
+
+    @app.exception_handler(_MissingDomainCapability)
+    async def _missing_domain_capability_handler(_req: _Request, exc: _MissingDomainCapability):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: a system domain is held as a capability, and the refusal names it.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.capability_required",
+                "params": {"capability": exc.capability, "domain": exc.domain_id},
+            },
+        )
+
     from provisa.compiler.sql_gen import UnknownRootField as _UnknownRootField
 
     @app.exception_handler(_UnknownRootField)

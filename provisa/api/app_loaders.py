@@ -29,7 +29,12 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
-from provisa.security.rights import Capability, reaches_all_domains
+from provisa.security.rights import (
+    SYSTEM_DOMAINS,
+    Capability,
+    lists_data_domain,
+    reaches_all_domains,
+)
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context, org_scoped_signals
 from sqlalchemy import select
@@ -1912,7 +1917,9 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # this is the backstop for one that has ended up with none anyway, and it must not take
         # the org's whole build down with it. reaches_all_domains decides the single-domain
         # exemption.
-        if not role["domain_access"] and not reaches_all_domains(role["domain_access"]):
+        if not lists_data_domain(role["domain_access"]) and not reaches_all_domains(
+            role["domain_access"]
+        ):
             _drop_data_surface(state, role["id"])
             continue
         # The ops signals are one store every org's rows land in: every role reads its own org's.
@@ -1936,7 +1943,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # role and never answers a request; a view's rows are governed when the view is read.
     _model_role = {
         "id": "__model__",
-        "domain_access": ["*"],
+        "domain_access": ["*", *SYSTEM_DOMAINS],
         # The catalog's governance columns are part of the model a view may read.
         "capabilities": [Capability.VIEW_GOVERNANCE.value],
     }
@@ -1955,7 +1962,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
 
     _wire_role = {
         "id": "__wire__",
-        "domain_access": ["*"],
+        "domain_access": ["*", *SYSTEM_DOMAINS],
         "capabilities": sorted({c for r in roles for c in (r.get("capabilities") or [])}),
     }
     _wire_tables = [

@@ -38,6 +38,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+from provisa.security.rights import SYSTEM_DOMAIN_CAPABILITIES, SYSTEM_DOMAINS, normalized_reach
+
 GRANT_LISTS = ("visible_to",)
 
 #: Joins the roles of a composite grant entry (REQ-2058): ``analyst+region__eu`` is held by a
@@ -113,8 +115,9 @@ def children_of(role_id: str, roles: Iterable[dict]) -> list[str]:
 
 
 def flatten_role_dicts(roles: list[dict]) -> list[dict]:
-    """Each role with ancestor capabilities unioned in -- rights only add -- its own domain_access
-    alone (REQ-2155: reach is not inherited), and
+    """Each role with ancestor capabilities unioned in -- rights only add -- its own data domains
+    alone (REQ-2155: reach is not inherited) plus each system domain whose capability it now holds
+    (REQ-1132: a system domain is held as a capability; a stored one is no access), and
     each property (rate_limit, max_rows) set by the nearest role in the chain that declares it,
     the role itself first, so a child may raise or lower its parent's (REQ-2057). Session values
     (REQ-1682) merge by name, the nearest role's value for each. Input dicts are not modified."""
@@ -123,7 +126,7 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
     out: list[dict] = []
     for r in roles:
         caps: set[str] = set()
-        domains = set(r.get("domain_access") or [])
+        domains = set(r.get("domain_access") or []) - SYSTEM_DOMAINS
         rate_limit = r.get("rate_limit")
         max_rows = r.get("max_rows")
         session_vars: dict[str, str] = {}
@@ -140,7 +143,9 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
         flattened = {
             **r,
             "capabilities": sorted(caps),
-            "domain_access": ["*"] if "*" in domains else sorted(domains),
+            "domain_access": normalized_reach(
+                domains | {d for d, cap in SYSTEM_DOMAIN_CAPABILITIES.items() if cap in caps}
+            ),
             "rate_limit": rate_limit,
         }
         if "max_rows" in r:
