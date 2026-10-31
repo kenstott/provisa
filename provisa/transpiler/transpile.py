@@ -20,7 +20,7 @@ import re
 
 import sqlglot
 
-from provisa.transpiler import function_macros, pg_functions, pg_money
+from provisa.transpiler import function_macros, pg_functions, pg_held_types, pg_money
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_literals import postgres_literals
@@ -1222,6 +1222,11 @@ def transpile(
         )
     if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
         lowered = _OWN_TRY_CASTS[target_dialect](
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect != "postgres" and pg_held_types.mentioned(pg_sql):
+        # REQ-2171: a value of a type only PostgreSQL has, as what the target holds it as.
+        lowered = pg_held_types.held(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if function_macros.mentioned(pg_sql, target_dialect):

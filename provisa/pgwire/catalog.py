@@ -23,13 +23,13 @@ import datetime
 import functools
 import logging
 import re
-from typing import Any
 
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
     _INTERCEPT_SCHEMAS,
 )
-from provisa.pgwire.catalog_route import CatalogRequest, address, next_txid
+from provisa.pgwire.catalog_route import RESOLVED_REGS, CatalogRequest, address, next_txid
+from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TYPEINFO_COL_TYPES,
@@ -39,8 +39,8 @@ from provisa.pgwire.catalog_data import (
 from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
 from provisa.pgwire.constant_arguments import is_constant_sql
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
-from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPE_NAMES, REWRITTEN
-from provisa.core.pg_error import PostgresError, postgres_error
+from provisa.pgwire.catalog_server_answers import REWRITTEN
+from provisa.core.pg_error import PostgresError, from_engine, postgres_error
 from provisa.transpiler.metadata_functions import (
     FORMS,
     READS_THE_SERVER,
@@ -136,8 +136,8 @@ _SCALAR_NAMES = frozenset(
 
 
 # REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): the catalog functions clients call (psql describe.c,
-# pgAdmin, DBeaver) that the catalog's rewrite answers inside a catalog statement. Called on its
-# own -- a statement reading no table -- one is answered the same way, not sent to the engine.
+# pgAdmin, DBeaver) that are answered with their form. Called on its own, in a statement reading no
+# table, the statement is the engine's once written in the form (REQ-2190).
 _STANDALONE_CATALOG_FUNCTIONS = frozenset(
     {
         "pg_encoding_to_char",
@@ -199,6 +199,33 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "pg_stat_reset_single_table_counters",
         "ts_token_type",
         "pg_partition_root",
+        # REQ-2190: left to the engine, its own built-ins answer these whatever the model says.
+        "has_database_privilege",
+        "has_foreign_data_wrapper_privilege",
+        "has_function_privilege",
+        "has_language_privilege",
+        "has_schema_privilege",
+        "has_sequence_privilege",
+        "has_server_privilege",
+        "has_tablespace_privilege",
+        "pg_has_role",
+        "pg_collation_is_visible",
+        "pg_conversion_is_visible",
+        "pg_function_is_visible",
+        "pg_opclass_is_visible",
+        "pg_operator_is_visible",
+        "pg_opfamily_is_visible",
+        "pg_ts_config_is_visible",
+        "pg_ts_dict_is_visible",
+        "pg_ts_parser_is_visible",
+        "pg_ts_template_is_visible",
+        "pg_type_is_visible",
+        "pg_get_constraintdef",
+        "pg_get_expr",
+        "pg_is_other_temp_schema",
+        "col_description",
+        "obj_description",
+        "shobj_description",
         *_SERVER_ANSWERED,
         *REWRITTEN,
     }
@@ -234,31 +261,16 @@ def _calls_a_catalog_function_alone(tree) -> bool:
     )
 
 
-#: The types only the catalog has (name, and the object identifier types): a statement reading no
-#: table that casts to one is answered by the catalog (REQ-2167).
-_CATALOG_ONLY_TYPES = frozenset({"name", "regclass", "regtype", "regnamespace"})
-#: The types only the catalog DB can hold as a function's argument (REQ-2167). Not xml: its
-#: functions are the compiler's (provisa.transpiler.pg_xml), and the control plane has no libxml.
-_FUNCTION_ARGUMENT_TYPES = frozenset(
-    {"regproc", "xid", "tid", "oidvector", *(PG_ONLY_TYPE_NAMES - {"xml"})}
-)
-
-
-def _casts_to_a_catalog_type_alone(tree) -> bool:
+def _names_a_catalog_object(tree) -> bool:
+    """A cast to an object identifier type the model resolves (``'orders'::regclass``): its form is
+    a read of meta, as to_regclass's is, or for a number the oid it is, then the engine's."""
     import sqlglot.expressions as exp
 
-    if any(True for _ in tree.find_all(exp.Table)):
-        return False
-    types = {
+    return any(
         cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.").removesuffix("[]")
+        in RESOLVED_REGS
         for cast in tree.find_all(exp.Cast)
-    }
-    if types & _CATALOG_ONLY_TYPES:
-        return True
-    # A value of a type only the catalog DB holds, given to a function: the engine cannot read the
-    # argument. A cast alone is the engine's, which sends the type in its own wire form.
-    calls = any(not isinstance(f, exp.Cast) for f in tree.find_all(exp.Func))
-    return calls and bool(types & _FUNCTION_ARGUMENT_TYPES)
+    )
 
 
 @functools.lru_cache(maxsize=4096)
@@ -302,7 +314,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         for col in tree.find_all(exp.Column):
             if col.name.lower() in _SCALAR_NAMES:
                 return "INTERCEPT"
-        if _calls_a_catalog_function_alone(tree) or _casts_to_a_catalog_type_alone(tree):
+        if _calls_a_catalog_function_alone(tree) or _names_a_catalog_object(tree):
             return "INTERCEPT"
         for node in tree.walk():
             if type(node).__name__ in (
@@ -470,30 +482,6 @@ def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:
     ]
 
 
-def _record_field(value: Any) -> str:
-    """One field as record_out writes it: nothing for NULL, quoted where it must be."""
-    if value is None:
-        return ""
-    if isinstance(value, list):
-        text = "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
-    elif isinstance(value, bool):
-        text = "t" if value else "f"
-    else:
-        text = str(value)
-    if text == "" or any(c in text for c in '",\\() \t\n'):
-        return '"' + text.replace("\\", "\\\\").replace('"', '""') + '"'
-    return text
-
-
-def _record_text(value: Any) -> Any:
-    """A record value (the engine's struct) in PostgreSQL's text form."""
-    if isinstance(value, tuple):
-        return "(" + ",".join(_record_field(v) for v in value) + ")"
-    if not isinstance(value, dict):
-        return value
-    return "(" + ",".join(_record_field(v) for v in value.values()) + ")"
-
-
 def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     """pg_sleep(seconds), pg_sleep_for(interval) or pg_sleep_until(timestamp with time zone):
     sleeps that long and answers void (empty text); strict, so a NULL argument answers NULL
@@ -611,7 +599,10 @@ def _as_declared(sql: str, result):
     columns are PostgreSQL 17's types, which a view holds as what it can."""
     from provisa.executor.result import QueryResult
 
-    served = [_served_type(oid) for oid in result.column_type_oids or ()]
+    # An engine answered a statement that reads no table: its own column types, no oids.
+    served = [_served_type(oid) for oid in result.column_type_oids or ()] or list(
+        result.column_types or ()
+    )
     if len(served) != len(result.column_names):
         served = ["text"] * len(result.column_names)
     col_types = _declared_types(sql, result.column_names, served)
@@ -623,7 +614,7 @@ def _as_declared(sql: str, result):
     if vectors or records or procs:
         rows = [
             tuple(
-                _record_text(v)
+                record_text(v)
                 if i in records
                 else [int(n) for n in v.split()]
                 if i in vectors and isinstance(v, str)
@@ -692,7 +683,7 @@ def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, ru
     try:
         return _as_declared(sql, run(read()))
     except Exception as exc:
-        answered = postgres_error(exc)
+        answered = postgres_error(exc) or from_engine(exc)
         if answered is not None:
             raise answered from exc
         log.error("[CATALOG] sql=%r addressed=%r: %s", sql[:200], addressed[:200], exc)

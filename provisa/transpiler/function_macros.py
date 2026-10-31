@@ -43,9 +43,9 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import raising
+from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import pg_forms
-from provisa.transpiler.metadata_functions import VALUE_FORMS
+from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -297,6 +297,15 @@ def wal_file(value: str) -> str:
 
 
 #: Each encoding's longest character in bytes, by its number (common/wchar.c's pg_wchar_table).
+_BUILT_IN_ACCESS_METHODS = (403, 405, 783, 2742, 3580, 4000)
+#: What each built-in index access method declares of itself (its IndexAmRoutine).
+_INDEXAM_PROPERTIES = {
+    "can_order": (403,),
+    "can_unique": (403,),
+    "can_multi_col": (403, 783, 2742, 3580),
+    "can_exclude": (403, 405, 783, 4000),
+    "can_include": (403, 783, 4000),
+}
 _ENCODING_MAX_LENGTHS = (1, 3, 3, 3, 4, 3, 4, 4, *(1,) * 27, 2, 2, 2, 2, 4, 3, 2)
 
 _XIP = (
@@ -375,6 +384,69 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
     ),
     _macro("aclitemeq", "a, b", strict("a, b", "BOOLEAN", "a = b")),
     _macro("aclcontains", "acl, item", strict("acl, item", "BOOLEAN", "list_contains(acl, item)")),
+    # REQ-2190: functions of a value, the engine's since a statement with no table is.
+    _macro(
+        "pg_walfile_name_offset",
+        "lsn",
+        strict(
+            "lsn",
+            "STRUCT(file_name VARCHAR, file_offset INTEGER)",
+            f"struct_pack(file_name := {wal_file('lsn')}, "
+            f"file_offset := CAST({lsn_number('lsn')} % {WAL_SEGMENT} AS INTEGER))",
+        ),
+    ),
+    _macro(
+        "pg_split_walfile_name",
+        "f",
+        strict(
+            "f",
+            "STRUCT(segment_number DECIMAL(38,0), timeline_id BIGINT)",
+            "CASE WHEN regexp_full_match(f, '[0-9A-F]{24}') THEN struct_pack(segment_number := "
+            "CAST((CAST('0x' || substr(f, 9, 8) AS BIGINT) * 256) + "
+            "CAST('0x' || substr(f, 17, 8) AS BIGINT) AS DECIMAL(38,0)), "
+            "timeline_id := CAST('0x' || substr(f, 1, 8) AS BIGINT)) ELSE "
+            + raising("22023", "'invalid WAL file name \"' || f || '\"'")
+            + " END",
+        ),
+    ),
+    _macro(
+        "pg_timezone_names",
+        "",
+        "unnest((SELECT list(_z) FROM pg_timezone_names() _z))",
+    ),
+    _macro(
+        "pg_timezone_abbrevs",
+        "",
+        "unnest((SELECT list(_z) FROM (SELECT DISTINCT COLUMNS(_c -> _c <> 'name') "
+        "FROM pg_timezone_names()) _z))",
+    ),
+    _macro(
+        "pg_indexam_has_property",
+        "am, prop",
+        f"CASE WHEN am IN ({', '.join(map(str, _BUILT_IN_ACCESS_METHODS))}) THEN CASE "
+        + " ".join(
+            f"WHEN prop = '{name}' THEN am IN ({', '.join(map(str, methods))})"
+            for name, methods in _INDEXAM_PROPERTIES.items()
+        )
+        + " END END",
+    ),
+    _macro(
+        "provisa_xid_age",
+        "x",
+        strict(
+            "x",
+            "INTEGER",
+            "CASE WHEN x < 3 THEN 2147483647 ELSE CAST(txid_current() - x AS INTEGER) END",
+        ),
+    ),
+    # REQ-2190: a catalog form's PostgreSQL error, where its statement reads no table. The control
+    # plane's own provisa_raise is a function of that database (provisa.api.startup_seed).
+    _macro(
+        "provisa_raise",
+        "sqlstate, message",
+        f"error('{MARK} ' || sqlstate || ': ' || message)",
+        others={_TRINO: f"fail('{MARK} ' || sqlstate || ': ' || message)"},
+    ),
 )
 
 #: An XML value's escaped text, as an element's content or an attribute's value reads it.
@@ -996,9 +1068,10 @@ _ROWS: tuple[Macro, ...] = (
     _macro(
         "oidvectorsend",
         "v",
-        "CASE WHEN v IS NOT NULL THEN unhex("
-        "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(v), 0) || "
-        "array_to_string(list_transform(v, _o -> printf('00000004%08x', _o)), '')) END",
+        "(SELECT CASE WHEN v IS NOT NULL THEN unhex("
+        "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(_v), 0) || "
+        "array_to_string(list_transform(_v, _o -> printf('00000004%08x', CAST(_o AS BIGINT))), "
+        "'')) END FROM (SELECT list_filter(string_split(v, ' '), _o -> _o <> '') AS _v))",
     ),
     _macro(
         "numrange",
@@ -1054,12 +1127,16 @@ _ROWS: tuple[Macro, ...] = (
     ),
     # A character value of a "char".
     _macro("bpchar", "value", "CAST(value AS VARCHAR)", {_STRINGS: Pg("CAST(value AS TEXT)")}),
-    # An encoding's number: UTF8 is 6, a name naming none -1.
+    # An encoding's number, its name compared as PostgreSQL's does; a name naming none -1.
     _macro(
         "pg_char_to_encoding",
         "name",
-        "CASE WHEN lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) IN ('utf8', 'unicode') "
-        "THEN 6 WHEN name IS NOT NULL THEN -1 END",
+        "CASE lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) WHEN 'unicode' THEN 6 "
+        + " ".join(
+            f"WHEN '{encoding.lower().replace('_', '')}' THEN {number}"
+            for number, encoding in enumerate(ENCODINGS)
+        )
+        + " ELSE CASE WHEN name IS NOT NULL THEN -1 END END",
     ),
     # Strict; on a value PostgreSQL refuses this form: a record needs a column definition list.
     _macro(

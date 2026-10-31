@@ -24,9 +24,11 @@ import psycopg2
 import pytest
 import yaml
 
+from sqlalchemy.engine import make_url
+
 from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _ORG = "catalog_restricted_role"
 _REPO_ROOT = Path(__file__).parents[2]
@@ -193,3 +195,60 @@ def test_a_catalog_view_is_not_read_with_a_table_of_a_source(server):
         )
     assert refused.value.pgcode == "0A000"
     assert "catalog_pg_class" in str(refused.value)
+
+
+#: The statements J312b found answered by the control plane itself, and their kin. Each reads no
+#: table, or only a view of meta, and asks about the server it runs on.
+_ASKS_THE_SERVER = (
+    "SELECT inet_server_port(), NULL::box",
+    "SELECT inet_server_port(), 'x'::name",
+    "SELECT inet_server_port(), pg_get_userbyid(10)",
+    "SELECT inet_server_port(), current_user",
+    "SELECT inet_server_port(), relname::text FROM pg_class LIMIT 1",
+    'SELECT "inet_server_port"(), relname::text FROM pg_catalog.pg_class LIMIT 1',
+    "SELECT pg_catalog.inet_server_port(), relname::text FROM pg_class LIMIT 1",
+    "SELECT current_query(), relname::text FROM pg_class LIMIT 1",
+    "SELECT pg_sleep(0), relname::text FROM pg_class LIMIT 1",
+)
+
+
+def _plane_port(srv: IsolatedServer) -> int:
+    assert srv.plane is not None
+    return make_url(srv.plane.url).port
+
+
+def _answer_or_refusal(srv: IsolatedServer, sql: str) -> str:
+    try:
+        return repr(_read(srv, _RESTRICTED, sql))
+    except psycopg2.Error as refused:
+        return f"{refused.pgcode}: {refused}"
+
+
+@pytest.mark.parametrize("sql", _ASKS_THE_SERVER)
+def test_a_statement_learns_nothing_of_the_control_plane(server, sql):
+    answered = _answer_or_refusal(server, sql)
+    assert str(_plane_port(server)) not in answered, answered
+    assert "catalog_pg_class" not in answered, answered
+
+
+def test_a_statement_with_no_table_runs_on_the_engine(server):
+    """PostgreSQL's current_query() is the statement as it reached it: POINT is a type the plane has
+    and the engine holds as text, so the engine's statement does not name it."""
+    answered = _answer_or_refusal(server, "SELECT current_query(), NULL::point")
+    assert "POINT" not in answered.upper(), answered
+
+
+def test_a_server_function_beside_a_view_is_refused_by_name(server):
+    with pytest.raises(psycopg2.Error) as refused:
+        _read(server, _RESTRICTED, "SELECT inet_server_port(), relname::text FROM pg_class")
+    assert refused.value.pgcode == "0A000"
+    assert "inet_server_port" in str(refused.value)
+
+
+def test_privilege_and_visibility_functions_are_the_catalogs(server):
+    assert _read(
+        server,
+        _RESTRICTED,
+        "SELECT has_schema_privilege('public', 'usage'), pg_type_is_visible(23), "
+        "pg_function_is_visible(1), pg_has_role('x', 'member')",
+    ) == [(True, True, True, True)]

@@ -264,6 +264,11 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
     ),
     "SELECT length('[(0,0),(3,4)]'::lseg) AS v": (FLOAT8, ["5"]),
     "SELECT length('[(0,0),(3,4)]'::path) AS v": (FLOAT8, ["5"]),
+    # A cast alone: the engine holds the value, the statement names the type (REQ-2190).
+    "SELECT '(1,2)'::point AS v": (600, ["(1,2)"]),
+    "SELECT NULL::box AS v": (603, [None]),
+    "SELECT '0/1'::pg_lsn AS v": (PG_LSN, ["0/1"]),
+    "SELECT '08:00:2b:01:02:03'::macaddr AS v": (829, ["08:00:2b:01:02:03"]),
     # Text search values, in text form.
     "SELECT strip('a:1 b:2'::tsvector) AS v": (3614, ["'a' 'b'"]),
     "SELECT length('a:1 b:2'::tsvector) AS v": (INT4, ["2"]),
@@ -526,7 +531,10 @@ def test_a_cast_alone_stays_the_engines():
 
     assert classify("SELECT '(1,2)'::point AS v") == "PASS_THROUGH"
     assert classify("SELECT '1'::money AS v") == "PASS_THROUGH"
-    assert classify("SELECT center('<(1,2),3>'::circle) AS v") == "INTERCEPT"
+    # REQ-2190: whatever type a statement casts to, it reads no table: the engine's.
+    assert classify("SELECT center('<(1,2),3>'::circle) AS v") == "PASS_THROUGH"
+    assert classify("SELECT inet_server_port(), NULL::box") == "PASS_THROUGH"
+    assert classify("SELECT current_query(), 'x'::name") == "PASS_THROUGH"
 
 
 def test_a_statement_with_no_rewrite_is_returned_as_written():

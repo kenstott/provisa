@@ -32,6 +32,8 @@ from buenavista.core import BVType
 
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
+from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.transpiler.pg_held_types import HELD_AS
 from provisa.transpiler.xml_syntax import XmlSerialize
 
 #: The header PostgreSQL adds to a typmod that carries a length or a precision (VARHDRSZ).
@@ -91,6 +93,8 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
 
     kind = data_type.this
     t = exp.DataType.Type
+    if kind == t.NAME:
+        return CastType(19, -1, BVType.TEXT, _TEXT_FORMS)
     if kind == t.VARCHAR:
         length = _length(data_type)
         typmod = -1 if length is None else length + _VARHDRSZ
@@ -123,7 +127,7 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
     if isinstance(data_type, exp.ObjectIdentifier) and data_type.name.lower() == "oid":
         integers = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT, BVType.OID})
         return CastType(26, -1, BVType.OID, integers)
-    return None
+    return _HELD_AS_TEXT.get(data_type.sql(dialect="postgres").lower())
 
 
 def _to_decimal(value: Any) -> Any:
@@ -150,11 +154,44 @@ _NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
 #: A predicate: a boolean, whose value an engine with no boolean computes as 1 or 0.
 _BOOLEAN = CastType(16, -1, BVType.BOOL, _INTEGERS | {BVType.BOOL}, _to_bool)
 
+
+def _record_field(value: Any) -> str:
+    """One field as record_out writes it: nothing for NULL, quoted where it must be."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        text = "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
+    elif isinstance(value, bool):
+        text = "t" if value else "f"
+    else:
+        text = str(value)
+    if text == "" or any(c in text for c in '",\\() \t\n'):
+        return '"' + text.replace("\\", "\\\\").replace('"', '""') + '"'
+    return text
+
+
+def record_text(value: Any) -> Any:
+    """A record value (the engine's struct) in PostgreSQL's text form."""
+    if isinstance(value, tuple):
+        return "(" + ",".join(_record_field(v) for v in value) + ")"
+    if not isinstance(value, dict):
+        return value
+    return "(" + ",".join(_record_field(v) for v in value.values()) + ")"
+
+
+#: REQ-2171: the types only PostgreSQL has, which the engine holds as text, named by their oid.
+_HELD_AS_TEXT = {
+    entry[-1]: CastType(oid, -1, BVType.TEXT, _TEXT_FORMS)
+    for oid, entry in TYPES.items()
+    if entry[-1] in HELD_AS["VARCHAR"]
+}
+
 #: How a call of a pg_catalog function is described, by the type PostgreSQL says it returns
 #: (function_types): the engine computes the value, in a type of its own where its function's
 #: differs (DuckDB's length is a BIGINT, its avg a DOUBLE), brought to PostgreSQL's type. A type
 #: absent here is the engine's to get right: its value is not this type's by a conversion of form.
 _RETURNED: dict[str, CastType] = {
+    **_HELD_AS_TEXT,
     "smallint": CastType(21, -1, BVType.SMALLINT, _INTEGERS, _to_int),
     "integer": CastType(23, -1, BVType.INTEGER, _INTEGERS, _to_int),
     "bigint": CastType(20, -1, BVType.BIGINT, _INTEGERS, _to_int),
@@ -175,6 +212,10 @@ _RETURNED: dict[str, CastType] = {
     "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB})),
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
     "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET})),
+    "tid": CastType(27, -1, BVType.TEXT, _TEXT_FORMS),
+    "xid": CastType(28, -1, BVType.OID, _INTEGERS | {BVType.OID}),
+    "xid8": CastType(5069, -1, BVType.BIGINT, _INTEGERS, _to_int),
+    "record": CastType(2249, -1, BVType.TEXT, _TEXT_FORMS | _INTEGERS | {BVType.JSON}, record_text),
     "void": CastType(2278, -1, BVType.TEXT, _TEXT_FORMS),
     "xml": CastType(142, -1, BVType.XML, _XML_FORMS, xml_out),
     "xml[]": CastType(143, -1, XML_ARRAY, frozenset({BVType.STRINGARRAY, XML_ARRAY})),

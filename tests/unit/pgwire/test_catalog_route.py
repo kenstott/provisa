@@ -309,3 +309,22 @@ async def test_a_catalog_statement_alone_is_the_admin_terminals():
         catalog_statement=True,
     )
     assert (decision.route, decision.source_id) == (Route.DIRECT, "provisa-admin")
+
+
+@pytest.mark.parametrize("catalog_statement", [True, False])
+async def test_a_statement_with_no_table_is_the_engines(catalog_statement):
+    """REQ-2190: a statement with no table is the engine's, catalog statement or not: no source is
+    not one source, and the empty set is a subset of every set."""
+    _, decision, *_ = await _routed(
+        "SELECT inet_server_port(), CAST(NULL AS BIGINT)", (), catalog_statement=catalog_statement
+    )
+    assert decision.route == Route.ENGINE
+    assert decision.source_id != "provisa-admin"
+
+
+def test_a_refused_catalog_read_keeps_its_name_on_http_sql():
+    from provisa.api.data.endpoint_dev import _sql_error
+    from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+
+    for refused in (CatalogViewRefused("meta.catalog_pg_class"), MetadataFunctionRefused("f")):
+        assert _sql_error(refused) is refused

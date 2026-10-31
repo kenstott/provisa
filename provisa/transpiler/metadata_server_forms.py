@@ -898,7 +898,7 @@ def _type_names(vector: str, separator: str, qualified: bool) -> str:
     )
     return (
         f"(SELECT COALESCE(STRING_AGG({name}, '{separator}' ORDER BY _v._i), '') FROM "
-        f"UNNEST(CAST(REGEXP_SPLIT_TO_ARRAY(TRIM(BOTH '{{}}' FROM CAST({vector} AS TEXT)), '[ ,]+') "
+        f"UNNEST(CAST(REGEXP_SPLIT_TO_ARRAY(TRIM(BOTH '{{}}[]' FROM CAST({vector} AS TEXT)), '[ ,]+') "
         "AS _TEXT)) WITH ORDINALITY _v0(_t, _i) "
         "JOIN LATERAL (SELECT CAST(NULLIF(_v0._t, '') AS OID) AS _k, _v0._i AS _i) _v ON _v._k IS NOT NULL"
         f"{joined})"
@@ -1023,9 +1023,55 @@ def _walfile(a: _Answers) -> None:
     a.strict("pg_walfile_name", "lsn", "TEXT", written)
 
 
+def _literal(value: object) -> str:
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    return str(value).upper()
+
+
+def _listed(a: _Answers, name: str, params: str, columns: str, rows: tuple[tuple, ...], where: str):
+    """A set-returning function of what PostgreSQL ships, its rows written in the form: no statement
+    of it reads a server. In a select list, each row is a record in its text form."""
+    from provisa.pgwire.cast_types import record_text
+
+    values = ", ".join("(" + ", ".join(_literal(v) for v in row) + ")" for row in rows)
+    a.table.setdefault(name, []).append(
+        (params, f"SELECT * FROM (VALUES {values}) _r({columns}) WHERE {where}")
+    )
+    records = ", ".join(_literal(record_text(row)) for row in rows)
+    a.body(
+        name,
+        params,
+        f"UNNEST(CASE WHEN {where} THEN ARRAY[{records}] ELSE CAST(ARRAY[] AS TEXT[]) END)",
+    )
+
+
+def _shipped(a: _Answers) -> None:
+    from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
+
+    _listed(
+        a,
+        "pg_get_keywords",
+        "",
+        "word, catcode, barelabel, catdesc, baredesc",
+        PG_KEYWORDS,
+        "TRUE",
+    )
+    # The default parser, the one parser PostgreSQL ships, by its oid or its name.
+    _listed(
+        a,
+        "ts_token_type",
+        "parser",
+        "tokid, alias, description",
+        TS_TOKEN_TYPES,
+        "parser IN ('3722', 'default', 'pg_catalog.default')",
+    )
+
+
 def _catalog_objects(a: _Answers) -> None:
     """The functions on what the catalog holds, answered from it."""
     _walfile(a)
+    _shipped(a)
     _to_reg(a)
     _addresses(a)
     a.selected(
@@ -1315,7 +1361,10 @@ def _files(a: _Answers) -> None:
         )
         columns = ", ".join(f"CAST(NULL AS {t}) AS {c}" for c, t in _STAT_COLUMNS)
         a.table.setdefault("pg_stat_file", []).append(
-            (params, _typed(f"SELECT {columns} FROM (SELECT {check} AS _s) _f", "TEXT"))
+            (
+                params,
+                _typed(f"SELECT {columns} FROM (SELECT {check} AS _s) _f WHERE _s IS NULL", "TEXT"),
+            )
         )
 
 

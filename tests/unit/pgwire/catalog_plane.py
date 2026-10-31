@@ -19,19 +19,23 @@ from __future__ import annotations
 
 from typing import Any
 
+import sqlglot
+import sqlglot.expressions as exp
 from psycopg.types.string import TextLoader
 from sqlalchemy.engine import Engine
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.core import schema_org
-from provisa.core.pg_error import PostgresError, postgres_error
+from provisa.core.pg_error import PostgresError, from_engine, postgres_error
 from provisa.executor.result import QueryResult
+from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.pgwire import catalog
 from provisa.pgwire.catalog_route import addressed_statement
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
+from provisa.transpiler.transpile import transpile_to_duckdb
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     NEUTRAL_VIEW_NAMES,
@@ -195,6 +199,7 @@ class Plane:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
         self._written: tuple[int, str] | None = None
+        self._runtime: DuckDBFederationRuntime | None = None
 
     def read(self, sql: str, role_id: str, state: Any, session: Any, _run: Any) -> QueryResult:
         written = (id(state), role_id)
@@ -206,6 +211,8 @@ class Plane:
             addressed = addressed_statement(_bare(sql), request)
         except MetadataFunctionRefused as exc:
             raise PostgresError("0A000", str(exc)) from exc
+        if not reads_a_table(addressed):
+            return self._read_on_the_engine(sql, addressed)
         settings = statement_settings(
             role_id,
             _can_write(role_id, state),
@@ -238,6 +245,34 @@ class Plane:
                 column_type_oids=[described[i] for i in kept],
             ),
         )
+
+    def _read_on_the_engine(self, sql: str, addressed: str) -> QueryResult:
+        """A statement reading no table, as the pipeline routes it: the engine's, never the plane's
+        (REQ-2190)."""
+        if self._runtime is None:
+            self._runtime = DuckDBFederationRuntime()
+        try:
+            answer = self._runtime.run_sync(transpile_to_duckdb(addressed), None)
+        except Exception as exc:
+            answered = from_engine(exc)
+            if answered is not None:
+                raise answered from exc
+            raise
+        return catalog._as_declared(
+            sql,
+            QueryResult(
+                rows=[tuple(r) for r in answer.rows],
+                column_names=list(answer.column_names),
+                column_types=list(answer.column_types or ()),
+            ),
+        )
+
+
+def reads_a_table(addressed: str) -> bool:
+    """Whether the statement, as addressed, names any relation that is not its own CTE."""
+    tree = sqlglot.parse_one(addressed, read="postgres")
+    own = {c.alias.lower() for c in tree.find_all(exp.CTE)}
+    return any(t.name.lower() not in own for t in tree.find_all(exp.Table) if t.name)
 
 
 def _can_write(role_id: str, state: Any) -> bool:

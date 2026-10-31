@@ -30,6 +30,7 @@ never sent to the control plane to answer about itself."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import cast
 
@@ -157,7 +158,7 @@ def _format_type() -> str:
 
 
 #: pg_encoding_to_char's names, by encoding number (common/encnames.c's pg_enc2name_tbl).
-_ENCODINGS = (
+ENCODINGS = (
     "SQL_ASCII", "EUC_JP", "EUC_CN", "EUC_KR", "EUC_TW", "EUC_JIS_2004", "UTF8", "MULE_INTERNAL",
     "LATIN1", "LATIN2", "LATIN3", "LATIN4", "LATIN5", "LATIN6", "LATIN7", "LATIN8", "LATIN9",
     "LATIN10", "WIN1256", "WIN1258", "WIN866", "WIN874", "KOI8R", "WIN1251", "WIN1252",
@@ -168,7 +169,7 @@ _ENCODINGS = (
 
 
 def _encoding_to_char() -> str:
-    names = " ".join(f"WHEN {n} THEN '{name}'" for n, name in enumerate(_ENCODINGS))
+    names = " ".join(f"WHEN {n} THEN '{name}'" for n, name in enumerate(ENCODINGS))
     return f"CASE WHEN encoding IS NULL THEN CAST(NULL AS TEXT) ELSE CASE encoding {names} ELSE '' END END"
 
 
@@ -465,9 +466,12 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
 )
 #: Every object a catalog holds is on the search path, and every role holds every role.
 _ALWAYS = (
+    ("pg_collation_is_visible", 1),
+    ("pg_conversion_is_visible", 1),
     ("pg_function_is_visible", 1),
     ("pg_opclass_is_visible", 1),
     ("pg_operator_is_visible", 1),
+    ("pg_opfamily_is_visible", 1),
     ("pg_ts_config_is_visible", 1),
     ("pg_ts_dict_is_visible", 1),
     ("pg_ts_parser_is_visible", 1),
@@ -545,18 +549,72 @@ RELATION_FORMS: dict[tuple[str, int], Form] = {
 #: A function that would read the server, with no form: refused by name, never run on the control
 #: plane. These run SQL they are given, or read what a server keeps, on the connection that calls
 #: them: the role a client's SQL runs as (metadata_settings.CLIENT_ROLE) would otherwise take a
-#: statement past governance.
+#: statement past governance. Beside a view of meta they would answer about the control plane
+#: (REQ-2190, ONLY NAMED METADATA READS THE CONTROL PLANE): the list is PostgreSQL's non-immutable
+#: functions that read or change a server's own state and have no form here.
 READS_THE_SERVER = frozenset(
     {
+        "binary_upgrade_create_empty_extension",
+        "binary_upgrade_set_next_multirange_array_pg_type_oid",
+        "binary_upgrade_set_next_multirange_pg_type_oid",
+        "brin_desummarize_range",
+        "brin_summarize_new_values",
+        "brin_summarize_range",
+        "currval",
+        "current_query",
         "cursor_to_xml",
         "cursor_to_xmlschema",
         "database_to_xml",
         "database_to_xml_and_xmlschema",
         "database_to_xmlschema",
         "dblink",
+        "gin_clean_pending_list",
+        "inet_client_addr",
+        "inet_client_port",
+        "inet_server_addr",
+        "inet_server_port",
+        "lastval",
+        "nextval",
+        "pg_advisory_lock",
+        "pg_advisory_lock_shared",
+        "pg_advisory_unlock",
+        "pg_advisory_unlock_all",
+        "pg_advisory_unlock_shared",
+        "pg_advisory_xact_lock",
+        "pg_advisory_xact_lock_shared",
         "pg_cancel_backend",
+        "pg_column_compression",
+        "pg_event_trigger_ddl_commands",
+        "pg_event_trigger_dropped_objects",
+        "pg_event_trigger_table_rewrite_oid",
+        "pg_event_trigger_table_rewrite_reason",
+        "pg_get_publication_tables",
+        "pg_get_wal_replay_pause_state",
+        "pg_index_column_has_property",
+        "pg_index_has_property",
+        "pg_is_wal_replay_paused",
+        "pg_last_committed_xact",
+        "pg_logical_slot_get_binary_changes",
+        "pg_logical_slot_get_changes",
+        "pg_logical_slot_peek_binary_changes",
+        "pg_logical_slot_peek_changes",
+        "pg_ls_logdir",
+        "pg_my_temp_schema",
         "pg_notify",
+        "pg_read_file_old",
+        "pg_replication_origin_session_reset",
+        "pg_rotate_logfile_old",
+        "pg_sleep",
+        "pg_sleep_for",
+        "pg_sleep_until",
+        "pg_stop_making_pinned_objects",
         "pg_terminate_backend",
+        "pg_try_advisory_lock",
+        "pg_try_advisory_lock_shared",
+        "pg_try_advisory_xact_lock",
+        "pg_try_advisory_xact_lock_shared",
+        "pg_wal_replay_pause",
+        "pg_wal_replay_resume",
         "query_to_xml",
         "query_to_xml_and_xmlschema",
         "query_to_xmlschema",
@@ -585,6 +643,11 @@ _OF_A_USER = frozenset(
 )
 
 
+#: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
+#: engine's, which reads the function's row of function_macros' table instead.
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"})
+
+
 class MetadataFunctionRefused(ValueError):
     """A function on a catalog that has no form: refused by name (query.function_unsupported)."""
 
@@ -593,6 +656,23 @@ class MetadataFunctionRefused(ValueError):
     def __init__(self, function: str) -> None:
         self.params = {"function": function, "dialect": "meta"}
         super().__init__(f"{function}() has no form over the meta domain")
+
+
+_NAMES_A_SERVER_READ = re.compile(
+    r"\b(" + "|".join(sorted(READS_THE_SERVER)) + r")\b", re.IGNORECASE
+)
+
+
+def refuse_server_reads(sql: str) -> None:
+    """Raise :class:`MetadataFunctionRefused` for a statement on the control plane calling a
+    function that would read the server: the admin terminal's own check, whichever surface the
+    statement came from. A statement that merely holds the word, in a string, is not refused."""
+    if _NAMES_A_SERVER_READ.search(sql) is None:
+        return
+    tree = sqlglot.parse_one(sql, read="postgres")
+    for call in tree.find_all(exp.Anonymous):
+        if call.name.lower() in READS_THE_SERVER:
+            raise MetadataFunctionRefused(call.name.lower())
 
 
 #: An argument that needs no parentheses wherever a form writes it.
@@ -647,6 +727,7 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     is the session role's where the user is, and NULL for any other: a catalog holds one role's
     grants."""
     needed: set[str] = set()
+    on_the_engine = tree.find(exp.Table) is None
 
     def rewrite(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Table) and isinstance(node.this, exp.Anonymous):
@@ -658,6 +739,8 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         if call is None:
             return node
         name, args = call.name.lower(), list(call.expressions)
+        if on_the_engine and name in _IN_THE_MACRO_TABLE:
+            return node
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
             written = _of_session_role(

@@ -36,6 +36,9 @@ if TYPE_CHECKING:
     from provisa.pgwire._pipeline import StatementOutcome
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+from provisa.transpiler.metadata_settings import CatalogViewRefused
 from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.federation.pgwire_replica import SourceStillStartingError
@@ -262,6 +265,9 @@ def _sql_error(exc: Exception) -> Exception:
         | ReadRefused
         | SourceStillStartingError
         | NotAvailableHere
+        | CatalogViewRefused  # REQ-2190
+        | MetadataFunctionRefused  # REQ-2190
+        | FunctionRefused  # REQ-2167
         | HTTPException,
     ):
         return exc

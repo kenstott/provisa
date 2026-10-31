@@ -493,9 +493,9 @@ async def _optimize_and_route(
         else _forced_engine(routed, _view, _rewrites, ctx, state, table_ids),
         **({} if is_mutation else await _proxy_plan(routed, governed_sql, ctx, state, table_ids)),
     )
-    if routed <= {"provisa-admin"} and current_catalog_request.get() is not None:
-        # REQ-2190: a catalog statement reads the meta domain, or no table at all, and the store
-        # that holds meta answers it, under the role such statements run as.
+    if routed == {"provisa-admin"} and current_catalog_request.get() is not None:
+        # REQ-2190: a catalog statement reads the meta domain, and the store that holds meta answers
+        # it, under the role such statements run as. One that reads no table is the engine's.
         decision = RouteDecision(
             route=Route.DIRECT,
             source_id="provisa-admin",
@@ -4533,7 +4533,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             set_statement,
         )
 
+        from provisa.transpiler.metadata_functions import refuse_server_reads
+
         refuse_client_settings(plan.sql)  # REQ-2190: what a catalog view trusts is this terminal's
+        refuse_server_reads(plan.sql)  # REQ-2190: only named metadata reads the control plane
         tenant_db = state.model_db
         if tenant_db is None:
             raise RuntimeError("Admin model_db not available")

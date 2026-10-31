@@ -269,6 +269,10 @@
       "classification_decision_not_found": "No decision on {{column}} as {{kind}}",
       "classification_pii_refused": "The column could not be marked PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
+      "function_unsupported": "{{function}}() has no form on {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
       "no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",

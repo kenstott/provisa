@@ -29,8 +29,10 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
+from provisa.pgwire.catalog_server_answers import input_check, input_failure
 from provisa.pgwire.ext_surfaces import extension_rows, surface_pg_type_rows
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
@@ -244,7 +246,7 @@ for _oid, _entry in TYPES.items():
         _TYPE_BY_NAME.setdefault(_entry[-1], _oid)
 #: What resolves against the model. Any other object identifier type names what PostgreSQL ships,
 #: and reads it from the same place a client's PostgreSQL would.
-_RESOLVED_REGS = frozenset({"regclass", "regtype", "regnamespace", "regrole"})
+RESOLVED_REGS = frozenset({"regclass", "regtype", "regnamespace", "regrole"})
 _NAMED_IN_RESULT = frozenset({"regclass", "regnamespace"})
 _UNDEFINED = {"regclass": "42P01", "regnamespace": "3F000", "regtype": "42704", "regrole": "42704"}
 _KIND = {"regclass": "relation", "regnamespace": "schema", "regtype": "type", "regrole": "role"}
@@ -386,9 +388,9 @@ def _reg_cast(node: exp.Cast) -> exp.Expr | None:
     inner = node.this
     if isinstance(inner, exp.Cast):
         from_reg = _reg_of(inner.to)
-        if from_reg in _RESOLVED_REGS and target in _TEXT_TYPES:
+        if from_reg in RESOLVED_REGS and target in _TEXT_TYPES:
             return _parsed(_name_sql(from_reg, f"({_oid_sql(from_reg, inner.this)})"))
-    if target in _RESOLVED_REGS:
+    if target in RESOLVED_REGS:
         return _parsed(f"({_oid_sql(target, inner)})")
     return None
 
@@ -466,7 +468,7 @@ def _coerce_reg_comparisons(tree: exp.Expr) -> None:
             literal = comparison.args.get(other)
             if (
                 isinstance(side, exp.Cast)
-                and _reg_of(side.to) in _RESOLVED_REGS
+                and _reg_of(side.to) in RESOLVED_REGS
                 and isinstance(literal, exp.Literal)
                 and literal.is_string
             ):
@@ -545,6 +547,10 @@ def _session_call(name: str, args: list[exp.Expr], request: CatalogRequest) -> e
     return None
 
 
+#: The type each of the two answers a NULL argument with.
+_INPUT_CALLS = {"pg_input_is_valid": "BOOLEAN", "pg_input_error_info": "TEXT"}
+_INPUT_ARGUMENTS = 2
+
 _SYNTAX_SESSION: dict[type[exp.Expr], str] = {
     exp.CurrentUser: "current_user",
     exp.SessionUser: "session_user",
@@ -601,6 +607,24 @@ def _named_relation_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
     return None
 
 
+def _input_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
+    """pg_input_is_valid(value, type) or pg_input_error_info(value, type): strict, and the verdict of
+    a cast to the type, which is all the statement needs of its input function (REQ-2171)."""
+    if name not in _INPUT_CALLS or len(args) != _INPUT_ARGUMENTS:
+        return None
+    value, type_name = args
+    if any(isinstance(a.this if isinstance(a, exp.Cast) else a, exp.Null) for a in args):
+        return exp.cast(exp.null(), _INPUT_CALLS[name])
+    check = input_check(value, type_name)
+    if name == "pg_input_is_valid":
+        return check
+    message, code = input_failure(value, type_name) if isinstance(value, exp.Literal) else ("", "")
+    return exp.Case(
+        ifs=[exp.If(this=check, true=exp.Literal.string(record_text((None, None, None, None))))],
+        default=exp.Literal.string(record_text((message, None, None, code))),
+    )
+
+
 def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
     extra = _surface_rows()
 
@@ -625,7 +649,8 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
             named_relation = _named_relation_call(name, args)
             if named_relation is not None:
                 return named_relation
-            return node
+            input_answer = _input_call(name, args)
+            return node if input_answer is None else _named(input_answer, node, name)
         if isinstance(node, exp.Cast):
             return _reg_cast(node) or node
         if isinstance(node, exp.Column):

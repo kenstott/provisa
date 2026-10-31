@@ -28,6 +28,7 @@ import sqlglot.expressions as exp
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api._pg_catalog_views import CATALOG_VIEWS
 from provisa.api.app_loaders import _META_TABLES
+from provisa.pgwire.catalog import classify
 from provisa.pgwire.catalog_pg17 import RELATIONS
 from provisa.pgwire.catalog_populate import _physical_to_pg_name, _physical_to_pg_oid
 from provisa.security.rights import (
@@ -39,6 +40,7 @@ from provisa.security.rights import (
 )
 from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.transpiler.function_macros import MACROS, outcome
+from provisa.transpiler.transpile import transpile_to_duckdb
 from provisa.transpiler.metadata_facts import (
     PRIVILEGES,
     UNSERVED,
@@ -57,6 +59,7 @@ from provisa.transpiler.metadata_functions import (
     pg_type_name_sql,
     pg_type_oid_sql,
     pg_typmod_sql,
+    refuse_server_reads,
 )
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, metric_oid, table_oid
 from provisa.transpiler.metadata_settings import scope_ids_sql, statement_settings
@@ -67,7 +70,7 @@ from provisa.transpiler.metadata_views import (
     SCOPED_BY_COLUMN,
     catalog_view_name,
 )
-from provisa.transpiler.transpile import transpile, transpile_to_duckdb
+from provisa.transpiler.transpile import transpile
 
 _VIEWS = ("table_details", "column_details", "table_keys")
 _FACTS = CatalogFacts("analyst", privileges=((16385, "SELECT"),))
@@ -663,3 +666,95 @@ def test_no_catalog_view_is_in_the_proto_or_a_cypher_label():
     assert _VIEW_SPELLINGS.search(generate_proto(source)) is None
     labels = CypherLabelMap.from_schema(build_context(source), ["*"])
     assert not [label for label in labels.nodes if _VIEW_SPELLINGS.search(label)]
+
+
+# --- ONLY NAMED METADATA READS THE CONTROL PLANE (REQ-2190, amended 2026-10-29) ------------------
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT inet_server_port() FROM meta.tables",
+        "SELECT pg_catalog.current_query(), id FROM meta.tables",
+        'SELECT "pg_sleep"(1) FROM meta.tables',
+        "SELECT nextval('s') FROM meta.tables",
+    ],
+)
+def test_the_admin_terminal_refuses_a_function_that_reads_the_server(sql):
+    with pytest.raises(MetadataFunctionRefused):
+        refuse_server_reads(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 'inet_server_port' FROM meta.tables",
+        "SELECT inet_server_port FROM meta.tables",
+        "SELECT count(*) FROM meta.tables",
+    ],
+)
+def test_a_statement_that_only_holds_the_word_is_not_refused(sql):
+    refuse_server_reads(sql)
+
+
+def test_every_function_with_a_form_reads_no_server():
+    assert not READS_THE_SERVER & {name for name, _ in FORMS}
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "pg_collation_is_visible",
+        "pg_conversion_is_visible",
+        "pg_function_is_visible",
+        "pg_opclass_is_visible",
+        "pg_operator_is_visible",
+        "pg_opfamily_is_visible",
+        "pg_ts_config_is_visible",
+        "pg_ts_dict_is_visible",
+        "pg_ts_parser_is_visible",
+        "pg_ts_template_is_visible",
+        "pg_type_is_visible",
+    ],
+)
+def test_a_visibility_function_is_the_catalogs(name):
+    assert classify(f"SELECT {name}(1)") == "INTERCEPT"
+    assert (name, 1) in FORMS
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "has_database_privilege('provisa', 'connect')",
+        "has_foreign_data_wrapper_privilege('w', 'usage')",
+        "has_function_privilege('f()', 'execute')",
+        "has_language_privilege('sql', 'usage')",
+        "has_schema_privilege('public', 'usage')",
+        "has_sequence_privilege('s', 'usage')",
+        "has_server_privilege('s', 'usage')",
+        "has_tablespace_privilege('t', 'create')",
+        "has_type_privilege('int4', 'usage')",
+        "pg_has_role('r', 'member')",
+    ],
+)
+def test_a_privilege_function_is_the_catalogs(call):
+    assert classify(f"SELECT {call}") == "INTERCEPT"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT inet_server_port(), NULL::box",
+        "SELECT current_query(), NULL::point",
+        "SELECT 'x'::name, 1::xid",
+        "SELECT area('(1,1),(0,0)'::box)",
+    ],
+)
+def test_a_cast_sends_no_statement_to_the_catalog(sql):
+    assert classify(sql) == "PASS_THROUGH"
+
+
+def test_a_type_only_postgresql_has_is_what_the_engine_holds_it_as():
+    assert transpile_to_duckdb("SELECT '(1,2)'::point") == "SELECT CAST('(1,2)' AS TEXT)"
+    assert transpile_to_duckdb("SELECT '1'::xid8") == "SELECT CAST('1' AS UBIGINT)"
+    assert transpile_to_duckdb("SELECT '{}'::aclitem[]") == "SELECT CAST([] AS TEXT[])"
