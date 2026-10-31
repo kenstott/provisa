@@ -32,6 +32,13 @@ import json as _json
 
 from provisa.compiler.sql_literals import sql_literal
 from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
+from provisa.api._pg_catalog_views import (
+    CATALOG_BASE_VIEWS,
+    CATALOG_COLUMN_VIEWS,
+    CATALOG_KEY_VIEWS,
+    CATALOG_VIEWS,
+)
+from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
 
 
 def _system_tag_rows_sql() -> str:
@@ -422,6 +429,212 @@ def _table_inputs_sql() -> str:
     """.replace("{derived}", DERIVED_SOURCE_ID)
 
 
+def _table_details_sql() -> str:
+    """REQ-2190: what a registered table's catalog entry holds that registered_tables_meta does
+    not list: its modeling role and history, and its comment -- its description with the suffix
+    provisa.core.modeling_tags.append_modeling_tag writes, the role, the history and the tag ids
+    in code-point order."""
+    return """
+        CREATE OR REPLACE VIEW table_details AS
+        WITH table_tags AS (
+            SELECT table_id, STRING_AGG(tag_id, ', ' ORDER BY tag_id COLLATE "C") AS tags
+            FROM tag_assignments
+            WHERE object_type = 'table' AND table_id IS NOT NULL
+            GROUP BY table_id
+        ),
+        suffixes AS (
+            SELECT rt.id, rt.description, rt.modeling_role, rt.modeling_history,
+                   NULLIF(CONCAT_WS(', ', NULLIF(rt.modeling_role, ''),
+                                    CASE WHEN rt.modeling_role <> ''
+                                         THEN NULLIF(rt.modeling_history, '') END,
+                                    t.tags), '') AS suffix
+            FROM registered_tables rt
+            LEFT JOIN table_tags t ON t.table_id = rt.id
+            WHERE NOT rt.draft
+        )
+        SELECT id, modeling_role, modeling_history,
+               CASE WHEN suffix IS NULL THEN NULLIF(description, '')
+                    ELSE COALESCE(NULLIF(description, '') || ' ', '') || '[' || suffix || ']'
+               END AS comment
+        FROM suffixes
+    """
+
+
+def _column_details_sql() -> str:
+    """REQ-2190: what a registered column's catalog entry holds that table_columns_meta does not
+    list: its place in the table (the order every SQL surface expands ``*`` in), the subtype and
+    native type its catalog type is read from, and its comment -- its description, with the
+    suffix provisa.core.modeling_tags.column_comment writes where the column carries a tag."""
+    return """
+        CREATE OR REPLACE VIEW column_details AS
+        WITH column_tags AS (
+            SELECT table_id, column_name,
+                   STRING_AGG(tag_id, ', ' ORDER BY tag_id COLLATE "C") AS tags
+            FROM tag_assignments
+            WHERE object_type = 'column' AND table_id IS NOT NULL AND column_name IS NOT NULL
+            GROUP BY table_id, column_name
+        )
+        SELECT tc.id, tc.table_id, tc.column_name,
+               CAST(ROW_NUMBER() OVER (PARTITION BY tc.table_id ORDER BY tc.id) AS INTEGER)
+                   AS ordinal_position,
+               tc.subtype, tc.native_type,
+               CASE WHEN t.tags IS NULL THEN NULLIF(tc.description, '')
+                    ELSE COALESCE(NULLIF(tc.description, '') || ' ', '') || '['
+                         || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
+               END AS comment
+        FROM table_columns tc
+        JOIN registered_tables rt ON rt.id = tc.table_id AND NOT rt.draft
+        LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
+    """
+
+
+def _table_keys_sql() -> str:
+    """REQ-2190: a registered table's keys, one row per column of each, which is what a catalog
+    lists as constraints and their indexes. A key is numbered by ``key_id``, table id * 4096 plus
+    its slot: 0 the primary key, 1 and up a declared unique key in the order declared, 1025 and up
+    a foreign key in the order of its relationship's id. The same model numbers its keys the same
+    on every build.
+
+    A foreign key is a registered many-to-one or one-to-one relationship whose target columns are
+    a key of its target, as PostgreSQL requires of one: relationships hold one column each, so the
+    relationships between two tables that cover the target's composite primary key once are one
+    foreign key, its columns in the primary key's order; any other is one foreign key where its
+    target column is a one-column key. A relationship to any other column is a semantic join,
+    and no key. Each row names its columns' aliases, so a reader needs no join to table_columns,
+    which a relationship would have to approve (REQ-603). A table's link to its registration is
+    the foreign key slot 1024 holds, as catalog_constraints publishes it."""
+    return f"""
+        CREATE OR REPLACE VIEW table_keys AS
+        WITH served AS (
+            SELECT table_id AS id FROM catalog_tables WHERE table_id IS NOT NULL
+        ),
+        registrations AS (
+            SELECT t.table_id
+            FROM catalog_tables t
+            JOIN registered_tables rt ON rt.id = t.table_id
+            WHERE rt.domain_id = 'meta' AND rt.table_name = 'registered_tables'
+        ),
+        primary_keys AS (
+            SELECT c.table_id, c.column_name,
+                   CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
+                       AS position
+            FROM table_columns c
+            JOIN served s ON s.id = c.table_id
+            WHERE c.is_primary_key
+        ),
+        primary_sizes AS (
+            SELECT table_id, COUNT(*) AS size FROM primary_keys GROUP BY table_id
+        ),
+        unique_keys AS (
+            SELECT t.id AS table_id, CAST(u.slot AS INTEGER) AS slot,
+                   u.definition ->> 'name' AS key_name, k.column_name,
+                   CAST(k.position AS INTEGER) AS position
+            FROM registered_tables t
+            JOIN served d ON d.id = t.id
+            CROSS JOIN LATERAL jsonb_array_elements(CAST(t.unique_constraints AS JSONB))
+                WITH ORDINALITY AS u(definition, slot)
+            CROSS JOIN LATERAL jsonb_array_elements_text(u.definition -> 'columns')
+                WITH ORDINALITY AS k(column_name, position)
+        ),
+        single_column_keys AS (
+            SELECT table_id, column_name FROM primary_keys
+            WHERE table_id IN (SELECT table_id FROM primary_sizes WHERE size = 1)
+            UNION
+            SELECT u.table_id, u.column_name FROM unique_keys u
+            WHERE NOT EXISTS (
+                SELECT 1 FROM unique_keys o
+                WHERE o.table_id = u.table_id AND o.slot = u.slot AND o.position > 1)
+        ),
+        links AS (
+            SELECT MIN(r.id) AS relationship_id, r.source_table_id, r.source_column,
+                   r.target_table_id, r.target_column
+            FROM relationships r
+            JOIN served s ON s.id = r.source_table_id
+            JOIN served t ON t.id = r.target_table_id
+            JOIN table_columns sc
+              ON sc.table_id = r.source_table_id AND sc.column_name = r.source_column
+            WHERE r.target_column IS NOT NULL
+              AND r.cardinality IN ('many-to-one', 'one-to-one')
+            GROUP BY r.source_table_id, r.source_column, r.target_table_id, r.target_column
+        ),
+        composites AS (
+            SELECT l.source_table_id, l.target_table_id, MIN(l.relationship_id) AS relationship_id
+            FROM links l
+            JOIN primary_sizes z ON z.table_id = l.target_table_id AND z.size >= 2
+            LEFT JOIN primary_keys p
+              ON p.table_id = l.target_table_id AND p.column_name = l.target_column
+            GROUP BY l.source_table_id, l.target_table_id, z.size
+            HAVING COUNT(p.column_name) = z.size AND COUNT(DISTINCT p.column_name) = z.size
+        ),
+        foreign_keys AS (
+            SELECT l.source_table_id AS table_id, l.target_table_id, c.relationship_id,
+                   l.source_column, l.target_column, p.position
+            FROM links l
+            JOIN composites c
+              ON c.source_table_id = l.source_table_id AND c.target_table_id = l.target_table_id
+            JOIN primary_keys p
+              ON p.table_id = l.target_table_id AND p.column_name = l.target_column
+            UNION ALL
+            SELECT l.source_table_id, l.target_table_id, l.relationship_id,
+                   l.source_column, l.target_column, 1
+            FROM links l
+            JOIN single_column_keys k
+              ON k.table_id = l.target_table_id AND k.column_name = l.target_column
+            WHERE NOT EXISTS (
+                SELECT 1 FROM composites c
+                JOIN primary_keys p ON p.table_id = c.target_table_id
+                WHERE c.source_table_id = l.source_table_id
+                  AND c.target_table_id = l.target_table_id
+                  AND p.column_name = l.target_column)
+        ),
+        all_keys AS (
+            SELECT table_id, 0 AS slot, 'p' AS kind, CAST(NULL AS TEXT) AS key_name,
+                   table_id AS referenced_table_id, position, column_name,
+                   CAST(NULL AS TEXT) AS referenced_column
+            FROM primary_keys
+            UNION ALL
+            SELECT table_id, slot, 'u', key_name, table_id, position, column_name, NULL
+            FROM unique_keys
+            UNION ALL
+            SELECT table_id,
+                   {FOREIGN_KEY_SLOT} + CAST(DENSE_RANK() OVER (
+                       PARTITION BY table_id ORDER BY relationship_id) AS INTEGER),
+                   'f', NULL, target_table_id, position, source_column, target_column
+            FROM foreign_keys
+            UNION ALL
+            -- Each registration's key, the pair every table's _meta link matches, and that link.
+            SELECT table_id, {UNIQUE_QUERY_NAME_SLOT}, 'u',
+                   'uq_registered_tables_table_query_name', table_id, q.position, q.column_name,
+                   NULL
+            FROM registrations
+            CROSS JOIN (VALUES (1, 'domain_id'), (2, 'table_query_name'))
+                AS q(position, column_name)
+            UNION ALL
+            SELECT t.table_id, {FOREIGN_KEY_SLOT}, 'f', NULL, r.table_id, q.position,
+                   q.column_name, q.referenced_column
+            FROM catalog_tables t
+            CROSS JOIN registrations r
+            CROSS JOIN (VALUES (1, '_domain_', 'domain_id'), (2, '_name_', 'table_query_name'))
+                AS q(position, column_name, referenced_column)
+            WHERE t.table_id IS NOT NULL AND t.domain_id <> 'meta'
+        )
+        SELECT CAST(k.table_id * {KEY_SLOTS} + k.slot AS TEXT) || ':' || CAST(k.position AS TEXT)
+                   AS id,
+               k.table_id * {KEY_SLOTS} + k.slot AS key_id, k.kind, k.key_name, k.table_id,
+               t.schema_name, t.table_name, k.referenced_table_id,
+               r.schema_name AS referenced_schema_name, r.table_name AS referenced_table_name,
+               k.position, k.column_name, c.sql_name AS column_sql_name, k.referenced_column,
+               rc.sql_name AS referenced_column_sql_name
+        FROM all_keys k
+        JOIN catalog_tables t ON t.table_id = k.table_id
+        JOIN catalog_tables r ON r.table_id = k.referenced_table_id
+        JOIN catalog_columns c
+          ON c.table_id = k.table_id AND c.column_name = k.column_name
+        LEFT JOIN catalog_columns rc
+          ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
+    """
+
+
 _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-1373/1377: the tag registry and its assignments as queryable metadata, so
     # governance reporting (e.g. expiring deprecations) runs through the governed pipeline.
@@ -672,6 +885,17 @@ _META_TABLE_VIEWS: dict[str, str] = {
                product_id
         FROM tracked_functions
     """,
+    # REQ-2190: what pgwire's catalog presents that the views above do not list. SQL alone serves
+    # these (security.rights.SQL_ONLY_TABLES), and a role reads their rows as it reads
+    # table_columns_meta's (security.rights.META_ROW_SCOPED_VIEWS).
+    "table_details": _table_details_sql(),
+    "column_details": _column_details_sql(),
+    **CATALOG_BASE_VIEWS,
+    **CATALOG_COLUMN_VIEWS,
+    "table_keys": _table_keys_sql(),
+    **CATALOG_KEY_VIEWS,
+    # REQ-2190: meta is a superset of pg_catalog and information_schema, each relation a view.
+    **CATALOG_VIEWS,
 }
 
 # REQ-884: Internal operational/observability logs exposed as first-class tables in

@@ -47,11 +47,14 @@ UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
 # column) or as NULL (any other column), never in clear. The model has no column-wide constant to
 # fall back to: a constant mask is one reader's entry, as a regex mask is.
 FULL_MASK_TEXT = "****"
+# REQ-2059: what a save of a list holding an entry no reader reaches is refused with.
+UNREACHABLE_MASK = "You have defined a mask that is not reachable: "
 _TEXT_TYPES = {"varchar", "char", "text"}
 
 
 def full_mask(data_type: str) -> str | None:
-    """What a regex mask reads a value it does not match as, for a column of ``data_type``."""
+    """The complete mask of a column of ``data_type``: what a regex mask reads a value it does not
+    match as, and what a reader no entry of the column's list matches reads (REQ-2059)."""
     return FULL_MASK_TEXT if _base_type(data_type) in _TEXT_TYPES else None
 
 
@@ -334,13 +337,24 @@ def rule_of(mask: dict) -> MaskingRule:
     )
 
 
-def resolve(masks: list[dict], chain: list[str]) -> MaskingRule | None:
-    """The rule the reader reads the column through: the first entry it holds decides, and an
-    entry with no mask, or no entry held, leaves it unmasked."""
-    i = entry_for(masks, chain)
-    if i is None or masks[i].get("mask") is None:
+def resolve(masks: list[dict], chain: list[str], data_type: str) -> MaskingRule | None:
+    """The rule the reader reads a column of ``data_type`` through: the first entry it holds
+    decides, and an entry with no mask leaves it unmasked. Once a column has any mask, a reader
+    holding no entry reads it completely masked: only an entry gives unmasked (REQ-2059)."""
+    if not masks:
         return None
-    return rule_of(masks[i]["mask"])
+    i = entry_for(masks, chain)
+    if i is None:
+        return MaskingRule(mask_type=MaskType.constant, value=full_mask(data_type))
+    return None if masks[i].get("mask") is None else rule_of(masks[i]["mask"])
+
+
+def masked_for(masks: list[dict], chain: list[str]) -> bool:
+    """Whether a reader reads a column with this list through any mask at all (REQ-2059)."""
+    if not masks:
+        return False
+    i = entry_for(masks, chain)
+    return i is None or masks[i].get("mask") is not None
 
 
 def reader_masks(
@@ -351,7 +365,7 @@ def reader_masks(
     ``state.masking_rules`` is: {(table id, reader): {column: (rule, data type)}}."""
     out: dict[tuple[int, str], dict[str, tuple[MaskingRule, str]]] = {}
     for table_id, column, masks, data_type in masked_columns:
-        rule = resolve(masks, chain)
+        rule = resolve(masks, chain, data_type)
         if rule is not None:
             out.setdefault((table_id, reader_id), {})[column] = (rule, data_type)
     return out
@@ -365,10 +379,8 @@ def masks_report(masks: list[dict], chain_of: Any, roles: list[str] | None = Non
       (``covered_by``, None for an entry granted to no one). Holding is monotonic -- a reader
       holding more holds every entry it held -- so an entry's grant is reached only if the
       reader holding exactly that grant's roles reaches it;
-    - ``unlisted_unmasked``: the list is not empty and has no entry for everyone, so a reader it
-      does not list reads the column unmasked;
     - ``applies``: with ``roles``, the entry a reader acting as them reads the column through
-      (None: unmasked by no entry)."""
+      (None: no entry, so completely masked, on a column with a list)."""
     from provisa.security.inheritance import grant_parts
 
     def chain(parts: Iterable[str]) -> list[str]:
@@ -391,6 +403,26 @@ def masks_report(masks: list[dict], chain_of: Any, roles: list[str] | None = Non
             unreachable.append({"entry": i, "covered_by": min(covers) if covers else None})
     return {
         "unreachable": unreachable,
-        "unlisted_unmasked": bool(masks) and not any(e.get("to") is None for e in masks),
         "applies": None if roles is None else entry_for(masks, chain(roles)),
     }
+
+
+class MaskUnreachable(ValueError):
+    """A mask list holding an entry no reader can reach, which is not saved (REQ-2059)."""
+
+    def __init__(self, entries: str, column: str) -> None:
+        self.entries, self.column = entries, column
+        super().__init__(UNREACHABLE_MASK + entries)
+
+
+def _readers_of(entry: dict) -> str:
+    to = entry.get("to")
+    if to is None:
+        return "everyone"
+    return ", ".join(to) if to else "no one"
+
+
+def unreachable_entries(masks: list[dict], chain_of: Any) -> str | None:
+    """The entries no reader reaches, each named by its roles; None when every entry is reached."""
+    found = masks_report(masks, chain_of)["unreachable"]
+    return ", ".join(f"[{_readers_of(masks[u['entry']])}]" for u in found) or None

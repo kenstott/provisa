@@ -3019,7 +3019,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             dict(r._mapping)
             for r in (
                 await conn.execute_core(
-                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement)
+                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement).order_by(
+                        _naming_rules_t.c.id  # REQ-2190: in the order the catalog's views apply
+                    )
                 )
             ).fetchall()
         ]

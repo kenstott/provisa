@@ -28,7 +28,7 @@ from provisa.compiler.schema_gen import (
     _can_see_relationship,
 )
 from provisa.compiler.schema_types import offers_domain
-from provisa.security.rights import META_DOMAIN_ID
+from provisa.security.rights import META_DOMAIN_ID, SQL_CATALOG_TABLES
 
 if TYPE_CHECKING:
     from provisa.grpc.field_numbering import FieldNumberAllocator
@@ -348,7 +348,12 @@ def generate_proto(
     """
     # REQ-2154: a role served no table is not refused as such: its proto has no table's message
     # or RPC, and keeps the service's command and resolve RPCs, as its GraphQL schema does.
-    tables = _build_visible_tables(si)
+    # REQ-2190: what a SQL catalog reads has no message: a root is not all a table has here.
+    tables = [
+        t
+        for t in _build_visible_tables(si)
+        if (t.domain_id, t.table_name) not in SQL_CATALOG_TABLES
+    ]
 
     domain_alias_map = _build_domain_alias_map(si.domains)
     _assign_names(

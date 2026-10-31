@@ -100,25 +100,28 @@ describe("a product's contracts", () => {
     }
   });
 
-  it("open to the product's card panels, the Details card's further sections summarised", async () => {
+  it("open to the product's card panels, each section a card of its own", async () => {
     await opened(ODCS);
     expect(screen.getByTestId("data-contract-version-7")).toHaveTextContent("v2.0.0");
     expect(screen.getByTestId("data-contract-status-7")).toHaveTextContent("Active");
-    for (const card of ["details", "fields", "sla", "quality", "versions"]) {
+    const cards = ["details", "fields", "sla", "quality", "versions"];
+    for (const card of [...cards, "support", "servers", "pricing", "custom"]) {
       expect(screen.getByTestId(`data-contract-7-${card}`)).toBeInTheDocument();
     }
-    for (const section of ["support", "servers", "pricing", "custom"]) {
-      expect(screen.getByTestId(`data-contract-7-${section}`)).toBeInTheDocument();
-    }
-    // Each count is said in the singular or plural it calls for.
-    expect(screen.getByTestId("data-contract-7-support-summary")).toHaveTextContent(
-      /^1 support channel · 2 roles$/,
+    // A card shows its section whole, with no summary row to open first.
+    const support = screen.getByTestId("data-contract-7-support");
+    expect(support).toHaveTextContent("channel: support · url: mailto:revenue@example.com");
+    expect(support).toHaveTextContent("role: analyst · access: read");
+    expect(support).toHaveTextContent("role: finance · access: write");
+    const servers = screen.getByTestId("data-contract-7-servers");
+    expect(servers).toHaveTextContent("server: pgwire · type: postgres");
+    expect(servers).toHaveTextContent("server: rest · type: api");
+    expect(screen.getByTestId("data-contract-7-pricing")).toHaveTextContent(
+      "priceAmountNot declared",
     );
-    expect(screen.getByTestId("data-contract-7-custom-summary")).toHaveTextContent(
-      /^0 custom properties · 1 tag$/,
-    );
-    expect(screen.getByTestId("data-contract-7-servers-summary")).toHaveTextContent("pgwire, rest");
-    expect(screen.getByTestId("data-contract-7-pricing-summary")).toHaveTextContent("Not declared");
+    const custom = screen.getByTestId("data-contract-7-custom");
+    expect(custom).toHaveTextContent("customPropertiesNot declared");
+    expect(custom).toHaveTextContent("tagsfinance");
     // The checker has no contract, so no row.
     expect(screen.queryByTestId("data-contract-item-8")).toBeNull();
     expect(screen.queryByTestId("data-contract-8")).toBeNull();

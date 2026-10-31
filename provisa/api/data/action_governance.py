@@ -186,10 +186,10 @@ def _governance_context(
     # REQ-2059: each column through the first entry of its mask list the reader's chain holds.
     reader = reader_chain(state, role_id)
     for c in cols:
-        rule = resolve(c["masks"], reader)
+        dtype = c.get("type") or "varchar"
+        rule = resolve(c["masks"], reader, dtype)
         if rule is None:
             continue
-        dtype = c.get("type") or "varchar"
         validate_masking_rule(rule, c["name"], dtype, True)
         gov.masking_rules[(tid, c["name"])] = (rule, dtype)
         enforcement.masking_applied.append(f"{c['name']} -> {rule.mask_type.value}")

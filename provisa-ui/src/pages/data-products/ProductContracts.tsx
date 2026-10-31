@@ -10,8 +10,8 @@
 
 // REQ-2158 (amended 2026-10-29, A PRODUCT'S CONTRACTS ARE A LIST BENEATH IT): an open product's
 // contracts as a secondary list beneath its lineage, one row per output port's contract (a command
-// port has none): its port, version, status, consumers, SLA headline, when it was last checked and a
-// warning where one applies. Rows start closed and several may be open at once; a row reads its
+// port has none): its port, version, status, SLA headline, when it was last checked and a warning
+// where one applies. Rows start closed and several may be open at once; a row reads its
 // contract when it opens and shows it in the product's card panels (ContractView). A link naming a
 // contract (``?contract=``, the port's address, contract id or table name) opens its row.
 
@@ -30,7 +30,6 @@ import type { ProductLineage } from "../../api/lineage";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import { Tip } from "../../components/Tip";
 import { NEVER_EXPIRES } from "../../components/form/cacheTtl";
-import { relationName } from "../../naming";
 import type { DataContract } from "../../types/admin";
 import {
   breakingNotInForce,
@@ -57,25 +56,19 @@ function linkedContract(contracts: DataContract[], linked: string | null): strin
 // A port name is one value: it keeps to one line, cut with an ellipsis and shown whole on hover.
 const PORT_NAME: CSSProperties = { maxWidth: 320, minWidth: 0 };
 
-/** One contract's row heading: its port, version, status, consumers, SLA headline, last check and
- * the warning that applies. */
+/** One contract's row heading: its port, version, status, SLA headline, last check and the warning
+ * that applies. */
 function RowTitle({
   contract,
   port,
   lineage,
-  owner,
 }: {
   contract: DataContract;
   port: CoreTable;
   lineage: ProductLineage | null;
-  owner: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const id = contract.tableId;
-  const relation = relationName({ domainId: port.domainId, tableName: port.tableName });
-  // REQ-2160: who reads the port, as the owner is shown who reads the product.
-  const consumers =
-    owner && lineage ? lineage.consumers.filter((c) => c.reads.includes(relation)) : null;
   // The latest run of the product's promises on this port (REQ-2132).
   const runs = lineage
     ? lineage.dq.promises
@@ -119,11 +112,6 @@ function RowTitle({
       >
         {t(`dataProductsTab.contract.status.${contract.status}`)}
       </Badge>
-      {consumers && (
-        <Text size="xs" c="dimmed" data-testid={`data-contract-consumer-count-${id}`}>
-          {t("dataProductsTab.contract.consumers", { count: consumers.length })}
-        </Text>
-      )}
       <Text size="xs" c="dimmed" data-testid={`data-contract-sla-headline-${id}`}>
         {sla}
       </Text>
@@ -168,17 +156,13 @@ function OpenContract({
   member,
   version,
   tableId,
-  port,
   lineage,
-  owner,
 }: {
   productId: string;
   member: string;
   version: number;
   tableId: number;
-  port: CoreTable;
   lineage: ProductLineage | null;
-  owner: boolean;
 }) {
   const { t } = useTranslation();
   const [read, setRead] = useState<{
@@ -211,16 +195,12 @@ function OpenContract({
       </Alert>
     );
   }
-  const relation = relationName({ domainId: port.domainId, tableName: port.tableName });
   return (
     <ContractView
       contract={read.doc as OdcsContract}
       versions={read.versions as ContractVersion[]}
       tableId={tableId}
       promises={lineage ? lineage.dq.promises.filter((c) => c.checked_table_id === tableId) : null}
-      consumers={
-        owner && lineage ? lineage.consumers.filter((c) => c.reads.includes(relation)) : null
-      }
     />
   );
 }
@@ -229,13 +209,11 @@ export function ProductContracts({
   productId,
   core,
   lineage,
-  owner,
   version,
 }: {
   productId: string;
   core: ProductCore;
   lineage: ProductLineage | null;
-  owner: boolean;
   version: number;
 }) {
   const { t } = useTranslation();
@@ -283,16 +261,14 @@ export function ProductContracts({
                   mountWhenOpen
                   testId={`data-contract-item-${c.tableId}`}
                   controlTestId={`data-contract-item-${c.tableId}-toggle`}
-                  title={<RowTitle contract={c} port={port} lineage={lineage} owner={owner} />}
+                  title={<RowTitle contract={c} port={port} lineage={lineage} />}
                 >
                   <OpenContract
                     productId={productId}
                     member={memberOf(c)}
                     version={version}
                     tableId={c.tableId}
-                    port={port}
                     lineage={lineage}
-                    owner={owner}
                   />
                 </CollapsibleItem>
               );

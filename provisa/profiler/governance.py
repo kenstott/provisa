@@ -104,9 +104,9 @@ class ColumnRule:
 
     def restricted_for(self, roles: frozenset[str]) -> bool:
         """Masked to a reader holding ``roles``, or tagged pii."""
-        from provisa.security.masking import resolve
+        from provisa.security.masking import masked_for
 
-        return self.pii or resolve(list(self.masks), sorted(roles)) is not None
+        return self.pii or masked_for(list(self.masks), sorted(roles))
 
 
 async def column_rules(conn: Any, state: Any, table_id: int) -> list[ColumnRule]:

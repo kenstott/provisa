@@ -92,14 +92,14 @@ tables:
   columns:
   - {name: customer_id, data_type: varchar, is_primary_key: true, description: 'The customer''s code, such as ALFKI', visible_to: [data_steward, analyst_eu]}
   - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}, {mask: null}]}
   - {name: contact_title, data_type: varchar, description: Their title, visible_to: [data_steward, analyst_eu]}
   - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
   - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
   - {name: region, data_type: varchar, description: 'The region, where the country has them', visible_to: [data_steward, analyst_eu]}
   - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
   - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
-  - {name: phone, data_type: varchar, description: The phone number, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: phone, data_type: varchar, description: The phone number, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}, {mask: null}]}
   - {name: load_date, data_type: timestamp, is_primary_key: true, description: When this row of the customer was received, visible_to: [data_steward, analyst_eu]}
   write_grants:
   - {role: org_admin, operation: insert, columns: [customer_id, company_name, contact_name, contact_title, address, city, region, postal_code, country, phone, load_date]}
@@ -167,10 +167,10 @@ tables:
   columns:
   - {name: account_code, data_type: varchar, is_primary_key: true, description: 'The customer''s code, as the order system has it', visible_to: [data_steward, analyst_eu]}
   - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_name, data_type: varchar, description: The person to contact, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}, {mask: null}]}
   - {name: contact_title, data_type: varchar, description: Their title, visible_to: [data_steward, analyst_eu]}
-  - {name: contact_email, data_type: varchar, description: Their email address, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
-  - {name: phone, data_type: varchar, description: The phone number, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: contact_email, data_type: varchar, description: Their email address, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
+  - {name: phone, data_type: varchar, description: The phone number, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}, {mask: null}]}
   - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
   - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
   - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
@@ -290,12 +290,12 @@ views:
   - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [data_steward, analyst_eu]}
   - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [data_steward, analyst_eu]}
   - {name: company_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
+  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}, {mask: null}]}
   - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
   - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
   - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
   - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
-  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}, {mask: null}]}
 - id: sat_customer_crm
   domain_id: vault
   materialize: true
@@ -319,13 +319,13 @@ views:
   - {name: load_date, data_type: timestamp, description: When the vault received this version, visible_to: [data_steward, analyst_eu]}
   - {name: hashdiff, data_type: varchar, description: 'md5 of the attributes: a new one is a real change', visible_to: [data_steward, analyst_eu]}
   - {name: account_name, data_type: varchar, description: The customer's name, visible_to: [data_steward, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_email, data_type: varchar, description: Their email address; its name hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: contact_name, data_type: varchar, description: The person to contact; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}, {mask: null}]}
+  - {name: contact_email, data_type: varchar, description: Their email address; its name hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: address, data_type: varchar, description: The street address, visible_to: [data_steward, analyst_eu]}
   - {name: city, data_type: varchar, description: The city, visible_to: [data_steward, analyst_eu]}
   - {name: postal_code, data_type: varchar, description: The postal code, visible_to: [data_steward, analyst_eu]}
   - {name: country, data_type: varchar, description: The country, visible_to: [data_steward, analyst_eu]}
-  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}]}
+  - {name: phone, data_type: varchar, description: The phone number; its digits hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '[0-9]', replace: X}}, {mask: null}]}
 - id: sat_product
   domain_id: vault
   materialize: true
@@ -421,8 +421,8 @@ views:
   - {name: crm_address, data_type: varchar, description: The street address the CRM had then, visible_to: [data_steward, analyst_eu]}
   - {name: crm_postal_code, data_type: varchar, description: The postal code the CRM had then, visible_to: [data_steward, analyst_eu]}
   - {name: crm_city, data_type: varchar, description: The city the CRM had then, visible_to: [data_steward, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: The person to contact the CRM had then; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_email, data_type: varchar, description: Their email address the CRM had then; its name hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: contact_name, data_type: varchar, description: The person to contact the CRM had then; withheld from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}, {mask: null}]}
+  - {name: contact_email, data_type: varchar, description: Their email address the CRM had then; its name hidden from an analyst, visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
 # Mart: the customer as it stands now -- its latest point in time.
 - id: dim_customer
   domain_id: vault
@@ -444,8 +444,8 @@ views:
   - {name: city, data_type: varchar, description: 'The city, as the order system has it', visible_to: [data_steward, analyst_eu]}
   - {name: postal_code, data_type: varchar, description: 'The postal code, as the order system has it', visible_to: [data_steward, analyst_eu]}
   - {name: country, data_type: varchar, description: 'The country, as the order system has it', visible_to: [data_steward, analyst_eu]}
-  - {name: contact_name, data_type: varchar, description: 'The person to contact, as the CRM has it; withheld from an analyst', visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}]}
-  - {name: contact_email, data_type: varchar, description: 'Their email address, as the CRM has it; its name hidden from an analyst', visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: contact_name, data_type: varchar, description: 'The person to contact, as the CRM has it; withheld from an analyst', visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: constant, value: withheld}}, {mask: null}]}
+  - {name: contact_email, data_type: varchar, description: 'Their email address, as the CRM has it; its name hidden from an analyst', visible_to: [data_steward, analyst_eu], masks: [{to: [analyst_eu], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
 # The scripted changes that give the satellites their history (setup.yaml sends each once). Each
 # arrives as a new row with its own load date: Alfreds Futterkiste moves, the order system hearing
 # of it before the CRM; the CRM resends the account unchanged in between, which is no change; Chai is

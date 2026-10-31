@@ -45,6 +45,7 @@ import sqlglot.expressions as exp
 
 from provisa.core.pg_error import raising
 from provisa.transpiler import pg_forms
+from provisa.transpiler.metadata_functions import VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -813,6 +814,7 @@ _ROWS: tuple[Macro, ...] = (
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
+    *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
 )
 
 #: A call's name and argument count -> its overload: the one table.

@@ -97,7 +97,7 @@ tables:
   - {name: category, data_type: varchar, description: 'beans, equipment, merchandise or services', visible_to: [data_steward, finance, data_science]}
   # Data science reads order_margins, whose SQL reads unit_cost: a view is governed for its reader
   # with its SQL in place, so the cost is visible to data science, masked to 0.
-  - {name: unit_cost, data_type: decimal, description: What one costs the roaster in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
+  - {name: unit_cost, data_type: decimal, description: What one costs the roaster in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}, {mask: null}]}
 - source_id: warehouse
   domain_id: provisioning
   schema: public
@@ -220,8 +220,8 @@ views:
   - {name: category, data_type: varchar, description: The product's category, visible_to: [data_steward, finance, data_science]}
   - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [data_steward, finance, data_science]}
   - {name: revenue, data_type: decimal, description: What the order came to in USD, visible_to: [data_steward, finance, data_science]}
-  - {name: cost, data_type: decimal, description: What the goods cost the roaster in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
-  - {name: margin, data_type: decimal, description: Revenue less cost in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
+  - {name: cost, data_type: decimal, description: What the goods cost the roaster in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}, {mask: null}]}
+  - {name: margin, data_type: decimal, description: Revenue less cost in USD, visible_to: [data_steward, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}, {mask: null}]}
   - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [data_steward, finance, data_science]}
   - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [data_steward, finance, data_science]}
 # Finance's close: each category's revenue and margin with the value of its stock, built over the

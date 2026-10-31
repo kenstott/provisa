@@ -472,6 +472,9 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
         # Only a root table subscribes, as only a root table is queried (root_table_ids).
         if si.root_table_ids is not None and t.table_id not in si.root_table_ids:
             continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
+            continue
         raw = raw_by_id.get(t.table_id, {})
         source_type = (si.source_types or {}).get(t.source_id, "")
         if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):

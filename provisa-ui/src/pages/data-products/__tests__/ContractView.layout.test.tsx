@@ -8,9 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2158: a contract's cards flow in 320px columns -- Details, Versions & changes, Columns, SLAs &
-// freshness, Consumers -- and the Promises card runs full width beneath them. jsdom lays nothing
-// out, so this proves the structure and the column styles that make the layout.
+// REQ-2158: a contract's cards flow in 320px columns -- Details, Versions & changes, SLAs & freshness,
+// Support and team, Servers, Pricing, Custom properties and tags -- and the Columns then Promises
+// cards run full width beneath them. Who consumes a port is the owner's, not the contract's
+// (REQ-2160). jsdom lays nothing out, so this proves the structure and the column styles that make
+// the layout.
 
 import { describe, expect, it } from "vitest";
 import { render, screen } from "../../../test-utils/render";
@@ -47,22 +49,56 @@ function renderView() {
       versions={[]}
       tableId={7}
       promises={PROMISES}
-      consumers={[]}
     />,
   );
 }
 
 describe("a contract's card layout", () => {
-  it("flows the top cards in 320px columns, in order, with Promises full width below", () => {
+  it("flows the top cards in 320px columns, with Columns then Promises full width below", () => {
     renderView();
     const root = screen.getByTestId("data-contract-7");
-    const [flow, promises] = Array.from(root.children) as HTMLElement[];
+    const [flow, columns, promises] = Array.from(root.children) as HTMLElement[];
     expect(flow.style.columnWidth).toBe("320px");
     expect(Array.from(flow.children).map((c) => c.getAttribute("data-testid"))).toEqual(
-      ["details", "versions", "fields", "sla", "consumers"].map((k) => `data-contract-7-${k}`),
+      [
+        "details",
+        "versions",
+        "sla",
+        "support",
+        "servers",
+        "pricing",
+        "custom",
+      ].map((k) => `data-contract-7-${k}`),
     );
+    expect(columns).toBe(screen.getByTestId("data-contract-7-fields"));
     expect(promises).toBe(screen.getByTestId("data-contract-7-quality"));
-    expect(promises.style.breakInside).toBe("");
-    expect(flow.contains(promises)).toBe(false);
+    for (const wide of [columns, promises]) {
+      expect(wide.style.breakInside).toBe("");
+      expect(wide.style.marginTop).toBe("var(--mantine-spacing-sm)");
+      expect(flow.contains(wide)).toBe(false);
+    }
+  });
+
+  it("has no Consumers card", () => {
+    renderView();
+    expect(screen.queryByTestId("data-contract-7-consumers")).toBeNull();
+    expect(screen.queryByTestId("data-contract-consumers-7")).toBeNull();
+    expect(screen.getByTestId("data-contract-7")).not.toHaveTextContent("Consumers");
+  });
+
+  it("heads each further section as a card of its own, none of them inside Details", () => {
+    renderView();
+    const details = screen.getByTestId("data-contract-7-details");
+    const labels = {
+      support: "Support and team",
+      servers: "Servers",
+      pricing: "Pricing",
+      custom: "Custom properties and tags",
+    };
+    for (const [key, label] of Object.entries(labels)) {
+      const card = screen.getByTestId(`data-contract-7-${key}`);
+      expect(details.contains(card)).toBe(false);
+      expect(screen.getByTestId(`data-contract-7-${key}-toggle`)).toHaveTextContent(label);
+    }
   });
 });

@@ -2949,7 +2949,7 @@
   "es/maintenanceTab.json::maintenanceTab.updateBanner": "Update banner",
   "es/maskList.json::maskList.add": "Add entry",
   "es/maskList.json::maskList.applies": "Entry {{n}} applies",
-  "es/maskList.json::maskList.appliesNone": "No entry applies: unmasked",
+  "es/maskList.json::maskList.appliesNone": "No entry applies: completely masked",
   "es/maskList.json::maskList.checkLabel": "Check access",
   "es/maskList.json::maskList.checkPlaceholder": "Pick or type roles and derived roles",
   "es/maskList.json::maskList.constant": "Constant",
@@ -3020,7 +3020,6 @@
   "es/maskList.json::maskList.truncateLabel": "truncated to {{precision}}",
   "es/maskList.json::maskList.universal": "Works on every engine",
   "es/maskList.json::maskList.universalHelp": "Patterns use one regex dialect; Provisa translates it for each engine. Values that don't match the pattern are fully masked.",
-  "es/maskList.json::maskList.unlistedUnmasked": "Readers this list does not name see the column unmasked. Add an entry for everyone, last, to mask it for them.",
   "es/maskList.json::maskList.unmasked": "Unmasked",
   "es/maskList.json::maskList.up": "Move entry {{n}} up",
   "es/maskList.json::maskList.value": "Constant value",
@@ -5133,6 +5132,7 @@
   "es/serverErrors.json::serverErrors.actions.unknown_action_type": "Unknown actionType '{{action_type}}'",
   "es/serverErrors.json::serverErrors.actions.unknown_role": "Unknown role '{{role}}'",
   "es/serverErrors.json::serverErrors.actions.webhook_exists": "Webhook '{{name}}' already exists",
+  "es/serverErrors.json::serverErrors.actions.mask_unreachable": "You have defined a mask that is not reachable: {{entries}}",
   "es/serverErrors.json::serverErrors.actions.webhook_not_found": "Webhook '{{name}}' not found",
   "es/serverErrors.json::serverErrors.actions.written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
   "es/serverErrors.json::serverErrors.ai_models.vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions",
@@ -5673,6 +5673,7 @@
   "es/serverErrors.json::serverErrors.schema.view_spans_sources": "view spans multiple sources: {{sources}}",
   "es/serverErrors.json::serverErrors.schema.webhook_approved": "Approved webhook '{{webhook}}'",
   "es/serverErrors.json::serverErrors.schema.webhook_name_required": "webhook_name is required for a webhook trigger",
+  "es/serverErrors.json::serverErrors.schema.mask_unreachable": "You have defined a mask that is not reachable: {{entries}}",
   "es/serverErrors.json::serverErrors.schema.webhook_not_found": "Webhook '{{webhook}}' not found",
   "es/serverErrors.json::serverErrors.schema.write_grant_invalid": "This grant does not fit the table: {{reason}}",
   "es/serverErrors.json::serverErrors.schema.write_grants_saved": "Write grants of table {{id}} saved",
@@ -8921,5 +8922,6 @@
   "es/findTerms.json::findTerms.variantAbbreviation": "abbreviation",
   "es/findTerms.json::findTerms.variantAlternativeName": "another name",
   "es/findTerms.json::findTerms.variantForm": "form",
-  "es/findTerms.json::findTerms.variantReference": "reference"
+  "es/findTerms.json::findTerms.variantReference": "reference",
+  "es/dataProductCore.json::dataProductCore.consumerReads": "reads {{ports}}"
 }

@@ -56,6 +56,8 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
     from provisa.mv.models import MVDefinition, TableIdentity
 
+from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
+
 log = logging.getLogger(__name__)
 
 # Meta-domain physical table aliasing: the *_meta views shadow the real control-plane
@@ -2060,6 +2062,9 @@ _META_TABLES = [
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only
     "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
+    # REQ-2190: what a SQL catalog reads: view-only, served to SQL alone.
+    *NEUTRAL_VIEW_NAMES,
+    *CATALOG_VIEW_NAMES,
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

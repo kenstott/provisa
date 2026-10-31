@@ -369,6 +369,8 @@ table_columns = Table(
     Column("data_type", Text),
     Column("masks", JSON, nullable=False, default=list, server_default="[]"),  # REQ-2059
     Column("is_primary_key", Boolean, nullable=False, server_default=false()),
+    # REQ-2190: the source declares the column NOT NULL, as recorded when it was registered.
+    Column("not_null", Boolean, nullable=False, server_default=false()),
     Column("native_filter_type", Text),
     # Whether the parameter is required by its source; NULL where it is not recorded.
     Column("native_filter_required", Boolean),

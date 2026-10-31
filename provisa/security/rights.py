@@ -19,6 +19,12 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Any, cast
 
+from provisa.transpiler.metadata_views import (
+    CATALOG_ROW_SCOPES,
+    CATALOG_VIEW_NAMES,
+    NEUTRAL_VIEW_NAMES,
+)
+
 # Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
 
 # The catalog (meta) domain id and its GOVERNANCE column set (REQ-1132/REQ-1134). Defined here in the
@@ -687,7 +693,15 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_columns_meta": ("table_id",),
     # REQ-2145: a column's tags are seen where the column is.
     "effective_column_tags": ("table_id",),
+    # REQ-2190: a table's catalog entry, its columns' and its keys'; a foreign key is read where
+    # the table it references is too.
+    "table_details": ("id",),
+    "column_details": ("table_id",),
+    "table_keys": ("table_id", "referenced_table_id"),
 }
+#: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
+#: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).
+META_CATALOG_ROW_SCOPES = CATALOG_ROW_SCOPES
 
 
 #: REQ-2153: the meta view of listed names; a reader sees those of domains it does not reach.
@@ -713,6 +727,13 @@ GLOSSARY_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
 SQL_ONLY_TABLES: frozenset[tuple[str, str]] = frozenset(
     {(ONTOLOGY_DOMAIN_ID, "_axioms"), (ONTOLOGY_DOMAIN_ID, "_closure")}
 )
+# REQ-2190: what a SQL catalog reads of the model, which is no table of it to a person: SQL alone
+# serves them, and neither the admin catalog nor anything built on it (the tables page, the ERD)
+# lists them.
+SQL_CATALOG_TABLES: frozenset[tuple[str, str]] = frozenset(
+    (META_DOMAIN_ID, name) for name in (*CATALOG_VIEW_NAMES, *NEUTRAL_VIEW_NAMES)
+)
+SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 
 
 def compute_meta_row_scope(

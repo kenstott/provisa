@@ -56,6 +56,7 @@
     "consumers": "Verbraucher",
     "consumersHint": "Wer dieses Produkt eine Stufe flussabwärts liest: die Tabellen, Sichten und materialisierten Sichten, die direkt auf seinen Mitgliedern aufbauen.",
     "consumersEmpty": "Keine",
+    "consumerReads": "liest {{ports}}",
     "ownerOnlyList": "Diese Liste ist für den Eigentümer des Datenprodukts sichtbar.",
     "consumerKind_table": "Tabelle",
     "consumerKind_view": "Sicht",
