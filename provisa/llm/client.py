@@ -56,6 +56,9 @@ _KEY_ENV = {
     "inception": "INCEPTION_API_KEY",
 }
 
+#: What a vendor's ``finish_reason`` says of an answer that stopped at ``max_tokens``.
+_CUT_OFF_REASONS = frozenset({"length", "max_tokens"})
+
 _T = TypeVar("_T")
 
 
@@ -64,20 +67,37 @@ class Completion:
     """A completion with what produced it: the vendor and model that answered (the fallback's,
     when the primary failed) and the usage the vendor reported (aisuite's CompletionUsage, OpenAI
     shaped; None when the vendor reported none). A caller held to a role's LLM budget (REQ-1174)
-    counts the usage against that model."""
+    counts the usage against that model. ``cut_off`` says the answer stopped at its output limit,
+    so its text is the start of an answer (:func:`_stopped_at_limit`)."""
 
     text: str
     vendor: str
     model: str
     usage: Any
+    cut_off: bool
 
 
 class LLMEmptyResponseError(RuntimeError):
-    """The provider answered 200 but the message carried no text content."""
+    """The provider answered 200 but the message carried no text content. ``answer`` is that
+    answer, with no text: its usage was spent, and ``cut_off`` says the output limit is why."""
+
+    def __init__(self, message: str, answer: Completion) -> None:
+        super().__init__(message)
+        self.answer = answer
 
 
 class LLMTimeoutError(TimeoutError):
     """The vendor gave no answer within :data:`CALL_TIMEOUT_S`; the message names the model."""
+
+
+def _stopped_at_limit(finish_reason: Any, usage: Any, max_tokens: int) -> bool:
+    """Whether an answer stopped at ``max_tokens``. aisuite's converted vendors (groq, mistral, xai
+    and the like) lose ``finish_reason``, and keep the usage that shows it. aisuite's google,
+    cohere and ollama providers report neither, so a cut-off there is not seen."""
+    if finish_reason in _CUT_OFF_REASONS:
+        return True
+    used = getattr(usage, "completion_tokens", None)
+    return isinstance(used, int) and used >= max_tokens
 
 
 class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
@@ -236,14 +256,18 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         )
         choice = response.choices[0]
         content = choice.message.content
+        finish_reason = getattr(choice, "finish_reason", None)
+        usage = getattr(response, "usage", None)
+        cut_off = _stopped_at_limit(finish_reason, usage, max_tokens)
         if content is None:
             raise LLMEmptyResponseError(
                 f"{model_id} returned no message content "
-                f"(finish_reason={getattr(choice, 'finish_reason', None)!r}, "
+                f"(finish_reason={finish_reason!r}, "
                 f"max_tokens={max_tokens}); a reasoning model can spend the whole token budget "
-                "before emitting text"
+                "before emitting text",
+                Completion("", vendor, model, usage, cut_off),
             )
-        return Completion(content.strip(), vendor, model, getattr(response, "usage", None))
+        return Completion(content.strip(), vendor, model, usage, cut_off)
 
     def _bounded(self, call: Callable[[str, str], _T], vendor: str, model: str) -> _T:
         """``call(vendor, model)``, given up after :data:`CALL_TIMEOUT_S`. On a thread of its own,

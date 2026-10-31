@@ -25,6 +25,11 @@ Two steps, each a model call:
    true named in pairs; and, for a group with no explicit definition, one synthesized from its
    mentions' quotes, naming the mentions it drew from (:func:`read_groups`).
 
+A dense batch can ask for more than a call's output limit holds. An answer cut off there is read
+again as the batch's two halves, down to one passage, which is then named; the resolution cannot
+be split, its mentions being one concept's across the document, and is named. An answer that is
+not JSON is asked for once more, then named. Each of these is one more call (:func:`run`).
+
 :func:`candidates` turns the groups into proposals: an explicit definition first (the earliest in
 the document), every other explanation kept as a supporting passage; a synthesized definition
 marked so, listing every passage it used; conflicting explanations side by side. :func:`match`
@@ -40,7 +45,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -83,6 +88,14 @@ MERGING = "merging"
 
 class ScanFailed(RuntimeError):
     """The scan cannot go on, said naming why (an answer that is not JSON, a refused budget)."""
+
+
+class AnswerCutOff(ScanFailed):
+    """The model's answer stopped at its output limit; the message names the model and the limit."""
+
+
+class NotJSON(ScanFailed):
+    """The model's answer is not JSON, said naming what it answered."""
 
 
 class ScanStopped(Exception):
@@ -179,7 +192,7 @@ def _json(raw: str, what: str) -> Any:
     try:
         return json.loads(text)
     except ValueError as exc:
-        raise ScanFailed(f"the model's answer to {what} was not JSON: {exc}") from None
+        raise NotJSON(f"the model's answer to {what} was not JSON: {exc}") from None
 
 
 _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
@@ -589,26 +602,54 @@ async def run(
     report: Callable[[str, int, int], Awaitable[None]],
 ) -> Result:
     """Scan ``passages`` with ``call`` (a prompt and an output limit to the model's answer).
-    ``report`` hears each step before it starts: :data:`READING` a batch of how many, then
-    :data:`MERGING` (0 of 0); it raises :class:`ScanStopped` to stop the scan there."""
+    ``report`` hears each call before it is made: :data:`READING` a call of how many are now known
+    to be needed, the total growing as a batch is split or asked for again, then :data:`MERGING`
+    (0 of 0); it raises :class:`ScanStopped` to stop the scan there."""
     if not passages:
         raise ScanFailed(f"the document {title!r} holds no passages to scan")
     left_out = LeftOut()
     mentions: list[Mention] = []
     calls = 0
-    read = batches(passages)
-    for n, batch in enumerate(read, start=1):
-        await report(READING, n, len(read))
-        raw = await call(extraction_prompt(title, batch), EXTRACT_MAX_TOKENS)
+    # Each batch still to read, in document order, with whether it has been asked for again.
+    waiting = deque((batch, False) for batch in batches(passages))
+    while waiting:
+        batch, retried = waiting.popleft()
+        await report(READING, calls + 1, calls + 1 + len(waiting))
         calls += 1
-        mentions.extend(read_mentions(raw, batch, len(mentions), left_out))
+        try:
+            raw = await call(extraction_prompt(title, batch), EXTRACT_MAX_TOKENS)
+            mentions.extend(read_mentions(raw, batch, len(mentions), left_out))
+        except AnswerCutOff as exc:
+            if len(batch) == 1:
+                raise ScanFailed(
+                    f"the model's answer to passage {batch[0].ordinal}{_where(batch[0])} was cut "
+                    f"off with that passage read alone: {exc}"
+                ) from None
+            half = len(batch) // 2
+            waiting.extendleft([(batch[half:], False), (batch[:half], False)])
+        except NotJSON as exc:
+            if retried:
+                raise ScanFailed(f"{exc} (asked twice)") from None
+            waiting.appendleft((batch, True))
     by_ordinal = {p.ordinal: p for p in passages}
     if not mentions:
         return Result([], len(passages), 0, left_out, calls)
-    await report(MERGING, 0, 0)
-    raw = await call(resolution_prompt(title, mentions, by_ordinal), RESOLVE_MAX_TOKENS)
-    calls += 1
-    groups = read_groups(raw, mentions, left_out)
+    prompt = resolution_prompt(title, mentions, by_ordinal)
+    groups: list[Group] | None = None
+    retried = False
+    while groups is None:
+        await report(MERGING, 0, 0)
+        calls += 1
+        try:
+            groups = read_groups(await call(prompt, RESOLVE_MAX_TOKENS), mentions, left_out)
+        except AnswerCutOff as exc:
+            raise ScanFailed(
+                f"the model's answer to the mentions' resolution was cut off: {exc}"
+            ) from None
+        except NotJSON as exc:
+            if retried:
+                raise ScanFailed(f"{exc} (asked twice)") from None
+            retried = True
     return Result(
         candidates(groups, mentions, by_ordinal), len(passages), len(mentions), left_out, calls
     )

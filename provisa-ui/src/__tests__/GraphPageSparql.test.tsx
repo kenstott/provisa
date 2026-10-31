@@ -19,6 +19,7 @@ import { MantineProvider } from "@mantine/core";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import "../i18n";
 import type { FrameData } from "../components/graph/graph-model";
+import type { DropNode, SparqlDrop } from "../components/graph/sparqlDrop";
 
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
@@ -43,7 +44,7 @@ const frameProps = vi.hoisted(() => ({
   expand: undefined as
     | undefined
     | ((frameId: string, iri: string, toggle: boolean) => void),
-  drop: undefined as undefined | ((frameId: string, iri: string) => void),
+  drop: undefined as undefined | ((frameId: string, drop: SparqlDrop, on: DropNode | null) => void),
   describe: undefined as undefined | ((frameId: string, iri: string) => void),
   describeAll: undefined as undefined | ((frameId: string, iris: string[]) => void),
   rerun: undefined as undefined | ((frameId: string, query: string) => void),
@@ -57,7 +58,7 @@ vi.mock("../components/graph/GraphFrame", () => ({
     onDescribeResource,
     onDescribeResources,
     onRerun,
-    onTableDrop,
+    onSparqlDrop,
     sparqlPrefixes,
   }: {
     frame: FrameData;
@@ -66,13 +67,13 @@ vi.mock("../components/graph/GraphFrame", () => ({
     onDescribeResource?: (frameId: string, iri: string) => void;
     onDescribeResources?: (frameId: string, iris: string[]) => void;
     onRerun?: (frameId: string, query: string) => void;
-    onTableDrop?: (frameId: string, iri: string) => void;
+    onSparqlDrop?: (frameId: string, drop: SparqlDrop, on: DropNode | null) => void;
     sparqlPrefixes?: Record<string, string>;
   }) => {
     framesSeen.push(frame);
     languagesSeen.push(language);
     frameProps.expand = onExpandResource;
-    frameProps.drop = onTableDrop;
+    frameProps.drop = onSparqlDrop;
     frameProps.describe = onDescribeResource;
     frameProps.describeAll = onDescribeResources;
     frameProps.rerun = onRerun;
@@ -543,15 +544,40 @@ describe("the SPARQL tab", () => {
     expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" });
   });
 
-  it("merges a CONSTRUCT around a class dropped on a frame", async () => {
+  it("runs a class dropped on a frame as an edit of its query, joined by a relationship", async () => {
     await runConstruct();
     const { id } = lastFrame();
-    const orders = `${BASE}/vocab/sales/orders`;
-    act(() => frameProps.drop?.(id, orders));
-    await waitFor(() => expect(lastFrame().sparqlExpansions?.[orders]).toBeDefined());
-    expect(posted().at(-1)).toBe(
-      `CONSTRUCT { ?s ?p ?o } WHERE { ?s a <${orders}> ; ?p ?o } LIMIT 25`,
+    const typed = `SELECT * WHERE { ?s a <${BASE}/vocab/sales/orders> } LIMIT 25`;
+    act(() => void frameProps.rerun?.(id, typed));
+    await waitFor(() => expect(lastFrame().query).toBe(typed));
+    const asked = posted().length;
+    act(() =>
+      frameProps.drop?.(id, { kind: "class", iri: `${BASE}/vocab/sales/customers` }, null),
     );
+    await waitFor(() => expect(posted().length).toBe(asked + 1));
+    const sentQuery = posted().at(-1);
+    expect(sentQuery).toContain("OPTIONAL { ?s rel:PLACED_BY ?customers . ?customers a sales:customers . }");
+    expect(sentQuery).toContain("LIMIT 250");
+    await waitFor(() => expect(lastFrame().query).toBe(sentQuery));
+    expect(lastFrame().dropped).toBe(true);
+    expect(lastFrame().dropLimit).toBe(250);
+  });
+
+  it("says on the frame that a class joins nothing, running nothing", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    const typed = `SELECT * WHERE { ?s a <${BASE}/vocab/sales/customers> }`;
+    act(() => void frameProps.rerun?.(id, typed));
+    await waitFor(() => expect(lastFrame().query).toBe(typed));
+    const asked = posted().length;
+    act(() =>
+      frameProps.drop?.(id, { kind: "predicate", iri: `${BASE}/vocab/sales/amount` }, null),
+    );
+    await waitFor(() =>
+      expect(lastFrame().dropNotices?.[0].key).toBe("graphFrame.sparqlDropNoProperty"),
+    );
+    expect(lastFrame().query).toBe(typed);
+    expect(posted().length).toBe(asked);
   });
 
   it("says a refused expansion in its own words, keeping the frame", async () => {

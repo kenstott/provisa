@@ -232,6 +232,71 @@ describe("a SPARQL answer drawn", () => {
     expect(screen.getByTestId("graph-frame-draw-as-graph")).toBeInTheDocument();
   });
 
+  const common = {
+    onClose: () => {},
+    onRerun: () => {},
+    schemaRels: [],
+    colorOverrides: {},
+    sizeOverrides: {},
+    labelProperty: {},
+    sizeByProperty: {},
+    sizeMultiplier: {},
+    relLineOverrides: {},
+    onColorChange: () => {},
+    pkMap: {},
+    labelToTableLabel: {},
+    labelToTableId: {},
+  };
+
+  it("keeps drawing a frame whose query a drop edited", () => {
+    const { rerender } = show(select().query, "sparql", select());
+    fireEvent.click(screen.getByTestId("graph-frame-draw-as-graph"));
+    const next = select({ query: "SELECT ?s ?o WHERE { ?s <http://x/knows> ?o } # x", dropped: true });
+    rerender(<GraphFrame frame={next} language="sparql" {...common} />);
+    expect(screen.queryByTestId("graph-frame-draw-as-graph")).toBeNull();
+  });
+
+  it("hands a dropped pill to the page as what it asks", () => {
+    const onSparqlDrop = vi.fn();
+    render(
+      <GraphFrame frame={select()} language="sparql" {...common} onSparqlDrop={onSparqlDrop} />,
+    );
+    const on = (type: string) => ({
+      dataTransfer: { types: [type], getData: (t: string) => (t === type ? "http://x/it" : "") },
+    });
+    const frameEl = document.querySelector(".gf-frame") as HTMLElement;
+    fireEvent.drop(frameEl, on("text/x-provisa-label"));
+    fireEvent.drop(frameEl, on("text/x-provisa-edge"));
+    fireEvent.drop(frameEl, on("text/x-provisa-property"));
+    fireEvent.drop(frameEl, on("text/x-provisa-domain"));
+    expect(onSparqlDrop.mock.calls.map((c) => c[1])).toEqual([
+      { kind: "class", iri: "http://x/it" },
+      { kind: "edge", iri: "http://x/it" },
+      { kind: "predicate", iri: "http://x/it" },
+      { kind: "domain", prefix: "http://x/it" },
+    ]);
+    expect(onSparqlDrop.mock.calls[0][2]).toBeNull();
+  });
+
+  it("says what a drop said, and that a result reached the LIMIT a drop gave it", () => {
+    render(
+      <GraphFrame
+        frame={select({
+          rows: [{ s: cell("a"), o: cell("b") }],
+          dropLimit: 1,
+          dropNotices: [
+            { key: "graphFrame.sparqlDropNoPath", values: { name: "ps:users", classes: "ps:pets" } },
+          ],
+        })}
+        language="sparql"
+        {...common}
+      />,
+    );
+    const said = screen.getByTestId("graph-frame-drop-notice");
+    expect(said).toHaveTextContent("ps:users has no relationship to ps:pets");
+    expect(said).toHaveTextContent("LIMIT of 1");
+  });
+
   const described = (): FrameData => {
     const triples = parseNTriples(
       ["<http://x/a> <http://x/knows> <http://x/b> .", '<http://x/a> <http://x/name> "Ann" .'].join(
