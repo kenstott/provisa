@@ -92093,7 +92093,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     METADATA IS SUPPORTED:) Maintainer 2026-10-31: every PostgreSQL metadata table, view and function is
     supported on every engine. They answer from meta, not from the engine, so no engine can lack them; they
     are in the guaranteed list by construction and are never refused for an engine. The expansion judgement
-    of REQ-2167 does not apply to them.'
+    of REQ-2167 does not apply to them. (Amended 2026-10-29, ONLY NAMED METADATA READS THE CONTROL PLANE:)
+    Maintainer 2026-10-31: a statement with no table goes to the engine like any other query. Only the named
+    catalog functions and the views in meta read the control plane; nothing else reaches it, whatever types
+    a statement casts to. A function the engine lacks follows REQ-2171: expansion, or refused by name.'
   scenario: 'Given a role connected over pgwire
 
     When a client reads pg_class and pg_attribute

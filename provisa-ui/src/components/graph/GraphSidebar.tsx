@@ -26,6 +26,15 @@ import {
 import { Tip } from "../Tip";
 import { getStored, setStored } from "../../lib/browserStorage";
 
+/** What a class's menu is opened on, as a right click on its pill does. */
+export type OpenClassMenu = (
+  e: React.MouseEvent,
+  target: Omit<ContextMenuState, "x" | "y">,
+) => void;
+
+/** What the drawing computes of every node, so a label of any kind can be sized by them. */
+const GRAPH_DEGREES = ["degIn", "degOut", "degTotal", "degreeCentrality"];
+
 interface SidebarProps {
   schemaNodeLabels: SchemaNodeLabel[];
   schemaRels: SchemaRel[];
@@ -69,8 +78,9 @@ interface SidebarProps {
   countsError?: string | null;
   maxNodes: number;
   onMaxNodesChange: (n: number) => void;
-  /** A second vocabulary's panel (SPARQL's) in place of Cypher's labels, types and keys. */
-  vocabulary?: React.ReactNode;
+  /** A second vocabulary's panel (SPARQL's) in place of Cypher's labels, types and keys, given what
+   *  opens the menu a label pill's right click opens on Cypher's. */
+  vocabulary?: (openClassMenu: OpenClassMenu) => React.ReactNode;
   /** The user's graph session (REQ-2176), listed beside the model's labels and types. */
   session?: React.ReactNode;
 }
@@ -262,10 +272,7 @@ export function Sidebar({
           ...numericFromSchema,
           ...numericFromPropertyTypes,
           ...numericFromData,
-          "degIn",
-          "degOut",
-          "degTotal",
-          "degreeCentrality",
+          ...GRAPH_DEGREES,
         ]),
       ];
       setContextMenu({
@@ -279,6 +286,16 @@ export function Sidebar({
     },
     [numericPropsByLabel],
   );
+
+  const openClassMenu = useCallback<OpenClassMenu>((e, target) => {
+    e.preventDefault();
+    setContextMenu({
+      ...target,
+      x: e.clientX,
+      y: e.clientY,
+      numericProperties: [...target.numericProperties, ...GRAPH_DEGREES],
+    });
+  }, []);
 
   const handleRelRightClick = useCallback((e: React.MouseEvent, type: string) => {
     e.preventDefault();
@@ -367,7 +384,7 @@ export function Sidebar({
 
       <div className="graph-sidebar-body">
         {/* REQ-2135: SPARQL's vocabulary, where Cypher's labels and types are. */}
-        {section === "db" && vocabulary}
+        {section === "db" && vocabulary?.(openClassMenu)}
         {section === "db" && !vocabulary && (
           <>
             {!schemaLoading &&
@@ -402,10 +419,7 @@ export function Sidebar({
                                       ...schemaNodeLabels
                                         .filter((n) => n.domainLabel === lbl)
                                         .flatMap((n) => numericPropsByLabel[n.tableLabel] ?? []),
-                                      "degIn",
-                                      "degOut",
-                                      "degTotal",
-                                      "degreeCentrality",
+                                      ...GRAPH_DEGREES,
                                     ]),
                                   ];
                                   setContextMenu({

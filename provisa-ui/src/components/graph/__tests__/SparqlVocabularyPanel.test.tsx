@@ -391,4 +391,19 @@ describe("the SPARQL vocabulary's terms follow the checked domains", () => {
     );
     expect(screen.getByTestId("sparql-concept-Shared")).toBeInTheDocument();
   });
+
+  it("shows a relationship without its rel: prefix", () => {
+    const { container } = render(
+      <SparqlVocabularyPanel
+        vocabulary={vocabulary}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    expect(container.querySelector('[data-testid="sparql-edge-rel:WORKS_IN"]')?.textContent).toBe(
+      "WORKS_IN",
+    );
+  });
 });
