@@ -79,7 +79,7 @@ def server():
                 }
             ],
         },
-        env={"PROVISA_REDIRECT_ENABLED": "false"},
+        env={"PROVISA_REDIRECT_ENABLED": "false", "PROVISA_PUBLIC_URL": "http://rights.test"},
     )
     boot.create_database()
     try:
