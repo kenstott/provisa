@@ -37,6 +37,7 @@ import {
 import type { InviteInfo } from "../api/admin";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { SessionStorageError } from "../lib/browserStorage";
 import { startSession, startSuperuserSession } from "../lib/session";
 import { forgetInvite, pendingInvite, rememberInvite } from "../lib/pendingInvite";
 import { storedToken } from "../lib/sessionToken";
@@ -112,7 +113,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     if (!token && samlFragment.get("saml_error") === null) return;
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
     if (!token) return;
-    startSession(token);
+    try {
+      startSession(token);
+    } catch (e) {
+      if (!(e instanceof SessionStorageError)) throw e;
+      return; // logged and noticed where it failed: the sign-in page stays
+    }
     onLoginSuccess(token);
     const next = nextParam();
     if (next) window.location.replace(next);

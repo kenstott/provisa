@@ -571,6 +571,29 @@ def _below_takes_lateral_args(
     return False
 
 
+def _joins_row_level_to_one(
+    field_node: FieldNode, join_meta: JoinMeta, ctx: CompilationContext
+) -> bool:
+    """Whether the to-one field ``field_node`` reads, itself or down a chain of to-one fields, a
+    table replicated row by row. REQ-1915 binds such a table as the target of a JOIN, and key
+    pushdown fetches its rows only there, so the field is joined, not aggregated. A to-many field
+    keeps its list aggregate and the statement is refused: joined rows collapse equal elements of
+    a list (``serialize._serialize_with_one_to_many``)."""
+    if join_meta.cardinality == "one-to-many":
+        return False
+    target = join_meta.target
+    if target.table_id in ctx.row_level_tables:
+        return True
+    if not field_node.selection_set:
+        return False
+    for sel in field_node.selection_set.selections:
+        if isinstance(sel, FieldNode):
+            below = ctx.joins.get((target.type_name, sel.name.value))
+            if below is not None and _joins_row_level_to_one(sel, below, ctx):
+                return True
+    return False
+
+
 def _explicit_limit(field_node: FieldNode, variables: dict | None) -> int | None:
     for arg in field_node.arguments:
         if arg.name.value == "limit":

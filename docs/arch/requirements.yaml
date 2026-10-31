@@ -35915,7 +35915,21 @@
     own and is never inherited, and * means every data domain. viewer holds meta and ontology, so every
     role built on viewer has them; a role with no viewer ancestor does not. Column grants, view_governance
     and row rules apply within a system domain as they do anywhere. System domains are not offered in domain
-    pickers.'
+    pickers. (Amended 2026-10-29, READ, WRITE OR LIST:) Maintainer 2026-10-31: every role sees core metadata
+    for the tables of non-system domains it can read, write or list, with no meta grant. List means a role
+    can see only the metadata, never the data. Metadata about a table reached this way is held to the role''s
+    column grants. The pgwire catalog passes metadata along and is neither the meta domain nor gated by
+    it. (Amended 2026-10-29, CORRECTION TO READ, WRITE OR LIST:) The sentence holding this metadata to the
+    role''s column grants is withdrawn: the maintainer did not state it, and a role that can only list holds
+    no column grants. (Amended 2026-10-29, THE SAME ON EVERY CATALOG SURFACE:) Maintainer 2026-10-31: read,
+    write or list holds on every surface that describes the catalog: the gRPC proto, JSON:API, GraphQL,
+    Cypher, SPARQL and OpenAPI, as on the pgwire catalog and meta. (Amended 2026-10-29, SCOPED TO DOMAIN
+    GRANTS:) Maintainer 2026-10-31: all catalog functions are scoped to a role''s non-system domain grants,
+    unless the role holds a specific grant to a system domain. (Amended 2026-10-29, LIST IS FOR SQL:) Maintainer
+    2026-10-31: list applies to SQL, that is the pgwire catalog and meta. The gRPC proto, JSON:API, GraphQL,
+    Cypher, SPARQL and OpenAPI describe what a role can read or write, so a list-only table does not appear
+    on them. This narrows THE SAME ON EVERY CATALOG SURFACE, and scoping to domain grants still holds on
+    all of them.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
@@ -90796,7 +90810,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     separate rewriter. An engine tweak is added only after a replay fails. (Amended 2026-10-29, ALWAYS POSTGRESQL
     TO THE TARGET:) Maintainer 2026-10-31: sqlglot always reads PostgreSQL and writes the target. Every
     form and expansion is written in PostgreSQL syntax and rendered for any engine, not listed per dialect;
-    only an engine tweak added after a replay fails is written for one engine.'
+    only an engine tweak added after a replay fails is written for one engine. (Amended 2026-10-29, WHAT
+    A DIALECT CANNOT CHECK IS REFUSED:) J371b: a form whose answer needs an overflow error is refused by
+    name on a dialect whose failing cast does not raise, or whose arithmetic checks no range (MySQL, SQLite,
+    Spark, and Databricks with it, since the dialect name cannot show ANSI mode), until a replay shows otherwise.
+    A function whose answer depends on an argument type the transpiler cannot see (set_masklen of a column)
+    is refused unless the statement says the type.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -91509,7 +91528,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     FROM THE LIBRARY OR A NEW DOCUMENT:) Find terms in a document offers two ways to choose the document:
     pick one already in the reference library (REQ-2185), or give a new one as a file or an http(s) URL,
     which joins the library as a proposed document. Either way the scan is the same and its proposals cite
-    the library''s copy.'
+    the library''s copy. (Amended 2026-10-29, A SCAN ALWAYS ENDS:) A scan runs in background work that outlives
+    the request. glossary_term_finding has no default model: a scan is refused at start, saying where to
+    set one, until an org names it. Each model call has 300 seconds; a scan with no progress for 660 seconds,
+    or from an earlier launch, fails with the reason. The scan shows its model and step, a person can cancel
+    it, and a cancelled scan is stored failed with who cancelled it.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document
