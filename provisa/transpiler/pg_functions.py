@@ -30,7 +30,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import ParseError
 
-from provisa.transpiler import pg_xml
+from provisa.transpiler import function_macros, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -67,7 +67,16 @@ _NAMED = re.compile(
 #: The statements ``typed_calls`` has anything to do in.
 _CALLED = re.compile(
     r"\b("
-    + "|".join(sorted({*_TYPE_CALLS, *_SIZED_CALLS, *(n for n, _ in _UDF_CALLS)}))
+    + "|".join(
+        sorted(
+            {
+                *_TYPE_CALLS,
+                *_SIZED_CALLS,
+                *(n for n, _ in _UDF_CALLS),
+                *(n for n, _, _ in function_macros.OVERLOADS),
+            }
+        )
+    )
     + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
     r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
     r"|notlike|like_escape|convert|json_object|unnest|trunc|pg_get_object_address"
@@ -310,24 +319,6 @@ def _text_array(node: exp.Expr) -> str:
     return f"CAST(ARRAY[{written}] AS TEXT[])"
 
 
-def _tsvector_call(name: str, args: list[exp.Expr]) -> str | None:
-    if not args or not _is_kind(args[0], "tsvector"):
-        return None
-    value = _sql(args[0])
-    if name == "unnest":
-        return f"UNNEST(PROVISA_TSVECTOR_ITEMS({value}))"
-    if name == "length":
-        return f"LEN(PROVISA_TSVECTOR_ITEMS({value}))"
-    return None
-
-
-def _geometry_call(name: str, args: list[exp.Expr]) -> str | None:
-    """length of a line segment or a path, which DuckDB's length would count as text."""
-    if name == "length" and len(args) == 1 and _is_kind(args[0], "lseg", "path"):
-        return f"PROVISA_GEOMETRY_LENGTH({_sql(args[0])})"
-    return None
-
-
 def _mac_call(name: str, args: list[exp.Expr]) -> str | None:
     if name == "trunc" and len(args) == 1 and _is_kind(args[0], "macaddr", "macaddr8"):
         zeros = "00:00:00" if _is_kind(args[0], "macaddr") else "00:00:00:00:00"
@@ -531,14 +522,16 @@ def _call(node: exp.Expr) -> exp.Expr:
     if name == "pg_get_object_address" and len(args) == 3:  # noqa: PLR2004
         written = f"pg_get_object_address({_sql(args[0])}, {_text_array(args[1])}, {_text_array(args[2])})"
         return sqlglot.parse_one(written, read="postgres")
+    chosen = function_macros.overload(name, args)
+    if chosen != name:  # REQ-2171: by the type the statement says, while the cast is there to read
+        written = f"{chosen}({', '.join(_sql(a) for a in args)})"
+        return sqlglot.parse_one(written, read="postgres")
     written = (
         _type_call(name, args)
         or _numeric_call(name, args)
         or _bytea_call(name, args)
         or _bit_call(name, args)
         or _time_call(name, args)
-        or _tsvector_call(name, args)
-        or _geometry_call(name, args)
         or _mac_call(name, args)
     )
     if written is None and name == "convert" and len(args) == 3:  # noqa: PLR2004
