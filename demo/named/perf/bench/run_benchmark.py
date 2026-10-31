@@ -72,6 +72,7 @@ from pathlib import Path
 from typing import Any
 
 from queries import QUERIES, Query
+from server_answer import checked
 
 # demo/named/perf/config.yaml, one level up from this script's own directory
 # (demo/named/perf/bench/) — whose bench-* sources are federated into whichever engine
@@ -578,7 +579,7 @@ class HttpTransport(Transport):
         # once-materialized `dict_rows` list is bounded and this is not the same risk.
         assert self._client is not None
         resp = self._client.post("/data/cypher", json={"query": cypher, "params": params})
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         columns, rows = body["columns"], body["rows"]
         # The array-of-arrays -> array-of-dicts conversion exists only so _payload_bytes has a
@@ -594,6 +595,19 @@ class HttpTransport(Transport):
     def close(self) -> None:
         if self._client:
             self._client.close()
+
+
+def joined_rows(row: dict) -> int:
+    """The rows a nested GraphQL object stands for as SQL's JOIN would return them, so the two can
+    be compared: each relationship multiplies, and a row with no child is dropped as an inner join
+    drops it. A list of scalars is one column's value, not a relationship (``groupKey``)."""
+    count = 1
+    for value in row.values():
+        if isinstance(value, dict):
+            count *= joined_rows(value)
+        elif isinstance(value, list) and all(isinstance(v, dict) for v in value):
+            count *= sum(joined_rows(v) for v in value)
+    return count
 
 
 class GraphqlTransport(Transport):
@@ -677,7 +691,7 @@ class GraphqlTransport(Transport):
             # queries.py uses that exact shape.
             query = re.sub(r"(query(?:\([^)]*\))?)\s*\{", r"\1 @cached {", query, count=1)
         resp = self._client.post("/data/graphql", json={"query": query, "variables": params})
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         if body.get("errors"):
             raise RuntimeError(f"GraphQL errors: {body['errors']}")
@@ -690,8 +704,9 @@ class GraphqlTransport(Transport):
         for value in data.values():
             rows.extend(value if isinstance(value, list) else [value])
         byte_count = _payload_bytes(rows)
+        row_count = sum(joined_rows(row) for row in rows)
         overhead_s = time.perf_counter() - t0
-        return len(rows), byte_count, overhead_s
+        return row_count, byte_count, overhead_s
 
     def close(self) -> None:
         if self._client:
@@ -860,7 +875,7 @@ class GrpcTransport(Transport):
             headers={"X-Provisa-Role": role, **auth_headers},
             timeout=30,
         )
-        resp.raise_for_status()
+        checked(resp)
         well_known = str(resources.files("grpc_tools") / "_proto")
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "provisa.proto"

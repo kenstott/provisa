@@ -42,6 +42,7 @@ import contract_model
 import lookup
 import request_mix
 import setup_contract as sc
+from server_answer import checked
 
 AUDIT_BASELINE_SQL = "SELECT COALESCE(MAX(id), 0) FROM ops.queries"
 AUDIT_SINCE_SQL = (
@@ -205,7 +206,7 @@ class AdminReplication:
             json={"query": query, "variables": variables or {}},
             headers={"X-Provisa-Role": self._role},
         )
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         if body.get("errors"):
             raise ReplicationError(f"/admin/graphql: {str(body['errors'])[:300]}")

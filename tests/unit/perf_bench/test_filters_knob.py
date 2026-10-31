@@ -299,7 +299,7 @@ def test_grpc_client_sends_the_filter(monkeypatch: pytest.MonkeyPatch, tmp_path:
                 )
             )
 
-    monkeypatch.setattr(ol, "_grpc_shared", FakeTransport())
+    monkeypatch.setattr(ol, "_grpc_transport", lambda ep: FakeTransport())
     setup = _setup(tmp_path)
     ep = SimpleNamespace(
         role="org_admin", grpc_host="h", grpc_port=1, http_base_url="x", credential=None

@@ -58,7 +58,7 @@ All sources share a common field set.
 | `pool_min` / `pool_max` | `1` / `5` | Connection pool bounds |
 | `cache_enabled` | `true` | Toggle caching for all tables in this source |
 | `cache_ttl` | `null` | Seconds; `null` inherits the global default; `-1` never expires |
-| `federation_hints` | `{}` | Per-connector extended parameters (dict[str,str]); see type reference below. |
+| `federation_hints` | `{}` | Per-connector extended parameters (dict[str,str]); see type reference below. Also holds the engine hints `join`, `reorder` and `broadcast_size`, the only keys sent to the engine's session. Every other key is a setting for the source's driver or connector, so a raw engine session property here has no effect. |
 | `mapping` | `{}` | Mapping DSL for redis, elasticsearch, prometheus. |
 | `allowed_domains` | `[]` | Restrict this source to specific domain IDs; empty = unrestricted |
 | `description` | `""` | |
@@ -281,7 +281,7 @@ sources:
 
 #### ClickHouse
 
-`secure` in `federation_hints` enables TLS on the HTTP interface. Port defaults to `8123` (plain) or `8443` (when `secure: "true"`). `schema` in `federation_hints` overrides the remote schema.
+`secure` in `federation_hints` enables TLS on the HTTP interface. Port defaults to `8123` (plain) or `8443` (when `secure: "true"`). `schema` in `federation_hints` overrides the remote schema. On the `pg` engine, ClickHouse sources attach live via the `pg_clickhouse` FDW; the attach uses the source's declared port as the HTTP interface port (8123 by default, 8443 when `secure` is set).
 
 ```yaml
 sources:
@@ -1615,7 +1615,7 @@ The materialization store defaults to `~/.provisa/materialize.duckdb`. It's the 
 ```bash
 # External server
 PROVISA_ENGINE=clickhouse-server
-PROVISA_ENGINE_URL="clickhouse://user:pass@host:9000/db"
+PROVISA_ENGINE_URL="clickhouse://user:pass@host:8123/db"
 ```
 
 Materialization store defaults to `TENANT_DATABASE_URL`.
@@ -1684,7 +1684,7 @@ Materialization store defaults to `TENANT_DATABASE_URL`.
 
 When a source cannot attach live (no ATTACH connector for the selected engine), it lands into the engine's materialization store. Resolution order: explicit `PROVISA_MATERIALIZE_URL` → engine's declared default → hard error (no silent fallback).
 
-DuckDB declares its embedded file (`~/.provisa/materialize.duckdb`) as its default. All other engines default to `TENANT_DATABASE_URL` (PostgreSQL). Override any engine with `PROVISA_MATERIALIZE_URL`.
+The `pg` engine's store is the database it runs in. Other engines declare their own default, most often `TENANT_DATABASE_URL` (PostgreSQL). Override any engine but `pg` with `PROVISA_MATERIALIZE_URL`. On `pg`, a store naming any other database stops the server at start.
 
 The store decides what a replica's indexes do for joins: a PostgreSQL store indexes replicas and an engine that runs SQL in it reads those indexes, while DuckDB joins its embedded file's replicas over a per-statement copy. See [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it).
 

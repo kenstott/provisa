@@ -112,19 +112,16 @@ class TestFlight:
 
 
 class TestGrpc:
-    def _servicer(self):
-        from provisa.grpc.server import ProvisaServicer
+    async def test_the_credentials_org_is_bound(self):
+        from provisa.grpc.auth import principal_org
 
-        return ProvisaServicer(_State(), None)
+        assert await principal_org(_State(), _identity(), None) == "acme"
 
-    async def test_the_credentials_org_is_bound(self, monkeypatch):
-        monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _identity)
-        assert await self._servicer()._resolve_org(None) == "acme"
+    async def test_another_org_named_by_metadata_is_refused(self):
+        from provisa.grpc.auth import principal_org
 
-    async def test_another_org_named_by_metadata_is_refused(self, monkeypatch):
-        monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _identity)
         with pytest.raises(OrgResolutionError, match="scoped to org 'acme'"):
-            await self._servicer()._resolve_org("beta")
+            await principal_org(_State(), _identity(), "beta")
 
 
 class TestMcp:
@@ -215,12 +212,11 @@ class TestAnUnnamedOrgIsRefused:
         with pytest.raises(OrgResolutionError, match='set "org" in the ticket'):
             await _resolve_identity_org(_OneOrgState(), _person(), {})
 
-    async def test_grpc(self, monkeypatch):
-        from provisa.grpc.server import ProvisaServicer
+    async def test_grpc(self):
+        from provisa.grpc.auth import principal_org
 
-        monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _person)
         with pytest.raises(OrgResolutionError, match="x-provisa-org"):
-            await ProvisaServicer(_OneOrgState(), None)._resolve_org(None)
+            await principal_org(_OneOrgState(), _person(), None)
 
     async def test_mcp(self):
         from provisa.api.mcp.server import _org_for_identity
@@ -269,11 +265,9 @@ class TestSingleTenantNeverReferencesAnOrg:
 
         assert await _resolve_identity_org(_SingleTenantState(), _person(), {}) == "root"
 
-    async def test_grpc(self, monkeypatch):
-        from provisa.grpc.server import ProvisaServicer
-
-        monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _person)
+    async def test_grpc(self):
         from provisa.core.request_context import current_org, reset_current_org
+        from provisa.grpc.server import ProvisaServicer
 
         servicer = ProvisaServicer(_SingleTenantState(), None)
         token = await servicer._bind_org({})

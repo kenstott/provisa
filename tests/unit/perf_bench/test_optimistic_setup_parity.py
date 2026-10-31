@@ -200,7 +200,7 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 
         return call
 
-    monkeypatch.setattr(ol, "_grpc_shared", FakeGrpc())
+    monkeypatch.setattr(ol, "_grpc_transport", lambda ep: FakeGrpc())
     return sent
 
 

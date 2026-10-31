@@ -60,6 +60,7 @@ import request_mix
 import request_render
 import setup_contract
 from queries import Query
+from server_answer import checked
 
 # transport -> (what carries the request, the per-request cache opt-in it uses or None)
 TRANSPORTS: dict[str, tuple[str, str | None]] = {
@@ -162,7 +163,7 @@ class GraphqlClient(_HttpClient):
         resp = self._http.post(
             "/data/graphql", json={"query": query.graphql}, headers=self._headers(role)
         )
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         if body.get("errors"):
             raise RuntimeError(str(body["errors"])[:300])
@@ -183,7 +184,7 @@ class DataSqlClient(_HttpClient):
         resp = self._http.post(
             "/data/sql", json={"sql": query.sql, "role": role}, headers=self._headers(role)
         )
-        resp.raise_for_status()
+        checked(resp)
         return resp.json(), resp
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
@@ -208,7 +209,7 @@ class CypherHttpClient(_HttpClient):
             json={"query": query.cypher, "params": {}},
             headers=self._headers(role),
         )
-        resp.raise_for_status()
+        checked(resp)
         return resp.json()
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
@@ -254,7 +255,7 @@ class SparqlHttpClient(_HttpClient):
             data={"query": query.sparql},
             headers=self._headers(role, {"Accept": "application/sparql-results+json"}),
         )
-        resp.raise_for_status()
+        checked(resp)
         return resp.json(), self._hit(resp)
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
@@ -303,7 +304,7 @@ class McpClient:
             **({"mcp-protocol-version": self._PROTOCOL} if self._session else {}),
         }
         resp = self._http.post(self._url, json=body, headers=headers)
-        resp.raise_for_status()
+        checked(resp)
         if self._session is None:
             self._session = resp.headers["mcp-session-id"]
         return resp
@@ -352,7 +353,7 @@ class RestClient(_HttpClient):
         resp = self._http.get(
             spec["path"], params=spec["params"], headers=self._headers(role, spec["headers"])
         )
-        resp.raise_for_status()
+        checked(resp)
         return resp.json()["data"], resp
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
@@ -373,7 +374,7 @@ class JsonApiClient(_HttpClient):
             params=spec["params"],
             headers=self._headers(role, {"Accept": "application/vnd.api+json", **spec["headers"]}),
         )
-        resp.raise_for_status()
+        checked(resp)
         return resp.json()["data"], resp
 
     def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
@@ -511,7 +512,9 @@ class BoltClient:
 
 
 _grpc_lock = threading.Lock()
-_grpc_shared: Any = None  # one compiled descriptor pool per client PROCESS
+# One compiled descriptor pool per client PROCESS and deployment: a later phase's server has its
+# own address, and the first server's transport would go on dialling that one.
+_grpc_shared: dict[tuple[str, int, str], Any] = {}
 
 
 def grpc_row(message: Any) -> dict[str, Any]:
@@ -529,24 +532,28 @@ def grpc_row(message: Any) -> dict[str, Any]:
     }
 
 
+def _grpc_transport(ep: Endpoints) -> Any:
+    from run_benchmark import GrpcTransport
+
+    key = (ep.grpc_host, ep.grpc_port, ep.http_base_url)
+    with _grpc_lock:
+        if key not in _grpc_shared:
+            transport = GrpcTransport(
+                ep.grpc_host,
+                ep.grpc_port,
+                ep.http_base_url,
+                ep.role,
+                ep.credential.auth_header() if ep.credential else None,
+            )
+            if not transport.available():
+                raise RuntimeError(f"gRPC unavailable: {getattr(transport, '_error', '')}")
+            _grpc_shared[key] = transport
+        return _grpc_shared[key]
+
+
 class GrpcClient:
     def __init__(self, ep: Endpoints) -> None:
-        global _grpc_shared
-        from run_benchmark import GrpcTransport
-
-        with _grpc_lock:
-            if _grpc_shared is None:
-                transport = GrpcTransport(
-                    ep.grpc_host,
-                    ep.grpc_port,
-                    ep.http_base_url,
-                    ep.role,
-                    ep.credential.auth_header() if ep.credential else None,
-                )
-                if not transport.available():
-                    raise RuntimeError(f"gRPC unavailable: {getattr(transport, '_error', '')}")
-                _grpc_shared = transport
-        transport = _grpc_shared
+        transport = _grpc_transport(ep)
         self._transport = transport
         # A connection per simulated caller, as each HTTP client has its own (GrpcTransport.channel).
         self._channel = transport.channel()
@@ -638,8 +645,10 @@ CLIENTS: dict[str, Any] = {
 
 
 def _brief(exc: BaseException) -> str:
-    """An error as one short line (a gRPC error carries its whole debug context)."""
-    return f"{type(exc).__name__}: {' '.join(str(exc).split())[:140]}"
+    """An error as one short line (a gRPC error carries its whole debug context). An HTTP refusal
+    keeps the server's answer, which is the reason."""
+    limit = 600 if getattr(exc, "response", None) is not None else 140
+    return f"{type(exc).__name__}: {' '.join(str(exc).split())[:limit]}"
 
 
 def _request_text(query: Query) -> str:

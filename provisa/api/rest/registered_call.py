@@ -22,7 +22,9 @@ import re as _re
 from fastapi.responses import JSONResponse
 
 _PROC_RE = _re.compile(
-    r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
+    r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*"
+    r"(?:YIELD\s*\*\s*)?;?\s*$",
+    _re.IGNORECASE,
 )
 
 # REQ-1156: a command-listing procedure so an HTTP Cypher client discovers registered commands

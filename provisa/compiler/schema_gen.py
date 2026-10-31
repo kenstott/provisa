@@ -59,7 +59,7 @@ from provisa.compiler.naming import (
 from provisa.compiler.metric_expand import metric_reference_tables
 from provisa.compiler.ontology_classes import is_class_table_id, served_class_columns
 from provisa.core.modeling_tags import append_modeling_tag
-from provisa.compiler.type_map import JSONScalar, column_type_to_graphql, array_graphql_type
+from provisa.compiler.type_map import JSONScalar, registered_graphql_type, array_graphql_type
 from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
@@ -976,7 +976,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
             meta = t.column_metadata.get(col_name.lower())
             if meta is None or col_name not in allowed:
                 continue
-            col_gql_type = column_type_to_graphql(meta.data_type)
+            col_gql_type = registered_graphql_type(meta.data_type, meta.subtype)
             if isinstance(col_gql_type, GraphQLList):
                 col_gql_type = GraphQLString  # fallback for arrays in input
             # Named as reads name it (its published name); mutation_gen maps it back.
