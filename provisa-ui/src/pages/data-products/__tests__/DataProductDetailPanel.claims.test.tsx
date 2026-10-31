@@ -121,7 +121,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       table_name: "ledger",
       alias: "gl",
       product_id: "billing",
-      reads: ["sales.orders"],
+      reads: ["sales.customers", "sales.orders"],
     },
   ],
   inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
@@ -301,6 +301,11 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     const consumers = screen.getByTestId("data-product-detail-consumers-c360");
     expect(consumers).toHaveTextContent("sales.revenue_daily (view)");
     expect(consumers).toHaveTextContent("finance.gl (materialized view · in billing)");
+    // The contract no longer says who reads a port, so this card says which ports each reads.
+    const reads = (relation: string) =>
+      screen.getByTestId(`data-product-detail-consumers-c360-reads-${relation}`);
+    expect(reads("sales.revenue_daily")).toHaveTextContent(/^reads sales\.orders$/);
+    expect(reads("finance.ledger")).toHaveTextContent(/^reads sales\.customers, sales\.orders$/);
   });
 
   it("shows any other reader the product's promises, and none of the owner's part", () => {
