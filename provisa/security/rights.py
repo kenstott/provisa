@@ -343,7 +343,7 @@ ALL_DOMAINS = "*"
 
 
 def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039, REQ-471, REQ-1530
-    """Whether a ROLE's ``domain_access`` reaches every domain — THE one place that is decided.
+    """Whether a ROLE's ``domain_access`` reaches every DATA domain — THE one place that is decided.
 
     A role reaches the domains it lists and no others. ``"*"`` is the only way to say all: an
     EMPTY list is no domains, never "unrestricted". (A column's or action's ``visible_to=[]`` is a

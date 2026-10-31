@@ -637,6 +637,14 @@ def test_command_admission_is_not_widened_by_a_capability(role_id, domain, admit
     assert command_reachable(command, _flat(role_id)) is admitted
 
 
+def test_a_metadata_export_target_publishes_no_system_domain_for_a_listed_role():
+    from provisa.api.metadata_export.publishing import role_reach
+
+    state = types.SimpleNamespace(roles={ROLE: _flat()})
+    reach = role_reach(state, ROLE)
+    assert reach("pet-store") and not reach(META_DOMAIN_ID) and not reach(ONTOLOGY_DOMAIN_ID)
+
+
 def test_a_listed_role_holding_observability_is_admitted_no_ops_command():
     command = {"domain_id": OPS_DOMAIN_ID, "visible_to": [ROLE]}
     assert not command_reachable(command, _flat(ROLE, "observability"))
