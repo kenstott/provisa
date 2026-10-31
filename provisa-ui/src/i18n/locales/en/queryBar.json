@@ -1,6 +1,6 @@
 {
   "queryBar": {
-    "autoImputeOn": "Auto-impute relationships ON — click to disable",
+    "autoImputeOn": "Auto-impute relationships is on. Click to disable.",
     "autoImputeOff": "Auto-impute relationships between visible nodes",
     "run": "Run query (⌘↵)",
     "clear": "Clear query"

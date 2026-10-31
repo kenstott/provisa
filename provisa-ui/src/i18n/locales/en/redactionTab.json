@@ -3,7 +3,7 @@
     "panelTitle": "Redaction rules",
     "loading": "Loading…",
     "intro": "Text matching these rules is replaced with [REDACTED:<rule>] before it leaves Provisa: in exported traces and logs, container output, the audit log and error messages returned to clients. The organization's own secrets are redacted automatically.",
-    "bestEffort": "Redaction is best effort. The built-in patterns are a starter set, not a guarantee: add patterns here for your organization's own sensitive formats. A source's own logs are out of Provisa's reach.",
+    "bestEffort": "Redaction is best effort. The built-in patterns are only a starter set, so add patterns here for your organization's own sensitive formats. A source's own logs are out of Provisa's reach.",
     "unresolved": "These reference rules do not resolve and redact nothing: {{names}}",
     "orgTitle": "This organization's rules",
     "deploymentTitle": "Deployment rules (every organization)",
