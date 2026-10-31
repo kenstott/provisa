@@ -106,6 +106,6 @@ async def test_land_rows_second_fetch_of_same_key_replaces_not_appends():
     deletes = [s for s in conn.stmts if isinstance(s, Delete)]
     assert len(deletes) == 2 and len(conn.landed) == 2
     for delete in deletes:
-        assert "orders.id IN" in str(delete)
+        assert '"id" IN' in str(delete)
     assert conn.landed[1][0]["status"] == "shipped"
     assert conn.upserts[1][1]["_row_cached_at"] == t1
