@@ -15,7 +15,7 @@
     },
     "welcome": {
       "title": "Take the guided tour?",
-      "body": "A five-minute walkthrough: connect a source, then query it in the language or tool you already use. Leave at any point — the compass in the toolbar reopens the tour whenever you want it.",
+      "body": "A five-minute walkthrough: connect a source, then query it in the language or tool you already use. Leave at any point. The compass in the toolbar reopens the tour.",
       "never": "Don't show this again",
       "later": "Maybe later",
       "start": "Start tour",
@@ -45,7 +45,7 @@
       },
       "quality": {
         "title": "Data quality",
-        "summary": "Is my real data good? Quality checkers, contracts, profiler runs, drift, and the results that travel with a data product."
+        "summary": "Check your real data: quality checkers, contracts, profiler runs, drift, and the results that travel with a data product."
       },
       "query": {
         "title": "Query it everywhere",
@@ -67,7 +67,7 @@
     "steps": {
       "step0": {
         "title": "Welcome, let's take the tour",
-        "description": "🧭 This compass reopens the tour anytime. To leave, click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it, and it stays out of the data path.</p><p>That is why <strong>everything stays in sync</strong>, and why <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable. It slots in beside what you have and brings order to the sprawl.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it in the language or tool you already use, or ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Ready? Let's connect a source. →</p>"
+        "description": "🧭 This compass reopens the tour anytime. To leave, click the app or press <kbd>Esc</kbd>.<p><strong>Provisa</strong> is one model that holds your data, its metadata and the processing between them. The same model defines your data estate and operates it, and it stays out of the data path.</p><p>So <strong>everything stays in sync</strong> and <strong>reuse is built in</strong>: a relationship, metric, mask or rule defined once serves every surface, environment and role. Duplicate tables and metrics, duplicate commands and rules, even two systems serving the same data sit side by side in the model, so duplication is easy to see and simple to remove.</p><p>It is compact, extensible and composable, and it sits beside what you already have.</p><p>🎯 <strong>The core is one short exercise:</strong> connect a database, then query it in the language or tool you already use, or ask in plain English. About five minutes, <strong>right from your desktop</strong>, with no infrastructure to stand up.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Everything after that is a <strong>Deep Dive</strong> you pick from a menu when you are ready.</p><p>Next, connect a source. →</p>"
       },
       "stepPolly": {
         "title": "Meet Polly, your setup assistant",
@@ -96,7 +96,7 @@
       },
       "step5": {
         "title": "Pick columns & policy",
-        "description": "Choose a source, schema and table, then pick columns, each with its own policy:<ul><li>🎭 <strong>Masking</strong>: redact values per role</li><li>👁️ <strong>Visibility</strong>: show or hide the column</li><li>🏷️ <strong>Aliases</strong>: rename for the model</li></ul><p>That's the whole setup: a source and a few tables. 🚀 Now let's query it. →</p>"
+        "description": "Choose a source, schema and table, then pick columns, each with its own policy:<ul><li>🎭 <strong>Masking</strong>: redact values per role</li><li>👁️ <strong>Visibility</strong>: show or hide the column</li><li>🏷️ <strong>Aliases</strong>: rename for the model</li></ul><p>A source and a few tables is the whole setup. 🚀 Next, query it. →</p>"
       },
       "stepQuery": {
         "title": "Query it your way",
@@ -139,8 +139,8 @@
         "description": "📓 The Notebook tab is JupyterLite: a Jupyter notebook running in your browser. Its first cell signs in, and the next reads the same statement as a DataFrame to chart or join with other data.<p>⬇️ Download the notebook and it opens in any desktop Jupyter, where the same cells read from Provisa as they do here.</p><p>One surface left: the one that writes your queries for you. →</p>"
       },
       "step13": {
-        "title": "Just ask: the surface that writes your queries",
-        "description": "💬 <em>\"how many pets per species\"</em><p><strong>You don't have to learn any of those query languages.</strong> Ask in plain English and Provisa compiles your question into all seven at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
+        "title": "Ask in plain English: the surface that writes your queries",
+        "description": "💬 <em>\"how many pets per species\"</em><p><strong>Ask in plain English</strong> and Provisa compiles your question into all seven at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "That's the five-minute core",
@@ -184,7 +184,7 @@
       },
       "stepTags": {
         "title": "Tags carry meaning",
-        "description": "🏷️ A tag is one org-wide label with a fixed meaning, applied to sources, tables, columns, relationships or commands. Tags carry behavior, not only documentation, and a tag can require a reason, an expiry date or a parameter when it is applied."
+        "description": "🏷️ A tag is one org-wide label with a fixed meaning, applied to sources, tables, columns, relationships or commands. Tags change behavior, and a tag can require a reason, an expiry date or a parameter when it is applied."
       },
       "stepRequests": {
         "title": "Relationship requests",
@@ -240,11 +240,11 @@
       },
       "step20": {
         "title": "Build your delivery pipeline",
-        "description": "🔧 Compose your whole delivery pipeline right here, with no separate ETL tool:<ul><li>👁️ <strong>Views</strong>: over any table, ephemeral or materialized, and views over views.</li><li>⚡ <strong>Commands</strong>: governed, typed operations (an HTTP service, a Python model, a stored procedure) that do double duty: a step inside your pipeline, <em>and</em> a first-class API that downstream apps and agents call to act on your data, invokable from every surface, governed and traced.</li><li>⭐ <strong>Entities &amp; facts</strong>: declare a dimension or fact once and Provisa generates the warehouse, methodology-neutral: 3NF (Inmon), star schema (Kimball), or Data Vault.</li><li>📏 <strong>Metrics</strong>: governed aggregate definitions (&ldquo;net revenue&rdquo;) with grain bound at query time. Define once, and every surface (SQL, GraphQL, AI agents) computes the same number, and views built on a metric regenerate when its definition changes.</li></ul>"
+        "description": "🔧 Compose your whole delivery pipeline right here, with no separate ETL tool:<ul><li>👁️ <strong>Views</strong>: over any table, ephemeral or materialized, and views over views.</li><li>⚡ <strong>Commands</strong>: governed, typed operations (an HTTP service, a Python model, a stored procedure) that serve as a step inside your pipeline <em>and</em> as an API that downstream apps and agents call to act on your data, from every surface, governed and traced.</li><li>⭐ <strong>Entities &amp; facts</strong>: declare a dimension or fact once and Provisa generates the warehouse, methodology-neutral: 3NF (Inmon), star schema (Kimball), or Data Vault.</li><li>📏 <strong>Metrics</strong>: governed aggregate definitions (&ldquo;net revenue&rdquo;) with grain bound at query time. Define once, and every surface (SQL, GraphQL, AI agents) computes the same number, and views built on a metric regenerate when its definition changes.</li></ul>"
       },
       "step21": {
         "title": "Materialize into a live warehouse",
-        "description": "🏗️ Materialize a view and you get a full ETL engine, declared, not scripted:<ul><li>📅 <strong>Scheduled snapshots</strong> on real <strong>business calendars</strong>: recurrence rules, holidays, business-day gating, and a close grace period, so it fires on <em>your</em> reporting calendar.</li><li>🗄️ <strong>Store As…</strong>: <strong>replace</strong>, <strong>upsert</strong>, or keep history with <strong>snapshot</strong> / <strong>delta</strong>, plus incremental compute.</li><li>🕰️ <strong>Time travel</strong>: bitemporal history; query the model as of any point in time.</li><li>⚡ <strong>Near-real-time</strong> refresh with debounce, or freshness-driven republish as inputs change.</li></ul>"
+        "description": "🏗️ Materialize a view and you get a full declarative ETL engine:<ul><li>📅 <strong>Scheduled snapshots</strong> on real <strong>business calendars</strong>: recurrence rules, holidays, business-day gating, and a close grace period, so it fires on <em>your</em> reporting calendar.</li><li>🗄️ <strong>Store As…</strong>: <strong>replace</strong>, <strong>upsert</strong>, or keep history with <strong>snapshot</strong> / <strong>delta</strong>, plus incremental compute.</li><li>🕰️ <strong>Time travel</strong>: bitemporal history; query the model as of any point in time.</li><li>⚡ <strong>Near-real-time</strong> refresh with debounce, or freshness-driven republish as inputs change.</li></ul>"
       },
       "stepMetrics": {
         "title": "Metrics, defined once",
@@ -272,7 +272,7 @@
       },
       "step23": {
         "title": "Operate it",
-        "description": "The Admin pages run the platform:<ul><li>⚙️ Choose and configure your <strong>federation engine</strong>: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Swap it anytime; the model, the surfaces and the governance above it never change.</li><li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach: Parquet, Iceberg and Delta read in place, zero-copy, credentials provisioned for you. Anything it can't link live lands as a governed replica.</li><li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li><li>📊 Full <strong>observability</strong>: redirect to any OpenTelemetry collector for enterprise-class trace management</li><li>📤 <strong>Export the model's configuration</strong>, the whole model or chosen sections, as a file to review, diff and ship through CI/CD</li></ul><p>The same model travels from local dev to production, validated at every step, with no rewrite:</p><ul><li><strong>Develop</strong>: embedded DuckDB, no Docker. Build &amp; validate locally.</li><li><strong>Validate at scale</strong>: Docker, spin up an engine + observability. Prove behavior against production engines.</li><li><strong>Promote</strong>: point at your own infrastructure, build through CI/CD, ship to production.</li></ul>"
+        "description": "The Admin pages run the platform:<ul><li>⚙️ Choose and configure your <strong>federation engine</strong>: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Swap it anytime; the model, the surfaces and the governance above it never change.</li><li>🔗 Whichever engine you pick brings its own <strong>live external data</strong> reach: Parquet, Iceberg and Delta read in place, zero-copy, credentials provisioned for you. Anything it can't link live lands as a governed replica.</li><li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li><li>📊 <strong>Observability</strong>: send traces to any OpenTelemetry collector</li><li>📤 <strong>Export the model's configuration</strong>, the whole model or chosen sections, as a file to review, diff and ship through CI/CD</li></ul><p>The same model travels from local dev to production, validated at every step, with no rewrite:</p><ul><li><strong>Develop</strong>: embedded DuckDB, no Docker. Build &amp; validate locally.</li><li><strong>Validate at scale</strong>: Docker, spin up an engine + observability. Prove behavior against production engines.</li><li><strong>Promote</strong>: point at your own infrastructure, build through CI/CD, ship to production.</li></ul>"
       },
       "stepPreview": {
         "title": "Preview any table",
@@ -292,7 +292,7 @@
       },
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",
-        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard): owner, team, purpose, limitations, usage, SLA, support and custom properties. Provisa publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> (tables, lineage, tags, ontology terms) every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>: the part of your ontology that bears on what is published: the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
+        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard): owner, team, purpose, limitations, usage, SLA, support and custom properties. Provisa publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There is no separate export step: the spec is <strong>derived from the live model</strong> (tables, lineage, tags, ontology terms) every time, so what's published can't drift out of date.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>, the part of your ontology that bears on what is published: the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Add a term",
@@ -304,7 +304,7 @@
       },
       "stepRelsAgents": {
         "title": "Relationships and AI agents",
-        "description": "🤖 The model and its relationships are available to AI agents (Polly, and agents connecting over MCP), and they shape the queries those agents write.<p>An agent runs under a role, so the same rule applies to it as to a person: a query that joins outside the registered relationships <strong>fails</strong>. This is enforced, not advisory.</p><p>It is also your choice. To let an agent discover relationships, grant its role the <code>ignore_relationships</code> right; to keep it inside guardrails, leave the role without it. It is the same deliberate grant as for a trusted identity (never honored in high-security mode).</p>"
+        "description": "🤖 The model and its relationships are available to AI agents (Polly, and agents connecting over MCP), and they shape the queries those agents write.<p>An agent runs under a role, so the same rule applies to it as to a person: a query that joins outside the registered relationships <strong>fails</strong>.</p><p>To let an agent discover relationships, grant its role the <code>ignore_relationships</code> right; to keep it inside guardrails, leave the role without it. It is the same deliberate grant as for a trusted identity (never honored in high-security mode).</p>"
       },
       "weblogsSources": {
         "title": "What this demo is",
@@ -332,7 +332,7 @@
       },
       "sonnetsIntro": {
         "title": "Shakespeare's sonnets, by meaning",
-        "description": "Shakespeare's 154 sonnets are stored in Postgres, embedded into Qdrant, searched by meaning and grown into a graph. The question: which themes run through the sonnets, and where does Shakespeare echo himself? <strong>sonnets</strong> is the Postgres source. It has a row for each sonnet and for each of the 2,155 lines."
+        "description": "Shakespeare's 154 sonnets are stored in Postgres, embedded into Qdrant, searched by meaning and grown into a graph. The tour asks which themes run through the sonnets and where Shakespeare echoes himself. <strong>sonnets</strong> is the Postgres source. It has a row for each sonnet and for each of the 2,155 lines."
       },
       "sonnetsVectors": {
         "title": "The vector store",
@@ -376,7 +376,7 @@
       },
       "filesIntro": {
         "title": "An instant data lake",
-        "description": "A city publishes its open data as files: 311 complaints in a CSV file a month, building permits in Parquet, the budget in Excel and inspections in JSON. <strong>drop</strong> is one files source over that folder: every file is a table, read where it lies, with no load step. The question: which neighborhoods have the most complaints near active construction?"
+        "description": "A city publishes its open data as files: 311 complaints in a CSV file a month, building permits in Parquet, the budget in Excel and inspections in JSON. <strong>drop</strong> is one files source over that folder: every file is a table, read where it lies, with no load step. The city wants to know which neighborhoods have the most complaints near active construction."
       },
       "filesComplaints": {
         "title": "One table over many files",
@@ -447,7 +447,7 @@
         "description": "The second question, in Cypher: the products rated under three stars, and what their buyers also bought. The graph runs across the MongoDB ratings and the Neo4j purchases, and power banks keep turning up."
       },
       "reviewsBoughtWithByDegree": {
-        "title": "We can graph it. But what does it mean?",
+        "title": "Grouped by degree",
         "description": "The same result, grouped by degree to answer the question it was drawn for. The groups bring out the products most often bought together with the low-rated ones, and a bigger number means more pairings run through that product. Degree is counted within this result only: the products rated under three stars, and what five or more of their customers also bought. The red nodes are the products. The ratings and the pair nodes are grouped too."
       },
       "reviewsRest": {
@@ -504,7 +504,7 @@
       },
       "qualityIntro": {
         "title": "Data you can trust",
-        "description": "A chain of five shops sends its sales as a daily feed. Each batch lands as the bronze layer in <strong>sales</strong>, the chain's database. Everything after bronze is a materialized view (the checks, silver and gold), and landing a batch is enough to refresh them all. The question: can I trust this data before it reaches gold?"
+        "description": "A chain of five shops sends its sales as a daily feed. Each batch lands as the bronze layer in <strong>sales</strong>, the chain's database. Everything after bronze is a materialized view (the checks, silver and gold), and landing a batch is enough to refresh them all. You need to know whether to trust this data before it reaches gold."
       },
       "qualityBronze": {
         "title": "Bronze: typed where it is clean",
@@ -548,7 +548,7 @@
       },
       "insiderIntro": {
         "title": "Insider review at a bank",
-        "description": "Northgate Partners, an invented bank, keeps a watch list of the deals it is working on. The question: is anyone sending deal-sensitive or customer data out of the bank? <strong>bank</strong> is its database: the watch list, the employees and their mail, and the customers and who read their records. Every name and record here is generated."
+        "description": "Northgate Partners, an invented bank, keeps a watch list of the deals it is working on. It wants to know whether anyone is sending deal-sensitive or customer data out of the bank. <strong>bank</strong> is its database: the watch list, the employees and their mail, and the customers and who read their records. Every name and record here is generated."
       },
       "insiderWatchList": {
         "title": "The watch list",
@@ -604,11 +604,11 @@
       },
       "insiderDone": {
         "title": "What this is, and is not",
-        "description": "Watch-list deals were matched against outbound mail by name and by meaning, ranked for review, and the list itself was never shown to the reviewer. This is post-review analytics behind real-time controls, not a replacement for data-loss prevention. Attachments, images, encoded text and personal channels are outside it. Monitoring employees needs disclosure and, in places, a works-council agreement."
+        "description": "Watch-list deals were matched against outbound mail by name and by meaning, ranked for review, and the list itself was never shown to the reviewer. This is post-review analytics behind real-time controls and does not replace data-loss prevention. Attachments, images, encoded text and personal channels are outside it. Monitoring employees needs disclosure and, in places, a works-council agreement."
       },
       "vulnerabilitiesScenario": {
         "title": "What this demo is",
-        "description": "A software company wants to know which of the vulnerabilities in its code attackers actually exploit, and how long each has gone unfixed. Its repositories, their packages and the Dependabot alerts on them are in its own database; the CVE records and CISA's catalog of Known Exploited Vulnerabilities are public. The tour shows Provisa joining the two by CVE and answering the question in SQL, GraphQL, Cypher and REST."
+        "description": "A software company wants to know which of the vulnerabilities in its code attackers exploit, and how long each has gone unfixed. Its repositories, their packages and the Dependabot alerts on them are in its own database; the CVE records and CISA's catalog of Known Exploited Vulnerabilities are public. The tour shows Provisa joining the two by CVE and answering the question in SQL, GraphQL, Cypher and REST."
       },
       "vulnerabilitiesGovdata": {
         "title": "The public vulnerability data",
@@ -620,7 +620,7 @@
       },
       "vulnerabilitiesNvd": {
         "title": "The CVE records, landed through a filter",
-        "description": "The NVD holds a quarter of a million CVEs, and the company's alerts name nineteen. The table's landing filter, a condition on its own columns, keeps only those when the table is landed, so the copy holds just the records the alerts need."
+        "description": "The NVD holds a quarter of a million CVEs, and the company's alerts name nineteen. The table's landing filter, a condition on its own columns, keeps only those when the table is landed, so the replica holds just the records the alerts need."
       },
       "vulnerabilitiesKev": {
         "title": "CISA's known exploited vulnerabilities",
@@ -636,7 +636,7 @@
       },
       "vulnerabilitiesAnswer": {
         "title": "The answer in SQL",
-        "description": "The view exploited_in_our_code is stored. It keeps each open alert whose CVE is in CISA's catalog, with the number of days since CISA's due date passed. Internet-facing repositories come first, then the ones longest overdue. That's where to start."
+        "description": "The view exploited_in_our_code is stored. It keeps each open alert whose CVE is in CISA's catalog, with the number of days since CISA's due date passed. Internet-facing repositories come first, then the ones longest overdue."
       },
       "vulnerabilitiesByTeam": {
         "title": "The answer in GraphQL",
@@ -656,7 +656,7 @@
       },
       "streamingScenario": {
         "title": "Orders, live",
-        "description": "A coffee shop's orders arrive on a Kafka topic, a few a second, and its catalog is in its Postgres. The question: which regions placed the most orders in the last five minutes? <strong>orders</strong> is the broker the orders arrive on."
+        "description": "A coffee shop's orders arrive on a Kafka topic, a few a second, and its catalog is in its Postgres. The shop wants to know which regions placed the most orders in the last five minutes. <strong>orders</strong> is the broker the orders arrive on."
       },
       "streamingJoin": {
         "title": "Orders priced from the catalog",
@@ -696,7 +696,7 @@
       },
       "profilingScenario": {
         "title": "What this demo is",
-        "description": "An outdoor retailer has bought a smaller one, Harbor Outfitters, and received its CRM's customers and orders. Before anyone builds on them, the question is: what is actually in this data? Provisa's built-in Data Profiler answers it, and its results are governed tables like any other, read in SQL, GraphQL and REST."
+        "description": "An outdoor retailer has bought a smaller one, Harbor Outfitters, and received its CRM's customers and orders. Before anyone builds on them, it needs to know what is in this data. Provisa's built-in Data Profiler answers it, and its results are governed tables like any other, read in SQL, GraphQL and REST."
       },
       "profilingProfiler": {
         "title": "The Data Profiler",
@@ -770,7 +770,7 @@
       },
       "profilingRecap": {
         "title": "What you saw",
-        "description": "You saw the acquired company's tables and a profile of them made by the built-in profiler and kept as governed tables. Nulls, ranges, formats, plausible types and duplicates each answer what is actually in this data, in SQL, GraphQL and REST, and each role sees only what it's allowed to."
+        "description": "You saw the acquired company's tables and a profile of them made by the built-in profiler and kept as governed tables. Nulls, ranges, formats, plausible types and duplicates each answer what is in this data, in SQL, GraphQL and REST, and each role sees only what it's allowed to."
       },
       "opioidsScenario": {
         "title": "What this demo is",
@@ -822,7 +822,7 @@
       },
       "datavaultScenario": {
         "title": "Two systems, one question",
-        "description": "An order system and a CRM, both from Northwind, each keep their own copy of every customer. The question: what did we know about this customer, from which source, and when? A data vault answers that by keeping every version from every source. Here the vault is declared as views, and the engine builds and refreshes it. There's no ETL platform, job server or pipeline code to run. The work runs on the engine, where it scales, and one declared vault feeds the marts, the governed APIs and the lineage."
+        "description": "An order system and a CRM, both from Northwind, each keep their own copy of every customer. You want to know what was known about a customer, from which source, and when. A data vault answers that by keeping every version from every source. Here the vault is declared as views, and the engine builds and refreshes it. There's no ETL platform, job server or pipeline code to run. The work runs on the engine, where it scales, and one declared vault feeds the marts, the governed APIs and the lineage."
       },
       "datavaultCrm": {
         "title": "The CRM's own copy",
@@ -882,7 +882,7 @@
       },
       "datavaultRecap": {
         "title": "What you saw",
-        "description": "Two live systems and a data vault over them, declared as views: hubs, links and satellites with every version kept, refreshed by the engine as rows arrive, governed in the satellites, and queried point-in-time in SQL, GraphQL and REST, with lineage back to the source fields. No separate ETL platform, job server or pipeline code."
+        "description": "Two live systems and a data vault over them, declared as views: hubs, links and satellites with every version kept, refreshed by the engine as rows arrive, governed in the satellites, and queried point-in-time in SQL, GraphQL and REST, with lineage back to the source fields."
       },
       "agricultureScenario": {
         "title": "What this demo is",
@@ -938,7 +938,7 @@
       },
       "retailScenario": {
         "title": "One group, two regions",
-        "description": "A retail group runs an EU and a US subsidiary as one business. Can it do that without breaking GDPR? Each subsidiary keeps its own database: this is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
+        "description": "A retail group runs an EU and a US subsidiary as one business. The tour asks whether it can do that without breaking GDPR. Each subsidiary keeps its own database: this is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
       },
       "retailRegions": {
         "title": "One definition of every region",
@@ -966,7 +966,7 @@
       },
       "retailGroupGraphql": {
         "title": "The same, in GraphQL",
-        "description": "The same group view over GraphQL: one model, every transport, the same rules."
+        "description": "The same group view over GraphQL, under the same rules."
       },
       "retailEveryRole": {
         "title": "Back to every role",
@@ -1014,7 +1014,7 @@
       },
       "retailAudit": {
         "title": "One record, both regions",
-        "description": "Every statement the tour ran: who ran it, on what, and which region answered it. One audit trail across both regions."
+        "description": "Every statement the tour ran, in one audit trail across both regions: who ran it, on what, and which region answered it."
       },
       "retailLimits": {
         "title": "What this is, and is not",
@@ -1026,7 +1026,7 @@
       },
       "provisioningScenario": {
         "title": "What this demo is",
-        "description": "A coffee roaster's warehouse takes three feeds (orders, prices and stock counts) and builds datasets from them as they land. Two teams downstream need the big one, every order with its margin: finance for its reporting, data science for its feature store. The question: how do they get it as soon as it is ready, without copying it or writing extraction jobs?"
+        "description": "A coffee roaster's warehouse takes three feeds (orders, prices and stock counts) and builds datasets from them as they land. Two teams downstream need the big one, every order with its margin: finance for its reporting, data science for its feature store. They want it as soon as it is ready, with no copies and no extraction jobs."
       },
       "provisioningJoin": {
         "title": "How the feeds join",
@@ -1034,7 +1034,7 @@
       },
       "provisioningRecap": {
         "title": "What you saw",
-        "description": "Feeds landed as they arrived, and datasets were built and refreshed from them. Each team was told on Kafka when a dataset was ready, and pulled it over Arrow Flight as of that moment, seeing only what its role allows and only inside the dataset's window. No copies, and no extraction jobs."
+        "description": "Feeds landed as they arrived, and datasets were built and refreshed from them. Each team was told on Kafka when a dataset was ready, and pulled it over Arrow Flight as of that moment, seeing only what its role allows and only inside the dataset's window, with no copies and no extraction jobs."
       },
       "provisioningWarehouse": {
         "title": "The warehouse's own database",
@@ -1070,7 +1070,7 @@
       },
       "provisioningDataScienceView": {
         "title": "What data science pulls",
-        "description": "The same dataset, the same query: cost and margin read 0, and service orders are gone (a row rule). One dataset, two governed views, no copies."
+        "description": "The same dataset, the same query: cost and margin read 0, and service orders are gone (a row rule)."
       },
       "provisioningAsFinanceAgain": {
         "title": "Back to finance",
@@ -1174,11 +1174,11 @@
       },
       "storefrontPoint": {
         "title": "One model, two consumers",
-        "description": "<strong>SHIPPED_AS</strong> joins an order to its shipment. The app and the BI tool both read through it and every other relationship, under the same rules: the customer sees their own orders, the analyst sees no emails. Change a relationship or a rule here, and both consumers have it. There is nothing to keep in sync."
+        "description": "<strong>SHIPPED_AS</strong> joins an order to its shipment. The app and the BI tool both read through it and every other relationship, under the same rules: the customer sees their own orders, the analyst sees no emails. Change a relationship or a rule here, and both consumers have it."
       },
       "hasuramigrationScenario": {
         "title": "An app moving off Hasura",
-        "description": "An outfitter's storefront and support desk ran on Hasura v2 over this PostgreSQL database: customers, the catalog, orders and their lines, with roles for customers, support staff and analysts. The team moves the app to Provisa, and gains what Hasura could not give it: the sales team's Salesforce accounts beside the orders, under the same rules."
+        "description": "An outfitter's storefront and support desk ran on Hasura v2 over this PostgreSQL database: customers, the catalog, orders and their lines, with roles for customers, support staff and analysts. The team moves the app to Provisa, and gains the sales team's Salesforce accounts beside the orders, under the same rules."
       },
       "hasuramigrationImport": {
         "title": "One import, and it works",
@@ -1198,7 +1198,7 @@
       },
       "hasuramigrationProfile": {
         "title": "A read by key",
-        "description": "Hasura's <strong>customers_by_pk</strong> becomes a filter on the table. The <strong>full_name</strong> computed field is just the two names the screen puts together, and the import listed it as one to redo by hand. The row rule still decides what Ana sees: only her own row."
+        "description": "Hasura's <strong>customers_by_pk</strong> becomes a filter on the table. The <strong>full_name</strong> computed field is the two names the screen puts together, and the import listed it as one to redo by hand. The row rule still decides what Ana sees: only her own row."
       },
       "hasuramigrationSalesforce": {
         "title": "What Hasura couldn't do: Salesforce",
@@ -1226,7 +1226,7 @@
       },
       "hasuramigrationRecap": {
         "title": "What you saw",
-        "description": "A Hasura app imported in one step and working at once: tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once; the rules did not change at all. And one relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync."
+        "description": "A Hasura app imported in one step and working at once: tables, names, relationships, roles, row rules, write permissions, the action and the triggers. The queries changed shape once and the rules not at all. One relationship later, the app reads its Salesforce accounts beside its orders, with nothing to keep in sync."
       },
       "reproduceScenario": {
         "title": "What this demo is",
@@ -1246,7 +1246,7 @@
       },
       "reproduceImpact": {
         "title": "What a rename would break",
-        "description": "Rename fx_rate here, and Provisa lists what reads it before you save: the report among them. Nothing that depends on a column changes without being named first."
+        "description": "Rename fx_rate here, and Provisa lists what reads it before you save: the report among them."
       },
       "reproduceNow": {
         "title": "The report now",
@@ -1258,7 +1258,7 @@
       },
       "reproduceAsOfNow": {
         "title": "As of 30 September, as recorded now",
-        "description": "Read as Provisa has it recorded today, 30 September shows the corrected figure: 1,550,000 for the rates desk. That is what the books say now, not what was filed."
+        "description": "Read as Provisa has it recorded today, 30 September shows the corrected figure: 1,550,000 for the rates desk. That is the figure in the books now, and it differs from what was filed."
       },
       "reproduceAsFiled": {
         "title": "As recorded when it was filed",
@@ -1342,7 +1342,7 @@
       },
       "dataroomCounts": {
         "title": "Customer counts",
-        "description": "How many customers each segment and region has, and how many ordered in the last twelve months. A count, never a customer."
+        "description": "How many customers each segment and region has, and how many ordered in the last twelve months."
       },
       "dataroomAnswer": {
         "title": "Revenue by segment",
@@ -1354,11 +1354,11 @@
       },
       "dataroomQuality": {
         "title": "Data quality scores",
-        "description": "Each check of the seller's records and how many rows fail it: customers with no email, phone numbers that are not ten digits, invoices never paid. The flaws a buyer looks for, counted."
+        "description": "Each check of the seller's records and how many rows fail it: customers with no email, phone numbers that are not ten digits, invoices never paid."
       },
       "dataroomSample": {
         "title": "A masked sample",
-        "description": "One customer in fifty, as a bidder reads them: no name, the email's name part and the phone's digits masked. The shape of the data, never the person."
+        "description": "One customer in fifty, as a bidder reads them: no name, the email's name part and the phone's digits masked."
       },
       "dataroomRefused": {
         "title": "Customer names are refused",
@@ -1370,7 +1370,7 @@
       },
       "dataroomBidderBCohorts": {
         "title": "Cohorts, as bidder B",
-        "description": "Customers who first ordered in the first quarter of 2023, and how many still ordered in each quarter after, with what they spent. Retention, without a single customer."
+        "description": "Customers who first ordered in the first quarter of 2023, and how many still ordered in each quarter after, with what they spent."
       },
       "dataroomSeller": {
         "title": "Back to the seller",
@@ -1378,7 +1378,7 @@
       },
       "dataroomAudit": {
         "title": "What each bidder looked at",
-        "description": "Every statement is audited: who ran it, as which role, the tables it read, whether it was answered and how many rows it returned. Here are the statements you just ran as bidder A and bidder B. The seller knows exactly what left the room."
+        "description": "Every statement is audited: who ran it, as which role, the tables it read, whether it was answered and how many rows it returned. Here are the statements you just ran as bidder A and bidder B."
       },
       "dataroomExpiry": {
         "title": "Access ends on the deal date",
@@ -1410,7 +1410,7 @@
       },
       "testdataProd": {
         "title": "Production: the real rows",
-        "description": "In prod you see the customers as they really are."
+        "description": "In prod you see the real customers."
       },
       "testdataProdAnswer": {
         "title": "Production's answer",
@@ -1442,7 +1442,7 @@
       },
       "testdataDev": {
         "title": "Dev: generated, nothing real",
-        "description": "Every row in dev was generated from production's profile: the same columns, value shapes and spread, and none of the real rows. This is also the answer when even pre-prod's real rows can't leave production's boundary: give testers a synthetic copy."
+        "description": "Every row in dev was generated from production's profile: the same columns, value shapes and spread, and none of the real rows. When even pre-prod's real rows can't leave production's boundary, give testers this synthetic copy."
       },
       "testdataDevAnswer": {
         "title": "Same shape, different numbers",
@@ -1650,7 +1650,7 @@
       },
       "bankingScenario": {
         "title": "End-of-day reporting, ledger left in place",
-        "description": "A bank reports its totals at every business day's 18:00 close, and restates a past day when a correction arrives later. The usual way first copies the ledger into the warehouse. This demo does not. Watch four things as you go. What the reporting costs to compute. How much data the warehouse holds, and so how much it must govern. Whether the dashboard, BI and an agent give the same answer. And what it costs to change the decision later."
+        "description": "A bank reports its totals at every business day's 18:00 close, and restates a past day when a correction arrives later. The usual way first copies the ledger into the warehouse, and this demo does not. As you go, watch what the reporting costs to compute, how much data the warehouse holds and must govern, whether the dashboard, BI and an agent give the same answer, and what it costs to change the decision later."
       },
       "bankingJoin": {
         "title": "From a total to its postings",
@@ -1658,11 +1658,11 @@
       },
       "bankingRecap": {
         "title": "What you saw",
-        "description": "The end-of-day totals were computed at the ledger, and the warehouse paid only for what it keeps. The warehouse holds totals and never postings, so there is no second copy of the ledger to govern. The dashboard, BI and the agent read one declared relationship and gave the same numbers. And if keeping the ledger home turns out wrong, a two-line placement change moves it while nothing that reads it changes. Choose lean now: being wrong costs two lines, not a project."
+        "description": "The end-of-day totals were computed at the ledger, and the warehouse paid only for what it keeps. The warehouse holds totals and never postings, so there is no second copy of the ledger to govern. The dashboard, BI and the agent read one declared relationship and gave the same numbers. If keeping the ledger home turns out wrong, a two-line placement change moves it while nothing that reads it changes."
       },
       "bankingLedger": {
         "title": "The ledger stays home",
-        "description": "The transaction table is homed in the ledger region and never replicated. No copy of a posting ever lands in the warehouse, and every query over the table runs in the ledger. The end-of-day totals and the drill-downs come off the warehouse's bill, for modest compute in the ledger. Only the totals reach the warehouse, plus the postings a drill-down shows, in passing. The cost is lower and the footprint smaller."
+        "description": "The transaction table is homed in the ledger region and never replicated. No copy of a posting ever lands in the warehouse, and every query over the table runs in the ledger. The end-of-day totals and the drill-downs come off the warehouse's bill, for modest compute in the ledger. Only the totals reach the warehouse, plus the postings a drill-down shows, in passing."
       },
       "bankingVersions": {
         "title": "A correction is a new row",
@@ -1714,7 +1714,7 @@
       },
       "bankingChange": {
         "title": "Changing your mind costs two lines",
-        "description": "Suppose volumes outgrow the ledger's compute. Set this table's region to warehouse and its replicate setting to Always, and the ledger is replicated into the warehouse. That is a two-line placement change, and every query, dashboard, BI view and agent answers as before. Built by hand, the same move means new pipelines, a backfill, rewritten aggregation and versioning, repointed reports and a second set of access rules. Then come reconciliation testing, audit and lineage checks, architecture and security review, and a change board. Here the change is a two-line reviewed diff, so testing, audit and architecture review a diff, not a migration."
+        "description": "Suppose volumes outgrow the ledger's compute. Set this table's region to warehouse and its replicate setting to Always, and the ledger is replicated into the warehouse. That is a two-line placement change, and every query, dashboard, BI view and agent answers as before. Built by hand, the same move means new pipelines, a backfill, rewritten aggregation and versioning, repointed reports and a second set of access rules. Then come reconciliation testing, audit and lineage checks, architecture and security review, and a change board. Here the change is a two-line reviewed diff, and that diff is what testing, audit and architecture review."
       },
       "bankingAsAdmin": {
         "title": "Back as the administrator",
@@ -1722,7 +1722,7 @@
       },
       "groupexposureScenario": {
         "title": "What this demo is",
-        "description": "A Prague bank lends to companies and records the company that owns each one by its Legal Entity Identifier (LEI). EU rules cap what it may lend to one client, or to a group of companies one owner controls, at 25% of its Tier 1 capital. The question: which groups is the bank over that limit to? Its books name each borrower's owner, not who owns the owner. The bank, its borrowers and its loans are fictional; the groups that own them are real."
+        "description": "A Prague bank lends to companies and records the company that owns each one by its Legal Entity Identifier (LEI). EU rules cap what it may lend to one client, or to a group of companies one owner controls, at 25% of its Tier 1 capital. It needs to know which groups it is over that limit to. Its books name each borrower's owner, not who owns the owner. The bank, its borrowers and its loans are fictional; the groups that own them are real."
       },
       "groupexposureWikidata": {
         "title": "Who owns the owners, from Wikidata",
@@ -1781,7 +1781,7 @@
         "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked: that is all the role is served."
       },
       "agentdataExplain": {
-        "title": "What actually ran",
+        "title": "What ran",
         "description": "The agent's run_sql call, opened: the statement it sent, then the statement that ran for its role. Provisa added the West row filter and the email mask. The agent wrote neither, and is never told about them."
       },
       "agentdataOutOfReach": {
