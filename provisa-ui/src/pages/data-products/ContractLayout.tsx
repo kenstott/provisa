@@ -13,7 +13,7 @@
 // full width. A panel draws what is declared on the shared label and value grid and in the shared
 // list table; what is not declared folds into one quiet line, which is all an empty panel shows.
 
-import { type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Table, Text } from "@mantine/core";
 import type { OdcsRecord } from "../../api/dataProductContracts";
@@ -70,6 +70,10 @@ export interface PanelTable {
   rowTestId?: (row: OdcsRecord) => string;
 }
 
+// A schema's table holds more wrapped columns than a page list does: each may narrow further, so a
+// wide contract stays inside its panel.
+const TABLE_STYLE = { "--list-wrap-min": "14ch" } as CSSProperties;
+
 const columnValue = (column: PanelColumn, row: OdcsRecord) =>
   column.value ? column.value(row) : row[column.name];
 
@@ -93,7 +97,7 @@ function RecordTable({ table, named }: { table: PanelTable; named: boolean }) {
           {table.name}
         </Text>
       )}
-      <ListTable testId={table.testId}>
+      <ListTable testId={table.testId} style={TABLE_STYLE}>
         <ListHead columns={columns.map((c) => c.label ?? c.name)} />
         <Table.Tbody>
           {table.rows.map((row, i) => (

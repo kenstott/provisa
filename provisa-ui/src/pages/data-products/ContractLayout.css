@@ -24,7 +24,7 @@
 }
 /* A version's changes keep a readable measure, however little room its table has. */
 .contract-version-changes {
-  min-width: 16rem;
+  min-width: 12.5rem;
 }
 /* A panel's key-value rows sit close to the table or the line beneath them. */
 .contract-panel-body > .detail-fields {
