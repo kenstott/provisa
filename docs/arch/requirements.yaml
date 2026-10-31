@@ -90763,7 +90763,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a function sqlglot understands needs nothing written; replay still decides it, since sqlglot can change
     an answer (sha512 renders as SHA256 on DuckDB). A function it passes through is taught to it as an expansion:
     a small table of definitions into sqlglot expressions, which sqlglot renders per dialect. There is no
-    separate rewriter. An engine tweak is added only after a replay fails.'
+    separate rewriter. An engine tweak is added only after a replay fails. (Amended 2026-10-29, ALWAYS POSTGRESQL
+    TO THE TARGET:) Maintainer 2026-10-31: sqlglot always reads PostgreSQL and writes the target. Every
+    form and expansion is written in PostgreSQL syntax and rendered for any engine, not listed per dialect;
+    only an engine tweak added after a replay fails is written for one engine.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
