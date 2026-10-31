@@ -64,6 +64,19 @@ class StoreOutsideEngineDatabase(ValueError):
     """A store an engine that reads its replicas only in the database it runs in cannot read:
     rows landed there are never seen by a query, so it is refused rather than written."""
 
+    def __init__(self, engine: str, runs_in: str, store: str) -> None:
+        from sqlalchemy import make_url
+
+        def shown(dsn: str) -> str:
+            return make_url(dsn).render_as_string(hide_password=True)
+
+        super().__init__(
+            f"the {engine} engine runs in {shown(runs_in)} and reads its replicas there, but its "
+            f"materialization store is {shown(store)}, so a query would never see what lands "
+            "there. Leave PROVISA_MATERIALIZE_URL, materialize_store_url, the org's own store and "
+            "its region's replicas store unset, or name the engine's database in them"
+        )
+
 
 class DriverClass(str, Enum):  # REQ-840
     BROAD = "broad"  # reaches many external source types (Trino)
@@ -470,6 +483,7 @@ class FederationEngine:  # REQ-840
                     f"(only {sorted(self._supported_materialize_stores)} does); an org's own store, "
                     "materialize_store_url, or $PROVISA_MATERIALIZE_URL named an unsupported one"
                 )
+        self.backend.require_readable_store(dsn)
         # REQ-1912: replicas and materialized views each have a schema of their own, so a store
         # with no schemas is refused here — the one door every write and every read address
         # comes through.
@@ -776,6 +790,18 @@ def _platform_db_materialize_default() -> str | None:
     return f"{scheme.split('+', 1)[0]}://{rest}" if sep else None
 
 
+def _pg_engine_database() -> str | None:
+    """The DECLARED store of a pg engine: the database it runs in, the configured engine URL else
+    the platform's. Replicas land there (``PgBackend.replica_target``) and every statement reads
+    them there, so the two cannot be told apart. Driver-agnostic, as libpq wants it."""
+    url = configured_engine_url() or _platform_db_materialize_default()
+    if url is None:
+        return None
+    scheme, sep, rest = url.partition("://")
+    scheme = scheme.split("+", 1)[0]
+    return f"{'postgresql' if scheme == 'postgres' else scheme}://{rest}" if sep else url
+
+
 def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
     """A Postgres-family engine with ALL prebuilt connector defs registered; discover() prunes to what
     actually works.
@@ -874,7 +900,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         # FederationEngine.__init__'s own doc on this trait for the exact reproduction.
         catalog_qualified=False,
         backend_factory=PgBackend,  # in-process terminal driving PgFederationRuntime
-        default_materialize_store=_platform_db_materialize_default,
+        default_materialize_store=_pg_engine_database,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
         ),  # ARROW via the generic row→batch adapter over the lazy server-side cursor (REQ-1219)

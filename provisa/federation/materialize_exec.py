@@ -29,10 +29,11 @@ Three landing shapes, selected by the table's change_signal + watermark_column (
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 from typing import Any, Protocol
 
-from sqlalchemy import JSON, Column, DateTime, MetaData, Table
+from sqlalchemy import JSON, Column, DateTime, MetaData, Table, tuple_
 from sqlalchemy.sql.elements import quoted_name
 from sqlalchemy.schema import CreateTable
 
@@ -52,6 +53,10 @@ class StoreConn(Protocol):
     async def bulk_copy(self, table: Table, rows: list[dict]) -> int: ...
 
     async def upsert(self, table: Table, values: dict, *, index_elements: list[str]) -> None: ...
+
+    def transaction(self) -> Any: ...
+
+    async def advisory_xact_lock(self, key: int) -> None: ...
 
 
 # The write face's IR → SQLAlchemy mapping is the canonical ir_types registry (REQ-846): one
@@ -354,7 +359,7 @@ def build_row_cache_table(
     """The row-materialize (REQ-1865) landed-table DDL: ``build_table``'s ordinary shape plus the
     two per-row bookkeeping columns section 2a of the design doc requires. Both are
     ``TIMESTAMP WITH TIME ZONE NOT NULL`` — every cached row always carries its own freshness
-    stamps, never nullable placeholders. This is the SAME physical shape ``land_rows`` upserts
+    stamps, never nullable placeholders. This is the SAME physical shape ``land_rows`` lands
     into; the table's address (``EngineBackend.replica_address``) is unchanged from the whole-table
     MATERIALIZED path (section 2b) — the two shapes never collide because ``row_materialize`` and
     ``materialize`` are validated mutually exclusive (``Table._validate_row_materialize``)."""
@@ -376,6 +381,25 @@ def build_row_cache_table(
     return result
 
 
+async def lock_landing(conn: StoreConn, table: Table) -> None:
+    """Hold ``table`` against every other lander until the open transaction ends. Row-level
+    landers replace keys by delete and insert, and the query path's join pushdown lands with no
+    row lock: two of them on one key could each delete it and each insert, and a row cache table
+    has no unique key to stop the second. A no-op on a store without advisory locks."""
+    name = f"{table.schema}.{table.name}".encode()
+    await conn.advisory_xact_lock(
+        int.from_bytes(hashlib.sha256(name).digest()[:8], "big", signed=True)
+    )
+
+
+def _keys_in(table: Table, pk_columns: list[str], rows: list[dict]) -> Any:
+    """The rows of ``table`` holding the keys of ``rows``."""
+    pk = [table.c[c] for c in pk_columns]
+    if len(pk) == 1:
+        return pk[0].in_([row.get(pk_columns[0]) for row in rows])
+    return tuple_(*pk).in_([tuple(row.get(c) for c in pk_columns) for row in rows])
+
+
 async def land_rows(
     conn: StoreConn,
     table: Table,
@@ -385,12 +409,13 @@ async def land_rows(
     resolved_cache_ttl: int,
     now: datetime.datetime | None = None,
 ) -> None:
-    """UPSERT exactly these rows by PK (row-level materialize, REQ-1865) — never a blind append,
-    never a bulk insert. Each row may already exist in the cache (a re-fetch of a stale/CDC-
-    touched key) or may be new (a key's first fetch); both cases go through the identical
-    UPDATE-by-PK-else-INSERT call, so there is no separate insert-only branch that could double a
-    row or skip refreshing its stamped columns. Never drops or truncates — this is never a
-    replace, only ever an upsert of the rows the caller explicitly fetched.
+    """Land exactly these rows by PK (row-level materialize, REQ-1865), in sets: never a blind
+    append, and never one statement per row. Each row may already exist in the cache (a re-fetch
+    of a stale/CDC-touched key) or may be new (a key's first fetch); both go the same way, a
+    DELETE of the batch's keys and a bulk insert of its rows (``bulk_copy``: COPY on PostgreSQL),
+    in one transaction, so no reader finds a key missing and a failed land changes nothing. No
+    other row is touched: this is never a replace. A key repeated in ``rows`` keeps its last row,
+    as a run of upserts leaves it.
 
     ``resolved_cache_ttl`` is the SAME ``table.cache_ttl or source.cache_ttl`` duration
     ``resolve_landing_args`` already resolves for the whole-table path — reused, not reinvented,
@@ -405,13 +430,24 @@ async def land_rows(
 
     expires_at = expires_after(stamp_now, resolved_cache_ttl)  # REQ-2031: -1 never
     json_cols = _json_columns(table)
-    for row in rows:
-        stamped = {
-            **_coerce_json_row(dict(row), json_cols),
-            _ROW_CACHED_AT: stamp_now,
-            _ROW_EXPIRES_AT: expires_at,
-        }
-        await conn.upsert(table, stamped, index_elements=list(pk_columns))
+    stamped = list(
+        {
+            tuple(row.get(c) for c in pk_columns): {
+                **_coerce_json_row(dict(row), json_cols),
+                _ROW_CACHED_AT: stamp_now,
+                _ROW_EXPIRES_AT: expires_at,
+            }
+            for row in rows
+        }.values()
+    )
+    if not stamped:
+        return
+    async with conn.transaction():
+        await lock_landing(conn, table)
+        for start in range(0, len(stamped), LAND_BATCH_ROWS):
+            batch = stamped[start : start + LAND_BATCH_ROWS]
+            await conn.execute_core(table.delete().where(_keys_in(table, pk_columns, batch)))
+            await conn.bulk_copy(table, batch)
 
 
 def _pk_where(table: Table, pk_columns: list[str], row: dict) -> Any:

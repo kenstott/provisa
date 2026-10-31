@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: da69e856-47e4-4584-b3ff-0678870a1b9d
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -49,7 +50,9 @@ def _rows(n: int, status: str = "new") -> list[dict]:
 
 async def _held(db: Database, table) -> list[tuple]:
     async with db.acquire() as conn:
-        result = await conn.execute_core(select(table.c.id, table.c.status).order_by(table.c.id))
+        result = await conn.execute_core(
+            select(table.c.id, table.c.status).order_by(table.c.id, table.c.status)
+        )
         return [tuple(row) for row in result.fetchall()]
 
 

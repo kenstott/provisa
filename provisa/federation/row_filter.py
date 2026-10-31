@@ -292,7 +292,7 @@ async def replace_filtered_rows(
     from sqlalchemy.schema import CreateTable
 
     from provisa.federation import store_writer
-    from provisa.federation.materialize_exec import land_rows
+    from provisa.federation.materialize_exec import land_rows, lock_landing
     from provisa.federation.replica_guard import require_store_replica_table
 
     dsn = engine.engine.materialize_store()
@@ -306,6 +306,9 @@ async def replace_filtered_rows(
         async with conn.transaction():
             await conn.execute_core(CreateTable(cache_table, if_not_exists=True))
             await _ensure_record_table(conn, schema, record)
+            # Before this delete: land_rows takes it next, and two filters' lands waiting on it
+            # while each holds rows the other deletes would deadlock.
+            await lock_landing(conn, cache_table)
             await conn.execute_core(delete(cache_table).where(text(where_sql)))
             with pa.memory_map(spool_path) as source:
                 reader = pa.ipc.open_file(source)
