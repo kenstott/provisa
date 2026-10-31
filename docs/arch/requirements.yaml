@@ -62372,7 +62372,16 @@
   feature: hasura-migration-permissions
   priority: MUST
   type: behavioral
-  description: 'Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa''s own vocabulary. A role with any select permission (or an action permission, or membership in an inherited role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update or delete permission also holds `write` (REQ-868). The former `read` pseudo-capability, which no gate reads, is not emitted. Hasura''s admin holds every permission implicitly and is Provisa''s `org_admin`, whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported column: a tracked table''s, a landed remote schema''s, and a column-less table''s columns typed at preview (REQ-1691), which are visible to org_admin alone.'
+  description: 'Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa''s own
+    vocabulary. A role with any select permission (or an action permission, or membership in an inherited
+    role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update
+    or delete permission also holds `write` (REQ-868). The former `read` pseudo-capability, which no gate
+    reads, is not emitted. Hasura''s admin holds every permission implicitly and is Provisa''s `org_admin`,
+    whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported
+    column: a tracked table''s, a landed remote schema''s, and a column-less table''s columns typed at preview
+    (REQ-1691), which are visible to org_admin alone. (Amended 2026-10-29, QUERY_DEVELOPMENT GATES NO READ:)
+    Lead 2026-10-31, following REQ-2155: query_development gates development features, not reads. An imported
+    role keeps the right so its development features carry over; no data surface reads it.'
   code:
   - provisa/hasura_v2/mapper.py
   - provisa/hasura_v2/remote_schema.py
