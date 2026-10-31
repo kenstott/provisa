@@ -25,7 +25,7 @@ fall short of it.
 - **Streaming (drain the one terminal to the wire):** pgwire, Flight SQL, native gRPC, **airport**.
   Airport is NOT exempt: it must stream (see Defect 5). The **native** gRPC query RPC already
   streams (REQ-1215); the GraphQL-over-gRPC proxy is a GraphQL transport (buffered, below).
-- **Buffered → CTAS (never Provisa-RAM):** JSON:API, GraphQL, Bolt. These land a CTAS handle above
+- **Buffered → CTAS (never Provisa-RAM).** JSON:API, GraphQL, Bolt. These land a CTAS handle above
   the threshold and inline the body below it.
 - **Genuinely bounded (small by construction, materialize freely):** metadata / admin /
   registered-function output.
@@ -52,23 +52,23 @@ REQ-1216 asserts "All Flight-serving engines (DuckDB, Snowflake, Databricks, Big
 Fabric/Synapse, Trino) declare `EngineCapability.ARROW_STREAM`," and REQ-1217 requires the terminal
 be "genuinely lazy." Three of them materialize the whole table then re-emit its batches:
 
-- `provisa/federation/databricks_runtime.py:257` — `run_arrow` then `.to_batches()`
-- `provisa/federation/bigquery_runtime.py:218` — same
-- `provisa/federation/mssql_warehouse_runtime.py:271` — same
+- `provisa/federation/databricks_runtime.py:257`: `run_arrow` then `.to_batches()`
+- `provisa/federation/bigquery_runtime.py:218`: same
+- `provisa/federation/mssql_warehouse_runtime.py:271`: same
 
 **Who declares it:** not the runtime but the per-engine **builder** in `provisa/federation/engine.py`
 hardcodes `ARROW_STREAM` into the capability `frozenset`, each with a comment naming a lazy driver
 primitive the runtime never calls:
 
 - `build_databricks_engine` engine.py:756 — "lazy record-batch streaming via Flight (REQ-987)"
-- `build_bigquery_engine` engine.py:786 — "to_arrow_iterable — lazy record batches" (runtime calls
+- `build_bigquery_engine` engine.py:786 ("to_arrow_iterable) lazy record batches" (runtime calls
   full `to_arrow`, not `to_arrow_iterable`)
 - mssql builder engine.py:818 — "built from the ODBC cursor"
 
 The builder advertises the capability; the runtime fakes it. Declaring a capability the terminal
 does not honor is exactly the silent-materialization this project forbids.
 
-**The fix must make the terminal genuinely lazy** — use the server-side chunk API the builder
+**The fix must make the terminal genuinely lazy.** Use the server-side chunk API the builder.
 already names (bigquery `to_arrow_iterable`, databricks Cloud Fetch chunk iteration, mssql cursor
 `fetchmany`→Arrow), as Snowflake `fetch_arrow_batches` and DuckDB `fetch_record_batch` do (REQ-1217).
 This fixes Defect 3 in the same stroke, since a lazy `run_sync` falls out of the same primitive.
@@ -112,10 +112,10 @@ materialized arrow terminal (`execute_engine_arrow`) on the ENGINE route and `.r
 Airport must drain the one streaming terminal like Flight SQL. Its two real needs are separable
 catalog-identity concerns, not result-path buffering:
 
-- **byte-stable schema** — advertise from the plan's typed output columns (already known
+- **byte-stable schema.** Advertise from the plan's typed output columns (already known
   pre-execution), not by scanning rows. Empty-result retyping (`_retype_null_columns`,
   query.py) already reads column types independent of row data.
-- **`is_rowid` for UPDATE/DELETE echo** — derive from the source's key metadata / a streamed rowid
+- **`is_rowid` for UPDATE/DELETE echo.** Derive from the source's key metadata / a streamed rowid
   column, not by holding the whole table. If a genuinely unbounded rowid mapping is needed, land it
   as a CTAS side-table (off-heap), not an in-RAM cache.
 
@@ -140,16 +140,16 @@ One terminal, `_execute_plan`, is the single decision point:
    transports straight to CTAS-land, never a streaming-shaped method that secretly materializes,
    and never the row→Arrow adapter over a materializing `run_sync` (that just moves the buffer).
 
-## Remediation sequence (highest leverage first)
+## Remediation sequence (biggest payoff first)
 
-1. **DIRECT streaming** (Defect 1) — `execute_native` returns a lazy batch generator; DIRECT user
+1. **DIRECT streaming** (Defect 1): `execute_native` returns a lazy batch generator; DIRECT user
    scans stream. Amend REQ-1190; the biggest single OOM hole.
-2. **Warehouse honesty** (Defects 2–3) — make `run_arrow_stream`/`run_sync` genuinely lazy via the
+2. **Warehouse honesty** (Defects 2–3): make `run_arrow_stream`/`run_sync` genuinely lazy via the
    driver's server-side chunk API. Delete the three fake `run_arrow_stream`s. No capability-dropping
    fallback (it doesn't conform; see Defect 2).
-3. **Airport streams** (Defect 5) — route airport through the streaming terminal; move
+3. **Airport streams** (Defect 5): route airport through the streaming terminal; move
    schema/`is_rowid` off the result path. Supersede REQ-1218.
-4. **Buffered = CTAS** (Defect 4) — JSON:API / GraphQL / Bolt land a threshold-gated CTAS at the one
+4. **Buffered = CTAS** (Defect 4): JSON:API / GraphQL / Bolt land a threshold-gated CTAS at the one
    terminal instead of an in-Provisa buffer; wire the automatic threshold into `_execute_plan`.
 
 Each step is verifiable by extending `tests/integration/test_streaming_memory_bounded_e2e.py`

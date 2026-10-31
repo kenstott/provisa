@@ -1,6 +1,6 @@
 # Data Products
 
-A data product is a named, owned bundle of tables published together for consumption. It is the unit the catalog exposes to consumers: a curated set of tables that a domain has declared ready. Fields follow the ODPS (Open Data Product Standard) vocabulary where Provisa already has the source of truth.
+A data product is a named, owned bundle of tables published together for consumption. It is the unit the catalog exposes to consumers, a curated set of tables that a domain has declared ready. Fields follow the ODPS (Open Data Product Standard) vocabulary where Provisa already has the source of truth.
 
 ## Domain ownership rule
 
@@ -10,7 +10,7 @@ A product that needs data from another domain must bring that data in as a domai
 
 ## Output ports
 
-The tables and commands assigned to a data product are its **output ports**: the queryable surface consumers see. Assigning a table sets `Table.product_id`; clearing it removes the membership. A table belongs to at most one product. Commands in the same domain may also be assigned as members.
+The tables and commands assigned to a data product are its **output ports**, the queryable surface consumers see. Assigning a table sets `Table.product_id`; clearing it removes the membership. A table belongs to at most one product. Commands in the same domain may also be assigned as members.
 
 ## Contracts
 
@@ -24,7 +24,7 @@ A contract holds:
 | `status` | `proposed`, `draft`, `active`, `deprecated` or `retired` |
 | `description` | What the port is for |
 | `terms` | `usage`, `limitations` and `notice_period` (for example `P3M`) |
-| `sla` | Service levels such as availability or retention. Freshness is not declared here: it comes from the table's cache TTL |
+| `sla` | Service levels such as availability or retention. Freshness is not declared here; it comes from the table's cache TTL |
 | `columns` | The columns the port declares: name, type, description and whether the column is never null |
 
 Two rules keep a contract and its table in step:
@@ -70,7 +70,7 @@ Opening a data product in the admin UI shows these panels:
 
 ## Metadata export {: #metadata-export }
 
-Only tables assigned to a product publish to external catalogs by default. `build_snapshot` applies a `data_products_only` filter: unassigned tables are withheld, along with their relationship edges, lineage edges, and governance tags. Sources and domains always publish regardless.
+Only tables assigned to a product publish to external catalogs by default. `build_snapshot` applies a `data_products_only` filter, which withholds unassigned tables along with their relationship edges, lineage edges and governance tags. Sources and domains always publish regardless.
 
 A product with no exported members does not publish. An empty listing would claim a product exists with nothing behind it.
 
@@ -83,9 +83,9 @@ Only catalogs with a native data-product concept publish it as an entity of its 
 | OpenMetadata | `DataProduct` entity (native) |
 | DataHub | Native `dataProduct` URN entity with its own properties/ownership aspects |
 | Collibra | Asset of a `Data Product` community type, related to member tables |
-| Apache Atlas | Best-effort custom `provisa_data_product` typedef — Atlas has no native data-product type |
-| Atlan | Best-effort custom `DataProduct` typedef guess — Atlan has no documented stable type for this |
-| OpenLineage | Not a listing — member tables carry a `provisa_data_product` custom facet naming the product |
+| Apache Atlas | Best-effort custom `provisa_data_product` typedef, because Atlas has no native data-product type |
+| Atlan | Best-effort custom `DataProduct` typedef guess, because Atlan has no documented stable type for this |
+| OpenLineage | Not a listing. Member tables carry a `provisa_data_product` custom facet naming the product |
 
 ## Fields
 

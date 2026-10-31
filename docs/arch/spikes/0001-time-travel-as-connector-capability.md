@@ -15,7 +15,7 @@ Iceberg/Delta via `TIME_TRAVEL_SOURCES` (`provisa/core/source_registry.py`), and
 compiler both gates and emits it as a Trino-only string suffix
 (`provisa/compiler/sql_gen.py:394-412`, `FOR TIMESTAMP/VERSION AS OF`). The
 connector `Capability` surface (`provisa/federation/connector_base.py:70`) carries
-predicate/join/aggregate pushdown and `write` — no time-travel trait — so the PLAN
+predicate/join/aggregate pushdown and `write` (no time-travel trait) so the PLAN
 stage cannot see or route on it.
 
 The federation-engine abstraction (REQ-825/840/841) defines engines by capability
@@ -27,7 +27,7 @@ engine's connector being able to address it, and the MATERIALIZED strategy
 ## Question
 
 Can time travel be generalized from a compiler special case to a connector
-capability — and is it merely a gate, or operational?
+capability, and is it merely a gate, or operational?
 
 ## Findings
 

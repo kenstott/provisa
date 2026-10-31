@@ -2,11 +2,11 @@
 
 ## The problem {: #the-problem }
 
-Every organization has standards for business logic, and most teams follow them. Yet over years, as systems are built and replaced and teams change, the logic spreads across ETL jobs, dashboards, APIs and stored procedures. Each piece makes sense on its own. Often nobody planned the whole, and more often nobody planned the whole across time. The result is familiar: "net revenue" is computed three ways in three places, and no one can say which is right.
+Every organization has standards for business logic, and most teams follow them. Yet over years, as systems are built and replaced and teams change, the logic spreads across ETL jobs, dashboards, APIs and stored procedures. Each piece makes sense on its own. Often nobody planned the whole, and more often nobody planned the whole across time. So "net revenue" ends up computed three ways in three places, and no one can say which is right.
 
 Industry answers exist for parts of this. A metrics layer, often sold as a semantic layer, defines "net revenue" once for every tool to read. The [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) describes data products and the [Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) describes data contracts. Provisa [exports both](metadata-export.md#data-products-as-odps-and-odcs). All are good ideas and all are gaining traction, but each covers one part. The bigger question is how they fit into controlled, governed data as one coherent, composable model. Logic that derives or changes data needs the same governance as the data itself: who may use it, what it reads and writes, and where its results go.
 
-Delivery channels make it worse. Logic gets built into each one: a calculated field in the BI tool, a rule in the API handler, a filter in the app's resolver. Each channel ends up with its own version of the truth, so the same question asked through two of them rarely gets the same answer. In the end, people give up: they come to accept the mess as the cost of specialization and of serving many different stakeholders.
+Delivery channels make it worse. Logic gets built into each one: a calculated field in the BI tool, a rule in the API handler, a filter in the app's resolver. Each channel ends up with its own version of the truth, so the same question asked through two of them rarely gets the same answer. In the end, people give up and accept the mess as the cost of specialization and of serving many different stakeholders.
 
 ## What business logic is {: #definition }
 
