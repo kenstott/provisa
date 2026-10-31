@@ -19,6 +19,7 @@ Cypher pattern whose relationship is given the path expression.
 # Requirements: REQ-2135
 
 import dataclasses
+import sys
 
 import duckdb
 import pytest
@@ -221,3 +222,29 @@ def test_a_label_expression_round_trips_through_a_node_pattern():
         LabelAnd((LabelName("Person"), LabelName("Employee"))),
     ):
         assert NodePattern.with_label_expr("n", expr).label_expr == expr
+
+
+def _companies_parameterized() -> CypherLabelMap:
+    held = _model()
+    held.nodes["Company"] = dataclasses.replace(
+        held.nodes["Company"], native_filter_columns={"_nf_region": "varchar"}
+    )
+    return held
+
+
+def test_a_property_path_never_goes_through_a_parameterized_table(con, monkeypatch):
+    # REQ-2135: the alternative that reaches companies is no way a path can go.
+    held = _companies_parameterized()
+    monkeypatch.setattr(sys.modules[__name__], "_model", lambda: held)
+    path = RepeatPath(AltPath((KNOWS, EdgeStep("WORKS_AT", inverse=True))), 1, 2)
+    assert "companies" not in _sql("Person", "Person", path)
+    assert _pairs(con, "Person", "Person", path) == _pairs(
+        con, "Person", "Person", RepeatPath(KNOWS, 1, 2)
+    )
+
+
+def test_a_property_path_with_no_way_round_is_refused_by_name(monkeypatch):
+    held = _companies_parameterized()
+    monkeypatch.setattr(sys.modules[__name__], "_model", lambda: held)
+    with pytest.raises(CypherTranslateError, match="a path cannot include WORKS_AT"):
+        _sql("Person", "Person", EdgeStep("WORKS_AT"))

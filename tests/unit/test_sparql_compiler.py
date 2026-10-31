@@ -835,3 +835,27 @@ def test_without_a_plain_limit_the_plain_union_limit_applies(monkeypatch, query)
     monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "8")
     with pytest.raises(SparqlRefused, match=r"past the graph union limit of 8;"):
         _wide(query)
+
+
+def test_a_drop_on_an_open_pattern_keeps_its_triples_and_fans_out(con):
+    # REQ-2135: ?s is of every class, and an OPTIONAL only some of them can match binds nothing on
+    # the others, as a left join does.
+    every = _answer(con, "SELECT * WHERE { ?s ?p ?o } LIMIT 250")
+    rows = _answer(
+        con,
+        f"SELECT * WHERE {{ ?s ?p ?o . OPTIONAL {{ ?s rel:WORKS_AT ?c . ?c a <{COMPANY}> . }} }} "
+        "LIMIT 250",
+    )
+    assert {(r["s"], r["p"], str(r["o"])) for r in rows} == {
+        (r["s"], r["p"], str(r["o"])) for r in every
+    }
+    assert {r["c"] for r in rows if r["s"] == ann()} == {subject_iri(BASE, "hr", "companies", [1])}
+    assert {r["c"] for r in rows if "/companies/" in r["s"]} == {None}
+
+
+def test_an_optional_no_class_can_match_binds_nothing(con):
+    rows = _answer(
+        con, f"SELECT ?n ?c WHERE {{ ?s a <{COMPANY}> ; c:name ?n OPTIONAL {{ ?s rel:KNOWS ?c }} }}"
+    )
+    assert sorted(r["n"] for r in rows) == ["Acme", "Beta", "Corp"]
+    assert {r["c"] for r in rows} == {None}
