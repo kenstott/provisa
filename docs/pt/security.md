@@ -201,8 +201,8 @@ Cada coluna tem um modelo de permissões que controla o acesso de leitura, escri
 | Nível | Condição | Resultado |
 | ------ | ----------- | -------- |
 | **Oculta** | Função fora de `visible_to` | Coluna ausente do esquema e do catálogo |
-| **Mascarada** | Função em `visible_to`; a primeira entrada de máscara que ela tem traz uma `mask` | Coluna visível, valor substituído na saída |
-| **Sem máscara** | Função em `visible_to`; a primeira entrada de máscara que ela tem não traz `mask`, ou ela não tem nenhuma | Acesso completo de leitura |
+| **Mascarada** | Função em `visible_to`; a primeira entrada de máscara que ela tem traz uma `mask`, ou a coluna tem máscaras e ela não tem nenhuma | Coluna visível, valor substituído na saída |
+| **Sem máscara** | Função em `visible_to`; a primeira entrada de máscara que ela tem não traz `mask`, ou a coluna não tem máscaras | Acesso completo de leitura |
 
 ### Colunas públicas {: #public-columns }
 
@@ -340,7 +340,9 @@ A expressão de máscara é levada para a projeção SQL SELECT. O banco de dado
 
 **Uma máscara cobre todos os nomes da coluna, não uma coluna relacionada.** Uma coluna lida pelo seu alias ou pelo seu nome físico é mascarada da mesma forma. Uma máscara não oculta uma chave que um relacionamento aprovado une a uma coluna que o papel pode ver: o join compara os valores reais, então a coluna relacionada mostra o que a chave mascarada contém. Mascare também a coluna relacionada, ou não aprove o relacionamento para esse papel.
 
-**Nenhuma entrada tida significa sem máscara.** Um leitor que não tem nenhuma entrada lê a coluna sem máscara. Termine uma lista com uma entrada `*` quando todo leitor deve receber alguma máscara. O editor de colunas avisa quando falta uma entrada `*` em uma lista (`unlisted_unmasked`).
+**Nenhuma entrada tida significa totalmente mascarado.** Quando uma coluna tem alguma máscara, um leitor que não tem nenhuma entrada a lê totalmente mascarada: `****` em uma coluna de texto, `NULL` em qualquer outro tipo. Só uma entrada dá acesso sem máscara. Para que os leitores que a lista não nomeia leiam sem máscara, termine-a com uma entrada explícita sem `to` nem `mask`. Uma coluna sem máscaras não muda.
+
+**Uma entrada que nenhum leitor alcança é recusada.** Salvar uma lista de máscaras que a contenha é recusado com `You have defined a mask that is not reachable: ` seguido das entradas inalcançáveis, cada uma nomeada por seus papéis. Isso vale para a interface de administração, a API de administração e o carregamento de uma configuração.
 
 **Negar pela ordem.** Uma entrada anterior vence mesmo quando o leitor também tem uma posterior mais permissiva. Para que prestadores de serviço vejam sempre um salário mascarado, quaisquer que sejam suas outras funções, coloque a entrada deles antes da entrada sem máscara. Uma função concedida nunca perde o que o pai concede por herança, mas uma entrada de máscara colocada antes na lista se aplica primeiro. É assim que a restrição funciona aqui.
 

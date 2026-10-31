@@ -31,6 +31,7 @@ import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { GrantPicker } from "./GrantPicker";
 import { RegexMaskFields } from "./RegexMaskFields";
 import { checkMasks, maskPresets, type MaskPreset, type MasksReport } from "../api/admin";
+import { serverMessage } from "../i18n/serverMessage";
 import {
   EVERYONE,
   pickedReaders,
@@ -276,7 +277,7 @@ export function MaskListEditor({
       </Group>
       {report?.refusal && (
         <Text size="xs" c="red" data-testid={`${testId}-refusal`}>
-          {report.refusal}
+          {serverMessage(report.refusal, report.refusal.message)}
         </Text>
       )}
       <Group gap="xs" align="flex-end" wrap="nowrap">

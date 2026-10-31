@@ -2842,7 +2842,7 @@ export interface MaskPatternVerdict {
 export interface MasksReport {
   unreachable: { entry: number; covered_by: number | null }[];
   /** What a save of this list is refused with; null when every entry is reached. */
-  refusal: string | null;
+  refusal: { code: string; message: string; params: { entries: string } } | null;
   applies: number | null;
   /** Each construct of a regex entry outside the universal dialect; empty when all pass. */
   patterns: MaskPatternVerdict[];

@@ -410,9 +410,9 @@ def masks_report(masks: list[dict], chain_of: Any, roles: list[str] | None = Non
 class MaskUnreachable(ValueError):
     """A mask list holding an entry no reader can reach, which is not saved (REQ-2059)."""
 
-    def __init__(self, refusal: str, column: str) -> None:
-        self.column = column
-        super().__init__(refusal)
+    def __init__(self, entries: str, column: str) -> None:
+        self.entries, self.column = entries, column
+        super().__init__(UNREACHABLE_MASK + entries)
 
 
 def _readers_of(entry: dict) -> str:
@@ -422,11 +422,7 @@ def _readers_of(entry: dict) -> str:
     return ", ".join(to) if to else "no one"
 
 
-def unreachable_refusal(masks: list[dict], chain_of: Any) -> str | None:
-    """What a save of ``masks`` is refused with, each entry no reader reaches named by its roles;
-    None when every entry is reached."""
+def unreachable_entries(masks: list[dict], chain_of: Any) -> str | None:
+    """The entries no reader reaches, each named by its roles; None when every entry is reached."""
     found = masks_report(masks, chain_of)["unreachable"]
-    if not found:
-        return None
-    named = ", ".join(f"[{_readers_of(masks[u['entry']])}]" for u in found)
-    return UNREACHABLE_MASK + named
+    return ", ".join(f"[{_readers_of(masks[u['entry']])}]" for u in found) or None

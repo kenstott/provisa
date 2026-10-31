@@ -609,7 +609,11 @@ async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  #
         await refuse_unreachable_masks(conn, lists)
     except MaskUnreachable as refused:
         raise ApiError(
-            422, "actions.mask_unreachable", str(refused), column=refused.column
+            422,
+            "actions.mask_unreachable",
+            str(refused),
+            entries=refused.entries,
+            column=refused.column,
         ) from None
 
 

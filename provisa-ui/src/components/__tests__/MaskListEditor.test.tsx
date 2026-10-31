@@ -187,10 +187,18 @@ describe("MaskListEditor", () => {
   });
 
   it("shows the refusal the server answers for the list", async () => {
-    const refusal = "You have defined a mask that is not reachable: [contractor]";
-    checkMasks.mockResolvedValue(report({ refusal }));
+    const message = "You have defined a mask that is not reachable: [contractor]";
+    checkMasks.mockResolvedValue(
+      report({
+        refusal: {
+          code: "schema.mask_unreachable",
+          message,
+          params: { entries: "[contractor]" },
+        },
+      }),
+    );
     render(<Editor initial={[{ to: ["contractor"], mask: { type: "constant", value: null } }]} />);
-    expect(await screen.findByTestId("mask-list-refusal")).toHaveTextContent(refusal);
+    expect(await screen.findByTestId("mask-list-refusal")).toHaveTextContent(message);
   });
 
   it("says a reader no entry applies to reads the column completely masked", async () => {

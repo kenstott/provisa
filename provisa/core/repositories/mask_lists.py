@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 73696596-3a61-4f11-8697-44f98374899c
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -23,7 +24,7 @@ from sqlalchemy import select
 from provisa.auth.derived_roles import SEPARATOR
 from provisa.core.schema_org import roles
 from provisa.security.inheritance import role_chains
-from provisa.security.masking import MaskUnreachable, unreachable_refusal
+from provisa.security.masking import MaskUnreachable, unreachable_entries
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -51,6 +52,6 @@ async def refuse_unreachable_masks(conn: "Connection", lists: Mapping[str, list[
         return
     chain_of = await _stored_chains(conn)
     for column, masks in lists.items():
-        refusal = unreachable_refusal(masks, chain_of)
-        if refusal is not None:
-            raise MaskUnreachable(refusal, column)
+        entries = unreachable_entries(masks, chain_of)
+        if entries is not None:
+            raise MaskUnreachable(entries, column)

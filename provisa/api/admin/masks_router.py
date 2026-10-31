@@ -89,15 +89,21 @@ def chain_of(state: Any, role_id: str) -> list[str]:
 async def check_masks(body: MasksCheckBody, request: Request) -> dict:
     require_capability_request(request, Capability.MASKING_CONFIG.value)
     from provisa.api.app import state
-    from provisa.security.masking import masks_report, unreachable_refusal
+    from provisa.security.masking import UNREACHABLE_MASK, masks_report, unreachable_entries
 
     def chain(role_id: str) -> list[str]:
         return chain_of(state, role_id)
 
     masks = [e.model_dump() for e in body.masks]
+    entries = unreachable_entries(masks, chain)
     return {
         **masks_report(masks, chain, body.roles),
-        "refusal": unreachable_refusal(masks, chain),
+        "refusal": entries
+        and {
+            "code": "schema.mask_unreachable",
+            "message": UNREACHABLE_MASK + entries,
+            "params": {"entries": entries},
+        },
         **pattern_report(masks),
     }
 

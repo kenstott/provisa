@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: fae05073-1ee8-45b9-8222-233a81f41a21
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -26,6 +27,11 @@ from sqlalchemy import insert, select
 import provisa.api.app as appmod
 from provisa.api.admin import actions_router
 from provisa.api.errors import ApiError
+from provisa.compiler.context import build_context
+from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.parser import parse_query
+from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.core import domain_policy
 from provisa.core.config_loader import apply_config, parse_config_dict
@@ -42,7 +48,7 @@ from provisa.security.masking import (
     masks_report,
     reader_masks,
     resolve,
-    unreachable_refusal,
+    unreachable_entries,
 )
 from tests.unit.gate_identity import serve_every_column
 from tests.unit.test_landing_ttl_admin import _db, _table_input, _table_patches
@@ -70,18 +76,22 @@ def test_the_refusal_names_each_unreachable_entry_by_its_roles():
         {"to": [], "mask": WITHHELD},
         {"mask": NULLED},
     ]
-    assert unreachable_refusal(masks, _chain) == PREFIX + "[developer, analyst], [no one]"
+    assert unreachable_entries(masks, _chain) == "[developer, analyst], [no one]"
 
 
 def test_the_entry_for_everyone_is_named_everyone():
     masks = [{"to": [], "mask": None}, {"mask": NULLED}]
-    assert unreachable_refusal(masks[:1], _chain) == PREFIX + "[no one]"
-    assert unreachable_refusal(masks[1:], _chain) is None
+    covered = [{"to": ["clerk"], "mask": None}, *masks[1:], {"mask": None}]
+    assert unreachable_entries(covered, _chain) == "[everyone]"
+    assert unreachable_entries(masks[:1], _chain) == "[no one]"
+    assert unreachable_entries(masks[1:], _chain) is None
 
 
 def test_a_list_every_entry_of_which_is_reached_has_no_refusal():
-    assert unreachable_refusal([{"to": ["analyst"], "mask": None}, {"mask": NULLED}], _chain) is None
-    assert unreachable_refusal([], _chain) is None
+    assert (
+        unreachable_entries([{"to": ["analyst"], "mask": None}, {"mask": NULLED}], _chain) is None
+    )
+    assert unreachable_entries([], _chain) is None
 
 
 def test_the_report_no_longer_warns_of_readers_it_does_not_list():
@@ -170,7 +180,8 @@ async def test_a_reachable_list_is_saved_with_its_everyone_entry(plane):
     async with plane.acquire() as conn:
         await table_repo.upsert(conn, _table(masks))
     [stored] = await _stored(plane)
-    assert [(e["to"], e["mask"]) for e in stored] == [(["analyst"], WITHHELD), (None, None)]
+    assert [e["to"] for e in stored] == [["analyst"], None]
+    assert stored[0]["mask"]["value"] == "withheld" and stored[1]["mask"] is None
 
 
 @pytest.mark.asyncio
@@ -179,7 +190,7 @@ async def test_the_table_mutation_answers_the_refusal(control_plane, monkeypatch
 
     serve_every_column(monkeypatch)
     column = Column(name="id", data_type="integer", visible_to=["analyst"], masks=SHADOWED)
-    async with _db(control_plane) as db:
+    async with _db(control_plane, table_ttl=60) as db:
         patches = list(_table_patches(db))
         patches[3] = patch(
             "provisa.api.admin.schema_mutation._build_columns_for_input",
@@ -195,7 +206,7 @@ async def test_the_table_mutation_answers_the_refusal(control_plane, monkeypatch
     assert result.success is False
     assert result.message == REFUSED
     assert result.code == "schema.mask_unreachable"
-    assert result.params == {"table": "orders", "column": "id"}
+    assert result.params == {"table": "orders", "column": "id", "entries": "[analyst]"}
 
 
 def _config(masks: list[dict]) -> dict:
@@ -205,7 +216,12 @@ def _config(masks: list[dict]) -> dict:
         ],
         "domains": [{"id": "sales"}],
         "roles": [
-            {"id": "seller", "description": "Test role.", "capabilities": [], "domain_access": ["*"]}
+            {
+                "id": "seller",
+                "description": "Test role.",
+                "capabilities": [],
+                "domain_access": ["*"],
+            }
         ],
         "tables": [
             {
@@ -235,7 +251,7 @@ async def _refused(call: Any) -> str:
         await call
     assert refused.value.status_code == 422
     assert refused.value.code == "actions.mask_unreachable"
-    return str(refused.value.message)
+    return str(refused.value.detail)
 
 
 OUT = [{"name": "email", "type": "varchar", "masks": SHADOWED}]
@@ -319,7 +335,11 @@ def test_the_check_route_says_the_refusal_and_takes_the_entry_for_everyone(monke
         "/admin/masks/check", json={"masks": [*SHADOWED, {"to": None, "mask": NULLED}]}
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["refusal"] == REFUSED
+    assert resp.json()["refusal"] == {
+        "code": "schema.mask_unreachable",
+        "message": REFUSED,
+        "params": {"entries": "[analyst]"},
+    }
 
 
 # --- a reader no entry matches --------------------------------------------------------------
@@ -374,8 +394,44 @@ def _run(con, sql: str, gov: GovernanceContext) -> list[tuple]:
     return con.execute(sqlglot.transpile(governed, read="postgres", write="duckdb")[0]).fetchall()
 
 
-# The statement a GraphQL read compiles to (compiler.sql_gen) and one a SQL client writes.
-GRAPHQL = 'SELECT "t0"."id", "t0"."email", "t0"."age" FROM "sales"."people" "t0"'
+def _graphql_statement() -> str:
+    """What a GraphQL read of the table compiles to, through the compiler itself."""
+    si = SchemaInput(
+        tables=[
+            {
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "sales",
+                "table_name": "people",
+                "columns": [
+                    {"column_name": c, "visible_to": ["reader"]} for c in ("id", "email", "age")
+                ],
+                "write_ops": [],
+                "write_returns_rows": False,
+                "write_refused_forms": [],
+            }
+        ],
+        relationships=[],
+        column_types={
+            1: [
+                ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
+                ColumnMetadata(column_name="email", data_type="varchar", is_nullable=True),
+                ColumnMetadata(column_name="age", data_type="integer", is_nullable=True),
+            ]
+        },
+        naming_rules=[],
+        role={"id": "reader", "capabilities": ["query_development"], "domain_access": ["*"]},
+        domains=[{"id": "sales", "description": "Sales"}],
+    )
+    schema, ctx = generate_schema(si), build_context(si)
+    query = next(iter(ctx.tables))
+    document = parse_query(schema, f"{{ {query} {{ id email age }} }}", ctx=ctx)
+    (compiled,) = compile_query(document, ctx)
+    return compiled.sql
+
+
+GRAPHQL = _graphql_statement()
 SQL = "SELECT id, email, age FROM sales.people"
 
 
@@ -418,7 +474,7 @@ def test_a_member_of_a_meta_role_no_entry_matches_reads_the_complete_mask():
             for r in ("vip", "x")
         },
     )
-    reads = meta_role._member_reads(state, [{"id": "vip"}, {"id": "x"}], [table])
+    reads = meta_role._member_reads(state, [{"id": "vip"}, {"id": "x"}], [table], ())
     vip, stranger = reads[1].columns["email"]
     assert vip[0] == PLAIN
     assert stranger[1] == MaskingRule(mask_type=MaskType.constant, value="****")

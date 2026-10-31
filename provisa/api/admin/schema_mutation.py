@@ -4149,7 +4149,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 success=False,
                                 message=str(_mask),
                                 code="schema.mask_unreachable",
-                                params={"table": model.table_name, "column": _mask.column},
+                                params={
+                                    "table": model.table_name,
+                                    "column": _mask.column,
+                                    "entries": _mask.entries,
+                                },
                             )
                         )
                     except table_repo.SubtypeRefused as _sub:
