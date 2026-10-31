@@ -269,6 +269,10 @@
       "classification_decision_not_found": "Nessuna decisione su {{column}} come {{kind}}",
       "classification_pii_refused": "Non è stato possibile contrassegnare la colonna come PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} è una vista di catalogo del dominio meta e non può essere letta in un'unica istruzione con una tabella di un'origine dati: leggile in due istruzioni.",
+      "function_unsupported": "{{function}}() non ha un equivalente su {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
       "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",

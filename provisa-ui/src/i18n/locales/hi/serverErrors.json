@@ -269,6 +269,10 @@
       "classification_decision_not_found": "{{column}} पर {{kind}} के रूप में कोई निर्णय नहीं",
       "classification_pii_refused": "कॉलम को PII के रूप में चिह्नित नहीं किया जा सका"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} meta डोमेन का कैटलॉग व्यू है और इसे डेटा स्रोत की तालिका के साथ एक ही स्टेटमेंट में नहीं पढ़ा जा सकता: इन्हें दो स्टेटमेंट में पढ़ें।",
+      "function_unsupported": "{{dialect}} पर {{function}}() का कोई समकक्ष नहीं है।"
+    },
     "replication": {
       "answer_not_json": "{{table}} की रेप्लिका के लिए पढ़ा गया उत्तर मान्य JSON नहीं है: [{{content_type}}] {{cause}} (उत्तर के बाइट {{before_byte}} से पहले के {{kib}} KiB में)।",
       "no_whole_copy": "स्रोत {{source}} की तालिका {{schema}}.{{table}} की कोई पूरी प्रति बनाने के लिए नहीं है: यह पंक्ति-दर-पंक्ति रेप्लिकेट होती है, या इसमें एक पैरामीटर कॉलम है।",

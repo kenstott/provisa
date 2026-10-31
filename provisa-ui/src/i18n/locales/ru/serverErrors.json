@@ -269,6 +269,10 @@
       "classification_decision_not_found": "Нет решения по {{column}} как {{kind}}",
       "classification_pii_refused": "Не удалось пометить столбец как PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} — это представление каталога домена meta, и его нельзя прочитать в одной инструкции с таблицей источника данных: прочитайте их двумя инструкциями.",
+      "function_unsupported": "У {{function}}() нет эквивалента в {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "Ответ, прочитанный для реплики {{table}}, не является корректным JSON: [{{content_type}}] {{cause}} (в {{kib}} КиБ перед байтом {{before_byte}} ответа).",
       "no_whole_copy": "У таблицы {{schema}}.{{table}} источника {{source}} нет полной копии для сборки: она реплицируется построчно или имеет столбец-параметр.",

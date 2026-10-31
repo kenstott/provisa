@@ -269,6 +269,10 @@
       "classification_decision_not_found": "没有关于 {{column}} 作为 {{kind}} 的决定",
       "classification_pii_refused": "无法将该列标记为 PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} 是 meta 域的目录视图,不能与数据源的表在同一条语句中读取:请用两条语句分别读取。",
+      "function_unsupported": "{{function}}() 在 {{dialect}} 上没有对应形式。"
+    },
     "replication": {
       "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
       "no_whole_copy": "源 {{source}} 的表 {{schema}}.{{table}} 没有可构建的完整副本：它按行复制，或者带有参数列。",

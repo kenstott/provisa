@@ -269,6 +269,10 @@
       "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
       "classification_pii_refused": "列を PII としてマークできませんでした"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
+      "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
+    },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",

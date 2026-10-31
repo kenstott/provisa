@@ -269,6 +269,10 @@
       "classification_decision_not_found": "沒有關於 {{column}} 作為 {{kind}} 的決定",
       "classification_pii_refused": "無法將該欄位標記為 PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} 是 meta 網域的目錄檢視,不能與數據來源的表在同一條陳述式中讀取:請用兩條陳述式分別讀取。",
+      "function_unsupported": "{{function}}() 在 {{dialect}} 上沒有對應形式。"
+    },
     "replication": {
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",
