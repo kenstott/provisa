@@ -14,7 +14,7 @@ The admin web app uses Apollo Client, pointed at `${API_BASE}/admin/graphql`.
 
 Every request carries a bearer token (fetched fresh from the auth provider on each call), an `X-Org-Id` header when multi-tenant, and an `X-Env` header when serving a branch environment.
 
-The schema is assembled from two `@strawberry.type` classes — `Query` from `schema_query.py` and `Mutation` from `schema_mutation.py` — and wrapped in a `ModelCommitExtension` that records every mutation against the current environment branch.
+The schema is assembled from two `@strawberry.type` classes, `Query` from `schema_query.py` and `Mutation` from `schema_mutation.py`, and wrapped in a `ModelCommitExtension` that records every mutation against the current environment branch.
 
 ---
 
@@ -101,7 +101,7 @@ Non-GET operations for an OpenAPI source (POST, PUT, PATCH, DELETE). Returns an 
 
 #### `crawlSource(path, depth, pattern, recursive, simpleLinks, sameDomain, excludePattern) → CrawlResultType`
 
-Preview what a file-connector crawl would discover — files, tables, and columns — before a source is created. The HTTP-only settings (`simpleLinks`, `sameDomain`, `excludePattern`) are ignored for local, S3, FTP, and SFTP roots.
+Preview the files, tables and columns a file-connector crawl would discover before a source is created. The HTTP-only settings (`simpleLinks`, `sameDomain`, `excludePattern`) are ignored for local, S3, FTP, and SFTP roots.
 
 #### `suggestTableAlias(tableName: String!, domainId: String!, sourceId: String!) → String!`
 
@@ -368,7 +368,7 @@ Set when a source's tables are served from their replicas: `null` Default, `-1` 
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
-Mark a source load-protected (scheduled-refresh-only). Requires at least one gate — off-peak window, cache TTL cadence, or a probing change signal — or the call fails.
+Mark a source load-protected (scheduled-refresh-only). Requires at least one gate (off-peak window, cache TTL cadence, or a probing change signal), or the call fails.
 
 #### `updateSourceNaming(sourceId: String!, gqlNamingConvention: String) → MutationResult`
 
@@ -620,7 +620,7 @@ Purge cached results for one table.
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
-Create a scheduled trigger — either a webhook call or a SQL statement — and register it live in APScheduler. `kind` is `"webhook"` or `"sql"`.
+Create a scheduled trigger, either a webhook call or a SQL statement, and register it live in APScheduler. `kind` is `"webhook"` or `"sql"`.
 
 #### `deleteScheduledTask(taskId: String!) → MutationResult`
 
@@ -660,7 +660,7 @@ Approve a creation request: the same rule, refusals and admin-trail entries as `
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-Carries out a creation request that has had its approvals — relationship, view, table, source or webhook — through the code the direct mutation uses. Refused with `requests.approvals_incomplete` until the request's required approvals are met (one, or two for a relationship) by users other than the requester; a relationship request is also refused with `requests.waiting_on_domains` while a domain it touches has no approver. Approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the count performs the creation, so this mutation serves to retry a creation that failed. A failed creation leaves the request pending and answers with the failure's own code.
+Carries out a creation request that has had its approvals (relationship, view, table, source or webhook) through the code the direct mutation uses. Refused with `requests.approvals_incomplete` until the request's required approvals are met (one, or two for a relationship) by users other than the requester; a relationship request is also refused with `requests.waiting_on_domains` while a domain it touches has no approver. Approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the count performs the creation, so this mutation serves to retry a creation that failed. A failed creation leaves the request pending and answers with the failure's own code.
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 

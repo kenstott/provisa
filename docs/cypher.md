@@ -180,7 +180,7 @@ Cypher supports three write patterns through the `/data/cypher` endpoint, execut
 
 Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. The response body carries an `affected_rows` count.
 
-A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
+A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it, the name GraphQL and SQL read it by, in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
 
 A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way: null, with no sign that it exists. A write is never silent: `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
 
@@ -215,7 +215,7 @@ Cypher reaches the same governed pipeline over two transports:
 
 ## Graph Session
 
-Each principal has one session graph, shared by its Bolt connections, HTTP Cypher requests and MCP calls. Within that session you can create nodes and relationships that exist only in the session — visible to that principal alone — and read them beside your governed model data in the same query.
+Each principal has one session graph, shared by its Bolt connections, HTTP Cypher requests and MCP calls. Within that session you can create nodes and relationships that exist only in the session, visible to that principal alone, and read them beside your governed model data in the same query.
 
 ### Creating ephemeral nodes
 
@@ -232,7 +232,7 @@ A `CREATE` naming exactly one model table and no free labels is a governed model
 
 ### Creating ephemeral relationships
 
-An ephemeral relationship may carry any type name. When its type name matches a registered junction type and both end nodes are matched model nodes, it is a governed junction write (see §Writes). Every other relationship — one end ephemeral, or a type the model does not register — is session-scoped.
+An ephemeral relationship may carry any type name. When its type name matches a registered junction type and both end nodes are matched model nodes, it is a governed junction write (see §Writes). Every other relationship, with one end ephemeral or a type the model does not register, is session-scoped.
 
 ```cypher
 MATCH (c:Customer {id: 42})

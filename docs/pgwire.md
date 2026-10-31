@@ -35,7 +35,7 @@ The decision is made once. A credential the chosen validator refuses is not retr
 
 Trust mode (`provider: none`, or auth middleware inactive) is the exception: the username is used directly as the `role_id` and the secret is ignored. Do not use it over an unencrypted connection.
 
-**SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet — verifiers cannot be derived from bcrypt hashes — is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
+**SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet (verifiers cannot be derived from bcrypt hashes) is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
 
 **Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is checked. With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
 
@@ -60,13 +60,13 @@ Multi-statement simple queries are supported. Semicolon-separated statements are
 
 Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. The values stay bound all the way to the engine or source (see [Caveats and Constraints](#caveats-and-constraints)).
 
-`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. Command assignment (`visible_to`), the `write` right for a mutation and governance rules are enforced inside the executor.
+`SELECT * FROM fn(args)` and `SELECT fn(args)`, where `fn` names a registered tracked function, are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. Command assignment (`visible_to`), the `write` right for a mutation and governance rules are enforced inside the executor.
 
 ### Cursors (DECLARE / FETCH / MOVE / CLOSE)
 
 Provisa handles textual SQL cursor syntax over the simple-query protocol. Clients that send `DECLARE`/`FETCH`/`MOVE`/`CLOSE` as plain SQL statements get real server-side streaming, with no protocol error and no full result buffered in client memory.
 
-**This is separate from portal-based streaming.** The extended-query protocol — Bind/Execute with a row-limit field — is a different wire mechanism. asyncpg and most modern PostgreSQL drivers use it automatically without any cursor SQL. If your driver already uses portals, you don't need this syntax. `DECLARE CURSOR` is for clients that send cursor SQL literally: psycopg2's named/server-side cursor feature (`conn.cursor(name="...")`), certain BI tools, and some legacy JDBC drivers.
+**This is separate from portal-based streaming.** The extended-query protocol (Bind/Execute with a row-limit field) is a different wire mechanism. asyncpg and most modern PostgreSQL drivers use it automatically without any cursor SQL. If your driver already uses portals, you don't need this syntax. `DECLARE CURSOR` is for clients that send cursor SQL literally: psycopg2's named/server-side cursor feature (`conn.cursor(name="...")`), certain BI tools, and some legacy JDBC drivers.
 
 **DECLARE**
 
@@ -202,7 +202,7 @@ Intercepted tables:
 
 A junction-backed relationship produces no FK row. It's an edge through an associative table, and `pg_constraint` has no shape for two hops, so the domain model leaves it out of `joins` and the junction table appears as an ordinary table with its own foreign keys to each end. SQL clients reach it by joining that table; Cypher clients traverse it as a single relationship.
 
-`pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join.
+`pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint`, DataGrip for example, discover the correct columns through the standard `pg_index` → `pg_attribute` join.
 
 The following scalar expressions are also intercepted:
 
