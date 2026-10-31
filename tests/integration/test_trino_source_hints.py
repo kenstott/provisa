@@ -74,12 +74,12 @@ def test_a_statement_over_a_source_with_a_connector_setting_answers(state):
 def test_a_vocabulary_hint_takes_effect_and_a_raw_key_is_not_sent(state, join, distribution):
     hints, result = _run(
         state,
-        {"join": join, "query_max_memory": "3GB", "direct_connection": "true"},
+        {"join": join, "query_max_run_time": "3h", "direct_connection": "true"},
         _JOIN,
     )
     assert hints == {"join_distribution_type": join.upper()}
     assert f"distribution = {distribution}" in result.rows[0][0]
     cur = state.engine_conn.cursor()
-    cur.execute("SHOW SESSION LIKE 'query_max_memory'")
+    cur.execute("SHOW SESSION LIKE 'query_max_run_time'")
     _, value, default, *_ = cur.fetchall()[0]
-    assert value == default != "3GB"
+    assert value == default != "3h"
