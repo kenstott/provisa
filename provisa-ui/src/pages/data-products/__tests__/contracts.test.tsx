@@ -108,20 +108,28 @@ describe("a product's contracts", () => {
     for (const card of [...cards, "support", "servers", "pricing", "custom"]) {
       expect(screen.getByTestId(`data-contract-7-${card}`)).toBeInTheDocument();
     }
-    // A card shows its section whole, with no summary row to open first.
-    const support = screen.getByTestId("data-contract-7-support");
-    expect(support).toHaveTextContent("channel: support · url: mailto:revenue@example.com");
-    expect(support).toHaveTextContent("role: analyst · access: read");
-    expect(support).toHaveTextContent("role: finance · access: write");
-    const servers = screen.getByTestId("data-contract-7-servers");
-    expect(servers).toHaveTextContent("server: pgwire · type: postgres");
-    expect(servers).toHaveTextContent("server: rest · type: api");
-    expect(screen.getByTestId("data-contract-7-pricing")).toHaveTextContent(
-      "priceAmountNot declared",
+    // A record is a table row, never a line of its fields.
+    const support = screen.getByTestId("data-contract-support-7");
+    expect(support).toHaveTextContent("channel");
+    expect(support).toHaveTextContent("mailto:revenue@example.com");
+    expect(support).not.toHaveTextContent("channel: support");
+    const roles = rowTexts("data-contract-roles-7");
+    expect(roles).toEqual([
+      ["analyst", "read"],
+      ["finance", "write"],
+    ]);
+    expect(rowTexts("data-contract-servers-7")).toEqual([
+      ["pgwire", "postgres"],
+      ["rest", "api"],
+    ]);
+    // Nothing declared in a panel: its one line, alone.
+    expect(screen.getByTestId("data-contract-7-pricing-not-declared")).toHaveTextContent(
+      "Not declared: priceAmount, priceCurrency, priceUnit",
     );
-    const custom = screen.getByTestId("data-contract-7-custom");
-    expect(custom).toHaveTextContent("customPropertiesNot declared");
-    expect(custom).toHaveTextContent("tagsfinance");
+    expect(screen.getByTestId("data-contract-7-custom-not-declared")).toHaveTextContent(
+      "Not declared: customProperties",
+    );
+    expect(screen.getByTestId("data-contract-7-custom")).toHaveTextContent("tagsfinance");
     // The checker has no contract, so no row.
     expect(screen.queryByTestId("data-contract-item-8")).toBeNull();
     expect(screen.queryByTestId("data-contract-8")).toBeNull();
@@ -129,9 +137,7 @@ describe("a product's contracts", () => {
     expect(screen.getByTestId("data-contract-7-fields")).toHaveTextContent(
       "physicalNamewh.public.daily_revenue",
     );
-    expect(screen.getByTestId("data-contract-sla-7")).toHaveTextContent(
-      "property: availability · value: 99.9 · unit: %",
-    );
+    expect(rowTexts("data-contract-sla-7")).toEqual([["availability", "99.9", "%"]]);
     // The Promises card is a table of the product's promises, never a record of raw rules; this
     // port has none, so it says so.
     const promises = screen.getByTestId("data-contract-7-quality");
@@ -141,32 +147,30 @@ describe("a product's contracts", () => {
 
   it("open to every element, declared, derived or not declared", async () => {
     await opened(ODCS);
-    // A row a property: its name and a one-line summary, closed until opened.
-    await screen.findByTestId("data-contract-columns-7");
-    expect(screen.getByTestId("data-contract-columns-7-day-summary")).toHaveTextContent(
-      "date · DATE · required · unique · primaryKey",
+    // One row a property, every element it declares a column of that row.
+    expect(screen.getByTestId("data-contract-columns-7-day")).toHaveTextContent(
+      "required, unique, primaryKey",
     );
-    expect(screen.getByTestId("data-contract-columns-7-amount-summary")).toHaveTextContent(
-      "number · NUMERIC(12, 2) · restricted",
-    );
-    // Opened, a property shows every element whole, declared or not.
-    fireEvent.click(screen.getByTestId("data-contract-columns-7-amount-toggle"));
-    const amount = await screen.findByTestId("data-contract-columns-7-amount");
+    const amount = screen.getByTestId("data-contract-columns-7-amount");
     for (const shown of [
-      "physicalTypeNUMERIC(12, 2)",
-      "classificationrestricted",
-      "descriptionThe day's total",
-      "examplesNot declared",
-      "requiredNot declared",
+      "NUMERIC(12, 2)",
+      "restricted",
+      "The day's total",
       "type: library · metric: nullValues · mustBe: 0",
-      "businessNameTotal revenue",
+      "Total revenue",
     ]) {
       expect(amount).toHaveTextContent(shown);
     }
+    // An element no property declares folds into the panel's line; it is not a column.
+    expect(screen.getByTestId("data-contract-7-fields-not-declared")).toHaveTextContent("examples");
+    const heads = screen.getByTestId("data-contract-columns-7").querySelectorAll("thead th");
+    expect(Array.from(heads).map((h) => h.textContent)).not.toContain("examples");
     const details = screen.getByTestId("data-contract-7-details");
     expect(details).toHaveTextContent("dataProductRevenue");
     // tenant is declared on the contract (REQ-2158), and this one declares none.
-    expect(details).toHaveTextContent("tenantNot declared");
+    expect(screen.getByTestId("data-contract-7-details-not-declared")).toHaveTextContent(
+      "Not declared: tenant, purpose, limitations, usage",
+    );
   });
 
   it("say why one could not be read, in its row", async () => {
@@ -230,6 +234,12 @@ beforeEach(() => {
   localStorage.clear();
   fetchProductContract.mockReset();
 });
+
+/** A table's body rows, each as its cells' text. */
+const rowTexts = (testId: string) =>
+  Array.from(screen.getByTestId(testId).querySelectorAll("tbody tr")).map((row) =>
+    Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent),
+  );
 
 /** The panel with its contract row opened, the contract served as ``odcs``. */
 async function opened(odcs: OdcsContract) {

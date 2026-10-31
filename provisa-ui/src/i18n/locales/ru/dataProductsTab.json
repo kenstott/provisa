@@ -187,6 +187,10 @@
       "slaRemove": "Удалить уровень обслуживания",
       "slaAdd": "Добавить уровень обслуживания",
       "notDeclared": "Не объявлено",
+      "notDeclaredList": "Не объявлено: {{names}}",
+      "versionSaved": "Сохранено",
+      "versionChanges": "Изменения",
+      "constraints": "Ограничения",
       "breakingWarning": "Несовместимое изменение в v{{version}}, ещё не действует",
       "breaking": "Несовместимое",
       "savedBy": "Сохранено {{when}}, {{who}}",
@@ -252,7 +256,9 @@
         "sla": "SLA и актуальность",
         "quality": "Обещания",
         "consumers": "Потребители",
-        "versions": "Версии и изменения"
+        "versions": "Версии и изменения",
+        "roles": "Роли",
+        "history": "История версий"
       }
     }
   }

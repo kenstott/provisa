@@ -8955,5 +8955,11 @@
   "nl/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
   "nl/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
   "nl/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later.",
-  "nl/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}"
+  "nl/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}",
+  "nl/dataProductsTab.json::dataProductsTab.contract.notDeclaredList": "Not declared: {{names}}",
+  "nl/dataProductsTab.json::dataProductsTab.contract.versionSaved": "Saved",
+  "nl/dataProductsTab.json::dataProductsTab.contract.versionChanges": "Changes",
+  "nl/dataProductsTab.json::dataProductsTab.contract.card.roles": "Roles",
+  "nl/dataProductsTab.json::dataProductsTab.contract.card.history": "Version history",
+  "nl/dataProductsTab.json::dataProductsTab.contract.constraints": "Constraints"
 }
