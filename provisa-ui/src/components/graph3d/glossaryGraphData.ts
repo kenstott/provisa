@@ -68,7 +68,6 @@ const productsNamed = (s: QueryScope) => s.layers.has("data") || s.lanes === tru
 function productOf(s: QueryScope): NonNullable<Selection["rels"]> {
   return {
     product: {
-      alias: "product",
       sel: { fields: productsNamed(s) ? ["id", "name", "domain_id", ...PRODUCT_FACTS] : ["id"] },
     },
   };
@@ -106,8 +105,8 @@ function related(s: QueryScope): Where {
     _or: [
       ...(s.layers.has("ontology")
         ? [
-            { edges_out: edge("target_term") },
-            { edges_in: edge("source_term") },
+            { edgesOut: edge("target_term") },
+            { edgesIn: edge("source_term") },
             { tables: inDomains(s.domains) ?? {} },
           ]
         : []),
@@ -157,8 +156,8 @@ function termSelection(s: QueryScope, level: number): Selection {
   const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
-  const end = (side: "target_term" | "source_term", alias: string) => ({
-    [side]: { alias, sel: last ? { fields: ["id"] } : termSelection(s, level + 1) },
+  const end = (side: "targetTerm" | "sourceTerm") => ({
+    [side]: { sel: last ? { fields: ["id"] } : termSelection(s, level + 1) },
   });
   const edgeWhere = (other: "target_term" | "source_term"): Where | undefined =>
     all([
@@ -169,21 +168,19 @@ function termSelection(s: QueryScope, level: number): Selection {
   // A term's edges are read with it, from the term they leave (each edge once), so the view is one
   // query: terms with their edges to other terms. An edge to a term not read has no end to draw.
   if (s.layers.has("ontology")) {
-    rels.edges_out = {
-      alias: "edgesOut",
+    rels.edgesOut = {
       sel: {
         fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-        rels: end("target_term", "targetTerm"),
+        rels: end("targetTerm"),
       },
       where: edgeWhere("target_term"),
     };
     // Under a search a match's neighbourhood runs both ways: the edges reaching it too.
     if (depth > 0)
-      rels.edges_in = {
-        alias: "edgesIn",
+      rels.edgesIn = {
         sel: {
           fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-          rels: end("source_term", "sourceTerm"),
+          rels: end("sourceTerm"),
         },
         where: edgeWhere("source_term"),
       };
@@ -193,7 +190,6 @@ function termSelection(s: QueryScope, level: number): Selection {
     // A class term's tables are the ontology's: what the term names the rows of.
     if (s.layers.has("ontology"))
       rels.tables = {
-        alias: "tables",
         // A class term's table has no columns drawn: its product is read only to be named.
         sel: {
           fields: ["id", "table_name", "domain_id"],
@@ -203,25 +199,22 @@ function termSelection(s: QueryScope, level: number): Selection {
       };
     if (s.layers.has("domains"))
       rels.domains = {
-        alias: "domains",
         sel: { fields: ["domain_id"] },
         where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
       };
     if (s.layers.has("columns"))
       rels.refs = {
-        alias: "refs",
         sel: {
           fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
           rels: {
             // REQ-2174: the column's and its table's facts, for the hover card and detail panel.
             column: {
-              alias: "column",
               sel: {
                 fields: COLUMN_FACTS,
-                rels: { sensitivity: { alias: "sensitivity", sel: { fields: ["tags"] } } },
+                rels: { sensitivity: { sel: { fields: ["tags"] } } },
               },
             },
-            table: {
+            registeredTable: {
               to: "registered_tables",
               sel: {
                 fields: ["id", ...TABLE_FACTS.fields],
@@ -234,7 +227,7 @@ function termSelection(s: QueryScope, level: number): Selection {
       };
   }
   // REQ-2174: its experts, its stewards on the graph's hover card and detail panel.
-  rels.experts = { alias: "experts", sel: { fields: ["user_id", "kind"] } };
+  rels.experts = { sel: { fields: ["user_id", "kind"] } };
   return { fields: TERM_FIELDS, rels };
 }
 
@@ -259,7 +252,7 @@ export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null 
   const field = rootField(
     m,
     "_terms",
-    { fields: ["id"], rels: { domains: { alias: "domains", sel: { fields: ["domain_id"] } } } },
+    { fields: ["id"], rels: { domains: { sel: { fields: ["domain_id"] } } } },
     rootWhere(s),
   );
   return field === null ? null : operation("OntologyCount", [field]);
@@ -268,7 +261,7 @@ export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null 
 /** What the count read answers: each term's id and domains. */
 export interface CountRow {
   id: number;
-  domains?: { domain_id: string }[] | null;
+  domains?: { domainId: string }[] | null;
 }
 
 /** REQ-2143: the overview drawn when the whole ontology is past the budget -- each domain, named
@@ -279,7 +272,7 @@ export function overviewGraph(
 ): GraphData {
   const counts = new Map<string, number>();
   for (const r of rows)
-    for (const d of r.domains ?? []) counts.set(d.domain_id, (counts.get(d.domain_id) ?? 0) + 1);
+    for (const d of r.domains ?? []) counts.set(d.domainId, (counts.get(d.domainId) ?? 0) + 1);
   return {
     nodes: [...counts]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -309,10 +302,10 @@ export function flatTerms(rows: TermRow[]): TermRow[] {
     const seen = byId.get(t.id);
     // The fuller read: a nearer level reads what a term touches, the last its edges' ends alone.
     if (!seen || Object.keys(t).length > Object.keys(seen).length) byId.set(t.id, t);
-    for (const e of t.edges_out ?? [])
-      if (e.target_term && "name" in e.target_term) visit(e.target_term as TermRow);
-    for (const e of t.edges_in ?? [])
-      if (e.source_term && "name" in e.source_term) visit(e.source_term as TermRow);
+    for (const e of t.edgesOut ?? [])
+      if (e.targetTerm && "name" in e.targetTerm) visit(e.targetTerm as TermRow);
+    for (const e of t.edgesIn ?? [])
+      if (e.sourceTerm && "name" in e.sourceTerm) visit(e.sourceTerm as TermRow);
   };
   rows.forEach(visit);
   return [...byId.values()];
@@ -322,12 +315,12 @@ export function flatTerms(rows: TermRow[]): TermRow[] {
 export function termEdges(terms: TermRow[]): TermEdgeRow[] {
   const out = new Map<string, TermEdgeRow>();
   for (const t of terms)
-    for (const e of [...(t.edges_out ?? []), ...(t.edges_in ?? [])])
-      out.set(`${e.from_term_id}>${e.to_term_id}:${e.rel_type}`, {
+    for (const e of [...(t.edgesOut ?? []), ...(t.edgesIn ?? [])])
+      out.set(`${e.fromTermId}>${e.toTermId}:${e.relType}`, {
         id: e.id,
-        from_term_id: e.from_term_id,
-        to_term_id: e.to_term_id,
-        rel_type: e.rel_type,
+        fromTermId: e.fromTermId,
+        toTermId: e.toTermId,
+        relType: e.relType,
       });
   return [...out.values()];
 }
@@ -348,9 +341,9 @@ export function ontologyGraph(rows: OntologyRows): GraphData {
 type ProductRef = {
   id: string;
   name?: string;
-  domain_id?: string;
+  domainId?: string;
   status?: string | null;
-  owner_role?: string | null;
+  ownerRole?: string | null;
 } | null;
 
 export interface TermRow {
@@ -358,7 +351,7 @@ export interface TermRow {
   name: string;
   definition: string | null;
   /** The columns the term names. */
-  ref_count: number;
+  refCount: number;
   deprecated: boolean;
   retired: boolean;
   // REQ-1387: set by people, and computed from the graph.
@@ -366,26 +359,26 @@ export interface TermRow {
   grounding: TermGrounding;
   // REQ-2130/2141: grounded in tables that same-entity relationships do not all join; absent
   // when the role cannot read it.
-  identity_gap?: boolean;
+  identityGap?: boolean;
   // One-to-many: null when the term has none (see rowsOf).
-  domains?: { domain_id: string }[] | null;
+  domains?: { domainId: string }[] | null;
   // Its experts (its stewards); null when it has none.
-  experts?: { user_id: string; kind: string }[] | null;
+  experts?: { userId: string; kind: string }[] | null;
   // Under Ontology: the edges leaving the term (null when none; see rowsOf).
   // Under a search, the term an edge reaches is read in full to the neighbourhood's depth.
-  edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
-  edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
+  edgesOut?: (TermEdgeRow & { targetTerm?: TermRow | { id: number } | null })[] | null;
+  edgesIn?: (TermEdgeRow & { sourceTerm?: TermRow | { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
-  tables?: { id: number; table_name: string; domain_id: string; product?: ProductRef }[] | null;
+  tables?: { id: number; tableName: string; domainId: string; product?: ProductRef }[] | null;
   refs?:
     | {
-        column_key: string;
-        column_name: string;
-        table_id: number;
-        table_name: string;
-        domain_id: string;
+        columnKey: string;
+        columnName: string;
+        tableId: number;
+        tableName: string;
+        domainId: string;
         column?: (ColumnFactsRow & { sensitivity?: { tags: string }[] | null }) | null;
-        table?:
+        registeredTable?:
           | (TableFactsRow & { id: number; product?: ProductRef })
           | null;
       }[]
@@ -398,9 +391,9 @@ type TableFactsRow = Parameters<typeof tableFacts>[0];
 
 export interface TermEdgeRow {
   id: number;
-  from_term_id: number;
-  to_term_id: number;
-  rel_type: string;
+  fromTermId: number;
+  toTermId: number;
+  relType: string;
 }
 
 /** A term's standing: its status, set by people (REQ-1387). The graph names a term by its title
@@ -449,38 +442,38 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
   // A reached table's data product (Data): read named under Data, else for its columns' look alone
   // (no node).
   const productOf = (tid: string, p: ProductRef | undefined) => {
-    if (p?.name === undefined || p.domain_id === undefined) return;
+    if (p?.name === undefined || p.domainId === undefined) return;
     node({
       id: `p:${p.id}`,
       type: "product",
       label: p.name,
-      domains: [p.domain_id],
-      ...facts({ status: p.status ?? undefined, owner: p.owner_role ?? undefined }),
+      domains: [p.domainId],
+      ...facts({ status: p.status ?? undefined, owner: p.ownerRole ?? undefined }),
     });
     edge(`p:${p.id}`, tid, "member");
   };
 
   const named = new Set<string>();
   for (const t of terms)
-    for (const d of t.domains ?? []) if (d.domain_id !== ENTERPRISE_DOMAIN) named.add(d.domain_id);
+    for (const d of t.domains ?? []) if (d.domainId !== ENTERPRISE_DOMAIN) named.add(d.domainId);
   for (const d of named) node({ id: `d:${d}`, type: "domain", label: d });
 
   for (const t of terms) {
     const id = `term:${t.id}`;
     const status = standing(t);
-    const domains = (t.domains ?? []).map((d) => d.domain_id);
+    const domains = (t.domains ?? []).map((d) => d.domainId);
     node({
       id,
       type: "term",
       label: t.name,
       status,
       ...(t.grounding === "not_grounded" ? {} : { grounding: t.grounding }),
-      role: termRole({ table_count: (t.tables ?? []).length, ref_count: t.ref_count }),
+      role: termRole({ table_count: (t.tables ?? []).length, ref_count: t.refCount }),
       // For the side panel only; a proposal with none has nothing said there.
       ...(t.definition ? { definition: t.definition } : {}),
       // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.
-      ...(t.identity_gap
-        ? { unlinkedTables: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
+      ...(t.identityGap
+        ? { unlinkedTables: (t.tables ?? []).map((g) => `${g.domainId}.${g.tableName}`) }
         : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
@@ -488,7 +481,7 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       ...facts({
         stewards: rowsOf(t.experts)
           ?.filter((x) => x.kind === "expert")
-          .map((x) => x.user_id),
+          .map((x) => x.userId),
       }),
     });
     // An enterprise-wide term is joined to every domain, so it settles among them, at the centre.
@@ -501,8 +494,8 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       node({
         id: tid,
         type: "table",
-        label: `${g.domain_id}.${g.table_name}`,
-        domains: [g.domain_id],
+        label: `${g.domainId}.${g.tableName}`,
+        domains: [g.domainId],
         stored: true,
         layers: ["ontology"],
       });
@@ -510,27 +503,27 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       productOf(tid, g.product);
     }
     for (const r of t.refs ?? []) {
-      const tid = `t:${r.table_id}`;
-      const cid = `c:${r.column_key}`;
-      const p = r.table?.product;
+      const tid = `t:${r.tableId}`;
+      const cid = `c:${r.columnKey}`;
+      const p = r.registeredTable?.product;
       // The column's table: drawn through the column, never by a layer of its own.
       node({
         id: tid,
         type: "table",
-        label: `${r.domain_id}.${r.table_name}`,
-        domains: [r.domain_id],
+        label: `${r.domainId}.${r.tableName}`,
+        domains: [r.domainId],
         stored: true,
         layers: [],
-        ...(r.table ? facts(tableFacts(r.table)) : {}),
+        ...(r.registeredTable ? facts(tableFacts(r.registeredTable)) : {}),
       });
       // Its sensitivity: its row in sensitive_coverage when sensitive; absent when not read.
       const sensitivity = r.column ? rowsOf(r.column.sensitivity) : undefined;
       node({
         id: cid,
         type: "column",
-        label: `${r.table_name}.${r.column_name}`,
+        label: `${r.tableName}.${r.columnName}`,
         parent: tid,
-        domains: [r.domain_id],
+        domains: [r.domainId],
         // A column whose table a data product holds is coloured apart (nodeLook).
         inProduct: p != null,
         // A fact, not a filter: the glossary's query is not narrowed by sensitivity.
@@ -550,10 +543,10 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
     }
   }
   for (const e of edges) {
-    const a = `term:${e.from_term_id}`;
-    const b = `term:${e.to_term_id}`;
+    const a = `term:${e.fromTermId}`;
+    const b = `term:${e.toTermId}`;
     // An edge to a term the role cannot read has no end to draw.
-    if (nodes.has(a) && nodes.has(b)) edge(a, b, "term_edge", e.rel_type);
+    if (nodes.has(a) && nodes.has(b)) edge(a, b, "term_edge", e.relType);
   }
   return { nodes: [...nodes.values()], edges: [...out.values()] };
 }

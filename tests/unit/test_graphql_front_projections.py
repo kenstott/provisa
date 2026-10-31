@@ -211,7 +211,7 @@ def _graphql_terms_and_edges(rows: list[dict]) -> tuple[set, set]:
 
     def visit(row: dict) -> None:
         terms.add(row["id"])
-        for side, end in (("edges_out", "target_term"), ("edges_in", "source_term")):
+        for side, end in (("edgesOut", "targetTerm"), ("edgesIn", "sourceTerm")):
             for e in row.get(side) or []:
                 edges.add(e["id"])
                 if len(e[end]) > 1:
@@ -253,7 +253,7 @@ def test_as_nodes_it_answers_the_same_terms_and_term_edges(glossary, key):
 def test_an_unfiltered_junction_field_is_an_untyped_relationship_and_a_filtered_one_its_types():
     unfiltered = _cypher(_READS[_ONTOLOGY[0]], GRAPHQL)
     assert "MATCH (n0)-[r0]->(n1:Terms)" in unfiltered
-    assert "rel_type: r0.relType" in unfiltered
+    assert "relType: r0.relType" in unfiltered
     filtered = _cypher(_READS[_ONTOLOGY[2]], GRAPHQL)
     assert "-[r0:KIND_OF|PART_OF]->" in filtered
 

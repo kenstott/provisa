@@ -61,7 +61,10 @@ export const PRODUCT_FIELDS = [
   "created_at",
 ] as const;
 
-type ProductRow = Record<(typeof PRODUCT_FIELDS)[number], unknown>;
+/** A view's column name as the GraphQL field it is (REQ-416). */
+type Field<C extends string> = C extends `${infer H}_${infer T}` ? `${H}${Capitalize<Field<T>>}` : C;
+
+type ProductRow = Record<Field<(typeof PRODUCT_FIELDS)[number]>, unknown>;
 
 // With the facts the graph's hover card and detail panel give a term (REQ-2174).
 const TERM: Selection = {
@@ -71,15 +74,13 @@ const TERM: Selection = {
 
 // REQ-1443 clause 10: a checker table's rules, parsed from its contract at registration.
 const DQ_RULES: NonNullable<Selection["rels"]>[string] = {
-  alias: "dqRules",
   sel: { fields: ["position", "column_name", "check_type", "definition"] },
 };
 
 const PANEL: Selection = {
   fields: ["id"],
   rels: {
-    member_tables: {
-      alias: "memberTables",
+    memberTables: {
       sel: {
         fields: [
           "id",
@@ -97,28 +98,25 @@ const PANEL: Selection = {
         rels: {
           // Its checkers' latest scans: its quality on the graph (REQ-2174).
           ...TABLE_FACTS.rels,
-          checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
-          dq_rules: DQ_RULES,
-          table_columns: {
+          checks: { sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
+          dqRules: DQ_RULES,
+          tableColumns: {
             to: "table_columns",
             sel: {
               fields: ["column_name", "column_key", ...COLUMN_FACTS],
               rels: {
-                glossary_ref: {
-                  alias: "glossaryRef",
-                  sel: { fields: ["term_id"], rels: { term: { alias: "term", sel: TERM } } },
+                glossaryRef: {
+                  sel: { fields: ["term_id"], rels: { term: { sel: TERM } } },
                 },
               },
             },
           },
-          profile_results: {
-            alias: "profileResults",
+          profileResults: {
             sel: { fields: ["id", "domain_id", "table_name", "alias"] },
           },
           // REQ-351: its relationships, under the effective names stored on each (the panel's
           // Relationships card and its Cypher click-through between member tables).
-          source_relationships: {
-            alias: "sourceRelationships",
+          sourceRelationships: {
             sel: {
               fields: [
                 "id",
@@ -131,8 +129,7 @@ const PANEL: Selection = {
                 "disable_cypher",
               ],
               rels: {
-                target_table: {
-                  alias: "targetTable",
+                targetTable: {
                   sel: { fields: ["id", "domain_id", "table_name", "product_id"] },
                 },
               },
@@ -141,10 +138,9 @@ const PANEL: Selection = {
         },
       },
     },
-    commands: { alias: "commands", sel: { fields: ["name", "description", "domain_id"] } },
-    tags: { alias: "tags", sel: { fields: ["tag_id"] } },
+    commands: { sel: { fields: ["name", "description", "domain_id"] } },
+    tags: { sel: { fields: ["tag_id"] } },
     edges: {
-      alias: "edges",
       sel: {
         fields: [
           "id",
@@ -158,9 +154,8 @@ const PANEL: Selection = {
           "supporting_tables",
         ],
         rels: {
-          target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
-          target_table: {
-            alias: "targetTable",
+          targetProduct: { sel: { fields: ["id", "name", "domain_id"] } },
+          targetTable: {
             sel: { fields: ["id", "domain_id", "table_name", "alias", "description"] },
           },
         },
@@ -173,42 +168,42 @@ export interface CoreTerm {
   id: number;
   name: string;
   definition: string | null;
-  is_abstract: boolean;
+  isAbstract: boolean;
   live: boolean;
   status?: string | null;
-  experts?: { user_id: string; kind: string }[] | null;
+  experts?: { userId: string; kind: string }[] | null;
 }
 
 export interface CoreTable {
   id: number;
-  source_id: string;
-  domain_id: string;
-  schema_name: string;
-  table_name: string;
+  sourceId: string;
+  domainId: string;
+  schemaName: string;
+  tableName: string;
   alias: string | null;
   description: string | null;
-  dq_contract: string | null;
+  dqContract: string | null;
   // REQ-2158: how long a read may trail its source, in seconds (-1: never expires); null for none.
-  cache_ttl?: number | null;
+  cacheTtl?: number | null;
   // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
   contract?: StoredContract | string | null;
-  checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;
-  checked_by?: { latest_outcome: "pass" | "fail" | null; latest_run_at: string | null }[] | null;
-  dq_rules?: CoreDqRule[] | null;
-  table_columns?:
+  checks?: { id: number; domainId: string; tableName: string; alias: string | null } | null;
+  checkedBy?: { latestOutcome: "pass" | "fail" | null; latestRunAt: string | null }[] | null;
+  dqRules?: CoreDqRule[] | null;
+  tableColumns?:
     | {
-        column_name: string;
-        column_key: string;
-        data_type?: string | null;
+        columnName: string;
+        columnKey: string;
+        dataType?: string | null;
         description?: string | null;
         masks?: unknown;
-        glossary_ref?: { term_id: number; term?: CoreTerm | null }[] | null;
+        glossaryRef?: { termId: number; term?: CoreTerm | null }[] | null;
       }[]
     | null;
-  profile_results?:
-    | { id: number; domain_id: string; table_name: string; alias: string | null }[]
+  profileResults?:
+    | { id: number; domainId: string; tableName: string; alias: string | null }[]
     | null;
-  source_relationships?: CoreRelationship[] | null;
+  sourceRelationships?: CoreRelationship[] | null;
 }
 
 /** REQ-2158: a member's contract as registered_tables.contract stores it. */
@@ -233,10 +228,10 @@ export function coreContracts(core: ProductCore): DataContract[] {
     return [
       {
         tableId: tb.id,
-        sourceId: tb.source_id,
-        schemaName: tb.schema_name,
-        tableName: tb.table_name,
-        contractId: `${core.product.id}/${tb.schema_name}.${tb.table_name}`,
+        sourceId: tb.sourceId,
+        schemaName: tb.schemaName,
+        tableName: tb.tableName,
+        contractId: `${core.product.id}/${tb.schemaName}.${tb.tableName}`,
         version: c.version,
         status: c.status,
         description: c.description ?? null,
@@ -280,8 +275,8 @@ export function breakingNotInForce(versions: ContractVersion[]): ContractVersion
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */
 export interface CoreDqRule {
   position: number;
-  column_name: string;
-  check_type: string;
+  columnName: string;
+  checkType: string;
   definition: string;
 }
 
@@ -290,18 +285,18 @@ export interface CoreRelationship {
   id: string;
   alias: string | null;
   // NULL for a junction-backed edge, which is no GraphQL field (REQ-1586).
-  graphql_field: string | null;
+  graphqlField: string | null;
   // Every relationship has its served type stored (relationship_names.store_effective_names).
-  cypher_type: string;
+  cypherType: string;
   cardinality: string;
-  source_column: string;
-  target_column: string | null;
-  disable_cypher: boolean;
-  target_table?: {
+  sourceColumn: string;
+  targetColumn: string | null;
+  disableCypher: boolean;
+  targetTable?: {
     id: number;
-    domain_id: string;
-    table_name: string;
-    product_id?: string | null;
+    domainId: string;
+    tableName: string;
+    productId?: string | null;
   } | null;
 }
 
@@ -311,18 +306,18 @@ export interface CoreEdge {
   kind: "relationship" | "related";
   /** The edge's key in data_product_edges, unique per product. */
   id: string;
-  target_product_id: string | null;
-  target_table_id: number | null;
+  targetProductId: string | null;
+  targetTableId: number | null;
   direct: boolean;
   hops: number;
-  path_count: number;
+  pathCount: number;
   aliases: string | null;
-  supporting_tables: string | null;
-  target_product?: { id: string; name: string; domain_id: string } | null;
-  target_table?: {
+  supportingTables: string | null;
+  targetProduct?: { id: string; name: string; domainId: string } | null;
+  targetTable?: {
     id: number;
-    domain_id: string;
-    table_name: string;
+    domainId: string;
+    tableName: string;
     alias: string | null;
     description: string | null;
   } | null;
@@ -331,18 +326,27 @@ export interface CoreEdge {
 /** A registered table as the model names it: its domain, then its alias where it has one. Every
  * table the panel names is named so -- never by its physical schema or relation. */
 export function modelName(t: {
+  domainId: string;
+  tableName: string;
+  alias: string | null;
+}): string {
+  return `${t.domainId}.${t.alias || t.tableName}`;
+}
+
+/** modelName of a table a REST endpoint answers, under its physical column names. */
+export function restModelName(t: {
   domain_id: string;
   table_name: string;
   alias: string | null;
 }): string {
-  return `${t.domain_id}.${t.alias || t.table_name}`;
+  return modelName({ domainId: t.domain_id, tableName: t.table_name, alias: t.alias });
 }
 
 interface PanelRow {
   id: string;
-  member_tables?: CoreTable[] | null;
-  commands?: { name: string; description: string | null; domain_id: string }[] | null;
-  tags?: { tag_id: string }[] | null;
+  memberTables?: CoreTable[] | null;
+  commands?: { name: string; description: string | null; domainId: string }[] | null;
+  tags?: { tagId: string }[] | null;
   edges?: CoreEdge[] | null;
 }
 
@@ -364,28 +368,28 @@ const text = (v: unknown) => (v == null ? null : String(v));
 
 /** A data_products_meta row as the page's DataProduct. */
 export function asProduct(row: ProductRow): DataProduct {
-  const custom = row.custom_properties;
+  const custom = row.customProperties;
   return {
     id: String(row.id),
-    domainId: String(row.domain_id),
+    domainId: String(row.domainId),
     name: String(row.name),
-    ownerRole: text(row.owner_role),
-    teamRole: text(row.team_role),
+    ownerRole: text(row.ownerRole),
+    teamRole: text(row.teamRole),
     purpose: String(row.purpose ?? ""),
     limitations: String(row.limitations ?? ""),
     usage: String(row.usage ?? ""),
     version: text(row.version),
     status: String(row.status) as LifecycleStatus,
-    statusReason: text(row.status_reason),
-    retireOn: text(row.retire_on),
-    successorId: text(row.successor_id),
+    statusReason: text(row.statusReason),
+    retireOn: text(row.retireOn),
+    successorId: text(row.successorId),
     support: text(row.support),
-    supportContact: text(row.support_contact),
+    supportContact: text(row.supportContact),
     customProperties:
       typeof custom === "string"
         ? (JSON.parse(custom) as Record<string, unknown>)
         : ((custom ?? {}) as Record<string, unknown>),
-    createdAt: String(row.created_at),
+    createdAt: String(row.createdAt),
   };
 }
 
@@ -430,14 +434,14 @@ async function termClosure(m: MetaReader, role: string, bound: CoreTerm[]): Prom
     );
     if (eq === null) break;
     const { _term_edges: out } = await dataGraphql<{
-      _term_edges: { to_term_id: number }[];
+      _term_edges: { toTermId: number }[];
     }>(eq, {}, role);
-    const fresh = [...new Set(out.map((e) => e.to_term_id))].filter((id) => !terms.has(id));
+    const fresh = [...new Set(out.map((e) => e.toTermId))].filter((id) => !terms.has(id));
     if (fresh.length === 0) break;
     const tq = rootQuery(m, "Terms", "_terms", TERM, { id: { in: fresh } });
     if (tq === null) break;
     const { _terms: found } = await dataGraphql<{ _terms: CoreTerm[] }>(tq, {}, role);
-    const abstract = found.filter((t) => t.is_abstract);
+    const abstract = found.filter((t) => t.isAbstract);
     for (const t of abstract) terms.set(t.id, t);
     frontier = abstract.map((t) => t.id);
   }
@@ -472,22 +476,24 @@ export async function loadProductCore(
   const [fields] = sql.rows;
   if (!row || !fields) throw new Error(`No data product ${product}`);
   const [doc] = jsonapi.data;
-  const productRow = { ...(fields as ProductRow) };
-  // JSON:API reads the same row under its physical column names; its custom properties come as
-  // JSON, not a string.
+  // SQL and JSON:API read the same row under its physical column names, not GraphQL's; its custom
+  // properties come over JSON:API as JSON, not a string.
+  const productRow = Object.fromEntries(
+    Object.entries(fields).map(([k, v]) => [k.replace(/_(.)/g, (_, c: string) => c.toUpperCase()), v]),
+  ) as ProductRow;
   if (!doc) throw new Error(`No data product ${product} over JSON:API`);
-  productRow.custom_properties = doc.attributes.custom_properties;
-  const members = rowsOf(row.member_tables);
+  productRow.customProperties = doc.attributes.custom_properties;
+  const members = rowsOf(row.memberTables);
   const bound = new Map<number, CoreTerm>();
   for (const t of members ?? [])
-    for (const c of t.table_columns ?? [])
-      for (const r of c.glossary_ref ?? []) if (r.term) bound.set(r.term.id, r.term);
+    for (const c of t.tableColumns ?? [])
+      for (const r of c.glossaryRef ?? []) if (r.term) bound.set(r.term.id, r.term);
   return {
     product: asProduct(productRow),
     tables: members,
     commands: rowsOf(row.commands),
-    tags: rowsOf(row.tags)?.map((t) => t.tag_id),
-    terms: (members ?? []).some((t) => t.table_columns !== undefined)
+    tags: rowsOf(row.tags)?.map((t) => t.tagId),
+    terms: (members ?? []).some((t) => t.tableColumns !== undefined)
       ? await termClosure(m, role, [...bound.values()])
       : undefined,
     edges: rowsOf(row.edges),
@@ -503,13 +509,13 @@ export function coreGraph(core: ProductCore): GraphData {
   const row: GraphProductRow = {
     id: core.product.id,
     name: core.product.name,
-    domain_id: core.product.domainId,
+    domainId: core.product.domainId,
     status: core.product.status,
-    owner_role: core.product.ownerRole,
-    member_tables: core.tables ?? [],
+    ownerRole: core.product.ownerRole,
+    memberTables: core.tables ?? [],
     commands: core.commands ?? [],
     edges: core.edges ?? [],
-    tags: (core.tags ?? []).map((tag_id) => ({ tag_id })),
+    tags: (core.tags ?? []).map((tagId) => ({ tagId })),
   };
   // The term hierarchy above the bound terms, when the role reads the term edges.
   return toGraphData([row], core.ranks ? rankChains([row], core.ranks) : null, null);
